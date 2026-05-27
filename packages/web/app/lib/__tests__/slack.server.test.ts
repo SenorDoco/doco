@@ -604,6 +604,120 @@ describe("slack.server", () => {
     expect(answer).toBe("This workspace has one doco:\n- 7 decisions\n- 1 intent");
   });
 
+  it("converts Markdown links in Slack LLM answers to Slack links", async () => {
+    const createMessage = vi.fn().mockResolvedValueOnce({
+      content: [
+        {
+          type: "text",
+          text: "Open [Francisco](https://doco.test/torre-org-chart/principal/principal_01).",
+        },
+      ],
+      stop_reason: "end_turn",
+    });
+
+    const answer = await generateSlackDocoLlmAnswer(
+      {
+        questionText: "Show me Francisco",
+        overview: false,
+        repair: false,
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "reader",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+      {
+        createMessage: createMessage as never,
+      },
+    );
+
+    expect(answer).toBe(
+      "Open <https://doco.test/torre-org-chart/principal/principal_01|Francisco>.",
+    );
+  });
+
+  it("preserves doco_api footer lines with Slack-renderable links", async () => {
+    const createMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_write",
+            name: "doco_api",
+            input: {
+              method: "POST",
+              path: "/torre-org-chart/api/principals.json",
+              body: { name: "Francisco Laso" },
+            },
+          },
+        ],
+        stop_reason: "tool_use",
+      })
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: "text",
+            text: "[🔮 Doco] 👤 Principal added: Francisco Laso\n\nFrancisco is now live.",
+          },
+        ],
+        stop_reason: "end_turn",
+      });
+    const runTool = vi.fn(async (block) => ({
+      result: {
+        type: "tool_result" as const,
+        tool_use_id: block.id,
+        content: JSON.stringify({
+          status: 200,
+          ok: true,
+          body: {
+            id: "principal_01",
+            footer_lines: [
+              "[🔮 Doco] 👤 Principal added: [Francisco Laso](https://doco.test/torre-org-chart/principal/principal_01)",
+            ],
+          },
+        }),
+      },
+      preview: "POST /torre-org-chart/api/principals.json -> 200",
+      ok: true,
+    }));
+
+    const answer = await generateSlackDocoLlmAnswer(
+      {
+        questionText: "Add Francisco to the org chart",
+        overview: false,
+        repair: false,
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "doco",
+            targetId: "doco_01",
+            targetLabel: "torre/torre-org-chart",
+            role: "author",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+      {
+        createMessage: createMessage as never,
+        runTool,
+      },
+    );
+
+    expect(answer).toBe(
+      "[🔮 Doco] 👤 Principal added: <https://doco.test/torre-org-chart/principal/principal_01|Francisco Laso>\n\nFrancisco is now live.",
+    );
+  });
+
   it("asks for personal Doco authorization when Slack doco_api writes are blocked", async () => {
     vi.mocked(internalFetch).mockReset();
     const result = await runSlackDocoApiTool(
