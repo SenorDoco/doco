@@ -341,13 +341,12 @@ export async function loadBpmnGraph(
   }
 
   // ── No-Unassigned-pool policy ─────────────────────────────────────
-  // Every neuron lands in *some* Intent's pool. For neurons that the
-  // direct-host rules above didn't place (Action/Decision/Log with no
-  // intent_ids; State/Reference/Idea/leftover Rule/leftover Eval), run
-  // personalized PageRank from that neuron over the doco's synapse
-  // graph and pick the highest-scoring Intent as its home. Standalone
-  // neurons with no connection at all end up in the highest-global-PR
-  // Intent's pool — the de facto "default process" of the doco.
+  // Every neuron lands in *some* Intent's pool. Direct-host rules above
+  // win. Remaining neurons use a single multi-source BFS from all
+  // Intents over the synapse graph; disconnected neurons fall back to
+  // the highest-global-PR Intent. Avoid per-neuron personalized
+  // PageRank here — that multiplied render cost by every homeless
+  // neuron and made medium Docos feel huge.
   if (intentsById.size > 0) {
     const intentIds = Array.from(intentsById.keys());
     const homeless: NeuronRow[] = [];
@@ -356,12 +355,10 @@ export async function loadBpmnGraph(
       if (poolByNeuron.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
     }
     if (homeless.length > 0) {
-      const pageRankNodes = allRows.map((r) => ({ id: r.id }));
+      const nearestIntentByNode = computeNearestIntentByNode(intentIds, links, pr);
+      const defaultIntent = highestRanked(intentIds, pr);
       for (const row of homeless) {
-        const personalized = pageRank(pageRankNodes, links, {
-          personalization: new Map([[row.id, 1]]),
-        });
-        const bestIntent = highestRanked(intentIds, personalized);
+        const bestIntent = nearestIntentByNode.get(row.id) ?? defaultIntent;
         if (bestIntent) poolByNeuron.set(row.id, `pool:${bestIntent}`);
       }
     }
@@ -552,6 +549,51 @@ export async function loadBpmnGraph(
   for (const [id, score] of pr) globalPagerank[id] = score;
 
   return { pools, lanes, nodes, links, global_pagerank: globalPagerank };
+}
+
+export function computeNearestIntentByNode(
+  intentIds: readonly string[],
+  links: readonly OverviewGraphLink[],
+  ranks: ReadonlyMap<string, number>,
+): Map<string, string> {
+  const uniqueIntentIds = Array.from(new Set(intentIds));
+  const adjacency = new Map<string, Set<string>>();
+  const connect = (from: string, to: string) => {
+    const existing = adjacency.get(from);
+    if (existing) existing.add(to);
+    else adjacency.set(from, new Set([to]));
+  };
+
+  for (const link of links) {
+    connect(link.source, link.target);
+    connect(link.target, link.source);
+  }
+
+  const orderedIntents = uniqueIntentIds.sort((a, b) => {
+    const rankDiff = (ranks.get(b) ?? 0) - (ranks.get(a) ?? 0);
+    if (rankDiff !== 0) return rankDiff;
+    return a.localeCompare(b);
+  });
+  const nearest = new Map<string, string>();
+  const queue: string[] = [];
+  for (const intentId of orderedIntents) {
+    nearest.set(intentId, intentId);
+    queue.push(intentId);
+  }
+
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    const currentIntent = nearest.get(current);
+    if (!currentIntent) continue;
+    const neighbors = Array.from(adjacency.get(current) ?? []).sort();
+    for (const neighbor of neighbors) {
+      if (nearest.has(neighbor)) continue;
+      nearest.set(neighbor, currentIntent);
+      queue.push(neighbor);
+    }
+  }
+
+  return nearest;
 }
 
 function parseRawYaml(rawYaml: string | null): Record<string, unknown> {

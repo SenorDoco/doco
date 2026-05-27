@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadBpmnGraph } from "../bpmn-perspective.server";
+import { computeNearestIntentByNode, loadBpmnGraph } from "../bpmn-perspective.server";
 
 interface CapturedQuery {
   sql: string;
@@ -235,5 +235,43 @@ describe("loadBpmnGraph", () => {
     const checkout = graph.nodes.find((node) => node.id === checkoutId);
 
     expect(checkout?.bfs_depth).toBeGreaterThan(decision?.bfs_depth ?? 0);
+  });
+});
+
+describe("computeNearestIntentByNode", () => {
+  it("assigns nodes to the nearest connected intent", () => {
+    const ranks = new Map([
+      ["intent_b", 0.9],
+      ["intent_a", 0.1],
+    ]);
+    const nearest = computeNearestIntentByNode(
+      ["intent_a", "intent_b"],
+      [
+        { source: "intent_a", target: "action_a", synapse_type: "serves" },
+        { source: "action_a", target: "decision_a", synapse_type: "sequence_flow" },
+        { source: "intent_b", target: "action_b", synapse_type: "serves" },
+      ],
+      ranks,
+    );
+
+    expect(nearest.get("decision_a")).toBe("intent_a");
+    expect(nearest.get("action_b")).toBe("intent_b");
+  });
+
+  it("uses PageRank to break equal-distance intent ties", () => {
+    const ranks = new Map([
+      ["intent_b", 0.9],
+      ["intent_a", 0.1],
+    ]);
+    const nearest = computeNearestIntentByNode(
+      ["intent_a", "intent_b"],
+      [
+        { source: "intent_a", target: "shared", synapse_type: "serves" },
+        { source: "intent_b", target: "shared", synapse_type: "serves" },
+      ],
+      ranks,
+    );
+
+    expect(nearest.get("shared")).toBe("intent_b");
   });
 });
