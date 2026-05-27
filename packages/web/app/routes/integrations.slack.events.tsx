@@ -54,6 +54,7 @@ export async function action({ request }: { request: Request }) {
         chatUserId: event?.user ?? null,
         messageText: event?.text ?? "",
         recentMessages,
+        origin: new URL(request.url).origin,
       });
       await postSlackMessage({
         workspaceId: teamId,

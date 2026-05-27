@@ -1,5 +1,11 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../internal-fetch.server", () => ({
+  internalFetch: vi.fn(),
+}));
+
+import { internalFetch } from "../internal-fetch.server";
 import {
   SLACK_BOT_SCOPES,
   buildSlackConnectCommandResponse,
@@ -189,7 +195,7 @@ describe("slack.server", () => {
         },
       ]),
     ).toBe(
-      "I’m Señor Doco, Doco’s Slack assistant. By default in this Slack workspace, I can use all doco's docos as approver. That shared default applies to everyone here. People can run /doco connect to link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions. Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
+      "I’m Señor Doco, Doco’s Slack assistant. By default in this Slack workspace, I can use all doco's docos as approver via shared default. That shared default applies to everyone here. People can run /doco connect to link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions. Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
     );
   });
 
@@ -244,7 +250,7 @@ describe("slack.server", () => {
         },
       ]),
     ).toBe(
-      "all doco's docos as approver: 1 Doco (doco/bpms). It contains 7 neurons: 2 decisions, 1 intent, 3 actions, and 1 rule.",
+      "all doco's docos as approver via shared default: 1 Doco (doco/bpms). It contains 7 neurons: 2 decisions, 1 intent, 3 actions, and 1 rule.",
     );
   });
 
@@ -386,9 +392,10 @@ describe("slack.server", () => {
       repairText: null,
     });
 
-    expect(prompt).toContain("Default Doco access");
+    expect(prompt).toContain("Doco access available in this Slack request");
     expect(prompt).not.toContain("Repair requested:");
-    expect(prompt).toContain("all doco's docos as reader");
+    expect(prompt).toContain("all doco's docos as reader via shared default");
+    expect(prompt).toContain("Personal Doco authorization for this Slack user");
     expect(prompt).toContain("User: What do the docos we have explain?");
     expect(prompt).toContain("Intent in doco/doco-bpms: Doco core work loop");
   });
@@ -400,12 +407,12 @@ describe("slack.server", () => {
     expect(prompt).toContain('policies" never "constitution');
     expect(prompt).toContain("Principal vs principle vs collaborator");
     expect(prompt).toContain("Voice — dry, cerebral wit");
-    expect(prompt).toContain("Slack can use doco_api for read-only Doco endpoints");
+    expect(prompt).toContain("Slack can use doco_api for reads authorized");
+    expect(prompt).toContain("Slack can use POST/PATCH/DELETE doco_api calls");
     expect(prompt).toContain("run /doco connect and authorize their own Doco account for Slack");
     expect(prompt).toContain("Do not mention going to the website as a workaround");
-    expect(prompt).toContain(
-      "Do not say you can create, edit, approve, or invite from Slack after authorization",
-    );
+    expect(prompt).toContain("try the appropriate doco_api write");
+    expect(prompt).toContain("paste every returned footer_lines entry verbatim");
     expect(prompt).toContain("asks for line breaks");
     expect(prompt).toContain("For line-break repair requests");
     expect(prompt).toContain("treat it as a formatting repair");
@@ -598,6 +605,7 @@ describe("slack.server", () => {
   });
 
   it("asks for personal Doco authorization when Slack doco_api writes are blocked", async () => {
+    vi.mocked(internalFetch).mockReset();
     const result = await runSlackDocoApiTool(
       {
         type: "tool_use",
@@ -633,5 +641,62 @@ describe("slack.server", () => {
     expect(result.ok).toBe(false);
     expect(content).toContain("run /doco connect and authorize their own Doco account for Slack");
     expect(content).toContain("needs_personal_doco_authorization");
+  });
+
+  it("runs Slack doco_api writes as the linked Doco collaborator", async () => {
+    vi.mocked(internalFetch).mockResolvedValueOnce(
+      Response.json({
+        ok: true,
+        id: "principal_01",
+        footer_lines: ["[🔮 Doco] 👤 Principal added: [Francisco](https://doco.test/x)"],
+      }),
+    );
+
+    const result = await runSlackDocoApiTool(
+      {
+        type: "tool_use",
+        id: "toolu_write",
+        name: "doco_api",
+        input: {
+          method: "POST",
+          path: "/torre-org-chart/api/principals.json",
+          body: { name: "Francisco Laso", body_md: "Algorithms Engineer" },
+        },
+      } as never,
+      {
+        questionText: "Add Francisco to the org chart",
+        overview: false,
+        repair: false,
+        origin: "https://doco.test",
+        personalAuthorizationCommand: "/doco connect",
+        personalActors: [{ collaboratorId: "collaborator_01ABC", username: "alex" }],
+        connections: [
+          {
+            channelId: "*",
+            channelName: "personal",
+            targetLevel: "doco",
+            targetId: "doco_01",
+            targetLabel: "torre/torre-org-chart",
+            role: "author",
+            source: "personal",
+            collaboratorId: "collaborator_01ABC",
+            collaboratorUsername: "alex",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(vi.mocked(internalFetch)).toHaveBeenCalledWith({
+      method: "POST",
+      path: "/torre-org-chart/api/principals.json",
+      origin: "https://doco.test",
+      cookieHeader: "doco_session=collaborator_01ABC",
+      body: { name: "Francisco Laso", body_md: "Algorithms Engineer" },
+      userAgent: "Doco-Slack-Assistant/1",
+    });
+    expect(String(result.result.content)).toContain("Principal added");
   });
 });
