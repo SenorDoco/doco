@@ -107,7 +107,7 @@ interface BpmnPerspectiveProps {
   visibleLifecycles?: Set<string>;
   /**
    * When set, the BPMN canvas fades non-neighbours of this neuron
-   * based on BFS depth (1st-degree solid, 2nd 75%, 3rd 50%, 4+ 25%).
+   * based on BFS depth (focused 100%, 1st-degree 75%, 2nd 50%, 3rd+ 25%).
    * Edges fade with their deepest endpoint. When null/undefined,
    * every node and edge renders at full opacity.
    */
