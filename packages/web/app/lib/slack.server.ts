@@ -805,16 +805,21 @@ export function detectSlackRepairMessage(text: string): boolean {
     /\bthat\s+(didn'?t|did not)\s+answer\b/.test(lower) ||
     /\bnot\s+what\s+i\s+asked\b/.test(lower) ||
     /\banswer\s+my\s+(question|previous\s+question)\b/.test(lower) ||
-    /\b(add|use|insert|put)\s+(some\s+)?line\s+breaks?\b/.test(lower) ||
-    /\b(line\s+breaks?|break\s+(it\s+)?into\s+lines?|split\s+(it\s+)?into\s+lines?)\b/.test(
-      lower,
-    ) ||
+    isSlackLineBreakRepair(lower) ||
     /\b(format\s+(it\s+)?as\s+(bullets?|a\s+list)|make\s+(it\s+)?(readable|scannable))\b/.test(
       lower,
     ) ||
     /\b(not\s+looking\s+(nice|good)|looks?\s+(bad|ugly|messy)|hard\s+to\s+read|format(?:ting)?\s+(is\s+)?(bad|broken|messy))\b/.test(
       lower,
     )
+  );
+}
+
+function isSlackLineBreakRepair(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    /\b(add|use|insert|put)\s+(some\s+)?line\s+breaks?\b/.test(lower) ||
+    /\b(line\s+breaks?|break\s+(it\s+)?into\s+lines?|split\s+(it\s+)?into\s+lines?)\b/.test(lower)
   );
 }
 
@@ -893,7 +898,9 @@ export async function generateSlackDocoLlmAnswer(
       ) as ContentBlockParam[];
       messages.push({ role: "assistant", content: assistantContent });
       if (message.stop_reason !== "tool_use") {
-        return cleanSlackLlmAnswer(slackMessageText(message));
+        return cleanSlackLlmAnswer(slackMessageText(message), {
+          repairText: input.repairText,
+        });
       }
       const toolUseBlocks = assistantContent.filter(
         (block): block is ToolUseBlock => block.type === "tool_use",
@@ -905,7 +912,9 @@ export async function generateSlackDocoLlmAnswer(
         content: toolResults.map((toolResult) => toolResult.result),
       });
     }
-    return lastMessage ? cleanSlackLlmAnswer(slackMessageText(lastMessage)) : null;
+    return lastMessage
+      ? cleanSlackLlmAnswer(slackMessageText(lastMessage), { repairText: input.repairText })
+      : null;
   } catch (error) {
     console.error(
       "[slack] Doco LLM answer failed:",
@@ -1802,12 +1811,38 @@ function formatSlackLlmHit(hit: SlackDocoAnswerHit, index: number): string {
   return `[${index + 1}] ${capitalize(hit.neuronType)} in ${hit.docoLabel}: ${summary || "No summary."}${bodyText}`;
 }
 
-function cleanSlackLlmAnswer(text: string): string | null {
-  const cleaned = cleanSlackAnswerText(text)
+function cleanSlackLlmAnswer(
+  text: string,
+  options: { repairText?: string | null } = {},
+): string | null {
+  const cleaned = cleanSlackLlmOutputText(text)
     .replace(/^["“]|["”]$/g, "")
     .trim();
   if (!cleaned) return null;
-  return truncateSlackAnswerText(cleaned, 1800);
+  const formatted = options.repairText
+    ? formatSlackLineBreakRepairOutput(cleaned, options.repairText)
+    : cleaned;
+  return truncateSlackAnswerText(formatted, 1800);
+}
+
+function cleanSlackLlmOutputText(text: string): string {
+  return text
+    .replace(/`{1,3}/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function formatSlackLineBreakRepairOutput(text: string, repairText: string): string {
+  if (!isSlackLineBreakRepair(repairText)) return text;
+  return text
+    .replace(/([:.])\s+[-•]\s+/g, "$1\n- ")
+    .replace(/\s+[-•]\s+(\d+\s+[A-Za-z])/g, "\n- $1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function sortSlackDocoAnswerHits(hits: SlackDocoAnswerHit[]): SlackDocoAnswerHit[] {
