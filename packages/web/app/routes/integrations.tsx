@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
-import { redirect } from "react-router";
+import { Form, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -29,13 +29,19 @@ import {
   formatConnectionAuthorizationPreview,
 } from "~/lib/group-chat-ux";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
+import {
+  type SlackInstallationSummary,
+  getSlackConfig,
+  listSlackInstallations,
+  saveSlackChannelConnection,
+} from "~/lib/slack.server";
 
 type ProviderId = "slack" | "google-chat" | "discord" | "other";
 
 interface ProviderDefinition {
   id: ProviderId;
   label: string;
-  installEnv: string;
+  installEnv?: string;
   setupSummary: string;
   channelLabel: string;
   channelPlaceholder: string;
@@ -47,18 +53,28 @@ interface ProviderOption extends Omit<ProviderDefinition, "installEnv"> {
 
 interface IntegrationsPageData {
   me: CurrentPrincipal;
+  initialProviderId: ProviderId;
+  notice: string | null;
   providers: ProviderOption[];
   scopeOptions: ScopeOption[];
+  slackInstallations: SlackInstallationSummary[];
+  slackChannelContext: SlackChannelContext | null;
+}
+
+interface SlackChannelContext {
+  teamId: string;
+  teamName: string | null;
+  channelId: string;
+  channelName: string;
 }
 
 const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
   {
     id: "slack",
     label: "Slack",
-    installEnv: "DOCO_SLACK_INSTALL_URL",
-    setupSummary: "Create and approve a Slack app for this Doco deployment.",
+    setupSummary: "Add the Slack app credentials to the deployment.",
     channelLabel: "Slack channel",
-    channelPlaceholder: "#product",
+    channelPlaceholder: "Run /doco connect from Slack",
   },
   {
     id: "google-chat",
@@ -94,9 +110,71 @@ export async function loader({ request }: { request: Request }): Promise<Integra
   }
   return {
     me,
+    initialProviderId: readProviderId(url.searchParams.get("provider")) ?? "slack",
+    notice: readNotice(url),
     providers: loadProviders(),
     scopeOptions: await loadScopeOptions(me.id),
+    slackInstallations: await listSlackInstallations(),
+    slackChannelContext: readSlackChannelContext(url),
   };
+}
+
+export async function action({ request }: { request: Request }) {
+  if (request.method !== "POST") {
+    return Response.json({ error: "method_not_allowed" }, { status: 405 });
+  }
+  const me = await getCurrentPrincipal(request);
+  if (!me) {
+    return Response.json({ error: "authentication_required" }, { status: 401 });
+  }
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent !== "save_slack_channel_default") {
+    return Response.json({ error: "unknown_intent" }, { status: 400 });
+  }
+
+  const teamId = String(form.get("team_id") ?? "").trim();
+  const channelId = String(form.get("channel_id") ?? "").trim();
+  const channelName = String(form.get("channel_name") ?? "").trim();
+  const targetLevel = form.get("target_level") === "org" ? "org" : "doco";
+  const targetId = String(form.get("target_id") ?? "").trim();
+  const role = String(form.get("role") ?? "") as DocoRole;
+
+  if (!teamId || !channelId || !targetId) {
+    return Response.json({ error: "missing_channel_or_target" }, { status: 400 });
+  }
+  if (!ALL_ROLES.includes(role)) {
+    return Response.json({ error: "invalid_role" }, { status: 400 });
+  }
+
+  const scopeOptions = await loadScopeOptions(me.id);
+  const target = scopeOptions.find(
+    (option) => option.level === targetLevel && option.id === targetId,
+  );
+  if (!target) {
+    return Response.json({ error: "target_not_available" }, { status: 403 });
+  }
+  const capability = canSetChannelDefaultAccess({
+    personalRole: target.myRole,
+    requestedRole: role,
+  });
+  if (!capability.ok) {
+    return Response.json({ error: capability.error ?? "role_not_allowed" }, { status: 403 });
+  }
+
+  await saveSlackChannelConnection({
+    workspaceId: teamId,
+    channelId,
+    channelName,
+    targetLevel,
+    targetId,
+    role,
+    createdByCollaboratorId: me.id,
+  });
+
+  throw redirect(
+    `/integrations?provider=slack&connected=${encodeURIComponent(channelName || channelId)}`,
+  );
 }
 
 export function meta() {
@@ -104,10 +182,21 @@ export function meta() {
 }
 
 export default function IntegrationsPage({ loaderData }: { loaderData: IntegrationsPageData }) {
-  const { me, providers, scopeOptions } = loaderData;
-  const [providerId, setProviderId] = useState<ProviderId>("slack");
+  const {
+    initialProviderId,
+    me,
+    notice,
+    providers,
+    scopeOptions,
+    slackChannelContext,
+    slackInstallations,
+  } = loaderData;
+  const [providerId, setProviderId] = useState<ProviderId>(initialProviderId);
   const provider = providers.find((p) => p.id === providerId) ?? providers[0];
-  const [channelName, setChannelName] = useState(provider.channelPlaceholder);
+  const slackDisplayChannel = slackChannelContext
+    ? `#${slackChannelContext.channelName.replace(/^#/, "")}`
+    : provider.channelPlaceholder;
+  const [channelName, setChannelName] = useState(slackDisplayChannel);
   const [selectedTargetId, setSelectedTargetId] = useState(scopeOptions[0]?.id ?? "");
   const selectedTarget = scopeOptions.find((option) => option.id === selectedTargetId);
   const allowedRoles = selectedTarget
@@ -127,7 +216,10 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
         requestedRole: effectiveRole,
       })
     : { ok: false, error: "Pick a target for the channel default." };
-  const canConfigureDefault = Boolean(provider.installHref && selectedTarget && capability.ok);
+  const hasSlackChannelContext = provider.id !== "slack" || Boolean(slackChannelContext);
+  const canConfigureDefault = Boolean(
+    provider.installHref && selectedTarget && capability.ok && hasSlackChannelContext,
+  );
   const preview = useMemo(() => {
     if (!selectedTarget) return "";
     return formatConnectionAuthorizationPreview({
@@ -139,7 +231,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
 
   function selectProvider(next: ProviderOption) {
     setProviderId(next.id);
-    setChannelName(next.channelPlaceholder);
+    setChannelName(next.id === "slack" ? slackDisplayChannel : next.channelPlaceholder);
   }
 
   function selectTarget(targetId: string) {
@@ -160,6 +252,12 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
             Install Señor Doco into a chat workspace, then choose the channel default access.
           </p>
         </header>
+
+        {notice ? (
+          <div className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
+            {notice}
+          </div>
+        ) : null}
 
         <section className="grid gap-3 md:grid-cols-4">
           {providers.map((option) => (
@@ -224,7 +322,11 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                   <InstallStep
                     icon={<MessageSquare className="h-4 w-4" aria-hidden="true" />}
                     title="Add to channel"
-                    body="Invite Señor Doco into the channel or space where it should respond."
+                    body={
+                      provider.id === "slack"
+                        ? "Invite Señor Doco, then run /doco connect in that channel."
+                        : "Invite Señor Doco into the channel or space where it should respond."
+                    }
                   />
                   <InstallStep
                     icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />}
@@ -232,6 +334,12 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                     body="Pick the org/doco and default role for that channel."
                   />
                 </div>
+                {provider.id === "slack" && provider.installHref ? (
+                  <SlackWorkspaceStatus
+                    installations={slackInstallations}
+                    channelContext={slackChannelContext}
+                  />
+                ) : null}
                 {provider.installHref ? null : (
                   <div className="space-y-3 rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
                     <p>
@@ -263,102 +371,126 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {provider.channelLabel}
-                    <span className="relative">
-                      <Hash
-                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <input
-                        type="text"
-                        value={channelName}
-                        disabled={!provider.installHref}
-                        onChange={(event) => setChannelName(event.target.value)}
-                        className="w-full rounded-md border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground disabled:opacity-60"
-                      />
-                    </span>
-                  </label>
+                <Form method="post" className="space-y-4">
+                  <input type="hidden" name="intent" value="save_slack_channel_default" />
+                  <input type="hidden" name="team_id" value={slackChannelContext?.teamId ?? ""} />
+                  <input
+                    type="hidden"
+                    name="channel_id"
+                    value={slackChannelContext?.channelId ?? ""}
+                  />
+                  <input
+                    type="hidden"
+                    name="channel_name"
+                    value={slackChannelContext?.channelName ?? ""}
+                  />
+                  <input type="hidden" name="target_level" value={selectedTarget?.level ?? ""} />
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                    <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {provider.channelLabel}
+                      <span className="relative">
+                        <Hash
+                          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <input
+                          type="text"
+                          value={channelName}
+                          disabled={provider.id === "slack" || !provider.installHref}
+                          onChange={(event) => setChannelName(event.target.value)}
+                          className="w-full rounded-md border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground disabled:opacity-60"
+                        />
+                      </span>
+                    </label>
 
-                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Provider
-                    <select
-                      value={provider.id}
-                      onChange={(event) => {
-                        const next = providers.find((p) => p.id === event.target.value);
-                        if (next) selectProvider(next);
-                      }}
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    >
-                      {providers.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Doco / org
-                    <select
-                      value={selectedTargetId}
-                      disabled={!provider.installHref}
-                      onChange={(event) => selectTarget(event.target.value)}
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
-                    >
-                      {scopeOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          [{option.level}] {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Default role
-                    <select
-                      value={effectiveRole}
-                      disabled={!provider.installHref}
-                      onChange={(event) => setSelectedRole(event.target.value as DocoRole)}
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
-                    >
-                      {allowedRoles.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                {capability.ok ? null : (
-                  <p className="text-sm text-destructive">{capability.error}</p>
-                )}
-
-                {preview ? (
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-semibold">Authorization preview</h3>
-                    <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background p-4 text-xs leading-relaxed text-foreground">
-                      {preview}
-                    </pre>
+                    <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Provider
+                      <select
+                        value={provider.id}
+                        onChange={(event) => {
+                          const next = providers.find((p) => p.id === event.target.value);
+                          if (next) selectProvider(next);
+                        }}
+                        className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                      >
+                        {providers.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                ) : (
-                  <div className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">
-                    No accessible docos or orgs yet.
-                  </div>
-                )}
 
-                <button
-                  type="button"
-                  disabled={!canConfigureDefault}
-                  className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                  Save channel default
-                </button>
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                    <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Doco / org
+                      <select
+                        name="target_id"
+                        value={selectedTargetId}
+                        disabled={!provider.installHref || !hasSlackChannelContext}
+                        onChange={(event) => selectTarget(event.target.value)}
+                        className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+                      >
+                        {scopeOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            [{option.level}] {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Default role
+                      <select
+                        name="role"
+                        value={effectiveRole}
+                        disabled={!provider.installHref || !hasSlackChannelContext}
+                        onChange={(event) => setSelectedRole(event.target.value as DocoRole)}
+                        className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+                      >
+                        {allowedRoles.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  {provider.id === "slack" && !slackChannelContext ? (
+                    <p className="text-sm text-muted-foreground">
+                      Run <code className="rounded bg-input px-1 py-0.5">/doco connect</code> in the
+                      Slack channel to open this step with the channel already selected.
+                    </p>
+                  ) : null}
+
+                  {capability.ok ? null : (
+                    <p className="text-sm text-destructive">{capability.error}</p>
+                  )}
+
+                  {preview ? (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold">Authorization preview</h3>
+                      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background p-4 text-xs leading-relaxed text-foreground">
+                        {preview}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">
+                      No accessible docos or orgs yet.
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={!canConfigureDefault}
+                    className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                    Save channel default
+                  </button>
+                </Form>
               </CardContent>
             </Card>
           </div>
@@ -416,6 +548,45 @@ function InstallStep({
   );
 }
 
+function SlackWorkspaceStatus({
+  installations,
+  channelContext,
+}: {
+  installations: SlackInstallationSummary[];
+  channelContext: SlackChannelContext | null;
+}) {
+  if (channelContext) {
+    return (
+      <div className="rounded-md border border-border bg-background p-3 text-sm">
+        <span className="block font-semibold text-foreground">
+          Configuring #{channelContext.channelName.replace(/^#/, "")}
+        </span>
+        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+          Slack workspace: {channelContext.teamName ?? channelContext.teamId}. Choose the Doco and
+          role below to save the channel default.
+        </span>
+      </div>
+    );
+  }
+  if (installations.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
+        No Slack workspaces have installed Señor Doco yet.
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-md border border-border bg-background p-3 text-sm">
+      <span className="block font-semibold text-foreground">Installed Slack workspaces</span>
+      <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+        {installations.map((installation) => installation.workspaceName).join(", ")}. Run{" "}
+        <code className="rounded bg-input px-1 py-0.5">/doco connect</code> in a Slack channel to
+        set its Doco default.
+      </span>
+    </div>
+  );
+}
+
 function RuleRow({
   icon,
   title,
@@ -461,10 +632,19 @@ function chatTargetFromScope(
 }
 
 function loadProviders(): ProviderOption[] {
-  return PROVIDER_DEFINITIONS.map(({ installEnv, ...provider }) => ({
-    ...provider,
-    installHref: sanitizeInstallHref(process.env[installEnv]),
-  }));
+  const slackConfigured = getSlackConfig().configured;
+  return PROVIDER_DEFINITIONS.map(({ installEnv, ...provider }) => {
+    if (provider.id === "slack") {
+      return {
+        ...provider,
+        installHref: slackConfigured ? "/integrations/slack/install" : null,
+      };
+    }
+    return {
+      ...provider,
+      installHref: installEnv ? sanitizeInstallHref(process.env[installEnv]) : null,
+    };
+  });
 }
 
 function sanitizeInstallHref(value: string | undefined): string | null {
@@ -477,4 +657,42 @@ function sanitizeInstallHref(value: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+function readProviderId(value: string | null): ProviderId | null {
+  return value === "slack" || value === "google-chat" || value === "discord" || value === "other"
+    ? value
+    : null;
+}
+
+function readSlackChannelContext(url: URL): SlackChannelContext | null {
+  if (url.searchParams.get("provider") !== "slack") return null;
+  const teamId = url.searchParams.get("team_id")?.trim();
+  const channelId = url.searchParams.get("channel_id")?.trim();
+  if (!teamId || !channelId) return null;
+  const channelName = url.searchParams.get("channel_name")?.trim() || channelId;
+  return {
+    teamId,
+    teamName: url.searchParams.get("team_name")?.trim() || null,
+    channelId,
+    channelName,
+  };
+}
+
+function readNotice(url: URL): string | null {
+  const installed = url.searchParams.get("slack_installed");
+  if (installed) {
+    return `Slack workspace installed: ${installed}. Now invite Señor Doco to a channel and run /doco connect there.`;
+  }
+  const connected = url.searchParams.get("connected");
+  if (connected) {
+    return `Saved the Slack channel default for ${connected}.`;
+  }
+  if (url.searchParams.get("slack_unavailable")) {
+    return "Slack is not available yet for this Doco deployment.";
+  }
+  if (url.searchParams.get("slack_error")) {
+    return "Slack installation did not complete. Try installing Señor Doco again.";
+  }
+  return null;
 }
