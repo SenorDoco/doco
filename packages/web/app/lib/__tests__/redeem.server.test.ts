@@ -3,10 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createHostDocoInOrg: vi.fn(),
   createConversation: vi.fn(),
-  markDocoPerspectiveLayoutsDirty: vi.fn(),
   NoopEmbeddingProvider: class NoopEmbeddingProvider {},
   reindexBare: vi.fn(),
-  withClient: vi.fn(),
 }));
 
 vi.mock("@doco/host", () => ({
@@ -27,14 +25,8 @@ vi.mock("@doco/index", () => ({
   reindex: mocks.reindexBare,
 }));
 
-vi.mock("@doco/db", () => ({ withClient: mocks.withClient }));
-
 vi.mock("../agent-chat.server", () => ({
   createConversation: mocks.createConversation,
-}));
-
-vi.mock("../perspective-layout.server", () => ({
-  markDocoPerspectiveLayoutsDirty: mocks.markDocoPerspectiveLayoutsDirty,
 }));
 
 import { createDocoInOrg, createdDocoChatTitle, reindex } from "../redeem.server";
@@ -51,7 +43,6 @@ describe("createDocoInOrg", () => {
     });
     mocks.createConversation.mockResolvedValue({ id: "conv_01" });
     mocks.reindexBare.mockResolvedValue({ loadMs: 12, loadedEntityCount: 1 });
-    mocks.withClient.mockImplementation((fn) => fn({ query: vi.fn() }));
   });
 
   it("creates a companion chat attached to the new Doco", async () => {
@@ -90,10 +81,9 @@ describe("reindex", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.reindexBare.mockResolvedValue({ loadMs: 12, loadedEntityCount: 1 });
-    mocks.withClient.mockImplementation((fn) => fn({ query: vi.fn() }));
   });
 
-  it("marks perspective layouts dirty after structural reindex", async () => {
+  it("passes changed entity ids through to structural reindex", async () => {
     await reindex("/tmp/doco", "doco_01", ["decision_01"], { skipEmbeddings: true });
 
     expect(mocks.reindexBare).toHaveBeenCalledWith("/tmp/doco", {
@@ -101,16 +91,15 @@ describe("reindex", () => {
       changedEntityIds: ["decision_01"],
       skipEmbeddings: true,
     });
-    expect(mocks.markDocoPerspectiveLayoutsDirty).toHaveBeenCalledWith(expect.anything(), {
-      docoId: "doco_01",
-      changedEntityIds: ["decision_01"],
-      reason: "reindex",
-    });
   });
 
-  it("does not dirty layouts during the embeddings-only phase", async () => {
+  it("can run the embeddings-only phase", async () => {
     await reindex("/tmp/doco", "doco_01", ["decision_01"], { skipStructural: true });
 
-    expect(mocks.markDocoPerspectiveLayoutsDirty).not.toHaveBeenCalled();
+    expect(mocks.reindexBare).toHaveBeenCalledWith("/tmp/doco", {
+      docoId: "doco_01",
+      changedEntityIds: ["decision_01"],
+      skipStructural: true,
+    });
   });
 });

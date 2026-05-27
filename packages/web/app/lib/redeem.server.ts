@@ -1,6 +1,5 @@
 // Server-only re-exports. Keeps server-only dependencies (pg, etc.) out of
 // the client bundle.
-import { withClient } from "@doco/db";
 import { createDocoInOrg as createHostDocoInOrg } from "@doco/host";
 import { createConversation } from "./agent-chat.server";
 
@@ -16,7 +15,6 @@ export {
 } from "@doco/host";
 import { type BuildReport, reindex as reindexBare } from "@doco/index";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
-import { markDocoPerspectiveLayoutsDirty } from "./perspective-layout.server";
 import { recordReindexLoad } from "./telemetry.server";
 
 type CreateDocoInOrgOptions = Parameters<typeof createHostDocoInOrg>[0];
@@ -80,19 +78,6 @@ export async function reindex(
   // per-capture row records how much time the reindex spent reading rows
   // vs. doing actual work. No-op outside capture (CLI reindex, etc.).
   recordReindexLoad(report.loadMs, report.loadedEntityCount);
-  if (!extra?.skipStructural) {
-    try {
-      await withClient((c) =>
-        markDocoPerspectiveLayoutsDirty(c, {
-          docoId,
-          changedEntityIds,
-          reason: "reindex",
-        }),
-      );
-    } catch (error) {
-      console.error("Failed to mark perspective layouts dirty after reindex", error);
-    }
-  }
   return report;
 }
 
