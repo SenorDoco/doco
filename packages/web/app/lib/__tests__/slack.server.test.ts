@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  SLACK_BOT_SCOPES,
   buildSlackConnectCommandResponse,
   cleanSlackMentionText,
   detectSlackCountKind,
@@ -82,6 +83,10 @@ describe("slack.server", () => {
       response_type: "ephemeral",
       text: "Open Doco to choose Señor Doco's default permissions for this Slack workspace.",
     });
+  });
+
+  it("requests the scope Slack requires for direct-message events", () => {
+    expect(SLACK_BOT_SCOPES).toContain("im:history");
   });
 
   it("cleans Slack app mentions out of message text", () => {

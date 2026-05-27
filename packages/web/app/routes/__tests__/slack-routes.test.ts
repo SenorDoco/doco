@@ -155,4 +155,62 @@ describe("Slack integration routes", () => {
       text: "doco has 42 neurons.",
     });
   });
+
+  it("posts a direct-message answer from Slack message.im events", async () => {
+    mocks.buildSlackAppMentionResponse.mockResolvedValue(
+      "I’m here. I can answer Doco questions using all Docos in doco by default.",
+    );
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "im",
+            channel: "D123",
+            user: "U123",
+            text: "What do we document?",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "D123",
+      messageText: "What do we document?",
+    });
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "D123",
+      text: "I’m here. I can answer Doco questions using all Docos in doco by default.",
+    });
+  });
+
+  it("ignores normal channel message events without an app mention", async () => {
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "channel",
+            channel: "C123",
+            user: "U123",
+            text: "What do we document?",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildSlackAppMentionResponse).not.toHaveBeenCalled();
+    expect(mocks.postSlackMessage).not.toHaveBeenCalled();
+  });
 });
