@@ -378,7 +378,7 @@ function buildTargetOptions(options: ScopeOption[]): SlackTargetOption[] {
       return {
         ...option,
         value: `org:${option.id}`,
-        displayLabel: `${option.label}/* - all Docos in ${option.label}`,
+        displayLabel: `${option.label}/*`,
         grantLabel: `${option.label}/*`,
       };
     }
