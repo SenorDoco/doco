@@ -339,6 +339,7 @@ describe("slack.server", () => {
     expect(prompt).toContain("Voice — dry, cerebral wit");
     expect(prompt).toContain("Slack can use doco_api for read-only Doco endpoints");
     expect(prompt).toContain("run /doco connect and authorize their own Doco account for Slack");
+    expect(prompt).toContain("Do not mention going to the website as a workaround");
     expect(prompt).toContain("owner for creating Docos or changing policies");
     expect(prompt).toContain("GET /api/v1/docos.json");
     expect(prompt).toContain("Keep the answer under 900 characters");
