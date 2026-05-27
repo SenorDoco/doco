@@ -145,8 +145,7 @@ const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
 const OVERVIEW_RENDER_NODE_BUDGET = 20;
 const OVERVIEW_RENDER_EDGE_BUDGET = 700;
 const OVERVIEW_PLACEHOLDER_STUB_BUDGET = 120;
-// Target handles sit just inside the 6px lifecycle strip; add 2px of air.
-const OVERVIEW_INCOMING_MARKER_CLEARANCE_PX = 8;
+const OVERVIEW_INCOMING_MARKER_CLEARANCE_PX = 2;
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -256,6 +255,12 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
 
   return (
     <div className="relative h-full w-full overflow-visible" style={{ opacity: data.opacity }}>
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={HIDDEN_HANDLE_STYLE}
+        isConnectable={false}
+      />
       <div
         className={`neu-surface overview-graph-node nodrag nopan relative flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden rounded-md border bg-white px-3 py-2 pl-4 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
         data-graph-reference-number={data.referenceNumber ?? undefined}
@@ -272,12 +277,6 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         }}
         title={title}
       >
-        <Handle
-          type="target"
-          position={Position.Left}
-          style={HIDDEN_HANDLE_STYLE}
-          isConnectable={false}
-        />
         <div className="flex items-center gap-2">
           <NeuronTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">
@@ -287,13 +286,13 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         {hasSummary ? (
           <p className="line-clamp-3 text-[11px] leading-snug text-muted-foreground">{summary}</p>
         ) : null}
-        <Handle
-          type="source"
-          position={Position.Right}
-          style={HIDDEN_HANDLE_STYLE}
-          isConnectable={false}
-        />
       </div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={HIDDEN_HANDLE_STYLE}
+        isConnectable={false}
+      />
       {/* Badges live OUTSIDE the bordered inner card div so they center
           against the outer wrapper's geometric box, not the inner
           padding-box (which is shifted right by the 6px left border —
