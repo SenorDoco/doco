@@ -2,6 +2,9 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildSlackConnectCommandResponse,
+  cleanSlackMentionText,
+  detectSlackCountKind,
+  formatSlackCountResponse,
   parseSlackCommandPayload,
   signSlackState,
   slackConnectUrl,
@@ -79,5 +82,53 @@ describe("slack.server", () => {
       response_type: "ephemeral",
       text: "Open Doco to choose Señor Doco's default permissions for this Slack workspace.",
     });
+  });
+
+  it("cleans Slack app mentions out of message text", () => {
+    expect(cleanSlackMentionText("Hola, <@U999>")).toBe("Hola,");
+    expect(cleanSlackMentionText("<@U999> How many nodes do we have?")).toBe(
+      "How many nodes do we have?",
+    );
+  });
+
+  it("detects count questions from Slack mentions", () => {
+    expect(detectSlackCountKind("How many nodes do we have?")).toBe("nodes");
+    expect(detectSlackCountKind("count decisions")).toBe("decisions");
+    expect(detectSlackCountKind("hola")).toBeNull();
+  });
+
+  it("formats Slack count answers with qualified Doco labels", () => {
+    expect(
+      formatSlackCountResponse(
+        [
+          {
+            connection: {
+              channelId: "*",
+              channelName: "workspace",
+              targetLevel: "org",
+              targetId: "organization_doco",
+              targetLabel: "doco",
+              role: "approver",
+            },
+            docoCount: 3,
+            counts: {
+              nodes: 42,
+              docos: 3,
+              decisions: 4,
+              intents: 5,
+              actions: 6,
+              logs: 7,
+              rules: 8,
+              evals: 2,
+              references: 3,
+              ideas: 1,
+              states: 4,
+              principals: 2,
+            },
+          },
+        ],
+        "nodes",
+      ),
+    ).toBe("doco/* has 42 nodes across 3 Docos.");
   });
 });
