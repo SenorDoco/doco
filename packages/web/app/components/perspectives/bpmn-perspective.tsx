@@ -27,6 +27,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
+import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import {
   LifecycleBadge,
   NodeBadgeRow,
@@ -380,6 +381,7 @@ export function BpmnPerspective({
     }),
     [],
   );
+  const edgeTypes = useMemo(() => ({ fadingPlaceholder: FadingPlaceholderEdge }), []);
   const nodeById = useMemo(() => new Map(renderedNodes.map((n) => [n.id, n])), [renderedNodes]);
   const laneById = useMemo(
     () => new Map(renderedLanes.map((lane) => [lane.id, lane])),
@@ -476,12 +478,18 @@ export function BpmnPerspective({
       if (!position) return;
       const size = sizeForNode(anchorNode);
       const id = `bpmn-placeholder:${direction}:${anchorNode.id}`;
-      const y = position.y + size.height / 2 + ((summaryIndex % 3) - 1) * 18;
-      const x =
+      const verticalSign = summaryIndex % 2 === 0 ? -1 : 1;
+      const xJitter = ((summaryIndex % 5) - 2) * 18 + (direction === "incoming" ? -12 : 12);
+      const y = position.y + size.height / 2 + verticalSign * (108 + (summaryIndex % 3) * 12);
+      const x = LANE_LEFT_INSET + position.x + size.width / 2 + xJitter;
+      const matchingLink = links.find((link) =>
         direction === "incoming"
-          ? Math.max(0, LANE_LEFT_INSET + position.x - 240 - (summaryIndex % 4) * 18)
-          : LANE_LEFT_INSET + position.x + size.width + 240 + (summaryIndex % 4) * 18;
-      const opacity = Math.max(0.16, Math.min(0.4, 0.14 + Math.log10(count + 1) * 0.16));
+          ? link.target === anchorNode.id && !renderedNodeIds.has(link.source)
+          : link.source === anchorNode.id && !renderedNodeIds.has(link.target),
+      );
+      const colorNode =
+        direction === "incoming" ? nodeByFullId.get(matchingLink?.source ?? "") : anchorNode;
+      const stroke = lifecycleColor((colorNode ?? anchorNode).lifecycle);
 
       nodes.push({
         id,
@@ -505,22 +513,28 @@ export function BpmnPerspective({
         id: `bpmn-placeholder-edge:${direction}:${anchorNode.id}`,
         source: direction === "incoming" ? id : anchorNode.id,
         target: direction === "incoming" ? anchorNode.id : id,
-        type: "bezier",
+        type: "fadingPlaceholder",
+        data: {
+          color: stroke,
+          direction,
+          fadePx: 100,
+          opacity: 0.5,
+        },
         selectable: false,
         focusable: false,
         interactionWidth: 0,
         style: {
-          stroke: "#737373",
-          strokeOpacity: opacity,
-          strokeDasharray: "7 9",
           pointerEvents: "none" as const,
         },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 16,
-          height: 16,
-          color: "#737373",
-        },
+        markerEnd:
+          direction === "incoming"
+            ? {
+                type: MarkerType.ArrowClosed,
+                width: 10,
+                height: 10,
+                color: stroke,
+              }
+            : undefined,
       });
       stubIndex++;
     };
@@ -533,7 +547,7 @@ export function BpmnPerspective({
     });
 
     return { nodes, edges };
-  }, [links, renderedNodeIds, layout.nodePositions, nodeById]);
+  }, [links, renderedNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
 
   const flowNodes = useMemo(() => {
     const windowed = layout.flowNodes.map((node) => {
@@ -705,6 +719,7 @@ export function BpmnPerspective({
           nodes={flowNodes}
           edges={flowEdges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           nodesDraggable={false}
           nodesConnectable={false}
           onlyRenderVisibleElements
@@ -850,6 +865,7 @@ interface FlowEdge {
   source: string;
   target: string;
   type: string;
+  data?: Record<string, unknown>;
   selectable: boolean;
   focusable: boolean;
   interactionWidth: number;
