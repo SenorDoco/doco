@@ -293,7 +293,7 @@ describe("slack.server", () => {
   });
 
   it("treats Slack formatting complaints as repair messages", () => {
-    const query = buildSlackDocoAnswerQuery("not looking nice", [
+    const messages = [
       {
         text: "Show the org chart",
         ts: "123.100",
@@ -306,16 +306,48 @@ describe("slack.server", () => {
         userId: null,
         botId: "B123",
       },
-    ]);
+    ];
+    const query = buildSlackDocoAnswerQuery("not looking nice", messages);
+    const lineBreakQuery = buildSlackDocoAnswerQuery("add line breaks", messages);
 
     expect(detectSlackRepairMessage("not looking nice")).toBe(true);
     expect(detectSlackRepairMessage("this formatting is messy")).toBe(true);
+    expect(detectSlackRepairMessage("add line breaks")).toBe(true);
+    expect(detectSlackRepairMessage("format it as bullets")).toBe(true);
     expect(query).toMatchObject({
       questionText: "Show the org chart",
       overview: true,
       repair: true,
     });
     expect(query?.text).toContain("Alexander");
+    expect(lineBreakQuery).toMatchObject({
+      questionText: "Show the org chart",
+      repairText: "add line breaks",
+      overview: true,
+      repair: true,
+    });
+    expect(lineBreakQuery?.text).toContain("add line breaks");
+
+    const repairPrompt = buildSlackLlmUserPrompt({
+      questionText: lineBreakQuery?.questionText ?? "",
+      repairText: lineBreakQuery?.repairText,
+      overview: true,
+      repair: true,
+      connections: [
+        {
+          channelId: "*",
+          channelName: "workspace",
+          targetLevel: "org",
+          targetId: "organization_doco",
+          targetLabel: "doco",
+          role: "reader",
+        },
+      ],
+      recentMessages: messages,
+      hits: [],
+    });
+    expect(repairPrompt).toContain("Current Slack message: Show the org chart");
+    expect(repairPrompt).toContain("Repair requested: add line breaks");
   });
 
   it("builds an LLM prompt with Slack context and Doco excerpts", () => {
@@ -351,9 +383,11 @@ describe("slack.server", () => {
           rank: 1,
         },
       ],
+      repairText: null,
     });
 
     expect(prompt).toContain("Default Doco access");
+    expect(prompt).not.toContain("Repair requested:");
     expect(prompt).toContain("all doco's docos as reader");
     expect(prompt).toContain("User: What do the docos we have explain?");
     expect(prompt).toContain("Intent in doco/doco-bpms: Doco core work loop");
@@ -372,6 +406,8 @@ describe("slack.server", () => {
     expect(prompt).toContain(
       "Do not say you can create, edit, approve, or invite from Slack after authorization",
     );
+    expect(prompt).toContain("asks for line breaks");
+    expect(prompt).toContain("For line-break repair requests");
     expect(prompt).toContain("treat it as a formatting repair");
     expect(prompt).toContain("Do not mix bold Markdown with ASCII tree glyphs");
     expect(prompt).toContain("owner for creating Docos or changing policies");
