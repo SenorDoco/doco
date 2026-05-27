@@ -270,6 +270,36 @@ function buildCollaboratorInviteData({
   };
 }
 
+async function loadOrgInviteTarget(orgId: string): Promise<{
+  orgId: string;
+  orgHandle: string;
+  anchorDocoId: string | null;
+} | null> {
+  const result = await withClient(async (c) =>
+    c.query<{ id: string; handle: string; doco_id: string | null }>(
+      `SELECT o.id, o.handle, d.id AS doco_id
+         FROM organizations o
+         LEFT JOIN LATERAL (
+           SELECT id
+             FROM docos
+            WHERE org_id = o.id
+            ORDER BY handle ASC
+            LIMIT 1
+         ) d ON true
+        WHERE o.id = $1
+        LIMIT 1`,
+      [orgId],
+    ),
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    orgId: String(row.id),
+    orgHandle: String(row.handle),
+    anchorDocoId: row.doco_id ? String(row.doco_id) : null,
+  };
+}
+
 export async function handleCollaboratorInviteAction(
   request: Request,
 ): Promise<CollaboratorInviteActionResult> {
@@ -289,14 +319,15 @@ export async function handleCollaboratorInviteAction(
   let inviterRole: DocoRole | null = null;
   let docoId: string | null = null;
   let orgId: string | null = null;
+  let orgHandle: string | null = null;
 
   if (level === "org") {
     inviterRole = await getOrgRole(targetId, me.id);
-    orgId = targetId;
-    const docoRow = await withClient(async (c) =>
-      c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id=$1 LIMIT 1", [targetId]),
-    );
-    docoId = docoRow.rows[0]?.id ?? null;
+    const target = await loadOrgInviteTarget(targetId);
+    if (!target) return { error: "Organization not found." };
+    orgId = target.orgId;
+    orgHandle = target.orgHandle;
+    docoId = target.anchorDocoId;
   } else if (level === "doco") {
     const doco = await getDocoById(targetId);
     if (doco) {
@@ -307,7 +338,7 @@ export async function handleCollaboratorInviteAction(
     return { error: "Invalid level." };
   }
 
-  if (!docoId) {
+  if (level === "doco" && !docoId) {
     return { error: "Could not resolve the doco backing this invite." };
   }
   if (!inviterRole) {
@@ -323,7 +354,7 @@ export async function handleCollaboratorInviteAction(
 
   const store = InviteStore.forDoco(rootDir());
   const invite = await store.issueInvite(
-    docoId as EntityId<"doco">,
+    docoId ? (docoId as EntityId<"doco">) : null,
     me.id as EntityId<"principal">,
     3,
     role,
@@ -334,13 +365,13 @@ export async function handleCollaboratorInviteAction(
   );
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  const docoRow = await getDocoById(docoId);
+  const docoRow = docoId ? await getDocoById(docoId) : null;
   const handle = docoRow?.handle ?? "";
   return {
     intent: "invite",
     ok: true,
     invite_url: `${origin}/invite/${invite.code}`,
-    doco_url: handle ? `${origin}/${handle}/` : "",
+    doco_url: handle ? `${origin}/${handle}/` : orgHandle ? `${origin}/orgs/${orgHandle}/` : "",
     recipe_url: `${origin}/protocol/agent-oauth-recipe`,
     device_url: `${origin}/device`,
     invite_expires_at: invite.expires_at,
