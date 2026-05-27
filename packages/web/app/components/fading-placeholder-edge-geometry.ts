@@ -1,7 +1,5 @@
 import { getStraightPath } from "@xyflow/react";
 
-const INCOMING_MARKER_CLEARANCE_PX = 14;
-
 interface FadingPlaceholderGeometryArgs {
   sourceX: number;
   sourceY: number;
@@ -9,6 +7,7 @@ interface FadingPlaceholderGeometryArgs {
   targetY: number;
   direction?: "incoming" | "outgoing";
   hasMarkerEnd?: boolean;
+  markerClearance?: number;
 }
 
 export function getFadingPlaceholderGeometry({
@@ -18,12 +17,13 @@ export function getFadingPlaceholderGeometry({
   targetY,
   direction,
   hasMarkerEnd = false,
+  markerClearance = 0,
 }: FadingPlaceholderGeometryArgs) {
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
   const length = Math.max(1, Math.hypot(dx, dy));
-  const shouldStopBeforeTarget = direction === "incoming" && hasMarkerEnd;
-  const clearance = shouldStopBeforeTarget ? Math.min(INCOMING_MARKER_CLEARANCE_PX, length / 2) : 0;
+  const shouldStopBeforeTarget = direction === "incoming" && hasMarkerEnd && markerClearance > 0;
+  const clearance = shouldStopBeforeTarget ? Math.min(markerClearance, length / 2) : 0;
   const endX = targetX - (dx / length) * clearance;
   const endY = targetY - (dy / length) * clearance;
   const [path] = getStraightPath({ sourceX, sourceY, targetX: endX, targetY: endY });
