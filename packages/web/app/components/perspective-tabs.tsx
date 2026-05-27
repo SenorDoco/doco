@@ -74,7 +74,7 @@ export function PerspectiveTabs({
       </nav>
       {approvalPerspectives.length > 0 ? (
         <nav
-          aria-label="Propose perspective"
+          aria-label="Proposed perspective"
           role="tablist"
           className="ml-auto flex shrink-0 items-end self-start"
         >
@@ -87,7 +87,7 @@ export function PerspectiveTabs({
               active={p.slug === activeSlug}
               isFirst
               isLast
-              variant="propose"
+              variant="proposed"
             />
           ))}
         </nav>
@@ -103,7 +103,7 @@ interface PerspectiveTabProps {
   active: boolean;
   isFirst: boolean;
   isLast: boolean;
-  variant?: "strip" | "propose";
+  variant?: "strip" | "proposed";
 }
 
 function PerspectiveTab({
@@ -116,7 +116,7 @@ function PerspectiveTab({
   variant = "strip",
 }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
-  const isProposeTab = variant === "propose";
+  const isProposedTab = variant === "proposed";
   const proposedBlue = lifecycleColor("proposed");
   // Real tab-strip styling:
   //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
@@ -132,21 +132,20 @@ function PerspectiveTab({
   //     differs only by fill color.
   const tabClass = cn(
     "neu-surface-open-bottom relative top-0.5 z-40 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
-    isProposeTab
-      ? "rounded-t-md bg-card hover:bg-input/40"
+    isProposedTab
+      ? "rounded-t-md border-border bg-card hover:bg-input/40"
       : "-ml-px first:ml-0 border-border text-foreground",
-    !isProposeTab && isFirst && "rounded-tl-md",
-    !isProposeTab && isLast && "rounded-tr-md",
-    !isProposeTab && (active ? "bg-card" : "bg-input/40 hover:bg-input/60"),
+    !isProposedTab && isFirst && "rounded-tl-md",
+    !isProposedTab && isLast && "rounded-tr-md",
+    !isProposedTab && (active ? "bg-card" : "bg-input/40 hover:bg-input/60"),
   );
-  const tabStyle = isProposeTab
+  const tabStyle = isProposedTab
     ? {
-        borderColor: proposedBlue,
         color: active ? "#ffffff" : proposedBlue,
         ...(active ? { backgroundColor: proposedBlue } : {}),
       }
     : undefined;
-  const name = isProposeTab ? "Propose" : perspective.name;
+  const name = isProposedTab ? "Proposed" : perspective.name;
   const title = perspective.ownerHandle ? `${name} — by ${perspective.ownerHandle}` : name;
   const label = perspective.kind === "approval" ? `${name} (${proposedCount})` : name;
 
@@ -159,7 +158,7 @@ function PerspectiveTab({
       style={tabStyle}
       title={title}
     >
-      {!isProposeTab && perspective.icon ? (
+      {!isProposedTab && perspective.icon ? (
         <span aria-hidden className="text-sm leading-none">
           {perspective.icon}
         </span>

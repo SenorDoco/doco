@@ -1,4 +1,5 @@
 import { type ReactNode, createContext, useContext } from "react";
+import { cn } from "~/lib/cn";
 import { lifecycleColor } from "~/lib/neuron-colors";
 
 interface LifecycleFilterSpec {
@@ -33,6 +34,11 @@ export function useFullscreenSpec(): FullscreenSpec | null {
 
 interface PerspectiveFrameProps {
   fillHeight?: boolean;
+  /**
+   * A tab can attach to the frame's right edge; when it does, the
+   * frame's top-right corner must flatten just like the top-left.
+   */
+  rightTabAttached?: boolean;
   /**
    * Lifecycle visibility filter. Renders the floating bottom-left
    * panel ("Life cycle: ☑ active ☑ drafting …") inside the frame. The
@@ -75,6 +81,7 @@ interface PerspectiveFrameProps {
  */
 export function PerspectiveFrame({
   fillHeight = false,
+  rightTabAttached = false,
   lifecycleFilter,
   autoReorder,
   fullscreen,
@@ -84,7 +91,11 @@ export function PerspectiveFrame({
   return (
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
-        className={`neu-surface relative z-0 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card text-card-foreground ${sizeClass}`}
+        className={cn(
+          "neu-surface relative z-0 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none border border-border bg-card text-card-foreground",
+          rightTabAttached ? "rounded-tr-none" : "rounded-tr-lg",
+          sizeClass,
+        )}
       >
         {children}
         {autoReorder ? (

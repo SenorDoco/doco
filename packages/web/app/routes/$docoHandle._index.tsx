@@ -954,6 +954,7 @@ export default function DocoHome({
               )}
               <PerspectiveFrame
                 fillHeight
+                rightTabAttached={effectivePerspectiveKind === "approval"}
                 lifecycleFilter={
                   effectivePerspectiveKind === "approval"
                     ? undefined
