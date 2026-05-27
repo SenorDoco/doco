@@ -12,11 +12,20 @@ export interface FocusSelectableLink {
   target: string;
 }
 
+export interface PersonalizedSelectionMeasurementContext {
+  docoHandle?: string | null;
+  perspective: string;
+}
+
 export interface ExternalConnectionSummary {
   id: string;
   incoming: number;
   outgoing: number;
 }
+
+const PERSONALIZED_SELECTION_MEASURE_NAME = "doco.personalized-node-selection";
+const PERSONALIZED_SELECTION_LOG_THRESHOLD_MS = 16;
+let personalizedSelectionMeasureIndex = 0;
 
 function lifecycleRank(lifecycle: string | null | undefined): number {
   switch (lifecycle ?? "active") {
@@ -140,6 +149,69 @@ export function selectPersonalizedNodeIds(
     selected.add(node.id);
   }
   return selected;
+}
+
+export function selectMeasuredPersonalizedNodeIds(
+  nodes: readonly FocusSelectableNode[],
+  links: readonly FocusSelectableLink[],
+  focusId: string | null | undefined,
+  fallbackRanks: ReadonlyMap<string, number> | undefined,
+  limit: number,
+  context: PersonalizedSelectionMeasurementContext,
+): Set<string> {
+  if (
+    typeof window === "undefined" ||
+    typeof window.performance?.mark !== "function" ||
+    typeof window.performance?.measure !== "function"
+  ) {
+    return selectPersonalizedNodeIds(nodes, links, focusId, fallbackRanks, limit);
+  }
+
+  const perf = window.performance;
+  const sequence = personalizedSelectionMeasureIndex++;
+  const markBase = `${PERSONALIZED_SELECTION_MEASURE_NAME}:${sequence}`;
+  const startMark = `${markBase}:start`;
+  const endMark = `${markBase}:end`;
+
+  perf.mark(startMark);
+  const startedAt = perf.now();
+  try {
+    const selected = selectPersonalizedNodeIds(nodes, links, focusId, fallbackRanks, limit);
+    const durationMs = perf.now() - startedAt;
+    const detail = {
+      docoHandle: context.docoHandle ?? null,
+      perspective: context.perspective,
+      focusId: focusId ?? null,
+      nodeCount: nodes.length,
+      linkCount: links.length,
+      limit: Math.max(1, Math.floor(limit)),
+      selectedCount: selected.size,
+      durationMs,
+    };
+
+    perf.mark(endMark);
+    try {
+      perf.measure(PERSONALIZED_SELECTION_MEASURE_NAME, {
+        start: startMark,
+        end: endMark,
+        detail,
+      });
+    } catch {
+      perf.measure(PERSONALIZED_SELECTION_MEASURE_NAME, startMark, endMark);
+    }
+
+    if (
+      durationMs >= PERSONALIZED_SELECTION_LOG_THRESHOLD_MS &&
+      typeof console.info === "function"
+    ) {
+      console.info("[Doco perf] personalized node selection", detail);
+    }
+
+    return selected;
+  } finally {
+    perf.clearMarks(startMark);
+    perf.clearMarks(endMark);
+  }
 }
 
 export function summarizeExternalConnections(
