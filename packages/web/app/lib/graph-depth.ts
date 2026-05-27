@@ -3,10 +3,9 @@
 // (overview, BPMN, entity-detail) so the rule stays the same wherever
 // a focal neuron is shown:
 //
-//   • 0–1 hops from the focus → 100% opacity (solid)
-//   • 2 hops                  → 75%
-//   • 3 hops                  → 50%
-//   • 4+ hops / unreachable   → 25%
+//   • 0–1 hops from the focus → 80% opacity
+//   • 2 hops                  → 40%
+//   • 3+ hops / unreachable   → 20%
 //
 // Edges fade with whichever endpoint sits further from the focus.
 //
@@ -73,16 +72,14 @@ export function computeDepthFromCenter<N extends NodeLike, L extends LinkLike>(
  * `undefined` means "unreachable" and gets the deepest fade.
  *
  * Depth 0 (the focal node itself) and depth 1 (its direct neighbours)
- * both render solid — the user's rule is "first-degree neurons should
- * remain solid", and the focal node visually IS the highest-priority
- * node, so it must not fade either.
+ * share the highest-opacity band so direct context remains prominent
+ * without turning the rest of the canvas into visual noise.
  */
 export function opacityForDepth(depth: number | undefined): number {
-  if (depth === undefined) return 0.25;
-  if (depth <= 1) return 1;
-  if (depth === 2) return 0.75;
-  if (depth === 3) return 0.5;
-  return 0.25;
+  if (depth === undefined) return 0.2;
+  if (depth <= 1) return 0.8;
+  if (depth === 2) return 0.4;
+  return 0.2;
 }
 
 /**
@@ -107,8 +104,10 @@ export function hasFocalNode(centerId: string | null | undefined, nodes: NodeLik
 }
 
 /**
- * Treat any depth ≥ this as "far away" — collapsed into a single
- * outermost ring. Matches the opacity ramp (4+ hops all render at 25%).
+ * Treat any depth ≥ this as "far away" for layout — collapsed into a
+ * single outermost ring. Opacity is allowed to be stricter than layout;
+ * today 3+ hops all render at 20%, while depth 3 still keeps its own
+ * ring so the graph does not jump when this visual fade changes.
  */
 export const FAR_DEPTH = 4;
 
