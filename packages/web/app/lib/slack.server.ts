@@ -793,7 +793,10 @@ export function detectSlackRepairMessage(text: string): boolean {
     /\byou\s+(didn'?t|did not|haven'?t|have not)\s+(answer|respond)\b/.test(lower) ||
     /\bthat\s+(didn'?t|did not)\s+answer\b/.test(lower) ||
     /\bnot\s+what\s+i\s+asked\b/.test(lower) ||
-    /\banswer\s+my\s+(question|previous\s+question)\b/.test(lower)
+    /\banswer\s+my\s+(question|previous\s+question)\b/.test(lower) ||
+    /\b(not\s+looking\s+(nice|good)|looks?\s+(bad|ugly|messy)|hard\s+to\s+read|format(?:ting)?\s+(is\s+)?(bad|broken|messy))\b/.test(
+      lower,
+    )
   );
 }
 
@@ -1752,6 +1755,8 @@ export function slackLlmSystemPrompt(): string {
     "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, author for adding neurons, approver for approval actions.",
     "Do not say you can create, edit, approve, or invite from Slack after authorization unless the matching Slack write path is actually available in this conversation.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
+    "If the user complains that a prior answer is ugly, messy, hard to read, or not looking nice, treat it as a formatting repair: reformat the most recent relevant Señor Doco answer from Slack context instead of repeating the same shape.",
+    "Slack uses proportional fonts. For org charts, trees, reporting lines, and nested hierarchies, prefer short grouped bullets such as 'Manager — role' followed by indented report bullets. Do not mix bold Markdown with ASCII tree glyphs. If the user explicitly asks for a tree diagram, put the entire diagram in a fenced code block with plain text only.",
     "For questions like what the docos explain, synthesize the main themes and cite the doco labels naturally.",
     "If the excerpts are insufficient, say exactly what is missing.",
     "Keep the answer under 900 characters unless the user asks for detail.",

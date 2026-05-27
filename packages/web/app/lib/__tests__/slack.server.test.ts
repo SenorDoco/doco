@@ -292,6 +292,32 @@ describe("slack.server", () => {
     expect(query?.text).toContain("You didn't answer my question");
   });
 
+  it("treats Slack formatting complaints as repair messages", () => {
+    const query = buildSlackDocoAnswerQuery("not looking nice", [
+      {
+        text: "Show the org chart",
+        ts: "123.100",
+        userId: "U123",
+        botId: null,
+      },
+      {
+        text: "Alexander ├── Cata | └── Diana",
+        ts: "123.200",
+        userId: null,
+        botId: "B123",
+      },
+    ]);
+
+    expect(detectSlackRepairMessage("not looking nice")).toBe(true);
+    expect(detectSlackRepairMessage("this formatting is messy")).toBe(true);
+    expect(query).toMatchObject({
+      questionText: "not looking nice",
+      overview: true,
+      repair: true,
+    });
+    expect(query?.text).toContain("Alexander");
+  });
+
   it("builds an LLM prompt with Slack context and Doco excerpts", () => {
     const prompt = buildSlackLlmUserPrompt({
       questionText: "What do the docos we have explain?",
@@ -346,6 +372,8 @@ describe("slack.server", () => {
     expect(prompt).toContain(
       "Do not say you can create, edit, approve, or invite from Slack after authorization",
     );
+    expect(prompt).toContain("treat it as a formatting repair");
+    expect(prompt).toContain("Do not mix bold Markdown with ASCII tree glyphs");
     expect(prompt).toContain("owner for creating Docos or changing policies");
     expect(prompt).toContain("GET /api/v1/docos.json");
     expect(prompt).toContain("Keep the answer under 900 characters");
