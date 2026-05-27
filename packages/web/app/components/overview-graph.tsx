@@ -12,6 +12,7 @@ import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import { StreetBezierEdge } from "~/components/stable-labeled-edge";
 import {
   highestRankedNodeId,
   selectPersonalizedNodeIds,
@@ -733,13 +734,12 @@ export function OverviewGraph({
         x: anchor.x + OVERVIEW_NODE_WIDTH / 2,
         y: anchor.y + OVERVIEW_NODE_HEIGHT / 2,
       };
-      const verticalSign = summaryIndex % 2 === 0 ? -1 : 1;
-      const xJitter = ((summaryIndex % 5) - 2) * 16 + (direction === "incoming" ? -12 : 12);
-      const distance = 106 + (summaryIndex % 3) * 12;
+      const directionSign = direction === "incoming" ? -1 : 1;
+      const distance = 126 + (summaryIndex % 3) * 12;
       const id = `overview-placeholder:${direction}:${anchorId}`;
       const position = {
-        x: anchorCenter.x + xJitter,
-        y: anchorCenter.y + verticalSign * distance,
+        x: anchorCenter.x + directionSign * distance,
+        y: anchorCenter.y,
       };
       const matchingLink = visibleLinks.find((link) =>
         direction === "incoming"
@@ -881,7 +881,7 @@ export function OverviewGraph({
         id: `${link.source}-${link.target}-${index}`,
         source: link.source,
         target: link.target,
-        type: "default",
+        type: "streetBezier",
         selectable: false,
         focusable: false,
         interactionWidth: 0,
@@ -896,7 +896,10 @@ export function OverviewGraph({
   }, [renderedLinks, depthByNodeId, focalActive, nodeById, externalEdgeStubs.edges]);
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode, edgeStub: EdgeStubNode }), []);
-  const edgeTypes = useMemo(() => ({ fadingPlaceholder: FadingPlaceholderEdge }), []);
+  const edgeTypes = useMemo(
+    () => ({ fadingPlaceholder: FadingPlaceholderEdge, streetBezier: StreetBezierEdge }),
+    [],
+  );
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
