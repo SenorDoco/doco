@@ -6,7 +6,15 @@ import {
   type Node,
   Position,
 } from "@xyflow/react";
-import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentType,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
@@ -71,6 +79,12 @@ export interface OverviewNodeDetail {
 interface OverviewGraphProps extends OverviewGraphData {
   fillHeight?: boolean;
   search?: ReactNode;
+  /**
+   * One-shot viewport instruction used when the page opens directly
+   * on a neuron URL. Unlike click focus, this should center the node
+   * at 100% zoom instead of fitting the whole graph.
+   */
+  initialFocusId?: string | null;
   onNeuronClick?: (node: OverviewGraphNode) => void;
   /**
    * Externally-controlled lifecycle visibility set. When provided, the
@@ -452,6 +466,7 @@ export function OverviewGraph({
   pageRanks,
   fillHeight = false,
   search,
+  initialFocusId,
   onNeuronClick,
   visibleLifecycles: externalVisibleLifecycles,
   onCenterChange,
@@ -467,16 +482,22 @@ export function OverviewGraph({
     minZoom?: number;
     maxZoom?: number;
   }) => void;
+  type FlowInstance = {
+    fitView?: FlowFitView;
+    getViewport?: () => FlowViewport;
+  };
   const positionCacheRef = useRef<Map<string, Point>>(new Map());
   const positionCacheKeyRef = useRef(autoReorder);
+  const flowInstanceRef = useRef<FlowInstance | null>(null);
+  const initialFocusAppliedRef = useRef<string | null>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
-  const updateViewport = (next: FlowViewport) => {
+  const updateViewport = useCallback((next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
-  };
+  }, []);
 
   const allLifecycles = useMemo(() => {
     const set = new Set<string>(["active"]);
@@ -900,6 +921,30 @@ export function OverviewGraph({
     () => ({ fadingPlaceholder: FadingPlaceholderEdge, streetBezier: StreetBezierEdge }),
     [],
   );
+  const initialFocusFlowNodeId = useMemo(() => {
+    if (!initialFocusId) return null;
+    return flowNodes.some((node) => node.id === initialFocusId) ? initialFocusId : null;
+  }, [flowNodes, initialFocusId]);
+
+  useEffect(() => {
+    if (!initialFocusFlowNodeId) return;
+    if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
+    const instance = flowInstanceRef.current;
+    if (!instance?.fitView) return;
+    const frame = requestAnimationFrame(() => {
+      instance.fitView?.({
+        nodes: [{ id: initialFocusFlowNodeId }],
+        padding: 0,
+        minZoom: 1,
+        maxZoom: 1,
+        duration: 0,
+      });
+      const next = instance.getViewport?.();
+      if (next) updateViewport(next);
+      initialFocusAppliedRef.current = initialFocusFlowNodeId;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialFocusFlowNodeId, updateViewport]);
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
@@ -930,12 +975,21 @@ export function OverviewGraph({
             zoomOnPinch
             zoomOnDoubleClick
             preventScrolling
-            onInit={(instance: {
-              fitView?: FlowFitView;
-              getViewport?: () => FlowViewport;
-            }) => {
+            onInit={(instance: FlowInstance) => {
+              flowInstanceRef.current = instance;
               if (!hasFitRef.current) {
-                instance.fitView?.(GRAPH_FIT_VIEW_OPTIONS);
+                if (initialFocusFlowNodeId) {
+                  instance.fitView?.({
+                    nodes: [{ id: initialFocusFlowNodeId }],
+                    padding: 0,
+                    minZoom: 1,
+                    maxZoom: 1,
+                    duration: 0,
+                  });
+                  initialFocusAppliedRef.current = initialFocusFlowNodeId;
+                } else {
+                  instance.fitView?.(GRAPH_FIT_VIEW_OPTIONS);
+                }
                 hasFitRef.current = true;
               }
               const next = instance.getViewport?.();
