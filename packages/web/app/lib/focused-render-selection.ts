@@ -1,4 +1,5 @@
 import { computeDepthFromCenter, depthBucket } from "./graph-depth";
+import { pageRank } from "./pagerank";
 
 export interface FocusSelectableNode {
   id: string;
@@ -86,6 +87,47 @@ export function selectFocusedNodeIds(
       if (depthDiff !== 0) return depthDiff;
       const rankDiff = (ranks?.get(b.id) ?? 0) - (ranks?.get(a.id) ?? 0);
       if (rankDiff !== 0) return rankDiff;
+      const lifecycleDiff = lifecycleRank(a.lifecycle) - lifecycleRank(b.lifecycle);
+      if (lifecycleDiff !== 0) return lifecycleDiff;
+      const dateDiff = createdMs(b) - createdMs(a);
+      if (dateDiff !== 0) return dateDiff;
+      return a.id.localeCompare(b.id);
+    });
+
+  for (const node of ordered) {
+    if (selected.size >= max) break;
+    selected.add(node.id);
+  }
+  return selected;
+}
+
+export function selectPersonalizedNodeIds(
+  nodes: readonly FocusSelectableNode[],
+  links: readonly FocusSelectableLink[],
+  focusId: string | null | undefined,
+  fallbackRanks: ReadonlyMap<string, number> | undefined,
+  limit: number,
+): Set<string> {
+  const max = Math.max(1, Math.floor(limit));
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const effectiveFocus = focusId && byId.has(focusId) ? focusId : null;
+  const ranks = effectiveFocus
+    ? pageRank(nodes, links, {
+        iterations: 30,
+        tolerance: 1e-5,
+        personalization: new Map([[effectiveFocus, 1]]),
+      })
+    : fallbackRanks;
+  const selected = new Set<string>();
+  if (effectiveFocus) selected.add(effectiveFocus);
+
+  const ordered = [...nodes]
+    .filter((node) => node.id !== effectiveFocus)
+    .sort((a, b) => {
+      const rankDiff = (ranks?.get(b.id) ?? 0) - (ranks?.get(a.id) ?? 0);
+      if (rankDiff !== 0) return rankDiff;
+      const fallbackDiff = (fallbackRanks?.get(b.id) ?? 0) - (fallbackRanks?.get(a.id) ?? 0);
+      if (fallbackDiff !== 0) return fallbackDiff;
       const lifecycleDiff = lifecycleRank(a.lifecycle) - lifecycleRank(b.lifecycle);
       if (lifecycleDiff !== 0) return lifecycleDiff;
       const dateDiff = createdMs(b) - createdMs(a);

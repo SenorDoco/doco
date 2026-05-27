@@ -14,7 +14,7 @@ import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
 import {
   highestRankedNodeId,
-  selectFocusedNodeIds,
+  selectPersonalizedNodeIds,
   summarizeExternalConnections,
 } from "~/lib/focused-render-selection";
 import {
@@ -28,6 +28,7 @@ import {
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
+import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
 
@@ -147,7 +148,7 @@ const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
-const OVERVIEW_RENDER_NODE_BUDGET = 250;
+const OVERVIEW_RENDER_NODE_BUDGET = 20;
 const OVERVIEW_RENDER_EDGE_BUDGET = 700;
 const OVERVIEW_PLACEHOLDER_STUB_BUDGET = 120;
 
@@ -458,12 +459,6 @@ export function OverviewGraph({
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
   const hasFitRef = useRef(false);
-  // Cached React Flow instance plus the centerId most recently zoomed to.
-  // The instance is captured in onInit; the effect below uses it to
-  // animate the viewport when centerId changes — the singleRingLayout
-  // re-runs and places the new focal at (0, 0), but the viewport
-  // doesn't follow without this. Skipped on the first render because
-  // the initial fitView already centers the canvas on the focal.
   type FlowFitView = (options?: {
     nodes?: { id: string }[];
     padding?: number;
@@ -471,8 +466,8 @@ export function OverviewGraph({
     minZoom?: number;
     maxZoom?: number;
   }) => void;
-  const flowRef = useRef<{ fitView?: FlowFitView } | null>(null);
-  const lastZoomedCenterRef = useRef<string | null>(null);
+  const positionCacheRef = useRef<Map<string, Point>>(new Map());
+  const positionCacheKeyRef = useRef(autoReorder);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
@@ -536,32 +531,6 @@ export function OverviewGraph({
     onCenterChange?.(effectiveCenterId);
   }, [effectiveCenterId, centerId, onCenterChange]);
 
-  // Auto-zoom: when centerId changes after the initial fit, animate the
-  // viewport so the new focal node lands in the middle of the canvas.
-  // Used by the agent's auto-focus flow (Señor Doco navigates to a
-  // neuron → camera glides to it) and by manual clicks on a graph node
-  // (which also bump centerId via onCenterChange). The rAF defers until
-  // after React Flow has applied the layout's new positions, otherwise
-  // fitView would target stale coordinates. No-op if React Flow hasn't
-  // mounted, if it's the same centerId we already zoomed to, or if no
-  // node with that id is present yet.
-  useEffect(() => {
-    if (!flowRef.current) return;
-    if (lastZoomedCenterRef.current === effectiveCenterId) return;
-    if (!visibleNodes.some((n) => n.id === effectiveCenterId)) return;
-    lastZoomedCenterRef.current = effectiveCenterId;
-    const handle = requestAnimationFrame(() => {
-      flowRef.current?.fitView?.({
-        nodes: [{ id: effectiveCenterId }],
-        padding: 2,
-        duration: 600,
-        minZoom: 0.6,
-        maxZoom: 1.4,
-      });
-    });
-    return () => cancelAnimationFrame(handle);
-  }, [effectiveCenterId, visibleNodes]);
-
   // Diff against the full incoming `nodes` set, not `visibleNodes`, so
   // toggling a lifecycle filter back on doesn't glow nodes that have
   // been around the whole time.
@@ -576,9 +545,9 @@ export function OverviewGraph({
     () => computeDepthFromCenter(visibleNodes, visibleLinks, effectiveCenterId),
     [visibleNodes, visibleLinks, effectiveCenterId],
   );
-  const renderedNodeIds = useMemo(
+  const targetRenderedNodeIds = useMemo(
     () =>
-      selectFocusedNodeIds(
+      selectPersonalizedNodeIds(
         visibleNodes,
         visibleLinks,
         effectiveCenterId,
@@ -587,6 +556,7 @@ export function OverviewGraph({
       ),
     [visibleNodes, visibleLinks, effectiveCenterId, pageRanks],
   );
+  const renderedNodeIds = useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
   const renderedNodes = useMemo(
     () =>
       visibleNodes
@@ -626,10 +596,33 @@ export function OverviewGraph({
       });
     return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
   }, [visibleLinks, renderedNodeIds, visibleDepthByNodeId, effectiveCenterId, pageRanks]);
-  const positions = useMemo(
-    () => layoutNodes(renderedNodes, renderedLinks, effectiveCenterId, autoReorder),
-    [renderedNodes, renderedLinks, effectiveCenterId, autoReorder],
-  );
+  if (positionCacheKeyRef.current !== autoReorder) {
+    positionCacheRef.current = new Map();
+    positionCacheKeyRef.current = autoReorder;
+  }
+  const positions = useMemo(() => {
+    const computed = layoutNodes(renderedNodes, renderedLinks, effectiveCenterId, autoReorder);
+    const cache = positionCacheRef.current;
+    const computedFocus = effectiveCenterId ? computed.get(effectiveCenterId) : undefined;
+    const cachedFocus = effectiveCenterId ? cache.get(effectiveCenterId) : undefined;
+    const offset =
+      computedFocus && cachedFocus
+        ? { x: cachedFocus.x - computedFocus.x, y: cachedFocus.y - computedFocus.y }
+        : { x: 0, y: 0 };
+    const visiblePositions = new Map<string, Point>();
+    for (const node of renderedNodes) {
+      const cached = cache.get(node.id);
+      if (cached) {
+        visiblePositions.set(node.id, cached);
+        continue;
+      }
+      const next = computed.get(node.id) ?? { x: 0, y: 0 };
+      const shifted = { x: next.x + offset.x, y: next.y + offset.y };
+      cache.set(node.id, shifted);
+      visiblePositions.set(node.id, shifted);
+    }
+    return visiblePositions;
+  }, [renderedNodes, renderedLinks, effectiveCenterId, autoReorder]);
   const nodeById = useMemo(
     () => new Map(renderedNodes.map((node) => [node.id, node])),
     [renderedNodes],
@@ -939,11 +932,9 @@ export function OverviewGraph({
               fitView?: FlowFitView;
               getViewport?: () => FlowViewport;
             }) => {
-              flowRef.current = instance;
               if (!hasFitRef.current) {
                 instance.fitView?.(GRAPH_FIT_VIEW_OPTIONS);
                 hasFitRef.current = true;
-                lastZoomedCenterRef.current = effectiveCenterId;
               }
               const next = instance.getViewport?.();
               if (next) updateViewport(next);
