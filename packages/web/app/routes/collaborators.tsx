@@ -266,15 +266,8 @@ export default function CollaboratorsPage({
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Collaborators</h1>
-          <p className="text-sm text-muted-foreground">
-            People and agents with access to your orgs and docos. Agent credentials are managed in{" "}
-            <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
-              API keys
-            </Link>
-            .
-          </p>
+        <header>
+          <h1 className="text-base font-semibold">Collaborators</h1>
         </header>
 
         <Card>
