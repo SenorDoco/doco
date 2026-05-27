@@ -17,15 +17,7 @@ export async function action({ request }: { request: Request }) {
     type?: string;
     challenge?: string;
     team_id?: string;
-    event?: {
-      type?: string;
-      channel?: string;
-      channel_type?: string;
-      user?: string;
-      text?: string;
-      bot_id?: string;
-      subtype?: string;
-    };
+    event?: SlackEventPayload;
   };
   try {
     payload = JSON.parse(rawBody) as typeof payload;
@@ -38,10 +30,8 @@ export async function action({ request }: { request: Request }) {
   }
 
   const event = payload.event;
-  const shouldReply =
-    event?.type === "app_mention" || (event?.type === "message" && event.channel_type === "im");
 
-  if (payload.type === "event_callback" && shouldReply) {
+  if (payload.type === "event_callback" && shouldReplyToSlackEvent(event)) {
     const teamId = payload.team_id;
     const channelId = event?.channel;
     if (teamId && channelId && !event?.bot_id && !event?.subtype) {
@@ -59,4 +49,20 @@ export async function action({ request }: { request: Request }) {
 
 export async function loader() {
   return Response.json({ error: "method_not_allowed" }, { status: 405 });
+}
+
+interface SlackEventPayload {
+  type?: string;
+  channel?: string;
+  channel_type?: string;
+  user?: string;
+  text?: string;
+  bot_id?: string;
+  subtype?: string;
+}
+
+export function shouldReplyToSlackEvent(event: SlackEventPayload | undefined): boolean {
+  if (event?.type === "app_mention") return true;
+  if (event?.type !== "message") return false;
+  return event.channel_type === "im" || event.channel_type === "app_home";
 }

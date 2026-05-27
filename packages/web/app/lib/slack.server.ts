@@ -73,6 +73,12 @@ interface SlackOAuthAccessResponse {
   bot_user_id?: string;
 }
 
+interface SlackApiResponse {
+  ok?: boolean;
+  error?: string;
+  warning?: string;
+}
+
 interface SlackInstallationInput {
   response: SlackOAuthAccessResponse;
   installedByCollaboratorId: string | null;
@@ -672,8 +678,10 @@ export async function postSlackMessage(args: {
   text: string;
 }): Promise<void> {
   const token = await getSlackBotToken(args.workspaceId);
-  if (!token) return;
-  await fetch(SLACK_CHAT_POST_MESSAGE_URL, {
+  if (!token) {
+    throw new Error(`Slack bot token is missing for workspace ${args.workspaceId}.`);
+  }
+  const response = await fetch(SLACK_CHAT_POST_MESSAGE_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -683,7 +691,12 @@ export async function postSlackMessage(args: {
       channel: args.channelId,
       text: args.text,
     }),
-  }).catch(() => undefined);
+  });
+  const body = (await response.json().catch(() => null)) as SlackApiResponse | null;
+  if (!response.ok || body?.ok === false) {
+    const reason = body?.error ? `: ${body.error}` : "";
+    throw new Error(`Slack chat.postMessage failed${reason}.`);
+  }
 }
 
 function cleanEnv(name: string): string | null {
