@@ -71,6 +71,8 @@ const RIGHT_COLUMN_WIDTH = 320;
 const RIGHT_COLUMN_GRID_GAP = 24;
 const RIGHT_COLUMN_MIN_CONTENT_WIDTH =
   RIGHT_COLUMN_MAIN_MIN_WIDTH + RIGHT_COLUMN_WIDTH + RIGHT_COLUMN_GRID_GAP;
+const PERSPECTIVE_RENDER_NODE_LIMIT = 750;
+const CAPPED_PERSPECTIVE_KINDS = new Set(["graph", "list", "bpmn", "org-tree"]);
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
@@ -276,11 +278,6 @@ export async function loader({
     // stays empty.
     const skipDialog = new URL(request.url).searchParams.get("dialog") === "skip";
     const dialogNeuron = skipDialog ? null : selectedNeuron;
-    const graph = await loadOverviewGraph(c, ctx.meta.docoId, {
-      handle,
-      ...(selectedNeuron ? { centerId: selectedNeuron.id } : {}),
-    });
-
     // Visualization perspectives — tabs above the graph body. Existing
     // Docos created before migration 007 may have no perspectives
     // attached; ensureDefaultsAttached backfills graph + list on first
@@ -292,33 +289,49 @@ export async function loader({
     ]);
     const requestedSlug = new URL(request.url).searchParams.get("perspective");
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
+    const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
+    const perspectiveTooLarge =
+      totalNodes > PERSPECTIVE_RENDER_NODE_LIMIT && CAPPED_PERSPECTIVE_KINDS.has(activeKind)
+        ? {
+            kind: activeKind,
+            totalNodes,
+            limit: PERSPECTIVE_RENDER_NODE_LIMIT,
+          }
+        : null;
+
+    const shouldLoadOverviewGraph =
+      !perspectiveTooLarge && (activeKind === "graph" || activeKind === "list");
+    const graph = shouldLoadOverviewGraph
+      ? await loadOverviewGraph(c, ctx.meta.docoId, {
+          handle,
+          ...(selectedNeuron ? { centerId: selectedNeuron.id } : {}),
+        })
+      : null;
 
     // PageRank over the loaded graph, for the List perspective's rank
     // sort options. Cheap (~ms even for thousands of neurons) so we
     // compute it on every load rather than caching.
-    const pageRankMap = computePageRank(graph.nodes, graph.links);
+    const pageRankMap = graph ? computePageRank(graph.nodes, graph.links) : new Map();
     const pageRanks: Record<string, number> = {};
     for (const [id, rank] of pageRankMap.entries()) pageRanks[id] = rank;
 
     // BPMN data is only needed when the active perspective is bpmn —
     // skip the principal+data join otherwise.
     const bpmnGraph =
-      activePerspective?.kind === "bpmn"
+      activeKind === "bpmn" && !perspectiveTooLarge
         ? await loadBpmnGraph(c, ctx.meta.docoId, { handle })
         : null;
 
     // Org-tree data is only needed when that perspective is active —
     // skip the principals fetch otherwise.
     const orgTreeData =
-      activePerspective?.kind === "org-tree"
+      activeKind === "org-tree" && !perspectiveTooLarge
         ? await loadOrgTreeData(c, ctx.meta.docoId, handle)
         : null;
 
     const slaData =
-      activePerspective?.kind === "sla"
-        ? await loadSlaPerspectiveData(c, ctx.meta.docoId, handle)
-        : null;
+      activeKind === "sla" ? await loadSlaPerspectiveData(c, ctx.meta.docoId, handle) : null;
 
     // Policy count — guidance + neuron-authoring policies
     // attached to this Doco.
@@ -358,6 +371,7 @@ export async function loader({
       activePerspectiveSlug: activePerspective?.slug ?? null,
       activePerspectiveKind: activePerspective?.kind ?? null,
       canAdminPerspectives,
+      perspectiveTooLarge,
       pageRanks,
       bpmnGraph,
       orgTreeData,
@@ -400,13 +414,12 @@ interface NeuronDialogState {
 
 function graphWithCenter(graph: OverviewGraphData, centerId: string): OverviewGraphData {
   const hasCenter = graph.nodes.some((node) => node.id === centerId);
-  if (!hasCenter) return graph;
   return {
     ...graph,
     centerId,
     nodes: graph.nodes.map((node) => ({
       ...node,
-      is_center: node.id === centerId,
+      is_center: hasCenter && node.id === centerId,
     })),
   };
 }
@@ -467,6 +480,7 @@ export default function DocoHome({
     activePerspectiveSlug,
     activePerspectiveKind,
     canAdminPerspectives,
+    perspectiveTooLarge,
     pageRanks,
     bpmnGraph,
     orgTreeData,
@@ -476,6 +490,16 @@ export default function DocoHome({
   } = loaderData;
 
   const pageRanksMap = new Map(Object.entries(pageRanks));
+  const graphData = useMemo<OverviewGraphData>(
+    () =>
+      graph ?? {
+        centerId: selectedNeuron?.id ?? docoId,
+        nodes: [],
+        links: [],
+        detailUrl: null,
+      },
+    [graph, selectedNeuron?.id, docoId],
+  );
   const [autoReorder, setAutoReorder] = useState<boolean>(initialAutoReorder);
   const handleAutoReorderChange = useCallback((next: boolean) => {
     setAutoReorder(next);
@@ -489,7 +513,8 @@ export default function DocoHome({
     }).catch(() => undefined);
   }, []);
   const activeSlug = activePerspectiveSlug ?? "graph";
-  const [graphState, setGraphState] = useState<OverviewGraphData>(() => graph);
+  const effectivePerspectiveKind = activePerspectiveKind ?? "graph";
+  const [graphState, setGraphState] = useState<OverviewGraphData>(() => graphData);
   const [neuronDialog, setNeuronDialog] = useState<NeuronDialogState | null>(() =>
     selectedNeuron ? { detail: selectedNeuron, loading: false, error: null } : null,
   );
@@ -516,10 +541,10 @@ export default function DocoHome({
     setGraphState((prev) => {
       const preferredCenter = prev.nodes.some((node) => node.id === prev.centerId)
         ? prev.centerId
-        : graph.centerId;
-      return graphWithCenter(graph, preferredCenter);
+        : graphData.centerId;
+      return graphWithCenter(graphData, preferredCenter);
     });
-  }, [graph]);
+  }, [graphData]);
 
   useEffect(() => {
     if (!selectedNeuron) return;
@@ -533,9 +558,10 @@ export default function DocoHome({
   // which checkboxes appear; defaults hide retired neurons.
   const availableLifecycles = useMemo(() => {
     const set = new Set<string>(LIFECYCLE_ORDER);
-    for (const node of graphState.nodes) set.add(node.lifecycle ?? "active");
+    for (const facet of facets.lifecycle) set.add(facet.value);
+    if (selectedNeuron?.lifecycle) set.add(selectedNeuron.lifecycle);
     return set;
-  }, [graphState.nodes]);
+  }, [facets.lifecycle, selectedNeuron?.lifecycle]);
 
   const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(() =>
     selectedNeuron
@@ -877,15 +903,22 @@ export default function DocoHome({
                   onToggle: togglePerspectiveFullscreen,
                 }}
               >
-                {activePerspectiveKind === "list" ? (
+                {perspectiveTooLarge ? (
+                  <PerspectiveLimitNotice
+                    handle={handle}
+                    perspective={perspectiveTooLarge.kind}
+                    totalNodes={perspectiveTooLarge.totalNodes}
+                    limit={perspectiveTooLarge.limit}
+                  />
+                ) : effectivePerspectiveKind === "list" ? (
                   <ListPerspective
                     nodes={graphState.nodes}
                     pageRanks={pageRanksMap}
                     visibleLifecycles={visibleLifecycles}
                   />
-                ) : activePerspectiveKind === "sla" && slaData ? (
+                ) : effectivePerspectiveKind === "sla" && slaData ? (
                   <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
-                ) : activePerspectiveKind === "org-tree" && orgTreeData ? (
+                ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
                   <OrgTreePerspective
                     nodes={orgTreeData.nodes}
                     visibleLifecycles={visibleLifecycles}
@@ -895,7 +928,7 @@ export default function DocoHome({
                       void loadNeuronDialog("principal", node.id, node.href);
                     }}
                   />
-                ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
+                ) : effectivePerspectiveKind === "bpmn" && bpmnGraph ? (
                   <BpmnPerspective
                     pools={bpmnGraph.pools}
                     lanes={bpmnGraph.lanes}
@@ -1033,6 +1066,52 @@ export default function DocoHome({
       </main>
     </div>
   );
+}
+
+function PerspectiveLimitNotice({
+  handle,
+  perspective,
+  totalNodes,
+  limit,
+}: {
+  handle: string;
+  perspective: string;
+  totalNodes: number;
+  limit: number;
+}) {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center px-6 text-center">
+      <div className="max-w-md space-y-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          {perspectiveLabel(perspective)} paused at this size
+        </h2>
+        <p className="text-xs leading-5 text-muted-foreground">
+          This Doco has {totalNodes.toLocaleString()} neurons. Canvas perspectives render up to{" "}
+          {limit.toLocaleString()} neurons while indexed, viewport-loaded perspectives are being
+          built.
+        </p>
+        <Link
+          to={allNodesSearchPath(handle)}
+          className="neu-button inline-flex rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary"
+        >
+          Search neurons
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function perspectiveLabel(kind: string): string {
+  switch (kind) {
+    case "bpmn":
+      return "BPMN";
+    case "org-tree":
+      return "Org Tree";
+    case "list":
+      return "List";
+    default:
+      return "Graph";
+  }
 }
 
 function stringField(
