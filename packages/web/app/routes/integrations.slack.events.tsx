@@ -46,10 +46,12 @@ export async function action({ request }: { request: Request }) {
       });
       const text =
         connections.length > 0
-          ? `This channel is connected to ${connections
+          ? `Señor Doco's shared default permissions for this Slack workspace are ${connections
               .map((connection) => `${connection.targetLabel} as ${connection.role}`)
-              .join(", ")}. Personal account linking comes next.`
-          : "I’m installed here. Open Doco Integrations to choose the channel default access, or use `/doco connect` as a shortcut.";
+              .join(
+                ", ",
+              )}. People can still link their own Doco account for higher personal access they already hold.`
+          : "I’m installed here. Open Doco Integrations to choose default permissions, or use `/doco connect` as a shortcut.";
       await postSlackMessage({ workspaceId: teamId, channelId, text });
     }
   }

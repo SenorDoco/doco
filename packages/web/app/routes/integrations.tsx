@@ -48,7 +48,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">Integrations</h1>
           <p className="text-sm text-muted-foreground">
-            Connect Señor Doco to Slack, then choose the channel default access.
+            Connect Señor Doco to Slack, then set its default permissions.
           </p>
         </header>
 
@@ -67,8 +67,8 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                   Slack
                 </CardTitle>
                 <CardDescription>
-                  Install Señor Doco into a Slack workspace. Doco will ask for the channel and the
-                  default access immediately after Slack approves the app.
+                  Install Señor Doco into a Slack workspace. Doco will ask for its default
+                  permissions immediately after Slack approves the app.
                 </CardDescription>
               </div>
               {slackInstallHref ? (
@@ -107,8 +107,8 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               ) : (
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   No Slack workspace has installed Señor Doco yet. Start with Connect Slack; after
-                  Slack approves the app, the next screen will ask which channel should receive the
-                  default Doco access.
+                  Slack approves the app, the next screen will ask which default Doco permissions
+                  Señor Doco should receive.
                 </p>
               )
             ) : (
@@ -140,7 +140,7 @@ function SlackInstallationRow({ installation }: { installation: SlackInstallatio
         className="neu-button inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:text-primary"
       >
         <Settings className="h-4 w-4" aria-hidden="true" />
-        Set up channel
+        Set defaults
       </a>
     </div>
   );
@@ -160,14 +160,14 @@ function formatDate(value: string): string {
 function readNotice(url: URL): string | null {
   const connected = url.searchParams.get("slack_connected");
   if (connected) {
-    return `Saved the Slack channel default for #${connected.replace(/^#/, "")}.`;
+    return `Saved the Slack default permissions for ${connected}.`;
   }
   const installed = url.searchParams.get("slack_installed");
   if (installed) {
-    return `Slack workspace connected: ${installed}. Choose a channel and default access next.`;
+    return `Slack workspace connected: ${installed}. Choose default permissions next.`;
   }
   if (url.searchParams.get("slack_not_installed")) {
-    return "Install Señor Doco in Slack before setting up a channel.";
+    return "Install Señor Doco in Slack before setting default permissions.";
   }
   if (url.searchParams.get("slack_unavailable")) {
     return "Slack is not available yet for this Doco deployment.";

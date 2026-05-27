@@ -81,7 +81,7 @@ describe("group-chat UX helpers", () => {
     });
   });
 
-  it("caps channel-default authorization at the requester's personal access", () => {
+  it("caps shared-default authorization at the requester's personal access", () => {
     expect(
       canSetChannelDefaultAccess({ personalRole: "approver", requestedRole: "author" }),
     ).toEqual({ ok: true });
@@ -89,18 +89,18 @@ describe("group-chat UX helpers", () => {
       canSetChannelDefaultAccess({ personalRole: "author", requestedRole: "owner" }),
     ).toMatchObject({
       ok: false,
-      error: "Cannot set channel default 'owner' because your access is 'author'.",
+      error: "Cannot set default permissions 'owner' because your access is 'author'.",
     });
   });
 
-  it("formats the explicit channel connection authorization preview", () => {
+  it("formats the explicit shared authorization preview", () => {
     const text = formatConnectionAuthorizationPreview({
       channelName: "#product",
       requesterLabel: "@ana",
       defaultTargets: [channelAuthor],
     });
-    expect(text).toContain("Connect Señor Doco to #product?");
-    expect(text).toContain("This will become the channel default access:");
+    expect(text).toContain("Set the default permissions for Señor Doco?");
+    expect(text).toContain("This will become the shared default access:");
     expect(text).toContain("• torre/bpms · author");
     expect(text).toContain(
       "If they already have higher access in Doco, Señor Doco may use that higher personal access, but never more than the access they already hold.",
@@ -110,7 +110,7 @@ describe("group-chat UX helpers", () => {
     );
   });
 
-  it("formats access summaries with channel defaults and personal grants", () => {
+  it("formats access summaries with shared defaults and personal grants", () => {
     expect(
       formatChatAccessSummary({
         channelName: "#product",
@@ -132,8 +132,8 @@ describe("group-chat UX helpers", () => {
         source: "channel_default",
       },
     ]);
-    expect(text).toContain("1. acme/bpms · reader via channel default");
-    expect(text).toContain("2. torre/bpms · author via channel default");
+    expect(text).toContain("1. acme/bpms · reader via shared default");
+    expect(text).toContain("2. torre/bpms · author via shared default");
   });
 
   it("formats direct-message invite success and failure without exposing invite links publicly", () => {

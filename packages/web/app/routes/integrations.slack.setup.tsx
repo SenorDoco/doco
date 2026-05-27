@@ -1,6 +1,6 @@
 import type { DocoRole } from "@doco/db";
-import { CheckCircle2, Hash, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { CheckCircle2, ShieldCheck } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Form, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -11,36 +11,46 @@ import { rankOf } from "~/lib/collaborator-invite";
 import { canSetChannelDefaultAccess } from "~/lib/group-chat-ux";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import {
-  type SlackChannelOption,
   type SlackInstallationSummary,
-  listSlackChannels,
   listSlackInstallations,
-  saveSlackChannelConnection,
+  replaceSlackChannelConnections,
 } from "~/lib/slack.server";
 
 interface SlackSetupPageData {
   me: CurrentPrincipal;
   installation: SlackInstallationSummary;
-  installations: SlackInstallationSummary[];
-  channels: SlackChannelOption[];
-  channelLoadError: string | null;
-  targetOptions: SlackTargetOption[];
-  initialChannelId: string;
-  initialTargetValue: string;
+  orgGroups: OrgPermissionGroup[];
 }
 
-interface SlackTargetOption extends ScopeOption {
-  value: string;
-  displayLabel: string;
-  grantLabel: string;
+interface OrgPermissionGroup {
+  key: string;
+  handle: string;
+  orgOption: ScopeOption | null;
+  docos: DocoPermissionOption[];
 }
 
-interface SlackChannelContext {
-  channelId: string;
-  channelName: string;
+interface DocoPermissionOption {
+  id: string;
+  label: string;
+  myRole: DocoRole;
 }
 
-const CHANNEL_DEFAULT_ROLES: DocoRole[] = ["reader", "author", "approver"];
+interface DraftOrgState {
+  selected: boolean;
+  mode: "all" | "specific";
+  orgRole: DocoRole;
+  docoRoles: Record<string, DocoRole | "none">;
+}
+
+interface SlackGrantInput {
+  targetLevel: "org" | "doco";
+  targetId: string;
+  role: DocoRole;
+}
+
+const WORKSPACE_DEFAULT_CHANNEL_ID = "*";
+const WORKSPACE_DEFAULT_CHANNEL_NAME = "workspace";
+const DEFAULT_ROLES: DocoRole[] = ["reader", "author", "approver"];
 
 export async function loader({ request }: { request: Request }): Promise<SlackSetupPageData> {
   const me = await getCurrentPrincipal(request);
@@ -57,22 +67,12 @@ export async function loader({ request }: { request: Request }): Promise<SlackSe
   const requestedTeamId = url.searchParams.get("team_id")?.trim();
   const installation =
     installations.find((item) => item.workspaceId === requestedTeamId) ?? installations[0];
-  const channelContext = readSlackChannelContext(url);
-  const { channels, channelLoadError } = await loadSlackChannelOptions(
-    installation.workspaceId,
-    channelContext,
-  );
-  const targetOptions = buildTargetOptions(await loadScopeOptions(me.id));
+  const orgGroups = buildOrgPermissionGroups(await loadScopeOptions(me.id));
 
   return {
     me,
     installation,
-    installations,
-    channels,
-    channelLoadError,
-    targetOptions,
-    initialChannelId: channelContext?.channelId ?? channels[0]?.id ?? "",
-    initialTargetValue: targetOptions[0]?.value ?? "",
+    orgGroups,
   };
 }
 
@@ -88,49 +88,39 @@ export async function action({ request }: { request: Request }) {
 
   const form = await request.formData();
   const workspaceId = String(form.get("workspace_id") ?? "").trim();
-  const channelId = String(form.get("channel_id") ?? "").trim();
-  const channelName = String(form.get("channel_name") ?? "").trim();
-  const target = parseTargetValue(String(form.get("target") ?? ""));
-  const role = String(form.get("role") ?? "") as DocoRole;
+  if (!workspaceId) {
+    return Response.json({ error: "missing_slack_workspace" }, { status: 400 });
+  }
 
-  if (!workspaceId || !channelId || !target) {
-    return Response.json({ error: "missing_channel_or_target" }, { status: 400 });
-  }
   const installations = await listSlackInstallations();
-  if (!installations.some((installation) => installation.workspaceId === workspaceId)) {
+  const installation = installations.find((item) => item.workspaceId === workspaceId);
+  if (!installation) {
     return Response.json({ error: "slack_workspace_not_installed" }, { status: 403 });
-  }
-  if (!CHANNEL_DEFAULT_ROLES.includes(role)) {
-    return Response.json({ error: "invalid_channel_default_role" }, { status: 400 });
   }
 
   const scopeOptions = await loadScopeOptions(me.id);
-  const scope = scopeOptions.find(
-    (option) => option.level === target.level && option.id === target.id,
-  );
-  if (!scope) {
-    return Response.json({ error: "target_not_available" }, { status: 403 });
+  const orgGroups = buildOrgPermissionGroups(scopeOptions);
+  const grants = collectGrantsFromForm(form, orgGroups);
+  if (grants.length === 0) {
+    return Response.json({ error: "pick_at_least_one_default_permission" }, { status: 400 });
   }
 
-  const capability = canSetChannelDefaultAccess({
-    personalRole: scope.myRole,
-    requestedRole: role,
-  });
-  if (!capability.ok) {
-    return Response.json({ error: capability.error ?? "role_not_allowed" }, { status: 403 });
+  const validationError = validateGrants(grants, scopeOptions);
+  if (validationError) {
+    return Response.json({ error: validationError }, { status: 403 });
   }
 
-  await saveSlackChannelConnection({
+  await replaceSlackChannelConnections({
     workspaceId,
-    channelId,
-    channelName,
-    targetLevel: target.level,
-    targetId: target.id,
-    role,
+    channelId: WORKSPACE_DEFAULT_CHANNEL_ID,
+    channelName: WORKSPACE_DEFAULT_CHANNEL_NAME,
+    grants,
     createdByCollaboratorId: me.id,
   });
 
-  throw redirect(`/integrations?slack_connected=${encodeURIComponent(channelName || channelId)}`);
+  throw redirect(
+    `/integrations?slack_connected=${encodeURIComponent(installation.workspaceName || workspaceId)}`,
+  );
 }
 
 export function meta() {
@@ -138,35 +128,37 @@ export function meta() {
 }
 
 export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupPageData }) {
-  const {
-    me,
-    installation,
-    installations,
-    channels,
-    channelLoadError,
-    targetOptions,
-    initialChannelId,
-    initialTargetValue,
-  } = loaderData;
-  const [selectedChannelId, setSelectedChannelId] = useState(initialChannelId);
-  const [selectedTargetValue, setSelectedTargetValue] = useState(initialTargetValue);
-  const selectedTarget = targetOptions.find((option) => option.value === selectedTargetValue);
-  const allowedRoles = selectedTarget
-    ? CHANNEL_DEFAULT_ROLES.filter((role) => rankOf(role) <= rankOf(selectedTarget.myRole))
-    : [];
-  const [selectedRole, setSelectedRole] = useState<DocoRole>("reader");
-  const effectiveRole = allowedRoles.includes(selectedRole)
-    ? selectedRole
-    : (allowedRoles[0] ?? "reader");
-  const selectedChannel = channels.find((channel) => channel.id === selectedChannelId) ?? null;
-  const channelLabel = selectedChannel
-    ? `#${selectedChannel.name.replace(/^#/, "")}`
-    : "a Slack channel";
-  const canSubmit = Boolean(selectedChannel && selectedTarget && allowedRoles.length > 0);
+  const { me, installation, orgGroups } = loaderData;
+  const [orgState, setOrgState] = useState<Record<string, DraftOrgState>>(() =>
+    Object.fromEntries(orgGroups.map((group) => [group.key, initialOrgState(group)])),
+  );
+  const selectedSummary = useMemo(
+    () => summarizeDefaults(orgGroups, orgState),
+    [orgGroups, orgState],
+  );
+  const canSubmit = selectedSummary.length > 0;
 
-  function selectTarget(value: string) {
-    setSelectedTargetValue(value);
-    setSelectedRole("reader");
+  function updateOrg(key: string, patch: Partial<DraftOrgState>) {
+    setOrgState((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        ...patch,
+      },
+    }));
+  }
+
+  function updateDocoRole(key: string, docoId: string, role: DocoRole | "none") {
+    setOrgState((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        docoRoles: {
+          ...current[key]?.docoRoles,
+          [docoId]: role,
+        },
+      },
+    }));
   }
 
   return (
@@ -176,116 +168,155 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
         <Breadcrumb
           items={[...hostBreadcrumb({ pageLabel: "Integrations" }), { label: "Slack setup" }]}
         />
-        <header className="space-y-1">
+        <header className="space-y-3">
           <h1 className="text-2xl font-semibold">Set up Slack</h1>
-          <p className="text-sm text-muted-foreground">
-            Choose where Señor Doco should respond and what shared default Doco access that channel
-            gets.
+          <p className="max-w-4xl text-sm leading-relaxed text-muted-foreground">
+            Set the default permissions for Señor Doco. It applies to everyone in this Slack
+            workspace. People can still link their own Doco account. If they already have higher
+            access in Doco, Señor Doco may use that higher personal access for their requests, but
+            never more than the access they already hold.
           </p>
         </header>
 
-        <Form method="post" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <Form method="post" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <input type="hidden" name="workspace_id" value={installation.workspaceId} />
-          <input type="hidden" name="channel_id" value={selectedChannel?.id ?? ""} />
-          <input type="hidden" name="channel_name" value={selectedChannel?.name ?? ""} />
 
           <Card>
             <CardHeader>
-              <CardTitle>Slack channel</CardTitle>
+              <CardTitle>Organizations</CardTitle>
               <CardDescription>
-                This channel will receive the shared Señor Doco default access.
+                Slack workspace: {installation.workspaceName}. Choose which organizations Señor Doco
+                can use by default.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Workspace
-                  <select
-                    value={installation.workspaceId}
-                    onChange={(event) => {
-                      const params = new URLSearchParams({ team_id: event.target.value });
-                      window.location.href = `/integrations/slack/setup?${params.toString()}`;
-                    }}
-                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  >
-                    {installations.map((item) => (
-                      <option key={item.workspaceId} value={item.workspaceId}>
-                        {item.workspaceName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Channel
-                  <span className="relative">
-                    <Hash
-                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <select
-                      value={selectedChannelId}
-                      disabled={channels.length === 0}
-                      onChange={(event) => setSelectedChannelId(event.target.value)}
-                      className="w-full rounded-md border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground disabled:opacity-60"
-                    >
-                      {channels.map((channel) => (
-                        <option key={channel.id} value={channel.id}>
-                          {channel.name}
-                          {channel.isPrivate ? " (private)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                </label>
-              </div>
-
-              {channelLoadError ? (
-                <p className="text-sm text-muted-foreground">{channelLoadError}</p>
-              ) : null}
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Doco access
-                  <select
-                    name="target"
-                    value={selectedTargetValue}
-                    disabled={targetOptions.length === 0}
-                    onChange={(event) => selectTarget(event.target.value)}
-                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
-                  >
-                    {targetOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.displayLabel}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Default role
-                  <select
-                    name="role"
-                    value={effectiveRole}
-                    disabled={allowedRoles.length === 0}
-                    onChange={(event) => setSelectedRole(event.target.value as DocoRole)}
-                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
-                  >
-                    {allowedRoles.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {targetOptions.length === 0 ? (
+              {orgGroups.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  You do not have access to any Doco or organization that can be shared with Slack
-                  yet.
+                  You do not have access to any organization or Doco that can be shared with Slack.
                 </p>
               ) : null}
+
+              {orgGroups.map((group) => {
+                const state = orgState[group.key] ?? initialOrgState(group);
+                const allOrgAvailable = Boolean(group.orgOption);
+                return (
+                  <section
+                    key={group.key}
+                    className="rounded-md border border-border bg-background p-4"
+                  >
+                    <label className="flex items-start gap-3 text-sm font-semibold text-foreground">
+                      <input
+                        type="checkbox"
+                        name="org_key"
+                        value={group.key}
+                        checked={state.selected}
+                        onChange={(event) =>
+                          updateOrg(group.key, { selected: event.target.checked })
+                        }
+                        className="mt-1 h-4 w-4"
+                      />
+                      <span>
+                        <span className="block">{group.handle}</span>
+                        <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground">
+                          {group.docos.length} accessible{" "}
+                          {group.docos.length === 1 ? "Doco" : "Docos"}
+                        </span>
+                      </span>
+                    </label>
+
+                    {state.selected ? (
+                      <div className="mt-4 space-y-4 border-t border-border pt-4">
+                        <div className="grid gap-2 text-sm">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name={`org_mode:${group.key}`}
+                              value="all"
+                              checked={state.mode === "all"}
+                              disabled={!allOrgAvailable}
+                              onChange={() => updateOrg(group.key, { mode: "all" })}
+                            />
+                            All Docos in {group.handle}
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name={`org_mode:${group.key}`}
+                              value="specific"
+                              checked={state.mode === "specific"}
+                              onChange={() => updateOrg(group.key, { mode: "specific" })}
+                            />
+                            Specific Docos
+                          </label>
+                        </div>
+
+                        {state.mode === "all" && allOrgAvailable ? (
+                          <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            What should be Señor Doco's default level of access for all Docos in
+                            this organization?
+                            <select
+                              name={`org_role:${group.key}`}
+                              value={state.orgRole}
+                              onChange={(event) =>
+                                updateOrg(group.key, { orgRole: event.target.value as DocoRole })
+                              }
+                              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                            >
+                              {rolesFor(group.orgOption?.myRole).map((role) => (
+                                <option key={role} value={role}>
+                                  {roleLabel(role)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+
+                        {state.mode === "all" && !allOrgAvailable ? (
+                          <p className="text-sm text-muted-foreground">
+                            You can set defaults for specific Docos in {group.handle}, but you do
+                            not have organization-wide access to grant every Doco in this
+                            organization.
+                          </p>
+                        ) : null}
+
+                        {state.mode === "specific" ? (
+                          <div className="space-y-2">
+                            {group.docos.map((doco) => (
+                              <label
+                                key={doco.id}
+                                className="grid gap-2 rounded-md border border-border p-3 text-sm md:grid-cols-[minmax(0,1fr)_180px] md:items-center"
+                              >
+                                <span className="min-w-0 font-semibold text-foreground">
+                                  {doco.label}
+                                </span>
+                                <select
+                                  name={`doco_role:${doco.id}`}
+                                  value={state.docoRoles[doco.id] ?? "none"}
+                                  onChange={(event) =>
+                                    updateDocoRole(
+                                      group.key,
+                                      doco.id,
+                                      event.target.value as DocoRole | "none",
+                                    )
+                                  }
+                                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                                >
+                                  <option value="none">No access</option>
+                                  {rolesFor(doco.myRole).map((role) => (
+                                    <option key={role} value={role}>
+                                      {roleLabel(role)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
 
               <button
                 type="submit"
@@ -293,7 +324,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                 className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                Authorize Slack channel
+                Save default permissions
               </button>
             </CardContent>
           </Card>
@@ -302,33 +333,31 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
-                Channel default access
+                Default access
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm leading-relaxed">
-              <p>Everyone in {channelLabel} will get this shared default access:</p>
-              <div className="rounded-md border border-border bg-background p-3 text-base font-semibold text-foreground">
-                {selectedTarget ? selectedTarget.grantLabel : "Pick a Doco access scope"} ·{" "}
-                {effectiveRole}
-              </div>
-              <p>
-                This is the channel default for Señor Doco. It applies to everyone in this Slack
-                channel.
-              </p>
-              {selectedTarget?.level === "org" ? (
-                <p>
-                  {selectedTarget.grantLabel} covers every Doco in {selectedTarget.label}.
-                </p>
-              ) : null}
-              <p>
-                People can still link their own Doco account. If they already have higher access in
-                Doco, Señor Doco may use that higher personal access for their requests, but never
-                more than the access they already hold.
-              </p>
+              <p>Everyone in {installation.workspaceName} will get these shared defaults:</p>
+              {selectedSummary.length > 0 ? (
+                <ul className="space-y-2">
+                  {selectedSummary.map((item) => (
+                    <li
+                      key={item}
+                      className="rounded-md border border-border bg-background p-3 font-semibold text-foreground"
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="rounded-md border border-border bg-background p-3 text-muted-foreground">
+                  Select an organization to set defaults.
+                </div>
+              )}
               <p>
                 Owner-only actions, including creating Docos and changing policies, require that
-                individual person to be an owner in Doco. A channel default does not grant
-                owner-only actions.
+                individual person to be an owner in Doco. Workspace defaults do not grant owner-only
+                actions.
               </p>
             </CardContent>
           </Card>
@@ -338,70 +367,135 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
   );
 }
 
-async function loadSlackChannelOptions(
-  workspaceId: string,
-  context: SlackChannelContext | null,
-): Promise<{ channels: SlackChannelOption[]; channelLoadError: string | null }> {
-  try {
-    const channels = await listSlackChannels(workspaceId);
-    return {
-      channels: mergeContextChannel(channels, context),
-      channelLoadError: null,
-    };
-  } catch {
-    return {
-      channels: mergeContextChannel([], context),
-      channelLoadError:
-        "Doco could not list Slack channels right now. If this opened from Slack, the current channel is still available.",
-    };
-  }
-}
-
-function mergeContextChannel(
-  channels: SlackChannelOption[],
-  context: SlackChannelContext | null,
-): SlackChannelOption[] {
-  if (!context || channels.some((channel) => channel.id === context.channelId)) return channels;
-  return [
-    {
-      id: context.channelId,
-      name: context.channelName,
-      isPrivate: false,
-    },
-    ...channels,
-  ];
-}
-
-function buildTargetOptions(options: ScopeOption[]): SlackTargetOption[] {
-  return options.map((option) => {
+function buildOrgPermissionGroups(options: ScopeOption[]): OrgPermissionGroup[] {
+  const groups = new Map<string, OrgPermissionGroup>();
+  for (const option of options) {
     if (option.level === "org") {
-      return {
-        ...option,
-        value: `org:${option.id}`,
-        displayLabel: `${option.label}/*`,
-        grantLabel: `${option.label}/*`,
-      };
+      groups.set(option.label, {
+        key: option.label,
+        handle: option.label,
+        orgOption: option,
+        docos: groups.get(option.label)?.docos ?? [],
+      });
     }
-    return {
-      ...option,
-      value: `doco:${option.id}`,
-      displayLabel: option.label,
-      grantLabel: option.label,
-    };
-  });
+  }
+
+  for (const option of options) {
+    if (option.level !== "doco") continue;
+    const { orgHandle } = splitDocoLabel(option.label);
+    const key = orgHandle || option.label;
+    const existing = groups.get(key);
+    groups.set(key, {
+      key,
+      handle: orgHandle || key,
+      orgOption: existing?.orgOption ?? null,
+      docos: [
+        ...(existing?.docos ?? []),
+        {
+          id: option.id,
+          label: option.label,
+          myRole: option.myRole,
+        },
+      ],
+    });
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      docos: [...group.docos].sort((a, b) => a.label.localeCompare(b.label)),
+    }))
+    .sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
-function parseTargetValue(value: string): { level: "org" | "doco"; id: string } | null {
-  const [level, id] = value.split(":");
-  if ((level !== "org" && level !== "doco") || !id) return null;
-  return { level, id };
-}
-
-function readSlackChannelContext(url: URL): SlackChannelContext | null {
-  const channelId = url.searchParams.get("channel_id")?.trim();
-  if (!channelId) return null;
+function initialOrgState(group: OrgPermissionGroup): DraftOrgState {
   return {
-    channelId,
-    channelName: url.searchParams.get("channel_name")?.trim() || channelId,
+    selected: false,
+    mode: group.orgOption ? "all" : "specific",
+    orgRole: "reader",
+    docoRoles: Object.fromEntries(group.docos.map((doco) => [doco.id, "none"])),
+  };
+}
+
+function collectGrantsFromForm(form: FormData, groups: OrgPermissionGroup[]): SlackGrantInput[] {
+  const selectedOrgKeys = new Set(form.getAll("org_key").map((value) => String(value)));
+  const grants: SlackGrantInput[] = [];
+
+  for (const group of groups) {
+    if (!selectedOrgKeys.has(group.key)) continue;
+    const mode = form.get(`org_mode:${group.key}`) === "specific" ? "specific" : "all";
+    if (mode === "all" && group.orgOption) {
+      const role = parseDefaultRole(form.get(`org_role:${group.key}`));
+      if (!role) continue;
+      grants.push({ targetLevel: "org", targetId: group.orgOption.id, role });
+      continue;
+    }
+
+    for (const doco of group.docos) {
+      const role = parseDefaultRole(form.get(`doco_role:${doco.id}`));
+      if (!role) continue;
+      grants.push({ targetLevel: "doco", targetId: doco.id, role });
+    }
+  }
+
+  return grants;
+}
+
+function validateGrants(grants: SlackGrantInput[], options: ScopeOption[]): string | null {
+  for (const grant of grants) {
+    const option = options.find(
+      (scope) => scope.level === grant.targetLevel && scope.id === grant.targetId,
+    );
+    if (!option) return "target_not_available";
+    const capability = canSetChannelDefaultAccess({
+      personalRole: option.myRole,
+      requestedRole: grant.role,
+    });
+    if (!capability.ok) return capability.error ?? "role_not_allowed";
+  }
+  return null;
+}
+
+function summarizeDefaults(
+  groups: OrgPermissionGroup[],
+  state: Record<string, DraftOrgState>,
+): string[] {
+  const summary: string[] = [];
+  for (const group of groups) {
+    const draft = state[group.key] ?? initialOrgState(group);
+    if (!draft.selected) continue;
+    if (draft.mode === "all" && group.orgOption) {
+      summary.push(`${group.handle}/* · ${roleLabel(draft.orgRole)}`);
+      continue;
+    }
+    for (const doco of group.docos) {
+      const role = draft.docoRoles[doco.id];
+      if (!role || role === "none") continue;
+      summary.push(`${doco.label} · ${roleLabel(role)}`);
+    }
+  }
+  return summary;
+}
+
+function rolesFor(personalRole: DocoRole | undefined): DocoRole[] {
+  if (!personalRole) return [];
+  return DEFAULT_ROLES.filter((role) => rankOf(role) <= rankOf(personalRole));
+}
+
+function parseDefaultRole(value: FormDataEntryValue | null): DocoRole | null {
+  const role = String(value ?? "");
+  return DEFAULT_ROLES.includes(role as DocoRole) ? (role as DocoRole) : null;
+}
+
+function roleLabel(role: DocoRole): string {
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function splitDocoLabel(label: string): { orgHandle: string; docoHandle: string } {
+  const slash = label.indexOf("/");
+  if (slash < 0) return { orgHandle: "", docoHandle: label };
+  return {
+    orgHandle: label.slice(0, slash),
+    docoHandle: label.slice(slash + 1),
   };
 }

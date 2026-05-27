@@ -5,10 +5,8 @@ import { ensureEnvLoaded } from "./dotenv.server";
 
 export const SLACK_BOT_SCOPES = [
   "app_mentions:read",
-  "channels:read",
   "chat:write",
   "commands",
-  "groups:read",
   "im:write",
   "team:read",
   "users:read",
@@ -17,7 +15,6 @@ export const SLACK_BOT_SCOPES = [
 const SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
 const SLACK_OAUTH_ACCESS_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_CHAT_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
-const SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list";
 const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 
@@ -40,12 +37,6 @@ export interface SlackInstallationSummary {
   workspaceName: string;
   botUserId: string | null;
   installedAt: string;
-}
-
-export interface SlackChannelOption {
-  id: string;
-  name: string;
-  isPrivate: boolean;
 }
 
 export interface SlackChannelConnectionSummary {
@@ -96,17 +87,10 @@ interface SlackConnectionInput {
   createdByCollaboratorId: string;
 }
 
-interface SlackConversationsListResponse {
-  ok: boolean;
-  error?: string;
-  channels?: Array<{
-    id?: string;
-    name?: string;
-    is_private?: boolean;
-  }>;
-  response_metadata?: {
-    next_cursor?: string;
-  };
+interface SlackConnectionGrantInput {
+  targetLevel: "org" | "doco";
+  targetId: string;
+  role: string;
 }
 
 export function getSlackConfig(): SlackConfig {
@@ -301,6 +285,49 @@ export async function saveSlackChannelConnection(input: SlackConnectionInput): P
   );
 }
 
+export async function replaceSlackChannelConnections(input: {
+  workspaceId: string;
+  channelId: string;
+  channelName: string;
+  grants: SlackConnectionGrantInput[];
+  createdByCollaboratorId: string;
+}): Promise<void> {
+  await withClient(async (c) => {
+    await c.query("BEGIN");
+    try {
+      await c.query(
+        `DELETE FROM group_chat_channel_connections
+        WHERE provider = 'slack'
+          AND workspace_id = $1
+          AND channel_id = $2`,
+        [input.workspaceId, input.channelId],
+      );
+      for (const grant of input.grants) {
+        await c.query(
+          `INSERT INTO group_chat_channel_connections
+           (id, provider, workspace_id, channel_id, channel_name, target_level, target_id,
+            role, created_by_collaborator_id, data, created_at, updated_at)
+         VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, now(), now())`,
+          [
+            `gcc_${generateUlid()}`,
+            input.workspaceId,
+            input.channelId,
+            input.channelName,
+            grant.targetLevel,
+            grant.targetId,
+            grant.role,
+            input.createdByCollaboratorId,
+          ],
+        );
+      }
+      await c.query("COMMIT");
+    } catch (error) {
+      await c.query("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
 export async function listSlackChannelConnections(args: {
   workspaceId: string;
   channelId: string;
@@ -336,8 +363,8 @@ export async function listSlackChannelConnections(args: {
            ON d.org_id = dorg.id
         WHERE gcc.provider = 'slack'
           AND gcc.workspace_id = $1
-          AND gcc.channel_id = $2
-        ORDER BY target_label, gcc.role`,
+          AND gcc.channel_id IN ($2, '*')
+        ORDER BY CASE WHEN gcc.channel_id = $2 THEN 0 ELSE 1 END, target_label, gcc.role`,
       [args.workspaceId, args.channelId],
     ),
   );
@@ -361,48 +388,6 @@ export async function getSlackBotToken(workspaceId: string): Promise<string | nu
     ),
   );
   return result.rows[0]?.bot_access_token ?? null;
-}
-
-export async function listSlackChannels(workspaceId: string): Promise<SlackChannelOption[]> {
-  const token = await getSlackBotToken(workspaceId);
-  if (!token) return [];
-
-  const channels: SlackChannelOption[] = [];
-  let cursor = "";
-  for (let page = 0; page < 20; page += 1) {
-    const url = new URL(SLACK_CONVERSATIONS_LIST_URL);
-    url.searchParams.set("types", "public_channel,private_channel");
-    url.searchParams.set("exclude_archived", "true");
-    url.searchParams.set("limit", "200");
-    url.searchParams.set("team_id", workspaceId);
-    if (cursor) url.searchParams.set("cursor", cursor);
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const json = (await response.json()) as SlackConversationsListResponse;
-    if (!response.ok || !json.ok) {
-      throw new Error(
-        json.error ? `Slack channel list failed: ${json.error}` : "Slack channel list failed.",
-      );
-    }
-
-    for (const channel of json.channels ?? []) {
-      const id = channel.id?.trim();
-      const name = channel.name?.trim();
-      if (!id || !name) continue;
-      channels.push({
-        id,
-        name,
-        isPrivate: Boolean(channel.is_private),
-      });
-    }
-
-    cursor = json.response_metadata?.next_cursor?.trim() ?? "";
-    if (!cursor) break;
-  }
-
-  return channels.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function verifySlackRequestSignature(args: {
@@ -450,23 +435,20 @@ export function slackConnectUrl(request: Request, payload: SlackCommandPayload):
   const url = new URL("/integrations/slack/setup", request.url);
   url.searchParams.set("team_id", payload.team_id);
   if (payload.team_domain) url.searchParams.set("team_name", payload.team_domain);
-  url.searchParams.set("channel_id", payload.channel_id);
-  if (payload.channel_name) url.searchParams.set("channel_name", payload.channel_name);
   return url.toString();
 }
 
 export function buildSlackConnectCommandResponse(request: Request, payload: SlackCommandPayload) {
   const connectUrl = slackConnectUrl(request, payload);
-  const channel = payload.channel_name ? `#${payload.channel_name}` : "this channel";
   return {
     response_type: "ephemeral",
-    text: `Connect Señor Doco to ${channel} in Doco.`,
+    text: "Open Doco to choose Señor Doco's default permissions for this Slack workspace.",
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `Connect Señor Doco to *${channel}* by choosing the channel default access in Doco.`,
+          text: "Open Doco to choose Señor Doco's default permissions for this Slack workspace.",
         },
       },
       {
