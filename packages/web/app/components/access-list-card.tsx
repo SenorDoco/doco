@@ -9,6 +9,7 @@ export interface AccessListItem {
   href: string;
   label: string;
   count: number;
+  countLabel?: string;
   lastUpdatedAt: string | null;
   children?: AccessListItem[];
 }
@@ -19,17 +20,19 @@ export function AccessListCard({
   empty,
   emptyChildrenLabel = "No docos yet.",
 }: {
-  title: string;
+  title?: string;
   items: AccessListItem[];
   empty: ReactNode;
   emptyChildrenLabel?: string;
 }) {
   return (
     <Card>
-      <div className="px-4 pb-2 pt-3">
-        <CardTitle className="text-sm">{title}</CardTitle>
-      </div>
-      <div className="px-4 pb-3 pt-1">
+      {title ? (
+        <div className="px-4 pb-2 pt-3">
+          <CardTitle className="text-sm">{title}</CardTitle>
+        </div>
+      ) : null}
+      <div className={cn("px-4 pb-3", title ? "pt-1" : "pt-3")}>
         {items.length === 0 ? (
           <div className="text-xs text-muted-foreground">{empty}</div>
         ) : (
@@ -103,7 +106,7 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
             {item.label}
           </Link>
           <span className="ml-1 whitespace-nowrap text-[11px] text-muted-foreground">
-            ({item.count})
+            ({item.countLabel ?? item.count})
           </span>
         </div>
         <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">

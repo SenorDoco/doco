@@ -242,6 +242,7 @@ export default function OrgsIndexPage({
     href: `/orgs/${o.handle}`,
     label: o.display_name || o.handle,
     count: o.nodeCount,
+    countLabel: `${o.nodeCount} nodes`,
     lastUpdatedAt: o.lastUpdatedAt,
   }));
   return (
@@ -264,7 +265,6 @@ export default function OrgsIndexPage({
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
             <AccessListCard
-              title="Your orgs"
               items={orgItems}
               empty={
                 <>
