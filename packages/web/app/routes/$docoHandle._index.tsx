@@ -72,11 +72,6 @@ const RIGHT_COLUMN_WIDTH = 320;
 const RIGHT_COLUMN_GRID_GAP = 24;
 const RIGHT_COLUMN_MIN_CONTENT_WIDTH =
   RIGHT_COLUMN_MAIN_MIN_WIDTH + RIGHT_COLUMN_WIDTH + RIGHT_COLUMN_GRID_GAP;
-const LARGE_PERSPECTIVE_THRESHOLD = 750;
-// Keep the temporary large-Doco fallback comfortably below React Flow's
-// "noticeably sluggish" range. The indexed/viewport-loaded renderer is
-// the real scale path; this slice exists to keep production usable now.
-const LARGE_PERSPECTIVE_NODE_LIMIT = 250;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
@@ -300,15 +295,11 @@ export async function loader({
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
     const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
-    const perspectiveNodeLimit =
-      totalNodes > LARGE_PERSPECTIVE_THRESHOLD ? LARGE_PERSPECTIVE_NODE_LIMIT : undefined;
-
     const shouldLoadOverviewGraph = activeKind === "graph" || activeKind === "list";
     const graph = shouldLoadOverviewGraph
       ? await loadOverviewGraph(c, ctx.meta.docoId, {
           handle,
           ...(selectedNeuron ? { centerId: selectedNeuron.id } : {}),
-          limit: perspectiveNodeLimit,
         })
       : null;
 
@@ -326,7 +317,6 @@ export async function loader({
         ? await loadBpmnGraph(c, ctx.meta.docoId, {
             focusId: selectedNeuron?.id,
             handle,
-            nodeLimit: perspectiveNodeLimit,
           })
         : null;
 

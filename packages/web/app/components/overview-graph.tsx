@@ -16,6 +16,7 @@ import { lifecycleColor } from "~/lib/neuron-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
+import { selectRenderWindow } from "~/lib/viewport-render-window";
 import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
@@ -132,6 +133,10 @@ const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
+const OVERVIEW_RENDER_NODE_BUDGET = 600;
+const OVERVIEW_RENDER_EDGE_BUDGET = 1200;
+const OVERVIEW_RENDER_OVERSCAN_PX = 700;
+const OVERVIEW_BOUNDS_NODE_ID = "__overview-layout-bounds__";
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -291,6 +296,47 @@ function screenPosition(position: Point, viewport: FlowViewport): Point {
   return {
     x: position.x * viewport.zoom + viewport.x,
     y: position.y * viewport.zoom + viewport.y,
+  };
+}
+
+function lifecycleWindowRank(lifecycle: string | null): number {
+  switch (lifecycle ?? "active") {
+    case "active":
+      return 0;
+    case "proposed":
+      return 1;
+    case "drafting":
+      return 2;
+    case "retired":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function layoutBounds(positions: Map<string, Point>): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null {
+  if (positions.size === 0) return null;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const position of positions.values()) {
+    minX = Math.min(minX, position.x);
+    minY = Math.min(minY, position.y);
+    maxX = Math.max(maxX, position.x + OVERVIEW_NODE_WIDTH);
+    maxY = Math.max(maxY, position.y + OVERVIEW_NODE_HEIGHT);
+  }
+  const pad = Math.max(OVERVIEW_NODE_WIDTH, OVERVIEW_NODE_HEIGHT);
+  return {
+    x: minX - pad,
+    y: minY - pad,
+    width: Math.max(1, maxX - minX + pad * 2),
+    height: Math.max(1, maxY - minY + pad * 2),
   };
 }
 
@@ -540,6 +586,69 @@ export function OverviewGraph({
     [visibleNodes],
   );
   const MiniMapNode = useMemo(() => makeOverviewMiniMapNode(nodeById), [nodeById]);
+  const depthByNodeId = useMemo(
+    () => computeDepthFromCenter(visibleNodes, visibleLinks, centerId),
+    [visibleNodes, visibleLinks, centerId],
+  );
+  const focalActive = useMemo(() => hasFocalNode(centerId, visibleNodes), [centerId, visibleNodes]);
+  const renderWindow = useMemo(
+    () =>
+      selectRenderWindow(
+        visibleNodes.flatMap((node) => {
+          const position = positions.get(node.id);
+          if (!position) return [];
+          const bucket = depthBucket(depthByNodeId.get(node.id));
+          return [
+            {
+              id: node.id,
+              x: position.x,
+              y: position.y,
+              width: OVERVIEW_NODE_WIDTH,
+              height: OVERVIEW_NODE_HEIGHT,
+              priority:
+                node.id === centerId
+                  ? 0
+                  : bucket * 10 + lifecycleWindowRank(node.lifecycle) + (node.is_center ? 0 : 1),
+            },
+          ];
+        }),
+        {
+          viewport,
+          size,
+          maxItems: OVERVIEW_RENDER_NODE_BUDGET,
+          overscanPx: OVERVIEW_RENDER_OVERSCAN_PX,
+          mustIncludeIds: [centerId],
+        },
+      ),
+    [visibleNodes, positions, depthByNodeId, centerId, viewport, size],
+  );
+  const renderedNodeIds = renderWindow.ids;
+  const renderedNodes = useMemo(
+    () => visibleNodes.filter((node) => renderedNodeIds.has(node.id)),
+    [visibleNodes, renderedNodeIds],
+  );
+  const renderedLinks = useMemo(() => {
+    const candidates = visibleLinks
+      .filter((link) => renderedNodeIds.has(link.source) && renderedNodeIds.has(link.target))
+      .map((link, index) => ({ link, index }))
+      .sort((a, b) => {
+        const aDepth = Math.max(
+          depthBucket(depthByNodeId.get(a.link.source)),
+          depthBucket(depthByNodeId.get(a.link.target)),
+        );
+        const bDepth = Math.max(
+          depthBucket(depthByNodeId.get(b.link.source)),
+          depthBucket(depthByNodeId.get(b.link.target)),
+        );
+        if (aDepth !== bDepth) return aDepth - bDepth;
+        const aTouchesCenter = a.link.source === centerId || a.link.target === centerId;
+        const bTouchesCenter = b.link.source === centerId || b.link.target === centerId;
+        if (aTouchesCenter !== bTouchesCenter) return aTouchesCenter ? -1 : 1;
+        return a.index - b.index;
+      });
+    return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
+  }, [visibleLinks, renderedNodeIds, depthByNodeId, centerId]);
+  const boundsNode = useMemo(() => layoutBounds(positions), [positions]);
 
   // Dynamic import — React Flow touches the DOM during module init.
   const [Flow, setFlow] = useState<null | typeof import("@xyflow/react")>(null);
@@ -566,7 +675,7 @@ export function OverviewGraph({
 
   const detailIds = useMemo(() => {
     if (viewport.zoom < DETAIL_ZOOM) return [];
-    return visibleNodes
+    return renderedNodes
       .filter((node) => {
         const position = positions.get(node.id);
         return position ? isVisibleInViewport(position, viewport, size) : false;
@@ -574,7 +683,7 @@ export function OverviewGraph({
       .slice(0, MAX_DETAIL_FETCH)
       .map((node) => node.id)
       .filter((id) => !details.has(id));
-  }, [visibleNodes, positions, viewport, size, details]);
+  }, [renderedNodes, positions, viewport, size, details]);
 
   // Build reference candidates for the shared numbering hook. Each
   // candidate is one visible node carrying enough info to be sorted
@@ -588,7 +697,7 @@ export function OverviewGraph({
   // when detail is absent, and the href falls back to `node.href`.
   const referenceCandidates = useMemo(
     () =>
-      visibleNodes.flatMap((node) => {
+      renderedNodes.flatMap((node) => {
         const position = positions.get(node.id);
         if (!position) return [];
         const detail = details.get(node.id);
@@ -605,7 +714,7 @@ export function OverviewGraph({
           },
         ];
       }),
-    [visibleNodes, details, positions],
+    [renderedNodes, details, positions],
   );
   const { numberById: referenceNumberByNodeId } = usePerspectiveReferences({
     source: "overview",
@@ -631,58 +740,75 @@ export function OverviewGraph({
     return () => window.clearTimeout(timeout);
   }, [detailUrl, detailIds]);
 
-  const depthByNodeId = useMemo(
-    () => computeDepthFromCenter(visibleNodes, visibleLinks, centerId),
-    [visibleNodes, visibleLinks, centerId],
-  );
-  const focalActive = useMemo(() => hasFocalNode(centerId, visibleNodes), [centerId, visibleNodes]);
-
-  const flowNodes = useMemo(
-    () =>
-      visibleNodes.map((node) => {
-        const position = positions.get(node.id) ?? { x: 0, y: 0 };
-        const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
-        return {
-          id: node.id,
-          type: "overviewNode",
-          position,
-          initialWidth: OVERVIEW_NODE_WIDTH,
-          initialHeight: OVERVIEW_NODE_HEIGHT,
-          data: {
-            node,
-            detail: details.get(node.id),
-            showDetail: viewport.zoom >= DETAIL_ZOOM,
-            referenceNumber: referenceNumberByNodeId.get(node.id),
-            isNew: newNodeIds.has(node.id),
-            opacity,
-          } satisfies OverviewNodeData,
-          draggable: false,
-          selectable: false,
-          connectable: false,
-          style: {
-            width: OVERVIEW_NODE_WIDTH,
-            height: OVERVIEW_NODE_HEIGHT,
-            padding: 0,
-            background: "transparent",
-            border: "none",
-          },
-        };
-      }),
-    [
-      visibleNodes,
-      positions,
-      details,
-      viewport.zoom,
-      referenceNumberByNodeId,
-      newNodeIds,
-      depthByNodeId,
-      focalActive,
-    ],
-  );
+  const flowNodes = useMemo(() => {
+    const rendered = renderedNodes.map((node) => {
+      const position = positions.get(node.id) ?? { x: 0, y: 0 };
+      const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
+      return {
+        id: node.id,
+        type: "overviewNode",
+        position,
+        initialWidth: OVERVIEW_NODE_WIDTH,
+        initialHeight: OVERVIEW_NODE_HEIGHT,
+        data: {
+          node,
+          detail: details.get(node.id),
+          showDetail: viewport.zoom >= DETAIL_ZOOM,
+          referenceNumber: referenceNumberByNodeId.get(node.id),
+          isNew: newNodeIds.has(node.id),
+          opacity,
+        } satisfies OverviewNodeData,
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        style: {
+          width: OVERVIEW_NODE_WIDTH,
+          height: OVERVIEW_NODE_HEIGHT,
+          padding: 0,
+          background: "transparent",
+          border: "none",
+        },
+      };
+    });
+    if (!boundsNode) return rendered;
+    return [
+      {
+        id: OVERVIEW_BOUNDS_NODE_ID,
+        position: { x: boundsNode.x, y: boundsNode.y },
+        initialWidth: boundsNode.width,
+        initialHeight: boundsNode.height,
+        data: { label: null },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        focusable: false,
+        style: {
+          width: boundsNode.width,
+          height: boundsNode.height,
+          opacity: 0,
+          pointerEvents: "none" as const,
+          background: "transparent",
+          border: "none",
+          padding: 0,
+        },
+      },
+      ...rendered,
+    ];
+  }, [
+    renderedNodes,
+    positions,
+    details,
+    viewport.zoom,
+    referenceNumberByNodeId,
+    newNodeIds,
+    depthByNodeId,
+    focalActive,
+    boundsNode,
+  ]);
 
   const flowEdges = useMemo(
     () =>
-      visibleLinks.map((link, index) => {
+      renderedLinks.map((link, index) => {
         const edgeOpacity = focalActive
           ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
           : 1;
@@ -705,7 +831,7 @@ export function OverviewGraph({
           },
         };
       }),
-    [visibleLinks, depthByNodeId, focalActive, nodeById],
+    [renderedLinks, depthByNodeId, focalActive, nodeById],
   );
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);

@@ -47,6 +47,7 @@ import {
 import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
+import { rectForCandidate, rectsIntersect, selectRenderWindow } from "~/lib/viewport-render-window";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -133,6 +134,10 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
+const BPMN_RENDER_NODE_BUDGET = 700;
+const BPMN_RENDER_EDGE_BUDGET = 1200;
+const BPMN_RENDER_OVERSCAN_PX = 700;
+const BPMN_BOUNDS_NODE_ID = "__bpmn-layout-bounds__";
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -276,6 +281,44 @@ export function BpmnPerspective({
     [pools],
   );
   const MiniMapNode = useMemo(() => makeBpmnMiniMapNode(nodeById), [nodeById]);
+  const renderWindow = useMemo(
+    () =>
+      selectRenderWindow(
+        filteredNodes.flatMap((node) => {
+          const position = layout.nodePositions.get(node.id);
+          if (!position) return [];
+          const size = sizeForNode(node);
+          return [
+            {
+              id: node.id,
+              x: position.x,
+              y: position.y,
+              width: size.width,
+              height: size.height,
+              priority:
+                node.id === centerId
+                  ? 0
+                  : bpmnWindowLifecycleRank(node.lifecycle) +
+                    (node.entity_type === "action" ? 4 : 8),
+            },
+          ];
+        }),
+        {
+          viewport,
+          size: graphSize,
+          maxItems: BPMN_RENDER_NODE_BUDGET,
+          overscanPx: BPMN_RENDER_OVERSCAN_PX,
+          mustIncludeIds: [centerId],
+        },
+      ),
+    [filteredNodes, layout.nodePositions, centerId, viewport, graphSize],
+  );
+  const renderedNodeIds = renderWindow.ids;
+  const renderedNodes = useMemo(
+    () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
+    [filteredNodes, renderedNodeIds],
+  );
+  const layoutBoundsNode = useMemo(() => bpmnLayoutBounds(layout.flowNodes), [layout.flowNodes]);
   const openPoolNeuron = useCallback(
     (pool: BpmnPool) => {
       if (!pool.intent_id) return;
@@ -314,9 +357,10 @@ export function BpmnPerspective({
   );
   const nodeReferenceCandidates = useMemo(
     () =>
-      filteredNodes.flatMap((node) => {
+      renderedNodes.flatMap((node) => {
         const position = layout.nodePositions.get(node.id);
         if (!position) return [];
+        const size = sizeForNode(node);
         return [
           {
             id: node.id,
@@ -325,12 +369,12 @@ export function BpmnPerspective({
             lifecycle: node.lifecycle ?? "active",
             href: node.href ?? null,
             position,
-            width: NODE_WIDTH,
-            height: NODE_HEIGHT,
+            width: size.width,
+            height: size.height,
           },
         ];
       }),
-    [filteredNodes, layout.nodePositions],
+    [renderedNodes, layout.nodePositions],
   );
   const { numberById: referenceNumberByEntityId } = usePerspectiveReferences({
     source: "bpmn",
@@ -340,9 +384,17 @@ export function BpmnPerspective({
     priorityItems: laneReferences,
   });
 
-  const flowNodes = useMemo(
-    () =>
-      layout.flowNodes.map((node) => {
+  const flowNodes = useMemo(() => {
+    const requiredLaneNodeIds = new Set(renderedNodes.map((node) => laneNodeId(node.laneId)));
+    const windowed = layout.flowNodes
+      .filter((node) => {
+        const nodeData = (node.data as { node?: BpmnNode }).node;
+        if (nodeData) return renderedNodeIds.has(nodeData.id);
+        if (requiredLaneNodeIds.has(node.id)) return true;
+        const rect = rectForCandidate(flowNodeRect(node));
+        return rectsIntersect(rect, renderWindow.overscanRect);
+      })
+      .map((node) => {
         // Lane FlowNodes carry data.lane; shape FlowNodes carry data.node.
         // Each pulls its reference number from the unified map by the
         // underlying entity id (principal_<ulid> or neuron id).
@@ -359,8 +411,48 @@ export function BpmnPerspective({
         const referenceNumber = referenceNumberByEntityId.get(node.id);
         if (!referenceNumber || !nodeById.has(node.id)) return node;
         return { ...node, data: { ...node.data, referenceNumber } };
-      }),
-    [layout.flowNodes, referenceNumberByEntityId, nodeById, openLaneNeuron],
+      });
+    if (!layoutBoundsNode) return windowed;
+    return [
+      {
+        id: BPMN_BOUNDS_NODE_ID,
+        type: "default",
+        position: { x: layoutBoundsNode.x, y: layoutBoundsNode.y },
+        data: { label: null },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        initialWidth: layoutBoundsNode.width,
+        initialHeight: layoutBoundsNode.height,
+        style: {
+          width: layoutBoundsNode.width,
+          height: layoutBoundsNode.height,
+          opacity: 0,
+          pointerEvents: "none" as const,
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          zIndex: -1,
+        },
+      },
+      ...windowed,
+    ];
+  }, [
+    layout.flowNodes,
+    layoutBoundsNode,
+    renderedNodes,
+    renderedNodeIds,
+    renderWindow.overscanRect,
+    referenceNumberByEntityId,
+    nodeById,
+    openLaneNeuron,
+  ]);
+  const flowEdges = useMemo(
+    () =>
+      layout.flowEdges
+        .filter((edge) => renderedNodeIds.has(edge.source) && renderedNodeIds.has(edge.target))
+        .slice(0, BPMN_RENDER_EDGE_BUDGET),
+    [layout.flowEdges, renderedNodeIds],
   );
 
   if (filteredLanes.length === 0 && pools.length === 0) {
@@ -494,7 +586,7 @@ export function BpmnPerspective({
       {Flow ? (
         <Flow.ReactFlow
           nodes={flowNodes}
-          edges={layout.flowEdges}
+          edges={flowEdges}
           nodeTypes={nodeTypes}
           nodesDraggable={false}
           nodesConnectable={false}
@@ -647,6 +739,67 @@ interface FlowEdge {
   style?: CSSProperties;
   animated?: boolean;
   markerEnd?: { type: MarkerType; width?: number; height?: number; color?: string };
+}
+
+function bpmnWindowLifecycleRank(lifecycle: string | null | undefined): number {
+  switch (lifecycle ?? "active") {
+    case "active":
+      return 0;
+    case "proposed":
+      return 1;
+    case "drafting":
+      return 2;
+    case "retired":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function flowNodeRect(
+  node: FlowNode,
+  absolutePosition?: { x: number; y: number },
+): { id: string; x: number; y: number; width: number; height: number } {
+  return {
+    id: node.id,
+    x: absolutePosition?.x ?? node.position.x,
+    y: absolutePosition?.y ?? node.position.y,
+    width:
+      typeof node.style?.width === "number" ? node.style.width : (node.initialWidth ?? NODE_WIDTH),
+    height:
+      typeof node.style?.height === "number"
+        ? node.style.height
+        : (node.initialHeight ?? NODE_HEIGHT),
+  };
+}
+
+function bpmnLayoutBounds(flowNodes: readonly FlowNode[]): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null {
+  if (flowNodes.length === 0) return null;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const node of flowNodes) {
+    if (node.parentId) continue;
+    const rect = flowNodeRect(node);
+    minX = Math.min(minX, rect.x);
+    minY = Math.min(minY, rect.y);
+    maxX = Math.max(maxX, rect.x + rect.width);
+    maxY = Math.max(maxY, rect.y + rect.height);
+  }
+  if (!Number.isFinite(minX + minY + maxX + maxY)) return null;
+  const pad = 120;
+  return {
+    x: minX - pad,
+    y: minY - pad,
+    width: Math.max(1, maxX - minX + pad * 2),
+    height: Math.max(1, maxY - minY + pad * 2),
+  };
 }
 
 interface BpmnLayout {
