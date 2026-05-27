@@ -36,6 +36,7 @@ import {
 } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
@@ -364,7 +365,13 @@ export function BpmnPerspective({
     }),
     [],
   );
-  const edgeTypes = useMemo(() => ({ fadingPlaceholder: FadingPlaceholderEdge }), []);
+  const edgeTypes = useMemo(
+    () => ({
+      fadingPlaceholder: FadingPlaceholderEdge,
+      stableLabeledBezier: StableLabeledBezierEdge,
+    }),
+    [],
+  );
   const nodeById = useMemo(() => new Map(renderedNodes.map((n) => [n.id, n])), [renderedNodes]);
   const laneById = useMemo(
     () => new Map(renderedLanes.map((lane) => [lane.id, lane])),
@@ -851,11 +858,6 @@ interface FlowEdge {
   source: string;
   target: string;
   type: string;
-  label?: string;
-  labelStyle?: CSSProperties;
-  labelBgPadding?: [number, number];
-  labelBgBorderRadius?: number;
-  labelBgStyle?: CSSProperties;
   data?: Record<string, unknown>;
   selectable: boolean;
   focusable: boolean;
@@ -1137,31 +1139,34 @@ function layOutBpmn(
         id: `${link.source}-${link.target}-${index}`,
         source,
         target,
-        ...(label
-          ? {
-              label,
-              labelStyle: {
-                fontSize: 9,
-                fontWeight: 700,
-                fill: "#202020",
-                pointerEvents: "none" as const,
-                opacity: edgeOpacity,
-              },
-              labelBgPadding: [3, 6] as [number, number],
-              labelBgBorderRadius: 4,
-              labelBgStyle: {
-                fill: "#ffffff",
-                fillOpacity: 0.96 * edgeOpacity,
-                stroke,
-                strokeOpacity: 0.32 * edgeOpacity,
-                pointerEvents: "none" as const,
-              },
-            }
-          : {}),
         // Bezier curves keep process arrows compact and visually soft.
         // They may pass behind intervening neurons in dense diagrams,
         // but they read better than the heavier lane-gutter router.
-        type: "bezier",
+        type: "stableLabeledBezier",
+        data: label
+          ? {
+              label,
+              labelOpacity: edgeOpacity,
+              labelBoxStyle: {
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: `1px solid ${stroke}`,
+                borderRadius: 4,
+                background: "#ffffff",
+                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
+                padding: "2px 6px",
+              },
+              labelStyle: {
+                color: "#202020",
+                fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+              },
+            }
+          : undefined,
         selectable: false,
         focusable: false,
         interactionWidth: 0,
