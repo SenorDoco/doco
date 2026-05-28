@@ -86,12 +86,12 @@ export function PerspectiveFrame({
         )}
         style={frameRadiusStyle}
       >
-        {children}
+        <div className="relative z-0 h-full w-full overflow-hidden">{children}</div>
         {lifecycleFilter ? <LifecycleFilterPanel spec={lifecycleFilter} /> : null}
         <div
           aria-hidden
           className={cn(
-            "neu-surface pointer-events-none absolute inset-0 z-[60] rounded-b-lg rounded-tl-none border border-border",
+            "neu-surface pointer-events-none absolute inset-0 z-[80] rounded-b-lg rounded-tl-none border border-border",
             frameRadiusClass,
           )}
           style={frameRadiusStyle}
