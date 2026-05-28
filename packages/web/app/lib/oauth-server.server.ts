@@ -37,7 +37,10 @@ const REFRESH_TOKEN_PREFIX = "doco_rt_";
 const CLIENT_ID_PREFIX = "doco_client_";
 
 const AUTH_CODE_TTL_SECONDS = 60;
-const ACCESS_TOKEN_TTL_SECONDS = 60 * 60; // 1h
+// 24h. Safe to keep long: opaque tokens are DB-checked on every request
+// (revoked = false AND expires_at > now()) and revocable via /oauth/revoke,
+// so there's no JWT-style revocation-lag window from a longer lifetime.
+const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60; // 60d
 const DOCO_ROLES = ["reader", "author", "approver", "owner"] as const;
 

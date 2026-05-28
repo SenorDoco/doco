@@ -620,7 +620,7 @@ Doco, OAuth is still the path — project tokens cannot widen.
 
 ## Refreshing
 
-Access tokens last 1 hour. When you get a 401, refresh:
+Access tokens last 24 hours. When you get a 401, refresh:
 
 \`\`\`
 POST ${baseUrl}/oauth/token
