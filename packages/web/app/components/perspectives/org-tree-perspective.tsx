@@ -199,7 +199,7 @@ function OrgTreeInner({
     const edges: Edge[] = layout.edges.map((e) => ({
       ...e,
       type: "smoothstep",
-      pathOptions: { borderRadius: 20, offset: 20 },
+      pathOptions: { borderRadius: 0, offset: 20 },
       animated: false,
       style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: 0.6 },
       markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
