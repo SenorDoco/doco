@@ -338,6 +338,7 @@ export function OverviewGraph({
   const positionCacheRef = useRef<Map<string, Point>>(new Map());
   const flowInstanceRef = useRef<FlowInstance | null>(null);
   const initialFocusAppliedRef = useRef<string | null>(null);
+  const defaultFocusAppliedRef = useRef(false);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
@@ -786,18 +787,15 @@ export function OverviewGraph({
     [],
   );
   const initialFocusFlowNodeId = useMemo(() => {
-    if (!initialFocusId) return null;
-    return flowNodes.some((node) => node.id === initialFocusId) ? initialFocusId : null;
-  }, [flowNodes, initialFocusId]);
+    const targetId = initialFocusId ?? effectiveCenterId;
+    if (!targetId) return null;
+    return flowNodes.some((node) => node.id === targetId) ? targetId : null;
+  }, [flowNodes, initialFocusId, effectiveCenterId]);
 
-  useEffect(() => {
-    if (!initialFocusFlowNodeId) return;
-    if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
-    const instance = flowInstanceRef.current;
-    if (!instance?.fitView) return;
-    const frame = requestAnimationFrame(() => {
+  const fitInitialFocusNode = useCallback(
+    (instance: FlowInstance, nodeId: string) => {
       instance.fitView?.({
-        nodes: [{ id: initialFocusFlowNodeId }],
+        nodes: [{ id: nodeId }],
         padding: 0,
         minZoom: 1,
         maxZoom: 1,
@@ -805,10 +803,28 @@ export function OverviewGraph({
       });
       const next = instance.getViewport?.();
       if (next) updateViewport(next);
-      initialFocusAppliedRef.current = initialFocusFlowNodeId;
+    },
+    [updateViewport],
+  );
+
+  useEffect(() => {
+    if (!initialFocusFlowNodeId) return;
+    const hasExplicitFocus = Boolean(initialFocusId);
+    if (hasExplicitFocus) {
+      if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
+    } else if (defaultFocusAppliedRef.current) {
+      return;
+    }
+    const instance = flowInstanceRef.current;
+    if (!instance?.fitView) return;
+    const frame = requestAnimationFrame(() => {
+      fitInitialFocusNode(instance, initialFocusFlowNodeId);
+      if (hasExplicitFocus) initialFocusAppliedRef.current = initialFocusFlowNodeId;
+      else defaultFocusAppliedRef.current = true;
+      hasFitRef.current = true;
     });
     return () => cancelAnimationFrame(frame);
-  }, [initialFocusFlowNodeId, updateViewport]);
+  }, [initialFocusFlowNodeId, initialFocusId, fitInitialFocusNode]);
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
@@ -843,18 +859,18 @@ export function OverviewGraph({
               flowInstanceRef.current = instance;
               if (!hasFitRef.current) {
                 if (initialFocusFlowNodeId) {
+                  fitInitialFocusNode(instance, initialFocusFlowNodeId);
+                  if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
+                  else defaultFocusAppliedRef.current = true;
+                  hasFitRef.current = true;
+                } else if (!initialFocusId && renderedNodes.length > 0) {
                   instance.fitView?.({
-                    nodes: [{ id: initialFocusFlowNodeId }],
-                    padding: 0,
-                    minZoom: 1,
-                    maxZoom: 1,
+                    ...GRAPH_FIT_VIEW_OPTIONS,
+                    nodes: renderedNodes.map((node) => ({ id: node.id })),
                     duration: 0,
                   });
-                  initialFocusAppliedRef.current = initialFocusFlowNodeId;
-                } else {
-                  instance.fitView?.(GRAPH_FIT_VIEW_OPTIONS);
+                  hasFitRef.current = true;
                 }
-                hasFitRef.current = true;
               }
               const next = instance.getViewport?.();
               if (next) updateViewport(next);
