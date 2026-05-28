@@ -1,6 +1,8 @@
 import {
+  type SlackRecentMessage,
   buildSlackAppMentionResponse,
   fetchSlackConversationContext,
+  getSlackBotUserId,
   postSlackMessage,
   verifySlackRequest,
 } from "~/lib/slack.server";
@@ -35,10 +37,12 @@ export async function action({ request }: { request: Request }) {
 
   const event = payload.event;
 
-  if (payload.type === "event_callback" && shouldReplyToSlackEvent(event)) {
+  if (payload.type === "event_callback" && shouldProcessSlackEvent(event)) {
     const teamId = payload.team_id;
     const channelId = event?.channel;
     if (teamId && channelId && !event?.bot_id && !event?.subtype) {
+      const explicitReply = shouldReplyToSlackEvent(event);
+      const implicitReplyCandidate = shouldInspectSlackImplicitReplyEvent(event);
       const threadTs = slackReplyThreadTs(event);
       const recentMessages = shouldFetchSlackConversationContext(event)
         ? await fetchSlackConversationContext({
@@ -48,6 +52,13 @@ export async function action({ request }: { request: Request }) {
             ...(threadTs ? { threadTs } : {}),
           })
         : [];
+      const botUserId = implicitReplyCandidate ? await getSlackBotUserId(teamId) : null;
+      if (
+        !explicitReply &&
+        !shouldTreatSlackMessageAsImplicitReply(event, recentMessages, botUserId)
+      ) {
+        return Response.json({ ok: true });
+      }
       const text = await buildSlackAppMentionResponse({
         workspaceId: teamId,
         channelId,
@@ -89,6 +100,10 @@ function slackReplyThreadTs(event: SlackEventPayload | undefined): string | null
   return event.thread_ts;
 }
 
+function shouldProcessSlackEvent(event: SlackEventPayload | undefined): boolean {
+  return shouldReplyToSlackEvent(event) || shouldInspectSlackImplicitReplyEvent(event);
+}
+
 export function shouldReplyToSlackEvent(event: SlackEventPayload | undefined): boolean {
   if (event?.type === "app_mention") return true;
   if (event?.type !== "message") return false;
@@ -98,7 +113,66 @@ export function shouldReplyToSlackEvent(event: SlackEventPayload | undefined): b
 export function shouldFetchSlackConversationContext(event: SlackEventPayload | undefined): boolean {
   if (!event) return false;
   if (event.type === "app_mention") return true;
-  return event.channel_type === "im" || event.channel_type === "app_home";
+  return (
+    event.channel_type === "im" ||
+    event.channel_type === "app_home" ||
+    shouldInspectSlackImplicitReplyEvent(event)
+  );
+}
+
+export function shouldInspectSlackImplicitReplyEvent(
+  event: SlackEventPayload | undefined,
+): boolean {
+  if (event?.type !== "message") return false;
+  if (!slackReplyThreadTs(event)) return false;
+  return event.channel_type === "channel" || event.channel_type === "group";
+}
+
+export function shouldTreatSlackMessageAsImplicitReply(
+  event: SlackEventPayload | undefined,
+  recentMessages: SlackRecentMessage[],
+  botUserId: string | null,
+): boolean {
+  if (!event || !shouldInspectSlackImplicitReplyEvent(event)) return false;
+  if (!isThreadRootFromSenorDoco(event, recentMessages, botUserId)) return false;
+  return looksDirectedAtThreadBot(event?.text ?? "");
+}
+
+function isThreadRootFromSenorDoco(
+  event: SlackEventPayload,
+  recentMessages: SlackRecentMessage[],
+  botUserId: string | null,
+): boolean {
+  const threadTs = slackReplyThreadTs(event);
+  const root = recentMessages.find((message) => message.ts === threadTs);
+  if (!root) return false;
+  return Boolean(botUserId && root.userId === botUserId);
+}
+
+function looksDirectedAtThreadBot(text: string): boolean {
+  const cleanText = text
+    .replace(/<@[A-Z0-9]+>/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleanText) return false;
+  const lower = cleanText.toLowerCase();
+  if (/^(thanks|thank you|thx|ok|okay|got it|perfect|cool|nice|great)[\s!.,]*$/.test(lower)) {
+    return false;
+  }
+  return (
+    /^(yes|yeah|yep|sure|please|no|nope)[\s!.,]*$/i.test(cleanText) ||
+    cleanText.includes("?") ||
+    /\b(you|your|yours|that|this|it|those|they|them)\b/i.test(cleanText) ||
+    /\b(not\s+looking\s+(nice|good)|looks?\s+(bad|ugly|messy)|hard\s+to\s+read|line\s+breaks?)\b/i.test(
+      cleanText,
+    ) ||
+    /\b(add|show|explain|summarize|fix|format|rewrite|create|update|change|invite|link|open|try|tell|answer|continue|include|exclude|remove|again|same|also)\b/i.test(
+      cleanText,
+    ) ||
+    /\b(doco|docos?|neuron|neurons?|decision|intent|action|rule|log|reference|principal|policy)\b/i.test(
+      cleanText,
+    )
+  );
 }
 
 export function isSlackRetryRequest(request: Request): boolean {
