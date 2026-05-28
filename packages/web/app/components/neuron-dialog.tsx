@@ -7,6 +7,7 @@ import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.ser
 
 interface NeuronDialogProps {
   detail: NeuronDialogDetail | null;
+  globalPageRank?: number | null;
   loading: boolean;
   error: string | null;
   lifecycleUpdating: LifecycleStage | null;
@@ -41,6 +42,10 @@ function formatValue(value: unknown): string {
   }
 }
 
+function formatGlobalPageRank(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(6) : "-";
+}
+
 function lifecycleButtonClass(detail: NeuronDialogDetail, stage: LifecycleStage, active: boolean) {
   const base =
     "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-border px-3 text-[11px] font-semibold capitalize";
@@ -71,6 +76,7 @@ function DocoSourceLine({ doco }: { doco: NeuronDialogDetail["doco"] | null | un
 
 export function NeuronDialog({
   detail,
+  globalPageRank,
   loading,
   error,
   lifecycleUpdating,
@@ -190,6 +196,8 @@ export function NeuronDialog({
                 <dd>{displayDate(detail.updated_at)}</dd>
                 <dt className="text-muted-foreground">Role</dt>
                 <dd>{detail.user_role ?? "none"}</dd>
+                <dt className="text-muted-foreground">Global PageRank</dt>
+                <dd className="font-mono">{formatGlobalPageRank(globalPageRank)}</dd>
               </dl>
             </section>
 
