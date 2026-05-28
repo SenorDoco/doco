@@ -6,6 +6,7 @@
 //   op=<op>[,<op>,...]       comma-separated op-type filter
 //   by=<collaborator_id>        events authored by a given Principal
 //   since=<ISO8601>          inclusive lower bound (event.at >= since)
+//   before=<ISO8601>         exclusive pagination cursor (event.at < before)
 //   until=<ISO8601>          inclusive upper bound (event.at <= until)
 //   limit=<int>              cap response size (default 200, max 1000)
 //
@@ -48,6 +49,7 @@ export async function loader({
   const entity_type = url.searchParams.get("entity_type") ?? undefined;
   const by = url.searchParams.get("by") ?? undefined;
   const since = url.searchParams.get("since") ?? undefined;
+  const before = url.searchParams.get("before") ?? undefined;
   const until = url.searchParams.get("until") ?? undefined;
   const opParam = url.searchParams.get("op");
   let op: AuditOp[] | undefined;
@@ -77,14 +79,19 @@ export async function loader({
     limit = Math.min(n, 1000);
   }
 
-  const events = await readAuditEvents(dir, {
-    entity_id,
-    entity_type,
-    by,
-    op,
-    since,
-    until,
-    limit,
-  });
+  const events = await readAuditEvents(
+    dir,
+    {
+      entity_id,
+      entity_type,
+      by,
+      op,
+      since,
+      before,
+      until,
+      limit,
+    },
+    meta.docoId,
+  );
   return Response.json({ ok: true, count: events.length, events });
 }
