@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getStreetBezierPath } from "../stable-labeled-edge-path";
 
 describe("getStreetBezierPath", () => {
-  it("rounds separated forward bends with a 14px curve radius", () => {
+  it("routes separated forward bends without a forced curve radius", () => {
     const [path, labelX, labelY] = getStreetBezierPath({
       sourceX: 0,
       sourceY: 0,
@@ -13,14 +13,14 @@ describe("getStreetBezierPath", () => {
       targetPosition: Position.Left,
     });
 
-    expect(path).toContain("Q 70,0 70,14");
-    expect(path).toContain("Q 70,56 84,56");
+    expect(path).toBe("M 0,0 L 14,0 L 70,0 L 70,56 L 126,56 L 140,56");
+    expect(path).not.toContain(" Q ");
     expect(path).not.toContain(" C ");
     expect(labelX).toBe(70);
     expect(labelY).toBe(28);
   });
 
-  it("routes tight U-turns through 14px rounded detours", () => {
+  it("routes tight U-turns through square detours", () => {
     const [path] = getStreetBezierPath({
       sourceX: 100,
       sourceY: 0,
@@ -30,9 +30,8 @@ describe("getStreetBezierPath", () => {
       targetPosition: Position.Left,
     });
 
-    expect(path).toContain("Q 142,0 142,14");
-    expect(path).toContain("Q 142,56 128,56");
-    expect(path).toContain("Q 66,0 80,0");
+    expect(path).toBe("M 100,0 L 114,0 L 142,0 L 142,56 L 66,56 L 66,0 L 80,0");
+    expect(path).not.toContain(" Q ");
     expect(path).not.toContain(" C ");
   });
 

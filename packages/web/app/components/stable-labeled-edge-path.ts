@@ -1,11 +1,10 @@
 import { Position } from "@xyflow/react";
 
 const EDGE_STREET_PX = 14;
-const EDGE_MIN_CURVE_RADIUS_PX = 14;
 const EDGE_MIN_CONTROL_PX = 20;
 const EDGE_MAX_CONTROL_PX = 180;
-const EDGE_MIN_BEND_SEGMENT_PX = EDGE_MIN_CURVE_RADIUS_PX * 2;
-const EDGE_DETOUR_PX = EDGE_MIN_CURVE_RADIUS_PX * 4;
+const EDGE_MIN_BEND_SEGMENT_PX = EDGE_STREET_PX * 2;
+const EDGE_DETOUR_PX = EDGE_STREET_PX * 4;
 
 interface StreetBezierPathArgs {
   sourceX: number;
@@ -63,47 +62,14 @@ function pushPoint(points: Point[], point: Point) {
   if (!previous || !samePoint(previous, point)) points.push(point);
 }
 
-function roundedPolylinePath(points: Point[], radius: number): string {
+function polylinePath(points: Point[]): string {
   if (points.length < 2) return "";
 
   let path = `M ${points[0].x},${points[0].y}`;
-  for (let index = 1; index < points.length - 1; index++) {
-    const previous = points[index - 1];
-    const current = points[index];
-    const next = points[index + 1];
-    const previousVector = normalize(current.x - previous.x, current.y - previous.y, {
-      x: 1,
-      y: 0,
-    });
-    const nextVector = normalize(next.x - current.x, next.y - current.y, { x: 1, y: 0 });
-    const previousDistance = Math.hypot(current.x - previous.x, current.y - previous.y);
-    const nextDistance = Math.hypot(next.x - current.x, next.y - current.y);
-    const cross = previousVector.x * nextVector.y - previousVector.y * nextVector.x;
-    const dot = previousVector.x * nextVector.x + previousVector.y * nextVector.y;
-
-    if (
-      Math.abs(cross) < 0.001 ||
-      dot > 0.999 ||
-      previousDistance < radius ||
-      nextDistance < radius
-    ) {
-      path += ` L ${current.x},${current.y}`;
-      continue;
-    }
-
-    const before = {
-      x: current.x - previousVector.x * radius,
-      y: current.y - previousVector.y * radius,
-    };
-    const after = {
-      x: current.x + nextVector.x * radius,
-      y: current.y + nextVector.y * radius,
-    };
-    path += ` L ${before.x},${before.y} Q ${current.x},${current.y} ${after.x},${after.y}`;
+  for (let index = 1; index < points.length; index++) {
+    const point = points[index];
+    path += ` L ${point.x},${point.y}`;
   }
-
-  const last = points[points.length - 1];
-  path += ` L ${last.x},${last.y}`;
   return path;
 }
 
@@ -141,7 +107,7 @@ function pointWith(primary: "x" | "y", primaryValue: number, secondaryValue: num
     : { x: secondaryValue, y: primaryValue };
 }
 
-function roundedStreetPath({
+function orthogonalStreetPath({
   sourceX,
   sourceY,
   sourceDirection,
@@ -210,7 +176,7 @@ function roundedStreetPath({
   pushPoint(points, targetStreet);
   pushPoint(points, target);
 
-  const path = roundedPolylinePath(points, EDGE_MIN_CURVE_RADIUS_PX);
+  const path = polylinePath(points);
   const label = labelPointForPolyline(points);
   return [path, label.x, label.y];
 }
@@ -229,7 +195,7 @@ export function getStreetBezierPath({
   const street = Math.min(EDGE_STREET_PX, distance / 3);
   const sourceDirection = unitForPosition(sourcePosition, normalize(dx, dy, { x: 1, y: 0 }));
   const targetDirection = unitForPosition(targetPosition, normalize(-dx, -dy, { x: -1, y: 0 }));
-  const roundedPath = roundedStreetPath({
+  const streetPath = orthogonalStreetPath({
     sourceX,
     sourceY,
     sourceDirection,
@@ -237,7 +203,7 @@ export function getStreetBezierPath({
     targetY,
     targetDirection,
   });
-  if (roundedPath) return roundedPath;
+  if (streetPath) return streetPath;
 
   const sourceStreet = pointAt(sourceX, sourceY, sourceDirection, street);
   const targetStreet = pointAt(targetX, targetY, targetDirection, street);
