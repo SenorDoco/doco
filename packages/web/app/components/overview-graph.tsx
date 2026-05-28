@@ -20,7 +20,7 @@ import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
-import { StreetBezierEdge } from "~/components/stable-labeled-edge";
+import { CurvedBezierEdge } from "~/components/stable-labeled-edge";
 import {
   highestRankedNodeId,
   selectMeasuredPersonalizedNodeIds,
@@ -761,7 +761,7 @@ export function OverviewGraph({
         id: `${link.source}-${link.target}-${index}`,
         source: link.source,
         target: link.target,
-        type: "streetBezier",
+        type: "curvedBezier",
         selectable: false,
         focusable: false,
         interactionWidth: 0,
@@ -785,7 +785,7 @@ export function OverviewGraph({
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode, edgeStub: EdgeStubNode }), []);
   const edgeTypes = useMemo(
-    () => ({ fadingPlaceholder: FadingPlaceholderEdge, streetBezier: StreetBezierEdge }),
+    () => ({ fadingPlaceholder: FadingPlaceholderEdge, curvedBezier: CurvedBezierEdge }),
     [],
   );
   const initialFocusFlowNodeId = useMemo(() => {

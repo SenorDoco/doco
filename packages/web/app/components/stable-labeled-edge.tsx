@@ -1,6 +1,11 @@
-import { BaseEdge, type Edge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
+import {
+  BaseEdge,
+  type Edge,
+  EdgeLabelRenderer,
+  type EdgeProps,
+  getBezierPath,
+} from "@xyflow/react";
 import type { CSSProperties } from "react";
-import { getStreetBezierPath } from "./stable-labeled-edge-path";
 
 export interface StableLabeledEdgeData extends Record<string, unknown> {
   label?: string | null;
@@ -13,9 +18,9 @@ export interface StableLabeledEdgeData extends Record<string, unknown> {
 }
 
 export type StableLabeledEdgeModel = Edge<StableLabeledEdgeData>;
-export type StreetBezierEdgeModel = Edge<Record<string, unknown>>;
+export type CurvedBezierEdgeModel = Edge<Record<string, unknown>>;
 
-export function StreetBezierEdge({
+export function CurvedBezierEdge({
   id,
   sourceX,
   sourceY,
@@ -26,8 +31,8 @@ export function StreetBezierEdge({
   markerEnd,
   interactionWidth,
   style,
-}: EdgeProps<StreetBezierEdgeModel>) {
-  const [path] = getStreetBezierPath({
+}: EdgeProps<CurvedBezierEdgeModel>) {
+  const [path] = getBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -66,7 +71,7 @@ export function StableLabeledBezierEdge({
   data,
   style,
 }: EdgeProps<StableLabeledEdgeModel>) {
-  const [path, labelX, labelY] = getStreetBezierPath({
+  const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
