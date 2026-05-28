@@ -7,6 +7,7 @@ import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
+import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { captureGuidancePolicy } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -46,17 +47,21 @@ export async function action({
     ? await resolvePrincipalIdForCollaborator(ctx.meta.docoId, ctx.me.id)
     : null;
 
+  const draft = stampAuthenticatedCreator(
+    {
+      policy,
+      body_md,
+      authored_by_principal_id: authorPrincipalId ?? undefined,
+    },
+    ctx.me?.id,
+  );
+
   const result = await captureGuidancePolicy(
     docoDir,
     ctx.meta.docoId,
     ownerSlug,
     docoSlug,
-    {
-      policy,
-      body_md,
-      authored_by_principal_id: authorPrincipalId ?? undefined,
-      created_by_collaborator_id: ctx.me?.id ?? undefined,
-    },
+    draft,
     docoHost,
   );
   if ("error" in result) return Response.json(result, { status: result.status ?? 400 });

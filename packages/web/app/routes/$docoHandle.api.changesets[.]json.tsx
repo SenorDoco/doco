@@ -5,6 +5,7 @@
 // contracts then interpret those relations for rendering.
 
 import { getEntity, roleAtLeast, withClient } from "@doco/db";
+import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
   type CaptureError,
   type EntityPatch,
@@ -283,7 +284,7 @@ async function createNeuron(
   if (!op.body || typeof op.body !== "object" || Array.isArray(op.body)) {
     return { op_index: index, op: "create", ok: false, error: "create.body must be an object." };
   }
-  const draft = { ...op.body };
+  const draft = stampAuthenticatedCreator({ ...op.body }, ctx.actorId);
   if (entry.fillFromAuth) {
     await entry.fillFromAuth(draft, ctx.me, ctx.docoId);
   }

@@ -80,6 +80,9 @@ describe("/<doco>/api/policies.json", () => {
       request: jsonRequest({
         policy_kind: "guidance",
         policy: "Use qualified doco labels.",
+        created_by: "principal_spoofed",
+        created_by_principal_id: "principal_spoofed",
+        created_by_collaborator_id: "collaborator_spoofed",
       }),
       params: { docoHandle: "bpms" },
     } as never);

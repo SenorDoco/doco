@@ -1292,9 +1292,9 @@ Common API-facing fields:
 
 Read responses may expose stored graph fields such as wanted_by,
 actors, stakeholders, actor_id, and decided_by. created_by is
-collaborator/API-key provenance and is filled from authentication.
-Those are storage field names; when writing via doco_api, use the
-API-facing principal-id fields above.
+collaborator/API-key provenance derived from the authenticated session
+or token. Never send created_by; when writing via doco_api, use the
+API-facing principal-id fields above only for domain actors.
 
 ### Inline body cheatsheet (post directly — no spec round trip needed)
 

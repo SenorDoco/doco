@@ -11,6 +11,7 @@ import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
+import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
   type NeuronAuthoringPolicyDraft,
   captureGuidancePolicy,
@@ -113,17 +114,20 @@ export async function action({
       ReturnType<typeof captureGuidancePolicy | typeof captureNeuronAuthoringPolicy>
     >;
     if (entityType === "guidance_policy") {
+      const draft = stampAuthenticatedCreator(
+        {
+          policy,
+          body_md,
+          authored_by_principal_id: authorPrincipalId ?? undefined,
+        },
+        ctx.me?.id,
+      );
       captured = await captureGuidancePolicy(
         docoDir,
         ctx.meta.docoId,
         ownerSlug,
         docoSlug,
-        {
-          policy,
-          body_md,
-          authored_by_principal_id: authorPrincipalId ?? undefined,
-          created_by_collaborator_id: ctx.me?.id ?? undefined,
-        },
+        draft,
         docoHost,
       );
     } else {
@@ -138,18 +142,20 @@ export async function action({
       const onViolationRaw = String(form.get("on_violation") ?? "block");
       const on_violation =
         onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
-      const draft: NeuronAuthoringPolicyDraft = {
-        policy,
-        body_md,
-        evaluation_kind: evaluationKind,
-        on_violation,
-        authored_by_principal_id: authorPrincipalId ?? undefined,
-        created_by_collaborator_id: ctx.me?.id ?? undefined,
-        ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
-        ...(evaluationKind === "probabilistic"
-          ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
-          : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
-      };
+      const draft: NeuronAuthoringPolicyDraft = stampAuthenticatedCreator(
+        {
+          policy,
+          body_md,
+          evaluation_kind: evaluationKind,
+          on_violation,
+          authored_by_principal_id: authorPrincipalId ?? undefined,
+          ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
+          ...(evaluationKind === "probabilistic"
+            ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
+            : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
+        },
+        ctx.me?.id,
+      );
       captured = await captureNeuronAuthoringPolicy(
         docoDir,
         ctx.meta.docoId,

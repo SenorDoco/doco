@@ -85,13 +85,16 @@ describe("generic eval capture API", () => {
     mocks.withTransaction.mockImplementation((fn) => fn({}));
   });
 
-  it("uses the authenticated collaborator as Eval creator when the doco has no Principal neurons", async () => {
+  it("uses the authenticated collaborator as Eval creator and ignores client provenance", async () => {
     const response = await action({
       request: evalRequest({
         eval: "unit exact slug normalization returns canonical handle",
         kind: "unit",
         criterion: { kind: "exact" },
         expected: "codex-prod-test",
+        created_by: "principal_spoofed",
+        created_by_principal_id: "principal_spoofed",
+        created_by_collaborator_id: "collaborator_spoofed",
       }),
       params: { docoHandle: "acme", type: "evals" } as never,
     });

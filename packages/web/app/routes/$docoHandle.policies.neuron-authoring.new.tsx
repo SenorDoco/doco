@@ -7,6 +7,7 @@ import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
+import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
   type NeuronAuthoringPolicyDraft,
   captureNeuronAuthoringPolicy,
@@ -60,18 +61,20 @@ export async function action({
   const authorPrincipalId = ctx.me?.id
     ? await resolvePrincipalIdForCollaborator(ctx.meta.docoId, ctx.me.id)
     : null;
-  const draft: NeuronAuthoringPolicyDraft = {
-    policy,
-    body_md,
-    evaluation_kind: evaluationKind,
-    on_violation,
-    authored_by_principal_id: authorPrincipalId ?? undefined,
-    created_by_collaborator_id: ctx.me?.id ?? undefined,
-    ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
-    ...(evaluationKind === "probabilistic"
-      ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
-      : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
-  };
+  const draft: NeuronAuthoringPolicyDraft = stampAuthenticatedCreator(
+    {
+      policy,
+      body_md,
+      evaluation_kind: evaluationKind,
+      on_violation,
+      authored_by_principal_id: authorPrincipalId ?? undefined,
+      ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
+      ...(evaluationKind === "probabilistic"
+        ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
+        : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
+    },
+    ctx.me?.id,
+  );
   const docoHost = new URL(request.url).origin;
   const result = await captureNeuronAuthoringPolicy(
     docoDir,
