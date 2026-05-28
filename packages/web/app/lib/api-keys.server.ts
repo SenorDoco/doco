@@ -115,7 +115,7 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
   const docoHandles = await loadDocoHandles([...allDocoIds]);
   const orgHandles = await loadOrgHandles([...allOrgIds]);
 
-  return result.rows.map((row) => {
+  const rows: ApiKeyRow[] = result.rows.map((row) => {
     const grants: ApiKeyScopeGrant[] = [];
     for (const orgId of row.granted_org_ids ?? []) {
       const handle = orgHandles.get(orgId);
@@ -164,6 +164,17 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
       scope_grants: grants,
     };
   });
+
+  // Most recently used first; never-used keys fall to the bottom,
+  // ordered among themselves by most recent grant.
+  rows.sort((a, b) => {
+    const aUsed = a.last_used_at ? Date.parse(a.last_used_at) : 0;
+    const bUsed = b.last_used_at ? Date.parse(b.last_used_at) : 0;
+    if (bUsed !== aUsed) return bUsed - aUsed;
+    return Date.parse(b.granted_at) - Date.parse(a.granted_at);
+  });
+
+  return rows;
 }
 
 async function loadDocoHandles(ids: string[]): Promise<Map<string, string>> {
