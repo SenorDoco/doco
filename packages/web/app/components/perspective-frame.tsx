@@ -73,14 +73,14 @@ export function PerspectiveFrame({
   fullscreen,
   children,
 }: PerspectiveFrameProps) {
-  const sizeClass = fillHeight ? "min-h-0 flex-1" : "h-[65vh] min-h-[480px]";
+  const sizeClass = fillHeight ? "min-h-0 flex-1" : "h-[calc(65vh+2px)] min-h-[482px]";
   const frameRadiusClass = rightTabAttached ? "!rounded-tr-none" : "rounded-tr-lg";
   const frameRadiusStyle = rightTabAttached ? { borderTopRightRadius: 0 } : undefined;
   return (
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
         className={cn(
-          "relative z-50 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none border border-transparent bg-card text-card-foreground",
+          "relative z-50 -m-px w-[calc(100%+2px)] overflow-hidden rounded-b-lg rounded-tl-none border border-transparent bg-card text-card-foreground",
           frameRadiusClass,
           sizeClass,
         )}
