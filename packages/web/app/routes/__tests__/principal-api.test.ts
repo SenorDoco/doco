@@ -116,7 +116,7 @@ describe("principal API", () => {
           neuron_type: "principal",
           name: "Visitor",
           created_by: "user_author",
-          lifecycle: "active",
+          lifecycle: "accepted",
         }),
       }),
     );
@@ -144,7 +144,7 @@ describe("principal API", () => {
         after: expect.objectContaining({
           name: "Visitor",
           body_md: "Human site visitor — no Doco account required.",
-          lifecycle: "active",
+          lifecycle: "accepted",
         }),
       }),
     );

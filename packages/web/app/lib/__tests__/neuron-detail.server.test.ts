@@ -41,7 +41,7 @@ describe("loadNeuronDialogDetail", () => {
         id: "principal_01TEST",
         primary_text: "Renan Peixoto",
         body_text: "Person. Head of Engineering. Reports to Alexander Torrenegra (CEO).",
-        lifecycle: "active",
+        lifecycle: "accepted",
         raw_json: JSON.stringify({ name: "Renan Peixoto" }),
         created_at: "2026-05-26T17:01:00.000Z",
         updated_at: "2026-05-26T17:01:00.000Z",
@@ -73,7 +73,7 @@ describe("loadNeuronDialogDetail", () => {
         id: "decision_01TEST",
         primary_text: "Use display labels\n\nRationale follows.",
         body_text: null,
-        lifecycle: "active",
+        lifecycle: "accepted",
         raw_json: JSON.stringify({}),
         created_at: "2026-05-26T17:01:00.000Z",
         updated_at: "2026-05-26T17:01:00.000Z",
@@ -130,7 +130,7 @@ describe("loadNeuronDialogDetail", () => {
                 entity_type: "action",
                 summary: "Live action",
                 name: null,
-                lifecycle: "active",
+                lifecycle: "accepted",
               },
               {
                 id: "action_01RETIRED",
@@ -150,7 +150,7 @@ describe("loadNeuronDialogDetail", () => {
               id: "decision_01TEST",
               primary_text: "Use lifecycle badges",
               body_text: null,
-              lifecycle: "active",
+              lifecycle: "accepted",
               raw_json: JSON.stringify({}),
               created_at: "2026-05-26T17:01:00.000Z",
               updated_at: "2026-05-26T17:01:00.000Z",
@@ -169,7 +169,7 @@ describe("loadNeuronDialogDetail", () => {
 
     expect(detail?.outgoing[0]).toMatchObject({
       other_id: "action_01ACTIVE",
-      other_lifecycle: "active",
+      other_lifecycle: "accepted",
     });
     expect(detail?.incoming[0]).toMatchObject({
       other_id: "action_01RETIRED",

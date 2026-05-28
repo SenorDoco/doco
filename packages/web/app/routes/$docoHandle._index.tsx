@@ -698,7 +698,7 @@ export default function DocoHome({
         if (!neuron) throw new Error(`Neuron not found: ${id}`);
         setNeuronDialog({ detail: neuron, loading: false, error: null });
         setGraphState((prev) => graphWithCenter(prev, neuron.id));
-        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "active"]));
+        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "accepted"]));
       } catch (err) {
         setNeuronDialog((prev) => ({
           detail: options.keepDetail ? (prev?.detail ?? null) : null,
@@ -790,7 +790,7 @@ export default function DocoHome({
   const handleApprovalLifecycleTransition = useCallback(
     async (
       node: ApprovalPerspectiveNode,
-      stage: Extract<LifecycleStage, "active" | "drafting">,
+      stage: Extract<LifecycleStage, "accepted" | "drafting">,
     ) => {
       if (!node.update_url) {
         throw new Error("Lifecycle updates are not available for this neuron type.");

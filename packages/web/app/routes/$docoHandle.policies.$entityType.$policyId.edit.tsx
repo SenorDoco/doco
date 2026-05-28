@@ -312,7 +312,7 @@ export default function EditPolicy({
                       <input
                         name="fires_when_neuron_lifecycle"
                         defaultValue={initialFiresOn}
-                        placeholder="active"
+                        placeholder="accepted"
                         className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                       />
                     </label>

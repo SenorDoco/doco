@@ -7,23 +7,23 @@
  * diluted the meaning of color overall.
  */
 
-// Canonical lifecycle has four stages: drafting, proposed, active, retired.
+// Canonical lifecycle has four stages: drafting, proposed, accepted, retired.
 // Per project owner the color mapping is, in that order:
 //   drafting  → yellow  (provisional / work in motion)
 //   proposed → blue    (under review)
-//   active   → black   (settled, in force)
+//   accepted → black   (settled, in force)
 //   retired  → red     (no longer in use)
 export const LIFECYCLE_COLOR: Record<string, string> = {
   drafting: "#ca8a04", // yellow-600 — provisional
   proposed: "#2563eb", // blue-600 — under review
-  active: "#171717", // gray-900 — settled and in force
+  accepted: "#171717", // gray-900 — settled and in force
   retired: "#dc2626", // red-600 — no longer in use
 };
 
 export const LIFECYCLE_FALLBACK_COLOR = "#737373";
 
 export function lifecycleColor(lifecycle: string | null | undefined): string {
-  return LIFECYCLE_COLOR[lifecycle ?? "active"] ?? LIFECYCLE_FALLBACK_COLOR;
+  return LIFECYCLE_COLOR[lifecycle ?? "accepted"] ?? LIFECYCLE_FALLBACK_COLOR;
 }
 
 /**
@@ -48,7 +48,7 @@ export function textOnLifecycle(lifecycle: string | null | undefined): string {
 
 /** Human-readable label for a lifecycle stage. */
 export function lifecycleLabel(lifecycle: string | null | undefined): string {
-  return (lifecycle ?? "active").replaceAll("_", " ");
+  return (lifecycle ?? "accepted").replaceAll("_", " ");
 }
 
 const NEURON_TYPE_PLURAL: Record<string, string> = {

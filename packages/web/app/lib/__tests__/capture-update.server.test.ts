@@ -63,7 +63,7 @@ describe("updateEntity", () => {
       entity_type: "state",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "active",
+      lifecycle: "accepted",
       body_md: "",
       data: {
         id: STATE_ID,
@@ -71,7 +71,7 @@ describe("updateEntity", () => {
         neuron_type: "state",
         state: "Original state name",
         kind: "intermediate",
-        lifecycle: "active",
+        lifecycle: "accepted",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -117,14 +117,14 @@ describe("updateEntity", () => {
       entity_type: "idea",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "active",
+      lifecycle: "accepted",
       body_md: "",
       data: {
         id: IDEA_ID,
         doco_id: DOCO_ID,
         neuron_type: "idea",
         idea: "Original idea name",
-        lifecycle: "active",
+        lifecycle: "accepted",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -164,7 +164,7 @@ describe("updateEntity", () => {
       entity_type: "decision",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "active",
+      lifecycle: "accepted",
       body_md: "",
       data: {
         id: DECISION_ID,
@@ -173,7 +173,7 @@ describe("updateEntity", () => {
         decision: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
-        lifecycle: "active",
+        lifecycle: "accepted",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -236,6 +236,34 @@ describe("updateEntity", () => {
     expect(vi.mocked(upsertEntity).mock.calls.at(-1)?.[0].data).not.toMatchObject({
       created_by: "principal_legacy_creator",
     });
+  });
+
+  it('coerces the deprecated lifecycle alias "active" to "accepted" on capture', async () => {
+    const result = await captureDecision(
+      "/tmp/doco",
+      DOCO_ID,
+      "test",
+      "doco",
+      {
+        decision: "Adopt the new vocabulary",
+        question: "What lifecycle is stored?",
+        chosen: "accepted",
+        lifecycle: "active",
+        decided_by_principal_id: "principal_decider",
+        created_by_user_id: "user_alice",
+      },
+      "https://doco.test",
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_type: "decision",
+        lifecycle: "accepted",
+        data: expect.objectContaining({ lifecycle: "accepted" }),
+      }),
+      expect.anything(),
+    );
   });
 
   it("ignores legacy created_by_principal_id patches", async () => {

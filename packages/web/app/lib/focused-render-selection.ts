@@ -32,8 +32,8 @@ const PERSONALIZED_SELECTION_LOG_THRESHOLD_MS = 16;
 let personalizedSelectionMeasureIndex = 0;
 
 function lifecycleRank(lifecycle: string | null | undefined): number {
-  switch (lifecycle ?? "active") {
-    case "active":
+  switch (lifecycle ?? "accepted") {
+    case "accepted":
       return 0;
     case "proposed":
       return 1;

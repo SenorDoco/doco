@@ -133,7 +133,7 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
         `SELECT id, policy, lifecycle, body_md
            FROM guidance_policies
           WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'active') = 'active'
+            AND COALESCE(lifecycle, 'accepted') = 'accepted'
           ORDER BY created_at DESC`,
         [d.id],
       ),
@@ -141,7 +141,7 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
         `SELECT id, policy, lifecycle, body_md
            FROM neuron_authoring_policies
           WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'active') = 'active'
+            AND COALESCE(lifecycle, 'accepted') = 'accepted'
           ORDER BY created_at DESC`,
         [d.id],
       ),
@@ -181,7 +181,7 @@ async function loadDocoPoliciesForPrincipal(
           `SELECT id, policy, lifecycle, body_md
              FROM guidance_policies
             WHERE doco_id = $1
-              AND COALESCE(lifecycle, 'active') = 'active'
+              AND COALESCE(lifecycle, 'accepted') = 'accepted'
             ORDER BY created_at DESC`,
           [d.id],
         ),
@@ -189,7 +189,7 @@ async function loadDocoPoliciesForPrincipal(
           `SELECT id, policy, lifecycle, body_md
              FROM neuron_authoring_policies
             WHERE doco_id = $1
-              AND COALESCE(lifecycle, 'active') = 'active'
+              AND COALESCE(lifecycle, 'accepted') = 'accepted'
             ORDER BY created_at DESC`,
           [d.id],
         ),

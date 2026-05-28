@@ -108,7 +108,7 @@ export async function loadOrgTreeData(
       // Migration 037 dropped `summary` from principals; the
       // description shown under the label is now the first non-blank
       // line of `body_md`.
-      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle, body_md, data
+      `SELECT id, name, COALESCE(lifecycle, 'accepted') AS lifecycle, body_md, data
          FROM principals
         WHERE doco_id = $1
         ORDER BY created_at`,
@@ -126,7 +126,7 @@ export async function loadOrgTreeData(
       name: r.name,
       role,
       type,
-      lifecycle: r.lifecycle ?? "active",
+      lifecycle: r.lifecycle ?? "accepted",
       reports_to,
       href: `/${handle}/principal/${r.id}`,
     };
