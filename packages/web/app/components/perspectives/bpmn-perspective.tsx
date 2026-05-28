@@ -587,12 +587,12 @@ export function BpmnPerspective({
     return { nodes, edges };
   }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
 
-  // Sub-process drill-downs. An Action in the render window that serves
-  // an Intent beyond its own pool is a BPMN collapsed sub-process; both
-  // the "+" marker (via `subprocessNodeIds`) and the dashed link (via
-  // `subprocessEdges`) are gated on the sub-process pool being rendered,
-  // so they appear and disappear together as the window shifts.
-  const { subprocessNodeIds, subprocessEdges } = useMemo(() => {
+  // Sub-process drill-down links. The "+" marker and its reserved room
+  // are decided in layOutBpmn (stable, data-level, rides on the node's
+  // `data.isSubprocess`). Here we build only the dashed links, which are
+  // render-gated: one per rendered Action → each served Intent whose
+  // pool header is actually mounted, so a link never dangles off-screen.
+  const subprocessEdges = useMemo<FlowEdge[]>(() => {
     const renderedIntentPools = new Set<string>();
     const headerIdByIntent = new Map<string, string>();
     for (const pool of renderedPools) {
@@ -600,12 +600,9 @@ export function BpmnPerspective({
       renderedIntentPools.add(pool.intent_id);
       headerIdByIntent.set(pool.intent_id, `pool-header:${pool.id}`);
     }
-    const ids = new Set<string>();
     const edges: FlowEdge[] = [];
     for (const node of renderedNodes) {
       const targets = subprocessTargetIntents(node, renderedIntentPools);
-      if (targets.length === 0) continue;
-      ids.add(node.id);
       for (const intentId of targets) {
         const headerId = headerIdByIntent.get(intentId);
         if (!headerId) continue;
@@ -635,7 +632,7 @@ export function BpmnPerspective({
         });
       }
     }
-    return { subprocessNodeIds: ids, subprocessEdges: edges };
+    return edges;
   }, [renderedNodes, renderedPools]);
 
   const flowNodes = useMemo<FlowNode[]>(() => {
@@ -668,11 +665,8 @@ export function BpmnPerspective({
         opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
         transition: "opacity 500ms ease",
       };
-      const baseData = subprocessNodeIds.has(node.id)
-        ? { ...node.data, isSubprocess: true }
-        : node.data;
-      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, data: baseData, style }];
-      return [{ ...node, data: { ...baseData, referenceNumber }, style }];
+      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, style }];
+      return [{ ...node, data: { ...node.data, referenceNumber }, style }];
     });
     return [...windowed, ...externalEdgeStubs.nodes];
   }, [
@@ -685,7 +679,6 @@ export function BpmnPerspective({
     renderWindowOpacityById,
     openLaneNeuron,
     externalEdgeStubs.nodes,
-    subprocessNodeIds,
   ]);
   const flowEdges = useMemo<FlowEdge[]>(
     () => [
@@ -1131,6 +1124,11 @@ const POOL_GAP = 16;
 const SUBPROCESS_EDGE_COLOR = "#64748b"; // slate-500
 const SUBPROCESS_SOURCE_HANDLE = "subprocess";
 const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
+// Vertical room reserved at the bottom of a sub-process Action so the
+// "+" marker sits inside the box without colliding with the label. The
+// layout grows the node by this much; the node component pads its label
+// area by the same amount so text never enters the marker strip.
+const SUBPROCESS_MARKER_ROOM = 20;
 
 function bpmnGraphRankNodes(
   pools: readonly BpmnPool[],
@@ -1192,11 +1190,29 @@ function layOutBpmn(
   // keeps vertical alignment of columns across lanes. Milestones use
   // their own fixed compact size and don't count toward the lane-sizing
   // max (they live in a shorter band of their own).
+  // Sub-process candidacy is a stable, data-level property: an Action
+  // that serves an Intent — beyond its own pool — which is itself a pool
+  // here. It drives both the reserved bottom room (below) and the "+"
+  // marker, so a node's size and glyph don't flicker as the render
+  // window shifts. Only the dashed link is render-gated (in the
+  // component), since it needs the target pool header actually mounted.
+  const poolIntentIds = new Set<string>();
+  for (const pool of pools) if (pool.intent_id) poolIntentIds.add(pool.intent_id);
+  const subprocessTargetsByNode = new Map<string, string[]>();
+
   const sizeByNode = new Map<string, { width: number; height: number }>();
   let maxNodeWidth = NODE_WIDTH;
   let maxNodeHeight = NODE_HEIGHT;
   for (const node of nodes) {
     const size = sizeForNode(node);
+    const subTargets = subprocessTargetIntents(node, poolIntentIds);
+    if (subTargets.length > 0) {
+      subprocessTargetsByNode.set(node.id, subTargets);
+      // Grow the box so the "+" marker has its own strip at the bottom,
+      // clear of the label. The component pads the label by the same
+      // amount; stacking/lane-height math below already keys off size.
+      size.height += SUBPROCESS_MARKER_ROOM;
+    }
     sizeByNode.set(node.id, size);
     if (size.width > maxNodeWidth) maxNodeWidth = size.width;
     if (size.height > maxNodeHeight) maxNodeHeight = size.height;
@@ -1340,7 +1356,11 @@ function layOutBpmn(
         position: { x, y },
         parentId: laneNodeId(node.laneId),
         extent: "parent",
-        data: { node, isCenter: node.id === centerId },
+        data: {
+          node,
+          isCenter: node.id === centerId,
+          isSubprocess: subprocessTargetsByNode.has(node.id),
+        },
         draggable: false,
         selectable: false,
         connectable: false,
@@ -1791,11 +1811,12 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
 
 // BPMN collapsed sub-process marker — a small bordered square with a
 // centered "+" (OMG BPMN 2.0 §10.2.4: a collapsed sub-process is a task
-// glyph with a "+" marker). It sits centered just *below* the node's
-// type/lifecycle badge row (which already owns the bottom-center band),
-// in the inter-row gap, so the two never overlap at any node width. The
-// dashed drill-down link originates from the co-located source handle,
-// so it visibly leaves the "+" on its way down to the sub-process pool.
+// glyph with a "+" marker). It sits *inside* the box, centered on the
+// bottom edge. The Action reserves SUBPROCESS_MARKER_ROOM of bottom
+// padding (BpmnTaskNode) over a box the layout grew by the same amount,
+// so the marker never overlaps the label. The dashed drill-down link
+// leaves the node's bottom-center handle — just under the marker — on
+// its way down to the sub-process pool.
 function SubprocessMarker({ stroke }: { stroke: string }) {
   return (
     <>
@@ -1803,7 +1824,7 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
         aria-hidden="true"
         style={{
           position: "absolute",
-          bottom: -26,
+          bottom: 4,
           left: "50%",
           transform: "translateX(-50%)",
           width: 16,
@@ -1829,7 +1850,7 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
         id={SUBPROCESS_SOURCE_HANDLE}
         position={Position.Bottom}
         isConnectable={false}
-        style={{ bottom: -18, background: "transparent", border: "none" }}
+        style={{ background: "transparent", border: "none" }}
       />
     </>
   );
@@ -1855,6 +1876,12 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         alignItems: "center",
         justifyContent: "center",
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        // Reserve a bottom strip for the collapsed-subprocess "+" so the
+        // centered label never sits under it. The layout grew the box by
+        // the same amount; border-box keeps the padding inside that box
+        // instead of adding height on top of it.
+        paddingBottom: data.isSubprocess ? SUBPROCESS_MARKER_ROOM : undefined,
+        boxSizing: data.isSubprocess ? "border-box" : undefined,
       }}
     >
       <BpmnBadgeRow data={data} />
