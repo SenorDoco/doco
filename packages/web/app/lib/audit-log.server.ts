@@ -88,6 +88,8 @@ export interface ReadAuditFilters {
   op?: AuditOp | AuditOp[];
   by?: string;
   since?: string;
+  /** Exclusive upper bound for cursor pagination: event.at < before. */
+  before?: string;
   until?: string;
   limit?: number;
 }
@@ -108,6 +110,7 @@ export async function readAuditEvents(
     op: ops,
     by: filters.by,
     since: filters.since,
+    before: filters.before,
     until: filters.until,
     limit: filters.limit,
   });

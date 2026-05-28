@@ -1,6 +1,6 @@
 // /<doco-handle>/activity — paginated audit-events firehose.
 // Reads from the per-Doco audit log (decision_01KRKESCBTYG4005VMPKYNYR53)
-// with filterable query params: entity_type, op, by, since, until, limit.
+// with filterable query params: entity_type, op, by, since, before, until, limit.
 
 import { entityUrl } from "@doco/shared";
 import type { EntityId } from "@doco/shared";
@@ -35,13 +35,14 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForRead(request, params);
+  const { docoId, docoSlug, handle, me, ownerSlug } = await loadDocoRouteForRead(request, params);
   const dir = docoPath(handle);
 
   const url = new URL(request.url);
   const entity_type = url.searchParams.get("entity_type") ?? undefined;
   const by = url.searchParams.get("by") ?? undefined;
   const since = url.searchParams.get("since") ?? undefined;
+  const before = url.searchParams.get("before") ?? undefined;
   const until = url.searchParams.get("until") ?? undefined;
   const opParam = url.searchParams.get("op");
   let op: AuditOp[] | undefined;
@@ -59,14 +60,18 @@ export async function loader({
     if (Number.isFinite(n) && n > 0) limit = Math.min(n, 1000);
   }
 
-  const events = await readAuditEvents(dir, { entity_type, by, op, since, until, limit });
+  const events = await readAuditEvents(
+    dir,
+    { entity_type, by, op, since, before, until, limit },
+    docoId,
+  );
   return {
     ownerSlug,
     docoSlug,
     handle,
     me,
     events,
-    filters: { entity_type, by, since, until, op: opParam },
+    filters: { entity_type, by, since, before, until, op: opParam },
   };
 }
 
@@ -159,6 +164,7 @@ function FilterChips({
     entity_type?: string;
     by?: string;
     since?: string;
+    before?: string;
     until?: string;
     op?: string | null;
   };
