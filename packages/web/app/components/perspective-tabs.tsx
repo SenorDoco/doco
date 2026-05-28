@@ -130,7 +130,7 @@ function PerspectiveTab({
   //     tabs remain under the raised frame border, while the active tab
   //     rises above it to own the join.
   const tabClass = cn(
-    "neu-surface-open-bottom relative top-0 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
+    "neu-surface-open-bottom relative top-px inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
     active ? "z-[60]" : "z-40",
     isProposedTab
       ? active
@@ -248,7 +248,7 @@ function PerspectiveSettingsMenu({
         // perspective tabs' height, so Safari can't render us shorter
         // than them. Without this, `items-end` on the nav was
         // bottom-aligning a naturally-shorter chevron tab.
-        className="neu-surface-open-bottom relative top-0 z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+        className="neu-surface-open-bottom relative top-px z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
