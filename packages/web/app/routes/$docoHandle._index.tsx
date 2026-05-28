@@ -542,9 +542,10 @@ export default function DocoHome({
 
   useEffect(() => {
     setGraphState((prev) => {
-      const preferredCenter = prev.nodes.some((node) => node.id === prev.centerId)
-        ? prev.centerId
-        : graphData.centerId;
+      const preferredCenter =
+        graphData.nodes.length === 0 || prev.nodes.some((node) => node.id === prev.centerId)
+          ? prev.centerId
+          : graphData.centerId;
       return graphWithCenter(graphData, preferredCenter);
     });
   }, [graphData]);
