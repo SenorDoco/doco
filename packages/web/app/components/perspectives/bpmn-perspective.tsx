@@ -148,7 +148,8 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
-const BPMN_RENDER_NODE_BUDGET = 20;
+const BPMN_RENDER_NODE_BUDGET = 100;
+const BPMN_RENDER_FIRST_DEGREE_MIN = 50;
 const BPMN_RENDER_EDGE_BUDGET = 700;
 const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
 
@@ -322,18 +323,23 @@ export function BpmnPerspective({
       poolFromIntent ?? (effectiveCenterId ? nodeByFullId.get(effectiveCenterId)?.pool_id : null)
     );
   }, [pools, effectiveCenterId, nodeByFullId]);
-  const targetRenderedNodeIds = useMemo(
-    () =>
-      selectMeasuredPersonalizedNodeIds(
-        filteredNodes,
-        links,
-        effectiveCenterId,
-        pageRankMap,
-        BPMN_RENDER_NODE_BUDGET,
-        { docoHandle, perspective: "bpmn" },
-      ),
-    [filteredNodes, links, effectiveCenterId, pageRankMap, docoHandle],
-  );
+  const targetRenderedNodeIds = useMemo(() => {
+    const selectionLinks = linksWithFocusedPoolMembership(
+      pools,
+      filteredNodes,
+      links,
+      effectiveCenterId,
+    );
+    return selectMeasuredPersonalizedNodeIds(
+      filteredNodes,
+      selectionLinks,
+      effectiveCenterId,
+      pageRankMap,
+      BPMN_RENDER_NODE_BUDGET,
+      { docoHandle, perspective: "bpmn" },
+      { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN },
+    );
+  }, [pools, filteredNodes, links, effectiveCenterId, pageRankMap, docoHandle]);
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
