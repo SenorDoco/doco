@@ -10,6 +10,7 @@ import { SiteHeader } from "~/components/site-header";
 import { captureRule } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
+import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
 
 interface IntentOption {
   id: string;
@@ -70,6 +71,9 @@ export async function action({
   )
     ? (enforcedByRaw as "runtime" | "review" | "manual")
     : "review";
+  const authorPrincipalId = me?.id
+    ? await resolvePrincipalIdForCollaborator(meta.docoId, me.id)
+    : null;
 
   const result = await captureRule(
     dir,
@@ -82,8 +86,8 @@ export async function action({
       intent_ids: intentId ? [intentId] : [],
       severity,
       enforced_by: enforcedBy,
-      authored_by_principal_id: me?.id ?? undefined,
-      created_by_principal_id: me?.id ?? undefined,
+      authored_by_principal_id: authorPrincipalId ?? undefined,
+      created_by_collaborator_id: me?.id ?? undefined,
     },
     new URL(request.url).origin,
   );

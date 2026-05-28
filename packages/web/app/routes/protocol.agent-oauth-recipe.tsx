@@ -490,12 +490,12 @@ stakeholders_principal_ids    # Intent stakeholders, array of principal ids
 actor_principal_id            # Action/Log actor; auth fills this
 decided_by_principal_id       # Decision maker; auth fills this
 authored_by_principal_id      # Rule/Eval/Policy author; auth fills this
-created_by_principal_id       # Creator override where supported
 \`\`\`
 
 Read responses may expose stored graph fields such as \`wanted_by\`,
-\`actors\`, \`stakeholders\`, \`actor_id\`, \`decided_by\`, and
-\`created_by\`. Those are storage field names; POST/PATCH bodies should
+\`actors\`, \`stakeholders\`, \`actor_id\`, and \`decided_by\`.
+\`created_by\` is collaborator/API-key provenance and is filled from
+authentication. Those are storage field names; POST/PATCH bodies should
 use the API-facing principal-id fields above.
 
 ### Scope enforcement

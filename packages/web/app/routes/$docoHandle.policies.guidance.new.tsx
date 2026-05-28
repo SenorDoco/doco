@@ -11,6 +11,7 @@ import { captureGuidancePolicy } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { derivePolicySummary } from "~/lib/policy-copy";
+import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
 
 interface ActionError {
   error: string;
@@ -41,6 +42,9 @@ export async function action({
   const policy = derivePolicySummary(body_md);
   if (!policy) return Response.json({ error: "Policy is required." }, { status: 400 });
   const docoHost = new URL(request.url).origin;
+  const authorPrincipalId = ctx.me?.id
+    ? await resolvePrincipalIdForCollaborator(ctx.meta.docoId, ctx.me.id)
+    : null;
 
   const result = await captureGuidancePolicy(
     docoDir,
@@ -50,8 +54,8 @@ export async function action({
     {
       policy,
       body_md,
-      authored_by_principal_id: ctx.me?.id,
-      created_by_principal_id: ctx.me?.id,
+      authored_by_principal_id: authorPrincipalId ?? undefined,
+      created_by_collaborator_id: ctx.me?.id ?? undefined,
     },
     docoHost,
   );

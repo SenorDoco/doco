@@ -1289,12 +1289,12 @@ Common API-facing fields:
 - actor_principal_id: Action/Log actor; auth fills this when omitted.
 - decided_by_principal_id: Decision maker; auth fills this when omitted.
 - authored_by_principal_id: Rule/Eval/Policy author; auth fills this when omitted.
-- created_by_principal_id: creator override where supported.
 
 Read responses may expose stored graph fields such as wanted_by,
-actors, stakeholders, actor_id, decided_by, and created_by. Those are
-storage field names; when writing via doco_api, use the API-facing
-principal-id fields above.
+actors, stakeholders, actor_id, and decided_by. created_by is
+collaborator/API-key provenance and is filled from authentication.
+Those are storage field names; when writing via doco_api, use the
+API-facing principal-id fields above.
 
 ### Inline body cheatsheet (post directly — no spec round trip needed)
 
@@ -1317,9 +1317,9 @@ etc., not \`summary\`.
 - Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], preceded_by?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
 - Rule:      { rule*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
 - Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
-- Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
-- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], sequence_to?[], created_by_principal_id? }
-- Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
+- Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[] }
+- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], sequence_to?[] }
+- Idea:      { idea*, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
 - Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
 - Policy (Neuron-authoring, owner-only): same endpoint with policy_kind*("neuron_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 

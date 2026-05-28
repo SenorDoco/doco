@@ -256,6 +256,75 @@ async function loadDialogRelatedDetails(
   }));
 }
 
+const COLLABORATOR_METADATA_KEYS = ["created_by", "updated_by"] as const;
+
+async function resolveCollaboratorLabelsForActorIds(
+  c: QueryClient,
+  docoId: string,
+  actorIds: string[],
+): Promise<Map<string, string>> {
+  const requested = Array.from(new Set(actorIds.filter(Boolean)));
+  if (requested.length === 0) return new Map();
+
+  const rows = (
+    await c.query<{
+      actor_id: string;
+      collaborator_id: string | null;
+      label: string | null;
+    }>(
+      `WITH input(actor_id) AS (
+         SELECT unnest($2::text[])
+       ),
+       resolved AS (
+         SELECT i.actor_id,
+                COALESCE(
+                  CASE WHEN left(i.actor_id, 13) = 'collaborator_' THEN i.actor_id END,
+                  CASE WHEN left(p.created_by, 13) = 'collaborator_' THEN p.created_by END,
+                  CASE WHEN left(p.data->>'owner_id', 13) = 'collaborator_' THEN p.data->>'owner_id' END,
+                  CASE WHEN left(p.data->>'created_by', 13) = 'collaborator_' THEN p.data->>'created_by' END
+                ) AS collaborator_id
+           FROM input i
+           LEFT JOIN principals p ON p.doco_id = $1 AND p.id = i.actor_id
+       )
+       SELECT r.actor_id,
+              r.collaborator_id,
+              COALESCE(c.github_login, c.email, c.id) AS label
+         FROM resolved r
+         LEFT JOIN collaborators c ON c.id = r.collaborator_id`,
+      [docoId, requested],
+    )
+  ).rows;
+
+  return new Map(
+    rows
+      .map((row) => [row.actor_id, row.label ?? row.collaborator_id] as const)
+      .filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+  );
+}
+
+async function resolveCollaboratorMetadata(
+  c: QueryClient,
+  docoId: string,
+  frontmatter: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const actorIds = COLLABORATOR_METADATA_KEYS.flatMap((key) => {
+    const value = frontmatter[key];
+    return typeof value === "string" ? [value] : [];
+  });
+  if (actorIds.length === 0) return frontmatter;
+
+  const labels = await resolveCollaboratorLabelsForActorIds(c, docoId, actorIds);
+  const next = { ...frontmatter };
+  for (const key of COLLABORATOR_METADATA_KEYS) {
+    const value = next[key];
+    if (typeof value !== "string") continue;
+    const label = labels.get(value);
+    if (label) next[key] = label;
+    else if (value.startsWith("principal_")) next[key] = "Unknown collaborator";
+  }
+  return next;
+}
+
 export async function loadNeuronDialogDetail(
   c: QueryClient,
   meta: { docoId: string; ownerId: string },
@@ -298,7 +367,11 @@ export async function loadNeuronDialogDetail(
   ).rows[0];
   if (!row) return null;
 
-  const frontmatter = parseFrontmatter(row.raw_json);
+  const frontmatter = await resolveCollaboratorMetadata(
+    c,
+    meta.docoId,
+    parseFrontmatter(row.raw_json),
+  );
   const name =
     (cfg.primaryField === "name" && row.primary_text ? row.primary_text : null) ??
     stringField(frontmatter, "name") ??

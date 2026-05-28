@@ -1,4 +1,3 @@
-import { listPrincipals } from "@doco/db";
 import { makeCaptureRoute } from "~/lib/api-capture-factory.server";
 import {
   type ActionDraft,
@@ -20,6 +19,7 @@ import {
   captureRule,
   captureState,
 } from "~/lib/capture.server";
+import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
 
 export interface MeLike {
   id: string | null;
@@ -46,35 +46,6 @@ export interface RegistryEntry {
 }
 
 /**
- * Resolve the authenticated collaborator to a Principal NEURON id in
- * this doco. *_principal_id columns reference principals.id and
- * actively reject collaborator_* values, so we can't just stamp
- * `me.id` (which is a collaborator id) into them.
- */
-const principalForCollaboratorCache = new Map<string, string>();
-export async function resolvePrincipalIdForCollaborator(
-  docoId: string,
-  collaboratorId: string,
-): Promise<string | null> {
-  const key = `${docoId}:${collaboratorId}`;
-  const cached = principalForCollaboratorCache.get(key);
-  if (cached) return cached;
-  const rows = await listPrincipals(docoId);
-  const own = rows.find((r) => {
-    const data = r.data ?? {};
-    return (
-      (typeof data.created_by === "string" && data.created_by === collaboratorId) ||
-      (typeof data.owner_id === "string" && data.owner_id === collaboratorId)
-    );
-  });
-  const role = rows.find((r) => r.name === "user") ?? rows.find((r) => r.name === "human") ?? null;
-  const pick = own ?? role;
-  if (!pick) return null;
-  principalForCollaboratorCache.set(key, pick.id);
-  return pick.id;
-}
-
-/**
  * Self-healing reconciliation of every `*_principal_id` field on the
  * draft. Two failure modes the validator otherwise rejects:
  *
@@ -91,6 +62,7 @@ export async function reconcilePrincipalFields<TDraft extends object>(
 ): Promise<void> {
   if (!me.id) return;
   const mutable = draft as Record<string, unknown>;
+  mutable.created_by_collaborator_id = me.id;
   const mePrincipalPromise = resolvePrincipalIdForCollaborator(docoId, me.id);
 
   for (const field of singularFields) {
@@ -118,13 +90,18 @@ export async function reconcilePrincipalFields<TDraft extends object>(
 }
 
 async function fillEvalAuthorFromAuth(draft: EvalDraft, me: MeLike, docoId: string): Promise<void> {
-  if (!me.id || draft.authored_by_principal_id) return;
+  if (!me.id) return;
+  draft.created_by_collaborator_id = me.id;
+  if (draft.authored_by_principal_id) return;
   const authorPrincipalId = await resolvePrincipalIdForCollaborator(docoId, me.id);
   if (authorPrincipalId) {
     draft.authored_by_principal_id = authorPrincipalId;
-    return;
   }
-  draft.created_by_collaborator_id = me.id;
+}
+
+function fillCollaboratorCreatorFromAuth(draft: object, me: MeLike): void {
+  if (!me.id) return;
+  (draft as Record<string, unknown>).created_by_collaborator_id = me.id;
 }
 
 function entry<TDraft>(
@@ -157,10 +134,7 @@ function entry<TDraft>(
 // stay separate from domain captures.
 export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   decisions: entry<DecisionDraft>("decisions", "decision", captureDecision, (draft, me, docoId) =>
-    reconcilePrincipalFields(draft, docoId, me, [
-      "decided_by_principal_id",
-      "created_by_principal_id",
-    ]),
+    reconcilePrincipalFields(draft, docoId, me, ["decided_by_principal_id"]),
   ),
   intents: entry<IntentDraft>("intents", "intent", captureIntent, (draft, me, docoId) =>
     reconcilePrincipalFields(
@@ -171,36 +145,25 @@ export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
       ["actors_principal_ids", "stakeholders_principal_ids"],
     ),
   ),
-  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, (draft, me, docoId) =>
-    reconcilePrincipalFields(draft, docoId, me, ["created_by_principal_id"]),
-  ),
+  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, fillCollaboratorCreatorFromAuth),
   actions: entry<ActionDraft>("actions", "action", captureAction, (draft, me, docoId) =>
-    reconcilePrincipalFields(
-      draft,
-      docoId,
-      me,
-      ["actor_principal_id", "created_by_principal_id"],
-      ["actors_principal_ids"],
-    ),
+    reconcilePrincipalFields(draft, docoId, me, ["actor_principal_id"], ["actors_principal_ids"]),
   ),
   references: entry<ReferenceDraft>(
     "references",
     "reference",
     captureReference,
-    (draft, me, docoId) => reconcilePrincipalFields(draft, docoId, me, ["created_by_principal_id"]),
+    fillCollaboratorCreatorFromAuth,
   ),
   rules: entry<RuleDraft>("rules", "rule", captureRule, (draft, me, docoId) =>
-    reconcilePrincipalFields(draft, docoId, me, [
-      "authored_by_principal_id",
-      "created_by_principal_id",
-    ]),
+    reconcilePrincipalFields(draft, docoId, me, ["authored_by_principal_id"]),
   ),
   logs: entry<LogDraft>("logs", "log", captureLog, (draft, me, docoId) =>
-    reconcilePrincipalFields(draft, docoId, me, ["actor_principal_id", "created_by_principal_id"]),
+    reconcilePrincipalFields(draft, docoId, me, ["actor_principal_id"]),
   ),
   evals: entry<EvalDraft>("evals", "eval", captureEval, fillEvalAuthorFromAuth),
   states: entry<StateDraft>("states", "state", captureState, (draft, me, docoId) =>
-    reconcilePrincipalFields(draft, docoId, me, ["created_by_principal_id"]),
+    fillCollaboratorCreatorFromAuth(draft, me),
   ),
 };
 

@@ -21,6 +21,7 @@ import {
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { derivePolicySummary } from "~/lib/policy-copy";
+import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
 
 type EntityType = "guidance_policy" | "neuron_authoring_policy";
 type ArticleKind = "deterministic" | "probabilistic";
@@ -105,6 +106,9 @@ export async function action({
     if (!policy) return Response.json({ error: "Policy is required." }, { status: 400 });
     const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
+    const authorPrincipalId = ctx.me?.id
+      ? await resolvePrincipalIdForCollaborator(ctx.meta.docoId, ctx.me.id)
+      : null;
     let captured: Awaited<
       ReturnType<typeof captureGuidancePolicy | typeof captureNeuronAuthoringPolicy>
     >;
@@ -117,8 +121,8 @@ export async function action({
         {
           policy,
           body_md,
-          authored_by_principal_id: ctx.me?.id,
-          created_by_principal_id: ctx.me?.id,
+          authored_by_principal_id: authorPrincipalId ?? undefined,
+          created_by_collaborator_id: ctx.me?.id ?? undefined,
         },
         docoHost,
       );
@@ -139,8 +143,8 @@ export async function action({
         body_md,
         evaluation_kind: evaluationKind,
         on_violation,
-        authored_by_principal_id: ctx.me?.id,
-        created_by_principal_id: ctx.me?.id,
+        authored_by_principal_id: authorPrincipalId ?? undefined,
+        created_by_collaborator_id: ctx.me?.id ?? undefined,
         ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
         ...(evaluationKind === "probabilistic"
           ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }

@@ -14,6 +14,7 @@ import {
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { derivePolicySummary } from "~/lib/policy-copy";
+import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
 
 type ArticleKind = "deterministic" | "probabilistic";
 
@@ -56,13 +57,16 @@ export async function action({
   const onViolationRaw = String(form.get("on_violation") ?? "block");
   const on_violation =
     onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
+  const authorPrincipalId = ctx.me?.id
+    ? await resolvePrincipalIdForCollaborator(ctx.meta.docoId, ctx.me.id)
+    : null;
   const draft: NeuronAuthoringPolicyDraft = {
     policy,
     body_md,
     evaluation_kind: evaluationKind,
     on_violation,
-    authored_by_principal_id: ctx.me?.id,
-    created_by_principal_id: ctx.me?.id,
+    authored_by_principal_id: authorPrincipalId ?? undefined,
+    created_by_collaborator_id: ctx.me?.id ?? undefined,
     ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
     ...(evaluationKind === "probabilistic"
       ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
