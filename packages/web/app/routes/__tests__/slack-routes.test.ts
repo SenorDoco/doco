@@ -475,6 +475,96 @@ describe("Slack integration routes", () => {
     });
   });
 
+  it("continues adjacent channel replies right after Señor Doco without requiring a mention", async () => {
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("The last neuron was updated just now.");
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "Outside my lane — I work on your docos.",
+        ts: "1700000000.000000",
+        userId: "U999",
+        botId: "B999",
+      },
+    ]);
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "channel",
+            channel: "C123",
+            user: "U123",
+            text: "How long ago was the last neuron updated?",
+            ts: "1700000010.000100",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.fetchSlackConversationContext).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      latestTs: "1700000010.000100",
+    });
+    expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      chatUserId: "U123",
+      messageText: "How long ago was the last neuron updated?",
+      recentMessages: [
+        {
+          text: "Outside my lane — I work on your docos.",
+          ts: "1700000000.000000",
+          userId: "U999",
+          botId: "B999",
+        },
+      ],
+      origin: "https://doco.test",
+    });
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      text: "The last neuron was updated just now.",
+    });
+  });
+
+  it("ignores adjacent channel replies when the previous message is not Señor Doco", async () => {
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "A human just said something.",
+        ts: "1700000000.000000",
+        userId: "U456",
+        botId: null,
+      },
+    ]);
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "channel",
+            channel: "C123",
+            user: "U123",
+            text: "How long ago was the last neuron updated?",
+            ts: "1700000010.000100",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildSlackAppMentionResponse).not.toHaveBeenCalled();
+    expect(mocks.postSlackMessage).not.toHaveBeenCalled();
+  });
+
   it("ignores untagged thread replies when the thread parent is not Señor Doco", async () => {
     mocks.fetchSlackConversationContext.mockResolvedValue([
       {
@@ -565,6 +655,14 @@ describe("Slack integration routes", () => {
       shouldFetchSlackConversationContext({
         type: "message",
         channel_type: "channel",
+        text: "How long ago was the last neuron updated?",
+        ts: "2",
+      }),
+    ).toBe(true);
+    expect(
+      shouldFetchSlackConversationContext({
+        type: "message",
+        channel_type: "channel",
         ts: "2",
         thread_ts: "1",
       }),
@@ -575,6 +673,46 @@ describe("Slack integration routes", () => {
   });
 
   it("identifies implicit Slack thread replies conservatively", () => {
+    expect(
+      shouldInspectSlackImplicitReplyEvent({
+        type: "message",
+        channel_type: "channel",
+        text: "How long ago was the last neuron updated?",
+        ts: "2",
+      }),
+    ).toBe(true);
+    expect(
+      shouldInspectSlackImplicitReplyEvent({
+        type: "message",
+        channel_type: "channel",
+        text: "Lunch is upstairs",
+        ts: "2",
+      }),
+    ).toBe(false);
+    expect(
+      shouldTreatSlackMessageAsImplicitReply(
+        {
+          type: "message",
+          channel_type: "channel",
+          text: "How long ago was the last neuron updated?",
+          ts: "2",
+        },
+        [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
+        "U999",
+      ),
+    ).toBe(true);
+    expect(
+      shouldTreatSlackMessageAsImplicitReply(
+        {
+          type: "message",
+          channel_type: "channel",
+          text: "How long ago was the last neuron updated?",
+          ts: "700",
+        },
+        [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
+        "U999",
+      ),
+    ).toBe(false);
     expect(
       shouldInspectSlackImplicitReplyEvent({
         type: "message",

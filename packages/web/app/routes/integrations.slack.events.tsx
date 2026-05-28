@@ -124,8 +124,9 @@ export function shouldInspectSlackImplicitReplyEvent(
   event: SlackEventPayload | undefined,
 ): boolean {
   if (event?.type !== "message") return false;
-  if (!slackReplyThreadTs(event)) return false;
-  return event.channel_type === "channel" || event.channel_type === "group";
+  if (event.channel_type !== "channel" && event.channel_type !== "group") return false;
+  if (slackReplyThreadTs(event)) return true;
+  return Boolean(event.ts && !event.thread_ts && looksDirectedAtThreadBot(event.text ?? ""));
 }
 
 export function shouldTreatSlackMessageAsImplicitReply(
@@ -134,19 +135,49 @@ export function shouldTreatSlackMessageAsImplicitReply(
   botUserId: string | null,
 ): boolean {
   if (!event || !shouldInspectSlackImplicitReplyEvent(event)) return false;
-  if (!isThreadRootFromSenorDoco(event, recentMessages, botUserId)) return false;
+  if (!isImplicitReplyToSenorDoco(event, recentMessages, botUserId)) return false;
   return looksDirectedAtThreadBot(event?.text ?? "");
 }
 
-function isThreadRootFromSenorDoco(
+function isImplicitReplyToSenorDoco(
   event: SlackEventPayload,
   recentMessages: SlackRecentMessage[],
   botUserId: string | null,
 ): boolean {
+  if (!botUserId) return false;
   const threadTs = slackReplyThreadTs(event);
-  const root = recentMessages.find((message) => message.ts === threadTs);
-  if (!root) return false;
-  return Boolean(botUserId && root.userId === botUserId);
+  if (threadTs) {
+    const root = recentMessages.find((message) => message.ts === threadTs);
+    return isSenorDocoSlackMessage(root, botUserId);
+  }
+  const previous = recentMessages.at(-1);
+  if (!previous || previous.userId !== botUserId) return false;
+  const previousTs = previous.ts;
+  return isRecentSlackMessage(event.ts, previousTs, 10 * 60);
+}
+
+function isSenorDocoSlackMessage(
+  message: SlackRecentMessage | undefined,
+  botUserId: string,
+): boolean {
+  return message?.userId === botUserId;
+}
+
+function isRecentSlackMessage(
+  eventTs: string | undefined,
+  previousTs: string | null | undefined,
+  maxAgeSeconds: number,
+): boolean {
+  const eventSeconds = slackTimestampSeconds(eventTs);
+  const previousSeconds = slackTimestampSeconds(previousTs);
+  if (eventSeconds === null || previousSeconds === null) return true;
+  return eventSeconds >= previousSeconds && eventSeconds - previousSeconds <= maxAgeSeconds;
+}
+
+function slackTimestampSeconds(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function looksDirectedAtThreadBot(text: string): boolean {
