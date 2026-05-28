@@ -424,7 +424,6 @@ function DevicePickerForm({
   const allOrgsSelected = orgs.length > 0 && selectedOrgs.size === orgs.length;
   const noneOrgsSelected = selectedOrgs.size === 0;
   const nothingSelected = selected.size === 0 && selectedOrgs.size === 0;
-  const missingAgentName = agentName.trim().length === 0;
   return (
     <Form method="post" className="space-y-4">
       <input type="hidden" name="user_code" value={userCode} />
@@ -665,12 +664,18 @@ function DevicePickerForm({
         <code>reader</code> only). Owners can grant any role up to and including their own.
       </p>
 
+      {nothingSelected ? (
+        <p className="text-xs text-muted-foreground">
+          Select at least one Doco or organization to approve.
+        </p>
+      ) : null}
+
       <div className="flex gap-2">
         <button
           type="submit"
           name="decision"
           value="approve"
-          disabled={nothingSelected || missingAgentName}
+          disabled={nothingSelected}
           className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           Approve
@@ -679,6 +684,7 @@ function DevicePickerForm({
           type="submit"
           name="decision"
           value="deny"
+          formNoValidate
           className="neu-button rounded-md px-4 py-2 text-sm font-semibold text-foreground"
         >
           Deny
