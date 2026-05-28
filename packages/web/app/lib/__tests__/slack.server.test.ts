@@ -357,6 +357,8 @@ describe("slack.server", () => {
     expect(prompt).toContain("owner for creating Docos or changing policies");
     expect(prompt).toContain("GET /api/v1/docos.json");
     expect(prompt).toContain("GET /<handle>/api/audit.json");
+    expect(prompt).toContain("total_count");
+    expect(prompt).toContain("average_seconds_per_event");
     expect(prompt).toContain("GET /<handle>/api/perspectives.json");
     expect(prompt).toContain("GET /<handle>/api/authoring-contract.json");
     expect(prompt).toContain("Keep the answer under 900 characters");
@@ -465,6 +467,80 @@ describe("slack.server", () => {
         }),
       ]),
     );
+  });
+
+  it("summarizes from collected tool results instead of posting pre-tool progress at the limit", async () => {
+    const createMessage = vi.fn();
+    for (let i = 0; i < 6; i += 1) {
+      createMessage.mockResolvedValueOnce({
+        content: [
+          { type: "text", text: "Let me find the very first event." },
+          {
+            type: "tool_use",
+            id: `toolu_${i}`,
+            name: "doco_api",
+            input: { method: "GET", path: `/bpm26o/api/audit.json?before=${i}` },
+          },
+        ],
+        stop_reason: "tool_use",
+      });
+    }
+    createMessage.mockResolvedValueOnce({
+      content: [
+        {
+          type: "text",
+          text: "I found 300 audit events. The import took 90 seconds, about 0.3 seconds per event.",
+        },
+      ],
+      stop_reason: "end_turn",
+    });
+    const runTool = vi.fn(async (block) => ({
+      result: {
+        type: "tool_result" as const,
+        tool_use_id: block.id,
+        content: JSON.stringify({
+          status: 200,
+          ok: true,
+          body: { total_count: 300, duration_seconds: 90, average_seconds_per_event: 0.3 },
+        }),
+      },
+      preview: "GET /bpm26o/api/audit.json -> 200",
+      ok: true,
+    }));
+
+    const answer = await generateSlackDocoLlmAnswer(
+      {
+        questionText: "How many events did bpm26o import?",
+        overview: false,
+        repair: false,
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "doco",
+            targetId: "doco_01",
+            targetLabel: "test/bpm26o",
+            role: "reader",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+      {
+        createMessage: createMessage as never,
+        runTool,
+      },
+    );
+
+    expect(answer).toBe(
+      "I found 300 audit events. The import took 90 seconds, about 0.3 seconds per event.",
+    );
+    expect(answer).not.toContain("Let me find");
+    expect(runTool).toHaveBeenCalledTimes(6);
+    expect(createMessage).toHaveBeenCalledTimes(7);
+    const finalCall = createMessage.mock.calls.at(-1)?.[0];
+    expect(finalCall?.tools).toBeUndefined();
+    expect(JSON.stringify(finalCall?.messages)).toContain("tool-turn limit");
   });
 
   it("preserves Slack LLM line breaks and repairs inline bullets", async () => {
