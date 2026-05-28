@@ -491,10 +491,6 @@ export default function DocoHome({
   } = loaderData;
 
   const pageRanksMap = useMemo(() => new Map(Object.entries(pageRanks)), [pageRanks]);
-  const bpmnPageRanksMap = useMemo(
-    () => new Map(Object.entries(bpmnGraph?.global_pagerank ?? {})),
-    [bpmnGraph?.global_pagerank],
-  );
   const defaultFocusId = useMemo(
     () =>
       focusedNeuronId ?? (graph ? highestRankedNodeId(graph.nodes, pageRanksMap) : null) ?? docoId,
@@ -519,11 +515,6 @@ export default function DocoHome({
   const [lifecycleUpdating, setLifecycleUpdating] = useState<LifecycleStage | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const clientDialogOverrideRef = useRef(false);
-  const dialogGlobalPageRank = useMemo(() => {
-    const id = neuronDialog?.detail?.id;
-    if (!id) return null;
-    return pageRanksMap.get(id) ?? bpmnPageRanksMap.get(id) ?? null;
-  }, [neuronDialog?.detail?.id, pageRanksMap, bpmnPageRanksMap]);
 
   // While the neuron dialog is open it overlays the right column on
   // wide screens and the whole content area on narrow screens. The
@@ -862,7 +853,6 @@ export default function DocoHome({
     neuronDialog && !isPerspectiveFullscreen ? (
       <NeuronDialog
         detail={neuronDialog.detail}
-        globalPageRank={dialogGlobalPageRank}
         loading={neuronDialog.loading}
         error={neuronDialog.error}
         lifecycleUpdating={lifecycleUpdating}
@@ -1046,7 +1036,6 @@ export default function DocoHome({
                 <div className="absolute bottom-3 right-3 top-3 z-20 w-[min(440px,40%)]">
                   <NeuronDialog
                     detail={neuronDialog.detail}
-                    globalPageRank={dialogGlobalPageRank}
                     loading={neuronDialog.loading}
                     error={neuronDialog.error}
                     lifecycleUpdating={lifecycleUpdating}
