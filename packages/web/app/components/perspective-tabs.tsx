@@ -126,11 +126,11 @@ function PerspectiveTab({
   //     tab top-right). Inner corners stay square so adjacent tabs
   //     don't create visible dips where their rounded tops curve away
   //     from each other.
-  //   * Every tab gets the same open-bottom etched surface. The tabs
-  //     sit 2px lower; inactive tabs remain under the raised frame
-  //     border, while the active tab rises above it to own the join.
+  //   * Every tab gets the same open-bottom etched surface. Inactive
+  //     tabs remain under the raised frame border, while the active tab
+  //     rises above it to own the join.
   const tabClass = cn(
-    "neu-surface-open-bottom relative top-[2px] inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
+    "neu-surface-open-bottom relative top-0 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
     active ? "z-[60]" : "z-40",
     isProposedTab
       ? active
@@ -248,7 +248,7 @@ function PerspectiveSettingsMenu({
         // perspective tabs' height, so Safari can't render us shorter
         // than them. Without this, `items-end` on the nav was
         // bottom-aligning a naturally-shorter chevron tab.
-        className="neu-surface-open-bottom relative top-[2px] z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
+        className="neu-surface-open-bottom relative top-0 z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
