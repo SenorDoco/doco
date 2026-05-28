@@ -44,7 +44,8 @@ interface OrgTreePerspectiveProps {
   visibleLifecycles?: Set<string> | null;
   centerId?: string | null;
   initialFocusId?: string | null;
-  onCenterChange?: (id: string) => void;
+  onCenterChange?: (id: string | null) => void;
+  onPaneClick?: () => void;
   onNeuronClick?: (node: OrgTreeNode) => void;
 }
 
@@ -165,6 +166,7 @@ function OrgTreeInner({
   centerId,
   initialFocusId,
   onCenterChange,
+  onPaneClick,
   onNeuronClick,
 }: OrgTreePerspectiveProps) {
   const filtered = useMemo(() => {
@@ -349,6 +351,7 @@ function OrgTreeInner({
         edges={rfEdges}
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
+        onPaneClick={onPaneClick}
         onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
         onlyRenderVisibleElements
         fitView={!initialFocusFlowNodeId}

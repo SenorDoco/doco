@@ -59,7 +59,7 @@ export interface OverviewGraphLink {
 }
 
 export interface OverviewGraphData {
-  centerId: string;
+  centerId: string | null;
   nodes: OverviewGraphNode[];
   links: OverviewGraphLink[];
   detailUrl: string | null;
@@ -101,7 +101,8 @@ interface OverviewGraphProps extends OverviewGraphData {
    * settle near each other. The parent owns `centerId` state; this
    * callback is how the canvas asks it to update.
    */
-  onCenterChange?: (id: string) => void;
+  onCenterChange?: (id: string | null) => void;
+  onPaneClick?: () => void;
 }
 
 interface FlowViewport {
@@ -321,6 +322,7 @@ export function OverviewGraph({
   onNeuronClick,
   visibleLifecycles: externalVisibleLifecycles,
   onCenterChange,
+  onPaneClick,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -393,15 +395,19 @@ export function OverviewGraph({
     [nodes, visibleLifecycles],
   );
 
-  const effectiveCenterId = useMemo(() => {
+  const focusCenterId = useMemo(() => {
     if (visibleNodes.some((node) => node.id === centerId)) return centerId;
-    return highestRankedNodeId(visibleNodes, pageRanks) ?? centerId;
-  }, [visibleNodes, centerId, pageRanks]);
+    return null;
+  }, [visibleNodes, centerId]);
+  const selectionCenterId = useMemo(
+    () => focusCenterId ?? highestRankedNodeId(visibleNodes, pageRanks) ?? centerId,
+    [focusCenterId, visibleNodes, pageRanks, centerId],
+  );
 
   useEffect(() => {
-    if (!effectiveCenterId || effectiveCenterId === centerId) return;
-    onCenterChange?.(effectiveCenterId);
-  }, [effectiveCenterId, centerId, onCenterChange]);
+    if (!centerId || focusCenterId || !selectionCenterId || selectionCenterId === centerId) return;
+    onCenterChange?.(selectionCenterId);
+  }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
 
   // Diff against the full incoming `nodes` set, not `visibleNodes`, so
   // toggling a lifecycle filter back on doesn't glow nodes that have
@@ -414,21 +420,21 @@ export function OverviewGraph({
     [links, visibleIds],
   );
   const visibleDepthByNodeId = useMemo(
-    () => computeDepthFromCenter(visibleNodes, visibleLinks, effectiveCenterId),
-    [visibleNodes, visibleLinks, effectiveCenterId],
+    () => computeDepthFromCenter(visibleNodes, visibleLinks, focusCenterId),
+    [visibleNodes, visibleLinks, focusCenterId],
   );
   const targetRenderedNodeIds = useMemo(
     () =>
       selectMeasuredPersonalizedNodeIds(
         visibleNodes,
         visibleLinks,
-        effectiveCenterId,
+        selectionCenterId,
         pageRanks,
         OVERVIEW_RENDER_NODE_BUDGET,
         { docoHandle, perspective: "graph" },
         { minFirstDegree: OVERVIEW_RENDER_FIRST_DEGREE_MIN },
       ),
-    [visibleNodes, visibleLinks, effectiveCenterId, pageRanks, docoHandle],
+    [visibleNodes, visibleLinks, selectionCenterId, pageRanks, docoHandle],
   );
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
@@ -436,8 +442,8 @@ export function OverviewGraph({
     () =>
       visibleNodes
         .filter((node) => renderedNodeIds.has(node.id))
-        .map((node) => ({ ...node, is_center: node.id === effectiveCenterId })),
-    [visibleNodes, renderedNodeIds, effectiveCenterId],
+        .map((node) => ({ ...node, is_center: node.id === focusCenterId })),
+    [visibleNodes, renderedNodeIds, focusCenterId],
   );
   const renderedLinks = useMemo(() => {
     const candidates = visibleLinks
@@ -453,10 +459,8 @@ export function OverviewGraph({
           depthBucket(visibleDepthByNodeId.get(b.link.target)),
         );
         if (aDepth !== bDepth) return aDepth - bDepth;
-        const aTouchesCenter =
-          a.link.source === effectiveCenterId || a.link.target === effectiveCenterId;
-        const bTouchesCenter =
-          b.link.source === effectiveCenterId || b.link.target === effectiveCenterId;
+        const aTouchesCenter = a.link.source === focusCenterId || a.link.target === focusCenterId;
+        const bTouchesCenter = b.link.source === focusCenterId || b.link.target === focusCenterId;
         if (aTouchesCenter !== bTouchesCenter) return aTouchesCenter ? -1 : 1;
         const aRank = Math.max(
           pageRanks?.get(a.link.source) ?? 0,
@@ -470,12 +474,16 @@ export function OverviewGraph({
         return a.index - b.index;
       });
     return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
-  }, [visibleLinks, renderedNodeIds, visibleDepthByNodeId, effectiveCenterId, pageRanks]);
+  }, [visibleLinks, renderedNodeIds, visibleDepthByNodeId, focusCenterId, pageRanks]);
   const positions = useMemo(() => {
-    const computed = layoutOverviewGraphNodes(renderedNodes, renderedLinks, effectiveCenterId);
+    const computed = layoutOverviewGraphNodes(
+      renderedNodes,
+      renderedLinks,
+      selectionCenterId ?? "",
+    );
     const cache = positionCacheRef.current;
-    const computedFocus = effectiveCenterId ? computed.get(effectiveCenterId) : undefined;
-    const cachedFocus = effectiveCenterId ? cache.get(effectiveCenterId) : undefined;
+    const computedFocus = selectionCenterId ? computed.get(selectionCenterId) : undefined;
+    const cachedFocus = selectionCenterId ? cache.get(selectionCenterId) : undefined;
     const offset =
       computedFocus && cachedFocus
         ? { x: cachedFocus.x - computedFocus.x, y: cachedFocus.y - computedFocus.y }
@@ -493,7 +501,7 @@ export function OverviewGraph({
       visiblePositions.set(node.id, shifted);
     }
     return visiblePositions;
-  }, [renderedNodes, renderedLinks, effectiveCenterId]);
+  }, [renderedNodes, renderedLinks, selectionCenterId]);
   const nodeById = useMemo(
     () => new Map(renderedNodes.map((node) => [node.id, node])),
     [renderedNodes],
@@ -504,12 +512,12 @@ export function OverviewGraph({
   );
   const MiniMapNode = useMemo(() => makeOverviewMiniMapNode(nodeById), [nodeById]);
   const depthByNodeId = useMemo(
-    () => computeDepthFromCenter(renderedNodes, renderedLinks, effectiveCenterId),
-    [renderedNodes, renderedLinks, effectiveCenterId],
+    () => computeDepthFromCenter(renderedNodes, renderedLinks, focusCenterId),
+    [renderedNodes, renderedLinks, focusCenterId],
   );
   const focalActive = useMemo(
-    () => hasFocalNode(effectiveCenterId, renderedNodes),
-    [effectiveCenterId, renderedNodes],
+    () => hasFocalNode(focusCenterId, renderedNodes),
+    [focusCenterId, renderedNodes],
   );
 
   // Dynamic import — React Flow touches the DOM during module init.
@@ -789,10 +797,10 @@ export function OverviewGraph({
     [],
   );
   const initialFocusFlowNodeId = useMemo(() => {
-    const targetId = initialFocusId ?? effectiveCenterId;
+    const targetId = initialFocusId ?? selectionCenterId;
     if (!targetId) return null;
     return flowNodes.some((node) => node.id === targetId) ? targetId : null;
-  }, [flowNodes, initialFocusId, effectiveCenterId]);
+  }, [flowNodes, initialFocusId, selectionCenterId]);
 
   const fitInitialFocusNode = useCallback(
     (instance: FlowInstance, nodeId: string) => {
@@ -878,6 +886,7 @@ export function OverviewGraph({
               if (next) updateViewport(next);
             }}
             onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+            onPaneClick={onPaneClick}
             onNodeClick={(_event: unknown, node: { id: string }) => {
               const target = nodeById.get(node.id);
               // Change focus without asking React Flow to refit the
