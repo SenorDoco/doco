@@ -12,16 +12,10 @@ import {
   buildSlackDocoAnswerQuery,
   buildSlackLlmUserPrompt,
   cleanSlackMentionText,
-  detectSlackAccessQuestion,
-  detectSlackCountKind,
   detectSlackDocoOverviewQuestion,
-  detectSlackInventoryQuestion,
   detectSlackRepairMessage,
-  formatSlackAccessResponse,
-  formatSlackCountResponse,
   formatSlackDefaultResponse,
   formatSlackDocoAnswerResponse,
-  formatSlackInventoryResponse,
   generateSlackDocoLlmAnswer,
   parseSlackCommandPayload,
   runSlackDocoApiTool,
@@ -164,41 +158,6 @@ describe("slack.server", () => {
     );
   });
 
-  it("detects count questions from Slack mentions", () => {
-    expect(detectSlackCountKind("How many neurons do we have?")).toBe("neurons");
-    expect(detectSlackCountKind("How many nodes do we have?")).toBe("neurons");
-    expect(detectSlackCountKind("how many docos do we have?")).toBe("docos");
-    expect(detectSlackCountKind("count decisions")).toBe("decisions");
-    expect(detectSlackCountKind("What do the docos we have explain?")).toBeNull();
-    expect(detectSlackCountKind("hola")).toBeNull();
-  });
-
-  it("detects inventory and access questions from Slack messages", () => {
-    expect(detectSlackInventoryQuestion("what docos do we have?")).toBe(true);
-    expect(detectSlackInventoryQuestion("What do we have in Doco?")).toBe(true);
-    expect(detectSlackInventoryQuestion("how many docos do we have?")).toBe(false);
-    expect(detectSlackAccessQuestion("Who are you?")).toBe(true);
-    expect(detectSlackAccessQuestion("Who are you? What do you have access to?")).toBe(true);
-    expect(detectSlackAccessQuestion("What do we have in Doco?")).toBe(false);
-  });
-
-  it("formats Slack access answers with the default role and limits", () => {
-    expect(
-      formatSlackAccessResponse([
-        {
-          channelId: "*",
-          channelName: "workspace",
-          targetLevel: "org",
-          targetId: "organization_doco",
-          targetLabel: "doco",
-          role: "approver",
-        },
-      ]),
-    ).toBe(
-      "I’m Señor Doco, Doco’s Slack assistant. By default in this Slack workspace, I can use all doco's docos as approver via shared default. That shared default applies to everyone here. People can run /doco connect to link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions. Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
-    );
-  });
-
   it("formats the default Slack fallback with the quick Doco check", () => {
     expect(
       formatSlackDefaultResponse(
@@ -219,41 +178,6 @@ describe("slack.server", () => {
     );
   });
 
-  it("formats Slack inventory answers with qualified Doco labels and counts", () => {
-    expect(
-      formatSlackInventoryResponse([
-        {
-          connection: {
-            channelId: "*",
-            channelName: "workspace",
-            targetLevel: "org",
-            targetId: "organization_doco",
-            targetLabel: "doco",
-            role: "approver",
-          },
-          docoCount: 1,
-          docoLabels: ["doco/bpms"],
-          counts: {
-            neurons: 7,
-            docos: 1,
-            decisions: 2,
-            intents: 1,
-            actions: 3,
-            logs: 0,
-            rules: 1,
-            evals: 0,
-            references: 0,
-            ideas: 0,
-            states: 0,
-            principals: 0,
-          },
-        },
-      ]),
-    ).toBe(
-      "all doco's docos as approver via shared default: 1 Doco (doco/bpms). It contains 7 neurons: 2 decisions, 1 intent, 3 actions, and 1 rule.",
-    );
-  });
-
   it("builds a Doco overview query for vague Slack follow-ups", () => {
     const query = buildSlackDocoAnswerQuery("And what do they explain?", [
       {
@@ -271,6 +195,19 @@ describe("slack.server", () => {
     expect(query?.text).toContain("94 neurons");
     expect(detectSlackDocoOverviewQuestion("What do we document?")).toBe(true);
     expect(detectSlackDocoOverviewQuestion("What do the docos we have explain?")).toBe(true);
+  });
+
+  it("routes Slack access, inventory, and count questions into the LLM query path", () => {
+    expect(buildSlackDocoAnswerQuery("Who are you? What do you have access to?")).toMatchObject({
+      questionText: "Who are you? What do you have access to?",
+    });
+    expect(buildSlackDocoAnswerQuery("What docos do we have?")).toMatchObject({
+      questionText: "What docos do we have?",
+    });
+    expect(buildSlackDocoAnswerQuery("How many neurons does bpm26o have?")).toMatchObject({
+      questionText: "How many neurons does bpm26o have?",
+      overview: false,
+    });
   });
 
   it("turns Slack repair messages into the prior unanswered question", () => {
@@ -455,42 +392,6 @@ describe("slack.server", () => {
         "• Rule in doco/doco-bpms: Default Slack access is shared, while linked users can use higher access.",
       ].join("\n"),
     );
-  });
-
-  it("formats Slack count answers with qualified Doco labels", () => {
-    expect(
-      formatSlackCountResponse(
-        [
-          {
-            connection: {
-              channelId: "*",
-              channelName: "workspace",
-              targetLevel: "org",
-              targetId: "organization_doco",
-              targetLabel: "doco",
-              role: "approver",
-            },
-            docoCount: 3,
-            docoLabels: ["doco/bpms", "doco/product", "doco/team"],
-            counts: {
-              neurons: 42,
-              docos: 3,
-              decisions: 4,
-              intents: 5,
-              actions: 6,
-              logs: 7,
-              rules: 8,
-              evals: 2,
-              references: 3,
-              ideas: 1,
-              states: 4,
-              principals: 2,
-            },
-          },
-        ],
-        "neurons",
-      ),
-    ).toBe("doco has 42 neurons across 3 Docos.");
   });
 
   it("lets the Slack LLM call doco_api before answering", async () => {

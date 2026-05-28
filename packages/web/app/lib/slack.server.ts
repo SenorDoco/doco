@@ -213,34 +213,6 @@ interface SlackConnectionGrantInput {
   role: string;
 }
 
-type SlackCountKind =
-  | "neurons"
-  | "docos"
-  | "decisions"
-  | "intents"
-  | "actions"
-  | "logs"
-  | "rules"
-  | "evals"
-  | "references"
-  | "ideas"
-  | "states"
-  | "principals";
-
-interface SlackCountSpec {
-  kind: SlackCountKind;
-  alias: string;
-  table: string;
-  singular: string;
-}
-
-interface SlackConnectionCounts {
-  connection: SlackChannelConnectionSummary;
-  docoCount: number;
-  docoLabels: string[];
-  counts: Record<SlackCountKind, number>;
-}
-
 interface SlackAccessibleDoco {
   id: string;
   handle: string;
@@ -256,21 +228,6 @@ const SLACK_ROLE_RANK: Record<string, number> = {
   approver: 3,
   owner: 4,
 };
-
-const SLACK_COUNT_SPECS: readonly SlackCountSpec[] = [
-  ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
-    kind: (spec.entityType === "reference" ? "references" : `${spec.table}`) as SlackCountKind,
-    alias: spec.table,
-    table: spec.table,
-    singular: spec.entityType === "reference" ? "reference" : spec.entityType,
-  })),
-  {
-    kind: "principals",
-    alias: "principals",
-    table: "principals",
-    singular: "principal",
-  },
-] as const;
 
 export function getSlackConfig(): SlackConfig {
   ensureEnvLoaded();
@@ -785,29 +742,10 @@ export async function buildSlackAppMentionResponse(args: {
   if (connections.length === 0) {
     return "I’m installed here, but I don’t have default or personal Doco permissions yet. Open Doco Integrations to choose workspace defaults, or use `/doco connect`.";
   }
-  const defaultConnections = sharedConnections.length > 0 ? sharedConnections : connections;
+  const fallbackConnections = sharedConnections.length > 0 ? sharedConnections : connections;
 
   const contextConnections = connections;
-  const countConnections = connections;
-  const responseConnections = defaultConnections;
   const cleanText = cleanSlackMentionText(args.messageText);
-  if (detectSlackAccessQuestion(cleanText)) {
-    return formatSlackAccessResponse(contextConnections);
-  }
-
-  if (isSlackGreeting(cleanText)) {
-    return formatSlackDefaultResponse(responseConnections, cleanText);
-  }
-
-  const wantsInventory = detectSlackInventoryQuestion(cleanText);
-  const countKind = detectSlackCountKind(cleanText);
-  if (wantsInventory || countKind) {
-    const counts = await Promise.all(
-      countConnections.map((connection) => readSlackConnectionCounts(connection)),
-    );
-    if (wantsInventory) return formatSlackInventoryResponse(counts);
-    if (countKind) return formatSlackCountResponse(counts, countKind);
-  }
 
   const answerQuery = buildSlackDocoAnswerQuery(cleanText, args.recentMessages);
   if (answerQuery) {
@@ -851,7 +789,7 @@ export async function buildSlackAppMentionResponse(args: {
     origin: args.origin,
   });
   if (llmAnswer) return llmAnswer;
-  return formatSlackDefaultResponse(responseConnections, cleanText);
+  return formatSlackDefaultResponse(fallbackConnections, cleanText);
 }
 
 export function cleanSlackMentionText(text: string): string {
@@ -862,54 +800,6 @@ export function cleanSlackMentionText(text: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-export function detectSlackCountKind(text: string): SlackCountKind | null {
-  const lower = text.toLowerCase();
-  const looksLikeCountQuestion =
-    /\b(how many|count|number of|cu[aá]nt[ao]s?)\b/.test(lower) ||
-    /\b(do\s+we\s+have|are\s+there)\s+(any\s+)?(nodes?|neurons?|docos?|decisions?|intents?|actions?|logs?|rules?|evals?|evaluations?|references?|ideas?|states?|principals?)\b/.test(
-      lower,
-    ) ||
-    /\b(nodes?|neurons?|docos?|decisions?|intents?|actions?|logs?|rules?|evals?|evaluations?|references?|ideas?|states?|principals?)\s+do\s+we\s+have\b/.test(
-      lower,
-    );
-  if (!looksLikeCountQuestion) return null;
-
-  if (/\bdocos?\b/.test(lower)) return "docos";
-  if (/\bdecisions?\b/.test(lower)) return "decisions";
-  if (/\bintents?\b/.test(lower)) return "intents";
-  if (/\bactions?\b/.test(lower)) return "actions";
-  if (/\blogs?\b/.test(lower)) return "logs";
-  if (/\brules?\b/.test(lower)) return "rules";
-  if (/\b(evals?|evaluations?)\b/.test(lower)) return "evals";
-  if (/\breferences?\b/.test(lower)) return "references";
-  if (/\bideas?\b/.test(lower)) return "ideas";
-  if (/\bstates?\b/.test(lower)) return "states";
-  if (/\bprincipals?\b/.test(lower)) return "principals";
-  if (/\b(nodes?|neurons?)\b/.test(lower)) return "neurons";
-  return null;
-}
-
-export function detectSlackInventoryQuestion(text: string): boolean {
-  const lower = text.toLowerCase();
-  return (
-    /\bwhat\s+docos?\s+(do\s+we|can\s+you)\s+(have|access|see)\b/.test(lower) ||
-    /\bwhat\s+(do\s+we|can\s+you)\s+(have|access|see)\s+(in|inside|on)\s+doco\b/.test(lower) ||
-    /\bwhat'?s\s+(in|inside)\s+doco\b/.test(lower)
-  );
-}
-
-export function detectSlackAccessQuestion(text: string): boolean {
-  const lower = text.toLowerCase();
-  return (
-    /\bwho\s+are\s+you\b/.test(lower) ||
-    /\bwhat\s+are\s+you\b/.test(lower) ||
-    /\bwhat\s+(access|permissions?)\s+(do\s+you\s+have|can\s+you\s+use)\b/.test(lower) ||
-    /\bwhat\s+do\s+you\s+have\s+access\s+to\b/.test(lower) ||
-    /\bwhat\s+can\s+you\s+access\b/.test(lower) ||
-    /\bshow\s+(your\s+)?(access|permissions?)\b/.test(lower)
-  );
 }
 
 function isSlackGreeting(text: string): boolean {
@@ -991,31 +881,6 @@ function isSlackLineBreakRepair(text: string): boolean {
     /\b(add|use|insert|put)\s+(some\s+)?line\s+breaks?\b/.test(lower) ||
     /\b(line\s+breaks?|break\s+(it\s+)?into\s+lines?|split\s+(it\s+)?into\s+lines?)\b/.test(lower)
   );
-}
-
-export function formatSlackAccessResponse(connections: SlackChannelConnectionSummary[]): string {
-  const sharedConnections = connections.filter((connection) => connection.source !== "personal");
-  const personalConnections = connections.filter((connection) => connection.source === "personal");
-  const defaultTargets = sharedConnections.length
-    ? formatSlackConnectionRoleList(sharedConnections)
-    : "no shared Doco default";
-  const personalTargets = personalConnections.length
-    ? ` The current Slack user also has linked personal access to ${formatSlackConnectionRoleList(
-        personalConnections,
-      )}.`
-    : "";
-  const defaultScope = slackDefaultScopeLabel(
-    sharedConnections.length ? sharedConnections : connections,
-  );
-  return [
-    `I’m Señor Doco, Doco’s Slack assistant. By default in this ${defaultScope}, I can use ${defaultTargets}.`,
-    personalTargets.trim(),
-    "That shared default applies to everyone here.",
-    "People can run /doco connect to link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions.",
-    "Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 export function formatSlackDefaultResponse(
@@ -1868,117 +1733,8 @@ function slackCollaboratorDisplayName(
   return collaborator.github_login ?? collaborator.id;
 }
 
-async function readSlackConnectionCounts(
-  connection: SlackChannelConnectionSummary,
-): Promise<SlackConnectionCounts> {
-  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
-  const countSelects = SLACK_COUNT_SPECS.map(
-    (spec) =>
-      `(SELECT COUNT(*)::text FROM ${spec.table} WHERE doco_id IN (SELECT id FROM scoped_docos)) AS ${spec.alias}`,
-  ).join(",\n              ");
-  const result = await withClient((c) =>
-    c.query<{ doco_labels?: string[] | null } & Record<string, string | string[] | null>>(
-      `WITH scoped_docos AS (
-         SELECT d.id
-           FROM docos d
-          WHERE ${where}
-       )
-       SELECT (SELECT COUNT(*)::text FROM scoped_docos) AS docos,
-              (SELECT COALESCE(
-                        array_agg(COALESCE(o.handle, '') || '/' || d.handle ORDER BY o.handle, d.handle),
-                        ARRAY[]::text[]
-                      )
-                 FROM scoped_docos sd
-                 JOIN docos d ON d.id = sd.id
-                 LEFT JOIN organizations o ON o.id = d.org_id) AS doco_labels,
-              ${countSelects}`,
-      [connection.targetId],
-    ),
-  );
-  const row = result.rows[0] ?? {};
-  const counts = Object.fromEntries(
-    SLACK_COUNT_SPECS.map((spec) => [spec.kind, Number(row[spec.alias] ?? 0)]),
-  ) as Record<SlackCountKind, number>;
-  counts.docos = Number(row.docos ?? 0);
-  counts.neurons = SLACK_COUNT_SPECS.reduce((total, spec) => total + counts[spec.kind], 0);
-  return {
-    connection,
-    docoCount: counts.docos,
-    docoLabels: Array.isArray(row.doco_labels) ? row.doco_labels : [],
-    counts,
-  };
-}
-
-export function formatSlackInventoryResponse(summaries: SlackConnectionCounts[]): string {
-  if (summaries.length === 0) return "I don’t have any default Doco permissions here yet.";
-  const lines = summaries.map(formatSlackInventoryLine);
-  if (lines.length === 1) return lines[0];
-  const intro = summaries.some((summary) => summary.connection.source === "personal")
-    ? "Here’s what I can access from Slack:"
-    : "Here’s what I can access by default:";
-  return [intro, ...lines.map((line) => `• ${line}`)].join("\n");
-}
-
-function formatSlackInventoryLine(summary: SlackConnectionCounts): string {
-  const accessLabel = slackConnectionAccessLabelWithRole(summary.connection);
-  const docoList = formatSlackDocoLabels(summary.docoLabels);
-  const nonzeroCounts = SLACK_COUNT_SPECS.map((spec) => ({
-    label: spec.singular,
-    value: summary.counts[spec.kind] ?? 0,
-  })).filter((entry) => entry.value > 0);
-  const contents =
-    nonzeroCounts.length > 0
-      ? ` It contains ${formatCount(summary.counts.neurons, "neuron")}: ${formatCountList(
-          nonzeroCounts,
-        )}.`
-      : " It does not have any neurons yet.";
-  return `${accessLabel}: ${formatCount(summary.docoCount, "Doco")}${docoList}.${contents}`;
-}
-
-export function formatSlackCountResponse(
-  summaries: SlackConnectionCounts[],
-  kind: SlackCountKind,
-): string {
-  if (summaries.length === 0) return "I don’t have any default Doco permissions here yet.";
-  const lines = summaries.map((summary) => formatSlackCountLine(summary, kind));
-  if (lines.length === 1) return lines[0];
-  const intro = summaries.some((summary) => summary.connection.source === "personal")
-    ? "Here’s what I found using the available Slack Doco access:"
-    : "Here’s what I found using the Slack workspace default:";
-  return [intro, ...lines.map((line) => `• ${line}`)].join("\n");
-}
-
-function formatSlackCountLine(summary: SlackConnectionCounts, kind: SlackCountKind): string {
-  const label = summary.connection.targetLabel;
-  if (kind === "docos") {
-    if (summary.connection.targetLevel === "org") {
-      return `${label} has ${formatCount(summary.docoCount, "Doco")} available by default.`;
-    }
-    return `${label} is 1 Doco.`;
-  }
-  const value = summary.counts[kind] ?? 0;
-  const unit = kind === "neurons" ? "neuron" : (countSpecForKind(kind)?.singular ?? kind);
-  if (summary.connection.targetLevel === "org") {
-    return `${label} has ${formatCount(value, unit)} across ${formatCount(
-      summary.docoCount,
-      "Doco",
-    )}.`;
-  }
-  return `${label} has ${formatCount(value, unit)}.`;
-}
-
-function countSpecForKind(kind: SlackCountKind): SlackCountSpec | null {
-  return SLACK_COUNT_SPECS.find((spec) => spec.kind === kind) ?? null;
-}
-
 function formatSlackConnectionList(connections: SlackChannelConnectionSummary[]): string {
   const labels = connections.map(slackConnectionAccessLabel);
-  if (labels.length <= 2) return labels.join(" and ");
-  return `${labels.slice(0, 2).join(", ")}, and ${labels.length - 2} more`;
-}
-
-function formatSlackConnectionRoleList(connections: SlackChannelConnectionSummary[]): string {
-  const labels = connections.map(slackConnectionAccessLabelWithRole);
   if (labels.length <= 2) return labels.join(" and ");
   return `${labels.slice(0, 2).join(", ")}, and ${labels.length - 2} more`;
 }
@@ -1996,30 +1752,6 @@ function slackConnectionAccessLabelWithRole(connection: SlackChannelConnectionSu
       ? ` via ${connection.collaboratorUsername ?? "the linked Slack user"}'s Doco account`
       : " via shared default";
   return `${target} as ${connection.role}${source}`;
-}
-
-function slackDefaultScopeLabel(connections: SlackChannelConnectionSummary[]): string {
-  return connections.every((connection) => connection.channelId === "*")
-    ? "Slack workspace"
-    : "Slack channel";
-}
-
-function formatSlackDocoLabels(labels: string[]): string {
-  if (labels.length === 0) return "";
-  const shown = labels.slice(0, 5);
-  const suffix = labels.length > shown.length ? `, and ${labels.length - shown.length} more` : "";
-  return ` (${shown.join(", ")}${suffix})`;
-}
-
-function formatCountList(entries: { label: string; value: number }[]): string {
-  const parts = entries.map((entry) => formatCount(entry.value, entry.label));
-  if (parts.length <= 2) return parts.join(" and ");
-  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
-}
-
-function formatCount(value: number, singular: string): string {
-  const label = value === 1 ? singular : singular === "Doco" ? "Docos" : `${singular}s`;
-  return `${value.toLocaleString()} ${label}`;
 }
 
 async function readSlackDocoSearchHits(
