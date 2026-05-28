@@ -98,7 +98,8 @@ interface BpmnPerspectiveProps {
    * state and this callback is how the canvas asks it to update.
    * Same contract as OverviewGraph.onCenterChange.
    */
-  onCenterChange?: (id: string) => void;
+  onCenterChange?: (id: string | null) => void;
+  onPaneClick?: () => void;
   /**
    * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
    * this set are excluded; lanes that end up empty after filtering
@@ -210,6 +211,7 @@ export function BpmnPerspective({
   onPoolClick,
   onLaneClick,
   onCenterChange,
+  onPaneClick,
   visibleLifecycles,
   centerId,
   initialFocusId,
@@ -303,43 +305,47 @@ export function BpmnPerspective({
     ],
     [filteredNodes, pools],
   );
-  const effectiveCenterId = useMemo(() => {
+  const focusCenterId = useMemo(() => {
     if (
       centerId &&
       (nodeByFullId.has(centerId) || pools.some((pool) => pool.intent_id === centerId))
     ) {
       return centerId;
     }
-    return highestRankedNodeId(focusCandidates, pageRankMap) ?? centerId ?? null;
-  }, [centerId, nodeByFullId, pools, focusCandidates, pageRankMap]);
+    return null;
+  }, [centerId, nodeByFullId, pools]);
+  const selectionCenterId = useMemo(
+    () => focusCenterId ?? highestRankedNodeId(focusCandidates, pageRankMap) ?? centerId ?? null,
+    [focusCenterId, focusCandidates, pageRankMap, centerId],
+  );
   useEffect(() => {
-    if (!effectiveCenterId || effectiveCenterId === centerId) return;
-    onCenterChange?.(effectiveCenterId);
-  }, [effectiveCenterId, centerId, onCenterChange]);
+    if (!centerId || focusCenterId || !selectionCenterId || selectionCenterId === centerId) return;
+    onCenterChange?.(selectionCenterId);
+  }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
 
-  const focusPoolId = useMemo(() => {
-    const poolFromIntent = pools.find((pool) => pool.intent_id === effectiveCenterId)?.id;
+  const selectionPoolId = useMemo(() => {
+    const poolFromIntent = pools.find((pool) => pool.intent_id === selectionCenterId)?.id;
     return (
-      poolFromIntent ?? (effectiveCenterId ? nodeByFullId.get(effectiveCenterId)?.pool_id : null)
+      poolFromIntent ?? (selectionCenterId ? nodeByFullId.get(selectionCenterId)?.pool_id : null)
     );
-  }, [pools, effectiveCenterId, nodeByFullId]);
+  }, [pools, selectionCenterId, nodeByFullId]);
   const targetRenderedNodeIds = useMemo(() => {
     const selectionLinks = linksWithFocusedPoolMembership(
       pools,
       filteredNodes,
       links,
-      effectiveCenterId,
+      selectionCenterId,
     );
     return selectMeasuredPersonalizedNodeIds(
       filteredNodes,
       selectionLinks,
-      effectiveCenterId,
+      selectionCenterId,
       pageRankMap,
       BPMN_RENDER_NODE_BUDGET,
       { docoHandle, perspective: "bpmn" },
       { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN },
     );
-  }, [pools, filteredNodes, links, effectiveCenterId, pageRankMap, docoHandle]);
+  }, [pools, filteredNodes, links, selectionCenterId, pageRankMap, docoHandle]);
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
@@ -352,9 +358,9 @@ export function BpmnPerspective({
   );
   const renderedPoolIds = useMemo(() => {
     const ids = new Set(renderedNodes.map((node) => node.pool_id));
-    if (focusPoolId) ids.add(focusPoolId);
+    if (selectionPoolId) ids.add(selectionPoolId);
     return ids;
-  }, [renderedNodes, focusPoolId]);
+  }, [renderedNodes, selectionPoolId]);
   const renderedLanes = useMemo(
     () => filteredLanes.filter((lane) => renderedLaneIds.has(lane.id)),
     [filteredLanes, renderedLaneIds],
@@ -365,9 +371,9 @@ export function BpmnPerspective({
   );
   const layoutPoolIds = useMemo(() => {
     const ids = new Set(filteredLanes.map((lane) => lane.pool_id));
-    if (focusPoolId) ids.add(focusPoolId);
+    if (selectionPoolId) ids.add(selectionPoolId);
     return ids;
-  }, [filteredLanes, focusPoolId]);
+  }, [filteredLanes, selectionPoolId]);
   const layoutPools = useMemo(
     () => pools.filter((pool) => layoutPoolIds.has(pool.id)),
     [pools, layoutPoolIds],
@@ -382,8 +388,8 @@ export function BpmnPerspective({
   // buffered render window below, but coordinates for surviving nodes
   // remain anchored as focus changes.
   const layout = useMemo(
-    () => layOutBpmn(layoutPools, filteredLanes, filteredNodes, layoutLinks, effectiveCenterId),
-    [layoutPools, filteredLanes, filteredNodes, layoutLinks, effectiveCenterId],
+    () => layOutBpmn(layoutPools, filteredLanes, filteredNodes, layoutLinks, focusCenterId),
+    [layoutPools, filteredLanes, filteredNodes, layoutLinks, focusCenterId],
   );
   const nodeTypes = useMemo(
     () => ({
@@ -421,8 +427,8 @@ export function BpmnPerspective({
     [renderedPools],
   );
   const MiniMapNode = useMemo(
-    () => makeBpmnMiniMapNode(nodeById, effectiveCenterId),
-    [nodeById, effectiveCenterId],
+    () => makeBpmnMiniMapNode(nodeById, focusCenterId),
+    [nodeById, focusCenterId],
   );
   const openPoolNeuron = useCallback(
     (pool: BpmnPool) => {
@@ -876,6 +882,7 @@ export function BpmnPerspective({
             if (current) updateViewport(current);
           }}
           onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+          onPaneClick={onPaneClick}
           onNodeClick={(_e: unknown, node: { id: string }) => {
             const pool = poolByHeaderId.get(node.id);
             if (pool) {

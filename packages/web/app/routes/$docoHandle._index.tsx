@@ -412,8 +412,8 @@ interface NeuronDialogState {
   error: string | null;
 }
 
-function graphWithCenter(graph: OverviewGraphData, centerId: string): OverviewGraphData {
-  const hasCenter = graph.nodes.some((node) => node.id === centerId);
+function graphWithCenter(graph: OverviewGraphData, centerId: string | null): OverviewGraphData {
+  const hasCenter = centerId !== null && graph.nodes.some((node) => node.id === centerId);
   return {
     ...graph,
     centerId,
@@ -534,7 +534,9 @@ export default function DocoHome({
   useEffect(() => {
     setGraphState((prev) => {
       const preferredCenter =
-        graphData.nodes.length === 0 || prev.nodes.some((node) => node.id === prev.centerId)
+        prev.centerId === null ||
+        graphData.nodes.length === 0 ||
+        prev.nodes.some((node) => node.id === prev.centerId)
           ? prev.centerId
           : graphData.centerId;
       return graphWithCenter(graphData, preferredCenter);
@@ -724,6 +726,20 @@ export default function DocoHome({
       window.history.replaceState(window.history.state, "", `/${handle}`);
     }
   }, [handle]);
+
+  const clearPerspectiveFocus = useCallback(() => {
+    clientDialogOverrideRef.current = true;
+    setNeuronDialog(null);
+    setLifecycleError(null);
+    setGraphState((prev) => graphWithCenter(prev, null));
+    if (typeof window !== "undefined") {
+      const href =
+        activeSlug === "graph"
+          ? `/${handle}`
+          : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
+      window.history.replaceState(window.history.state, "", href);
+    }
+  }, [activeSlug, handle]);
 
   const handleLifecycleChange = useCallback(
     async (stage: LifecycleStage) => {
@@ -973,6 +989,7 @@ export default function DocoHome({
                     centerId={graphState.centerId}
                     initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    onPaneClick={clearPerspectiveFocus}
                     onNeuronClick={(node) => {
                       void loadNeuronDialog("principal", node.id, node.href);
                     }}
@@ -989,6 +1006,7 @@ export default function DocoHome({
                     centerId={graphState.centerId}
                     initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    onPaneClick={clearPerspectiveFocus}
                     onNeuronClick={(node) => {
                       void loadNeuronDialog(
                         node.entity_type,
@@ -1025,6 +1043,7 @@ export default function DocoHome({
                     visibleLifecycles={visibleLifecycles}
                     initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    onPaneClick={clearPerspectiveFocus}
                     onNeuronClick={handleGraphNeuronClick}
                   />
                 )}
