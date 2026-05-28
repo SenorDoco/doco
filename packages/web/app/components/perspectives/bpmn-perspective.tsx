@@ -1790,12 +1790,12 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
 }
 
 // BPMN collapsed sub-process marker — a small bordered square with a
-// centered "+" sitting on the activity's bottom edge (OMG BPMN 2.0
-// §10.2.4: a collapsed sub-process is a task glyph with a "+" marker).
-// The dashed drill-down link to the sub-process pool originates here, so
-// the React Flow source handle is co-located with the box: the default
-// Position.Bottom centers the handle on the bottom edge, exactly where
-// the half-overhanging marker sits.
+// centered "+" (OMG BPMN 2.0 §10.2.4: a collapsed sub-process is a task
+// glyph with a "+" marker). It sits centered just *below* the node's
+// type/lifecycle badge row (which already owns the bottom-center band),
+// in the inter-row gap, so the two never overlap at any node width. The
+// dashed drill-down link originates from the co-located source handle,
+// so it visibly leaves the "+" on its way down to the sub-process pool.
 function SubprocessMarker({ stroke }: { stroke: string }) {
   return (
     <>
@@ -1803,7 +1803,7 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
         aria-hidden="true"
         style={{
           position: "absolute",
-          bottom: -8,
+          bottom: -26,
           left: "50%",
           transform: "translateX(-50%)",
           width: 16,
@@ -1829,7 +1829,7 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
         id={SUBPROCESS_SOURCE_HANDLE}
         position={Position.Bottom}
         isConnectable={false}
-        style={{ background: "transparent", border: "none" }}
+        style={{ bottom: -18, background: "transparent", border: "none" }}
       />
     </>
   );
