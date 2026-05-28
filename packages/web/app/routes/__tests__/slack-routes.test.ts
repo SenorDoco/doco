@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   buildSlackConnectCommandResponse: vi.fn(),
   buildSlackAppMentionResponse: vi.fn(),
   fetchSlackConversationContext: vi.fn(),
+  getSlackBotUserId: vi.fn(),
   postSlackMessage: vi.fn(),
 }));
 
@@ -30,6 +31,7 @@ vi.mock("~/lib/slack.server", () => ({
   buildSlackConnectCommandResponse: mocks.buildSlackConnectCommandResponse,
   buildSlackAppMentionResponse: mocks.buildSlackAppMentionResponse,
   fetchSlackConversationContext: mocks.fetchSlackConversationContext,
+  getSlackBotUserId: mocks.getSlackBotUserId,
   postSlackMessage: mocks.postSlackMessage,
 }));
 
@@ -39,7 +41,9 @@ import {
   action as eventsAction,
   isSlackRetryRequest,
   shouldFetchSlackConversationContext,
+  shouldInspectSlackImplicitReplyEvent,
   shouldReplyToSlackEvent,
+  shouldTreatSlackMessageAsImplicitReply,
 } from "../integrations.slack.events";
 import { loader as installLoader } from "../integrations.slack.install";
 
@@ -49,6 +53,7 @@ describe("Slack integration routes", () => {
     mocks.getSlackConfig.mockReturnValue({ signingSecret: "secret", configured: true });
     mocks.verifySlackRequest.mockResolvedValue(true);
     mocks.fetchSlackConversationContext.mockResolvedValue([]);
+    mocks.getSlackBotUserId.mockResolvedValue("U999");
   });
 
   it("redirects a signed-in user to Slack OAuth installation", async () => {
@@ -397,6 +402,147 @@ describe("Slack integration routes", () => {
     expect(mocks.postSlackMessage).not.toHaveBeenCalled();
   });
 
+  it("continues Slack thread replies under Señor Doco without requiring a mention", async () => {
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("Cleaner now.");
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "Here’s the org chart.",
+        ts: "1700000000.000000",
+        userId: "U999",
+        botId: "B999",
+      },
+      {
+        text: "not looking nice",
+        ts: "1700000001.000100",
+        userId: "U123",
+        botId: null,
+      },
+    ]);
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "channel",
+            channel: "C123",
+            user: "U123",
+            text: "not looking nice",
+            ts: "1700000001.000100",
+            thread_ts: "1700000000.000000",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.fetchSlackConversationContext).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      latestTs: "1700000001.000100",
+      threadTs: "1700000000.000000",
+    });
+    expect(mocks.getSlackBotUserId).toHaveBeenCalledWith("T123");
+    expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      chatUserId: "U123",
+      messageText: "not looking nice",
+      recentMessages: [
+        {
+          text: "Here’s the org chart.",
+          ts: "1700000000.000000",
+          userId: "U999",
+          botId: "B999",
+        },
+        {
+          text: "not looking nice",
+          ts: "1700000001.000100",
+          userId: "U123",
+          botId: null,
+        },
+      ],
+      origin: "https://doco.test",
+    });
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      text: "Cleaner now.",
+      threadTs: "1700000000.000000",
+    });
+  });
+
+  it("ignores untagged thread replies when the thread parent is not Señor Doco", async () => {
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "A normal human thread.",
+        ts: "1700000000.000000",
+        userId: "U456",
+        botId: null,
+      },
+    ]);
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "channel",
+            channel: "C123",
+            user: "U123",
+            text: "what about this?",
+            ts: "1700000001.000100",
+            thread_ts: "1700000000.000000",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildSlackAppMentionResponse).not.toHaveBeenCalled();
+    expect(mocks.postSlackMessage).not.toHaveBeenCalled();
+  });
+
+  it("ignores courtesy replies in Señor Doco threads", async () => {
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "Here’s the answer.",
+        ts: "1700000000.000000",
+        userId: "U999",
+        botId: "B999",
+      },
+    ]);
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "channel",
+            channel: "C123",
+            user: "U123",
+            text: "thanks",
+            ts: "1700000001.000100",
+            thread_ts: "1700000000.000000",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildSlackAppMentionResponse).not.toHaveBeenCalled();
+    expect(mocks.postSlackMessage).not.toHaveBeenCalled();
+  });
+
   it("identifies Slack events that should receive replies", () => {
     expect(shouldReplyToSlackEvent({ type: "app_mention" })).toBe(true);
     expect(shouldReplyToSlackEvent({ type: "message", channel_type: "im" })).toBe(true);
@@ -415,8 +561,66 @@ describe("Slack integration routes", () => {
     expect(
       shouldFetchSlackConversationContext({ type: "app_mention", channel_type: "group" }),
     ).toBe(true);
+    expect(
+      shouldFetchSlackConversationContext({
+        type: "message",
+        channel_type: "channel",
+        ts: "2",
+        thread_ts: "1",
+      }),
+    ).toBe(true);
     expect(shouldFetchSlackConversationContext({ type: "message", channel_type: "channel" })).toBe(
       false,
     );
+  });
+
+  it("identifies implicit Slack thread replies conservatively", () => {
+    expect(
+      shouldInspectSlackImplicitReplyEvent({
+        type: "message",
+        channel_type: "channel",
+        ts: "2",
+        thread_ts: "1",
+      }),
+    ).toBe(true);
+    expect(
+      shouldTreatSlackMessageAsImplicitReply(
+        {
+          type: "message",
+          channel_type: "channel",
+          text: "add line breaks",
+          ts: "2",
+          thread_ts: "1",
+        },
+        [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
+        "U999",
+      ),
+    ).toBe(true);
+    expect(
+      shouldTreatSlackMessageAsImplicitReply(
+        {
+          type: "message",
+          channel_type: "channel",
+          text: "yes",
+          ts: "2",
+          thread_ts: "1",
+        },
+        [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
+        "U999",
+      ),
+    ).toBe(true);
+    expect(
+      shouldTreatSlackMessageAsImplicitReply(
+        {
+          type: "message",
+          channel_type: "channel",
+          text: "thanks",
+          ts: "2",
+          thread_ts: "1",
+        },
+        [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
+        "U999",
+      ),
+    ).toBe(false);
   });
 });

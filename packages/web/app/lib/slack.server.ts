@@ -2401,6 +2401,18 @@ export async function getSlackBotToken(workspaceId: string): Promise<string | nu
   return result.rows[0]?.bot_access_token ?? null;
 }
 
+export async function getSlackBotUserId(workspaceId: string): Promise<string | null> {
+  const result = await withClient((c) =>
+    c.query<{ bot_user_id: string | null }>(
+      `SELECT bot_user_id
+         FROM group_chat_installations
+        WHERE provider = 'slack' AND workspace_id = $1`,
+      [workspaceId],
+    ),
+  );
+  return result.rows[0]?.bot_user_id ?? null;
+}
+
 export function verifySlackRequestSignature(args: {
   rawBody: string;
   timestamp: string | null;
