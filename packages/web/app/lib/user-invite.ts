@@ -6,13 +6,13 @@ export type InviteLevel = "org" | "doco";
 export type InviteOption = { id: string; label: string; maxRole: DocoRole };
 export type InviteDefaultSelection = { level: InviteLevel; targetId: string };
 
-export interface CollaboratorInviteData {
+export interface UserInviteData {
   orgs: InviteOption[];
   docos: InviteOption[];
   defaultSelection: InviteDefaultSelection;
 }
 
-export type CollaboratorInviteActionResult =
+export type UserInviteActionResult =
   | {
       intent: "invite";
       ok: true;

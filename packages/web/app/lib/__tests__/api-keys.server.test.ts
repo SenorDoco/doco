@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   withClient: vi.fn(),
   getOrgRole: vi.fn(),
-  listOrganizationsForCollaborator: vi.fn(),
+  listOrganizationsForUser: vi.fn(),
   getDocoLevelRole: vi.fn(),
   listAccessibleDocoIdsForPrincipal: vi.fn(),
 }));
@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@doco/db", () => ({
   withClient: mocks.withClient,
   getOrgRole: mocks.getOrgRole,
-  listOrganizationsForCollaborator: mocks.listOrganizationsForCollaborator,
+  listOrganizationsForUser: mocks.listOrganizationsForUser,
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
@@ -19,7 +19,7 @@ vi.mock("~/lib/doco-access.server", () => ({
   listAccessibleDocoIdsForPrincipal: mocks.listAccessibleDocoIdsForPrincipal,
 }));
 
-vi.mock("~/lib/collaborator-invite", () => ({
+vi.mock("~/lib/user-invite", () => ({
   ALL_ROLES: ["reader", "author", "approver", "owner"],
   rankOf: (role: string) =>
     role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0,
@@ -35,9 +35,9 @@ vi.mock("~/lib/oauth-server.server", () => ({
   registerClient: vi.fn(),
 }));
 
-import { listApiKeysForCollaborator } from "../api-keys.server";
+import { listApiKeysForUser } from "../api-keys.server";
 
-describe("listApiKeysForCollaborator", () => {
+describe("listApiKeysForUser", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -50,10 +50,10 @@ describe("listApiKeysForCollaborator", () => {
             {
               client_id: "doco_client_agent",
               client_name: "Claude Code",
-              collaborator_id: "collaborator_agent",
-              collaborator_kind: "agent",
-              collaborator_login: null,
-              collaborator_data: { name: "Repo Codex" },
+              user_id: "user_agent",
+              user_kind: "agent",
+              user_login: null,
+              user_data: { name: "Repo Codex" },
               redirect_uris: ["http://127.0.0.1:4321/callback"],
               granted_doco_ids: [],
               granted_doco_roles: {},
@@ -68,7 +68,7 @@ describe("listApiKeysForCollaborator", () => {
       }),
     );
 
-    const keys = await listApiKeysForCollaborator("collaborator_owner");
+    const keys = await listApiKeysForUser("user_owner");
 
     expect(keys).toEqual([
       expect.objectContaining({

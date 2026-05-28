@@ -10,12 +10,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@doco/db", () => ({
-  getCollaboratorById: vi.fn(),
+  getUserById: vi.fn(),
   getDocoById: mocks.getDocoById,
   getOrgRole: mocks.getOrgRole,
-  listDocoIdsForCollaborator: vi.fn(),
+  listDocoIdsForUser: vi.fn(),
   listDocoUsers: vi.fn(),
-  listOrganizationsForCollaborator: vi.fn(),
+  listOrganizationsForUser: vi.fn(),
   withClient: mocks.withClient,
 }));
 
@@ -37,22 +37,22 @@ vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: mocks.getCurrentPrincipal,
 }));
 
-import { handleCollaboratorInviteAction } from "../collaborators.server";
+import { handleUserInviteAction } from "../users.server";
 
 function formRequest(fields: Record<string, string>): Request {
   const body = new URLSearchParams(fields);
-  return new Request("https://doco.test/collaborators", {
+  return new Request("https://doco.test/users", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
 }
 
-describe("handleCollaboratorInviteAction", () => {
+describe("handleUserInviteAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
     mocks.getDocoById.mockResolvedValue({
@@ -67,10 +67,10 @@ describe("handleCollaboratorInviteAction", () => {
     });
   });
 
-  it("allows non-owner collaborators to invite at their own role", async () => {
+  it("allows non-owner users to invite at their own role", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("author");
 
-    const result = await handleCollaboratorInviteAction(
+    const result = await handleUserInviteAction(
       formRequest({
         intent: "invite",
         level: "doco",
@@ -84,15 +84,15 @@ describe("handleCollaboratorInviteAction", () => {
       invite_url: "https://doco.test/invite/invite_code",
       role: "author",
     });
-    expect(mocks.issueInvite).toHaveBeenCalledWith("doco_bpms", "collaborator_alice", 3, "author", {
+    expect(mocks.issueInvite).toHaveBeenCalledWith("doco_bpms", "user_alice", 3, "author", {
       level: "doco",
     });
   });
 
-  it("caps collaborator invites to the inviter's role", async () => {
+  it("caps user invites to the inviter's role", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("author");
 
-    const result = await handleCollaboratorInviteAction(
+    const result = await handleUserInviteAction(
       formRequest({
         intent: "invite",
         level: "doco",
@@ -110,7 +110,7 @@ describe("handleCollaboratorInviteAction", () => {
   it("defaults reader invitations to reader when the inviter only has reader", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("reader");
 
-    const result = await handleCollaboratorInviteAction(
+    const result = await handleUserInviteAction(
       formRequest({
         intent: "invite",
         level: "doco",
@@ -119,7 +119,7 @@ describe("handleCollaboratorInviteAction", () => {
     );
 
     expect(result).toMatchObject({ ok: true, role: "reader" });
-    expect(mocks.issueInvite).toHaveBeenCalledWith("doco_bpms", "collaborator_alice", 3, "reader", {
+    expect(mocks.issueInvite).toHaveBeenCalledWith("doco_bpms", "user_alice", 3, "reader", {
       level: "doco",
     });
   });
@@ -134,7 +134,7 @@ describe("handleCollaboratorInviteAction", () => {
       }),
     );
 
-    const result = await handleCollaboratorInviteAction(
+    const result = await handleUserInviteAction(
       formRequest({
         intent: "invite",
         level: "org",
@@ -150,7 +150,7 @@ describe("handleCollaboratorInviteAction", () => {
       level: "org",
       role: "author",
     });
-    expect(mocks.issueInvite).toHaveBeenCalledWith(null, "collaborator_alice", 3, "author", {
+    expect(mocks.issueInvite).toHaveBeenCalledWith(null, "user_alice", 3, "author", {
       level: "org",
       org_id: "organization_torre",
     });

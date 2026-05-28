@@ -132,7 +132,7 @@ export default [
   route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
   // Cross-Doco semantic search across every Doco the org owns.
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
-  route("collaborators", "routes/collaborators.tsx"),
+  route("users", "routes/users.tsx"),
   route("integrations", "routes/integrations.tsx"),
   route("integrations/slack/install", "routes/integrations.slack.install.tsx"),
   route("integrations/slack/callback", "routes/integrations.slack.callback.tsx"),
@@ -172,13 +172,13 @@ export default [
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
   // Per-user UI preferences (graph auto-reorder, future flags). Stored
-  // on collaborators.data.preferences; auth-gated to the signed-in user.
+  // on users.data.preferences; auth-gated to the signed-in user.
   route("api/v1/me/preferences.json", "routes/api.v1.me.preferences[.]json.tsx"),
   route("api/v1/feedback-reports.json", "routes/api.v1.feedback-reports[.]json.tsx"),
   // Host-level human-invite + API-key endpoints. Splitting the two
   // makes the "is this a human or an agent?" choice show up in the URL
   // instead of being a body flag.
-  route("api/v1/collaborators/invite.json", "routes/api.v1.collaborators.invite[.]json.tsx"),
+  route("api/v1/users/invite.json", "routes/api.v1.users.invite[.]json.tsx"),
   route("api/v1/api-keys.json", "routes/api.v1.api-keys[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
   // Doco policies the caller can read. Auth-aware: anonymous callers

@@ -177,7 +177,7 @@ describe("loadNeuronDialogDetail", () => {
     });
   });
 
-  it("resolves collaborator provenance metadata instead of exposing Principal creator ids", async () => {
+  it("resolves user provenance metadata instead of exposing Principal creator ids", async () => {
     const client = {
       query: async <T>(sql: string): Promise<{ rows: T[] }> => {
         if (sql.includes("WITH input(actor_id)")) {
@@ -185,7 +185,7 @@ describe("loadNeuronDialogDetail", () => {
             rows: [
               {
                 actor_id: "principal_01AUTHOR",
-                collaborator_id: "collaborator_alice",
+                user_id: "user_alice",
                 label: "alice",
               },
             ] as T[],
@@ -198,7 +198,7 @@ describe("loadNeuronDialogDetail", () => {
           rows: [
             {
               id: "decision_01TEST",
-              primary_text: "Use collaborator provenance",
+              primary_text: "Use user provenance",
               body_text: null,
               lifecycle: "proposed",
               raw_json: JSON.stringify({

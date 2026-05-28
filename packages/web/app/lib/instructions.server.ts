@@ -199,7 +199,7 @@ Common principal-id fields:
 
 Read responses may expose stored graph fields such as \`wanted_by\`,
 \`actors\`, \`stakeholders\`, \`actor_id\`, and \`decided_by\`.
-\`created_by\` is collaborator/API-key provenance derived from the
+\`created_by\` is user/API-key provenance derived from the
 authenticated session or token. Never send \`created_by\` in request
 bodies; use the API-facing principal-id fields above only for domain
 actors.
@@ -433,7 +433,7 @@ policies that govern how neurons are authored:
 - **Idea** — exploratory capture; promote to Intent / Decision once
   it firms up.
 - **Principal** — a role-persona neuron referenced by actor_id /
-  actors[]. Distinct from a Collaborator (the OAuth identity layer).
+  actors[]. Distinct from a User (the OAuth identity layer).
 
 ## Things only people can do
 

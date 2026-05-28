@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { type ScopeOption, loadScopeOptions } from "~/lib/api-keys.server";
-import { rankOf } from "~/lib/collaborator-invite";
 import { canSetChannelDefaultAccess } from "~/lib/group-chat-ux";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import {
@@ -15,6 +14,7 @@ import {
   listSlackInstallations,
   replaceSlackChannelConnections,
 } from "~/lib/slack.server";
+import { rankOf } from "~/lib/user-invite";
 
 interface SlackSetupPageData {
   me: CurrentPrincipal;
@@ -116,7 +116,7 @@ export async function action({ request }: { request: Request }) {
     channelId: WORKSPACE_DEFAULT_CHANNEL_ID,
     channelName: WORKSPACE_DEFAULT_CHANNEL_NAME,
     grants,
-    createdByCollaboratorId: me.id,
+    createdByUserId: me.id,
   });
 
   throw redirect(

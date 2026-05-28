@@ -70,7 +70,7 @@ describe("principal retire API", () => {
     mocks.query.mockResolvedValue({ rows: [] });
     mocks.withClient.mockImplementation((fn) => fn({ query: mocks.query }));
     mocks.loadDocoRouteForRead.mockResolvedValue({
-      me: { id: "collaborator_author", username: "alice", type: "person", isHuman: true },
+      me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
     mocks.getDocoLevelRole.mockResolvedValue("author");
@@ -82,7 +82,7 @@ describe("principal retire API", () => {
       summary: "Visitor",
       lifecycle: "active",
       created_at: "2026-01-01T00:00:00.000Z",
-      created_by: "collaborator_admin",
+      created_by: "user_admin",
     });
     mocks.runAuthoringPolicies.mockResolvedValue({
       evaluated: 0,
@@ -107,7 +107,7 @@ describe("principal retire API", () => {
         entity_type: "principal",
         lifecycle: "retired",
         data: expect.objectContaining({ lifecycle: "retired", name: "visitor" }),
-        updated_by: "collaborator_author",
+        updated_by: "user_author",
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
@@ -120,7 +120,7 @@ describe("principal retire API", () => {
       expect.objectContaining({
         docoDir: "/tmp/docos/acme",
         docoId: "doco_acme",
-        by: "collaborator_author",
+        by: "user_author",
         entity_type: "principal",
         entity_id: PRINCIPAL_ID,
         op: "lifecycle.transition",
@@ -264,7 +264,7 @@ describe("principal retire API", () => {
           name: "visitor",
           lifecycle: "active",
         }),
-        updated_by: "collaborator_author",
+        updated_by: "user_author",
       }),
     );
     expect(mocks.reindexAndScheduleAttach).toHaveBeenCalledWith(
@@ -282,7 +282,7 @@ describe("principal retire API", () => {
       expect.objectContaining({
         docoDir: "/tmp/docos/acme",
         docoId: "doco_acme",
-        by: "collaborator_author",
+        by: "user_author",
         entity_type: "principal",
         entity_id: PRINCIPAL_ID,
         op: "entity.update",
@@ -377,7 +377,7 @@ describe("principal retire API", () => {
       body_md: "Human walking the public site. Operates under @alex.",
       lifecycle: "active",
       created_at: "2026-01-01T00:00:00.000Z",
-      created_by: "collaborator_admin",
+      created_by: "user_admin",
     });
 
     // Trigger the PATCH with a non-body field (clearing reports_to)

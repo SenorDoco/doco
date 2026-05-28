@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   consumeInvite: vi.fn(),
   findInvite: vi.fn(),
-  getCollaboratorById: vi.fn(),
+  getUserById: vi.fn(),
   getCurrentPrincipal: vi.fn(),
   getDocoById: vi.fn(),
   query: vi.fn(),
@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@doco/db", () => ({
-  getCollaboratorById: mocks.getCollaboratorById,
+  getUserById: mocks.getUserById,
   getDocoById: mocks.getDocoById,
   upsertDocoUser: mocks.upsertDocoUser,
   upsertOrgUser: mocks.upsertOrgUser,
@@ -44,12 +44,12 @@ const ORG_INVITE = {
   code: "invite_code",
   level: "org",
   org_id: "organization_torre",
-  minted_by_collaborator_id: "collaborator_owner",
+  minted_by_user_id: "user_owner",
   role: "author",
   expires_at: "2026-06-01T00:00:00.000Z",
   issued_at: "2026-05-30T00:00:00.000Z",
   status: "pending",
-  redeemed_by_collaborator_id: null,
+  redeemed_by_user_id: null,
   redeemed_at: null,
 };
 
@@ -61,18 +61,18 @@ describe("/invite/:code", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
-    mocks.getCollaboratorById.mockResolvedValue({
-      id: "collaborator_owner",
+    mocks.getUserById.mockResolvedValue({
+      id: "user_owner",
       github_login: "owner",
     });
     mocks.findInvite.mockResolvedValue(ORG_INVITE);
     mocks.consumeInvite.mockResolvedValue({
       ...ORG_INVITE,
       status: "consumed",
-      redeemed_by_collaborator_id: "collaborator_alice",
+      redeemed_by_user_id: "user_alice",
       redeemed_at: "2026-05-30T01:00:00.000Z",
     });
     mocks.query.mockResolvedValue({
@@ -109,7 +109,7 @@ describe("/invite/:code", () => {
     });
     expect(mocks.upsertOrgUser).toHaveBeenCalledWith({
       org_id: "organization_torre",
-      collaborator_id: "collaborator_alice",
+      user_id: "user_alice",
       role: "author",
     });
     expect(mocks.upsertDocoUser).not.toHaveBeenCalled();

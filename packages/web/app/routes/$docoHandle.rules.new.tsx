@@ -11,7 +11,7 @@ import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { type RuleDraft, captureRule } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
+import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
 interface IntentOption {
   id: string;
@@ -72,9 +72,7 @@ export async function action({
   )
     ? (enforcedByRaw as "runtime" | "review" | "manual")
     : "review";
-  const authorPrincipalId = me?.id
-    ? await resolvePrincipalIdForCollaborator(meta.docoId, me.id)
-    : null;
+  const authorPrincipalId = me?.id ? await resolvePrincipalIdForUser(meta.docoId, me.id) : null;
 
   const draft: RuleDraft = stampAuthenticatedCreator(
     {

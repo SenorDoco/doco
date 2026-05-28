@@ -30,7 +30,7 @@ import { getCurrentPrincipalAsync } from "~/lib/session.server";
 interface TurnRow {
   id: string;
   conversation_id: string;
-  collaborator_id: string;
+  user_id: string;
   model: string;
   started_at: string;
   total_ms: number;
@@ -46,7 +46,7 @@ interface TurnRow {
 
 interface StuckConv {
   id: string;
-  collaborator_id: string;
+  user_id: string;
   active_turn_started_at: string;
   age_seconds: number;
 }
@@ -110,7 +110,7 @@ export async function loader({ request }: { request: Request }) {
   const data = await withClient(async (c) => {
     const [turns, stuck, captures, openai, stuckMsgs] = await Promise.all([
       c.query<TurnRow>(
-        `SELECT id, conversation_id, collaborator_id, model,
+        `SELECT id, conversation_id, user_id, model,
                 started_at::text AS started_at, total_ms,
                 first_text_token_ms, num_anthropic_calls, num_tool_calls,
                 input_tokens, output_tokens, stop_reason, error, phases
@@ -120,7 +120,7 @@ export async function loader({ request }: { request: Request }) {
         [limit],
       ),
       c.query<StuckConv>(
-        `SELECT id, collaborator_id,
+        `SELECT id, user_id,
                 active_turn_started_at::text AS active_turn_started_at,
                 EXTRACT(EPOCH FROM (now() - active_turn_started_at))::int AS age_seconds
            FROM chat_conversations

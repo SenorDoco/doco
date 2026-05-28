@@ -1,4 +1,4 @@
-import { addCollaborator, findCollaboratorByGitHubLogin } from "@doco/host";
+import { addUser, findUserByGitHubLogin } from "@doco/host";
 import { redirect } from "react-router";
 import { clearSignupInviteCookie, hasValidSignupInviteCookie } from "~/lib/invite.server";
 import {
@@ -15,7 +15,7 @@ import { setSessionCookie } from "~/lib/session.server";
 
 /**
  * GET /auth/github/callback — finishes the OAuth round-trip (ADR-095).
- * On success: creates a collaborator if first time, or signs in the
+ * On success: creates a user if first time, or signs in the
  * existing one. Sets the session cookie and redirects home.
  */
 export async function loader({ request }: { request: Request }) {
@@ -38,10 +38,10 @@ export async function loader({ request }: { request: Request }) {
   const gh = await fetchGitHubUser(accessToken);
   const email = (await fetchGitHubPrimaryEmail(accessToken)) ?? gh.email ?? undefined;
 
-  let collaboratorId: string;
-  const existing = await findCollaboratorByGitHubLogin(gh.login);
+  let userId: string;
+  const existing = await findUserByGitHubLogin(gh.login);
   if (existing) {
-    collaboratorId = existing.id;
+    userId = existing.id;
   } else {
     if (!hasValidSignupInviteCookie(cookieHeader)) {
       const headers = oauthCleanupHeaders();
@@ -49,7 +49,7 @@ export async function loader({ request }: { request: Request }) {
       headers.set("Location", "/sign-up?error=invite_required");
       return new Response(null, { status: 302, headers });
     }
-    collaboratorId = await addCollaborator({
+    userId = await addUser({
       username: gh.login.toLowerCase(),
       ...(email ? { email } : {}),
       github_identity: {
@@ -66,7 +66,7 @@ export async function loader({ request }: { request: Request }) {
   // is captured; default to /dashboard.
   const headers = oauthCleanupHeaders();
   headers.append("Set-Cookie", clearSignupInviteCookie());
-  headers.append("Set-Cookie", setSessionCookie(collaboratorId));
+  headers.append("Set-Cookie", setSessionCookie(userId));
   const returnPath = readOAuthReturnCookie(cookieHeader);
   headers.set("Location", returnPath ?? "/dashboard");
   return new Response(null, { status: 302, headers });

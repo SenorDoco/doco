@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@doco/db", () => {
   const rank = { reader: 1, author: 2, approver: 3, owner: 4 } as const;
   return {
-    getCollaboratorById: vi.fn(),
+    getUserById: vi.fn(),
     getEntity: mocks.getEntity,
     listDocoUsers: vi.fn(),
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
@@ -70,7 +70,7 @@ describe("principal API", () => {
     mocks.query.mockResolvedValue({ rows: [] });
     mocks.withClient.mockImplementation((fn) => fn({ query: mocks.query }));
     mocks.loadDocoRouteForRead.mockResolvedValue({
-      me: { id: "collaborator_author", username: "alice", type: "person", isHuman: true },
+      me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
     mocks.getDocoLevelRole.mockResolvedValue("author");
@@ -102,20 +102,20 @@ describe("principal API", () => {
     );
     expect(mocks.getDocoLevelRole).toHaveBeenCalledWith(
       { ownerId: "organization_acme", docoId: "doco_acme" },
-      "collaborator_author",
+      "user_author",
     );
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         doco_id: "doco_acme",
         entity_type: "principal",
         body_md: "Human site visitor — no Doco account required.",
-        created_by: "collaborator_author",
-        updated_by: "collaborator_author",
+        created_by: "user_author",
+        updated_by: "user_author",
         data: expect.objectContaining({
           doco_id: "doco_acme",
           neuron_type: "principal",
           name: "Visitor",
-          created_by: "collaborator_author",
+          created_by: "user_author",
           lifecycle: "active",
         }),
       }),
@@ -137,7 +137,7 @@ describe("principal API", () => {
       expect.objectContaining({
         docoDir: "/tmp/docos/acme",
         docoId: "doco_acme",
-        by: "collaborator_author",
+        by: "user_author",
         entity_type: "principal",
         entity_id: expect.stringMatching(/^principal_/),
         op: "entity.create",
@@ -229,7 +229,7 @@ describe("principal API", () => {
     expect(persistedData).not.toHaveProperty("summary");
   });
 
-  it("rejects collaborators below author even if they can read the Doco", async () => {
+  it("rejects users below author even if they can read the Doco", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("reader");
 
     const response = await action({

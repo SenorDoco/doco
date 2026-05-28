@@ -1,10 +1,10 @@
 // /api-keys — host-level page for managing API keys.
 //
 // Lists every active OAuth refresh token bound to the signed-in user
-// or one of their named agent collaborators, plus personal API keys
+// or one of their named agent users, plus personal API keys
 // minted from this page.
 //
-// Distinct from /collaborators: that page lists who has access; this
+// Distinct from /users: that page lists who has access; this
 // page manages the credentials behind those agents/scripts.
 
 import type { DocoRole } from "@doco/db";
@@ -21,13 +21,13 @@ import {
   type ApiKeysPageData,
   type MintedApiKey,
   type ScopeOption,
-  listApiKeysForCollaborator,
+  listApiKeysForUser,
   loadScopeOptions,
   mintApiKey,
   revokeApiKey,
 } from "~/lib/api-keys.server";
-import { ALL_ROLES } from "~/lib/collaborator-invite";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { ALL_ROLES } from "~/lib/user-invite";
 
 export async function loader({ request }: { request: Request }): Promise<ApiKeysPageData> {
   const me = await getCurrentPrincipal(request);
@@ -36,7 +36,7 @@ export async function loader({ request }: { request: Request }): Promise<ApiKeys
     throw redirect(`/sign-in?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`);
   }
   const [keys, scopeOptions] = await Promise.all([
-    listApiKeysForCollaborator(me.id),
+    listApiKeysForUser(me.id),
     loadScopeOptions(me.id),
   ]);
   const host = `${url.protocol}//${url.host}`;
@@ -58,7 +58,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   if (intent === "revoke") {
     const clientId = String(form.get("client_id") ?? "").trim();
     if (!clientId) return { error: "Missing client_id." };
-    const ok = await revokeApiKey({ collaborator_id: me.id, client_id: clientId });
+    const ok = await revokeApiKey({ user_id: me.id, client_id: clientId });
     if (!ok) return { error: "Token not found or already revoked." };
     return { intent: "revoke", ok: true, client_id: clientId };
   }
@@ -256,8 +256,8 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
 
   const [label, setLabel] = useState("");
 
-  // Single combined Org / Doco dropdown, matching the collaborator
-  // invite UX (collaborator-invite-cards.tsx). Each option carries the
+  // Single combined Org / Doco dropdown, matching the user
+  // invite UX (user-invite-cards.tsx). Each option carries the
   // user's role on that target so the Role dropdown can constrain its
   // choices to roles at or below the user's own.
   const combinedOptions = useMemo(

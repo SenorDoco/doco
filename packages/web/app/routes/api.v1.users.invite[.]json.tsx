@@ -1,5 +1,5 @@
-// /api/v1/collaborators/invite.json — JSON API for inviting human
-// collaborators to an org or a doco. The companion to
+// /api/v1/users/invite.json — JSON API for inviting human
+// users to an org or a doco. The companion to
 // /api/v1/api-keys.json (which mints agent / personal API keys).
 //
 // Splitting the two endpoints means API consumers don't have to encode
@@ -21,8 +21,8 @@
 //         role higher than their own
 
 import { buildHumanInvitePrompt } from "~/components/collaboration-invite-prompt";
-import { handleCollaboratorInviteAction } from "~/lib/collaborators.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { handleUserInviteAction } from "~/lib/users.server";
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -75,7 +75,7 @@ export async function action({ request }: { request: Request }) {
     },
     body: formBody,
   });
-  const result = await handleCollaboratorInviteAction(synthRequest);
+  const result = await handleUserInviteAction(synthRequest);
 
   if ("error" in result) {
     const lower = result.error.toLowerCase();

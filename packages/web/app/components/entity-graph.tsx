@@ -53,7 +53,7 @@ export interface GraphNode {
   count?: number;
   lifecycle?: string | null;
   /** Principal who owns this node's lane in the rendered graph. */
-  collaborator_id?: string | null;
+  user_id?: string | null;
   principal_label?: string | null;
   created_at: string | null;
   /**
@@ -168,11 +168,11 @@ function principalLaneFor(node: GraphNode): { key: string; id: string | null; la
     };
   }
 
-  if (node.collaborator_id) {
+  if (node.user_id) {
     return {
-      key: node.collaborator_id,
-      id: node.collaborator_id,
-      label: node.principal_label ?? node.collaborator_id,
+      key: node.user_id,
+      id: node.user_id,
+      label: node.principal_label ?? node.user_id,
     };
   }
 

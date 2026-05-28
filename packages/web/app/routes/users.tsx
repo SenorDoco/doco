@@ -1,12 +1,12 @@
-// /collaborators — global collaborator-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
+// /users — global user-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
 // Replaces the per-doco / per-org members pages. Top-level link in
 // the host nav. Shows every org/doco grant the signed-in principal
 // can see — humans and authorized agents. Agent credentials still
 // live on /api-keys, but the invite card also lets owners copy the
 // agent OAuth prompt in-place. Lets owners edit roles inline
-// (auto-save) and mint invites in-place via the CollaboratorInviteCards
+// (auto-save) and mint invites in-place via the UserInviteCards
 // card at the top — the prior
-// /collaborators/invite standalone page is gone.
+// /users/invite standalone page is gone.
 
 import {
   type DocoRole,
@@ -21,25 +21,21 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { CollaboratorInviteCards } from "~/components/collaborator-invite-cards";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import {
-  ALL_ROLES,
-  type CollaboratorInviteActionResult,
-  type InviteLevel,
-} from "~/lib/collaborator-invite";
-import {
-  type CollaboratorsPageData,
-  type GrantRow,
-  handleCollaboratorInviteAction,
-  loadCollaboratorsPageData,
-} from "~/lib/collaborators.server";
+import { UserInviteCards } from "~/components/user-invite-cards";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { ALL_ROLES, type InviteLevel, type UserInviteActionResult } from "~/lib/user-invite";
+import {
+  type GrantRow,
+  type UsersPageData,
+  handleUserInviteAction,
+  loadUsersPageData,
+} from "~/lib/users.server";
 
 export async function loader({ request }: { request: Request }) {
-  return loadCollaboratorsPageData(request);
+  return loadUsersPageData(request);
 }
 
 type ActionResult =
@@ -48,7 +44,7 @@ type ActionResult =
       ok: true;
       level: InviteLevel;
       target_ids: string[];
-      collaborator_id: string;
+      user_id: string;
       role: DocoRole;
     }
   | {
@@ -56,9 +52,9 @@ type ActionResult =
       ok: true;
       level: InviteLevel;
       target_ids: string[];
-      collaborator_id: string;
+      user_id: string;
     }
-  | CollaboratorInviteActionResult
+  | UserInviteActionResult
   | { error: string };
 
 export async function action({
@@ -67,17 +63,17 @@ export async function action({
   request: Request;
 }): Promise<ActionResult> {
   const me = await getCurrentPrincipal(request);
-  if (!me) return { error: "Sign in to manage collaborators." };
+  if (!me) return { error: "Sign in to manage users." };
 
   const form = await request.clone().formData();
   const intent = String(form.get("intent") ?? "");
   const level = String(form.get("level") ?? "") as InviteLevel;
 
   if (intent === "invite") {
-    // Delegate to the shared invite handler — same one /api/v1/collaborators/invite.json
+    // Delegate to the shared invite handler — same one /api/v1/users/invite.json
     // calls. The InviteHumanCard's useFetcher narrows on `intent === "invite"`
     // so the role-edit cases below don't interfere with it.
-    return await handleCollaboratorInviteAction(request);
+    return await handleUserInviteAction(request);
   }
 
   if (intent === "update" || intent === "remove") {
@@ -88,21 +84,21 @@ export async function action({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const principalId = String(form.get("collaborator_id") ?? "").trim();
+    const principalId = String(form.get("user_id") ?? "").trim();
     if (targetIds.length === 0) return { error: "target_ids missing." };
-    if (!principalId) return { error: "collaborator_id missing." };
+    if (!principalId) return { error: "user_id missing." };
 
     if (level !== "org" && level !== "doco") return { error: "Invalid level." };
 
     for (const targetId of targetIds) {
       if (level === "org") {
         const role = await getOrgRole(targetId, me.id);
-        if (role !== "owner") return { error: "Only org owners can change org collaborators." };
+        if (role !== "owner") return { error: "Only org owners can change org users." };
       } else {
         const doco = await getDocoById(targetId);
         if (!doco) return { error: "Doco not found." };
         const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
-        if (role !== "owner") return { error: "Only doco owners can change doco collaborators." };
+        if (role !== "owner") return { error: "Only doco owners can change doco users." };
       }
     }
 
@@ -110,16 +106,15 @@ export async function action({
       const role = String(form.get("role") ?? "") as DocoRole;
       if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
       for (const targetId of targetIds) {
-        if (level === "org")
-          await upsertOrgUser({ org_id: targetId, collaborator_id: principalId, role });
-        else await upsertDocoUser({ doco_id: targetId, collaborator_id: principalId, role });
+        if (level === "org") await upsertOrgUser({ org_id: targetId, user_id: principalId, role });
+        else await upsertDocoUser({ doco_id: targetId, user_id: principalId, role });
       }
       return {
         intent: "update",
         ok: true,
         level,
         target_ids: targetIds,
-        collaborator_id: principalId,
+        user_id: principalId,
         role,
       };
     }
@@ -132,7 +127,7 @@ export async function action({
       ok: true,
       level,
       target_ids: targetIds,
-      collaborator_id: principalId,
+      user_id: principalId,
     };
   }
 
@@ -140,7 +135,7 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Collaborators · Doco" }];
+  return [{ title: "Users · Doco" }];
 }
 
 interface AccessGrant {
@@ -166,7 +161,7 @@ interface GroupedRow {
 function groupByPrincipal(rows: GroupedRow[]): GroupedRow[] {
   const map = new Map<string, GroupedRow>();
   for (const row of rows) {
-    const key = row.principal.collaborator_id;
+    const key = row.principal.user_id;
     const existing = map.get(key);
     if (existing) {
       existing.grants.push(...row.grants);
@@ -184,10 +179,10 @@ function groupByPrincipal(rows: GroupedRow[]): GroupedRow[] {
   return [...map.values()].sort((a, b) => a.principal.username.localeCompare(b.principal.username));
 }
 
-export default function CollaboratorsPage({
+export default function UsersPage({
   loaderData,
 }: {
-  loaderData: CollaboratorsPageData;
+  loaderData: UsersPageData;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -265,27 +260,27 @@ export default function CollaboratorsPage({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Users" })} />
         <header>
-          <h1 className="text-2xl font-semibold">Collaborators</h1>
+          <h1 className="text-2xl font-semibold">Users</h1>
         </header>
 
         <Card>
           <CardContent className="pt-4">
-            <CollaboratorInviteCards invite={loaderData.invite} host={loaderData.host} />
+            <UserInviteCards invite={loaderData.invite} host={loaderData.host} />
           </CardContent>
         </Card>
 
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-base font-semibold">Show collaborators for</span>
+            <span className="text-base font-semibold">Show users for</span>
             <select
               value={scope}
               onChange={(e) => applyScope(e.currentTarget.value)}
               data-testid="scope-filter"
               className="w-auto rounded-md px-3 py-2"
             >
-              <option value="all">All collaborators</option>
+              <option value="all">All users</option>
               {loaderData.orgSections.length > 0 ? (
                 <optgroup label="By org">
                   {loaderData.orgSections.map((s) => (
@@ -310,7 +305,7 @@ export default function CollaboratorsPage({
 
         {showOrgSection ? (
           <Section
-            title="Org-wide collaborators"
+            title="Org-wide users"
             empty="You don't have any org grants yet."
             rows={orgRows}
             myPrincipalId={loaderData.me.id}
@@ -319,7 +314,7 @@ export default function CollaboratorsPage({
 
         {showDocoSection ? (
           <Section
-            title="Per-doco collaborators"
+            title="Per-doco users"
             empty="You don't have any doco grants yet."
             rows={docoRows}
             myPrincipalId={loaderData.me.id}
@@ -360,7 +355,7 @@ function Section({
               <tbody className="divide-y divide-border">
                 {sorted.map((r) => (
                   <UserRow
-                    key={`${r.level}-${r.principal.collaborator_id}`}
+                    key={`${r.level}-${r.principal.user_id}`}
                     row={r}
                     myPrincipalId={myPrincipalId}
                   />
@@ -420,7 +415,7 @@ function UserRow({
   myPrincipalId: string;
 }) {
   const username = row.principal.username;
-  const isMe = row.principal.collaborator_id === myPrincipalId;
+  const isMe = row.principal.user_id === myPrincipalId;
 
   const grantedAbs = formatDate(row.earliestJoinedAt);
   const grantedRel = formatRelative(row.earliestJoinedAt);
@@ -459,7 +454,7 @@ function UserRow({
             <AccessLine
               key={g.target_id}
               level={row.level}
-              principalId={row.principal.collaborator_id}
+              principalId={row.principal.user_id}
               username={username}
               grant={g}
               isMe={isMe}
@@ -492,13 +487,13 @@ function AccessLine({
     level,
     target_ids: grant.target_id,
     role: newRole,
-    collaborator_id: principalId,
+    user_id: principalId,
   });
   const removePayload: Record<string, string> = {
     intent: "remove",
     level,
     target_ids: grant.target_id,
-    collaborator_id: principalId,
+    user_id: principalId,
   };
 
   const error =

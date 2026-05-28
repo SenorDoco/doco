@@ -14,7 +14,7 @@ vi.mock("@doco/db", () => ({
     { table: "decisions", entityType: "decision", body: false },
     { table: "intents", entityType: "intent", body: false },
   ],
-  getCollaboratorById: vi.fn(),
+  getUserById: vi.fn(),
   getEntity: vi.fn(),
   listDocoUsers: vi.fn(),
   listEntitiesByDoco: vi.fn(),

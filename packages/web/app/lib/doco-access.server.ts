@@ -4,12 +4,12 @@
 import {
   type DocoRole,
   isOrgUser as dbIsOrgMember,
-  getCollaboratorById,
   getDocoByIdOrHandle,
   getDocoUserRole,
   getOrgRole,
   getPrincipalById,
-  listDocoIdsForCollaborator,
+  getUserById,
+  listDocoIdsForUser,
   maxRole,
   roleAtLeast,
   withClient,
@@ -151,13 +151,13 @@ async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
   return p?.name === "host-bootstrap";
 }
 
-/** Read the owner_id field for either a collaborator identity or Principal neuron. */
+/** Read the owner_id field for either a user identity or Principal neuron. */
 async function getPrincipalOwnerId(principalId: string): Promise<string | null> {
-  if (principalId.startsWith("collaborator_")) {
-    const c = await getCollaboratorById(principalId);
+  if (principalId.startsWith("user_")) {
+    const c = await getUserById(principalId);
     const ownerId = c?.data.owner_id;
     if (typeof ownerId !== "string") return null;
-    if (!ownerId.startsWith("collaborator_") && !ownerId.startsWith("organization_")) {
+    if (!ownerId.startsWith("user_") && !ownerId.startsWith("organization_")) {
       return null;
     }
     return ownerId;
@@ -169,7 +169,7 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
   if (typeof ownerId !== "string") return null;
   if (
     !ownerId.startsWith("principal_") &&
-    !ownerId.startsWith("collaborator_") &&
+    !ownerId.startsWith("user_") &&
     !ownerId.startsWith("organization_")
   ) {
     return null;
@@ -183,7 +183,7 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
  * and the host-bootstrap exemption. True iff the principal has a
  * personal stake in the Doco: they own it, they're an agent of the
  * owner, or they're a member of the owning organization. Invite-
- * redeemed collaborators are handled separately via
+ * redeemed users are handled separately via
  * `listInvitedDocoIdsForPrincipal` — that path needs the Doco id, not
  * the owner id, so callers union the two sets.
  */
@@ -214,22 +214,22 @@ export async function isMyDoco(
  * OAuth tokens are only authentication, not membership storage.
  */
 export async function listInvitedDocoIdsForPrincipal(principalId: string): Promise<Set<string>> {
-  const ids = await listDocoIdsForCollaborator(principalId);
+  const ids = await listDocoIdsForUser(principalId);
   return new Set(ids);
 }
 
 /**
  * Every Doco the principal can read or write — the union of three
  * sources:
- *   1. Docos they own directly (`docos.owner_id = collaborator_id`)
+ *   1. Docos they own directly (`docos.owner_id = user_id`)
  *   2. Docos owned by an org they belong to (any role in `org_users`)
  *   3. Explicit `doco_users` grants
  *
- * Mirrors the /collaborators page logic (single source of truth for "what
+ * Mirrors the /users page logic (single source of truth for "what
  * Docos can this user see"). Use this for any UI that needs to
  * surface the user's full Doco set — including the OAuth approve
  * screen and the Device-Flow approve screen — instead of the bare
- * `listDocoIdsForCollaborator`, which only sees source #3.
+ * `listDocoIdsForUser`, which only sees source #3.
  */
 export async function listAccessibleDocoIdsForPrincipal(principalId: string): Promise<string[]> {
   const ids = new Set<string>();
@@ -242,7 +242,7 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
     }
     const viaOrg = await c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
-         SELECT org_id FROM org_users WHERE collaborator_id = $1
+         SELECT org_id FROM org_users WHERE user_id = $1
        )`,
       [principalId],
     );
@@ -250,7 +250,7 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
       ids.add(String(row.id));
     }
   });
-  const viaDocoUsers = await listDocoIdsForCollaborator(principalId);
+  const viaDocoUsers = await listDocoIdsForUser(principalId);
   for (const id of viaDocoUsers) {
     ids.add(id);
   }
@@ -351,7 +351,7 @@ export function readDocoRouteParam(params: DocoRouteParams): string | null {
  * routes use `params.docoHandle`; `params.docoId` remains accepted for
  * legacy callers and id-based APIs. The returned `ownerSlug` and
  * `docoSlug` are back-compat fields synthesized by `mapDocoRow`:
- * `ownerSlug` comes from a JOIN to `collaborators.github_login` /
+ * `ownerSlug` comes from a JOIN to `users.github_login` /
  * `organizations.handle`, `docoSlug` mirrors `handle`. Handlers that
  * need the legacy slug pair for internal plumbing (docoPath, captures)
  * keep destructuring them; new code should read `handle` directly.
@@ -405,7 +405,7 @@ export async function loadDocoForRead(
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
 
   // Project-token short-circuit. Project tokens are Doco-scoped, fixed
-  // at reader role, and do not carry a collaborator identity — so the
+  // at reader role, and do not carry a user identity — so the
   // standard "validate-bearer then check principal access" path does
   // not apply. Resolve and gate them here before falling through to
   // the OAuth/cookie path.

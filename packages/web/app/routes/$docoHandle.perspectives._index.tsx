@@ -65,7 +65,7 @@ export async function action({
   await attachPerspectiveToDoco({
     docoId: ctx.meta.docoId,
     perspectiveId,
-    attachedByCollaboratorId: ctx.me.id,
+    attachedByUserId: ctx.me.id,
   });
   // Bounce the user back to the Doco home with the newly-attached
   // perspective active, so they can see it immediately.

@@ -44,7 +44,7 @@ describe("/api/v1/docos.json", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipalAsync.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
   });
@@ -118,7 +118,7 @@ describe("/api/v1/docos.json", () => {
       expect.objectContaining({
         orgId: "organization_torre",
         requestedHandle: "bpms",
-        createdByCollaboratorId: "collaborator_alice",
+        createdByUserId: "user_alice",
       }),
     );
   });

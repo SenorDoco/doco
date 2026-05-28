@@ -87,7 +87,7 @@ export async function action({
     const label = String(form.get("label") ?? "").trim() || null;
     const result = await mintProjectToken({
       doco_id: meta.docoId,
-      created_by_collaborator_id: me.id,
+      created_by_user_id: me.id,
       label,
     });
     const installHint = [

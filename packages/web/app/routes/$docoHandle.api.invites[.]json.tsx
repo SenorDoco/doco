@@ -11,7 +11,7 @@
 //     code:              "<64-hex>",
 //     role:              "owner|approver|author|reader",
 //     doco_url:          "https://<host>/<handle>/",
-//     human_prompt:      "<verbatim text to share with a human collaborator>",
+//     human_prompt:      "<verbatim text to share with a human user>",
 //     agent_prompt:      "<verbatim text to paste into an AI agent>"
 //   }
 //
@@ -62,7 +62,7 @@ export async function action({
   if (!me) {
     // canAccessDoco may have let an anonymous caller pass for a public
     // Doco; minting invites still requires a Principal so we can
-    // record minted_by_collaborator_id on the invite row.
+    // record minted_by_user_id on the invite row.
     return Response.json({ error: "anonymous_callers_cannot_mint_invites" }, { status: 403 });
   }
 

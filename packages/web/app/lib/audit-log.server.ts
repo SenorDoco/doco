@@ -66,7 +66,7 @@ export function appendAuditEvent(input: AppendEventInput): AuditEvent {
   appendAuditEventRow({
     event_id: event.event_id,
     at: event.at,
-    by_collaborator: event.by,
+    by_user: event.by,
     doco_id: event.doco_id,
     org_id: event.org_id,
     entity_type: event.entity_type,
@@ -118,7 +118,7 @@ export async function readAuditEvents(
     const evt: AuditEvent = {
       event_id: r.event_id,
       at: r.at,
-      by: r.by_collaborator,
+      by: r.by_user,
       doco_id: r.doco_id,
       org_id: r.org_id ?? null,
       entity_type: r.entity_type,

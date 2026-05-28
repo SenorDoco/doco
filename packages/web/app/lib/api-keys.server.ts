@@ -3,7 +3,7 @@
 //
 //   1. Agent OAuth flow. An MCP runtime registers a client, drives
 //      /oauth/authorize or /device, the user names the agent + approves
-//      scopes, and a refresh token gets minted for that agent collaborator.
+//      scopes, and a refresh token gets minted for that agent user.
 //
 //   2. Personal API keys (new). The user clicks "Generate API key" on
 //      /api-keys, picks a scope, and we register a synthetic OAuth
@@ -11,19 +11,19 @@
 //
 // Both shapes land in the same `oauth_refresh_tokens` row format, so
 // this file lists / revokes them uniformly. Agent OAuth rows are shown
-// to the approving owner through collaborators.owner_id.
+// to the approving owner through users.owner_id.
 //
 // Distinguishing personal from agent: personal-API-key clients carry
 // the OOB redirect URI sentinel (`urn:ietf:wg:oauth:2.0:oob`) — that
 // value never appears for an OAuth-flow client because the OAuth
 // /authorize endpoint rejects it as a callback target.
 
-import { type DocoRole, getOrgRole, listOrganizationsForCollaborator, withClient } from "@doco/db";
-import { ALL_ROLES, rankOf } from "~/lib/collaborator-invite";
+import { type DocoRole, getOrgRole, listOrganizationsForUser, withClient } from "@doco/db";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { issueTokens, registerClient } from "~/lib/oauth-server.server";
 import type { CurrentPrincipal } from "~/lib/session.server";
+import { ALL_ROLES, rankOf } from "~/lib/user-invite";
 
 const PERSONAL_API_KEY_REDIRECT = "urn:ietf:wg:oauth:2.0:oob";
 
@@ -69,15 +69,15 @@ export interface MintedApiKey {
   scope_grants: ApiKeyScopeGrant[];
 }
 
-export async function listApiKeysForCollaborator(principalId: string): Promise<ApiKeyRow[]> {
+export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow[]> {
   const result = await withClient((c) =>
     c.query<{
       client_id: string;
       client_name: string | null;
-      collaborator_id: string;
-      collaborator_kind: "person" | "agent";
-      collaborator_login: string | null;
-      collaborator_data: Record<string, unknown> | null;
+      user_id: string;
+      user_kind: "person" | "agent";
+      user_login: string | null;
+      user_data: Record<string, unknown> | null;
       redirect_uris: string[];
       granted_doco_ids: string[] | null;
       granted_doco_roles: Record<string, string> | null;
@@ -90,10 +90,10 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
       `SELECT DISTINCT ON (rt.client_id)
               rt.client_id,
               c.client_name,
-              rt.collaborator_id,
-              subject.kind AS collaborator_kind,
-              subject.github_login AS collaborator_login,
-              subject.data AS collaborator_data,
+              rt.user_id,
+              subject.kind AS user_kind,
+              subject.github_login AS user_login,
+              subject.data AS user_data,
               c.redirect_uris,
               rt.granted_doco_ids,
               rt.granted_doco_roles,
@@ -104,11 +104,11 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
               (SELECT MAX(at.created_at)
                  FROM oauth_access_tokens at
                 WHERE at.client_id = rt.client_id
-                  AND at.collaborator_id = rt.collaborator_id) AS last_seen_at
+                  AND at.user_id = rt.user_id) AS last_seen_at
          FROM oauth_refresh_tokens rt
          JOIN oauth_clients c ON c.client_id = rt.client_id
-         JOIN collaborators subject ON subject.id = rt.collaborator_id
-        WHERE (rt.collaborator_id = $1 OR subject.owner_id = $1)
+         JOIN users subject ON subject.id = rt.user_id
+        WHERE (rt.user_id = $1 OR subject.owner_id = $1)
           AND rt.revoked = false
           AND rt.expires_at > now()
         ORDER BY rt.client_id, rt.created_at DESC`,
@@ -164,15 +164,15 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
         : String(row.last_seen_at)
       : null;
 
-    const subjectName = collaboratorDisplayName({
-      id: row.collaborator_id,
-      github_login: row.collaborator_login,
-      data: row.collaborator_data,
+    const subjectName = userDisplayName({
+      id: row.user_id,
+      github_login: row.user_login,
+      data: row.user_data,
     });
     const clientName = row.client_name ?? row.client_id;
     return {
       client_id: row.client_id,
-      client_name: !isPersonal && row.collaborator_kind === "agent" ? subjectName : clientName,
+      client_name: !isPersonal && row.user_kind === "agent" ? subjectName : clientName,
       source: isPersonal ? "personal" : "agent",
       granted_at: grantedAt,
       last_used_at: lastSeenAt,
@@ -182,7 +182,7 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
   });
 }
 
-function collaboratorDisplayName(row: {
+function userDisplayName(row: {
   id: string;
   github_login: string | null;
   data: Record<string, unknown> | null;
@@ -203,7 +203,7 @@ async function loadDocoLabels(
       `SELECT d.id, d.handle, COALESCE(o.handle, c.github_login, '') AS owner_slug
          FROM docos d
          LEFT JOIN organizations o ON o.id = d.owner_id
-         LEFT JOIN collaborators c ON c.id = d.owner_id
+         LEFT JOIN users c ON c.id = d.owner_id
         WHERE d.id = ANY($1)`,
       [ids],
     ),
@@ -232,7 +232,7 @@ async function loadOrgHandles(ids: string[]): Promise<Map<string, string>> {
 }
 
 export async function loadScopeOptions(principalId: string): Promise<ScopeOption[]> {
-  const orgs = await listOrganizationsForCollaborator(principalId);
+  const orgs = await listOrganizationsForUser(principalId);
   const options: ScopeOption[] = [];
   for (const o of orgs) {
     const role = (await getOrgRole(o.id, principalId)) ?? "reader";
@@ -246,7 +246,7 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
         `SELECT d.handle, d.owner_id, COALESCE(o.handle, c.github_login, '') AS owner_slug
            FROM docos d
            LEFT JOIN organizations o ON o.id = d.owner_id
-           LEFT JOIN collaborators c ON c.id = d.owner_id
+           LEFT JOIN users c ON c.id = d.owner_id
           WHERE d.id = $1`,
         [docoId],
       ),
@@ -353,7 +353,7 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
 
   const tokens = await issueTokens({
     client_id: client.client_id,
-    collaborator_id: input.me.id,
+    user_id: input.me.id,
     granted_doco_ids,
     granted_doco_roles,
     granted_org_ids,
@@ -383,29 +383,29 @@ async function getDocoLevelRoleForGrant(
 }
 
 export async function revokeApiKey(args: {
-  collaborator_id: string;
+  user_id: string;
   client_id: string;
 }): Promise<boolean> {
   return withClient(async (c) => {
     const accessResult = await c.query(
       `UPDATE oauth_access_tokens
           SET revoked = true
-         FROM collaborators subject
-        WHERE oauth_access_tokens.collaborator_id = subject.id
+         FROM users subject
+        WHERE oauth_access_tokens.user_id = subject.id
           AND oauth_access_tokens.client_id = $1
-          AND (oauth_access_tokens.collaborator_id = $2 OR subject.owner_id = $2)
+          AND (oauth_access_tokens.user_id = $2 OR subject.owner_id = $2)
           AND oauth_access_tokens.revoked = false`,
-      [args.client_id, args.collaborator_id],
+      [args.client_id, args.user_id],
     );
     const refreshResult = await c.query(
       `UPDATE oauth_refresh_tokens
           SET revoked = true
-         FROM collaborators subject
-        WHERE oauth_refresh_tokens.collaborator_id = subject.id
+         FROM users subject
+        WHERE oauth_refresh_tokens.user_id = subject.id
           AND oauth_refresh_tokens.client_id = $1
-          AND (oauth_refresh_tokens.collaborator_id = $2 OR subject.owner_id = $2)
+          AND (oauth_refresh_tokens.user_id = $2 OR subject.owner_id = $2)
           AND oauth_refresh_tokens.revoked = false`,
-      [args.client_id, args.collaborator_id],
+      [args.client_id, args.user_id],
     );
     return (accessResult.rowCount ?? 0) + (refreshResult.rowCount ?? 0) > 0;
   });

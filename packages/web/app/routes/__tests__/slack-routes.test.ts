@@ -58,7 +58,7 @@ describe("Slack integration routes", () => {
 
   it("redirects a signed-in user to Slack OAuth installation", async () => {
     mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
     mocks.buildSlackInstallUrl.mockReturnValue("https://slack.com/oauth/v2/authorize?client_id=x");
@@ -71,14 +71,11 @@ describe("Slack integration routes", () => {
     expect(response.headers.get("Location")).toBe(
       "https://slack.com/oauth/v2/authorize?client_id=x",
     );
-    expect(mocks.buildSlackInstallUrl).toHaveBeenCalledWith(
-      expect.any(Request),
-      "collaborator_alice",
-    );
+    expect(mocks.buildSlackInstallUrl).toHaveBeenCalledWith(expect.any(Request), "user_alice");
   });
 
   it("stores a Slack installation after OAuth callback", async () => {
-    mocks.verifySlackState.mockReturnValue({ installerId: "collaborator_alice" });
+    mocks.verifySlackState.mockReturnValue({ installerId: "user_alice" });
     mocks.exchangeSlackOAuthCode.mockResolvedValue({
       ok: true,
       team: { id: "T123", name: "Acme" },
@@ -96,7 +93,7 @@ describe("Slack integration routes", () => {
     expect(response.headers.get("Location")).toBe("/integrations/slack/setup?team_id=T123");
     expect(mocks.upsertSlackInstallation).toHaveBeenCalledWith({
       response: expect.objectContaining({ team: { id: "T123", name: "Acme" } }),
-      installedByCollaboratorId: "collaborator_alice",
+      installedByUserId: "user_alice",
     });
   });
 

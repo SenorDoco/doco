@@ -9,8 +9,8 @@ import type { EntityRecord } from "@doco/db";
 import {
   ALL_ENTITY_TABLES,
   DOCO_NEURON_TABLE_SPECS,
-  getCollaboratorById,
   getEntity,
+  getUserById,
   listDocoUsers,
   listEntitiesByDoco,
   withClient,
@@ -102,8 +102,8 @@ export interface SlackChannelConnectionSummary {
   targetLabel: string;
   role: string;
   source?: "shared_default" | "personal";
-  collaboratorId?: string;
-  collaboratorUsername?: string;
+  userId?: string;
+  userUsername?: string;
 }
 
 export interface SlackRecentMessage {
@@ -139,12 +139,12 @@ export interface SlackLlmAnswerInput {
   overview: boolean;
   repair: boolean;
   personalAuthorizationCommand?: string | null;
-  personalActors?: SlackLinkedCollaborator[];
+  personalActors?: SlackLinkedUser[];
   origin?: string | null;
 }
 
-export interface SlackLinkedCollaborator {
-  collaboratorId: string;
+export interface SlackLinkedUser {
+  userId: string;
   username: string;
 }
 
@@ -198,7 +198,7 @@ interface SlackConversationHistoryMessage {
 
 interface SlackInstallationInput {
   response: SlackOAuthAccessResponse;
-  installedByCollaboratorId: string | null;
+  installedByUserId: string | null;
 }
 
 interface SlackConnectionInput {
@@ -208,7 +208,7 @@ interface SlackConnectionInput {
   targetLevel: "org" | "doco";
   targetId: string;
   role: string;
-  createdByCollaboratorId: string;
+  createdByUserId: string;
 }
 
 interface SlackConnectionGrantInput {
@@ -410,7 +410,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
     c.query(
       `INSERT INTO group_chat_installations
          (id, provider, workspace_id, workspace_name, bot_user_id, bot_access_token,
-          bot_scope, installed_by_chat_user_id, installed_by_collaborator_id, data, created_at, updated_at)
+          bot_scope, installed_by_chat_user_id, installed_by_user_id, data, created_at, updated_at)
        VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, $9::jsonb, now(), now())
        ON CONFLICT (provider, workspace_id)
        DO UPDATE SET
@@ -419,7 +419,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
          bot_access_token = EXCLUDED.bot_access_token,
          bot_scope = EXCLUDED.bot_scope,
          installed_by_chat_user_id = EXCLUDED.installed_by_chat_user_id,
-         installed_by_collaborator_id = EXCLUDED.installed_by_collaborator_id,
+         installed_by_user_id = EXCLUDED.installed_by_user_id,
          data = EXCLUDED.data,
          updated_at = now()`,
       [
@@ -430,7 +430,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
         input.response.access_token ?? null,
         scopes,
         input.response.authed_user?.id ?? null,
-        input.installedByCollaboratorId,
+        input.installedByUserId,
         JSON.stringify(data),
       ],
     ),
@@ -465,13 +465,13 @@ export async function saveSlackChannelConnection(input: SlackConnectionInput): P
     c.query(
       `INSERT INTO group_chat_channel_connections
          (id, provider, workspace_id, channel_id, channel_name, target_level, target_id,
-          role, created_by_collaborator_id, data, created_at, updated_at)
+          role, created_by_user_id, data, created_at, updated_at)
        VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, now(), now())
        ON CONFLICT (provider, workspace_id, channel_id, target_level, target_id)
        DO UPDATE SET
          channel_name = EXCLUDED.channel_name,
          role = EXCLUDED.role,
-         created_by_collaborator_id = EXCLUDED.created_by_collaborator_id,
+         created_by_user_id = EXCLUDED.created_by_user_id,
          updated_at = now()`,
       [
         `gcc_${generateUlid()}`,
@@ -481,7 +481,7 @@ export async function saveSlackChannelConnection(input: SlackConnectionInput): P
         input.targetLevel,
         input.targetId,
         input.role,
-        input.createdByCollaboratorId,
+        input.createdByUserId,
       ],
     ),
   );
@@ -492,7 +492,7 @@ export async function replaceSlackChannelConnections(input: {
   channelId: string;
   channelName: string;
   grants: SlackConnectionGrantInput[];
-  createdByCollaboratorId: string;
+  createdByUserId: string;
 }): Promise<void> {
   await withClient(async (c) => {
     await c.query("BEGIN");
@@ -508,7 +508,7 @@ export async function replaceSlackChannelConnections(input: {
         await c.query(
           `INSERT INTO group_chat_channel_connections
            (id, provider, workspace_id, channel_id, channel_name, target_level, target_id,
-            role, created_by_collaborator_id, data, created_at, updated_at)
+            role, created_by_user_id, data, created_at, updated_at)
          VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, now(), now())`,
           [
             `gcc_${generateUlid()}`,
@@ -518,7 +518,7 @@ export async function replaceSlackChannelConnections(input: {
             grant.targetLevel,
             grant.targetId,
             grant.role,
-            input.createdByCollaboratorId,
+            input.createdByUserId,
           ],
         );
       }
@@ -533,36 +533,36 @@ export async function replaceSlackChannelConnections(input: {
 export async function upsertSlackUserLink(input: {
   workspaceId: string;
   chatUserId: string;
-  collaboratorId: string;
+  userId: string;
 }): Promise<void> {
   await withClient((c) =>
     c.query(
       `INSERT INTO group_chat_user_links
-         (id, provider, workspace_id, chat_user_id, collaborator_id, data, created_at, updated_at)
+         (id, provider, workspace_id, chat_user_id, user_id, data, created_at, updated_at)
        VALUES ($1, 'slack', $2, $3, $4, '{}'::jsonb, now(), now())
-       ON CONFLICT (provider, workspace_id, chat_user_id, collaborator_id)
+       ON CONFLICT (provider, workspace_id, chat_user_id, user_id)
        DO UPDATE SET updated_at = now()`,
-      [`gcul_${generateUlid()}`, input.workspaceId, input.chatUserId, input.collaboratorId],
+      [`gcul_${generateUlid()}`, input.workspaceId, input.chatUserId, input.userId],
     ),
   );
 }
 
-async function listSlackLinkedCollaborators(args: {
+async function listSlackLinkedUsers(args: {
   workspaceId: string;
   chatUserId?: string | null;
-}): Promise<SlackLinkedCollaborator[]> {
+}): Promise<SlackLinkedUser[]> {
   if (!args.chatUserId) return [];
   const result = await withClient((c) =>
     c.query<{
-      collaborator_id: string;
+      user_id: string;
       github_login: string | null;
       data: Record<string, unknown> | null;
     }>(
-      `SELECT gcul.collaborator_id,
+      `SELECT gcul.user_id,
               c.github_login,
               c.data
          FROM group_chat_user_links gcul
-         JOIN collaborators c ON c.id = gcul.collaborator_id
+         JOIN users c ON c.id = gcul.user_id
         WHERE gcul.provider = 'slack'
           AND gcul.workspace_id = $1
           AND gcul.chat_user_id = $2
@@ -573,11 +573,11 @@ async function listSlackLinkedCollaborators(args: {
   return result.rows.map((row) => {
     const named = row.data?.name ?? row.data?.display_name;
     return {
-      collaboratorId: row.collaborator_id,
+      userId: row.user_id,
       username:
         typeof named === "string" && named.trim()
           ? named.trim()
-          : (row.github_login ?? row.collaborator_id),
+          : (row.github_login ?? row.user_id),
     };
   });
 }
@@ -586,15 +586,15 @@ async function listSlackPersonalConnections(args: {
   workspaceId: string;
   chatUserId?: string | null;
 }): Promise<{
-  actors: SlackLinkedCollaborator[];
+  actors: SlackLinkedUser[];
   connections: SlackChannelConnectionSummary[];
 }> {
-  const actors = await listSlackLinkedCollaborators(args);
+  const actors = await listSlackLinkedUsers(args);
   if (actors.length === 0) return { actors, connections: [] };
 
   const groups = await Promise.all(
     actors.map(async (actor) => {
-      const docoIds = await listAccessibleDocoIdsForPrincipal(actor.collaboratorId);
+      const docoIds = await listAccessibleDocoIdsForPrincipal(actor.userId);
       if (docoIds.length === 0) return [];
       const result = await withClient((c) =>
         c.query<{
@@ -618,7 +618,7 @@ async function listSlackPersonalConnections(args: {
         result.rows.map(async (row): Promise<SlackChannelConnectionSummary | null> => {
           const role = await getDocoLevelRole(
             { ownerId: row.owner_id, docoId: row.id },
-            actor.collaboratorId,
+            actor.userId,
           );
           if (!role) return null;
           const targetLabel = row.org_handle ? `${row.org_handle}/${row.handle}` : row.handle;
@@ -630,8 +630,8 @@ async function listSlackPersonalConnections(args: {
             targetLabel,
             role,
             source: "personal",
-            collaboratorId: actor.collaboratorId,
-            collaboratorUsername: actor.username,
+            userId: actor.userId,
+            userUsername: actor.username,
           };
         }),
       );
@@ -1022,7 +1022,7 @@ export function buildSlackLlmUserPrompt(input: SlackLlmAnswerInput): string {
 }
 
 function formatSlackPersonalAuthorizationLines(
-  personalActors: SlackLinkedCollaborator[] | null | undefined,
+  personalActors: SlackLinkedUser[] | null | undefined,
 ): string[] {
   if (!personalActors || personalActors.length === 0) {
     return [
@@ -1031,7 +1031,7 @@ function formatSlackPersonalAuthorizationLines(
   }
   return personalActors.map(
     (actor) =>
-      `- linked as ${actor.username}; POST/PATCH/DELETE doco_api calls run as this collaborator and are capped by their actual Doco role.`,
+      `- linked as ${actor.username}; POST/PATCH/DELETE doco_api calls run as this user and are capped by their actual Doco role.`,
   );
 }
 
@@ -1167,7 +1167,7 @@ async function executeSlackPersonalDocoApiWrite(
 
   let lastDenied: DocoApiToolEnvelope | null = null;
   for (const actor of actors) {
-    const envelope = await executeSlackDocoApiAsCollaborator(input, request, actor);
+    const envelope = await executeSlackDocoApiAsUser(input, request, actor);
     if (envelope.status !== 401 && envelope.status !== 403) return envelope;
     lastDenied = envelope;
   }
@@ -1181,17 +1181,17 @@ async function executeSlackPersonalDocoApiWrite(
   );
 }
 
-async function executeSlackDocoApiAsCollaborator(
+async function executeSlackDocoApiAsUser(
   input: SlackLlmAnswerInput,
   request: DocoApiToolRequest,
-  actor: SlackLinkedCollaborator,
+  actor: SlackLinkedUser,
 ): Promise<DocoApiToolEnvelope> {
   const origin = input.origin || "https://doco.to";
   const response = await internalFetch({
     method: request.method,
     path: request.path,
     origin,
-    cookieHeader: `doco_session=${encodeURIComponent(actor.collaboratorId)}`,
+    cookieHeader: `doco_session=${encodeURIComponent(actor.userId)}`,
     body: request.body,
     userAgent: "Doco-Slack-Assistant/1",
   });
@@ -1449,18 +1449,18 @@ async function readSlackDocoApiPrincipals(
     listDocoUsers(doco.id),
     listEntitiesByDoco("principal", doco.id),
   ]);
-  const collaborators = (
+  const users = (
     await Promise.all(
-      docoUsers.map(async (user) => {
-        const collaborator = await getCollaboratorById(user.collaborator_id);
-        return collaborator
+      docoUsers.map(async (docoUser) => {
+        const identity = await getUserById(docoUser.user_id);
+        return identity
           ? {
-              id: collaborator.id,
-              username: slackCollaboratorDisplayName(collaborator),
-              type: collaborator.kind,
-              role: user.role,
-              github_login: collaborator.github_login,
-              email: collaborator.email,
+              id: identity.id,
+              username: slackUserDisplayName(identity),
+              type: identity.kind,
+              role: docoUser.role,
+              github_login: identity.github_login,
+              email: identity.email,
             }
           : null;
       }),
@@ -1470,10 +1470,10 @@ async function readSlackDocoApiPrincipals(
     ok: true,
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
-    principals: collaborators,
-    collaborators,
+    principals: users,
+    users,
     principal_neurons: neuronRows.map(slackEntityRecordToApiItem),
-    collaborator_count: collaborators.length,
+    user_count: users.length,
     principal_neuron_count: neuronRows.length,
   };
 }
@@ -1661,7 +1661,7 @@ async function readSlackDocoApiAuditSummary(
     }
   }
   if (filters.by) {
-    where.push(`by_collaborator = $${idx++}`);
+    where.push(`by_user = $${idx++}`);
     vals.push(filters.by);
   }
   if (filters.since) {
@@ -1759,7 +1759,7 @@ async function readSlackDocoApiAuthoringContract(
     perspective_contracts: contractForAttachedPerspectives(attached),
     changeset_endpoint: `/${doco.handle}/api/changesets.json`,
     slack_write_capability: canAuthor
-      ? "This Slack user appears to have author-or-higher personal access for this Doco. POST/PATCH/DELETE doco_api calls will still be checked against that linked collaborator's real Doco role."
+      ? "This Slack user appears to have author-or-higher personal access for this Doco. POST/PATCH/DELETE doco_api calls will still be checked against that linked user's real Doco role."
       : "Slack exposes this contract for planning. POST/PATCH/DELETE doco_api calls require the Slack user to run /doco connect and have the needed Doco role.",
   };
 }
@@ -1840,13 +1840,11 @@ function slackRoleRank(role: string): number {
   return SLACK_ROLE_RANK[role] ?? 0;
 }
 
-function slackCollaboratorDisplayName(
-  collaborator: Awaited<ReturnType<typeof getCollaboratorById>>,
-): string {
-  if (!collaborator) return "";
-  const named = collaborator.data.name ?? collaborator.data.display_name;
+function slackUserDisplayName(user: Awaited<ReturnType<typeof getUserById>>): string {
+  if (!user) return "";
+  const named = user.data.name ?? user.data.display_name;
   if (typeof named === "string" && named.trim()) return named.trim();
-  return collaborator.github_login ?? collaborator.id;
+  return user.github_login ?? user.id;
 }
 
 function formatSlackConnectionList(connections: SlackChannelConnectionSummary[]): string {
@@ -1865,7 +1863,7 @@ function slackConnectionAccessLabelWithRole(connection: SlackChannelConnectionSu
   const target = slackConnectionAccessLabel(connection);
   const source =
     connection.source === "personal"
-      ? ` via ${connection.collaboratorUsername ?? "the linked Slack user"}'s Doco account`
+      ? ` via ${connection.userUsername ?? "the linked Slack user"}'s Doco account`
       : " via shared default";
   return `${target} as ${connection.role}${source}`;
 }
@@ -2028,14 +2026,14 @@ export function slackLlmSystemPrompt(): string {
       accessDescription:
         "You answer from Slack using the workspace default Doco access, the current Slack user's linked personal Doco access when present, and any Slack context explicitly provided to you. Do not imply you have the signed-in website user's browser session.",
       capabilityDescription:
-        "answer questions about Doco using doco_api reads, and perform Doco writes through doco_api only when the current Slack user has linked their Doco account and the normal Doco API authorizes that collaborator.",
+        "answer questions about Doco using doco_api reads, and perform Doco writes through doco_api only when the current Slack user has linked their Doco account and the normal Doco API authorizes that user.",
       inScopePrefix: "the Slack-accessible",
       surfaceLimits: [
         "Slack can use doco_api for reads authorized by shared workspace defaults and linked personal Doco access. It cannot use the signed-in website user's browser session.",
-        "Slack can use POST/PATCH/DELETE doco_api calls only through the linked Slack user's personal Doco account. The Doco API enforces that collaborator's actual role on every write.",
+        "Slack can use POST/PATCH/DELETE doco_api calls only through the linked Slack user's personal Doco account. The Doco API enforces that user's actual role on every write.",
         "Slack cannot navigate the website, inspect the visible graph, or read file attachments from the Doco sidebar.",
         "When a Slack user asks you to create, patch, retire, invite, change policies, or perform any action beyond the current Slack default permissions, ask that user to run /doco connect and authorize their own Doco account for Slack if they already have the needed Doco access. Do not send them to the Doco website as the next step unless they explicitly ask for non-Slack alternatives; make the missing Slack authorization the next step.",
-        "After personal Doco authorization exists, write actions run as that linked collaborator with audit attribution, and never above the role they already hold in Doco. If a doco_api write returns footer_lines, paste every footer_lines entry verbatim.",
+        "After personal Doco authorization exists, write actions run as that linked user with audit attribution, and never above the role they already hold in Doco. If a doco_api write returns footer_lines, paste every footer_lines entry verbatim.",
         "Do not claim access beyond the listed Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
       ],
     }),

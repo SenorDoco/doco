@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
-  listApiKeysForCollaborator: vi.fn(),
+  listApiKeysForUser: vi.fn(),
   mintApiKey: vi.fn(),
   revokeApiKey: vi.fn(),
 }));
@@ -12,7 +12,7 @@ vi.mock("~/lib/session.server", () => ({
 }));
 
 vi.mock("~/lib/api-keys.server", () => ({
-  listApiKeysForCollaborator: mocks.listApiKeysForCollaborator,
+  listApiKeysForUser: mocks.listApiKeysForUser,
   mintApiKey: mocks.mintApiKey,
   revokeApiKey: mocks.revokeApiKey,
 }));
@@ -30,11 +30,11 @@ function jsonRequest(body: unknown, method = "POST"): Request {
 describe("/api/v1/api-keys.json", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getCurrentPrincipal.mockResolvedValue({ id: "collaborator_alice", username: "alice" });
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
   });
 
   it("lists keys for the signed-in user", async () => {
-    mocks.listApiKeysForCollaborator.mockResolvedValue([
+    mocks.listApiKeysForUser.mockResolvedValue([
       {
         client_id: "doco_client_1",
         client_name: "ci-pipeline",
@@ -52,7 +52,7 @@ describe("/api/v1/api-keys.json", () => {
     await expect(response.json()).resolves.toMatchObject({
       keys: [{ client_name: "ci-pipeline", source: "personal" }],
     });
-    expect(mocks.listApiKeysForCollaborator).toHaveBeenCalledWith("collaborator_alice");
+    expect(mocks.listApiKeysForUser).toHaveBeenCalledWith("user_alice");
   });
 
   it("refuses anonymous reads", async () => {
@@ -93,7 +93,7 @@ describe("/api/v1/api-keys.json", () => {
       client_name: "my-script",
     });
     expect(mocks.mintApiKey).toHaveBeenCalledWith({
-      me: expect.objectContaining({ id: "collaborator_alice" }),
+      me: expect.objectContaining({ id: "user_alice" }),
       label: "my-script",
       grants: [{ level: "doco", target_id: "doco_acme", role: "owner" }],
     });
@@ -149,7 +149,7 @@ describe("/api/v1/api-keys.json", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ revoked: true });
     expect(mocks.revokeApiKey).toHaveBeenCalledWith({
-      collaborator_id: "collaborator_alice",
+      user_id: "user_alice",
       client_id: "doco_client_xyz",
     });
   });

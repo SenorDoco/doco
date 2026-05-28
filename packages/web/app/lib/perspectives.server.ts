@@ -160,7 +160,7 @@ export async function getPerspectiveBySlug(slug: string): Promise<Perspective | 
 export async function attachPerspectiveToDoco(args: {
   docoId: string;
   perspectiveId: string;
-  attachedByCollaboratorId: string | null;
+  attachedByUserId: string | null;
 }): Promise<void> {
   await withClient(async (c) => {
     const { rows } = await c.query<{ next_position: string }>(
@@ -170,10 +170,10 @@ export async function attachPerspectiveToDoco(args: {
     );
     const nextPosition = Number(rows[0]?.next_position ?? 0);
     await c.query(
-      `INSERT INTO doco_perspectives (doco_id, perspective_id, position, is_default, attached_by_collaborator)
+      `INSERT INTO doco_perspectives (doco_id, perspective_id, position, is_default, attached_by_user)
             VALUES ($1, $2, $3, false, $4)
        ON CONFLICT (doco_id, perspective_id) DO NOTHING`,
-      [args.docoId, args.perspectiveId, nextPosition, args.attachedByCollaboratorId],
+      [args.docoId, args.perspectiveId, nextPosition, args.attachedByUserId],
     );
   });
 }

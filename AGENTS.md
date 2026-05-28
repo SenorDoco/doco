@@ -48,7 +48,7 @@ COOKIE=$(curl -sS -i -X POST \
 curl -sS -b "$COOKIE" https://doco.to/dashboard | head
 ```
 
-The test collaborator starts with **no Doco grants** — same shape
+The test user starts with **no Doco grants** — same shape
 as a brand-new GitHub sign-in. To get something to look at:
 
 - **Create a Doco of your own** via `POST /api/v1/docos.json`
@@ -98,11 +98,11 @@ verification report.
   bundle is what the user will see post-merge), this is enough. If
   the behavior is branch-specific, ship to main first and verify
   there.
-- The test collaborator's session is real — don't make destructive
+- The test user's session is real — don't make destructive
   writes against Docos you didn't create. Stick to your own newly
   created test Doco.
 - Don't commit `DOCO_SESSION` or the cookie value anywhere; it's a
-  bearer credential for the test collaborator.
+  bearer credential for the test user.
 
 ---
 

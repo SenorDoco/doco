@@ -309,9 +309,9 @@ export interface DecisionDraft {
   sequence_to?: SequenceToDraft[];
   /** Optional: principal id who made the decision. */
   decided_by_principal_id?: string;
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated collaborator. */
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: reference another entity as origin (e.g. born_from a bugfix). */
   born_from?: string;
@@ -772,7 +772,7 @@ function requiredPrincipalId(
       error: `${field} is required${fallbackDescription ? ` (${fallbackDescription})` : ""}.`,
     };
   }
-  const bad = assertNotCollaboratorId(principalId, field);
+  const bad = assertNotUserId(principalId, field);
   if (bad) return bad;
   return principalId;
 }
@@ -784,7 +784,7 @@ function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureEr
     if (typeof raw !== "string") continue;
     const id = raw.trim();
     if (!id) continue;
-    const bad = assertNotCollaboratorId(id, field);
+    const bad = assertNotUserId(id, field);
     if (bad) return bad;
     if (!ids.includes(id)) ids.push(id);
   }
@@ -792,31 +792,31 @@ function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureEr
 }
 
 /**
- * Refuse `collaborator_*` ids on capture paths that expect a Principal.
- * Collaborators are the OAuth identity layer; Principals are the
+ * Refuse `user_*` ids on capture paths that expect a Principal.
+ * Users are the OAuth identity layer; Principals are the
  * role-personas Actions / Decisions / Intents reference. They share
  * humans but they aren't interchangeable — agents that grab a
- * collaborator id from the principals endpoint and pass it into
+ * user id from the principals endpoint and pass it into
  * `actor_id` ship a broken record (the BPMN renderer can't resolve
  * it; the `requires_field_resolves_to_principal` policy can't
  * either). Catch it at the door rather than tolerate it downstream.
  */
-function assertNotCollaboratorId(value: string, field: string): CaptureError | null {
-  if (!value.startsWith("collaborator_")) return null;
+function assertNotUserId(value: string, field: string): CaptureError | null {
+  if (!value.startsWith("user_")) return null;
   return {
-    error: `${field} must be a Principal NEURON id (\`principal_<ulid>\`), not a collaborator id (\`${value}\`). Collaborators are OAuth identities; Principals are the role-personas neurons reference. To fix: GET /<doco-handle>/api/principals.json and read \`principal_neurons\`. If empty or no matching role exists, POST /<doco-handle>/api/principals.json with body {"name": "user"} (or another role name) to create one — that endpoint returns the new id. Then retry the capture with the explicit principal id in \`${field}\`.`,
+    error: `${field} must be a Principal NEURON id (\`principal_<ulid>\`), not a user id (\`${value}\`). Users are OAuth identities; Principals are the role-personas neurons reference. To fix: GET /<doco-handle>/api/principals.json and read \`principal_neurons\`. If empty or no matching role exists, POST /<doco-handle>/api/principals.json with body {"name": "user"} (or another role name) to create one — that endpoint returns the new id. Then retry the capture with the explicit principal id in \`${field}\`.`,
   };
 }
 
-type CollaboratorCreatorDraft = {
-  created_by_collaborator_id?: string;
+type UserCreatorDraft = {
+  created_by_user_id?: string;
 };
 
-function collaboratorCreatorId(draft: CollaboratorCreatorDraft): string | null | CaptureError {
-  const creatorId = draft.created_by_collaborator_id?.trim();
+function userCreatorId(draft: UserCreatorDraft): string | null | CaptureError {
+  const creatorId = draft.created_by_user_id?.trim();
   if (!creatorId) return null;
-  if (!creatorId.startsWith("collaborator_")) {
-    return { error: "created_by_collaborator_id must be a collaborator id." };
+  if (!creatorId.startsWith("user_")) {
+    return { error: "created_by_user_id must be a user id." };
   }
   return creatorId;
 }
@@ -877,7 +877,7 @@ export async function captureDecision(
   const label = firstLine(decisionText);
 
   const now = new Date().toISOString();
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
@@ -1369,7 +1369,7 @@ export async function updateEntity(opts: {
     "body_md_append",
     "policy",
     "created_by_principal_id",
-    "created_by_collaborator_id",
+    "created_by_user_id",
     // Per migration 034 (remove-slugs PR), neurons no longer carry a
     // `slug` field in their data jsonb. Silently drop the key on
     // PATCH so callers that still send it (or stale clients holding
@@ -1510,8 +1510,8 @@ export interface IntentDraft {
   actors_principal_ids?: string[];
   /** Optional: principal ids with a say in the outcome even if they do not act directly. */
   stakeholders_principal_ids?: string[];
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1551,7 +1551,7 @@ export async function captureIntent(
   const label = firstLine(intentText);
 
   const now = new Date().toISOString();
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
@@ -1612,9 +1612,9 @@ export async function captureIntent(
 export interface IdeaDraft {
   /** Required: the full Idea prose (first line = label). */
   idea: string;
-  /** Internal route-filled collaborator id that created/proposed this idea. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated collaborator. */
+  /** Internal route-filled user id that created/proposed this idea. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: entity this idea became once promoted. */
   promoted_to?: string | null;
@@ -1635,7 +1635,7 @@ export async function captureIdea(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.idea?.trim()) return { error: "idea is required." };
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   if (!createdById) {
     return { error: "Authentication is required to capture an idea." };
@@ -1722,8 +1722,8 @@ export interface EvalDraft {
   intent_ids?: string[];
   /** Optional: principal id who authored the Eval. */
   authored_by_principal_id?: string;
-  /** Internal route-filled collaborator id that created this Eval. */
-  created_by_collaborator_id?: string;
+  /** Internal route-filled user id that created this Eval. */
+  created_by_user_id?: string;
   /** Optional default: lifecycle = "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1754,11 +1754,11 @@ export async function captureEval(
     return { error: `Unknown expected_status: ${draft.expected_status}` };
   }
   const explicitAuthor = draft.authored_by_principal_id?.trim();
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   let authoredById: string | null = null;
   if (explicitAuthor) {
-    const bad = assertNotCollaboratorId(explicitAuthor, "authored_by_principal_id");
+    const bad = assertNotUserId(explicitAuthor, "authored_by_principal_id");
     if (bad) return bad;
     authoredById = explicitAuthor;
   } else if (!createdById) {
@@ -1863,9 +1863,9 @@ export interface ActionDraft {
   outputs?: unknown;
   /** Optional: principal id who performs the action. */
   actor_principal_id?: string;
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated collaborator. */
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: defaults to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
@@ -1904,7 +1904,7 @@ export async function captureAction(
   const actionText = draft.action.trim();
   const label = firstLine(actionText);
   const now = new Date().toISOString();
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const status = lifecycleAttrs(draft, "retired", "succeeded");
   if ("error" in status) return status;
@@ -1995,9 +1995,9 @@ export interface LogDraft {
   preceded_by?: string[];
   inputs?: unknown;
   actor_principal_id?: string;
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated collaborator. */
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional override. Logs default to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
@@ -2045,7 +2045,7 @@ export async function captureLog(
   const logText = draft.log.trim();
   const label = firstLine(logText);
   const now = new Date().toISOString();
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const status = lifecycleAttrs(draft, "retired", "succeeded");
   if ("error" in status) return status;
@@ -2135,9 +2135,9 @@ export interface RuleDraft {
   born_from?: string;
   /** Optional: principal id who authored the Rule. */
   authored_by_principal_id?: string;
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated collaborator. */
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
@@ -2181,7 +2181,7 @@ export async function captureRule(
   const ruleText = draft.rule.trim();
   const label = firstLine(ruleText);
   const now = new Date().toISOString();
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
@@ -2262,9 +2262,9 @@ export interface GuidancePolicyDraft {
   body_md?: string;
   /** Optional: principal id who authored the article. */
   authored_by_principal_id?: string;
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create policies; use the authenticated collaborator. */
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create policies; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
@@ -2291,8 +2291,8 @@ export interface NeuronAuthoringPolicyDraft {
   on_violation?: "block" | "warn" | "log";
   body_md?: string;
   authored_by_principal_id?: string;
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create policies; use the authenticated collaborator. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create policies; use the authenticated user. */
   created_by_principal_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
@@ -2421,7 +2421,7 @@ async function buildGuidancePolicyPayload(
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const fm: Record<string, unknown> = {
     id,
@@ -2467,7 +2467,7 @@ async function buildNeuronAuthoringPolicyPayload(
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const firesWhen = Array.isArray(draft.fires_when_neuron_lifecycle)
     ? draft.fires_when_neuron_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
@@ -2750,9 +2750,9 @@ export interface ReferenceDraft {
   locator: string;
   content_hash?: string | null;
   intent_ids?: string[];
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated collaborator. */
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
@@ -2773,7 +2773,7 @@ export async function captureReference(
     return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
   }
   if (!draft.locator?.trim()) return { error: "locator is required." };
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
@@ -2862,9 +2862,9 @@ export interface StateDraft {
   preceded_by?: string[];
   /** Optional: BPMN forward sequence-flow targets from this State. */
   sequence_to?: SequenceToDraft[];
-  /** Internal route-filled collaborator id that created this entry. */
-  created_by_collaborator_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated collaborator. */
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: explicit lifecycle override. Defaults to "active". */
   lifecycle?: string;
@@ -2888,7 +2888,7 @@ export async function captureState(
       error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".`,
     };
   }
-  const createdById = collaboratorCreatorId(draft);
+  const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
 
   const id = `state_${generateUlid()}`;

@@ -38,7 +38,7 @@ describe("/integrations", () => {
   it("loads a minimal Slack entry point for signed-in users", async () => {
     mocks.getSlackConfig.mockReturnValue({ configured: true });
     mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
     mocks.listSlackInstallations.mockResolvedValue([
@@ -54,7 +54,7 @@ describe("/integrations", () => {
       loader({ request: new Request("https://doco.test/integrations") }),
     ).resolves.toEqual({
       me: {
-        id: "collaborator_alice",
+        id: "user_alice",
         username: "alice",
       },
       notice: null,
@@ -73,7 +73,7 @@ describe("/integrations", () => {
 
   it("does not expose deployment environment variable names to the browser", async () => {
     mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
 
@@ -87,7 +87,7 @@ describe("/integrations", () => {
 
   it("shows a workspace-default confirmation", async () => {
     mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
 

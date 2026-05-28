@@ -1,36 +1,36 @@
 import {
   type DocoRole,
-  getCollaboratorById,
   getDocoById,
   getOrgRole,
-  listDocoIdsForCollaborator,
+  getUserById,
+  listDocoIdsForUser,
   listDocoUsers,
-  listOrganizationsForCollaborator,
+  listOrganizationsForUser,
   withClient,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { redirect } from "react-router";
-import {
-  ALL_ROLES,
-  type CollaboratorInviteActionResult,
-  type CollaboratorInviteData,
-  type InviteLevel,
-  parseInviteLevel,
-  rankOf,
-  resolveInviteDefaultSelection,
-} from "~/lib/collaborator-invite";
 import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { InviteStore } from "~/lib/invite-store.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import {
+  ALL_ROLES,
+  type InviteLevel,
+  type UserInviteActionResult,
+  type UserInviteData,
+  parseInviteLevel,
+  rankOf,
+  resolveInviteDefaultSelection,
+} from "~/lib/user-invite";
 
 export type CurrentPrincipal = NonNullable<Awaited<ReturnType<typeof getCurrentPrincipal>>>;
 
 export type PrincipalKind = "person" | "agent";
 
 export interface UserCell {
-  collaborator_id: string;
+  user_id: string;
   username: string;
   kind: PrincipalKind;
   last_activity_at: string | null;
@@ -53,21 +53,21 @@ export interface DocoSection {
   users: GrantRow[];
 }
 
-export interface CollaboratorsPageData {
+export interface UsersPageData {
   me: CurrentPrincipal;
   host: string;
   orgSections: OrgSection[];
   docoSections: DocoSection[];
-  invite: CollaboratorInviteData;
+  invite: UserInviteData;
 }
 
 async function enrichPrincipal(id: string, lastActivity: Map<string, string>): Promise<UserCell> {
-  // Post-rename: per-collaborator metadata lives in the collaborators
-  // table; getCollaboratorById returns the kind/github_login directly.
-  const c = await getCollaboratorById(id);
+  // Post-rename: per-user metadata lives in the users
+  // table; getUserById returns the kind/github_login directly.
+  const c = await getUserById(id);
   const kind: PrincipalKind = c?.kind === "agent" ? "agent" : "person";
   return {
-    collaborator_id: id,
+    user_id: id,
     username: id,
     kind,
     last_activity_at: lastActivity.get(id) ?? null,
@@ -78,17 +78,17 @@ async function loadLastActivity(principalIds: string[]): Promise<Map<string, str
   const out = new Map<string, string>();
   if (principalIds.length === 0) return out;
   const rows = await withClient((c) =>
-    c.query<{ by_collaborator: string; last_at: string | Date }>(
-      `SELECT by_collaborator, MAX(at) AS last_at
+    c.query<{ by_user: string; last_at: string | Date }>(
+      `SELECT by_user, MAX(at) AS last_at
        FROM audit_events
-       WHERE by_collaborator = ANY($1)
-       GROUP BY by_collaborator`,
+       WHERE by_user = ANY($1)
+       GROUP BY by_user`,
       [principalIds],
     ),
   );
   for (const row of rows.rows) {
     const at = row.last_at instanceof Date ? row.last_at.toISOString() : String(row.last_at);
-    out.set(row.by_collaborator, at);
+    out.set(row.by_user, at);
   }
   return out;
 }
@@ -104,29 +104,29 @@ async function requireCurrentPrincipal(request: Request): Promise<CurrentPrincip
   return me;
 }
 
-export async function loadCollaboratorSections(principalId: string): Promise<{
+export async function loadUserSections(principalId: string): Promise<{
   orgSections: OrgSection[];
   docoSections: DocoSection[];
 }> {
-  const myOrgs = await listOrganizationsForCollaborator(principalId);
+  const myOrgs = await listOrganizationsForUser(principalId);
   const orgRoleRows: Array<{
     org: { id: string; handle: string; name: string };
     myRole: DocoRole;
-    rows: Array<{ collaborator_id: string; role: DocoRole; joined_at: string }>;
+    rows: Array<{ user_id: string; role: DocoRole; joined_at: string }>;
   }> = [];
   const allPrincipalIds = new Set<string>();
   for (const org of myOrgs) {
     const myRole = (await getOrgRole(org.id, principalId)) ?? "reader";
     const result = await withClient(async (c) =>
-      c.query<{ collaborator_id: string; role: string; joined_at: string | Date }>(
-        "SELECT collaborator_id, role, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
+      c.query<{ user_id: string; role: string; joined_at: string | Date }>(
+        "SELECT user_id, role, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
         [org.id],
       ),
     );
     const rows = result.rows.map((row) => {
-      allPrincipalIds.add(String(row.collaborator_id));
+      allPrincipalIds.add(String(row.user_id));
       return {
-        collaborator_id: String(row.collaborator_id),
+        user_id: String(row.user_id),
         role: row.role as DocoRole,
         joined_at:
           row.joined_at instanceof Date ? row.joined_at.toISOString() : String(row.joined_at),
@@ -149,27 +149,27 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   const orgDocos = await withClient((c) =>
     c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
-         SELECT org_id FROM org_users WHERE collaborator_id = $1
+         SELECT org_id FROM org_users WHERE user_id = $1
        )`,
       [principalId],
     ),
   );
   for (const r of orgDocos.rows) accessibleDocoIds.add(String(r.id));
-  const myDocoUsersIds = await listDocoIdsForCollaborator(principalId);
+  const myDocoUsersIds = await listDocoIdsForUser(principalId);
   for (const id of myDocoUsersIds) accessibleDocoIds.add(id);
 
   const docoRoleRows: Array<{
     doco: { id: string; handle: string; ownerId: string; ownerSlug: string; label: string };
     myRole: DocoRole;
-    rows: Array<{ collaborator_id: string; role: DocoRole; joined_at: string }>;
+    rows: Array<{ user_id: string; role: DocoRole; joined_at: string }>;
   }> = [];
   for (const docoId of accessibleDocoIds) {
     const doco = await getDocoById(docoId);
     if (!doco) continue;
     const users = await listDocoUsers(docoId);
     const rows = users.map((u) => {
-      allPrincipalIds.add(u.collaborator_id);
-      return { collaborator_id: u.collaborator_id, role: u.role, joined_at: u.joined_at };
+      allPrincipalIds.add(u.user_id);
+      return { user_id: u.user_id, role: u.role, joined_at: u.joined_at };
     });
     const myRole =
       (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principalId)) ??
@@ -194,7 +194,7 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   for (const entry of orgRoleRows) {
     const users: GrantRow[] = await Promise.all(
       entry.rows.map(async (row) => ({
-        ...(await enrichPrincipal(row.collaborator_id, lastActivity)),
+        ...(await enrichPrincipal(row.user_id, lastActivity)),
         role: row.role,
         joined_at: row.joined_at,
       })),
@@ -206,7 +206,7 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   for (const entry of docoRoleRows) {
     const users: GrantRow[] = await Promise.all(
       entry.rows.map(async (row) => ({
-        ...(await enrichPrincipal(row.collaborator_id, lastActivity)),
+        ...(await enrichPrincipal(row.user_id, lastActivity)),
         role: row.role,
         joined_at: row.joined_at,
       })),
@@ -227,15 +227,15 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   return { orgSections, docoSections };
 }
 
-export async function loadCollaboratorsPageData(request: Request): Promise<CollaboratorsPageData> {
+export async function loadUsersPageData(request: Request): Promise<UsersPageData> {
   const me = await requireCurrentPrincipal(request);
   const url = new URL(request.url);
-  const { orgSections, docoSections } = await loadCollaboratorSections(me.id);
-  const invite = buildCollaboratorInviteData({ request, orgSections, docoSections });
+  const { orgSections, docoSections } = await loadUserSections(me.id);
+  const invite = buildUserInviteData({ request, orgSections, docoSections });
   return { me, host: `${url.protocol}//${url.host}`, orgSections, docoSections, invite };
 }
 
-function buildCollaboratorInviteData({
+function buildUserInviteData({
   request,
   orgSections,
   docoSections,
@@ -243,7 +243,7 @@ function buildCollaboratorInviteData({
   request: Request;
   orgSections: OrgSection[];
   docoSections: DocoSection[];
-}): CollaboratorInviteData {
+}): UserInviteData {
   const url = new URL(request.url);
   const inviteOrgs = orgSections.map((s) => ({
     id: s.org.id,
@@ -298,11 +298,9 @@ async function loadOrgInviteTarget(orgId: string): Promise<{
   };
 }
 
-export async function handleCollaboratorInviteAction(
-  request: Request,
-): Promise<CollaboratorInviteActionResult> {
+export async function handleUserInviteAction(request: Request): Promise<UserInviteActionResult> {
   const me = await getCurrentPrincipal(request);
-  if (!me) return { error: "Sign in to invite collaborators." };
+  if (!me) return { error: "Sign in to invite users." };
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");

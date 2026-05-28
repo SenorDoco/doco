@@ -16,7 +16,7 @@
 // Auth: requires a signed-in principal (cookie session or OAuth
 // bearer). Rate-limiting is out of scope.
 
-import { listOrganizationsForCollaborator } from "@doco/db";
+import { listOrganizationsForUser } from "@doco/db";
 import { addOrganizationByHandle } from "~/lib/redeem.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
@@ -25,7 +25,7 @@ export async function loader({ request }: { request: Request }) {
   if (!me) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
-  const rows = await listOrganizationsForCollaborator(me.id);
+  const rows = await listOrganizationsForUser(me.id);
   rows.sort((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0));
   return Response.json({
     orgs: rows.map((r) => ({
@@ -62,7 +62,7 @@ export async function action({ request }: { request: Request }) {
   try {
     const { id, handle } = await addOrganizationByHandle({
       handle: requested.trim().toLowerCase(),
-      ownerCollaboratorId: me.id,
+      ownerUserId: me.id,
       autoSuffix: true,
     });
     return Response.json({ id, handle }, { status: 201 });

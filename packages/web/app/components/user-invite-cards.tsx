@@ -5,12 +5,12 @@ import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import {
   ALL_ROLES,
-  type CollaboratorInviteActionResult,
-  type CollaboratorInviteData,
   type InviteDefaultSelection,
   type InviteLevel,
+  type UserInviteActionResult,
+  type UserInviteData,
   rankOf,
-} from "~/lib/collaborator-invite";
+} from "~/lib/user-invite";
 
 interface CombinedTargetOption {
   key: string; // "<level>:<id>"
@@ -44,11 +44,11 @@ function buildCombinedOptions(
   return out;
 }
 
-export function CollaboratorInviteCards({
+export function UserInviteCards({
   invite,
   host,
 }: {
-  invite: CollaboratorInviteData;
+  invite: UserInviteData;
   host: string;
 }) {
   const [mode, setMode] = useState<"person" | "agent">("person");
@@ -56,7 +56,7 @@ export function CollaboratorInviteCards({
     <div className="space-y-4">
       <div
         role="tablist"
-        aria-label="Collaborator invite type"
+        aria-label="User invite type"
         className="inline-flex rounded-md border border-border bg-background p-0.5"
       >
         <InviteModeButton mode="person" current={mode} onSelect={setMode}>
@@ -76,8 +76,8 @@ export function CollaboratorInviteCards({
       ) : (
         <AgentInvitePrompt
           host={host}
-          promptTestId="collaborators-invite-agent-prompt"
-          copyButtonTestId="collaborators-invite-agent-copy"
+          promptTestId="users-invite-agent-prompt"
+          copyButtonTestId="users-invite-agent-copy"
         />
       )}
     </div>
@@ -122,7 +122,7 @@ function InviteHumanCard({
   docos: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[];
   defaultSelection: InviteDefaultSelection;
 }) {
-  const fetcher = useFetcher<CollaboratorInviteActionResult>();
+  const fetcher = useFetcher<UserInviteActionResult>();
   const result = fetcher.data;
   const inviteResult = result && "intent" in result && result.intent === "invite" ? result : null;
   const error = result && "error" in result ? result.error : undefined;

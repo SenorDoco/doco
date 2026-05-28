@@ -28,7 +28,7 @@ export function createdDocoChatTitle(docoHandle: string): string {
 
 export async function createDocoInOrg(opts: CreateDocoInOrgOptions): Promise<CreatedDocoInOrg> {
   const rec = await createHostDocoInOrg(opts);
-  const conversation = await createConversation(opts.createdByCollaboratorId, {
+  const conversation = await createConversation(opts.createdByUserId, {
     title: createdDocoChatTitle(rec.handle),
     attachedDocoIds: [rec.docoId],
   });

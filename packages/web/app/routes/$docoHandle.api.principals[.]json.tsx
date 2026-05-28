@@ -1,6 +1,6 @@
 import {
-  getCollaboratorById,
   getEntity,
+  getUserById,
   listDocoUsers,
   listEntitiesByDoco,
   roleAtLeast,
@@ -207,9 +207,9 @@ export async function loader({
   const { meta } = await loadDocoRouteForRead(request, params);
   // Two distinct concepts share the URL for historical reasons:
   //
-  //   * `principals` (legacy field) — OAuth collaborators of this doco.
+  //   * `principals` (legacy field) — OAuth users of this doco.
   //     Pre-v16 we called them "principals"; the new vocab calls them
-  //     "collaborators" but the field name stays for API back-compat.
+  //     "users" but the field name stays for API back-compat.
   //
   //   * `principal_neurons` (new field) — actual Principal neurons in
   //     this doco (role-personas referenced by Action.actor_id,
@@ -217,20 +217,20 @@ export async function loader({
   //     renders. Agents that want to mutate / list the visible Principal
   //     neurons read this field, not `principals`.
   //
-  // `collaborators` is exposed as a clearer alias for the legacy
+  // `users` is exposed as a clearer alias for the legacy
   // `principals` field — pick whichever name a caller prefers.
   const [docoUsers, neuronRows] = await Promise.all([
     listDocoUsers(meta.docoId),
     listEntitiesByDoco("principal", meta.docoId),
   ]);
-  const collaborators = (
+  const users = (
     await Promise.all(
       docoUsers.map(async (u) => {
-        const c = await getCollaboratorById(u.collaborator_id);
+        const c = await getUserById(u.user_id);
         return c
           ? {
               id: c.id,
-              username: collaboratorDisplayName(c),
+              username: userDisplayName(c),
               type: c.kind,
               role: u.role,
               github_login: c.github_login,
@@ -251,15 +251,15 @@ export async function loader({
   }));
   return Response.json({
     ok: true,
-    principals: collaborators,
-    collaborators,
+    principals: users,
+    users,
     principal_neurons,
-    collaborator_count: collaborators.length,
+    user_count: users.length,
     principal_neuron_count: principal_neurons.length,
   });
 }
 
-function collaboratorDisplayName(c: Awaited<ReturnType<typeof getCollaboratorById>>): string {
+function userDisplayName(c: Awaited<ReturnType<typeof getUserById>>): string {
   if (!c) return "";
   const named = c.data.name ?? c.data.display_name;
   if (typeof named === "string" && named.trim()) return named.trim();

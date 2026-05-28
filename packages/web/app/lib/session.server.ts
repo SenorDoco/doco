@@ -1,9 +1,9 @@
-// Session + Collaborator lookup — Phase 3 Postgres-only.
-// Post-rename: session cookie stores the collaborator id (OAuth identity).
+// Session + User lookup — Phase 3 Postgres-only.
+// Post-rename: session cookie stores the user id (OAuth identity).
 // The `CurrentPrincipal` shape and `findPrincipalById` names are kept
-// for caller compatibility, but the underlying lookups read collaborators.
+// for caller compatibility, but the underlying lookups read users.
 
-import { type CollaboratorRow, getCollaboratorByGithubLogin, getCollaboratorById } from "@doco/db";
+import { type UserRow, getUserByGithubLogin, getUserById } from "@doco/db";
 
 const COOKIE_NAME = "doco_session";
 
@@ -16,7 +16,7 @@ export function getSessionPrincipalId(request: Request): string | null {
     if (eq < 0) continue;
     const name = p.slice(0, eq);
     const value = decodeURIComponent(p.slice(eq + 1));
-    if (name === COOKIE_NAME && /^(collaborator|principal)_[0-9A-HJKMNP-TV-Z]{26}$/.test(value)) {
+    if (name === COOKIE_NAME && /^(user|principal)_[0-9A-HJKMNP-TV-Z]{26}$/.test(value)) {
       return value;
     }
   }
@@ -40,7 +40,7 @@ export interface CurrentPrincipal {
   email?: string;
 }
 
-function rowToPrincipal(row: CollaboratorRow): CurrentPrincipal {
+function rowToPrincipal(row: UserRow): CurrentPrincipal {
   const type: "person" | "agent" = row.kind === "agent" ? "agent" : "person";
   const isHuman = row.kind === "person" || Boolean(row.github_login);
   const named = row.data.name ?? row.data.display_name;
@@ -60,14 +60,14 @@ export function isHumanPrincipal(principal: CurrentPrincipal | null | undefined)
 }
 
 export async function findPrincipalById(principalId: string): Promise<CurrentPrincipal | null> {
-  const row = await getCollaboratorById(principalId);
+  const row = await getUserById(principalId);
   if (!row) return null;
   return rowToPrincipal(row);
 }
 
 export async function findPrincipalByUsername(username: string): Promise<CurrentPrincipal | null> {
-  // Post-rename: "username" → github_login on collaborators.
-  const row = await getCollaboratorByGithubLogin(username);
+  // Post-rename: "username" → github_login on users.
+  const row = await getUserByGithubLogin(username);
   if (!row) return null;
   return rowToPrincipal(row);
 }
@@ -100,8 +100,8 @@ export async function getCurrentPrincipalAsync(request: Request): Promise<Curren
   if (credential) {
     const { validateAccessToken } = await import("./oauth-server.server");
     const token = await validateAccessToken(credential);
-    if (token?.collaborator_id) {
-      const p = await findPrincipalById(token.collaborator_id);
+    if (token?.user_id) {
+      const p = await findPrincipalById(token.user_id);
       if (p) return p;
     }
   }

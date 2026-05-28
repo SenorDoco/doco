@@ -24,7 +24,7 @@ const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
 
   Read responses may expose stored graph fields such as wanted_by,
   actors, stakeholders, actor_id, and decided_by. created_by is
-  collaborator/API-key provenance derived from the authenticated session
+  user/API-key provenance derived from the authenticated session
   or token. Never send created_by; use the API-facing principal-id fields
   documented here only for domain actors. For arrays, even one principal
   is an array:
@@ -690,9 +690,9 @@ LIST / READ
   GET ${baseUrl}/${handle}/api/principals/<id>.json
 
   The list response returns two arrays:
-    - "principals" / "collaborators" — OAuth collaborators on this Doco
+    - "principals" / "users" — OAuth users on this Doco
       (humans + agents with a role grant). Legacy field name is
-      "principals"; "collaborators" is the clearer alias.
+      "principals"; "users" is the clearer alias.
     - "principal_neurons" — actual Principal neurons in this Doco
       (what swim-lane / BPMN / org-tree views render). Mutate these
       via the create + edit + retire endpoints above.

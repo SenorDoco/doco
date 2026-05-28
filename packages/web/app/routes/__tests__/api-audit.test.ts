@@ -50,7 +50,7 @@ describe("/<doco>/api/audit.json", () => {
       goal: "",
     });
     mocks.getCurrentPrincipalAsync.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
     mocks.canReadDocoForRequest.mockResolvedValue(true);

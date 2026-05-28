@@ -1,6 +1,6 @@
 // /api/v1/api-keys.json — JSON API for personal API keys.
 //
-// Companion to /api/v1/collaborators/invite.json. That endpoint mints
+// Companion to /api/v1/users/invite.json. That endpoint mints
 // human invites; this one mints long-lived Bearer tokens. Splitting
 // the two means API consumers don't have to encode "is this a human
 // or an agent?" in a single endpoint's shape.
@@ -22,7 +22,7 @@
 //   403 — caller tried to mint with a role they don't hold
 
 import type { DocoRole } from "@doco/db";
-import { listApiKeysForCollaborator, mintApiKey, revokeApiKey } from "~/lib/api-keys.server";
+import { listApiKeysForUser, mintApiKey, revokeApiKey } from "~/lib/api-keys.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
@@ -30,7 +30,7 @@ export async function loader({ request }: { request: Request }) {
   if (!me) {
     return Response.json({ error: "authentication_required" }, { status: 401 });
   }
-  const keys = await listApiKeysForCollaborator(me.id);
+  const keys = await listApiKeysForUser(me.id);
   return Response.json({ keys });
 }
 
@@ -119,7 +119,7 @@ export async function action({ request }: { request: Request }) {
         { status: 400 },
       );
     }
-    const revoked = await revokeApiKey({ collaborator_id: me.id, client_id: clientId });
+    const revoked = await revokeApiKey({ user_id: me.id, client_id: clientId });
     return Response.json({ revoked });
   }
 

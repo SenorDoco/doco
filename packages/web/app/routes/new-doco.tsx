@@ -160,7 +160,7 @@ export async function action({ request }: { request: Request }) {
     } else {
       const created = await addOrganizationByHandle({
         handle: state.newOrgHandle,
-        ownerCollaboratorId: me.id,
+        ownerUserId: me.id,
         autoSuffix: true,
       });
       chosenOrgId = created.id;
@@ -177,7 +177,7 @@ export async function action({ request }: { request: Request }) {
     const rec = await createDocoInOrg({
       orgId: chosenOrgId,
       requestedHandle: state.name,
-      createdByCollaboratorId: me.id,
+      createdByUserId: me.id,
       visibility: state.visibility,
       templateHandle:
         state.templateHandle === DEFAULT_TEMPLATE_HANDLE ? null : state.templateHandle,

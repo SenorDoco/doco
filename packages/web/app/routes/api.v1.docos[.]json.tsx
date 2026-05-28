@@ -125,7 +125,7 @@ export async function action({ request }: { request: Request }) {
     const rec = await createDocoInOrg({
       orgId,
       requestedHandle: handle,
-      createdByCollaboratorId: me.id,
+      createdByUserId: me.id,
       visibility,
       autoSuffix: true,
       ...(templateHandle && templateHandle !== "generic"

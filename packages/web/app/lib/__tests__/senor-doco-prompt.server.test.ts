@@ -18,7 +18,7 @@ describe("senor-doco-prompt.server", () => {
     expect(prompt).toContain("You are Señor Doco, a test surface.");
     expect(prompt).toContain(SENOR_DOCO_USER_FACING_VOCABULARY_PROMPT);
     expect(prompt).toContain(SENOR_DOCO_VOICE_PROMPT);
-    expect(prompt).toContain("Principal vs principle vs collaborator");
+    expect(prompt).toContain("Principal vs principle vs user");
     expect(prompt).toContain("Only test-surface actions are available.");
   });
 });

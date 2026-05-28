@@ -1,28 +1,28 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-export type InviteCollaboratorLevel = "org" | "doco";
+export type InviteUserLevel = "org" | "doco";
 
-export function collaboratorsHref(level: InviteCollaboratorLevel, targetId: string): string {
+export function usersHref(level: InviteUserLevel, targetId: string): string {
   const params = new URLSearchParams();
   params.set("scope", `${level}:${targetId}`);
-  return `/collaborators?${params.toString()}`;
+  return `/users?${params.toString()}`;
 }
 
-export function CollaboratorsLink({
+export function UsersLink({
   level,
   targetId,
   className,
-  children = "Collaborators",
+  children = "Users",
 }: {
-  level: InviteCollaboratorLevel;
+  level: InviteUserLevel;
   targetId: string;
   className?: string;
   children?: ReactNode;
 }) {
   return (
     <Link
-      to={collaboratorsHref(level, targetId)}
+      to={usersHref(level, targetId)}
       className={["neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold", className]
         .filter(Boolean)
         .join(" ")}

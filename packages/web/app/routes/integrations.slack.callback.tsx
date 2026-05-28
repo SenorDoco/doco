@@ -25,7 +25,7 @@ export async function loader({ request }: { request: Request }) {
     const response = await exchangeSlackOAuthCode(request, code);
     await upsertSlackInstallation({
       response,
-      installedByCollaboratorId: parsedState.installerId,
+      installedByUserId: parsedState.installerId,
     });
     const teamId = response.team?.id;
     if (!teamId) throw new Error("Slack OAuth response did not include a team id.");

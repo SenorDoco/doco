@@ -4,8 +4,8 @@
  * agents that clone the repo to read the Doco without running OAuth.
  *
  * Distinct from OAuth access tokens (lib/oauth-server.server.ts):
- *   - Not tied to a collaborator. The token represents the Doco
- *     itself; `created_by_collaborator_id` is audit only.
+ *   - Not tied to a user. The token represents the Doco
+ *     itself; `created_by_user_id` is audit only.
  *   - Fixed scope: `reader` on exactly one Doco.
  *   - No expiry — committed-to-repo lifecycle; the only kill switch
  *     is the `revoked` flag, which an owner can flip from the
@@ -24,7 +24,7 @@ const PROJECT_TOKEN_PREFIX = "doco_pt_";
 export interface ProjectToken {
   token: string;
   doco_id: string;
-  created_by_collaborator_id: string;
+  created_by_user_id: string;
   label: string | null;
   revoked: boolean;
   created_at: Date;
@@ -39,7 +39,7 @@ export interface ProjectTokenSummary {
   revoked: boolean;
   created_at: string;
   last_used_at: string | null;
-  created_by_collaborator_id: string;
+  created_by_user_id: string;
 }
 
 export function isProjectToken(value: string): boolean {
@@ -73,13 +73,13 @@ function summarize(row: ProjectToken): ProjectTokenSummary {
     revoked: row.revoked,
     created_at: row.created_at.toISOString(),
     last_used_at: row.last_used_at ? row.last_used_at.toISOString() : null,
-    created_by_collaborator_id: row.created_by_collaborator_id,
+    created_by_user_id: row.created_by_user_id,
   };
 }
 
 export interface MintProjectTokenInput {
   doco_id: string;
-  created_by_collaborator_id: string;
+  created_by_user_id: string;
   label?: string | null;
 }
 
@@ -101,11 +101,11 @@ export async function mintProjectToken(
   const row = await withClient(async (c) => {
     const r = await c.query<ProjectToken>(
       `INSERT INTO doco_project_tokens
-         (token, doco_id, created_by_collaborator_id, label)
+         (token, doco_id, created_by_user_id, label)
        VALUES ($1, $2, $3, $4)
-       RETURNING token, doco_id, created_by_collaborator_id, label,
+       RETURNING token, doco_id, created_by_user_id, label,
                  revoked, created_at, last_used_at`,
-      [token, input.doco_id, input.created_by_collaborator_id, labelValue],
+      [token, input.doco_id, input.created_by_user_id, labelValue],
     );
     return r.rows[0];
   });
@@ -116,7 +116,7 @@ export async function mintProjectToken(
 export async function listProjectTokens(doco_id: string): Promise<ProjectTokenSummary[]> {
   return await withClient(async (c) => {
     const r = await c.query<ProjectToken>(
-      `SELECT token, doco_id, created_by_collaborator_id, label,
+      `SELECT token, doco_id, created_by_user_id, label,
               revoked, created_at, last_used_at
          FROM doco_project_tokens
         WHERE doco_id = $1
@@ -160,7 +160,7 @@ export async function validateProjectToken(token: string): Promise<ProjectToken 
   if (!isProjectToken(token)) return null;
   const row = await withClient(async (c) => {
     const r = await c.query<ProjectToken>(
-      `SELECT token, doco_id, created_by_collaborator_id, label,
+      `SELECT token, doco_id, created_by_user_id, label,
               revoked, created_at, last_used_at
          FROM doco_project_tokens
         WHERE token = $1 AND revoked = false`,
