@@ -329,7 +329,6 @@ function DocoPickerForm({
   const allOrgsSelected = orgs.length > 0 && selectedOrgs.size === orgs.length;
   const noneOrgsSelected = selectedOrgs.size === 0;
   const nothingSelected = selected.size === 0 && selectedOrgs.size === 0;
-  const missingAgentName = agentName.trim().length === 0;
   return (
     // reloadDocument: the action returns a 302 to the runtime's
     // localhost callback. Client-side fetch can't follow cross-origin
@@ -570,12 +569,18 @@ function DocoPickerForm({
         />
       ))}
 
+      {nothingSelected ? (
+        <p className="text-xs text-muted-foreground">
+          Select at least one Doco or organization to approve.
+        </p>
+      ) : null}
+
       <div className="flex gap-2">
         <button
           type="submit"
           name="decision"
           value="approve"
-          disabled={nothingSelected || missingAgentName}
+          disabled={nothingSelected}
           className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           Approve
@@ -584,6 +589,7 @@ function DocoPickerForm({
           type="submit"
           name="decision"
           value="cancel"
+          formNoValidate
           className="neu-button rounded-md px-4 py-2 text-sm font-semibold text-foreground"
         >
           Cancel
