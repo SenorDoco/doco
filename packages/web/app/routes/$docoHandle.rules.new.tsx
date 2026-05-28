@@ -7,7 +7,8 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { captureRule } from "~/lib/capture.server";
+import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
+import { type RuleDraft, captureRule } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
@@ -75,11 +76,7 @@ export async function action({
     ? await resolvePrincipalIdForCollaborator(meta.docoId, me.id)
     : null;
 
-  const result = await captureRule(
-    dir,
-    meta.docoId,
-    ownerSlug,
-    docoSlug,
+  const draft: RuleDraft = stampAuthenticatedCreator(
     {
       rule: ruleText,
       predicate,
@@ -87,8 +84,16 @@ export async function action({
       severity,
       enforced_by: enforcedBy,
       authored_by_principal_id: authorPrincipalId ?? undefined,
-      created_by_collaborator_id: me?.id ?? undefined,
-    },
+    } satisfies RuleDraft,
+    me?.id,
+  );
+
+  const result = await captureRule(
+    dir,
+    meta.docoId,
+    ownerSlug,
+    docoSlug,
+    draft,
     new URL(request.url).origin,
   );
   if ("error" in result) {

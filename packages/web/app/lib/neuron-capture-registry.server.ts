@@ -62,7 +62,6 @@ export async function reconcilePrincipalFields<TDraft extends object>(
 ): Promise<void> {
   if (!me.id) return;
   const mutable = draft as Record<string, unknown>;
-  mutable.created_by_collaborator_id = me.id;
   const mePrincipalPromise = resolvePrincipalIdForCollaborator(docoId, me.id);
 
   for (const field of singularFields) {
@@ -91,17 +90,11 @@ export async function reconcilePrincipalFields<TDraft extends object>(
 
 async function fillEvalAuthorFromAuth(draft: EvalDraft, me: MeLike, docoId: string): Promise<void> {
   if (!me.id) return;
-  draft.created_by_collaborator_id = me.id;
   if (draft.authored_by_principal_id) return;
   const authorPrincipalId = await resolvePrincipalIdForCollaborator(docoId, me.id);
   if (authorPrincipalId) {
     draft.authored_by_principal_id = authorPrincipalId;
   }
-}
-
-function fillCollaboratorCreatorFromAuth(draft: object, me: MeLike): void {
-  if (!me.id) return;
-  (draft as Record<string, unknown>).created_by_collaborator_id = me.id;
 }
 
 function entry<TDraft>(
@@ -145,16 +138,11 @@ export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
       ["actors_principal_ids", "stakeholders_principal_ids"],
     ),
   ),
-  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, fillCollaboratorCreatorFromAuth),
+  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea),
   actions: entry<ActionDraft>("actions", "action", captureAction, (draft, me, docoId) =>
     reconcilePrincipalFields(draft, docoId, me, ["actor_principal_id"], ["actors_principal_ids"]),
   ),
-  references: entry<ReferenceDraft>(
-    "references",
-    "reference",
-    captureReference,
-    fillCollaboratorCreatorFromAuth,
-  ),
+  references: entry<ReferenceDraft>("references", "reference", captureReference),
   rules: entry<RuleDraft>("rules", "rule", captureRule, (draft, me, docoId) =>
     reconcilePrincipalFields(draft, docoId, me, ["authored_by_principal_id"]),
   ),
@@ -162,9 +150,7 @@ export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
     reconcilePrincipalFields(draft, docoId, me, ["actor_principal_id"]),
   ),
   evals: entry<EvalDraft>("evals", "eval", captureEval, fillEvalAuthorFromAuth),
-  states: entry<StateDraft>("states", "state", captureState, (draft, me, docoId) =>
-    fillCollaboratorCreatorFromAuth(draft, me),
-  ),
+  states: entry<StateDraft>("states", "state", captureState),
 };
 
 export const CAPTURE_REGISTRY_BY_ENTITY_TYPE: Record<string, RegistryEntry> = Object.fromEntries(

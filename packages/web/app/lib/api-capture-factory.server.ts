@@ -4,6 +4,7 @@
 import { getEntity, roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
+import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
   type CaptureError,
   type CaptureResult,
@@ -45,11 +46,9 @@ export interface CaptureRouteConfig<TDraft> {
   /** Backing capture function from capture.server.ts. */
   captureFn: CaptureFn<TDraft>;
   /**
-   * Optional: fill any default fields on the draft from the authenticated
-   * principal. Async so it can resolve the collaborator → role-Principal
-   * neuron for this doco before stamping `*_principal_id` defaults.
-   * Called only when `me` is present and the draft doesn't already carry
-   * the field.
+   * Optional: fill any domain Principal defaults on the draft from the
+   * authenticated collaborator. Creator provenance is stamped centrally
+   * from the same authenticated collaborator before this hook runs.
    */
   fillFromAuth?: (draft: TDraft, me: MeLike, docoId: string) => Promise<void> | void;
 }
@@ -126,6 +125,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             );
           }
 
+          stampAuthenticatedCreator(draft as object, me.id);
           if (me && cfg.fillFromAuth) {
             await cfg.fillFromAuth(draft, { id: me.id, username: me.username }, meta.docoId);
           }

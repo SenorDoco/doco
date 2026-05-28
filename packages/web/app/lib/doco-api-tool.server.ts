@@ -19,7 +19,7 @@ export const DOCO_API_TOOL: Tool = {
       },
       body: {
         description:
-          "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object - the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, and authored_by_principal_id; do not send principal names. created_by is collaborator/API-key provenance from authentication.",
+          "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object - the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, and authored_by_principal_id; do not send principal names. Never send created_by; creator provenance is derived from the authenticated session or token.",
       },
     },
     required: ["method", "path"],

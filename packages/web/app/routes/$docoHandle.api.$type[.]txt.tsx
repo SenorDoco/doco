@@ -24,10 +24,10 @@ const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
 
   Read responses may expose stored graph fields such as wanted_by,
   actors, stakeholders, actor_id, and decided_by. created_by is
-  collaborator/API-key provenance and is filled from authentication.
-  When you POST or PATCH through this API, use the API-facing
-  principal-id fields documented here. For arrays, even one principal is
-  an array:
+  collaborator/API-key provenance derived from the authenticated session
+  or token. Never send created_by; use the API-facing principal-id fields
+  documented here only for domain actors. For arrays, even one principal
+  is an array:
     "actors_principal_ids": ["principal_01..."]
 `;
 

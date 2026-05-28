@@ -145,9 +145,10 @@ Common API-facing principal fields:
 
 Read responses may expose stored graph fields such as \`wanted_by\`,
 \`actors\`, \`stakeholders\`, \`actor_id\`, and \`decided_by\`.
-\`created_by\` is collaborator/API-key provenance and is filled from
-authentication. Those are storage field names; request bodies should
-use the API-facing principal-id fields above.
+\`created_by\` is collaborator/API-key provenance derived from the
+authenticated session or token. Never send \`created_by\` in request
+bodies; use the API-facing principal-id fields above only for domain
+actors.
 
 Create a Doco with:
 

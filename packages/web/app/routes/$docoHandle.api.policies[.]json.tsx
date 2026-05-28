@@ -14,6 +14,7 @@
 //        NeuronAuthoringPolicyDraft from capture.server.ts.
 
 import { withClient } from "@doco/db";
+import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
   type GuidancePolicyDraft,
   type NeuronAuthoringPolicyDraft,
@@ -148,12 +149,11 @@ export async function action({
     const { policy_kind: _discarded, ...rest } = parsed;
 
     if (policyKind === "guidance") {
-      const draft = rest as unknown as GuidancePolicyDraft;
+      const draft = stampAuthenticatedCreator(rest as unknown as GuidancePolicyDraft, me.id);
       if (!draft.authored_by_principal_id && me.id) {
         draft.authored_by_principal_id =
           (await resolvePrincipalIdForCollaborator(meta.docoId, me.id)) ?? undefined;
       }
-      if (me.id) draft.created_by_collaborator_id = me.id;
       const result = await captureGuidancePolicy(
         dir,
         meta.docoId,
@@ -166,12 +166,11 @@ export async function action({
       return Response.json(result, { status: 201 });
     }
 
-    const draft = rest as unknown as NeuronAuthoringPolicyDraft;
+    const draft = stampAuthenticatedCreator(rest as unknown as NeuronAuthoringPolicyDraft, me.id);
     if (!draft.authored_by_principal_id && me.id) {
       draft.authored_by_principal_id =
         (await resolvePrincipalIdForCollaborator(meta.docoId, me.id)) ?? undefined;
     }
-    if (me.id) draft.created_by_collaborator_id = me.id;
     const result = await captureNeuronAuthoringPolicy(
       dir,
       meta.docoId,
