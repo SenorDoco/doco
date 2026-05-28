@@ -1,8 +1,10 @@
-// /api-keys — host-level page for managing API keys.
+// /api-keys — host-level page for managing personal access tokens.
 //
 // Lists every active OAuth refresh token bound to the signed-in user
-// or one of their named agent users, plus personal API keys
-// minted from this page.
+// or one of their named agent users, plus personal access tokens
+// minted from this page. (URL kept as /api-keys to preserve existing
+// links and the navbar shortcut; the page is labelled "Personal access
+// tokens" everywhere user-facing.)
 //
 // Distinct from /users: that page lists who has access; this
 // page manages the credentials behind those agents/scripts.
@@ -50,7 +52,7 @@ type ActionResult =
 
 export async function action({ request }: { request: Request }): Promise<ActionResult> {
   const me = await getCurrentPrincipal(request);
-  if (!me) return { error: "Sign in to manage API keys." };
+  if (!me) return { error: "Sign in to manage personal access tokens." };
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -86,11 +88,12 @@ export async function action({ request }: { request: Request }): Promise<ActionR
       };
     }
 
+    const nonRotating = String(form.get("non_rotating") ?? "") === "true";
     try {
-      const minted = await mintApiKey({ me, label, grants });
+      const minted = await mintApiKey({ me, label, grants, non_rotating: nonRotating });
       return { intent: "mint", ok: true, minted };
     } catch (err) {
-      return { error: err instanceof Error ? err.message : "Failed to mint API key." };
+      return { error: err instanceof Error ? err.message : "Failed to mint token." };
     }
   }
 
@@ -98,7 +101,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
 }
 
 export function meta() {
-  return [{ title: "API keys · Doco" }];
+  return [{ title: "Personal access tokens · Doco" }];
 }
 
 export default function ApiKeysPage({
@@ -117,9 +120,9 @@ export default function ApiKeysPage({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "API keys" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Personal access tokens" })} />
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">API keys</h1>
+          <h1 className="text-2xl font-semibold">Personal access tokens</h1>
         </header>
 
         <AddAgentCard
@@ -131,11 +134,11 @@ export default function ApiKeysPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>All API keys</CardTitle>
+            <CardTitle>All personal access tokens</CardTitle>
             <CardDescription>
               {keys.length === 0
-                ? "No active keys yet."
-                : `${keys.length} active key${keys.length === 1 ? "" : "s"}.`}
+                ? "No active tokens yet."
+                : `${keys.length} active token${keys.length === 1 ? "" : "s"}.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -194,7 +197,7 @@ function AddAgentCard({
             mode="generate"
             current={mode}
             onSelect={setMode}
-            label="Generate API key"
+            label="Generate token"
             testid="add-agent-mode-generate"
           />
         </div>
@@ -255,6 +258,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
     navigation.state === "submitting" && navigation.formData?.get("intent") === "mint";
 
   const [label, setLabel] = useState("");
+  const [cloudEnv, setCloudEnv] = useState(false);
 
   // Single combined Org / Doco dropdown, matching the user
   // invite UX (user-invite-cards.tsx). Each option carries the
@@ -304,6 +308,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
     <Form method="post" className="flex flex-col gap-3" data-testid="generate-api-key-form">
       <input type="hidden" name="intent" value="mint" />
       <input type="hidden" name="grants" value={grantsPayload} />
+      <input type="hidden" name="non_rotating" value={cloudEnv ? "true" : "false"} />
 
       <label className="block text-sm">
         <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
@@ -360,6 +365,20 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
               </select>
             </label>
           </div>
+          <label className="flex items-start gap-2 text-sm" data-testid="api-key-cloud-env-label">
+            <input
+              type="checkbox"
+              checked={cloudEnv}
+              onChange={(e) => setCloudEnv(e.currentTarget.checked)}
+              data-testid="api-key-cloud-env"
+              className="mt-0.5"
+            />
+            <span className="text-muted-foreground">
+              This agent runs in a <strong>cloud environment</strong> (Claude Code on the web,
+              Codespaces, Replit…). Mint a non-rotating token to paste into the environment's
+              variable config, so fresh instances inherit access without re-authorizing.
+            </span>
+          </label>
           <div className="flex justify-end">
             <button
               type="submit"
@@ -367,7 +386,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
               disabled={submitting || !label.trim() || !selected}
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
-              {submitting ? "Generating…" : "Generate API key"}
+              {submitting ? "Generating…" : cloudEnv ? "Generate cloud token" : "Generate token"}
             </button>
           </div>
         </>
@@ -381,18 +400,80 @@ function rankOrZero(role: DocoRole): number {
 }
 
 function MintedReveal({ minted }: { minted: MintedApiKey }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const expiresIn = formatExpiresIn(minted.expires_in);
+
+  const copy = async (key: string, text: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+    }
+  };
+
+  const scopeLine = (
+    <div className="text-xs text-muted-foreground">
+      Scope:{" "}
+      {minted.scope_grants.length === 0 ? (
+        <em>none</em>
+      ) : (
+        minted.scope_grants.map((g) => (
+          <span key={`${g.level}:${g.target_id}`} className="mr-2">
+            <strong>{g.target_label}</strong> ({g.level}, {g.role})
+          </span>
+        ))
+      )}
+    </div>
+  );
+
+  if (minted.non_rotating) {
+    const envBlock = `DOCO_ACCESS=${minted.access_token}\nDOCO_REFRESH=${minted.refresh_token}\nDOCO_CLIENT_ID=${minted.client_id}`;
+    return (
+      <div
+        className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2"
+        data-testid="api-key-minted"
+      >
+        <p className="text-sm font-semibold">Cloud token minted — copy it now</p>
+        <p className="text-xs text-muted-foreground">
+          Shown ONCE. Add these to your cloud environment's variable configuration (Claude Code on
+          the web env vars, Codespaces / Replit secrets, …). Every fresh instance mints its own
+          short-lived access token from this <strong>non-rotating</strong> refresh token — no
+          re-authorizing. The pinned value stays valid until you revoke it below.
+        </p>
+        <div className="space-y-1">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Environment variables
+          </div>
+          <pre
+            className="overflow-x-auto whitespace-pre rounded bg-background px-2 py-1 text-xs font-mono"
+            data-testid="api-key-env-block"
+          >
+            {envBlock}
+          </pre>
+        </div>
+        <button
+          type="button"
+          data-testid="api-key-copy-env"
+          onClick={() => copy("env", envBlock)}
+          className="neu-button rounded-md px-2 py-1 text-xs"
+        >
+          {copied === "env" ? "Copied!" : "Copy all three"}
+        </button>
+        {scopeLine}
+      </div>
+    );
+  }
+
   return (
     <div
       className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2"
       data-testid="api-key-minted"
     >
-      <p className="text-sm font-semibold">API key minted — copy it now</p>
+      <p className="text-sm font-semibold">Personal access token minted — copy it now</p>
       <p className="text-xs text-muted-foreground">
         This access token body is shown ONCE. Save it in your script's secret store; if you lose it,
-        revoke the key and mint a new one. Access token expires in {expiresIn} but rotates
-        automatically — use the refresh token below to mint a fresh one when it expires.
+        revoke the token and mint a new one. The access token expires in {expiresIn}; the refresh
+        token below mints a fresh one (rotating each time) when it does.
       </p>
       <div className="space-y-1">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -419,29 +500,12 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
       <button
         type="button"
         data-testid="api-key-copy"
-        onClick={async () => {
-          if (typeof navigator !== "undefined" && navigator.clipboard) {
-            await navigator.clipboard.writeText(minted.access_token);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }
-        }}
+        onClick={() => copy("access", minted.access_token)}
         className="neu-button rounded-md px-2 py-1 text-xs"
       >
-        {copied ? "Copied!" : "Copy access token"}
+        {copied === "access" ? "Copied!" : "Copy access token"}
       </button>
-      <div className="text-xs text-muted-foreground">
-        Scope:{" "}
-        {minted.scope_grants.length === 0 ? (
-          <em>none</em>
-        ) : (
-          minted.scope_grants.map((g) => (
-            <span key={`${g.level}:${g.target_id}`} className="mr-2">
-              <strong>{g.target_label}</strong> ({g.level}, {g.role})
-            </span>
-          ))
-        )}
-      </div>
+      {scopeLine}
     </div>
   );
 }

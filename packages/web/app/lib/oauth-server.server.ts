@@ -607,10 +607,10 @@ export async function refreshTokens(args: {
       // Cloud-environment credential: keep the same refresh token so the
       // value pinned in the environment config stays valid across fresh
       // instances. Slide its expiry forward so active use keeps it alive.
-      await c.query(
-        "UPDATE oauth_refresh_tokens SET expires_at = $1 WHERE token = $2",
-        [refresh_expires, args.refresh_token],
-      );
+      await c.query("UPDATE oauth_refresh_tokens SET expires_at = $1 WHERE token = $2", [
+        refresh_expires,
+        args.refresh_token,
+      ]);
       return {
         access_token,
         refresh_token: args.refresh_token,

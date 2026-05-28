@@ -91,7 +91,7 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
         Users
       </NavLink>
       <NavLink to="/api-keys" className={linkClass} onClick={onNavigate}>
-        API keys
+        Access tokens
       </NavLink>
       {me.username === "torrenegra" ? (
         <NavLink to="/mentor/feedback" className={linkClass} onClick={onNavigate}>
