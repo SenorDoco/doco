@@ -74,18 +74,28 @@ export function PerspectiveFrame({
   children,
 }: PerspectiveFrameProps) {
   const sizeClass = fillHeight ? "min-h-0 flex-1" : "h-[65vh] min-h-[480px]";
+  const frameRadiusClass = rightTabAttached ? "!rounded-tr-none" : "rounded-tr-lg";
+  const frameRadiusStyle = rightTabAttached ? { borderTopRightRadius: 0 } : undefined;
   return (
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
         className={cn(
-          "neu-surface relative z-50 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none border border-border bg-card text-card-foreground",
-          rightTabAttached ? "!rounded-tr-none" : "rounded-tr-lg",
+          "relative z-50 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none border border-transparent bg-card text-card-foreground",
+          frameRadiusClass,
           sizeClass,
         )}
-        style={rightTabAttached ? { borderTopRightRadius: 0 } : undefined}
+        style={frameRadiusStyle}
       >
         {children}
         {lifecycleFilter ? <LifecycleFilterPanel spec={lifecycleFilter} /> : null}
+        <div
+          aria-hidden
+          className={cn(
+            "neu-surface pointer-events-none absolute inset-0 z-[60] rounded-b-lg rounded-tl-none border border-border",
+            frameRadiusClass,
+          )}
+          style={frameRadiusStyle}
+        />
       </div>
     </FullscreenContext.Provider>
   );
