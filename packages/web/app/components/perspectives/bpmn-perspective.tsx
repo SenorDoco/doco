@@ -1824,7 +1824,7 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
         aria-hidden="true"
         style={{
           position: "absolute",
-          bottom: 16,
+          bottom: 14,
           left: "50%",
           transform: "translateX(-50%)",
           width: 16,
@@ -1841,6 +1841,10 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
           fontWeight: 700,
           color: stroke,
           zIndex: 2,
+          // Asymmetric bottom padding lifts the "+" glyph ~2px within the
+          // box (the box stays put); the "+" optically reads low when
+          // centered, so this nudges it toward the visual middle.
+          paddingBottom: 4,
         }}
       >
         +
