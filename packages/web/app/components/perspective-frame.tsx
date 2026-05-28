@@ -91,7 +91,20 @@ export function PerspectiveFrame({
         <div
           aria-hidden
           className={cn(
-            "neu-surface pointer-events-none absolute inset-0 z-[80] rounded-b-lg rounded-tl-none border border-border",
+            "pointer-events-none absolute inset-0 z-[80] overflow-hidden rounded-b-lg rounded-tl-none",
+            frameRadiusClass,
+          )}
+          style={frameRadiusStyle}
+        >
+          <div className="absolute left-0 right-0 top-0 h-0.5 bg-card" />
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-card" />
+          <div className="absolute bottom-0 left-0 top-0 w-0.5 bg-card" />
+          <div className="absolute bottom-0 right-0 top-0 w-0.5 bg-card" />
+        </div>
+        <div
+          aria-hidden
+          className={cn(
+            "neu-surface pointer-events-none absolute inset-0 z-[90] rounded-b-lg rounded-tl-none border border-border",
             frameRadiusClass,
           )}
           style={frameRadiusStyle}
