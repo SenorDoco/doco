@@ -41,6 +41,7 @@ import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
+import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
 import {
   highestRankedNodeId,
   selectMeasuredPersonalizedNodeIds,
@@ -586,6 +587,57 @@ export function BpmnPerspective({
     return { nodes, edges };
   }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
 
+  // Sub-process drill-downs. An Action in the render window that serves
+  // an Intent beyond its own pool is a BPMN collapsed sub-process; both
+  // the "+" marker (via `subprocessNodeIds`) and the dashed link (via
+  // `subprocessEdges`) are gated on the sub-process pool being rendered,
+  // so they appear and disappear together as the window shifts.
+  const { subprocessNodeIds, subprocessEdges } = useMemo(() => {
+    const renderedIntentPools = new Set<string>();
+    const headerIdByIntent = new Map<string, string>();
+    for (const pool of renderedPools) {
+      if (!pool.intent_id) continue;
+      renderedIntentPools.add(pool.intent_id);
+      headerIdByIntent.set(pool.intent_id, `pool-header:${pool.id}`);
+    }
+    const ids = new Set<string>();
+    const edges: FlowEdge[] = [];
+    for (const node of renderedNodes) {
+      const targets = subprocessTargetIntents(node, renderedIntentPools);
+      if (targets.length === 0) continue;
+      ids.add(node.id);
+      for (const intentId of targets) {
+        const headerId = headerIdByIntent.get(intentId);
+        if (!headerId) continue;
+        edges.push({
+          id: `subprocess:${node.id}->${intentId}`,
+          source: node.id,
+          sourceHandle: SUBPROCESS_SOURCE_HANDLE,
+          target: headerId,
+          targetHandle: SUBPROCESS_TARGET_HANDLE,
+          // "default" is xyflow's built-in bezier edge (always
+          // registered); we don't need the custom labeled-bezier type.
+          type: "default",
+          selectable: false,
+          focusable: false,
+          interactionWidth: 0,
+          style: {
+            stroke: SUBPROCESS_EDGE_COLOR,
+            strokeWidth: 1.5,
+            strokeDasharray: "6 4",
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 16,
+            height: 16,
+            color: SUBPROCESS_EDGE_COLOR,
+          },
+        });
+      }
+    }
+    return { subprocessNodeIds: ids, subprocessEdges: edges };
+  }, [renderedNodes, renderedPools]);
+
   const flowNodes = useMemo<FlowNode[]>(() => {
     const windowed = layout.flowNodes.flatMap<FlowNode>((node) => {
       const laneData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).lane;
@@ -616,8 +668,11 @@ export function BpmnPerspective({
         opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
         transition: "opacity 500ms ease",
       };
-      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, style }];
-      return [{ ...node, data: { ...node.data, referenceNumber }, style }];
+      const baseData = subprocessNodeIds.has(node.id)
+        ? { ...node.data, isSubprocess: true }
+        : node.data;
+      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, data: baseData, style }];
+      return [{ ...node, data: { ...baseData, referenceNumber }, style }];
     });
     return [...windowed, ...externalEdgeStubs.nodes];
   }, [
@@ -630,6 +685,7 @@ export function BpmnPerspective({
     renderWindowOpacityById,
     openLaneNeuron,
     externalEdgeStubs.nodes,
+    subprocessNodeIds,
   ]);
   const flowEdges = useMemo<FlowEdge[]>(
     () => [
@@ -675,8 +731,15 @@ export function BpmnPerspective({
           };
         }),
       ...externalEdgeStubs.edges,
+      ...subprocessEdges,
     ],
-    [layout.flowEdges, renderedNodeIds, renderWindowOpacityById, externalEdgeStubs.edges],
+    [
+      layout.flowEdges,
+      renderedNodeIds,
+      renderWindowOpacityById,
+      externalEdgeStubs.edges,
+      subprocessEdges,
+    ],
   );
   const initialFocusFlowNodeId = useMemo(() => {
     if (!initialFocusId) return null;
@@ -1006,6 +1069,12 @@ interface FlowEdge {
   id: string;
   source: string;
   target: string;
+  /** Named handles for the sub-process drill-down links: they leave an
+   *  Action's "+" marker (bottom handle id) and land on the sub-process
+   *  Intent's pool header (top handle id). Sequence-flow edges leave
+   *  these undefined and bind to the id-less left/right handles. */
+  sourceHandle?: string;
+  targetHandle?: string;
   type: string;
   zIndex?: number;
   data?: Record<string, unknown>;
@@ -1051,6 +1120,17 @@ interface BpmnLayout {
 
 const POOL_HEADER_HEIGHT = 32;
 const POOL_GAP = 16;
+
+// Sub-process drill-down link. An Action that `serves` an Intent other
+// than its own pool's is a BPMN collapsed sub-process: it stands in for
+// that Intent's whole process. We mark the Action with a "+" glyph and
+// draw a dashed link from that marker up to the sub-process Intent's
+// pool header. Slate (not lifecycle-colored) so it reads as a
+// structural drill-down rather than process flow; the handle ids keep
+// it distinct from the id-less sequence-flow handles on every shape.
+const SUBPROCESS_EDGE_COLOR = "#64748b"; // slate-500
+const SUBPROCESS_SOURCE_HANDLE = "subprocess";
+const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
 
 function bpmnGraphRankNodes(
   pools: readonly BpmnPool[],
@@ -1401,6 +1481,9 @@ interface BpmnNodeData {
   node: BpmnNode;
   referenceNumber?: number;
   isCenter?: boolean;
+  /** Action serves an Intent beyond its own pool — render the BPMN
+   *  collapsed-subprocess "+" marker and the dashed drill-down handle. */
+  isSubprocess?: boolean;
 }
 
 interface BpmnLaneData {
@@ -1474,6 +1557,18 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
       }}
       title={data.pool.label}
     >
+      {data.pool.intent_id ? (
+        // Landing point for dashed sub-process links — pinned near the
+        // top-left of the header where the Intent label reads, so the
+        // arrow lands "on the Intent" rather than mid-band.
+        <Handle
+          type="target"
+          id={SUBPROCESS_TARGET_HANDLE}
+          position={Position.Top}
+          isConnectable={false}
+          style={{ background: "transparent", border: "none", left: 24 }}
+        />
+      ) : null}
       {!isUnassigned && data.pool.intent_id ? (
         <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
           <TypeBadge entityType="intent" lifecycle={data.pool.lifecycle} anchor="inline" />
@@ -1694,9 +1789,56 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
   );
 }
 
+// BPMN collapsed sub-process marker — a small bordered square with a
+// centered "+" sitting on the activity's bottom edge (OMG BPMN 2.0
+// §10.2.4: a collapsed sub-process is a task glyph with a "+" marker).
+// The dashed drill-down link to the sub-process pool originates here, so
+// the React Flow source handle is co-located with the box: the default
+// Position.Bottom centers the handle on the bottom edge, exactly where
+// the half-overhanging marker sits.
+function SubprocessMarker({ stroke }: { stroke: string }) {
+  return (
+    <>
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          bottom: -8,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 16,
+          height: 16,
+          boxSizing: "border-box",
+          background: "#fff",
+          border: `1.5px solid ${stroke}`,
+          borderRadius: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 13,
+          lineHeight: 1,
+          fontWeight: 700,
+          color: stroke,
+          zIndex: 2,
+        }}
+      >
+        +
+      </div>
+      <Handle
+        type="source"
+        id={SUBPROCESS_SOURCE_HANDLE}
+        position={Position.Bottom}
+        isConnectable={false}
+        style={{ background: "transparent", border: "none" }}
+      />
+    </>
+  );
+}
+
 // BPMN Task — rounded rectangle. Sits between the sharp Rectangle (a
 // policy box) and the fully-pill Rounded (an Idea capsule); the radius
-// matches the OMG BPMN 2.0 task glyph.
+// matches the OMG BPMN 2.0 task glyph. When the Action drills into a
+// sub-process it also wears the collapsed-subprocess "+" marker.
 function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   return (
@@ -1717,7 +1859,12 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
     >
       <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
+      {/* commonHandles first so the id-less right (source) handle is the
+          node's first source handle: xyflow binds an edge with no
+          sourceHandle to bounds[0], and sequence flow must keep exiting
+          right. The "+" marker's bottom handle is addressed by id. */}
       {commonHandles()}
+      {data.isSubprocess ? <SubprocessMarker stroke={stroke} /> : null}
     </div>
   );
 }
