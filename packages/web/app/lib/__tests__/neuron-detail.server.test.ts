@@ -25,6 +25,7 @@ const meta = {
 function clientWithRow(row: Record<string, unknown>) {
   return {
     query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+      if (sql.includes("WITH input(actor_id)")) return { rows: [] };
       if (sql.includes("FROM synapses")) return { rows: [] };
       if (sql.includes("UNION ALL")) return { rows: [] };
       if (sql.includes("FROM audit_events")) return { rows: [] };
@@ -141,6 +142,7 @@ describe("loadNeuronDialogDetail", () => {
             ] as T[],
           };
         }
+        if (sql.includes("WITH input(actor_id)")) return { rows: [] };
         if (sql.includes("FROM audit_events")) return { rows: [] };
         return {
           rows: [
@@ -173,5 +175,52 @@ describe("loadNeuronDialogDetail", () => {
       other_id: "action_01RETIRED",
       other_lifecycle: "retired",
     });
+  });
+
+  it("resolves collaborator provenance metadata instead of exposing Principal creator ids", async () => {
+    const client = {
+      query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        if (sql.includes("WITH input(actor_id)")) {
+          return {
+            rows: [
+              {
+                actor_id: "principal_01AUTHOR",
+                collaborator_id: "collaborator_alice",
+                label: "alice",
+              },
+            ] as T[],
+          };
+        }
+        if (sql.includes("FROM synapses")) return { rows: [] };
+        if (sql.includes("UNION ALL")) return { rows: [] };
+        if (sql.includes("FROM audit_events")) return { rows: [] };
+        return {
+          rows: [
+            {
+              id: "decision_01TEST",
+              primary_text: "Use collaborator provenance",
+              body_text: null,
+              lifecycle: "proposed",
+              raw_json: JSON.stringify({
+                created_by: "principal_01AUTHOR",
+                decided_by: "principal_01AUTHOR",
+              }),
+              created_at: "2026-05-26T17:01:00.000Z",
+              updated_at: "2026-05-26T17:01:00.000Z",
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const detail = await loadNeuronDialogDetail(client, meta, {
+      handle: "test-doco",
+      entityType: "decision",
+      id: "decision_01TEST",
+      principalId: "principal_owner",
+    });
+
+    expect(detail?.frontmatter.created_by).toBe("alice");
+    expect(detail?.frontmatter.decided_by).toBe("principal_01AUTHOR");
   });
 });

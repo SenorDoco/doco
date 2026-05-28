@@ -26,6 +26,7 @@ import {
   loadDocoRouteForRead,
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
+import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
 
 interface PolicyRow {
   id: string;
@@ -148,8 +149,11 @@ export async function action({
 
     if (policyKind === "guidance") {
       const draft = rest as unknown as GuidancePolicyDraft;
-      if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
-      if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+      if (!draft.authored_by_principal_id && me.id) {
+        draft.authored_by_principal_id =
+          (await resolvePrincipalIdForCollaborator(meta.docoId, me.id)) ?? undefined;
+      }
+      if (me.id) draft.created_by_collaborator_id = me.id;
       const result = await captureGuidancePolicy(
         dir,
         meta.docoId,
@@ -163,8 +167,11 @@ export async function action({
     }
 
     const draft = rest as unknown as NeuronAuthoringPolicyDraft;
-    if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+    if (!draft.authored_by_principal_id && me.id) {
+      draft.authored_by_principal_id =
+        (await resolvePrincipalIdForCollaborator(meta.docoId, me.id)) ?? undefined;
+    }
+    if (me.id) draft.created_by_collaborator_id = me.id;
     const result = await captureNeuronAuthoringPolicy(
       dir,
       meta.docoId,

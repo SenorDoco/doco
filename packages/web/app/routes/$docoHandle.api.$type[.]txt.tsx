@@ -23,9 +23,11 @@ const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
   *_name fields, or comma-separated strings; there are no aliases.
 
   Read responses may expose stored graph fields such as wanted_by,
-  actors, stakeholders, actor_id, decided_by, and created_by. When you
-  POST or PATCH through this API, use the API-facing principal-id fields
-  documented here. For arrays, even one principal is an array:
+  actors, stakeholders, actor_id, and decided_by. created_by is
+  collaborator/API-key provenance and is filled from authentication.
+  When you POST or PATCH through this API, use the API-facing
+  principal-id fields documented here. For arrays, even one principal is
+  an array:
     "actors_principal_ids": ["principal_01..."]
 `;
 
@@ -51,7 +53,6 @@ BODY (JSON)
   sequence_to        optional   BPMN forward flow targets: ["action_01..."] or
                                   [{ "target": "action_01...", "label": "Yes" }]
   decided_by_principal_id optional  principal id who made the decision; auth fills this
-  created_by_principal_id optional  principal id; defaults to decided_by
   born_from          optional   reference id (e.g. born_from a bugfix decision)
   lifecycle          optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated         optional   boolean warning label; lifecycle is unchanged
@@ -123,7 +124,6 @@ ${PRINCIPAL_ID_CONVENTION}
 
 BODY (JSON)
   idea                required   full prose: the idea, context, tradeoffs
-  created_by_principal_id optional principal id; auth fills this
   promoted_to         optional   entity id once the idea is picked up
   rejection_reason    optional   why the idea was rejected or parked
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "drafting"
@@ -228,7 +228,6 @@ BODY (JSON)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
   actor_principal_id  optional   principal id who performs the action; auth fills this
-  created_by_principal_id optional principal id; defaults to actor_principal_id
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "retired"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"; default "succeeded"
@@ -289,7 +288,6 @@ BODY (JSON)
   preceded_by         optional   entity ids that precede this Log
   inputs              optional   event input object or value
   actor_principal_id  optional   principal id who performed it; auth fills this
-  created_by_principal_id optional principal id; defaults to actor_principal_id
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "retired"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"; default "succeeded"
@@ -342,7 +340,6 @@ BODY (JSON)
   severity            optional   "hard" | "soft"
   born_from           optional   Decision id this Rule came from
   authored_by_principal_id optional principal id who authored it; auth fills this
-  created_by_principal_id  optional principal id; defaults to authored_by_principal_id
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -453,7 +450,6 @@ BODY (JSON)
   locator             required   path, URL, ticket id, commit sha, or other locator
   content_hash        optional   content hash when available
   intent_ids          optional   ["intent_01...", ...]
-  created_by_principal_id optional principal id; auth fills this
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -474,8 +470,7 @@ EXAMPLE
     -d '{
       "reference": "Plain-text capture API specs",
       "ref_type": "file",
-      "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx",
-      "created_by_principal_id": "principal_01..."
+      "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx"
     }'
 
 UPDATE AN EXISTING REFERENCE
@@ -506,7 +501,6 @@ BODY (JSON)
   preceded_by         optional   entity ids that precede this state
   sequence_to         optional   BPMN forward flow targets: ["action_01..."] or
                                   [{ "target": "action_01...", "label": "start" }]
-  created_by_principal_id optional principal id; auth fills this
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -527,7 +521,6 @@ EXAMPLE
     -d '{
       "state": "Capture API contract documented",
       "kind": "terminal",
-      "created_by_principal_id": "principal_01...",
       "invariants": ["Agents can discover the expected body shape."]
     }'
 
@@ -761,7 +754,6 @@ BODY — policy_kind = "guidance"
                                     \`summary\` by migration 038)
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
-  created_by_principal_id  optional principal id; defaults to authored_by_principal_id
   lifecycle             optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
@@ -780,7 +772,6 @@ BODY — policy_kind = "neuron_authoring"
   on_violation          optional   "block" | "warn" | "log"; default "block"
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
-  created_by_principal_id  optional principal id; defaults to authored_by_principal_id
   lifecycle             optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"

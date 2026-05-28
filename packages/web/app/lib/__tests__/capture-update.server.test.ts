@@ -1,6 +1,11 @@
 import { getDocoById, getEntity, upsertEntity } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderOperationLines, updateDecision, updateEntity } from "../capture.server";
+import {
+  captureDecision,
+  renderOperationLines,
+  updateDecision,
+  updateEntity,
+} from "../capture.server";
 
 vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
@@ -197,6 +202,77 @@ describe("updateEntity", () => {
       }),
       expect.anything(),
     );
+  });
+
+  it("stores Decision created_by from the collaborator, not the decider Principal", async () => {
+    const result = await captureDecision(
+      "/tmp/doco",
+      DOCO_ID,
+      "test",
+      "doco",
+      {
+        decision: "Use collaborator provenance",
+        question: "Who created this neuron?",
+        chosen: "The authenticated collaborator.",
+        decided_by_principal_id: "principal_decider",
+        created_by_principal_id: "principal_legacy_creator",
+        created_by_collaborator_id: "collaborator_alice",
+      },
+      "https://doco.test",
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_type: "decision",
+        created_by: "collaborator_alice",
+        data: expect.objectContaining({
+          decided_by: "principal_decider",
+          created_by: "collaborator_alice",
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(vi.mocked(upsertEntity).mock.calls.at(-1)?.[0].data).not.toMatchObject({
+      created_by: "principal_legacy_creator",
+    });
+  });
+
+  it("ignores legacy created_by_principal_id patches", async () => {
+    vi.mocked(getEntity).mockResolvedValue({
+      id: IDEA_ID,
+      entity_type: "idea",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "drafting",
+      body_md: "",
+      data: {
+        id: IDEA_ID,
+        doco_id: DOCO_ID,
+        neuron_type: "idea",
+        idea: "Original idea",
+        lifecycle: "drafting",
+        created_by: "collaborator_alice",
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateEntity({
+      docoDir: "/tmp/doco",
+      docoId: DOCO_ID,
+      ownerSlug: "test",
+      docoSlug: "doco",
+      entityType: "idea",
+      pluralDir: "ideas",
+      id: IDEA_ID,
+      patch: {
+        created_by_principal_id: "principal_eve",
+      },
+      docoHost: "https://doco.test",
+      actorId: "collaborator_alice",
+    });
+
+    expect(result).toMatchObject({ error: "No fields changed." });
+    expect(upsertEntity).not.toHaveBeenCalled();
   });
 });
 

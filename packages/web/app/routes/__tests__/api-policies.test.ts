@@ -4,12 +4,14 @@ const mocks = vi.hoisted(() => ({
   captureGuidancePolicy: vi.fn(),
   captureNeuronAuthoringPolicy: vi.fn(),
   getDocoLevelRole: vi.fn(),
+  listPrincipals: vi.fn(),
   loadDocoRouteForRead: vi.fn(),
   withClient: vi.fn(),
   withIdempotency: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
+  listPrincipals: mocks.listPrincipals,
   withClient: mocks.withClient,
 }));
 
@@ -53,6 +55,13 @@ describe("/<doco>/api/policies.json", () => {
       me: { id: "collaborator_alice", username: "alice" },
       meta: { ownerId: "organization_torre", docoId: "doco_bpms" },
     });
+    mocks.listPrincipals.mockResolvedValue([
+      {
+        id: "principal_alice",
+        name: "alice",
+        data: { created_by: "collaborator_alice" },
+      },
+    ]);
     mocks.withIdempotency.mockImplementation(
       (
         _request: Request,
@@ -105,6 +114,16 @@ describe("/<doco>/api/policies.json", () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({ id: "guidance_policy_123" });
-    expect(mocks.captureGuidancePolicy).toHaveBeenCalled();
+    expect(mocks.captureGuidancePolicy).toHaveBeenCalledWith(
+      "/tmp/doco",
+      "doco_bpms",
+      "torre",
+      "bpms",
+      expect.objectContaining({
+        authored_by_principal_id: "principal_alice",
+        created_by_collaborator_id: "collaborator_alice",
+      }),
+      "https://doco.test",
+    );
   });
 });
