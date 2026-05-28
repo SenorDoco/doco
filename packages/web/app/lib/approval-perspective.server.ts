@@ -60,7 +60,7 @@ function approvalRowsSql(): string {
     return `SELECT t.id,
                    '${entry.entityType}'::text AS entity_type,
                    COALESCE(NULLIF(${labelExpr}, ''), ${nameExpr}, t.id) AS name,
-                   COALESCE(t.lifecycle, 'active') AS lifecycle,
+                   COALESCE(t.lifecycle, 'accepted') AS lifecycle,
                    t.created_at,
                    t.created_by,
                    t.data->>'created_by_user_id' AS created_by_user_id
@@ -70,7 +70,7 @@ function approvalRowsSql(): string {
   const principalLeg = `SELECT id,
                                'principal'::text AS entity_type,
                                name,
-                               COALESCE(lifecycle, 'active') AS lifecycle,
+                               COALESCE(lifecycle, 'accepted') AS lifecycle,
                                created_at,
                                created_by,
                                data->>'created_by_user_id' AS created_by_user_id

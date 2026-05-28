@@ -201,16 +201,16 @@ function collectPopulationNeuronTypes(policies: LoadedPolicy[]): Set<string> {
 type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 
 async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]> {
-  // COALESCE so a NULL lifecycle column behaves as "active" — the rest of
+  // COALESCE so a NULL lifecycle column behaves as "accepted" — the rest of
   // the codebase treats NULL that way (search-filters, doco-stats,
   // full-graph, bpmn-perspective, agent-chat). Without it, a policy
   // whose lifecycle column is NULL (e.g. seeded by a migration or
   // restored from backup) is silently invisible to the enforcer while
-  // looking active everywhere else.
+  // looking accepted everywhere else.
   const r = await c.query<{ id: string; policy: string; data: Record<string, unknown> | null }>(
     `SELECT id, policy, data
        FROM neuron_authoring_policies
-       WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'`,
+       WHERE doco_id = $1 AND COALESCE(lifecycle, 'accepted') = 'accepted'`,
     [docoId],
   );
   const out: LoadedPolicy[] = [];
@@ -255,7 +255,7 @@ async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalInd
   // doesn't accept a retired actor. COALESCE matches the rest of the
   // codebase's NULL-as-active convention.
   const r = await c.query<{ id: string }>(
-    "SELECT id FROM principals WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'",
+    "SELECT id FROM principals WHERE doco_id = $1 AND COALESCE(lifecycle, 'accepted') = 'accepted'",
     [docoId],
   );
   return new Set(r.rows.map((row) => row.id));
@@ -285,7 +285,7 @@ async function loadPopulation(
     // to back a relationship.
     const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
       `SELECT id, data FROM ${table}
-         WHERE doco_id = $1 AND id <> $2 AND COALESCE(lifecycle, 'active') = 'active'`,
+         WHERE doco_id = $1 AND id <> $2 AND COALESCE(lifecycle, 'accepted') = 'accepted'`,
       [docoId, excludeId],
     );
     for (const row of r.rows) {

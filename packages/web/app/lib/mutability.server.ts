@@ -11,8 +11,8 @@
 //     Always mutable via PATCH. They are state, not claims.
 //
 // Frozen lifecycles use the canonical Lifecycle vocabulary
-// (drafting, proposed, active, retired) — see shared/entities.ts.
-// `drafting` and `proposed` are mutable; `active` and `retired` freeze
+// (drafting, proposed, accepted, retired) — see shared/entities.ts.
+// `drafting` and `proposed` are mutable; `accepted` and `retired` freeze
 // the claim except for lifecycle metadata and the supersession path.
 
 export type NodeClass = "claim" | "record";
@@ -49,13 +49,13 @@ export function nodeClassOf(entityType: string): NodeClass {
 // Per-type lifecycle states that put a claim into the frozen state.
 // `proposed` (and unset) leaves the claim mutable for drafting.
 const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
-  decision: new Set(["active", "retired"]),
-  intent: new Set(["active", "retired"]),
-  rule: new Set(["active", "retired"]),
-  guidance_policy: new Set(["active", "retired"]),
-  neuron_authoring_policy: new Set(["active", "retired"]),
-  action: new Set(["active", "retired"]),
-  eval: new Set(["active", "retired"]),
+  decision: new Set(["accepted", "retired"]),
+  intent: new Set(["accepted", "retired"]),
+  rule: new Set(["accepted", "retired"]),
+  guidance_policy: new Set(["accepted", "retired"]),
+  neuron_authoring_policy: new Set(["accepted", "retired"]),
+  action: new Set(["accepted", "retired"]),
+  eval: new Set(["accepted", "retired"]),
   // Log records a thing that happened — frozen from creation so the audit
   // trail stays trustworthy. Editorial fixes go through supersession.
   // Sentinel "*" is matched specially below to mean "any lifecycle, including unset".

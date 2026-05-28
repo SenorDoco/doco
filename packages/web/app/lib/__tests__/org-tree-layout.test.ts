@@ -13,7 +13,7 @@ function principal(id: string, reportsTo: string | null = null): OrgTreeNode {
     name: id,
     role: null,
     type: "person",
-    lifecycle: "active",
+    lifecycle: "accepted",
     reports_to: reportsTo,
     href: `/acme/principal/${id}`,
   };

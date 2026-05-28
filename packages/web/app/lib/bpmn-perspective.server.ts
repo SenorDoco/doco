@@ -200,21 +200,21 @@ export async function loadBpmnGraph(
     return `SELECT t.id,
               '${entry.entityType}'::text AS entity_type,
               ${summarySelect},
-              COALESCE(t.lifecycle, 'active') AS lifecycle,
+              COALESCE(t.lifecycle, 'accepted') AS lifecycle,
               t.created_at::text AS created_at,
               t.data
          FROM ${entry.table} t
         WHERE t.doco_id = $1
-          AND COALESCE(t.lifecycle, 'active') <> 'retired'`;
+          AND COALESCE(t.lifecycle, 'accepted') <> 'retired'`;
   }).join(" UNION ALL ");
 
   const [neuronRows, principalRows, userRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
     c.query<PrincipalRow>(
-      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
+      `SELECT id, name, COALESCE(lifecycle, 'accepted') AS lifecycle
          FROM principals
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'active') <> 'retired'`,
+          AND COALESCE(lifecycle, 'accepted') <> 'retired'`,
       [docoId],
     ),
     c.query<UserRow>(
@@ -627,8 +627,8 @@ function compareBpmnNodesForLargeDoco(a: BpmnNode, b: BpmnNode): number {
 }
 
 function lifecycleRank(lifecycle: string | null | undefined): number {
-  switch (lifecycle ?? "active") {
-    case "active":
+  switch (lifecycle ?? "accepted") {
+    case "accepted":
       return 0;
     case "proposed":
       return 1;

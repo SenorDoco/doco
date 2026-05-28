@@ -30,7 +30,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "rule_01SLA",
           rule: "Checkout API availability is at least 99.9% monthly.",
-          lifecycle: "active",
+          lifecycle: "accepted",
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: {
@@ -48,7 +48,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "eval_availability",
           eval: "monthly checkout availability calculation",
-          lifecycle: "active",
+          lifecycle: "accepted",
           created_at: "2026-05-26T00:01:00.000Z",
           data: { target_ref: "rule_01SLA", last_status: "pass" },
         },
@@ -60,7 +60,7 @@ describe("loadSlaPerspectiveData", () => {
           ref_type: "document",
           locator: "https://example.test/contract",
           title: "Contract clause 4.2",
-          lifecycle: "active",
+          lifecycle: "accepted",
           created_at: "2026-05-26T00:02:00.000Z",
           data: {},
         },
@@ -69,7 +69,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "action_breach",
           action: "Notify customer and open service-credit review",
-          lifecycle: "active",
+          lifecycle: "accepted",
           created_at: "2026-05-26T00:03:00.000Z",
           data: {},
         },
@@ -78,12 +78,12 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "decision_approval",
           decision: "Approved 99.9% monthly checkout SLA",
-          lifecycle: "active",
+          lifecycle: "accepted",
           created_at: "2026-05-26T00:04:00.000Z",
           data: {},
         },
       ],
-      principals: [{ id: "principal_platform", name: "Platform Owner", lifecycle: "active" }],
+      principals: [{ id: "principal_platform", name: "Platform Owner", lifecycle: "accepted" }],
       synapses: [
         { from_id: "eval_availability", to_id: "rule_01SLA", synapse_type: "tests" },
         { from_id: "rule_01SLA", to_id: "reference_contract", synapse_type: "source_ref" },
@@ -116,7 +116,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "rule_gap",
           rule: "Exports complete within 2 hours.",
-          lifecycle: "active",
+          lifecycle: "accepted",
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: { target: "2 hours" },
@@ -131,7 +131,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "log_delivery",
           log: "Export completed",
-          lifecycle: "active",
+          lifecycle: "accepted",
         },
       ],
       synapses: [],
