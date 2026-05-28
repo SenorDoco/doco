@@ -19,6 +19,7 @@
 
 import type { DocoRole } from "@doco/db";
 import { getOrgRole } from "@doco/db";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
@@ -45,6 +46,9 @@ interface LoaderData {
     id: string;
     handle: string;
     my_role: DocoRole;
+    // The org that owns this Doco (owner_id === organization_…), or
+    // null when the user owns it directly. Drives the picker grouping.
+    org_id: string | null;
   }[];
   orgs?: {
     id: string;
@@ -114,14 +118,15 @@ export async function loader({ request }: { request: Request }) {
   // owner-role only; the action re-checks on submit as a tamper
   // defense.
   const candidateIds = await listAccessibleDocoIdsForPrincipal(me.id);
-  type DocoRow = { id: string; handle: string; my_role: DocoRole };
+  type DocoRow = { id: string; handle: string; my_role: DocoRole; org_id: string | null };
   const candidates = await Promise.all(
     candidateIds.map(async (id): Promise<DocoRow | null> => {
       const d = await getDocoById(id);
       if (!d) return null;
       const my_role = await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, me.id);
       if (my_role !== "owner") return null;
-      return { id: d.id, handle: d.handle, my_role };
+      const org_id = d.owner_id.startsWith("organization_") ? d.owner_id : null;
+      return { id: d.id, handle: d.handle, my_role, org_id };
     }),
   );
   let docos = candidates
@@ -383,10 +388,14 @@ function renderStage(data: LoaderData) {
   );
 }
 
+type PickerDoco = { id: string; handle: string; my_role: DocoRole; org_id: string | null };
+
 /**
- * Controlled approve form for /device. Per-Doco AND per-org
- * checkboxes + role dropdowns plus bulk controls. Mirrors the same
- * shape on /oauth/authorize.
+ * Controlled approve form for /device. Orgs render as collapsible
+ * groups (chevron + org checkbox/role); expanding one reveals the
+ * Docos it owns so the agent can be granted the whole org or just a
+ * few of its Docos. Docos owned directly by the user live in their
+ * own "Your Docos" group. Mirrors the same shape on /oauth/authorize.
  */
 function DevicePickerForm({
   userCode,
@@ -397,7 +406,7 @@ function DevicePickerForm({
   focused,
 }: {
   userCode: string;
-  docos: { id: string; handle: string; my_role: DocoRole }[];
+  docos: PickerDoco[];
   orgs: { id: string; handle: string; display_name: string; my_role: DocoRole }[];
   requestedRole: DocoRole | null;
   targetedMessage: string | null;
@@ -419,11 +428,83 @@ function DevicePickerForm({
     Object.fromEntries(orgs.map((o) => [o.id, defaultRole(o)])),
   );
   const [agentName, setAgentName] = useState("");
-  const allDocosSelected = docos.length > 0 && selected.size === docos.length;
-  const noneDocosSelected = selected.size === 0;
+  // Groups default to expanded so the pre-selected Docos stay visible;
+  // the chevron lets the user collapse an org to a one-line summary.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(orgs.map((o) => o.id)));
   const allOrgsSelected = orgs.length > 0 && selectedOrgs.size === orgs.length;
   const noneOrgsSelected = selectedOrgs.size === 0;
   const nothingSelected = selected.size === 0 && selectedOrgs.size === 0;
+
+  // Group the owned Docos under the org that owns them. Docos owned
+  // directly by the user (org_id === null, or owned by an org not in
+  // the picker) fall into the personal bucket.
+  const orgIdSet = new Set(orgs.map((o) => o.id));
+  const docosByOrg = new Map<string, PickerDoco[]>();
+  const personalDocos: PickerDoco[] = [];
+  for (const d of docos) {
+    if (d.org_id && orgIdSet.has(d.org_id)) {
+      const arr = docosByOrg.get(d.org_id);
+      if (arr) arr.push(d);
+      else docosByOrg.set(d.org_id, [d]);
+    } else {
+      personalDocos.push(d);
+    }
+  }
+  const personalSelectedCount = personalDocos.filter((d) => selected.has(d.id)).length;
+  const allPersonalSelected =
+    personalDocos.length > 0 && personalSelectedCount === personalDocos.length;
+  const nonePersonalSelected = personalSelectedCount === 0;
+
+  const toggleExpanded = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const toggleDoco = (id: string, checked: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const toggleOrg = (id: string, checked: boolean) =>
+    setSelectedOrgs((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  const renderDocoRow = (d: PickerDoco) => (
+    <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+      <label className="flex flex-1 cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          checked={selected.has(d.id)}
+          onChange={(e) => toggleDoco(d.id, e.currentTarget.checked)}
+          className="h-4 w-4 accent-primary"
+        />
+        <span className="text-sm">
+          <strong className="font-semibold">{d.handle}</strong>
+        </span>
+      </label>
+      <select
+        aria-label={`Role on ${d.handle}`}
+        value={roles[d.id] ?? d.my_role}
+        onChange={(e) => setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })}
+        disabled={!selected.has(d.id)}
+        className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
+      >
+        {DOCO_ROLES.map((r) => (
+          <option key={r} value={r}>
+            {r}
+          </option>
+        ))}
+      </select>
+    </li>
+  );
   return (
     <Form method="post" className="space-y-4">
       <input type="hidden" name="user_code" value={userCode} />
@@ -450,196 +531,214 @@ function DevicePickerForm({
         </p>
       ) : null}
 
-      {/* Organizations picker. Approving an org grants the agent
-          access to every Doco the org owns now AND any Doco created
-          under it later. Hidden in focused mode (agent targeted one
-          Doco) — org-wide would defeat the narrowing. */}
-      {!focused && orgs.length > 0 ? (
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-foreground">Organizations</h3>
-          <p className="text-xs text-muted-foreground">
-            Approving an organization grants access to every Doco it owns, including ones added
-            later.
-          </p>
-          <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
-            <button
-              type="button"
-              onClick={() => setSelectedOrgs(new Set(orgs.map((o) => o.id)))}
-              disabled={allOrgsSelected}
-              className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-            >
-              Select all
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedOrgs(new Set())}
-              disabled={noneOrgsSelected}
-              className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-            >
-              Deselect all
-            </button>
-            <span className="text-xs text-muted-foreground">
-              {selectedOrgs.size} of {orgs.length} selected
-            </span>
-            <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              Set all roles to:
-              <select
-                aria-label="Set all org roles"
-                defaultValue=""
-                onChange={(e) => {
-                  const r = e.currentTarget.value as DocoRole | "";
-                  if (!r) return;
-                  setOrgRoles(Object.fromEntries(orgs.map((o) => [o.id, r])));
-                  e.currentTarget.value = "";
-                }}
-                className="rounded-md px-2 py-1 text-xs text-foreground"
-              >
-                <option value="" disabled>
-                  choose…
-                </option>
-                {DOCO_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </span>
-          </div>
-          <ul className="neu-surface divide-y divide-border rounded-md bg-card">
-            {orgs.map((o) => (
-              <li key={o.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <label className="flex flex-1 cursor-pointer items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedOrgs.has(o.id)}
+      {/* Focused mode (agent targeted one Doco): just the single row,
+          no grouping or bulk controls. */}
+      {focused ? (
+        <ul className="neu-surface divide-y divide-border rounded-md bg-card">
+          {docos.map(renderDocoRow)}
+        </ul>
+      ) : (
+        <section className="space-y-4">
+          {/* Organizations, each a collapsible group. Checking the org
+              grants access to every Doco it owns now AND any added
+              later. Expand it to grant only some of its Docos instead. */}
+          {orgs.length > 0 ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-foreground">Organizations</h3>
+              <p className="text-xs text-muted-foreground">
+                Approving an organization grants access to every Doco it owns, including ones added
+                later. Expand one to grant only some of its Docos.
+              </p>
+              <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrgs(new Set(orgs.map((o) => o.id)))}
+                  disabled={allOrgsSelected}
+                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrgs(new Set())}
+                  disabled={noneOrgsSelected}
+                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
+                >
+                  Deselect all
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  {selectedOrgs.size} of {orgs.length} selected
+                </span>
+                <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                  Set all roles to:
+                  <select
+                    aria-label="Set all org roles"
+                    defaultValue=""
                     onChange={(e) => {
-                      const next = new Set(selectedOrgs);
-                      if (e.currentTarget.checked) next.add(o.id);
-                      else next.delete(o.id);
-                      setSelectedOrgs(next);
+                      const r = e.currentTarget.value as DocoRole | "";
+                      if (!r) return;
+                      setOrgRoles(Object.fromEntries(orgs.map((o) => [o.id, r])));
+                      e.currentTarget.value = "";
                     }}
-                    className="h-4 w-4 accent-primary"
-                  />
-                  <span className="text-sm">
-                    <strong className="font-semibold">{o.handle}</strong>
-                    {o.display_name && o.display_name !== o.handle ? (
-                      <span className="text-muted-foreground"> · {o.display_name}</span>
-                    ) : null}
-                  </span>
-                </label>
-                <select
-                  aria-label={`Role on ${o.handle}`}
-                  value={orgRoles[o.id] ?? o.my_role}
-                  onChange={(e) =>
-                    setOrgRoles({ ...orgRoles, [o.id]: e.currentTarget.value as DocoRole })
-                  }
-                  disabled={!selectedOrgs.has(o.id)}
-                  className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
-                >
-                  {DOCO_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
+                    className="rounded-md px-2 py-1 text-xs text-foreground"
+                  >
+                    <option value="" disabled>
+                      choose…
                     </option>
-                  ))}
-                </select>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {/* Docos picker. Bulk controls are hidden in focused mode
-          (agent targeted one Doco). */}
-      {docos.length > 0 ? (
-        <section className="space-y-2">
-          {!focused && orgs.length > 0 ? (
-            <h3 className="text-sm font-semibold text-foreground">Docos</h3>
-          ) : null}
-          {!focused ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
-              <button
-                type="button"
-                onClick={() => setSelected(new Set(docos.map((d) => d.id)))}
-                disabled={allDocosSelected}
-                className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-              >
-                Select all
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelected(new Set())}
-                disabled={noneDocosSelected}
-                className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-              >
-                Deselect all
-              </button>
-              <span className="text-xs text-muted-foreground">
-                {selected.size} of {docos.length} selected
-              </span>
-              <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                Set all roles to:
-                <select
-                  aria-label="Set all roles"
-                  defaultValue=""
-                  onChange={(e) => {
-                    const r = e.currentTarget.value as DocoRole | "";
-                    if (!r) return;
-                    setRoles(Object.fromEntries(docos.map((d) => [d.id, r])));
-                    e.currentTarget.value = "";
-                  }}
-                  className="rounded-md px-2 py-1 text-xs text-foreground"
-                >
-                  <option value="" disabled>
-                    choose…
-                  </option>
-                  {DOCO_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </span>
+                    {DOCO_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              </div>
+              <ul className="neu-surface divide-y divide-border rounded-md bg-card">
+                {orgs.map((o) => {
+                  const groupDocos = docosByOrg.get(o.id) ?? [];
+                  const isOpen = expanded.has(o.id);
+                  return (
+                    <li key={o.id}>
+                      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(o.id)}
+                            aria-expanded={isOpen}
+                            aria-label={isOpen ? `Collapse ${o.handle}` : `Expand ${o.handle}`}
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                          >
+                            {isOpen ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </button>
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedOrgs.has(o.id)}
+                              onChange={(e) => toggleOrg(o.id, e.currentTarget.checked)}
+                              className="h-4 w-4 accent-primary"
+                            />
+                            <span className="truncate text-sm">
+                              <strong className="font-semibold">{o.handle}</strong>
+                              {o.display_name && o.display_name !== o.handle ? (
+                                <span className="text-muted-foreground"> · {o.display_name}</span>
+                              ) : null}
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                ({groupDocos.length})
+                              </span>
+                            </span>
+                          </label>
+                        </div>
+                        <select
+                          aria-label={`Role on ${o.handle}`}
+                          value={orgRoles[o.id] ?? o.my_role}
+                          onChange={(e) =>
+                            setOrgRoles({ ...orgRoles, [o.id]: e.currentTarget.value as DocoRole })
+                          }
+                          disabled={!selectedOrgs.has(o.id)}
+                          className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                        >
+                          {DOCO_ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {isOpen ? (
+                        <ul className="divide-y divide-border border-t border-border bg-background/40 pl-6">
+                          {groupDocos.length > 0 ? (
+                            groupDocos.map(renderDocoRow)
+                          ) : (
+                            <li className="px-3 py-2 text-xs text-muted-foreground">
+                              No Docos yet. Approving this org covers any added later.
+                            </li>
+                          )}
+                        </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           ) : null}
-          <ul className="neu-surface divide-y divide-border rounded-md bg-card">
-            {docos.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <label className="flex flex-1 cursor-pointer items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(d.id)}
-                    onChange={(e) => {
-                      const next = new Set(selected);
-                      if (e.currentTarget.checked) next.add(d.id);
-                      else next.delete(d.id);
-                      setSelected(next);
-                    }}
-                    className="h-4 w-4 accent-primary"
-                  />
-                  <span className="text-sm">
-                    <strong className="font-semibold">{d.handle}</strong>
-                  </span>
-                </label>
-                <select
-                  aria-label={`Role on ${d.handle}`}
-                  value={roles[d.id] ?? d.my_role}
-                  onChange={(e) =>
-                    setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })
+
+          {/* Docos owned directly by the user, outside any org. */}
+          {personalDocos.length > 0 ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-foreground">Your Docos</h3>
+              <p className="text-xs text-muted-foreground">
+                Docos you own directly, outside any organization.
+              </p>
+              <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      for (const d of personalDocos) next.add(d.id);
+                      return next;
+                    })
                   }
-                  disabled={!selected.has(d.id)}
-                  className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                  disabled={allPersonalSelected}
+                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
                 >
-                  {DOCO_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      for (const d of personalDocos) next.delete(d.id);
+                      return next;
+                    })
+                  }
+                  disabled={nonePersonalSelected}
+                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
+                >
+                  Deselect all
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  {personalSelectedCount} of {personalDocos.length} selected
+                </span>
+                <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                  Set all roles to:
+                  <select
+                    aria-label="Set all personal Doco roles"
+                    defaultValue=""
+                    onChange={(e) => {
+                      const r = e.currentTarget.value as DocoRole | "";
+                      if (!r) return;
+                      setRoles((prev) => ({
+                        ...prev,
+                        ...Object.fromEntries(personalDocos.map((d) => [d.id, r])),
+                      }));
+                      e.currentTarget.value = "";
+                    }}
+                    className="rounded-md px-2 py-1 text-xs text-foreground"
+                  >
+                    <option value="" disabled>
+                      choose…
                     </option>
-                  ))}
-                </select>
-              </li>
-            ))}
-          </ul>
+                    {DOCO_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              </div>
+              <ul className="neu-surface divide-y divide-border rounded-md bg-card">
+                {personalDocos.map(renderDocoRow)}
+              </ul>
+            </div>
+          ) : null}
         </section>
-      ) : null}
+      )}
 
       {Array.from(selected).map((id) => (
         <input key={id} type="hidden" name="doco_id" value={id} />
