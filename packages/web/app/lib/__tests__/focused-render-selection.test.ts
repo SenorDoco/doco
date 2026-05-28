@@ -59,6 +59,62 @@ describe("focused render selection", () => {
     ).toEqual(["focus", "near", "far"]);
   });
 
+  it("reserves requested first-degree neighbors before filling by rank", () => {
+    const quotaNodes = [
+      { id: "focus", lifecycle: "active", created_at: "2026-01-01T00:00:00Z" },
+      { id: "incoming", lifecycle: "active", created_at: "2026-01-02T00:00:00Z" },
+      { id: "outgoing", lifecycle: "active", created_at: "2026-01-03T00:00:00Z" },
+      { id: "second-degree", lifecycle: "active", created_at: "2026-01-04T00:00:00Z" },
+    ];
+    const quotaLinks = [
+      { source: "incoming", target: "focus" },
+      { source: "focus", target: "outgoing" },
+      { source: "outgoing", target: "second-degree" },
+    ];
+    const globalRanks = new Map([
+      ["second-degree", 10],
+      ["incoming", 0.2],
+      ["outgoing", 0.1],
+      ["focus", 0.01],
+    ]);
+
+    const selected = Array.from(
+      selectPersonalizedNodeIds(quotaNodes, quotaLinks, "focus", globalRanks, 4, {
+        minFirstDegree: 2,
+      }),
+    );
+
+    expect(selected[0]).toBe("focus");
+    expect(new Set(selected.slice(1, 3))).toEqual(new Set(["incoming", "outgoing"]));
+    expect(selected).toContain("second-degree");
+  });
+
+  it("can reserve first-degree neighbors when the focus is not renderable", () => {
+    const quotaNodes = [
+      { id: "pool-node-a", lifecycle: "active", created_at: "2026-01-01T00:00:00Z" },
+      { id: "pool-node-b", lifecycle: "active", created_at: "2026-01-02T00:00:00Z" },
+      { id: "outside", lifecycle: "active", created_at: "2026-01-03T00:00:00Z" },
+    ];
+    const quotaLinks = [
+      { source: "intent-pool", target: "pool-node-a" },
+      { source: "pool-node-b", target: "intent-pool" },
+    ];
+    const globalRanks = new Map([
+      ["outside", 10],
+      ["pool-node-a", 0.2],
+      ["pool-node-b", 0.1],
+    ]);
+
+    const selected = Array.from(
+      selectPersonalizedNodeIds(quotaNodes, quotaLinks, "intent-pool", globalRanks, 3, {
+        minFirstDegree: 2,
+      }),
+    );
+
+    expect(new Set(selected.slice(0, 2))).toEqual(new Set(["pool-node-a", "pool-node-b"]));
+    expect(selected).toContain("outside");
+  });
+
   it("summarizes links that leave the rendered working set", () => {
     expect(summarizeExternalConnections(links, new Set(["b", "d"]))).toEqual([
       { id: "b", incoming: 0, outgoing: 1 },

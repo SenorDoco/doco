@@ -17,6 +17,10 @@ export interface PersonalizedSelectionMeasurementContext {
   perspective: string;
 }
 
+export interface PersonalizedSelectionOptions {
+  minFirstDegree?: number;
+}
+
 export interface ExternalConnectionSummary {
   id: string;
   incoming: number;
@@ -45,6 +49,37 @@ function lifecycleRank(lifecycle: string | null | undefined): number {
 function createdMs(node: FocusSelectableNode): number {
   const ms = Date.parse(node.created_at ?? "");
   return Number.isFinite(ms) ? ms : 0;
+}
+
+function compareByRankAndFreshness(
+  a: FocusSelectableNode,
+  b: FocusSelectableNode,
+  ranks: ReadonlyMap<string, number> | undefined,
+  fallbackRanks: ReadonlyMap<string, number> | undefined,
+): number {
+  const rankDiff = (ranks?.get(b.id) ?? 0) - (ranks?.get(a.id) ?? 0);
+  if (rankDiff !== 0) return rankDiff;
+  const fallbackDiff = (fallbackRanks?.get(b.id) ?? 0) - (fallbackRanks?.get(a.id) ?? 0);
+  if (fallbackDiff !== 0) return fallbackDiff;
+  const lifecycleDiff = lifecycleRank(a.lifecycle) - lifecycleRank(b.lifecycle);
+  if (lifecycleDiff !== 0) return lifecycleDiff;
+  const dateDiff = createdMs(b) - createdMs(a);
+  if (dateDiff !== 0) return dateDiff;
+  return a.id.localeCompare(b.id);
+}
+
+function firstDegreeIds(
+  links: readonly FocusSelectableLink[],
+  focusId: string | null | undefined,
+  selectableIds: ReadonlySet<string>,
+): Set<string> {
+  const direct = new Set<string>();
+  if (!focusId) return direct;
+  for (const link of links) {
+    if (link.source === focusId && selectableIds.has(link.target)) direct.add(link.target);
+    else if (link.target === focusId && selectableIds.has(link.source)) direct.add(link.source);
+  }
+  return direct;
 }
 
 export function highestRankedNodeId(
@@ -116,36 +151,39 @@ export function selectPersonalizedNodeIds(
   focusId: string | null | undefined,
   fallbackRanks: ReadonlyMap<string, number> | undefined,
   limit: number,
+  options: PersonalizedSelectionOptions = {},
 ): Set<string> {
   const max = Math.max(1, Math.floor(limit));
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const effectiveFocus = focusId && byId.has(focusId) ? focusId : null;
-  const ranks = effectiveFocus
+  const selectableIds = new Set(byId.keys());
+  const focusNodeId = focusId && byId.has(focusId) ? focusId : null;
+  const ranks = focusNodeId
     ? pageRank(nodes, links, {
         iterations: 30,
         tolerance: 1e-5,
-        personalization: new Map([[effectiveFocus, 1]]),
+        personalization: new Map([[focusNodeId, 1]]),
       })
     : fallbackRanks;
   const selected = new Set<string>();
-  if (effectiveFocus) selected.add(effectiveFocus);
+  if (focusNodeId) selected.add(focusNodeId);
 
   const ordered = [...nodes]
-    .filter((node) => node.id !== effectiveFocus)
-    .sort((a, b) => {
-      const rankDiff = (ranks?.get(b.id) ?? 0) - (ranks?.get(a.id) ?? 0);
-      if (rankDiff !== 0) return rankDiff;
-      const fallbackDiff = (fallbackRanks?.get(b.id) ?? 0) - (fallbackRanks?.get(a.id) ?? 0);
-      if (fallbackDiff !== 0) return fallbackDiff;
-      const lifecycleDiff = lifecycleRank(a.lifecycle) - lifecycleRank(b.lifecycle);
-      if (lifecycleDiff !== 0) return lifecycleDiff;
-      const dateDiff = createdMs(b) - createdMs(a);
-      if (dateDiff !== 0) return dateDiff;
-      return a.id.localeCompare(b.id);
-    });
+    .filter((node) => node.id !== focusNodeId)
+    .sort((a, b) => compareByRankAndFreshness(a, b, ranks, fallbackRanks));
+
+  const directIds = firstDegreeIds(links, focusId, selectableIds);
+  const minFirstDegree = Math.max(0, Math.floor(options.minFirstDegree ?? 0));
+  let firstDegreeCount = 0;
+  for (const node of ordered) {
+    if (selected.size >= max || firstDegreeCount >= minFirstDegree) break;
+    if (!directIds.has(node.id)) continue;
+    selected.add(node.id);
+    firstDegreeCount++;
+  }
 
   for (const node of ordered) {
     if (selected.size >= max) break;
+    if (selected.has(node.id)) continue;
     selected.add(node.id);
   }
   return selected;
@@ -158,13 +196,14 @@ export function selectMeasuredPersonalizedNodeIds(
   fallbackRanks: ReadonlyMap<string, number> | undefined,
   limit: number,
   context: PersonalizedSelectionMeasurementContext,
+  options: PersonalizedSelectionOptions = {},
 ): Set<string> {
   if (
     typeof window === "undefined" ||
     typeof window.performance?.mark !== "function" ||
     typeof window.performance?.measure !== "function"
   ) {
-    return selectPersonalizedNodeIds(nodes, links, focusId, fallbackRanks, limit);
+    return selectPersonalizedNodeIds(nodes, links, focusId, fallbackRanks, limit, options);
   }
 
   const perf = window.performance;
@@ -176,7 +215,14 @@ export function selectMeasuredPersonalizedNodeIds(
   perf.mark(startMark);
   const startedAt = perf.now();
   try {
-    const selected = selectPersonalizedNodeIds(nodes, links, focusId, fallbackRanks, limit);
+    const selected = selectPersonalizedNodeIds(
+      nodes,
+      links,
+      focusId,
+      fallbackRanks,
+      limit,
+      options,
+    );
     const durationMs = perf.now() - startedAt;
     const detail = {
       docoHandle: context.docoHandle ?? null,
@@ -185,6 +231,7 @@ export function selectMeasuredPersonalizedNodeIds(
       nodeCount: nodes.length,
       linkCount: links.length,
       limit: Math.max(1, Math.floor(limit)),
+      minFirstDegree: Math.max(0, Math.floor(options.minFirstDegree ?? 0)),
       selectedCount: selected.size,
       durationMs,
     };
