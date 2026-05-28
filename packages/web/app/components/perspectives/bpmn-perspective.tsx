@@ -1824,7 +1824,7 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
         aria-hidden="true"
         style={{
           position: "absolute",
-          bottom: 4,
+          bottom: 11,
           left: "50%",
           transform: "translateX(-50%)",
           width: 16,
