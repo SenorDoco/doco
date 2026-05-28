@@ -20,7 +20,7 @@ const SORT_LABELS: Record<ApprovalSortKey, string> = {
   proposed_asc: "Oldest proposed",
   created_desc: "Newest created",
   created_asc: "Oldest created",
-  author_asc: "Collaborator A-Z",
+  author_asc: "User A-Z",
   type_asc: "Type A-Z",
 };
 
@@ -193,7 +193,7 @@ export function ApprovalPerspective({
                           )}
                         </span>
                         <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                          {node.author_name ?? "Unknown collaborator"} · {ageLabel(node)}
+                          {node.author_name ?? "Unknown user"} · {ageLabel(node)}
                         </span>
                       </span>
                       <span

@@ -22,7 +22,7 @@ import {
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { derivePolicySummary } from "~/lib/policy-copy";
-import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
+import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
 type EntityType = "guidance_policy" | "neuron_authoring_policy";
 type ArticleKind = "deterministic" | "probabilistic";
@@ -108,7 +108,7 @@ export async function action({
     const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
     const authorPrincipalId = ctx.me?.id
-      ? await resolvePrincipalIdForCollaborator(ctx.meta.docoId, ctx.me.id)
+      ? await resolvePrincipalIdForUser(ctx.meta.docoId, ctx.me.id)
       : null;
     let captured: Awaited<
       ReturnType<typeof captureGuidancePolicy | typeof captureNeuronAuthoringPolicy>

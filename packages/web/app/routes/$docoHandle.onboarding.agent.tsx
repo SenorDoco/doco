@@ -2,7 +2,7 @@
 //
 // Mints a fresh 7-day human-invite URL for the signed-in admin and
 // points them at /api-keys for the agent path. Per the
-// collaborators / API-keys split: human invites and agent tokens
+// users / API-keys split: human invites and agent tokens
 // live on separate surfaces.
 
 import type { EntityId } from "@doco/shared";

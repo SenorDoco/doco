@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 /**
- * Build the prompt to share with a human collaborator. Clicking the
+ * Build the prompt to share with a human user. Clicking the
  * invite URL in a signed-in browser adds the recipient to the Doco's
  * users.
  */
@@ -36,7 +36,7 @@ export function buildAgentInvitePrompt(args: {
 
 /**
  * Two-box prompt for a fresh invite: one box the project owner copies
- * to a human collaborator, one box they copy to their AI agent. Each
+ * to a human user, one box they copy to their AI agent. Each
  * has its own Copy button so the right text goes to the right place.
  *
  * The agent box requires both `docoUrl` and `recipeUrl`. If either is

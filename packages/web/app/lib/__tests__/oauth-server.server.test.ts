@@ -22,7 +22,7 @@ import {
   normalizeAgentName,
 } from "../oauth-server.server";
 
-describe("OAuth agent collaborator authorization", () => {
+describe("OAuth agent user authorization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.generateUlid.mockReturnValue("01AGENT0000000000000000000");
@@ -39,10 +39,10 @@ describe("OAuth agent collaborator authorization", () => {
     expect(() => normalizeAgentName("   ")).toThrow(/agent_name required/);
   });
 
-  it("issues browser OAuth codes for a named agent collaborator", async () => {
+  it("issues browser OAuth codes for a named agent user", async () => {
     await issueAuthorizationCode({
       client_id: "doco_client_browser",
-      approver_collaborator_id: "collaborator_owner",
+      approver_user_id: "user_owner",
       agent_name: "  Claude   Code  ",
       redirect_uri: "http://127.0.0.1:4321/callback",
       code_challenge: "challenge",
@@ -53,11 +53,11 @@ describe("OAuth agent collaborator authorization", () => {
       scope: "doco",
     });
 
-    const agentId = "collaborator_01AGENT0000000000000000000";
+    const agentId = "user_01AGENT0000000000000000000";
     expect(mocks.query).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("INSERT INTO collaborators"),
-      expect.arrayContaining([agentId, "collaborator_owner"]),
+      expect.stringContaining("INSERT INTO users"),
+      expect.arrayContaining([agentId, "user_owner"]),
     );
     const agentData = JSON.parse(mocks.query.mock.calls[0]?.[1]?.[2] as string);
     expect(agentData.name).toBe("Claude Code");
@@ -88,7 +88,7 @@ describe("OAuth agent collaborator authorization", () => {
 
     await approveDeviceAuthorization({
       device_code: "doco_dc_123",
-      approver_collaborator_id: "collaborator_owner",
+      approver_user_id: "user_owner",
       agent_name: "Codex sandbox",
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "approver" },
@@ -96,11 +96,11 @@ describe("OAuth agent collaborator authorization", () => {
       granted_org_roles: {},
     });
 
-    const agentId = "collaborator_01AGENT0000000000000000000";
+    const agentId = "user_01AGENT0000000000000000000";
     expect(mocks.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining("INSERT INTO collaborators"),
-      expect.arrayContaining([agentId, "collaborator_owner"]),
+      expect.stringContaining("INSERT INTO users"),
+      expect.arrayContaining([agentId, "user_owner"]),
     );
     const agentData = JSON.parse(mocks.query.mock.calls[1]?.[1]?.[2] as string);
     expect(agentData.name).toBe("Codex sandbox");

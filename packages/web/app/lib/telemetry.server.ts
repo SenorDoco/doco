@@ -152,7 +152,7 @@ export async function recordCaptureTiming(row: CaptureTimingRow): Promise<void> 
 
 export interface AgentTurnRow {
   conversation_id: string;
-  collaborator_id: string;
+  user_id: string;
   model: string;
   total_ms: number;
   bootstrap_ms: number;
@@ -191,7 +191,7 @@ export async function upsertAgentTurn(id: string, row: AgentTurnRow): Promise<vo
     await withClient(async (c) => {
       await c.query(
         `INSERT INTO agent_turn_metrics (
-            id, conversation_id, collaborator_id, model, total_ms,
+            id, conversation_id, user_id, model, total_ms,
             bootstrap_ms, history_load_ms, first_text_token_ms,
             num_anthropic_calls, num_tool_calls,
             input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
@@ -222,7 +222,7 @@ export async function upsertAgentTurn(id: string, row: AgentTurnRow): Promise<vo
         [
           id,
           row.conversation_id,
-          row.collaborator_id,
+          row.user_id,
           row.model,
           row.total_ms,
           row.bootstrap_ms,
@@ -252,7 +252,7 @@ export async function recordAgentTurn(row: AgentTurnRow): Promise<void> {
     await withClient(async (c) => {
       await c.query(
         `INSERT INTO agent_turn_metrics (
-            id, conversation_id, collaborator_id, model, total_ms,
+            id, conversation_id, user_id, model, total_ms,
             bootstrap_ms, history_load_ms, first_text_token_ms,
             num_anthropic_calls, num_tool_calls,
             input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
@@ -267,7 +267,7 @@ export async function recordAgentTurn(row: AgentTurnRow): Promise<void> {
         [
           `atm_${generateUlid()}`,
           row.conversation_id,
-          row.collaborator_id,
+          row.user_id,
           row.model,
           row.total_ms,
           row.bootstrap_ms,

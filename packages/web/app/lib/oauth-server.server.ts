@@ -181,7 +181,7 @@ function isValidRedirectUri(uri: string): boolean {
 
 export interface IssueAuthCodeInput {
   client_id: string;
-  approver_collaborator_id: string;
+  approver_user_id: string;
   agent_name: string;
   redirect_uri: string;
   code_challenge: string;
@@ -206,7 +206,7 @@ export interface IssueAuthCodeInput {
   scope?: string;
 }
 
-async function createAuthorizedAgentCollaborator(
+async function createAuthorizedAgentUser(
   c: QueryClient,
   input: {
     owner_id: string;
@@ -219,10 +219,10 @@ async function createAuthorizedAgentCollaborator(
   },
 ): Promise<string> {
   const agentName = normalizeAgentName(input.agent_name);
-  const agentId = `collaborator_${generateUlid()}`;
+  const agentId = `user_${generateUlid()}`;
   const createdAt = new Date().toISOString();
   await c.query(
-    `INSERT INTO collaborators (id, kind, github_login, owner_id, data)
+    `INSERT INTO users (id, kind, github_login, owner_id, data)
      VALUES ($1, 'agent', NULL, $2, $3::jsonb)`,
     [
       agentId,
@@ -240,18 +240,18 @@ async function createAuthorizedAgentCollaborator(
 
   for (const docoId of input.granted_doco_ids) {
     await c.query(
-      `INSERT INTO doco_users (doco_id, collaborator_id, role)
+      `INSERT INTO doco_users (doco_id, user_id, role)
        VALUES ($1, $2, $3)
-       ON CONFLICT (doco_id, collaborator_id) DO UPDATE SET role = EXCLUDED.role`,
+       ON CONFLICT (doco_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
       [docoId, agentId, roleForGrant(input.granted_doco_roles, docoId)],
     );
   }
 
   for (const orgId of input.granted_org_ids ?? []) {
     await c.query(
-      `INSERT INTO org_users (org_id, collaborator_id, role)
+      `INSERT INTO org_users (org_id, user_id, role)
        VALUES ($1, $2, $3)
-       ON CONFLICT (org_id, collaborator_id) DO UPDATE SET role = EXCLUDED.role`,
+       ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
       [orgId, agentId, roleForGrant(input.granted_org_roles, orgId)],
     );
   }
@@ -265,8 +265,8 @@ export async function issueAuthorizationCode(
   const code = mintOpaque(CODE_PREFIX);
   const expires_at = new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000);
   await withTransaction(async (c) => {
-    const agent_collaborator_id = await createAuthorizedAgentCollaborator(c, {
-      owner_id: input.approver_collaborator_id,
+    const agent_user_id = await createAuthorizedAgentUser(c, {
+      owner_id: input.approver_user_id,
       client_id: input.client_id,
       agent_name: input.agent_name,
       granted_doco_ids: input.granted_doco_ids,
@@ -276,7 +276,7 @@ export async function issueAuthorizationCode(
     });
     await c.query(
       `INSERT INTO oauth_authorization_codes
-         (code, client_id, collaborator_id, redirect_uri,
+         (code, client_id, user_id, redirect_uri,
           code_challenge, code_challenge_method, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
@@ -284,7 +284,7 @@ export async function issueAuthorizationCode(
       [
         code,
         input.client_id,
-        agent_collaborator_id,
+        agent_user_id,
         input.redirect_uri,
         input.code_challenge,
         input.granted_doco_ids,
@@ -300,7 +300,7 @@ export async function issueAuthorizationCode(
 }
 
 export interface ConsumedAuthCode {
-  collaborator_id: string;
+  user_id: string;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_org_ids: string[];
@@ -322,7 +322,7 @@ export async function consumeAuthorizationCode(args: {
   return await withTransaction(async (c) => {
     const r = await c.query<{
       client_id: string;
-      collaborator_id: string;
+      user_id: string;
       redirect_uri: string;
       code_challenge: string;
       granted_doco_ids: string[];
@@ -333,7 +333,7 @@ export async function consumeAuthorizationCode(args: {
       expires_at: Date;
       consumed_at: Date | null;
     }>(
-      `SELECT client_id, collaborator_id, redirect_uri, code_challenge,
+      `SELECT client_id, user_id, redirect_uri, code_challenge,
               granted_doco_ids, granted_doco_roles,
               granted_org_ids, granted_org_roles,
               scope, expires_at, consumed_at
@@ -361,7 +361,7 @@ export async function consumeAuthorizationCode(args: {
       args.code,
     ]);
     return {
-      collaborator_id: row.collaborator_id,
+      user_id: row.user_id,
       granted_doco_ids: row.granted_doco_ids,
       granted_doco_roles: row.granted_doco_roles ?? {},
       granted_org_ids: row.granted_org_ids ?? [],
@@ -423,7 +423,7 @@ export async function peekAuthorizationCode(code: string): Promise<PeekedAuthCod
 
 export interface IssueTokensInput {
   client_id: string;
-  collaborator_id: string;
+  user_id: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
   granted_org_ids?: string[];
@@ -450,14 +450,14 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
   await withTransaction(async (c) => {
     await c.query(
       `INSERT INTO oauth_access_tokens
-         (token, client_id, collaborator_id, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         access_token,
         input.client_id,
-        input.collaborator_id,
+        input.user_id,
         input.granted_doco_ids,
         rolesJson,
         orgIds,
@@ -468,14 +468,14 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
     );
     await c.query(
       `INSERT INTO oauth_refresh_tokens
-         (token, client_id, collaborator_id, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         refresh_token,
         input.client_id,
-        input.collaborator_id,
+        input.user_id,
         input.granted_doco_ids,
         rolesJson,
         orgIds,
@@ -497,7 +497,7 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
 export interface ValidAccessToken {
   token: string;
   client_id: string;
-  collaborator_id: string;
+  user_id: string;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_org_ids: string[];
@@ -515,7 +515,7 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
   if (!isOauthAccessToken(token)) return null;
   return await withClient(async (c) => {
     const r = await c.query<ValidAccessToken>(
-      `SELECT token, client_id, collaborator_id, granted_doco_ids,
+      `SELECT token, client_id, user_id, granted_doco_ids,
               granted_doco_roles, granted_org_ids, granted_org_roles,
               scope, expires_at
          FROM oauth_access_tokens
@@ -540,7 +540,7 @@ export async function refreshTokens(args: {
   return await withTransaction(async (c) => {
     const r = await c.query<{
       client_id: string;
-      collaborator_id: string;
+      user_id: string;
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
       granted_org_ids: string[];
@@ -549,7 +549,7 @@ export async function refreshTokens(args: {
       expires_at: Date;
       revoked: boolean;
     }>(
-      `SELECT client_id, collaborator_id, granted_doco_ids, granted_doco_roles,
+      `SELECT client_id, user_id, granted_doco_ids, granted_doco_roles,
               granted_org_ids, granted_org_roles, scope, expires_at, revoked
          FROM oauth_refresh_tokens
         WHERE token = $1
@@ -577,14 +577,14 @@ export async function refreshTokens(args: {
     const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
-         (token, client_id, collaborator_id, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         access_token,
         row.client_id,
-        row.collaborator_id,
+        row.user_id,
         row.granted_doco_ids,
         rolesJson,
         orgIds,
@@ -595,14 +595,14 @@ export async function refreshTokens(args: {
     );
     await c.query(
       `INSERT INTO oauth_refresh_tokens
-         (token, client_id, collaborator_id, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         refresh_token,
         row.client_id,
-        row.collaborator_id,
+        row.user_id,
         row.granted_doco_ids,
         rolesJson,
         orgIds,
@@ -678,7 +678,7 @@ export interface DeviceAuthorizationRow {
   client_id: string;
   scope: string | null;
   status: "pending" | "approved" | "denied";
-  collaborator_id: string | null;
+  user_id: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_org_ids: string[];
@@ -785,7 +785,7 @@ export async function getDeviceAuthorizationByUserCode(
   return await withClient(async (c) => {
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              collaborator_id, granted_doco_ids, granted_doco_roles,
+              user_id, granted_doco_ids, granted_doco_roles,
               granted_org_ids, granted_org_roles,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
@@ -811,7 +811,7 @@ export async function getDeviceAuthorizationByUserCode(
  */
 export async function approveDeviceAuthorization(args: {
   device_code: string;
-  approver_collaborator_id: string;
+  approver_user_id: string;
   agent_name: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
@@ -836,8 +836,8 @@ export async function approveDeviceAuthorization(args: {
       );
     }
 
-    const agent_collaborator_id = await createAuthorizedAgentCollaborator(c, {
-      owner_id: args.approver_collaborator_id,
+    const agent_user_id = await createAuthorizedAgentUser(c, {
+      owner_id: args.approver_user_id,
       client_id: row.client_id,
       agent_name: args.agent_name,
       granted_doco_ids: args.granted_doco_ids,
@@ -849,7 +849,7 @@ export async function approveDeviceAuthorization(args: {
     await c.query(
       `UPDATE oauth_device_authorizations
           SET status = 'approved',
-              collaborator_id = $2,
+              user_id = $2,
               granted_doco_ids = $3,
               granted_doco_roles = $4,
               granted_org_ids = $5,
@@ -859,7 +859,7 @@ export async function approveDeviceAuthorization(args: {
           AND expires_at > now()`,
       [
         args.device_code,
-        agent_collaborator_id,
+        agent_user_id,
         args.granted_doco_ids,
         JSON.stringify(args.granted_doco_roles ?? {}),
         args.granted_org_ids ?? [],
@@ -903,7 +903,7 @@ export async function pollDeviceAuthorization(args: {
     // for the same approved authorization.
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              collaborator_id, granted_doco_ids, granted_doco_roles,
+              user_id, granted_doco_ids, granted_doco_roles,
               granted_org_ids, granted_org_roles,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
@@ -949,8 +949,8 @@ export async function pollDeviceAuthorization(args: {
       return { kind: "pending" };
     }
     // status === 'approved' — mint tokens, delete the row in the same tx.
-    if (!row.collaborator_id) {
-      throw new OauthError("server_error", "approved device_code missing collaborator_id");
+    if (!row.user_id) {
+      throw new OauthError("server_error", "approved device_code missing user_id");
     }
     const access_token = mintOpaque(ACCESS_TOKEN_PREFIX);
     const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
@@ -961,14 +961,14 @@ export async function pollDeviceAuthorization(args: {
     const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
-         (token, client_id, collaborator_id, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         access_token,
         row.client_id,
-        row.collaborator_id,
+        row.user_id,
         row.granted_doco_ids,
         rolesJson,
         orgIds,
@@ -979,14 +979,14 @@ export async function pollDeviceAuthorization(args: {
     );
     await c.query(
       `INSERT INTO oauth_refresh_tokens
-         (token, client_id, collaborator_id, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         refresh_token,
         row.client_id,
-        row.collaborator_id,
+        row.user_id,
         row.granted_doco_ids,
         rolesJson,
         orgIds,

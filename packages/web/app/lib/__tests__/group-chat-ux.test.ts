@@ -3,7 +3,7 @@ import {
   type ChatAccessTarget,
   canChangePoliciesFromChat,
   canCreateDocoFromChat,
-  canInviteCollaboratorFromChat,
+  canInviteUserFromChat,
   canSetChannelDefaultAccess,
   chatTargetLabel,
   formatAmbiguousTargetPrompt,
@@ -67,14 +67,12 @@ describe("group-chat UX helpers", () => {
     expect(canChangePoliciesFromChat("author")).toBe(false);
   });
 
-  it("allows collaborator invites at or below the inviter role", () => {
-    expect(
-      canInviteCollaboratorFromChat({ inviterRole: "author", requestedRole: "reader" }),
-    ).toEqual({
+  it("allows user invites at or below the inviter role", () => {
+    expect(canInviteUserFromChat({ inviterRole: "author", requestedRole: "reader" })).toEqual({
       ok: true,
     });
     expect(
-      canInviteCollaboratorFromChat({ inviterRole: "author", requestedRole: "approver" }),
+      canInviteUserFromChat({ inviterRole: "author", requestedRole: "approver" }),
     ).toMatchObject({
       ok: false,
       error: "Cannot invite at 'approver' because your access is 'author'.",

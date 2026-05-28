@@ -16,8 +16,8 @@
 
 import {
   type DocoRole,
-  getCollaboratorById,
   getDocoById,
+  getUserById,
   upsertDocoUser,
   upsertOrgUser,
   withClient,
@@ -85,9 +85,7 @@ export async function loader({ request, params }: { request: Request; params: { 
     target = { level: "doco", label: doco.handle };
   }
 
-  const inviter = invite.minted_by_collaborator_id
-    ? await getCollaboratorById(invite.minted_by_collaborator_id)
-    : null;
+  const inviter = invite.minted_by_user_id ? await getUserById(invite.minted_by_user_id) : null;
   const principal = await getCurrentPrincipal(request);
   return {
     ok: true,
@@ -162,14 +160,14 @@ export async function action({
   if (consumedLevel === "org" && consumed.org_id) {
     await upsertOrgUser({
       org_id: consumed.org_id,
-      collaborator_id: principal.id,
+      user_id: principal.id,
       role: grantedRole,
     });
   } else {
     if (!invite.doco_id) return { error: "The Doco this invite points at no longer exists." };
     await upsertDocoUser({
       doco_id: invite.doco_id,
-      collaborator_id: principal.id,
+      user_id: principal.id,
       role: grantedRole,
     });
   }

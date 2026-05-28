@@ -8,7 +8,7 @@
 //     `openai_usage_log` (one row per embed batch; the embedding
 //     provider wraps the call to record).
 //
-// Auth: gated to the `torrenegra` collaborator only. Every other
+// Auth: gated to the `torrenegra` user only. Every other
 // signed-in or anonymous request gets a 404 so the page's existence
 // isn't even revealed. Re-using `getCurrentPrincipal` keeps the
 // check inline with every other route in the codebase.
@@ -52,7 +52,7 @@ interface OpenAiBucket {
 interface RecentAnthropicRow {
   id: string;
   started_at: string;
-  collaborator_id: string;
+  user_id: string;
   model: string;
   input_tokens: number;
   output_tokens: number;
@@ -155,7 +155,7 @@ async function aggregateOpenAi(sinceClause: string): Promise<OpenAiBucket> {
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect(`/sign-in?next=${encodeURIComponent("/admin/agent-usage")}`);
-  // Gated to a single collaborator by github_login. Any other user
+  // Gated to a single user by github_login. Any other user
   // sees a 404 — the page's existence is not revealed.
   if (me.username !== "torrenegra") {
     throw new Response("Not Found", { status: 404 });
@@ -194,7 +194,7 @@ export async function loader({ request }: { request: Request }) {
       const r = await c.query<
         Omit<RecentAnthropicRow, "started_at"> & { started_at: Date | string }
       >(
-        `SELECT id, started_at, collaborator_id, model, input_tokens, output_tokens,
+        `SELECT id, started_at, user_id, model, input_tokens, output_tokens,
                 cache_read_tokens, cache_creation_tokens, total_ms, num_tool_calls, error
            FROM agent_turn_metrics
           ORDER BY started_at DESC
@@ -403,8 +403,8 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
                   {s.recent_anthropic.map((r) => (
                     <tr key={r.id} className={r.error ? "text-destructive" : ""}>
                       <td>{new Date(r.started_at).toLocaleTimeString()}</td>
-                      <td className="truncate" title={r.collaborator_id}>
-                        {r.collaborator_id.slice(-6)}
+                      <td className="truncate" title={r.user_id}>
+                        {r.user_id.slice(-6)}
                       </td>
                       <td className="text-right">{fmtInt(r.input_tokens)}</td>
                       <td className="text-right">{fmtInt(r.output_tokens)}</td>

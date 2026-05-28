@@ -81,7 +81,7 @@ export function canSetChannelDefaultAccess(args: {
   return { ok: true };
 }
 
-export function canInviteCollaboratorFromChat(args: {
+export function canInviteUserFromChat(args: {
   inviterRole: DocoRole | null | undefined;
   requestedRole: DocoRole;
 }): InviteCapability {
@@ -155,7 +155,7 @@ export function formatConnectionAuthorizationPreview(args: {
     "This is the default for Señor Doco. Everyone in this chat can use it.",
     "Each person can also link their own Doco account. If they already have higher access in Doco, Señor Doco may use that higher personal access, but never more than the access they already hold.",
     "Owner-only actions, including creating Docos and changing policies, require that individual person to be an owner in Doco.",
-    "Collaborator invites are sent by direct message and cannot grant above the inviter's role.",
+    "User invites are sent by direct message and cannot grant above the inviter's role.",
   ].join("\n");
 }
 

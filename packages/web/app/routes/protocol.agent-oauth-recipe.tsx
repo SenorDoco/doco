@@ -494,7 +494,7 @@ authored_by_principal_id      # Rule/Eval/Policy author; auth fills this
 
 Read responses may expose stored graph fields such as \`wanted_by\`,
 \`actors\`, \`stakeholders\`, \`actor_id\`, and \`decided_by\`.
-\`created_by\` is collaborator/API-key provenance derived from the
+\`created_by\` is user/API-key provenance derived from the
 authenticated session or token. Never send \`created_by\` in POST/PATCH
 bodies; use the API-facing principal-id fields above only for domain
 actors.
@@ -614,7 +614,7 @@ becomes inert — remove or replace it in the next commit.
 ### Don't conflate project tokens with OAuth
 
 \`doco_pt_…\` and \`doco_at_…\` are different credentials. Project
-tokens have no refresh, no expiry, no collaborator identity, no
+tokens have no refresh, no expiry, no user identity, no
 write scope. If your runtime needs to capture neurons or edit the
 Doco, OAuth is still the path — project tokens cannot widen.
 

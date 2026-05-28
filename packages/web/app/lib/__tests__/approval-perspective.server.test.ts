@@ -11,8 +11,8 @@ describe("loadApprovalPerspectiveData", () => {
         expect(sql).toMatch(/WHERE lifecycle = 'proposed'/);
         expect(sql).toMatch(/FROM principals/);
         expect(sql).toMatch(/resolved_actors AS/);
-        expect(sql).toMatch(/created_by_collaborator_id/);
-        expect(sql).toMatch(/LEFT JOIN collaborators author ON author\.id = n\.author_id/);
+        expect(sql).toMatch(/created_by_user_id/);
+        expect(sql).toMatch(/LEFT JOIN users author ON author\.id = n\.author_id/);
         expect(sql).not.toMatch(/author\.id,\s*n\.created_by/);
         expect(params).toEqual(["doco_acme"]);
         return {
@@ -24,7 +24,7 @@ describe("loadApprovalPerspectiveData", () => {
               lifecycle: "proposed",
               created_at: "2026-05-25T10:00:00.000Z",
               proposed_at: "2026-05-26T12:30:00.000Z",
-              author_id: "collaborator_alice",
+              author_id: "user_alice",
               author_name: "alice",
             },
           ] as T[],
@@ -43,7 +43,7 @@ describe("loadApprovalPerspectiveData", () => {
         lifecycle: "proposed",
         created_at: "2026-05-25T10:00:00.000Z",
         proposed_at: "2026-05-26T12:30:00.000Z",
-        author_id: "collaborator_alice",
+        author_id: "user_alice",
         author_name: "alice",
         href: "/acme/decision/decision_01TEST",
         update_url: "/acme/api/decisions/decision_01TEST.json",

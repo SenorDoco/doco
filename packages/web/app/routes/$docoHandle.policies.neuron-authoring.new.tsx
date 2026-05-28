@@ -15,7 +15,7 @@ import {
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { derivePolicySummary } from "~/lib/policy-copy";
-import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
+import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
 type ArticleKind = "deterministic" | "probabilistic";
 
@@ -59,7 +59,7 @@ export async function action({
   const on_violation =
     onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
   const authorPrincipalId = ctx.me?.id
-    ? await resolvePrincipalIdForCollaborator(ctx.meta.docoId, ctx.me.id)
+    ? await resolvePrincipalIdForUser(ctx.meta.docoId, ctx.me.id)
     : null;
   const draft: NeuronAuthoringPolicyDraft = stampAuthenticatedCreator(
     {

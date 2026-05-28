@@ -63,7 +63,7 @@ async function handleAuthorizationCode(form: URLSearchParams): Promise<Response>
   const claim = await consumeAuthorizationCode({ code, client_id, redirect_uri, code_verifier });
   const tokens = await issueTokens({
     client_id,
-    collaborator_id: claim.collaborator_id,
+    user_id: claim.user_id,
     granted_doco_ids: claim.granted_doco_ids,
     granted_doco_roles: claim.granted_doco_roles,
     granted_org_ids: claim.granted_org_ids,

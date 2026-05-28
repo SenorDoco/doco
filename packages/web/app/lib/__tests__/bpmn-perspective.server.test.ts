@@ -16,7 +16,7 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
     async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
       captured.push({ sql, params });
       if (/FROM synapses/i.test(sql)) return { rows: (rows.synapses ?? []) as T[] };
-      if (/FROM collaborators/i.test(sql)) return { rows: (rows.collaborators ?? []) as T[] };
+      if (/FROM users/i.test(sql)) return { rows: (rows.users ?? []) as T[] };
       if (/FROM principals/i.test(sql)) return { rows: (rows.principals ?? []) as T[] };
       return { rows: (rows.neurons ?? []) as T[] };
     },
@@ -55,7 +55,7 @@ describe("loadBpmnGraph", () => {
           lifecycle: "drafting",
         },
       ],
-      collaborators: [],
+      users: [],
       synapses: [],
     });
 
@@ -157,7 +157,7 @@ describe("loadBpmnGraph", () => {
           lifecycle: "active",
         },
       ],
-      collaborators: [],
+      users: [],
       synapses: [
         { from_id: stateId, to_id: requestId, synapse_type: "sequence_flow" },
         { from_id: requestId, to_id: presentId, synapse_type: "sequence_flow" },
@@ -230,7 +230,7 @@ describe("loadBpmnGraph", () => {
           lifecycle: "active",
         },
       ],
-      collaborators: [],
+      users: [],
       synapses: [
         {
           from_id: decisionId,
@@ -319,7 +319,7 @@ describe("loadBpmnGraph", () => {
           lifecycle: "active",
         },
       ],
-      collaborators: [],
+      users: [],
       synapses: [
         { from_id: decisionId, to_id: checkoutId, synapse_type: "sequence_flow" },
         { from_id: checkoutId, to_id: decisionId, synapse_type: "sequence_flow" },
@@ -382,7 +382,7 @@ describe("loadBpmnGraph", () => {
           lifecycle: "active",
         },
       ],
-      collaborators: [],
+      users: [],
       synapses: [],
     });
 

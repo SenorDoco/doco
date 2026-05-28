@@ -12,7 +12,7 @@
 //   - Actor lanes (middle): one per Principal who has work in this
 //     pool. Action.actor_id / Decision.decided_by / Intent.actors[0]
 //     drives the placement. Decisions whose decided_by is a
-//     `collaborator_*` id walk through the collaborator → github_login
+//     `user_*` id walk through the user → github_login
 //     → matching Principal name path; rows that don't resolve land in
 //     Unassigned.
 //   - Artifacts band (bottom): References, Ideas, plus any Rule/Eval
@@ -177,7 +177,7 @@ interface PrincipalRow {
   lifecycle: string | null;
 }
 
-interface CollaboratorRow {
+interface UserRow {
   id: string;
   github_login: string | null;
 }
@@ -208,7 +208,7 @@ export async function loadBpmnGraph(
           AND COALESCE(t.lifecycle, 'active') <> 'retired'`;
   }).join(" UNION ALL ");
 
-  const [neuronRows, principalRows, collaboratorRows] = await Promise.all([
+  const [neuronRows, principalRows, userRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
     c.query<PrincipalRow>(
       `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
@@ -217,10 +217,10 @@ export async function loadBpmnGraph(
           AND COALESCE(lifecycle, 'active') <> 'retired'`,
       [docoId],
     ),
-    c.query<CollaboratorRow>(
+    c.query<UserRow>(
       `SELECT c.id, c.github_login
-         FROM collaborators c
-         JOIN doco_users du ON du.collaborator_id = c.id
+         FROM users c
+         JOIN doco_users du ON du.user_id = c.id
         WHERE du.doco_id = $1
           AND c.github_login IS NOT NULL`,
       [docoId],
@@ -233,9 +233,9 @@ export async function loadBpmnGraph(
     principalByName.set(p.name.toLowerCase(), p);
     principalById.set(p.id, p);
   }
-  const collaboratorById = new Map<string, CollaboratorRow>();
-  for (const cr of collaboratorRows.rows) {
-    collaboratorById.set(cr.id, cr);
+  const userById = new Map<string, UserRow>();
+  for (const cr of userRows.rows) {
+    userById.set(cr.id, cr);
   }
 
   const allRows = neuronRows.rows;
@@ -396,7 +396,7 @@ export async function loadBpmnGraph(
         allRows,
         principalById,
         principalByName,
-        collaboratorById,
+        userById,
       );
       if (hostLane) {
         baseId = hostLane.id;
@@ -409,7 +409,7 @@ export async function loadBpmnGraph(
       }
     } else {
       // Action / Decision / Log: actor lane.
-      const ref = laneReferenceFor(row.entity_type, data, collaboratorById);
+      const ref = laneReferenceFor(row.entity_type, data, userById);
       const resolved = resolveLane(ref, principalById, principalByName);
       baseId = resolved.id;
       kind = resolved.id.startsWith("principal_")
@@ -711,7 +711,7 @@ function parseRawYaml(rawYaml: string | null): Record<string, unknown> {
 function laneReferenceFor(
   entityType: string,
   data: Record<string, unknown>,
-  collaboratorById: Map<string, CollaboratorRow>,
+  userById: Map<string, UserRow>,
 ): string | null {
   switch (entityType) {
     case "action":
@@ -720,8 +720,8 @@ function laneReferenceFor(
     case "decision": {
       const ref = firstString(data.decided_by);
       if (!ref) return null;
-      if (ref.startsWith("collaborator_")) {
-        const collab = collaboratorById.get(ref);
+      if (ref.startsWith("user_")) {
+        const collab = userById.get(ref);
         return collab?.github_login ?? null;
       }
       return ref;
@@ -776,14 +776,14 @@ function resolveRehomeHostLane(
   allRows: NeuronRow[],
   principalById: Map<string, PrincipalRow>,
   principalByName: Map<string, PrincipalRow>,
-  collaboratorById: Map<string, CollaboratorRow>,
+  userById: Map<string, UserRow>,
 ): { id: string; label: string } | null {
   if (row.entity_type === "rule") {
     for (const candidate of allRows) {
       if (candidate.entity_type !== "action") continue;
       const gatedBy = toStringArray(candidate.data?.gated_by);
       if (!gatedBy.includes(row.id)) continue;
-      const ref = laneReferenceFor("action", candidate.data ?? {}, collaboratorById);
+      const ref = laneReferenceFor("action", candidate.data ?? {}, userById);
       const resolved = resolveLane(ref, principalById, principalByName);
       if (resolved.id.startsWith("principal_")) return resolved;
       return null;
@@ -795,7 +795,7 @@ function resolveRehomeHostLane(
     if (!targetRef) return null;
     const target = allRows.find((r) => r.id === targetRef);
     if (!target) return null;
-    const ref = laneReferenceFor(target.entity_type, target.data ?? {}, collaboratorById);
+    const ref = laneReferenceFor(target.entity_type, target.data ?? {}, userById);
     const resolved = resolveLane(ref, principalById, principalByName);
     if (resolved.id.startsWith("principal_")) return resolved;
     return null;

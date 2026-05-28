@@ -204,19 +204,19 @@ describe("updateEntity", () => {
     );
   });
 
-  it("stores Decision created_by from the collaborator, not the decider Principal", async () => {
+  it("stores Decision created_by from the user, not the decider Principal", async () => {
     const result = await captureDecision(
       "/tmp/doco",
       DOCO_ID,
       "test",
       "doco",
       {
-        decision: "Use collaborator provenance",
+        decision: "Use user provenance",
         question: "Who created this neuron?",
-        chosen: "The authenticated collaborator.",
+        chosen: "The authenticated user.",
         decided_by_principal_id: "principal_decider",
         created_by_principal_id: "principal_legacy_creator",
-        created_by_collaborator_id: "collaborator_alice",
+        created_by_user_id: "user_alice",
       },
       "https://doco.test",
     );
@@ -225,10 +225,10 @@ describe("updateEntity", () => {
     expect(upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         entity_type: "decision",
-        created_by: "collaborator_alice",
+        created_by: "user_alice",
         data: expect.objectContaining({
           decided_by: "principal_decider",
-          created_by: "collaborator_alice",
+          created_by: "user_alice",
         }),
       }),
       expect.anything(),
@@ -252,7 +252,7 @@ describe("updateEntity", () => {
         neuron_type: "idea",
         idea: "Original idea",
         lifecycle: "drafting",
-        created_by: "collaborator_alice",
+        created_by: "user_alice",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -268,7 +268,7 @@ describe("updateEntity", () => {
         created_by_principal_id: "principal_eve",
       },
       docoHost: "https://doco.test",
-      actorId: "collaborator_alice",
+      actorId: "user_alice",
     });
 
     expect(result).toMatchObject({ error: "No fields changed." });

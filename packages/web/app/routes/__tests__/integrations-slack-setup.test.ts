@@ -26,7 +26,7 @@ describe("/integrations/slack/setup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "collaborator_alice",
+      id: "user_alice",
       username: "alice",
     });
     mocks.loadScopeOptions.mockResolvedValue([
@@ -144,7 +144,7 @@ describe("/integrations/slack/setup", () => {
           role: "approver",
         },
       ],
-      createdByCollaboratorId: "collaborator_alice",
+      createdByUserId: "user_alice",
     });
   });
 

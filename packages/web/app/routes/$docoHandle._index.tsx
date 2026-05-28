@@ -18,7 +18,7 @@ import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { ApiKeysLink, CollaboratorsLink } from "~/components/invite-collaborators-link";
+import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NeuronDialog } from "~/components/neuron-dialog";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
@@ -84,7 +84,7 @@ interface FeedItem extends ActivityFeedLineItem {
 }
 
 interface TopContributor {
-  collaboratorId: string;
+  userId: string;
   username: string;
   lastAt: string;
   eventCount: number;
@@ -243,28 +243,28 @@ export async function loader({
 
     const contributorRows = (
       await c.query<{
-        collaborator_id: string;
-        collaborator_name: string;
+        user_id: string;
+        user_name: string;
         last_at: Date | string;
         event_count: string;
       }>(
-        `SELECT ae.by_collaborator AS collaborator_id,
-                COALESCE(c.github_login, c.email, c.id) AS collaborator_name,
+        `SELECT ae.by_user AS user_id,
+                COALESCE(c.github_login, c.email, c.id) AS user_name,
                 MAX(ae.at) AS last_at,
                 COUNT(*)::text AS event_count
            FROM audit_events ae
-           JOIN collaborators c ON c.id = ae.by_collaborator
+           JOIN users c ON c.id = ae.by_user
           WHERE ae.doco_id = $1
             AND ae.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
-          GROUP BY ae.by_collaborator, c.github_login, c.email, c.id
+          GROUP BY ae.by_user, c.github_login, c.email, c.id
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
         [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
       )
     ).rows;
     const topContributors: TopContributor[] = contributorRows.map((r) => ({
-      collaboratorId: r.collaborator_id,
-      username: r.collaborator_name,
+      userId: r.user_id,
+      username: r.user_name,
       lastAt:
         r.last_at instanceof Date
           ? r.last_at.toISOString()
@@ -361,7 +361,7 @@ export async function loader({
       handle,
       docoId: ctx.meta.docoId,
       goal: ctx.meta.goal,
-      canInviteCollaborators: await canAdminDoco(ctx.meta, me?.id ?? null),
+      canInviteUsers: await canAdminDoco(ctx.meta, me?.id ?? null),
       host: await loadHostConfig(),
       me,
       graph,
@@ -472,7 +472,7 @@ export default function DocoHome({
     handle,
     docoId,
     goal,
-    canInviteCollaborators,
+    canInviteUsers,
     me,
     graph,
     policyCount,
@@ -895,15 +895,15 @@ export default function DocoHome({
               </Link>
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              {canInviteCollaborators ? <CollaboratorsLink level="doco" targetId={docoId} /> : null}
-              {canInviteCollaborators ? <ApiKeysLink /> : null}
+              {canInviteUsers ? <UsersLink level="doco" targetId={docoId} /> : null}
+              {canInviteUsers ? <ApiKeysLink /> : null}
               <Link
                 to={`/${handle}/policies`}
                 className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
                 Policies ({policyCount})
               </Link>
-              {canInviteCollaborators ? (
+              {canInviteUsers ? (
                 <Link
                   to={`/${handle}/settings`}
                   className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
@@ -1162,10 +1162,7 @@ function TopContributorsList({ contributors }: { contributors: TopContributor[] 
         <p className="text-xs italic text-muted-foreground">No recorded contributions yet.</p>
       ) : (
         contributors.map((c) => (
-          <div
-            key={c.collaboratorId}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
-          >
+          <div key={c.userId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <span className="truncate text-xs" title={c.username}>
               {c.username}
             </span>

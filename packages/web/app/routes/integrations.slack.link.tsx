@@ -41,7 +41,7 @@ export async function loader({ request }: { request: Request }): Promise<SlackLi
   await upsertSlackUserLink({
     workspaceId: state.workspaceId,
     chatUserId: state.chatUserId,
-    collaboratorId: me.id,
+    userId: me.id,
   });
 
   return {

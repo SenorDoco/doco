@@ -81,7 +81,7 @@ export async function action({
       await attachPerspectiveToDoco({
         docoId: meta.docoId,
         perspectiveId,
-        attachedByCollaboratorId: me.id,
+        attachedByUserId: me.id,
       });
       return Response.json({ ok: true });
     }

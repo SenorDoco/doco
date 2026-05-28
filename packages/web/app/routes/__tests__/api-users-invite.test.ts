@@ -2,35 +2,35 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
-  handleCollaboratorInviteAction: vi.fn(),
+  handleUserInviteAction: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: mocks.getCurrentPrincipal,
 }));
 
-vi.mock("~/lib/collaborators.server", () => ({
-  handleCollaboratorInviteAction: mocks.handleCollaboratorInviteAction,
+vi.mock("~/lib/users.server", () => ({
+  handleUserInviteAction: mocks.handleUserInviteAction,
 }));
 
 vi.mock("~/components/collaboration-invite-prompt", () => ({
   buildHumanInvitePrompt: (url: string) => `Open this URL: ${url}`,
 }));
 
-import { action } from "../api.v1.collaborators.invite[.]json";
+import { action } from "../api.v1.users.invite[.]json";
 
 function jsonRequest(body: unknown, method = "POST"): Request {
-  return new Request("https://doco.test/api/v1/collaborators/invite.json", {
+  return new Request("https://doco.test/api/v1/users/invite.json", {
     method,
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
 
-describe("/api/v1/collaborators/invite.json", () => {
+describe("/api/v1/users/invite.json", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getCurrentPrincipal.mockResolvedValue({ id: "collaborator_alice", username: "alice" });
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
   });
 
   it("refuses anonymous callers", async () => {
@@ -58,7 +58,7 @@ describe("/api/v1/collaborators/invite.json", () => {
   });
 
   it("returns invite URL + human prompt on success", async () => {
-    mocks.handleCollaboratorInviteAction.mockResolvedValue({
+    mocks.handleUserInviteAction.mockResolvedValue({
       intent: "invite",
       ok: true,
       invite_url: "https://doco.test/invite/abc",
@@ -81,7 +81,7 @@ describe("/api/v1/collaborators/invite.json", () => {
   });
 
   it("returns 403 when caller tries to grant above their own role", async () => {
-    mocks.handleCollaboratorInviteAction.mockResolvedValue({
+    mocks.handleUserInviteAction.mockResolvedValue({
       error: "Cannot mint a 'owner' invite -- you only hold 'author' on this target.",
     });
     const response = await action({

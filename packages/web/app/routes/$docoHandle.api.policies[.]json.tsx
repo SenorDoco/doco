@@ -27,7 +27,7 @@ import {
   loadDocoRouteForRead,
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
-import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
+import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
 interface PolicyRow {
   id: string;
@@ -152,7 +152,7 @@ export async function action({
       const draft = stampAuthenticatedCreator(rest as unknown as GuidancePolicyDraft, me.id);
       if (!draft.authored_by_principal_id && me.id) {
         draft.authored_by_principal_id =
-          (await resolvePrincipalIdForCollaborator(meta.docoId, me.id)) ?? undefined;
+          (await resolvePrincipalIdForUser(meta.docoId, me.id)) ?? undefined;
       }
       const result = await captureGuidancePolicy(
         dir,
@@ -169,7 +169,7 @@ export async function action({
     const draft = stampAuthenticatedCreator(rest as unknown as NeuronAuthoringPolicyDraft, me.id);
     if (!draft.authored_by_principal_id && me.id) {
       draft.authored_by_principal_id =
-        (await resolvePrincipalIdForCollaborator(meta.docoId, me.id)) ?? undefined;
+        (await resolvePrincipalIdForUser(meta.docoId, me.id)) ?? undefined;
     }
     const result = await captureNeuronAuthoringPolicy(
       dir,

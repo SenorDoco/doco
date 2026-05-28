@@ -31,7 +31,7 @@ import {
 describe("slack.server", () => {
   it("signs and verifies Slack OAuth state", () => {
     const state = {
-      installerId: "collaborator_alice",
+      installerId: "user_alice",
       nonce: "nonce",
       issuedAt: 1_000,
     };
@@ -342,7 +342,7 @@ describe("slack.server", () => {
 
     expect(prompt).toContain("You are Señor Doco");
     expect(prompt).toContain('policies" never "constitution');
-    expect(prompt).toContain("Principal vs principle vs collaborator");
+    expect(prompt).toContain("Principal vs principle vs user");
     expect(prompt).toContain("Voice — dry, cerebral wit");
     expect(prompt).toContain("Slack can use doco_api for reads authorized");
     expect(prompt).toContain("Slack can use POST/PATCH/DELETE doco_api calls");
@@ -734,7 +734,7 @@ describe("slack.server", () => {
     expect(content).toContain("needs_personal_doco_authorization");
   });
 
-  it("runs Slack doco_api writes as the linked Doco collaborator", async () => {
+  it("runs Slack doco_api writes as the linked Doco user", async () => {
     vi.mocked(internalFetch).mockResolvedValueOnce(
       Response.json({
         ok: true,
@@ -760,7 +760,7 @@ describe("slack.server", () => {
         repair: false,
         origin: "https://doco.test",
         personalAuthorizationCommand: "/doco connect",
-        personalActors: [{ collaboratorId: "collaborator_01ABC", username: "alex" }],
+        personalActors: [{ userId: "user_01ABC", username: "alex" }],
         connections: [
           {
             channelId: "*",
@@ -770,8 +770,8 @@ describe("slack.server", () => {
             targetLabel: "torre/torre-org-chart",
             role: "author",
             source: "personal",
-            collaboratorId: "collaborator_01ABC",
-            collaboratorUsername: "alex",
+            userId: "user_01ABC",
+            userUsername: "alex",
           },
         ],
         recentMessages: [],
@@ -784,7 +784,7 @@ describe("slack.server", () => {
       method: "POST",
       path: "/torre-org-chart/api/principals.json",
       origin: "https://doco.test",
-      cookieHeader: "doco_session=collaborator_01ABC",
+      cookieHeader: "doco_session=user_01ABC",
       body: { name: "Francisco Laso", body_md: "Algorithms Engineer" },
       userAgent: "Doco-Slack-Assistant/1",
     });

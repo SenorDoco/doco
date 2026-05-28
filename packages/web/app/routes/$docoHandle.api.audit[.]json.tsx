@@ -4,7 +4,7 @@
 //   entity_id=<id>           events for one entity
 //   entity_type=<type>       events for one node type
 //   op=<op>[,<op>,...]       comma-separated op-type filter
-//   by=<collaborator_id>        events authored by a given Principal
+//   by=<user_id>        events authored by a given Principal
 //   since=<ISO8601>          inclusive lower bound (event.at >= since)
 //   before=<ISO8601>         exclusive pagination cursor (event.at < before)
 //   until=<ISO8601>          inclusive upper bound (event.at <= until)

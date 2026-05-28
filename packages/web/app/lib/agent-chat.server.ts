@@ -39,7 +39,7 @@ import type {
   ToolUseBlock,
   Usage,
 } from "@anthropic-ai/sdk/resources/messages";
-import { listOrganizationsForCollaborator, withClient } from "@doco/db";
+import { listOrganizationsForUser, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import {
   SENOR_DOCO_DEFAULT_MAX_TOKENS,
@@ -126,7 +126,7 @@ type StoredAssistantBlock = TextBlock | ToolUseBlock;
 
 export interface ChatConversationRow {
   id: string;
-  collaborator_id: string;
+  user_id: string;
   archived: boolean;
   title: string | null;
   attached_doco_ids: string[];
@@ -260,7 +260,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, collaborator_id, archived, title, attached_doco_ids, attached_doco_handles, attached_org_handles, created_at, updated_at, active_turn_started_at";
+  "id, user_id, archived, title, attached_doco_ids, attached_doco_handles, attached_org_handles, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -296,7 +296,7 @@ export async function loadActiveConversation(
     const r = await c.query<ChatConversationRow>(
       `SELECT ${CONV_COLS}
          FROM chat_conversations
-        WHERE collaborator_id = $1 AND archived = false
+        WHERE user_id = $1 AND archived = false
         ORDER BY updated_at DESC
         LIMIT 1`,
       [principalId],
@@ -320,7 +320,7 @@ export async function loadConversationByIdForPrincipal(
     const r = await c.query<ChatConversationRow>(
       `SELECT ${CONV_COLS}
          FROM chat_conversations
-        WHERE id = $1 AND collaborator_id = $2
+        WHERE id = $1 AND user_id = $2
         LIMIT 1`,
       [conversationId, principalId],
     );
@@ -346,7 +346,7 @@ export async function createConversation(
     const attachedOrgHandles = uniqueNonEmptyStrings(opts.attachedOrgHandles ?? []);
     const r = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations
-         (id, collaborator_id, title, attached_doco_ids, attached_org_handles)
+         (id, user_id, title, attached_doco_ids, attached_org_handles)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING ${CONV_COLS}`,
       [id, principalId, title, attachedDocoIds, attachedOrgHandles],
@@ -459,7 +459,7 @@ export async function listConversationsForPrincipal(
                 ORDER BY m.created_at DESC
                 LIMIT 1) AS last_message_role
          FROM chat_conversations c
-        WHERE c.collaborator_id = $1
+        WHERE c.user_id = $1
           ${opts.includeArchived ? "" : "AND c.archived = false"}
         ORDER BY c.updated_at DESC
         LIMIT $2`,
@@ -503,7 +503,7 @@ export async function patchConversation(
     const r = await c.query<ChatConversationRow>(
       `UPDATE chat_conversations
           SET ${sets.join(", ")}, updated_at = now()
-        WHERE id = $1 AND collaborator_id = $2
+        WHERE id = $1 AND user_id = $2
         RETURNING ${CONV_COLS}`,
       values,
     );
@@ -655,7 +655,7 @@ export async function mutateConversationAttachments(
     const r = await c.query<ChatConversationRow>(
       `UPDATE chat_conversations
           SET ${updates.join(", ")}
-        WHERE id = $1 AND collaborator_id = $2
+        WHERE id = $1 AND user_id = $2
         RETURNING ${CONV_COLS}`,
       values,
     );
@@ -905,7 +905,7 @@ export async function purgeExpiredAttachments(): Promise<number> {
 interface ChatAttachmentRow {
   id: string;
   conversation_id: string;
-  collaborator_id: string;
+  user_id: string;
   filename: string;
   mime_type: string;
   size_bytes: number;
@@ -935,7 +935,7 @@ export async function saveAttachment(args: {
     const id = `att_${generateUlid()}`;
     const r = await c.query<{ created_at: Date; expires_at: Date }>(
       `INSERT INTO chat_attachments
-         (id, conversation_id, collaborator_id, filename, mime_type, size_bytes, content)
+         (id, conversation_id, user_id, filename, mime_type, size_bytes, content)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING created_at, expires_at`,
       [
@@ -973,11 +973,11 @@ export async function loadAttachmentForPrincipal(
 ): Promise<ChatAttachmentRow | null> {
   return await withClient(async (c) => {
     const r = await c.query<ChatAttachmentRow>(
-      `SELECT id, conversation_id, collaborator_id, filename, mime_type, size_bytes,
+      `SELECT id, conversation_id, user_id, filename, mime_type, size_bytes,
               content, created_at, expires_at
          FROM chat_attachments
         WHERE id = $1
-          AND collaborator_id = $2
+          AND user_id = $2
           AND expires_at > now()`,
       [attachmentId, principalId],
     );
@@ -992,7 +992,7 @@ async function loadAttachmentsByIds(
   if (ids.length === 0) return new Map();
   return await withClient(async (c) => {
     const r = await c.query<ChatAttachmentRow>(
-      `SELECT id, conversation_id, collaborator_id, filename, mime_type, size_bytes,
+      `SELECT id, conversation_id, user_id, filename, mime_type, size_bytes,
               content, created_at, expires_at
          FROM chat_attachments
         WHERE id = ANY($1::text[])
@@ -1105,7 +1105,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
 
   const [allDocos, orgs] = await Promise.all([
     listAllDocos(),
-    listOrganizationsForCollaborator(principalId),
+    listOrganizationsForUser(principalId),
   ]);
 
   // Access checks in parallel: the original code awaited them in a
@@ -1214,7 +1214,7 @@ function buildSystemBlocks(
       "the in-page assistant embedded as a 320-px left-rail sidebar on every page",
     accessDescription: `You act AS ${principal.username} — the signed-in human reading the page. Every doco_api call is authenticated as them; there is no separate agent identity.`,
     capabilityDescription:
-      "read, write, navigate inside Doco — docos, orgs, neurons (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), policies (Guidance + Neuron-authoring), synapses, collaborators, audit history.",
+      "read, write, navigate inside Doco — docos, orgs, neurons (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), policies (Guidance + Neuron-authoring), synapses, users, audit history.",
     inScopePrefix: `${principal.username}'s`,
   })}
 
@@ -1241,11 +1241,11 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/<type>/<id>.json           — single neuron detail
   PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
-  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy collaborator alias...], collaborators: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, name, body_md, lifecycle, data, ... }], collaborator_count, principal_neuron_count }. Read \`collaborators\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
+  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy user alias...], users: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_neuron_count }. Read \`users\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
   PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is immutable — to rename, create a new Principal and retire the old one.
   GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this doco
   POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "neuron_authoring"
-  GET   /<handle>/api/invites.json               — pending collaborator invites
+  GET   /<handle>/api/invites.json               — pending user invites
   GET   /<handle>/api/audit.json                 — audit log entries
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
   GET   /<handle>/api/authoring-contract.json    — agent contract: valid entity types, relation kinds, perspective constraints, and changeset examples
@@ -1292,7 +1292,7 @@ Common API-facing fields:
 
 Read responses may expose stored graph fields such as wanted_by,
 actors, stakeholders, actor_id, and decided_by. created_by is
-collaborator/API-key provenance derived from the authenticated session
+user/API-key provenance derived from the authenticated session
 or token. Never send created_by; when writing via doco_api, use the
 API-facing principal-id fields above only for domain actors.
 
@@ -1914,7 +1914,7 @@ async function* streamAssistantTurn(args: {
 
   const buildMetricsRow = () => ({
     conversation_id: args.conversation.id,
-    collaborator_id: args.conversation.collaborator_id,
+    user_id: args.conversation.user_id,
     model,
     total_ms: Math.round(performance.now() - turnStart),
     bootstrap_ms: Math.round(bootstrapMs),
@@ -2445,7 +2445,7 @@ async function resolveDocoAttachments(
         `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
            FROM docos d
            LEFT JOIN organizations o ON o.id = d.owner_id
-           LEFT JOIN collaborators co ON co.id = d.owner_id
+           LEFT JOIN users co ON co.id = d.owner_id
           WHERE d.id = ANY($1::text[])`,
         [docoIds],
       );
@@ -2466,7 +2466,7 @@ async function resolveDocoAttachments(
       `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
          FROM docos d
          LEFT JOIN organizations o ON o.id = d.owner_id
-         LEFT JOIN collaborators co ON co.id = d.owner_id
+         LEFT JOIN users co ON co.id = d.owner_id
         WHERE d.handle = ANY($1::text[])`,
       [handles],
     );

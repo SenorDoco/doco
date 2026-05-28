@@ -47,8 +47,8 @@ export interface CaptureRouteConfig<TDraft> {
   captureFn: CaptureFn<TDraft>;
   /**
    * Optional: fill any domain Principal defaults on the draft from the
-   * authenticated collaborator. Creator provenance is stamped centrally
-   * from the same authenticated collaborator before this hook runs.
+   * authenticated user. Creator provenance is stamped centrally
+   * from the same authenticated user before this hook runs.
    */
   fillFromAuth?: (draft: TDraft, me: MeLike, docoId: string) => Promise<void> | void;
 }

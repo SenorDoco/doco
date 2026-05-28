@@ -7,9 +7,9 @@
 import {
   listAllDocos as _dbListAllDocos,
   getHostConfig,
-  listCollaborators,
   listOrganizations,
-  listOrganizationsForCollaborator,
+  listOrganizationsForUser,
+  listUsers as listUserRows,
 } from "@doco/db";
 
 export interface HostConfig {
@@ -35,7 +35,7 @@ export interface HostOrg {
 export interface HostDoco {
   /** Public globally-unique URL identifier. */
   handle: string;
-  /** Owner's collaborator username or org handle, derived via
+  /** Owner's user username or org handle, derived via
    *  JOIN in mapDocoRow. Useful for "owned by alice" labels. */
   ownerUsername: string;
   ownerKind: "principal" | "organization";
@@ -56,9 +56,9 @@ export async function loadHostConfig(): Promise<HostConfig> {
 
 export async function listUsers(): Promise<HostUser[]> {
   // Post-rename: OAuth identities (humans + agent runtimes) live in
-  // the `collaborators` table, not `principals`. Principals are
+  // the `users` table, not `principals`. Principals are
   // role-personas referenced by actor_id, not users-of-the-system.
-  const rows = await listCollaborators({ kind: "person" });
+  const rows = await listUserRows({ kind: "person" });
   return rows.map((r) => {
     const out: HostUser = {
       id: r.id,
@@ -84,8 +84,8 @@ export async function listOrgs(): Promise<HostOrg[]> {
   });
 }
 
-export async function listMyOrgs(collaboratorId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForCollaborator(collaboratorId);
+export async function listMyOrgs(userId: string): Promise<HostOrg[]> {
+  const rows = await listOrganizationsForUser(userId);
   return rows.map((r) => {
     const fm = r.data;
     const out: HostOrg = {
@@ -99,8 +99,8 @@ export async function listMyOrgs(collaboratorId: string): Promise<HostOrg[]> {
   });
 }
 
-export async function listOrgsOwnedOrAdminedBy(collaboratorId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForCollaborator(collaboratorId, ["owner"]);
+export async function listOrgsOwnedOrAdminedBy(userId: string): Promise<HostOrg[]> {
+  const rows = await listOrganizationsForUser(userId, ["owner"]);
   return rows.map((r) => {
     const fm = r.data;
     const out: HostOrg = {

@@ -16,7 +16,7 @@
 // shortcut WITHOUT widening the credential surface — any other
 // name request is rejected.
 
-import { getCollaboratorByGithubLogin, withClient } from "@doco/db";
+import { getUserByGithubLogin, withClient } from "@doco/db";
 import { Form, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { setSessionCookie } from "~/lib/session.server";
@@ -26,23 +26,23 @@ type TestUsername = (typeof TEST_USERNAMES)[number];
 const TEST_USERNAME = TEST_USERNAMES[0];
 
 /**
- * Ensure a collaborator row exists for the test name and return its id.
+ * Ensure a user row exists for the test name and return its id.
  *
- * Post-migration-005 the session cookie holds a `collaborator_<ulid>`
+ * Post-migration-005 the session cookie holds a `user_<ulid>`
  * (per session.server.ts) — sign-in is identity, not principal-neuron.
  * Earlier versions of this route inserted into `principals`, which
  * silently broke when migration 020 made principals Doco-scoped (the
  * NOT NULL doco_id FK rejects rows with no Doco). Inserting into
- * `collaborators` is the right home for "the runtime that's holding
+ * `users` is the right home for "the runtime that's holding
  * this session," matching the GitHub OAuth path.
  */
-async function ensureTestCollaborator(githubLogin: TestUsername): Promise<string> {
-  const existing = await getCollaboratorByGithubLogin(githubLogin);
+async function ensureTestUser(githubLogin: TestUsername): Promise<string> {
+  const existing = await getUserByGithubLogin(githubLogin);
   if (existing) return existing.id;
-  const id = `collaborator_${ulid()}`;
+  const id = `user_${ulid()}`;
   await withClient(async (c) => {
     await c.query(
-      `INSERT INTO collaborators (id, kind, github_login, data)
+      `INSERT INTO users (id, kind, github_login, data)
        VALUES ($1, 'person', $2, $3::jsonb)
        ON CONFLICT (id) DO NOTHING`,
       [
@@ -57,8 +57,8 @@ async function ensureTestCollaborator(githubLogin: TestUsername): Promise<string
       ],
     );
   });
-  const reloaded = await getCollaboratorByGithubLogin(githubLogin);
-  if (!reloaded) throw new Error("ensureTestCollaborator: post-insert lookup failed");
+  const reloaded = await getUserByGithubLogin(githubLogin);
+  if (!reloaded) throw new Error("ensureTestUser: post-insert lookup failed");
   return reloaded.id;
 }
 
@@ -106,14 +106,14 @@ export async function action({ request }: { request: Request }) {
       { status: 403 },
     );
   }
-  const collaboratorId = await ensureTestCollaborator(requested);
+  const userId = await ensureTestUser(requested);
   const next = form.get("next");
   const target =
     typeof next === "string" && next.startsWith("/") && !next.startsWith("//")
       ? next
       : "/dashboard";
   return redirect(target, {
-    headers: { "Set-Cookie": setSessionCookie(collaboratorId) },
+    headers: { "Set-Cookie": setSessionCookie(userId) },
   });
 }
 

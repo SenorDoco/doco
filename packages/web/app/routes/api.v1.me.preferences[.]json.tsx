@@ -1,4 +1,4 @@
-// Per-user UI preferences. Stored on `collaborators.data.preferences` —
+// Per-user UI preferences. Stored on `users.data.preferences` —
 // a small JSONB sidecar for browser-only state (graph auto-reorder,
 // etc.) that should survive across devices the same human signs in
 // from. No Doco scope: preferences are about the viewer, not the
@@ -7,7 +7,7 @@
 // Auth: cookie-session signed-in user only. There is no anonymous
 // preferences row to read or write — every method requires a current
 // principal.
-import { getCollaboratorById, patchCollaboratorData } from "@doco/db";
+import { getUserById, patchUserData } from "@doco/db";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 export type PreferencesRecord = Record<string, unknown>;
@@ -21,7 +21,7 @@ function preferencesFromRow(data: Record<string, unknown> | undefined): Preferen
 }
 
 async function loadCurrentPreferences(meId: string): Promise<PreferencesRecord> {
-  const row = await getCollaboratorById(meId);
+  const row = await getUserById(meId);
   if (!row) return {};
   return preferencesFromRow(row.data);
 }
@@ -58,7 +58,7 @@ export async function action({ request }: { request: Request }) {
   // sibling preference keys set by other UI surfaces.
   const existing = await loadCurrentPreferences(me.id);
   const merged = { ...existing, ...patch };
-  const row = await patchCollaboratorData(me.id, { preferences: merged });
+  const row = await patchUserData(me.id, { preferences: merged });
   if (!row) return Response.json({ error: "Could not update preferences." }, { status: 500 });
   return Response.json({ preferences: preferencesFromRow(row.data) });
 }

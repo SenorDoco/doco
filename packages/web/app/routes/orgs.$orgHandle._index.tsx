@@ -1,6 +1,6 @@
 // /orgs/:orgHandle — per-Org home. Mirrors the host Docos/Orgs
 // two-column layout at org scope. Left column carries:
-//   - Header (org handle + ULID, +Agent/Collaborator on desktop)
+//   - Header (org handle + ULID, +Agent/User on desktop)
 //   - Search box (submits to /orgs/:orgHandle/search)
 //   - Docos in this org (with a +Doco button)
 //   - Top contributors across the org's Docos
@@ -15,7 +15,7 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
-import { ApiKeysLink, CollaboratorsLink } from "~/components/invite-collaborators-link";
+import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { SiteHeader } from "~/components/site-header";
 import {
   activityRowLifecycle,
@@ -45,7 +45,7 @@ interface OrgDoco {
 }
 
 interface TopContributor {
-  collaboratorId: string;
+  userId: string;
   username: string;
   lastAt: string;
   eventCount: number;
@@ -78,7 +78,7 @@ export async function loader({
   }
   const me = await getCurrentPrincipal(request);
   const myRole = me ? await getOrgRole(org.id, me.id) : null;
-  const canInviteCollaborators = myRole === "owner";
+  const canInviteUsers = myRole === "owner";
 
   return withClient(async (c) => {
     // Docos owned by this org.
@@ -131,27 +131,27 @@ export async function loader({
 
       const contributorRows = (
         await c.query<{
-          collaborator_id: string;
-          collaborator_name: string;
+          user_id: string;
+          user_name: string;
           last_at: Date | string;
           event_count: string;
         }>(
-          `SELECT ae.by_collaborator AS collaborator_id,
-                  COALESCE(c.github_login, c.email, c.id) AS collaborator_name,
+          `SELECT ae.by_user AS user_id,
+                  COALESCE(c.github_login, c.email, c.id) AS user_name,
                   MAX(ae.at) AS last_at,
                   COUNT(*)::text AS event_count
              FROM audit_events ae
-             JOIN collaborators c ON c.id = ae.by_collaborator
+             JOIN users c ON c.id = ae.by_user
             WHERE ae.doco_id = ANY($1::text[])
-            GROUP BY ae.by_collaborator, c.github_login, c.email, c.id
+            GROUP BY ae.by_user, c.github_login, c.email, c.id
             ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
             LIMIT $2`,
           [docoIds, TOP_CONTRIBUTORS_LIMIT],
         )
       ).rows;
       topContributors = contributorRows.map((r) => ({
-        collaboratorId: String(r.collaborator_id),
-        username: String(r.collaborator_name),
+        userId: String(r.user_id),
+        username: String(r.user_name),
         lastAt:
           r.last_at instanceof Date
             ? r.last_at.toISOString()
@@ -169,13 +169,13 @@ export async function loader({
           op: string;
           before_json: Record<string, unknown> | null;
           after_json: Record<string, unknown> | null;
-          collaborator_name: string | null;
+          user_name: string | null;
         }>(
           `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
                   a.before_json, a.after_json,
-                  COALESCE(c.github_login, c.email, c.id) AS collaborator_name
+                  COALESCE(c.github_login, c.email, c.id) AS user_name
              FROM audit_events a
-             LEFT JOIN collaborators c ON c.id = a.by_collaborator
+             LEFT JOIN users c ON c.id = a.by_user
             WHERE a.doco_id = ANY($1::text[])
             ORDER BY a.at DESC
             LIMIT $2`,
@@ -214,7 +214,7 @@ export async function loader({
         return {
           event_id: String(r.event_id),
           at: r.at instanceof Date ? r.at.toISOString() : new Date(String(r.at)).toISOString(),
-          byUsername: r.collaborator_name ? String(r.collaborator_name) : null,
+          byUsername: r.user_name ? String(r.user_name) : null,
           handle: d?.handle ?? "?",
           entity_type: String(r.entity_type),
           entity_id: String(r.entity_id),
@@ -230,7 +230,7 @@ export async function loader({
     return {
       org,
       me,
-      canInviteCollaborators,
+      canInviteUsers,
       docos,
       byDay,
       topContributors,
@@ -248,7 +248,7 @@ export default function OrgHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, canInviteCollaborators, docos, byDay, topContributors, items } = loaderData;
+  const { org, me, canInviteUsers, docos, byDay, topContributors, items } = loaderData;
   const docoItems: DocoListEntry[] = docos.map((d) => ({
     id: d.docoId,
     href: `/${d.handle}`,
@@ -269,9 +269,9 @@ export default function OrgHome({
             <p className="font-mono text-xs text-muted-foreground">{org.id}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {canInviteCollaborators ? <CollaboratorsLink level="org" targetId={org.id} /> : null}
-            {canInviteCollaborators ? <ApiKeysLink /> : null}
-            {canInviteCollaborators ? (
+            {canInviteUsers ? <UsersLink level="org" targetId={org.id} /> : null}
+            {canInviteUsers ? <ApiKeysLink /> : null}
+            {canInviteUsers ? (
               <Link
                 to={`/orgs/${org.handle}/settings`}
                 className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
@@ -330,7 +330,7 @@ export default function OrgHome({
                   <ul className="space-y-1">
                     {topContributors.map((c) => (
                       <li
-                        key={c.collaboratorId}
+                        key={c.userId}
                         className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
                       >
                         <span className="truncate" title={c.username}>

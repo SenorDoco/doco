@@ -10,8 +10,8 @@ describe("parseFeedbackReportInput", () => {
       expected: "An invite link",
       actual: "Unexpected Server Error",
       severity: "high",
-      page_url: "https://doco.test/collaborators",
-      route_path: "/collaborators",
+      page_url: "https://doco.test/users",
+      route_path: "/users",
       client_context: {
         viewport: { width: 1440, height: 900 },
         activity: {
@@ -19,7 +19,7 @@ describe("parseFeedbackReportInput", () => {
             {
               kind: "click",
               target: { tag: "button", text: "Generate invite link" },
-              page: { pathname: "/collaborators" },
+              page: { pathname: "/users" },
             },
           ],
         },
@@ -31,7 +31,7 @@ describe("parseFeedbackReportInput", () => {
       report_type: "bug",
       title: "Invite button exploded",
       severity: "high",
-      route_path: "/collaborators",
+      route_path: "/users",
       client_context: {
         viewport: { width: 1440, height: 900 },
         activity: {
@@ -39,7 +39,7 @@ describe("parseFeedbackReportInput", () => {
             {
               kind: "click",
               target: { tag: "button", text: "Generate invite link" },
-              page: { pathname: "/collaborators" },
+              page: { pathname: "/users" },
             },
           ],
         },

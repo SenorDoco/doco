@@ -52,14 +52,14 @@ describe("/<doco>/api/policies.json", () => {
       dir: "/tmp/doco",
       docoSlug: "bpms",
       ownerSlug: "torre",
-      me: { id: "collaborator_alice", username: "alice" },
+      me: { id: "user_alice", username: "alice" },
       meta: { ownerId: "organization_torre", docoId: "doco_bpms" },
     });
     mocks.listPrincipals.mockResolvedValue([
       {
         id: "principal_alice",
         name: "alice",
-        data: { created_by: "collaborator_alice" },
+        data: { created_by: "user_alice" },
       },
     ]);
     mocks.withIdempotency.mockImplementation(
@@ -82,7 +82,7 @@ describe("/<doco>/api/policies.json", () => {
         policy: "Use qualified doco labels.",
         created_by: "principal_spoofed",
         created_by_principal_id: "principal_spoofed",
-        created_by_collaborator_id: "collaborator_spoofed",
+        created_by_user_id: "user_spoofed",
       }),
       params: { docoHandle: "bpms" },
     } as never);
@@ -124,7 +124,7 @@ describe("/<doco>/api/policies.json", () => {
       "bpms",
       expect.objectContaining({
         authored_by_principal_id: "principal_alice",
-        created_by_collaborator_id: "collaborator_alice",
+        created_by_user_id: "user_alice",
       }),
       "https://doco.test",
     );

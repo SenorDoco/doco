@@ -48,7 +48,7 @@ export async function action({ request }: { request: Request }) {
   try {
     const { handle } = await addOrganizationByHandle({
       handle: requested,
-      ownerCollaboratorId: me.id,
+      ownerUserId: me.id,
       autoSuffix: accept,
     });
     throw redirect(`/orgs/${handle}`);

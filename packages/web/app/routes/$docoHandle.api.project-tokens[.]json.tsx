@@ -85,7 +85,7 @@ export async function action({
     }
     const result = await mintProjectToken({
       doco_id: meta.docoId,
-      created_by_collaborator_id: me.id,
+      created_by_user_id: me.id,
       label: body.label ?? null,
     });
     // The full token is returned ONCE on mint and never again — the

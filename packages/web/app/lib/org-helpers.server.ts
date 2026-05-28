@@ -18,18 +18,18 @@ export interface OrgPublicRow {
   name: string;
 }
 
-/** List every Organization the signed-in collaborator has any role on. */
-export async function listMyOrgs(collaboratorId: string): Promise<MyOrgRow[]> {
+/** List every Organization the signed-in user has any role on. */
+export async function listMyOrgs(userId: string): Promise<MyOrgRow[]> {
   return withClient(async (c) => {
     const r = await c.query<{ id: string; handle: string }>(
       `SELECT o.id, o.handle
          FROM organizations o
         WHERE EXISTS (
           SELECT 1 FROM org_users m
-           WHERE m.org_id = o.id AND m.collaborator_id = $1
+           WHERE m.org_id = o.id AND m.user_id = $1
         )
         ORDER BY handle`,
-      [collaboratorId],
+      [userId],
     );
     return r.rows.map((row) => ({ id: String(row.id), handle: String(row.handle) }));
   });
@@ -64,13 +64,13 @@ export async function resolveOrgByHandle(orgHandle: string): Promise<OrgPublicRo
   });
 }
 
-/** True when the collaborator has any role on the org. */
-export async function isOrgMember(orgId: string, collaboratorId: string): Promise<boolean> {
+/** True when the user has any role on the org. */
+export async function isOrgMember(orgId: string, userId: string): Promise<boolean> {
   return withClient(async (c) => {
-    const r = await c.query(
-      "SELECT 1 FROM org_users WHERE org_id = $1 AND collaborator_id = $2 LIMIT 1",
-      [orgId, collaboratorId],
-    );
+    const r = await c.query("SELECT 1 FROM org_users WHERE org_id = $1 AND user_id = $2 LIMIT 1", [
+      orgId,
+      userId,
+    ]);
     return (r.rowCount ?? 0) > 0;
   });
 }

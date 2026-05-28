@@ -256,9 +256,9 @@ async function loadDialogRelatedDetails(
   }));
 }
 
-const COLLABORATOR_METADATA_KEYS = ["created_by", "updated_by"] as const;
+const USER_METADATA_KEYS = ["created_by", "updated_by"] as const;
 
-async function resolveCollaboratorLabelsForActorIds(
+async function resolveUserLabelsForActorIds(
   c: QueryClient,
   docoId: string,
   actorIds: string[],
@@ -269,7 +269,7 @@ async function resolveCollaboratorLabelsForActorIds(
   const rows = (
     await c.query<{
       actor_id: string;
-      collaborator_id: string | null;
+      user_id: string | null;
       label: string | null;
     }>(
       `WITH input(actor_id) AS (
@@ -278,49 +278,49 @@ async function resolveCollaboratorLabelsForActorIds(
        resolved AS (
          SELECT i.actor_id,
                 COALESCE(
-                  CASE WHEN left(i.actor_id, 13) = 'collaborator_' THEN i.actor_id END,
-                  CASE WHEN left(p.created_by, 13) = 'collaborator_' THEN p.created_by END,
-                  CASE WHEN left(p.data->>'owner_id', 13) = 'collaborator_' THEN p.data->>'owner_id' END,
-                  CASE WHEN left(p.data->>'created_by', 13) = 'collaborator_' THEN p.data->>'created_by' END
-                ) AS collaborator_id
+                  CASE WHEN left(i.actor_id, 13) = 'user_' THEN i.actor_id END,
+                  CASE WHEN left(p.created_by, 13) = 'user_' THEN p.created_by END,
+                  CASE WHEN left(p.data->>'owner_id', 13) = 'user_' THEN p.data->>'owner_id' END,
+                  CASE WHEN left(p.data->>'created_by', 13) = 'user_' THEN p.data->>'created_by' END
+                ) AS user_id
            FROM input i
            LEFT JOIN principals p ON p.doco_id = $1 AND p.id = i.actor_id
        )
        SELECT r.actor_id,
-              r.collaborator_id,
+              r.user_id,
               COALESCE(c.github_login, c.email, c.id) AS label
          FROM resolved r
-         LEFT JOIN collaborators c ON c.id = r.collaborator_id`,
+         LEFT JOIN users c ON c.id = r.user_id`,
       [docoId, requested],
     )
   ).rows;
 
   return new Map(
     rows
-      .map((row) => [row.actor_id, row.label ?? row.collaborator_id] as const)
+      .map((row) => [row.actor_id, row.label ?? row.user_id] as const)
       .filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
   );
 }
 
-async function resolveCollaboratorMetadata(
+async function resolveUserMetadata(
   c: QueryClient,
   docoId: string,
   frontmatter: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const actorIds = COLLABORATOR_METADATA_KEYS.flatMap((key) => {
+  const actorIds = USER_METADATA_KEYS.flatMap((key) => {
     const value = frontmatter[key];
     return typeof value === "string" ? [value] : [];
   });
   if (actorIds.length === 0) return frontmatter;
 
-  const labels = await resolveCollaboratorLabelsForActorIds(c, docoId, actorIds);
+  const labels = await resolveUserLabelsForActorIds(c, docoId, actorIds);
   const next = { ...frontmatter };
-  for (const key of COLLABORATOR_METADATA_KEYS) {
+  for (const key of USER_METADATA_KEYS) {
     const value = next[key];
     if (typeof value !== "string") continue;
     const label = labels.get(value);
     if (label) next[key] = label;
-    else if (value.startsWith("principal_")) next[key] = "Unknown collaborator";
+    else if (value.startsWith("principal_")) next[key] = "Unknown user";
   }
   return next;
 }
@@ -367,11 +367,7 @@ export async function loadNeuronDialogDetail(
   ).rows[0];
   if (!row) return null;
 
-  const frontmatter = await resolveCollaboratorMetadata(
-    c,
-    meta.docoId,
-    parseFrontmatter(row.raw_json),
-  );
+  const frontmatter = await resolveUserMetadata(c, meta.docoId, parseFrontmatter(row.raw_json));
   const name =
     (cfg.primaryField === "name" && row.primary_text ? row.primary_text : null) ??
     stringField(frontmatter, "name") ??
@@ -452,12 +448,12 @@ export async function loadNeuronDialogDetail(
     await c.query<{
       event_id: string;
       at: Date | string;
-      by_collaborator: string | null;
+      by_user: string | null;
       op: string;
       before_json: unknown;
       after_json: unknown;
     }>(
-      `SELECT event_id, at, by_collaborator, op, before_json, after_json
+      `SELECT event_id, at, by_user, op, before_json, after_json
          FROM audit_events
         WHERE doco_id = $1 AND entity_id = $2
         ORDER BY at DESC
@@ -467,7 +463,7 @@ export async function loadNeuronDialogDetail(
   ).rows.map((event) => ({
     event_id: event.event_id,
     at: toIso(event.at) ?? String(event.at),
-    by: event.by_collaborator,
+    by: event.by_user,
     op: event.op,
     before: event.before_json,
     after: event.after_json,

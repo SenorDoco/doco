@@ -73,7 +73,7 @@ describe("generic eval capture API", () => {
     mocks.loadDocoRouteForRead.mockResolvedValue({
       dir: "/tmp/docos/acme",
       docoSlug: "acme",
-      me: { id: "collaborator_author", username: "alice", type: "person", isHuman: true },
+      me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
       ownerSlug: "acme",
     });
@@ -85,7 +85,7 @@ describe("generic eval capture API", () => {
     mocks.withTransaction.mockImplementation((fn) => fn({}));
   });
 
-  it("uses the authenticated collaborator as Eval creator and ignores client provenance", async () => {
+  it("uses the authenticated user as Eval creator and ignores client provenance", async () => {
     const response = await action({
       request: evalRequest({
         eval: "unit exact slug normalization returns canonical handle",
@@ -94,7 +94,7 @@ describe("generic eval capture API", () => {
         expected: "codex-prod-test",
         created_by: "principal_spoofed",
         created_by_principal_id: "principal_spoofed",
-        created_by_collaborator_id: "collaborator_spoofed",
+        created_by_user_id: "user_spoofed",
       }),
       params: { docoHandle: "acme", type: "evals" } as never,
     });
@@ -103,18 +103,16 @@ describe("generic eval capture API", () => {
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         entity_type: "eval",
-        created_by: "collaborator_author",
+        created_by: "user_author",
         data: expect.objectContaining({
-          created_by: "collaborator_author",
+          created_by: "user_author",
           eval: "unit exact slug normalization returns canonical handle",
           kind: "unit",
         }),
       }),
       expect.anything(),
     );
-    expect(mocks.upsertEntity.mock.calls[0][0].data).not.toHaveProperty(
-      "created_by_collaborator_id",
-    );
+    expect(mocks.upsertEntity.mock.calls[0][0].data).not.toHaveProperty("created_by_user_id");
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       id: expect.stringMatching(/^eval_/),

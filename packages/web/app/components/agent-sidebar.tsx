@@ -2228,7 +2228,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     {allMessages.length === 0 && !loadError && bootstrapped ? (
                       <div className="text-[11px] text-muted-foreground">
                         Ask me anything about your Docos — I can search, capture decisions, create
-                        new Docos or orgs, invite collaborators, and take you to any page.
+                        new Docos or orgs, invite users, and take you to any page.
                       </div>
                     ) : null}
                     {allMessages.map((rm, index) => (
@@ -2266,7 +2266,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             )}
 
             {/* Footer pinned at the bottom — explains what Señor Doco is
-          and how a collaborator can mint their own agent token. Out
+          and how a user can mint their own agent token. Out
           of the user's way during conversation but always reachable. */}
             <div className="shrink-0 border-t border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
               Señor Doco runs inside Doco. Want to collaborate with your own agent?{" "}

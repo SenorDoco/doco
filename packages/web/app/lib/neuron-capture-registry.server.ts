@@ -19,7 +19,7 @@ import {
   captureRule,
   captureState,
 } from "~/lib/capture.server";
-import { resolvePrincipalIdForCollaborator } from "~/lib/principal-collaborator.server";
+import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
 export interface MeLike {
   id: string | null;
@@ -50,8 +50,8 @@ export interface RegistryEntry {
  * draft. Two failure modes the validator otherwise rejects:
  *
  *   1. Field missing → fill with the calling user's resolved Principal.
- *   2. Field present but holds a `collaborator_*` id → resolve THAT
- *      collaborator to its Principal in this doco.
+ *   2. Field present but holds a `user_*` id → resolve THAT
+ *      user to its Principal in this doco.
  */
 export async function reconcilePrincipalFields<TDraft extends object>(
   draft: TDraft,
@@ -62,15 +62,15 @@ export async function reconcilePrincipalFields<TDraft extends object>(
 ): Promise<void> {
   if (!me.id) return;
   const mutable = draft as Record<string, unknown>;
-  const mePrincipalPromise = resolvePrincipalIdForCollaborator(docoId, me.id);
+  const mePrincipalPromise = resolvePrincipalIdForUser(docoId, me.id);
 
   for (const field of singularFields) {
     const v = mutable[field];
     if (v === undefined || v === null || v === "") {
       const mePid = await mePrincipalPromise;
       if (mePid) mutable[field] = mePid;
-    } else if (typeof v === "string" && v.startsWith("collaborator_")) {
-      const pid = await resolvePrincipalIdForCollaborator(docoId, v);
+    } else if (typeof v === "string" && v.startsWith("user_")) {
+      const pid = await resolvePrincipalIdForUser(docoId, v);
       if (pid) mutable[field] = pid;
     }
   }
@@ -80,8 +80,8 @@ export async function reconcilePrincipalFields<TDraft extends object>(
     if (!Array.isArray(v)) continue;
     for (let i = 0; i < v.length; i++) {
       const id = v[i];
-      if (typeof id === "string" && id.startsWith("collaborator_")) {
-        const pid = await resolvePrincipalIdForCollaborator(docoId, id);
+      if (typeof id === "string" && id.startsWith("user_")) {
+        const pid = await resolvePrincipalIdForUser(docoId, id);
         if (pid) v[i] = pid;
       }
     }
@@ -91,7 +91,7 @@ export async function reconcilePrincipalFields<TDraft extends object>(
 async function fillEvalAuthorFromAuth(draft: EvalDraft, me: MeLike, docoId: string): Promise<void> {
   if (!me.id) return;
   if (draft.authored_by_principal_id) return;
-  const authorPrincipalId = await resolvePrincipalIdForCollaborator(docoId, me.id);
+  const authorPrincipalId = await resolvePrincipalIdForUser(docoId, me.id);
   if (authorPrincipalId) {
     draft.authored_by_principal_id = authorPrincipalId;
   }

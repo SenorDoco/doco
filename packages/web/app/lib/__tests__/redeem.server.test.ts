@@ -49,7 +49,7 @@ describe("createDocoInOrg", () => {
     const rec = await createDocoInOrg({
       orgId: "org_01",
       requestedHandle: "acme-onboarding",
-      createdByCollaboratorId: "collaborator_01",
+      createdByUserId: "user_01",
       visibility: "private",
       templateHandle: null,
     });
@@ -57,11 +57,11 @@ describe("createDocoInOrg", () => {
     expect(mocks.createHostDocoInOrg).toHaveBeenCalledWith({
       orgId: "org_01",
       requestedHandle: "acme-onboarding",
-      createdByCollaboratorId: "collaborator_01",
+      createdByUserId: "user_01",
       visibility: "private",
       templateHandle: null,
     });
-    expect(mocks.createConversation).toHaveBeenCalledWith("collaborator_01", {
+    expect(mocks.createConversation).toHaveBeenCalledWith("user_01", {
       title: "Chat for acme-onboarding",
       attachedDocoIds: ["doco_01"],
     });

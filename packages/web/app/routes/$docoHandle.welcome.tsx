@@ -54,7 +54,7 @@ export default function NewDocoStep4({
   // Continue lands the user on the Doco home. The old
   // /:handle/onboarding/agent step ("Bootstrap and collaborate")
   // duplicated affordances now reachable from the Doco page itself
-  // (collaborators link + API keys link), so it was removed from
+  // (users link + API keys link), so it was removed from
   // the post-create flow. createdDocoId stays in the URL so the
   // Doco page can highlight the just-created Doco in any "recent"
   // surfaces.
@@ -79,8 +79,8 @@ export default function NewDocoStep4({
                 between neurons)
               </li>
               <li>
-                Collaborators, agents, and tools can query docos and add information (neurons) to
-                them (if they have the permission)
+                Users, agents, and tools can query docos and add information (neurons) to them (if
+                they have the permission)
               </li>
               <li>
                 AI agents collaborating on a doco are always reminded of its policies — a list
