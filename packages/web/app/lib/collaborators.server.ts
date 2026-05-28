@@ -68,20 +68,10 @@ async function enrichPrincipal(id: string, lastActivity: Map<string, string>): P
   const kind: PrincipalKind = c?.kind === "agent" ? "agent" : "person";
   return {
     collaborator_id: id,
-    username: collaboratorDisplayName(c, id),
+    username: id,
     kind,
     last_activity_at: lastActivity.get(id) ?? null,
   };
-}
-
-function collaboratorDisplayName(
-  c: Awaited<ReturnType<typeof getCollaboratorById>>,
-  fallback: string,
-): string {
-  if (!c) return fallback;
-  const named = c.data.name ?? c.data.display_name;
-  if (typeof named === "string" && named.trim()) return named.trim();
-  return c.github_login ?? c.id;
 }
 
 async function loadLastActivity(principalIds: string[]): Promise<Map<string, string>> {
