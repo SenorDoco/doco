@@ -20,7 +20,7 @@ import {
   createSenorDocoMessage,
   missingSenorDocoAnthropicMessage,
 } from "./assistant-runtime.server";
-import { type AuditOp, readAuditEvents } from "./audit-log.server";
+import { type AuditOp, type ReadAuditFilters, readAuditEvents } from "./audit-log.server";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "./doco-access.server";
 import {
   DOCO_API_TOOL,
@@ -61,6 +61,10 @@ const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const SLACK_DOCO_ANSWER_LIMIT = 8;
 const SLACK_LLM_MAX_TOKENS = 600;
 const SLACK_LLM_MAX_TOOL_TURNS = 6;
+const SLACK_LLM_TOOL_LIMIT_PROMPT =
+  "The Slack doco_api tool-turn limit has been reached. Do not request more tools. Answer the current Slack message using only the Doco API results already provided. If those results are insufficient for an exact answer, say what is known and explicitly say the exact answer needs a narrower retry.";
+const SLACK_LLM_TOOL_LIMIT_FALLBACK =
+  "I hit Slack's internal Doco API turn limit before I could finish. I have partial results, but not enough to answer exactly. Please ask me to narrow the time range or retry.";
 
 export interface SlackConfig {
   appId: string | null;
@@ -964,6 +968,18 @@ export async function generateSlackDocoLlmAnswer(
         content: toolResults.map((toolResult) => toolResult.result),
       });
     }
+    if (lastMessage?.stop_reason === "tool_use") {
+      const finalMessage = await createMessage({
+        max_tokens: SLACK_LLM_MAX_TOKENS,
+        temperature: 0.2,
+        system: slackLlmSystemPrompt(),
+        messages: [...messages, { role: "user", content: SLACK_LLM_TOOL_LIMIT_PROMPT }],
+      });
+      return cleanSlackLlmAnswer(slackMessageText(finalMessage) || SLACK_LLM_TOOL_LIMIT_FALLBACK, {
+        footerLines,
+        repairText: input.repairText,
+      });
+    }
     return lastMessage
       ? cleanSlackLlmAnswer(slackMessageText(lastMessage), {
           footerLines,
@@ -1584,28 +1600,128 @@ async function readSlackDocoApiAudit(
     limit = Math.min(parsed, 1000);
   }
 
-  const events = await readAuditEvents(
-    "",
-    {
-      entity_id: searchParams.get("entity_id") ?? undefined,
-      entity_type: searchParams.get("entity_type") ?? undefined,
-      by: searchParams.get("by") ?? undefined,
-      since: searchParams.get("since") ?? undefined,
-      before: searchParams.get("before") ?? undefined,
-      until: searchParams.get("until") ?? undefined,
-      op,
-      limit,
-    },
-    doco.id,
-  );
+  const filters: ReadAuditFilters = {
+    entity_id: searchParams.get("entity_id") ?? undefined,
+    entity_type: searchParams.get("entity_type") ?? undefined,
+    by: searchParams.get("by") ?? undefined,
+    since: searchParams.get("since") ?? undefined,
+    before: searchParams.get("before") ?? undefined,
+    until: searchParams.get("until") ?? undefined,
+    op,
+    limit,
+  };
+  const [events, summary] = await Promise.all([
+    readAuditEvents("", filters, doco.id),
+    readSlackDocoApiAuditSummary(doco.id, filters),
+  ]);
 
   return {
     ok: true,
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
     count: events.length,
+    total_count: summary.totalCount,
+    first_event_at: summary.firstEventAt,
+    last_event_at: summary.lastEventAt,
+    duration_seconds: summary.durationSeconds,
+    average_seconds_per_event: summary.averageSecondsPerEvent,
+    average_seconds_between_events: summary.averageSecondsBetweenEvents,
+    truncated: events.length < summary.totalCount,
     events,
   };
+}
+
+async function readSlackDocoApiAuditSummary(
+  docoId: string,
+  filters: ReadAuditFilters,
+): Promise<{
+  totalCount: number;
+  firstEventAt: string | null;
+  lastEventAt: string | null;
+  durationSeconds: number | null;
+  averageSecondsPerEvent: number | null;
+  averageSecondsBetweenEvents: number | null;
+}> {
+  const where = ["doco_id = $1"];
+  const vals: unknown[] = [docoId];
+  let idx = 2;
+  if (filters.entity_id) {
+    where.push(`entity_id = $${idx++}`);
+    vals.push(filters.entity_id);
+  }
+  if (filters.entity_type) {
+    where.push(`entity_type = $${idx++}`);
+    vals.push(filters.entity_type);
+  }
+  if (filters.op) {
+    const ops = Array.isArray(filters.op) ? filters.op : [filters.op];
+    if (ops.length > 0) {
+      where.push(`op = ANY($${idx++})`);
+      vals.push(ops);
+    }
+  }
+  if (filters.by) {
+    where.push(`by_collaborator = $${idx++}`);
+    vals.push(filters.by);
+  }
+  if (filters.since) {
+    where.push(`at >= $${idx++}`);
+    vals.push(filters.since);
+  }
+  if (filters.before) {
+    where.push(`at < $${idx++}`);
+    vals.push(filters.before);
+  }
+  if (filters.until) {
+    where.push(`at <= $${idx++}`);
+    vals.push(filters.until);
+  }
+
+  const result = await withClient((c) =>
+    c.query<{
+      total_count: string | number;
+      first_event_at: string | Date | null;
+      last_event_at: string | Date | null;
+    }>(
+      `SELECT COUNT(*)::text AS total_count,
+              MIN(at)::text AS first_event_at,
+              MAX(at)::text AS last_event_at
+         FROM audit_events
+        WHERE ${where.join(" AND ")}`,
+      vals,
+    ),
+  );
+  const row = result.rows[0];
+  const totalCount = Number(row?.total_count ?? 0);
+  const firstEventAt = normalizeSlackAuditTimestamp(row?.first_event_at);
+  const lastEventAt = normalizeSlackAuditTimestamp(row?.last_event_at);
+  const durationSeconds = secondsBetweenSlackAuditTimestamps(firstEventAt, lastEventAt);
+  return {
+    totalCount,
+    firstEventAt,
+    lastEventAt,
+    durationSeconds,
+    averageSecondsPerEvent:
+      durationSeconds !== null && totalCount > 0 ? durationSeconds / totalCount : null,
+    averageSecondsBetweenEvents:
+      durationSeconds !== null && totalCount > 1 ? durationSeconds / (totalCount - 1) : null,
+  };
+}
+
+function normalizeSlackAuditTimestamp(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+function secondsBetweenSlackAuditTimestamps(
+  start: string | null,
+  end: string | null,
+): number | null {
+  if (!start || !end) return null;
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+  return Math.max(0, (endMs - startMs) / 1000);
 }
 
 async function readSlackDocoApiPerspectives(
@@ -1923,7 +2039,7 @@ export function slackLlmSystemPrompt(): string {
         "Do not claim access beyond the listed Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
       ],
     }),
-    "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json; GET /<handle>/api/audit.json (supports limit, before, since, until, entity_type, op, by); GET /<handle>/api/perspectives.json; GET /<handle>/api/authoring-contract.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
+    "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json; GET /<handle>/api/audit.json (returns total_count, first_event_at, last_event_at, duration_seconds, average_seconds_per_event, and supports limit, before, since, until, entity_type, op, by); GET /<handle>/api/perspectives.json; GET /<handle>/api/authoring-contract.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
     "Available Slack doco_api writes when this Slack user has linked personal Doco access: POST /api/v1/docos.json; POST /<handle>/api/<type>.json; PATCH /<handle>/api/<type>/<id>.json; POST /<handle>/api/principals.json; PATCH /<handle>/api/principals/<id>.json; POST /<handle>/api/policies.json; POST /<handle>/api/changesets.json.",
     "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
