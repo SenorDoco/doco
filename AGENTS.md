@@ -106,6 +106,24 @@ verification report.
 
 ---
 
+## Re-base a cold session before replying
+
+If there's nothing pending to commit and we haven't exchanged
+messages in over two hours, rebase your branch onto the latest
+`main` before answering my newest message. A quiet gap means `main`
+has probably moved on, and starting from stale state invites
+conflicts; with a clean working tree the rebase is safe — there's no
+uncommitted work to disturb.
+
+```sh
+git fetch origin main && git rebase origin/main
+```
+
+Skip the rebase when there's uncommitted work, or when we're still
+mid-conversation (gap under two hours).
+
+---
+
 <!-- BEGIN DOCO -->
 # STOP — read this every turn, not just once
 
