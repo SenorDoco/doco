@@ -135,11 +135,11 @@ function PerspectiveTab({
     isProposedTab
       ? active
         ? "rounded-t-md border-border bg-card text-foreground"
-        : "rounded-t-md border-border bg-input/60 hover:bg-input/80"
+        : "rounded-t-md border-border bg-input hover:bg-muted"
       : "-ml-px first:ml-0 border-border text-foreground",
     !isProposedTab && isFirst && "rounded-tl-md",
     !isProposedTab && isLast && "rounded-tr-md",
-    !isProposedTab && (active ? "bg-card" : "bg-input/60 hover:bg-input/80"),
+    !isProposedTab && (active ? "bg-card" : "bg-input hover:bg-muted"),
   );
   const tabStyle =
     isProposedTab && !active
@@ -248,7 +248,7 @@ function PerspectiveSettingsMenu({
         // perspective tabs' height, so Safari can't render us shorter
         // than them. Without this, `items-end` on the nav was
         // bottom-aligning a naturally-shorter chevron tab.
-        className="neu-surface-open-bottom relative top-0 z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
+        className="neu-surface-open-bottom relative top-0 z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
