@@ -125,7 +125,7 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
   const docoLabels = await loadDocoLabels([...allDocoIds]);
   const orgHandles = await loadOrgHandles([...allOrgIds]);
 
-  return result.rows.map((row) => {
+  const rows = result.rows.map((row): ApiKeyRow => {
     const grants: ApiKeyScopeGrant[] = [];
     for (const orgId of row.granted_org_ids ?? []) {
       const handle = orgHandles.get(orgId);
@@ -180,6 +180,17 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
       scope_grants: grants,
     };
   });
+
+  rows.sort((a, b) => {
+    if (a.last_used_at && b.last_used_at) {
+      return b.last_used_at.localeCompare(a.last_used_at);
+    }
+    if (a.last_used_at) return -1;
+    if (b.last_used_at) return 1;
+    return b.granted_at.localeCompare(a.granted_at);
+  });
+
+  return rows;
 }
 
 function collaboratorDisplayName(row: {
