@@ -117,6 +117,7 @@ function entry<TDraft>(
     build: () =>
       makeCaptureRoute<TDraft>({
         type,
+        entityType,
         captureFn,
         ...(fillFromAuth ? { fillFromAuth } : {}),
       }) as unknown as ReturnType<typeof makeCaptureRoute<unknown>>,
