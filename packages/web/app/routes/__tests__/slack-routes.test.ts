@@ -12,8 +12,9 @@ const mocks = vi.hoisted(() => ({
   buildSlackConnectCommandResponse: vi.fn(),
   buildSlackAppMentionResponse: vi.fn(),
   fetchSlackConversationContext: vi.fn(),
-  getSlackBotUserId: vi.fn(),
+  getSlackBotIdentity: vi.fn(),
   postSlackMessage: vi.fn(),
+  waitUntil: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
@@ -31,8 +32,12 @@ vi.mock("~/lib/slack.server", () => ({
   buildSlackConnectCommandResponse: mocks.buildSlackConnectCommandResponse,
   buildSlackAppMentionResponse: mocks.buildSlackAppMentionResponse,
   fetchSlackConversationContext: mocks.fetchSlackConversationContext,
-  getSlackBotUserId: mocks.getSlackBotUserId,
+  getSlackBotIdentity: mocks.getSlackBotIdentity,
   postSlackMessage: mocks.postSlackMessage,
+}));
+
+vi.mock("@vercel/functions", () => ({
+  waitUntil: mocks.waitUntil,
 }));
 
 import { loader as callbackLoader } from "../integrations.slack.callback";
@@ -47,13 +52,26 @@ import {
 } from "../integrations.slack.events";
 import { loader as installLoader } from "../integrations.slack.install";
 
+// Slack events are acked immediately; the answer is generated in the background
+// via `waitUntil`. Tests drive the handler through this wrapper so the scheduled
+// background work is flushed before assertions run.
+async function flushSlackBackgroundWork() {
+  await Promise.all(mocks.waitUntil.mock.calls.map(([promise]) => promise as Promise<unknown>));
+}
+
+async function eventsActionThenFlush(args: { request: Request }): Promise<Response> {
+  const response = await eventsAction(args);
+  await flushSlackBackgroundWork();
+  return response;
+}
+
 describe("Slack integration routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSlackConfig.mockReturnValue({ signingSecret: "secret", configured: true });
     mocks.verifySlackRequest.mockResolvedValue(true);
     mocks.fetchSlackConversationContext.mockResolvedValue([]);
-    mocks.getSlackBotUserId.mockResolvedValue("U999");
+    mocks.getSlackBotIdentity.mockResolvedValue({ userId: "U999", botId: "B999" });
   });
 
   it("redirects a signed-in user to Slack OAuth installation", async () => {
@@ -123,7 +141,7 @@ describe("Slack integration routes", () => {
   });
 
   it("answers Slack URL verification events", async () => {
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({ type: "url_verification", challenge: "challenge-code" }),
@@ -145,7 +163,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -202,7 +220,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -264,7 +282,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -331,7 +349,7 @@ describe("Slack integration routes", () => {
       }),
     });
 
-    const response = await eventsAction({ request });
+    const response = await eventsActionThenFlush({ request });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
@@ -343,7 +361,7 @@ describe("Slack integration routes", () => {
   it("posts an app-home message answer from Slack Messages tab events", async () => {
     mocks.buildSlackAppMentionResponse.mockResolvedValue("Hola. I can hear you from Slack.");
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -377,7 +395,7 @@ describe("Slack integration routes", () => {
   });
 
   it("ignores normal channel message events without an app mention", async () => {
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -416,7 +434,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -442,7 +460,7 @@ describe("Slack integration routes", () => {
       latestTs: "1700000001.000100",
       threadTs: "1700000000.000000",
     });
-    expect(mocks.getSlackBotUserId).toHaveBeenCalledWith("T123");
+    expect(mocks.getSlackBotIdentity).toHaveBeenCalledWith("T123");
     expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
@@ -483,7 +501,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -529,6 +547,44 @@ describe("Slack integration routes", () => {
     });
   });
 
+  it("recognizes Señor Doco's prior message by bot id when the user field is absent", async () => {
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("Recognized via bot id.");
+    mocks.getSlackBotIdentity.mockResolvedValue({ userId: null, botId: "B999" });
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "Outside my lane.",
+        ts: "1700000000.000000",
+        userId: null,
+        botId: "B999",
+      },
+    ]);
+
+    const response = await eventsActionThenFlush({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "channel",
+            channel: "C123",
+            user: "U123",
+            text: "How long ago was the last neuron updated?",
+            ts: "1700000010.000100",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      text: "Recognized via bot id.",
+    });
+  });
+
   it("ignores adjacent channel replies when the previous message is not Señor Doco", async () => {
     mocks.fetchSlackConversationContext.mockResolvedValue([
       {
@@ -539,7 +595,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -572,7 +628,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -606,7 +662,7 @@ describe("Slack integration routes", () => {
       },
     ]);
 
-    const response = await eventsAction({
+    const response = await eventsActionThenFlush({
       request: new Request("https://doco.test/integrations/slack/events", {
         method: "POST",
         body: JSON.stringify({
@@ -695,7 +751,7 @@ describe("Slack integration routes", () => {
           ts: "2",
         },
         [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
-        "U999",
+        { userId: "U999", botId: "B999" },
       ),
     ).toBe(true);
     expect(
@@ -707,7 +763,7 @@ describe("Slack integration routes", () => {
           ts: "700",
         },
         [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
-        "U999",
+        { userId: "U999", botId: "B999" },
       ),
     ).toBe(false);
     expect(
@@ -728,7 +784,7 @@ describe("Slack integration routes", () => {
           thread_ts: "1",
         },
         [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
-        "U999",
+        { userId: "U999", botId: "B999" },
       ),
     ).toBe(true);
     expect(
@@ -741,7 +797,7 @@ describe("Slack integration routes", () => {
           thread_ts: "1",
         },
         [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
-        "U999",
+        { userId: "U999", botId: "B999" },
       ),
     ).toBe(true);
     expect(
@@ -754,7 +810,7 @@ describe("Slack integration routes", () => {
           thread_ts: "1",
         },
         [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
-        "U999",
+        { userId: "U999", botId: "B999" },
       ),
     ).toBe(false);
   });
