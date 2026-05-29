@@ -2178,12 +2178,11 @@ export async function captureRule(
   const startedAt = performance.now();
   if (!draft.rule?.trim()) return { error: "rule is required." };
   if (!draft.predicate?.trim()) return { error: "predicate is required." };
-  const author = requiredPrincipalId(
-    draft.authored_by_principal_id,
-    "authored_by_principal_id",
-    "or pass an authenticated request; the route fills it from `me.id`",
-  );
-  if (typeof author !== "string") return author;
+  // Author attribution is optional — same vestige as a Decision's
+  // decided_by (see optionalPrincipalId). Templates that want it can
+  // enforce authored_by via their own requires_field policies.
+  const author = optionalPrincipalId(draft.authored_by_principal_id, "authored_by_principal_id");
+  if (author !== null && typeof author !== "string") return author;
   const authorId = author;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
@@ -2228,7 +2227,7 @@ export async function captureRule(
     expected: true,
     on_violation: severity === "blocker" ? "block" : "warn",
     created_at: now,
-    authored_by: authorId,
+    ...(authorId ? { authored_by: authorId } : {}),
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
   };
