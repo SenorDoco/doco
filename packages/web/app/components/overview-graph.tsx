@@ -1,25 +1,10 @@
-import {
-  type Edge,
-  Handle,
-  MarkerType,
-  type MiniMapNodeProps,
-  type Node,
-  Position,
-} from "@xyflow/react";
-import {
-  type ComponentType,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type Edge, Handle, MarkerType, type Node, Position } from "@xyflow/react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
-import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { CurvedBezierEdge } from "~/components/stable-labeled-edge";
 import {
   highestRankedNodeId,
@@ -167,52 +152,6 @@ function isVisibleInViewport(
     x < size.width + OVERVIEW_NODE_WIDTH * 2 &&
     y < size.height + OVERVIEW_NODE_HEIGHT * 2
   );
-}
-
-// MiniMap node component — mirrors the rounded-rectangle nodes drawn on
-// the canvas, filled with the node's lifecycle color so the minimap is
-// a true scaled silhouette rather than a uniform grid of beige boxes.
-function makeOverviewMiniMapNode(
-  nodeById: Map<string, OverviewGraphNode>,
-): ComponentType<MiniMapNodeProps> {
-  return function OverviewMiniMapNode({
-    id,
-    x,
-    y,
-    width,
-    height,
-    strokeColor,
-    strokeWidth,
-    className,
-    selected,
-    shapeRendering,
-  }: MiniMapNodeProps) {
-    const graphNode = nodeById.get(id);
-    if (!graphNode) return null;
-    const fill = lifecycleColor(nodeLifecycle(graphNode));
-    const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
-    const sw = graphNode.is_center ? (strokeWidth ?? 1) * 2 : (strokeWidth ?? 1);
-    const radius = Math.min(width, height) / 3;
-    const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
-      .filter(Boolean)
-      .join(" ");
-    return (
-      <g className={classes} shapeRendering={shapeRendering}>
-        <rect
-          x={x}
-          y={y}
-          width={width}
-          height={height}
-          rx={radius}
-          ry={radius}
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={sw}
-          style={{ vectorEffect: "non-scaling-stroke" }}
-        />
-      </g>
-    );
-  };
 }
 
 const HIDDEN_HANDLE_STYLE = {
@@ -511,7 +450,6 @@ export function OverviewGraph({
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
   );
-  const MiniMapNode = useMemo(() => makeOverviewMiniMapNode(nodeById), [nodeById]);
   const depthByNodeId = useMemo(
     () => computeDepthFromCenter(renderedNodes, renderedLinks, focusCenterId),
     [renderedNodes, renderedLinks, focusCenterId],
@@ -907,7 +845,6 @@ export function OverviewGraph({
           >
             <Flow.Background gap={20} size={1} />
             <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} />
-            <StandardMiniMap nodeComponent={MiniMapNode} />
           </Flow.ReactFlow>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">

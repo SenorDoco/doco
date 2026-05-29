@@ -8,7 +8,7 @@
 // cycle from infinite-looping the layout.
 //
 // Rendering uses @xyflow/react for parity with the other perspectives
-// (pan / zoom / minimap / fullscreen come for free). Edges are
+// (pan / zoom / fullscreen come for free). Edges are
 // smoothstep so reporting lines render as clean orthogonal connectors,
 // not the curved force-directed paths the overview graph uses.
 
@@ -17,7 +17,6 @@ import {
   type Edge,
   Handle,
   MarkerType,
-  type MiniMapNodeProps,
   type Node,
   type NodeProps,
   Position,
@@ -25,8 +24,8 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
-import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { focalEdgeWidth } from "~/lib/graph-depth";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { ORG_TREE_NODE_H, ORG_TREE_NODE_W, layoutOrgTree } from "~/lib/org-tree-layout";
@@ -111,56 +110,6 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
 
 const nodeTypes = { orgTreeNode: OrgTreeCard };
 
-// MiniMap node component — mirrors each Principal card as a small
-// rounded rectangle filled with its lifecycle color, with a thicker
-// stroke on the focal node. Same shape contract Graph and BPMN use,
-// so the org-tree minimap reads as a true silhouette rather than the
-// empty viewport box React Flow falls back to when no nodeComponent
-// is passed.
-function makeOrgTreeMiniMapNode(
-  nodeById: Map<string, OrgTreeNode>,
-  centerId: string | null,
-): ComponentType<MiniMapNodeProps> {
-  return function OrgTreeMiniMapNode({
-    id,
-    x,
-    y,
-    width,
-    height,
-    strokeColor,
-    strokeWidth,
-    className,
-    selected,
-    shapeRendering,
-  }: MiniMapNodeProps) {
-    const principal = nodeById.get(id);
-    if (!principal) return null;
-    const fill = lifecycleColor(principal.lifecycle);
-    const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
-    const sw = id === centerId ? (strokeWidth ?? 1) * 2 : (strokeWidth ?? 1);
-    const radius = Math.min(width, height) / 3;
-    const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
-      .filter(Boolean)
-      .join(" ");
-    return (
-      <g className={classes} shapeRendering={shapeRendering}>
-        <rect
-          x={x}
-          y={y}
-          width={width}
-          height={height}
-          rx={radius}
-          ry={radius}
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={sw}
-          style={{ vectorEffect: "non-scaling-stroke" }}
-        />
-      </g>
-    );
-  };
-}
-
 function OrgTreeInner({
   nodes,
   visibleLifecycles,
@@ -183,9 +132,8 @@ function OrgTreeInner({
       position: n.position,
       // initialWidth/Height (NOT style.width/height) seed React Flow's
       // `node.measured.{width,height}` before its ResizeObserver
-      // settles. The MiniMap reads `measured` to render silhouettes —
-      // without these the MiniMap stays blank because it can't size
-      // the per-node rect. Mirrors the Graph perspective.
+      // settles, so the initial fitView computes against real sizes
+      // instead of zeros. Mirrors the Graph perspective.
       initialWidth: ORG_TREE_NODE_W,
       initialHeight: ORG_TREE_NODE_H,
       data: {
@@ -240,18 +188,6 @@ function OrgTreeInner({
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
-
-  // Per-Principal lookup used by the minimap to color each node by
-  // its lifecycle. Rebuilt only when filtering changes.
-  const principalById = useMemo(() => {
-    const map = new Map<string, OrgTreeNode>();
-    for (const n of filtered) map.set(n.id, n);
-    return map;
-  }, [filtered]);
-  const MiniMapNode = useMemo(
-    () => makeOrgTreeMiniMapNode(principalById, centerId ?? null),
-    [principalById, centerId],
-  );
 
   // Candidates for the shared numbering hook. Canvas-space positions
   // (already computed by `layoutOrgTree`) + node dimensions in canvas
@@ -367,7 +303,6 @@ function OrgTreeInner({
       >
         <Background gap={20} size={1} />
         <StandardControls fitViewOptions={{ padding: 0.2 }} />
-        <StandardMiniMap nodeComponent={MiniMapNode} />
       </ReactFlow>
       {/* Fullscreen toggle lives on PerspectiveFrame. */}
     </div>
