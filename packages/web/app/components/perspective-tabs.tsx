@@ -258,12 +258,12 @@ function PerspectiveSettingsMenu({
         <div
           ref={menuRef}
           aria-label="Perspectives"
-          // Absolute positions against the nav (its `relative`
-          // ancestor). right-0 top-full anchors bottom-right of the
-          // nav, directly under the chevron tab. w-60 keeps the menu
-          // narrow enough to fit inside the aside even when the
-          // chevron sits at the right edge of a narrow nav.
-          className="neu-floating absolute right-0 top-full z-[70] mt-1 w-60 rounded-md bg-card p-2"
+          // Absolute against the nav (its `relative` ancestor). Anchored
+          // left-0 top-full so a w-60 menu opens rightward into the wide
+          // canvas. right-0 made the menu overhang the narrow nav's left
+          // edge, past the page's overflow-y-auto <main> (whose overflow-x
+          // then computes to auto) — which clipped the menu's left ~31px.
+          className="neu-floating absolute left-0 top-full z-[70] mt-1 w-60 rounded-md bg-card p-2"
         >
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Attached
