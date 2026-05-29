@@ -88,7 +88,7 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
         Integrations
       </NavLink>
       <NavLink to="/users" className={linkClass} onClick={onNavigate}>
-        Users
+        Collaborators
       </NavLink>
       <NavLink to="/api-keys" className={linkClass} onClick={onNavigate}>
         Access tokens

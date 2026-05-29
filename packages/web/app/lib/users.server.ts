@@ -256,12 +256,29 @@ function buildUserInviteData({
     maxRole: s.myRole,
   }));
 
+  // Pre-select the invite target from the URL. The page (and the Doco's
+  // "Collaborators" tab) links here with the modern `?scope=<level>:<id>`
+  // param; older links used separate `?level=&target_id=`. Prefer scope,
+  // fall back to the legacy pair.
+  let requestedLevel = parseInviteLevel(url.searchParams.get("level"));
+  let requestedTargetId = url.searchParams.get("target_id")?.trim() ?? "";
+  const scope = url.searchParams.get("scope")?.trim() ?? "";
+  if (scope && scope !== "all") {
+    const sep = scope.indexOf(":");
+    const scopedLevel = parseInviteLevel(sep === -1 ? scope : scope.slice(0, sep));
+    const scopedTargetId = sep === -1 ? "" : scope.slice(sep + 1).trim();
+    if (scopedLevel && scopedTargetId) {
+      requestedLevel = scopedLevel;
+      requestedTargetId = scopedTargetId;
+    }
+  }
+
   return {
     orgs: inviteOrgs,
     docos: inviteDocos,
     defaultSelection: resolveInviteDefaultSelection({
-      requestedLevel: parseInviteLevel(url.searchParams.get("level")),
-      requestedTargetId: url.searchParams.get("target_id")?.trim() ?? "",
+      requestedLevel,
+      requestedTargetId,
       orgs: inviteOrgs,
       docos: inviteDocos,
     }),
