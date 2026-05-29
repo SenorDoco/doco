@@ -84,12 +84,16 @@ const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "outcome",
   "superseded_by",
   "intent_ids_add",
-  // PR/commit Reference links accrue *after* a Decision is accepted —
-  // the PRs that implement it land later. Additive only (mirrors
-  // `intent_ids_add`): you record new implementing references as they
-  // ship; you don't rewrite or drop the implementation history on a
-  // frozen claim. This is the edge the deployment-status rollup walks.
+  // Code-artifact References accrue and *move* throughout a claim's
+  // lifetime. For a Decision/ADR: PRs land after acceptance. For an
+  // Action (BPMN step): the code that implements the step gets
+  // refactored, split, renamed — and the Action's own ID is referenced
+  // from code-comment URLs, so forcing supersession on every refactor
+  // would break those URLs. Full replace allowed (additive + remove +
+  // replace) on frozen claims; audit_events still records every change.
+  "implemented_by",
   "implemented_by_add",
+  "implemented_by_remove",
   // Graph/perspective relations may be attached after a claim is activated.
   // The claim text stays frozen; the flow edge is authored separately.
   "sequence_to",
