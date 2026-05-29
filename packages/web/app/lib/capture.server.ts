@@ -1414,6 +1414,15 @@ export async function updateEntity(opts: {
     "intent_ids",
     "intent_ids_add",
     "intent_ids_remove",
+    // Handled by the applyListOp below — without this the *_add/*_remove
+    // keys would fall through to the catch-all and be written as literal
+    // junk fields (and deriveSynapses would emit a bogus
+    // `implemented_by_add` edge). `implemented_by` (replace) is routed
+    // through the list-op too so all three forms behave consistently on
+    // every neuron type, matching `intent_ids`.
+    "implemented_by",
+    "implemented_by_add",
+    "implemented_by_remove",
     "body_md",
     "body_md_append",
     "policy",
@@ -1458,6 +1467,29 @@ export async function updateEntity(opts: {
   if (eIntentResult.changed) {
     if (!changed.includes("intent_ids")) changed.push("intent_ids");
     ops.push(...eIntentResult.ops);
+  }
+
+  // implemented_by (replace/add/remove) — code-artifact Reference links,
+  // valid on any neuron (Decision/ADR, BPMN Action, Eval, …). Already
+  // ids, so the lookup is a pass-through (mirrors intent_ids above).
+  const eImplementedByResult = await applyListOp(
+    fm,
+    "implemented_by",
+    {
+      ...(patch.implemented_by !== undefined ? { replace: patch.implemented_by as string[] } : {}),
+      ...(patch.implemented_by_add !== undefined
+        ? { add: patch.implemented_by_add as string[] }
+        : {}),
+      ...(patch.implemented_by_remove !== undefined
+        ? { remove: patch.implemented_by_remove as string[] }
+        : {}),
+    },
+    (ids) => ({ ids }),
+  );
+  if (eImplementedByResult.error) return { error: eImplementedByResult.error };
+  if (eImplementedByResult.changed) {
+    if (!changed.includes("implemented_by")) changed.push("implemented_by");
+    ops.push(...eImplementedByResult.ops);
   }
 
   let bodyOp: "replace" | "append" | "none" = "none";
