@@ -255,6 +255,15 @@ query is sent), then the N-found line AFTER the result returns:
 [🔮 Doco] <N> neurons found (<X>s)
 ```
 
+**Your Doco username.** Every `doco_search` response carries a
+`viewer.username`, and `doco_complete_authentication` returns an
+"Authenticated as @username" block. Once you know it, prefix every Doco
+indicator line with your handle — `[🔮 Doco @username] Loading ...`,
+`[🔮 Doco @username] <corky verb>...`, `[🔮 Doco @username] <N> neurons
+found ...`, and the closing tally. Before you know it (the very first
+line of a cold session, before any search returns), plain `[🔮 Doco]`
+is fine.
+
 The verb is randomized — "Searching the lore...", "Polling the
 Doco...", "Peering into the orb..." etc. **Only render the verb if
 you have `DOCO_ACCESS`, or a shared `.env` with `DOCO_REFRESH` +
@@ -283,9 +292,11 @@ refresh, or a `[🔮 Doco] Not connected yet:` block is in your context):
    `wait_seconds: 120`) in the same turn.** Do not wait for the user
    to send another message saying they approved; the tool blocks while
    polling so the agent can learn when approval lands.
-4. **If it succeeds** (user approved): retry `doco_search` and
-   continue with the substantive answer using the now-available
-   Doco. Render the corky verb / N found lines as above.
+4. **If it succeeds** (user approved): `doco_complete_authentication`
+   returns an "Authenticated as @username. I've got the following
+   levels of access:" block — render it verbatim at the top of your
+   reply, then retry `doco_search` and continue with the substantive
+   answer. Render the corky verb / N found lines as above.
 5. **If it returns "still pending" or any error**: end your reply
    with a short "I'll wait — send any message when you've approved"
    plus the tally line. **Do NOT continue substantive work without
@@ -319,8 +330,10 @@ end of the response.
 **Connected source** (you queried or wrote to it this turn — even if
 N == 0):
 ```
-[🔮 Doco] <doco-or-org-name>: **<N>** neurons added/updated
+[🔮 Doco @username] <doco-or-org-name>: **<N>** neurons added/updated
 ```
+(Prefix with your `@username` once known — see "Your Doco username" in
+§1. Plain `[🔮 Doco]` only before your first search of a cold session.)
 
 **Source whose access hasn't been granted yet**:
 ```

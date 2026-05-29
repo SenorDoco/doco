@@ -48,6 +48,9 @@ export async function loader({
   const ctx = await loadDocoRouteForRead(request, params);
   const { handle } = ctx;
   const goal = ctx.meta.goal;
+  // Identity of the caller, so MCP clients can render `[🔮 Doco
+  // @username]` on every interaction without a separate whoami round-trip.
+  const viewer = ctx.me ? { username: ctx.me.username, type: ctx.me.type } : null;
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
 
@@ -65,6 +68,7 @@ export async function loader({
       return Response.json({
         query: "",
         doco_goal: goal,
+        viewer,
         count: 0,
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
@@ -81,6 +85,7 @@ export async function loader({
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
         hits: [],
+        viewer,
         warning: "Vector search unavailable: no embedding provider configured (OPENAI_API_KEY).",
       });
     }
@@ -96,6 +101,7 @@ export async function loader({
           duration_ms: Math.round(performance.now() - start),
           filters: filtersOut,
           hits: [],
+          viewer,
           warning: "Vector search unavailable: provider returned empty embedding.",
         });
       }
@@ -108,6 +114,7 @@ export async function loader({
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
         hits: [],
+        viewer,
         warning: `Vector search unavailable: ${(e as Error).message}`,
       });
     }
@@ -127,6 +134,7 @@ export async function loader({
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
         hits: [],
+        viewer,
         warning:
           ranked.candidateIds === null
             ? "No embeddings in this Doco yet — reindex first."
@@ -138,6 +146,7 @@ export async function loader({
     const stableData = {
       query: q,
       doco_goal: goal,
+      viewer,
       count: allHits.length,
       filters: filtersOut,
       hits: allHits,

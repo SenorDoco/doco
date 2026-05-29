@@ -40,14 +40,28 @@ export interface CurrentPrincipal {
   email?: string;
 }
 
+/**
+ * Human-facing display name for a user/agent. Agents carry a free-text
+ * `data.name` set at authorization time (and editable later by an owner
+ * of the org the agent belongs to); people fall back to their GitHub
+ * login. The raw id is the last resort so a row never renders blank.
+ */
+export function userDisplayName(row: {
+  id: string;
+  github_login: string | null;
+  data: Record<string, unknown>;
+}): string {
+  const named = row.data?.name ?? row.data?.display_name;
+  if (typeof named === "string" && named.trim()) return named.trim();
+  return row.github_login ?? row.id;
+}
+
 function rowToPrincipal(row: UserRow): CurrentPrincipal {
   const type: "person" | "agent" = row.kind === "agent" ? "agent" : "person";
   const isHuman = row.kind === "person" || Boolean(row.github_login);
-  const named = row.data.name ?? row.data.display_name;
-  const agentName = typeof named === "string" && named.trim() ? named.trim() : null;
   const out: CurrentPrincipal = {
     id: row.id,
-    username: agentName ?? row.github_login ?? row.id,
+    username: userDisplayName(row),
     type,
     isHuman,
   };
