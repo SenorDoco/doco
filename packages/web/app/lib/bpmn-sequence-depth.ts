@@ -48,14 +48,25 @@ export function computeForwardSequenceDepths(
 
   const componentByNode = computeStrongComponents(nodeIds, sequenceLinks);
   const predecessorByNode = new Map<string, string[]>();
-  for (const id of nodeIds) predecessorByNode.set(id, []);
+  const successorByNode = new Map<string, string[]>();
+  for (const id of nodeIds) {
+    predecessorByNode.set(id, []);
+    successorByNode.set(id, []);
+  }
+  // Nodes with at least one incoming sequence edge in the raw graph,
+  // before any feedback-edge demotion. Lets us tell a genuine flow
+  // source (no inbound at all) apart from a loop member whose only
+  // inbound edge got demoted as a loopback.
+  const hadIncomingSequenceEdge = new Set<string>();
 
   for (const link of sequenceLinks) {
+    hadIncomingSequenceEdge.add(link.target);
     const sameComponent = componentByNode.get(link.source) === componentByNode.get(link.target);
     if (sameComponent && compareNaturalOrder(link.target, link.source, nodeById, depthFloor) <= 0) {
       continue;
     }
     predecessorByNode.get(link.target)?.push(link.source);
+    successorByNode.get(link.source)?.push(link.target);
   }
 
   const depthByNode = new Map<string, number>();
@@ -75,6 +86,40 @@ export function computeForwardSequenceDepths(
   };
 
   for (const id of nodeIds) depthOf(id);
+
+  // Re-anchor feedback orphans. A node whose every incoming sequence
+  // edge was demoted as a loopback has no surviving predecessor, so the
+  // longest-path walk parks it at column 0 — flinging a loop member to
+  // the far left with a long connector reaching back to the loop. Pull
+  // each such node to just left of its nearest kept successor so it
+  // renders beside the loop it belongs to. A genuine source (no inbound
+  // edge at all) is not in `hadIncomingSequenceEdge`, so it stays at 0.
+  const isFeedbackOrphan = (id: string): boolean =>
+    hadIncomingSequenceEdge.has(id) && (predecessorByNode.get(id)?.length ?? 0) === 0;
+
+  const anchorVisiting = new Set<string>();
+  const anchoredDepthOf = (id: string): number => {
+    const base = depthByNode.get(id) ?? 0;
+    if (!isFeedbackOrphan(id) || anchorVisiting.has(id)) return base;
+    const successors = successorByNode.get(id) ?? [];
+    if (successors.length === 0) return base;
+    anchorVisiting.add(id);
+    let nearestSuccessor = Number.POSITIVE_INFINITY;
+    for (const successor of successors) {
+      nearestSuccessor = Math.min(nearestSuccessor, anchoredDepthOf(successor));
+    }
+    anchorVisiting.delete(id);
+    // Sit one column left of the nearest successor; never left of the
+    // node's own longest-path floor (so we only ever pull rightward).
+    return Number.isFinite(nearestSuccessor) ? Math.max(base, nearestSuccessor - 1) : base;
+  };
+
+  const anchoredDepths = new Map<string, number>();
+  for (const id of nodeIds) {
+    if (isFeedbackOrphan(id)) anchoredDepths.set(id, anchoredDepthOf(id));
+  }
+  for (const [id, depth] of anchoredDepths) depthByNode.set(id, depth);
+
   return depthByNode;
 }
 

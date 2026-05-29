@@ -37,6 +37,46 @@ describe("computeForwardSequenceDepths", () => {
     expect(depths.get("action_checkout")).toBeGreaterThan(depths.get("decision_route") ?? 0);
   });
 
+  it("anchors a loop member beside its deep gateway instead of column 0", () => {
+    // start -> mid -> gateway is the main chain (gateway is deep). The
+    // loading step only connects to the gateway, both ways (a loop), and
+    // was authored before the gateway — so the gateway->loading edge is
+    // the demoted loopback, leaving loading with no surviving predecessor.
+    const depths = computeForwardSequenceDepths(
+      [
+        { id: "action_start", created_at: "2026-05-26T00:00:00.000Z" },
+        { id: "action_mid", created_at: "2026-05-26T00:01:00.000Z" },
+        { id: "action_loading", created_at: "2026-05-26T00:02:00.000Z" },
+        { id: "decision_gateway", created_at: "2026-05-26T00:09:00.000Z" },
+      ],
+      [
+        { source: "action_start", target: "action_mid", synapse_type: "sequence_flow" },
+        { source: "action_mid", target: "decision_gateway", synapse_type: "sequence_flow" },
+        { source: "action_loading", target: "decision_gateway", synapse_type: "sequence_flow" },
+        // loopback (demoted): gateway routes back to the loading step
+        { source: "decision_gateway", target: "action_loading", synapse_type: "sequence_flow" },
+      ],
+    );
+
+    const gateway = depths.get("decision_gateway") ?? 0;
+    const loading = depths.get("action_loading") ?? 0;
+    expect(gateway).toBeGreaterThanOrEqual(2); // deep via the main chain
+    // The loading step sits one column left of the gateway, not at 0.
+    expect(loading).toBe(gateway - 1);
+  });
+
+  it("leaves a genuine flow source (no inbound edge) at column 0", () => {
+    const depths = computeForwardSequenceDepths(
+      [
+        { id: "action_root", created_at: "2026-05-26T00:00:00.000Z" },
+        { id: "action_next", created_at: "2026-05-26T00:05:00.000Z" },
+      ],
+      [{ source: "action_root", target: "action_next", synapse_type: "sequence_flow" }],
+    );
+    expect(depths.get("action_root")).toBe(0);
+    expect(depths.get("action_next")).toBe(1);
+  });
+
   it("ignores association synapses when computing BPMN columns", () => {
     const depths = computeForwardSequenceDepths(
       [
