@@ -69,10 +69,12 @@ export interface StableLabeledEdgeData extends Record<string, unknown> {
   labelBoxStyle?: CSSProperties;
   labelOpacity?: number;
   labelZIndex?: number;
-  /** Columns this edge spans. When >= 2 the edge likely crosses an
-   *  intermediate neuron, so the renderer bows it vertically to arc
-   *  around them instead of cutting straight through. */
-  bowSpan?: number;
+  /** Vertical bow applied when a neuron blocks this edge's straight path.
+   *  `bowLift` is the cubic control-point offset in px; `bowDir` is -1 to
+   *  arc up (toward smaller y) or 1 to arc down. Both are set by the
+   *  layout (which knows node geometry); absent means render straight. */
+  bowDir?: 1 | -1;
+  bowLift?: number;
 }
 
 export type StableLabeledEdgeModel = Edge<StableLabeledEdgeData>;
@@ -129,23 +131,20 @@ export function StableLabeledBezierEdge({
   data,
   style,
 }: EdgeProps<StableLabeledEdgeModel>) {
-  const bowSpan = typeof data?.bowSpan === "number" ? data.bowSpan : 0;
+  const bowLift = typeof data?.bowLift === "number" ? data.bowLift : 0;
+  const bowDir = data?.bowDir === 1 ? 1 : -1;
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
-  // Forward edges that skip a column get bowed into the inter-row gap so
-  // they arc over the neurons between their endpoints rather than cutting
-  // straight through. U-turn loopbacks (target left of source) and short
-  // edges fall through to bezierOrLoopPath, which already gives the
-  // feedback loop its cusp-free apex and ordinary edges a plain bezier.
-  const shouldBow = bowSpan >= 2 && dx > 24 && Math.abs(dy) < 56;
+  // The layout sets bowLift/bowDir only when a neuron actually blocks the
+  // edge's straight path (and which way to arc around it); here we just
+  // apply that vertical lift so the edge bows over/under the obstacle.
+  // U-turn loopbacks and unblocked edges keep bezierOrLoopPath.
+  const shouldBow = bowLift > 0 && dx > 24 && Math.abs(dy) < 80;
   let path: string;
   let labelX: number;
   let labelY: number;
   if (shouldBow) {
-    // Direction is chosen deterministically per edge so a bundle of long
-    // edges fans up/down instead of stacking on a single arc. Magnitude
-    // grows with the span but stays within roughly one inter-row gap.
-    const lift = Math.min(84, 40 + bowSpan * 16) * edgeBowDirection(id);
+    const lift = bowLift * bowDir;
     const c1x = sourceX + dx * 0.25;
     const c2x = sourceX + dx * 0.75;
     path = `M${sourceX},${sourceY} C${c1x},${sourceY + lift} ${c2x},${targetY + lift} ${targetX},${targetY}`;
@@ -193,18 +192,4 @@ export function StableLabeledBezierEdge({
       ) : null}
     </>
   );
-}
-
-/**
- * Stable up/down choice for an edge's vertical bow, derived from its id
- * so the same edge always bows the same way (no flicker on re-render)
- * while a bundle of edges still splits between arcing up and down.
- * Returns -1 (bow up, toward smaller y) or 1 (bow down).
- */
-function edgeBowDirection(id: string): 1 | -1 {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return (hash & 1) === 0 ? -1 : 1;
 }
