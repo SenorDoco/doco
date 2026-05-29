@@ -300,6 +300,14 @@ query is sent), then the N-found line AFTER the result returns:
 [🔮 Doco] <N> relevant neurons found (<X.X>s)
 \`\`\`
 
+**Your Doco username.** Every \`doco_search\` response carries a
+\`viewer.username\`, and \`doco_complete_authentication\` returns an
+"Authenticated as @username" block. Once you know it, prefix every Doco
+indicator line with your handle — \`[🔮 Doco @username] <querying-verb>\`,
+\`[🔮 Doco @username] <N> relevant neurons found …\`, and the closing
+tally. Before you know it (the very first line of a cold session, before
+any search returns), plain \`[🔮 Doco]\` is fine.
+
 Pick \`<querying-verb>\` at random:
 
 Querying... · Looking it up... · Asking around... · Reading the room... ·
@@ -342,8 +350,11 @@ bootstrap couldn't reach Doco):
    \`wait_seconds: 120\` in the same turn.** Do not wait for the user
    to send another message saying they approved; the tool blocks while
    polling so the agent can learn when approval lands.
-4. **If it succeeds**: retry \`doco_search\` and continue with the
-   substantive answer using the now-available Doco.
+4. **If it succeeds**: \`doco_complete_authentication\` returns an
+   "Authenticated as @username. I've got the following levels of
+   access:" block — render it verbatim at the top of your reply, then
+   retry \`doco_search\` and continue with the substantive answer using
+   the now-available Doco.
 5. **If it returns "still pending" or any error**: end your reply
    with a short "I'll wait — send any message when you've approved"
    plus the tally line. **Do NOT continue substantive work without
@@ -381,8 +392,12 @@ Render one tally line per source the agent has potential access to
 **Connected source** (you queried or wrote — even if N == 0):
 
 \`\`\`
-[🔮 Doco] <doco-or-org-name>: **<N>** neurons added/updated
+[🔮 Doco @username] <doco-or-org-name>: **<N>** neurons added/updated
 \`\`\`
+
+(Prefix with your \`@username\` once you know it — see "Your Doco
+username" in section 1. Plain \`[🔮 Doco]\` only before your first
+search of a cold session.)
 
 **Source whose access hasn't been granted yet**:
 

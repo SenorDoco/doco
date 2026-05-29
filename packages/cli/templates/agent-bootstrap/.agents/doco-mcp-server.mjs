@@ -108,7 +108,7 @@ const SERVER_INSTRUCTIONS = [
   "source via a typed relation. Use `relate_many` when sibling relations",
   "must become valid together, such as exhaustive gateway branches or tree",
   "siblings; adding one edge at a time can create invalid intermediate",
-  "states. For BPMN, use `relation_kind: \"sequence_flow\"`, which stores",
+  'states. For BPMN, use `relation_kind: "sequence_flow"`, which stores',
   "forward flow on the source node's `sequence_to`; do not use",
   "`preceded_by` as BPMN control flow.",
   "",
@@ -134,6 +134,17 @@ const SERVER_INSTRUCTIONS = [
   "- Before calling doco_search, render `[🔮 Doco] <corky verb>...` (only",
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
   "- After doco_search succeeds, render `[🔮 Doco] N neurons found (X.Xs)`.",
+  "",
+  "Your Doco username: every doco_search response carries a",
+  "`viewer.username`, and doco_complete_authentication returns an",
+  '"Authenticated as @username" block naming you and your access levels.',
+  "Once you know your username, prefix EVERY Doco indicator line with it —",
+  "`[🔮 Doco @username] Loading ...`, `[🔮 Doco @username] N neurons",
+  "found ...`, and the closing tally line. Before you know it (the very",
+  "first line of a cold session, before any search returns), plain",
+  "`[🔮 Doco]` is fine. When doco_complete_authentication succeeds, render",
+  "its \"Authenticated as @username. I've got the following levels of",
+  'access:" block verbatim at the top of that reply.',
   "",
   "If doco_search returns 401/403 (after this server has checked the shared",
   "repo .env and tried DOCO_REFRESH when available):",
@@ -616,6 +627,9 @@ async function handleCompleteAuthenticate(message) {
       clearDeviceState();
       const role = state.requested_role || "reader";
       const handle = state.target_doco_handle || "(unknown handle)";
+      // Pull the freshly-minted token's identity so the success message
+      // can tell the user their Doco username and access levels.
+      const identity = await fetchIdentity(host, accessToken);
       return send({
         jsonrpc: "2.0",
         id: message.id,
@@ -623,7 +637,7 @@ async function handleCompleteAuthenticate(message) {
           content: [
             {
               type: "text",
-              text: formatAuthSuccessText({ handle, role, accessToken, host }),
+              text: formatAuthSuccessText({ handle, role, accessToken, host, identity }),
             },
           ],
         },
@@ -729,7 +743,56 @@ async function pollTokenOnce(host, clientId, deviceCode) {
   }
 }
 
-function formatAuthSuccessText({ handle, role, accessToken, host }) {
+// Fetch the caller's Doco identity (username + access levels) for the
+// freshly-minted access token. Returns null on any failure — the auth
+// success message degrades to the generic wording when identity can't
+// be resolved. Best-effort: never block the auth result on it.
+async function fetchIdentity(host, access) {
+  if (!access) return null;
+  try {
+    const url = new URL("/api/v1/whoami.json", host);
+    const result = await requestJson(url, { access });
+    if (!result.ok || !result.body || typeof result.body !== "object") return null;
+    return result.body;
+  } catch {
+    return null;
+  }
+}
+
+// Build the "Authenticated as @username, with these levels of access"
+// block the agent renders to the user, then the credential-persistence
+// guidance. `identity` is the /api/v1/whoami.json payload (or null).
+function formatIdentityBlock(identity) {
+  const username = String(identity?.username || "").trim();
+  if (!username) return "";
+  const grants = Array.isArray(identity?.grants) ? identity.grants : [];
+  const lines = [
+    "RENDER THIS BLOCK VERBATIM AT THE TOP OF YOUR REPLY:",
+    "",
+    "---",
+    `[🔮 Doco] Authenticated as @${username}. I've got the following levels of access:`,
+    "",
+  ];
+  if (grants.length === 0) {
+    lines.push("* (no Doco or org grants yet — ask an owner to invite you)");
+  } else {
+    for (const g of grants) {
+      const scope = String(g?.scope || "").trim();
+      const label = String(g?.label || "").trim();
+      const grantRole = String(g?.role || "").trim();
+      lines.push(`* ${label}${scope ? ` (${scope})` : ""}: ${grantRole}`);
+    }
+  }
+  lines.push("---");
+  lines.push("");
+  lines.push(
+    `From now on, prefix your Doco indicator lines with your handle: [🔮 Doco @${username}].`,
+  );
+  lines.push("");
+  return lines.join("\n");
+}
+
+function formatAuthSuccessText({ handle, role, accessToken, host, identity }) {
   // After a successful device-flow auth, every fresh container or new
   // clone has to repeat this dance — unless the user persists the
   // credential somewhere durable. Surface the two options the protocol
@@ -743,7 +806,9 @@ function formatAuthSuccessText({ handle, role, accessToken, host }) {
   // both and let the user pick than to guess wrong.
   const tokenSuffix = accessToken ? accessToken.slice(-6) : "";
   const tokenHint = tokenSuffix ? ` (token ending …${tokenSuffix})` : "";
+  const identityBlock = formatIdentityBlock(identity);
   return [
+    identityBlock,
     `Authenticated. Wrote DOCO_ACCESS to ./.env (mode 0600). You now have ${role} access to Doco '${handle}'${tokenHint}. Retry doco_search.`,
     "",
     "TELL THE USER ONCE, NOW: this auth dance repeats on every fresh container or new machine unless they persist the credential. The two options:",
@@ -768,13 +833,20 @@ function formatHits(body, handle) {
   // the agent sees what this Doco is for the moment it queries it.
   const goal = String(body.doco_goal || "").trim();
   const goalPrefix = goal ? `Doco goal: ${goal}\n\n` : "";
+  // The caller's Doco username rides along too, so the agent can prefix
+  // its indicator lines with `[🔮 Doco @username]` without a separate
+  // whoami call.
+  const username = String(body.viewer?.username || "").trim();
+  const whoPrefix = username
+    ? `You are authenticated as @${username}. Prefix Doco indicator lines this turn with [🔮 Doco @${username}].\n\n`
+    : "";
 
   if (count === 0) {
-    return `${goalPrefix}No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;
+    return `${whoPrefix}${goalPrefix}No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;
   }
 
   const lines = [
-    `${goalPrefix}Found ${count} neuron${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
+    `${whoPrefix}${goalPrefix}Found ${count} neuron${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
     "",
   ];
   for (const hit of hits) {
