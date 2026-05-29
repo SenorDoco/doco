@@ -78,9 +78,6 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
     cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
   return (
     <>
-      <NavLink to="/docos" className={linkClass} onClick={onNavigate}>
-        Docos
-      </NavLink>
       <NavLink to="/orgs" className={linkClass} onClick={onNavigate}>
         Orgs
       </NavLink>

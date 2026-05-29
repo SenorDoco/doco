@@ -83,7 +83,6 @@ export default [
   // behind the aggregated health signals.
   route("admin/agent-debug.json", "routes/admin.agent-debug[.]json.tsx"),
   route("mentor/feedback", "routes/mentor.feedback.tsx"),
-  route("docos", "routes/docos._index.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-out", "routes/sign-out.tsx"),
