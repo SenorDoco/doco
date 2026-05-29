@@ -13,7 +13,7 @@ export function UsersLink({
   level,
   targetId,
   className,
-  children = "Users",
+  children = "Collaborators",
 }: {
   level: InviteUserLevel;
   targetId: string;

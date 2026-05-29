@@ -135,7 +135,7 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Users · Doco" }];
+  return [{ title: "Collaborators · Doco" }];
 }
 
 interface AccessGrant {
@@ -260,9 +260,9 @@ export default function UsersPage({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Users" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
         <header>
-          <h1 className="text-2xl font-semibold">Users</h1>
+          <h1 className="text-2xl font-semibold">Collaborators</h1>
         </header>
 
         <Card>
@@ -273,14 +273,14 @@ export default function UsersPage({
 
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-base font-semibold">Show users for</span>
+            <span className="text-base font-semibold">Show collaborators for</span>
             <select
               value={scope}
               onChange={(e) => applyScope(e.currentTarget.value)}
               data-testid="scope-filter"
               className="w-auto rounded-md px-3 py-2"
             >
-              <option value="all">All users</option>
+              <option value="all">All collaborators</option>
               {loaderData.orgSections.length > 0 ? (
                 <optgroup label="By org">
                   {loaderData.orgSections.map((s) => (
@@ -305,7 +305,7 @@ export default function UsersPage({
 
         {showOrgSection ? (
           <Section
-            title="Org-wide users"
+            title="Org-wide collaborators"
             empty="You don't have any org grants yet."
             rows={orgRows}
             myPrincipalId={loaderData.me.id}
@@ -314,7 +314,7 @@ export default function UsersPage({
 
         {showDocoSection ? (
           <Section
-            title="Per-doco users"
+            title="Per-doco collaborators"
             empty="You don't have any doco grants yet."
             rows={docoRows}
             myPrincipalId={loaderData.me.id}
