@@ -1311,7 +1311,7 @@ label shown in lists; the rest is the body. POSTs that send the old
 required prose key is now \`intent\` / \`decision\` / \`action\` /
 etc., not \`summary\`.
 
-- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], implemented_by?[](code-artifact Reference ids; available on any neuron), sequence_to?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
+- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], sequence_to?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
 - Intent:    { intent*, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
 - Action:    { action*, verb*, intent_ids?[], decision_ids?[], preceded_by?[], sequence_to?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
 - Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], preceded_by?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }

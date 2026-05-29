@@ -84,16 +84,13 @@ const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "outcome",
   "superseded_by",
   "intent_ids_add",
-  // Code-artifact References accrue and *move* throughout a claim's
-  // lifetime. For a Decision/ADR: PRs land after acceptance. For an
-  // Action (BPMN step): the code that implements the step gets
-  // refactored, split, renamed — and the Action's own ID is referenced
-  // from code-comment URLs, so forcing supersession on every refactor
-  // would break those URLs. Full replace allowed (additive + remove +
-  // replace) on frozen claims; audit_events still records every change.
+  // Code-artifact Reference links (PRs/commits/files) accrue and *move*
+  // throughout a claim's lifetime: PRs land after an ADR is accepted, and
+  // the code under a BPMN step gets refactored — while the step's own id
+  // is cited in code-comment URLs, so supersession isn't viable. Editable
+  // on a frozen claim like `sequence_to` / `target_ref`; replace-only like
+  // every relationship list (audit_events records each change regardless).
   "implemented_by",
-  "implemented_by_add",
-  "implemented_by_remove",
   // Graph/perspective relations may be attached after a claim is activated.
   // The claim text stays frozen; the flow edge is authored separately.
   "sequence_to",

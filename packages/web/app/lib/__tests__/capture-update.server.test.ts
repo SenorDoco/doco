@@ -205,42 +205,7 @@ describe("updateEntity", () => {
     );
   });
 
-  it("captures Decision implemented_by so it links to the PR/commit References that ship it", async () => {
-    const result = await captureDecision(
-      "/tmp/doco",
-      DOCO_ID,
-      "test",
-      "doco",
-      {
-        decision: "Adopt the new vocabulary",
-        question: "What ships this?",
-        chosen: "These PRs.",
-        implemented_by: [
-          "reference_01TEST000000000000000001",
-          "reference_01TEST000000000000000002",
-        ],
-        decided_by_principal_id: "principal_decider",
-        created_by_user_id: "user_alice",
-      },
-      "https://doco.test",
-    );
-
-    expect(result).toMatchObject({ ok: true });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entity_type: "decision",
-        data: expect.objectContaining({
-          implemented_by: [
-            "reference_01TEST000000000000000001",
-            "reference_01TEST000000000000000002",
-          ],
-        }),
-      }),
-      expect.anything(),
-    );
-  });
-
-  it("replaces a frozen Decision's implemented_by (full mutability so refactors don't force supersession)", async () => {
+  it("replaces a frozen Decision's implemented_by — set after capture, editable past freeze", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: DECISION_ID,
       entity_type: "decision",
@@ -278,53 +243,6 @@ describe("updateEntity", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           implemented_by: ["reference_01TEST000000000000000003"],
-        }),
-      }),
-      expect.anything(),
-    );
-  });
-
-  it("adds to a frozen Decision's implemented_by as PRs land after acceptance", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: DECISION_ID,
-      entity_type: "decision",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "accepted",
-      body_md: "",
-      data: {
-        id: DECISION_ID,
-        doco_id: DOCO_ID,
-        neuron_type: "decision",
-        decision: "Choose payment path",
-        question: "Which payment path?",
-        chosen: "Route to the selected path.",
-        lifecycle: "accepted",
-        implemented_by: ["reference_01TEST000000000000000001"],
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
-
-    const result = await updateDecision(
-      "/tmp/doco",
-      DOCO_ID,
-      "test",
-      "doco",
-      DECISION_ID,
-      {
-        implemented_by_add: ["reference_01TEST000000000000000002"],
-      },
-      "https://doco.test",
-      null,
-    );
-
-    expect(result).toMatchObject({ ok: true, changed: ["implemented_by"] });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          implemented_by: [
-            "reference_01TEST000000000000000001",
-            "reference_01TEST000000000000000002",
-          ],
         }),
       }),
       expect.anything(),
@@ -487,55 +405,6 @@ describe("updateEntity", () => {
       }),
       expect.anything(),
     );
-  });
-
-  it("appends to a frozen Action's implemented_by via implemented_by_add (list-op, not a junk key)", async () => {
-    // Regression: without implemented_by_add in SPECIAL_CASED_KEYS + a
-    // list-op, the generic patch path wrote `implemented_by_add` as a
-    // literal data field and never merged it into `implemented_by`.
-    const ACTION_ID = "action_01TEST00000000000000000002";
-    vi.mocked(getEntity).mockResolvedValue({
-      id: ACTION_ID,
-      entity_type: "action",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "accepted",
-      body_md: "",
-      data: {
-        id: ACTION_ID,
-        doco_id: DOCO_ID,
-        neuron_type: "action",
-        action: "Renders Emma Reach checkout",
-        verb: "render",
-        lifecycle: "accepted",
-        actor_id: "principal_clerk",
-        implemented_by: ["reference_01TEST000000000000000010"],
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
-
-    const result = await updateEntity({
-      docoDir: "/tmp/doco",
-      docoId: DOCO_ID,
-      ownerSlug: "test",
-      docoSlug: "doco",
-      entityType: "action",
-      pluralDir: "actions",
-      id: ACTION_ID,
-      patch: {
-        implemented_by_add: ["reference_01TEST000000000000000011"],
-      },
-      docoHost: "https://doco.test",
-      actorId: "user_alice",
-    });
-
-    expect(result).toMatchObject({ ok: true, changed: ["implemented_by"] });
-    const stored = vi.mocked(upsertEntity).mock.calls.at(-1)?.[0].data as Record<string, unknown>;
-    expect(stored.implemented_by).toEqual([
-      "reference_01TEST000000000000000010",
-      "reference_01TEST000000000000000011",
-    ]);
-    // The *_add key must NOT be persisted as a literal field.
-    expect(stored.implemented_by_add).toBeUndefined();
   });
 });
 
