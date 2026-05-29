@@ -780,6 +780,29 @@ function requiredPrincipalId(
   return principalId;
 }
 
+/**
+ * Like `requiredPrincipalId`, but absence is allowed — returns `null`
+ * when no id is supplied. Used for attribution fields (e.g. a
+ * Decision's `decided_by`) that the capture layer no longer mandates:
+ * the field traces back to when the decision-maker was the always-present
+ * signed-in collaborator, so "required" was free. Once it became a
+ * Principal *neuron* (PR #66) — which may not exist for a user, and is
+ * policy-blocked in some templates like glossaries — mandating it turned
+ * into friction. Templates that genuinely need attribution (user-flows)
+ * still enforce it through their own `requires_field` policies; the
+ * capture layer just validates the shape when a value is present.
+ */
+function optionalPrincipalId(
+  value: string | undefined,
+  field: string,
+): string | null | CaptureError {
+  const principalId = value?.trim();
+  if (!principalId) return null;
+  const bad = assertNotUserId(principalId, field);
+  if (bad) return bad;
+  return principalId;
+}
+
 function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureError {
   if (!Array.isArray(value)) return [];
   const ids: string[] = [];
@@ -866,12 +889,8 @@ export async function captureDecision(
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const sequenceTo = normalizeSequenceTo(draft.sequence_to);
 
-  const decidedBy = requiredPrincipalId(
-    draft.decided_by_principal_id,
-    "decided_by_principal_id",
-    "or pass an authenticated request; the route fills it from `me.id`",
-  );
-  if (typeof decidedBy !== "string") return decidedBy;
+  const decidedBy = optionalPrincipalId(draft.decided_by_principal_id, "decided_by_principal_id");
+  if (decidedBy !== null && typeof decidedBy !== "string") return decidedBy;
   const decidedById = decidedBy;
 
   const id = `decision_${generateUlid()}`;
@@ -898,7 +917,7 @@ export async function captureDecision(
     ...(Array.isArray(draft.alternatives) && draft.alternatives.length > 0
       ? { alternatives: draft.alternatives }
       : {}),
-    decided_by: decidedById,
+    ...(decidedById ? { decided_by: decidedById } : {}),
     decided_at: now,
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
