@@ -251,30 +251,42 @@ prompt for OAuth all over again.
 
 **After every successful OAuth completion, surface to the user ONCE
 that the auth dance repeats unless they persist the credential.**
-The two options the protocol supports:
+Pick by what the agent needs:
 
-1. **`DOCO_ACCESS` as a runtime environment variable.** The user
-   sets it on the *remote execution environment* (Claude Code on
-   the Web environment vars, GitHub Codespaces secrets, Replit
-   secrets, etc.) — not in the repo. Fresh containers inherit it
-   without prompting; the MCP server reads `process.env.DOCO_ACCESS`
-   as a fallback when no `.env` value is set. Tell the user to copy
-   their token from `.env` into their runtime's environment-variable
-   configuration. The DOCO_ACCESS value is private; do not paste it
-   on the user's behalf.
+1. **Cloud environment, write access (recommended for ephemeral
+   runtimes).** Mint a *non-rotating* personal access token: open
+   **Access tokens** (`/api-keys`), scope it, tick **"runs in a cloud
+   environment"**, and set the revealed `DOCO_REFRESH` +
+   `DOCO_CLIENT_ID` (and optionally `DOCO_ACCESS`) as environment
+   variables on the runtime (Claude Code on the Web env vars,
+   Codespaces / Replit secrets, etc.). Every fresh instance mints its
+   own short-lived access token from the shared refresh token — no
+   re-approving. A normal refresh token rotates on use and would break
+   the pinned value; the non-rotating one does not. Private to the
+   user; never commit. Revoke from the same page. Tell the user the
+   variable names — the token bodies are private, so don't paste them
+   on their behalf.
 
-2. **Committable project tokens.** The Doco owner mints a read-only
-   token at `https://doco.to/<handle>/project-tokens` (owner-only;
-   the page requires an explicit confirmation that anyone with read
-   access to the repo will be able to read the Doco). The mint
-   response shows the token body **once** — copy it into
-   `.doco/project-tokens.json` as
+2. **Committable project tokens (read-only, shareable with the repo).**
+   The Doco owner mints a read-only token at
+   `https://doco.to/<handle>/project-tokens` (owner-only; the page
+   requires an explicit confirmation that anyone with read access to
+   the repo will be able to read the Doco). The mint response shows the
+   token body **once** — copy it into `.doco/project-tokens.json` as
    `{"<handle>": "doco_pt_<token>"}`. Commit and push. Any agent
-   cloning the repo and running the bundled MCP server will read
-   this token automatically when no `DOCO_ACCESS` is set in `.env`.
-   Reader-only, indefinite TTL, revoke from the same page.
+   cloning the repo and running the bundled MCP server will read this
+   token automatically when no `DOCO_ACCESS` is set. Reader-only,
+   indefinite TTL, revoke from the same page.
 
-Surface BOTH options once per successful OAuth — the user picks the
+3. **`DOCO_ACCESS` as a runtime environment variable (quick,
+   low-stakes).** The user copies the access token from `.env` into the
+   runtime's environment-variable configuration; the MCP server reads
+   `process.env.DOCO_ACCESS` when no `.env` value is set. Simplest, but
+   the access token expires at its TTL and then falls back to device
+   flow — fine for short-lived or read-mostly use, not long-running
+   cloud agents. Private; do not paste it on the user's behalf.
+
+Surface these options once per successful OAuth — the user picks the
 one that fits their situation. After the first prompt, stay quiet
 on subsequent turns. Do not re-prompt.
 

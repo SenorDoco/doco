@@ -432,6 +432,10 @@ export interface IssueTokensInput {
   granted_org_ids?: string[];
   granted_org_roles?: Record<string, string>;
   scope: string | null;
+  // When true the refresh token does not rotate on use — /oauth/token
+  // reissues only the access token and keeps this refresh token valid,
+  // so it can be pinned into a cloud environment's variable config.
+  non_rotating?: boolean;
 }
 
 export interface IssuedTokens {
@@ -473,8 +477,8 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
-          scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          scope, expires_at, non_rotating)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         refresh_token,
         input.client_id,
@@ -485,6 +489,7 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         orgRolesJson,
         input.scope,
         refresh_expires,
+        input.non_rotating ?? false,
       ],
     );
   });
@@ -551,9 +556,11 @@ export async function refreshTokens(args: {
       scope: string | null;
       expires_at: Date;
       revoked: boolean;
+      non_rotating: boolean;
     }>(
       `SELECT client_id, user_id, granted_doco_ids, granted_doco_roles,
-              granted_org_ids, granted_org_roles, scope, expires_at, revoked
+              granted_org_ids, granted_org_roles, scope, expires_at, revoked,
+              non_rotating
          FROM oauth_refresh_tokens
         WHERE token = $1
         FOR UPDATE`,
@@ -568,11 +575,10 @@ export async function refreshTokens(args: {
     if (row.client_id !== args.client_id) {
       throw new OauthError("invalid_grant", "client_id mismatch on refresh token");
     }
-    // Rotation: mark the old refresh token revoked, mint a fresh pair.
-    // The granted_doco_roles map carries through unchanged — refresh
-    // never widens scope.
+    // Mint the fresh access token (both paths return one). The
+    // granted_doco_roles map carries through unchanged — refresh never
+    // widens scope.
     const access_token = mintOpaque(ACCESS_TOKEN_PREFIX);
-    const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
     const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
     const rolesJson = JSON.stringify(row.granted_doco_roles ?? {});
@@ -596,12 +602,33 @@ export async function refreshTokens(args: {
         access_expires,
       ],
     );
+
+    if (row.non_rotating) {
+      // Cloud-environment credential: keep the same refresh token so the
+      // value pinned in the environment config stays valid across fresh
+      // instances. Slide its expiry forward so active use keeps it alive.
+      await c.query("UPDATE oauth_refresh_tokens SET expires_at = $1 WHERE token = $2", [
+        refresh_expires,
+        args.refresh_token,
+      ]);
+      return {
+        access_token,
+        refresh_token: args.refresh_token,
+        token_type: "Bearer",
+        expires_in: ACCESS_TOKEN_TTL_SECONDS,
+        scope: row.scope,
+      };
+    }
+
+    // Rotation: mint a fresh refresh token, mark the old one revoked, to
+    // limit blast radius if a refresh token leaks.
+    const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
-          scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          scope, expires_at, non_rotating)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         refresh_token,
         row.client_id,
@@ -612,6 +639,7 @@ export async function refreshTokens(args: {
         orgRolesJson,
         row.scope,
         refresh_expires,
+        false,
       ],
     );
     await c.query(

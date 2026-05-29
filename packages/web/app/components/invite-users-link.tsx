@@ -33,13 +33,13 @@ export function UsersLink({
 }
 
 /**
- * Convenience link to the host-level /api-keys page. API keys are
- * owned per-user, not per-org or per-doco, so there's no scope
- * filter to set — clicking just goes to the user's full key list.
+ * Convenience link to the host-level /api-keys page. Personal access
+ * tokens are owned per-user, not per-org or per-doco, so there's no
+ * scope filter to set — clicking just goes to the user's full list.
  */
 export function ApiKeysLink({
   className,
-  children = "API keys",
+  children = "Access tokens",
 }: {
   className?: string;
   children?: ReactNode;

@@ -1,16 +1,19 @@
-// /api/v1/api-keys.json — JSON API for personal API keys.
+// /api/v1/api-keys.json — JSON API for personal access tokens.
 //
 // Companion to /api/v1/users/invite.json. That endpoint mints
 // human invites; this one mints long-lived Bearer tokens. Splitting
 // the two means API consumers don't have to encode "is this a human
 // or an agent?" in a single endpoint's shape.
 //
-// GET    — list active API keys for the signed-in user.
-// POST   — mint a new personal API key. Body shape:
-//            { label: string, grants: [{ level, target_id, role }] }
-//          Returns the access + refresh token bodies ONCE. Subsequent
-//          GETs return only metadata.
-// DELETE — revoke a key by client_id. Pass ?client_id=... in the URL.
+// GET    — list active personal access tokens for the signed-in user.
+// POST   — mint a new personal access token. Body shape:
+//            { label: string, grants: [{ level, target_id, role }],
+//              non_rotating?: boolean }
+//          Set non_rotating for a cloud-environment token: the refresh
+//          token won't rotate, so DOCO_REFRESH + DOCO_CLIENT_ID can be
+//          pinned as env vars. Returns the token bodies + client_id
+//          ONCE. Subsequent GETs return only metadata.
+// DELETE — revoke a token by client_id. Pass ?client_id=... in the URL.
 //
 // Auth: signed-in cookie OR Authorization: Bearer (with `owner` role
 // somewhere in scope — to mint a key that grants OWNER you must hold
@@ -44,9 +47,14 @@ export async function action({ request }: { request: Request }) {
     let body: {
       label?: unknown;
       grants?: unknown;
+      non_rotating?: unknown;
     } = {};
     try {
-      body = (await request.json()) as { label?: unknown; grants?: unknown };
+      body = (await request.json()) as {
+        label?: unknown;
+        grants?: unknown;
+        non_rotating?: unknown;
+      };
     } catch {
       return Response.json({ error: "invalid_json_body" }, { status: 400 });
     }
@@ -90,21 +98,24 @@ export async function action({ request }: { request: Request }) {
       grants.push({ level, target_id, role });
     }
 
+    const nonRotating = body.non_rotating === true;
     try {
-      const minted = await mintApiKey({ me, label, grants });
+      const minted = await mintApiKey({ me, label, grants, non_rotating: nonRotating });
       return Response.json(
         {
           access_token: minted.access_token,
           refresh_token: minted.refresh_token,
+          client_id: minted.client_id,
           expires_in: minted.expires_in,
           token_type: "Bearer",
           client_name: minted.client_name,
           scope_grants: minted.scope_grants,
+          non_rotating: minted.non_rotating,
         },
         { status: 201 },
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to mint API key.";
+      const message = err instanceof Error ? err.message : "Failed to mint token.";
       const status = message.toLowerCase().includes("cannot grant") ? 403 : 400;
       return Response.json({ error: message }, { status });
     }
