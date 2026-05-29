@@ -1,11 +1,19 @@
+import { waitUntil } from "@vercel/functions";
 import {
+  type SlackBotIdentity,
   type SlackRecentMessage,
   buildSlackAppMentionResponse,
   fetchSlackConversationContext,
-  getSlackBotUserId,
+  getSlackBotIdentity,
   postSlackMessage,
   verifySlackRequest,
 } from "~/lib/slack.server";
+
+// Slack expects an HTTP 200 within ~3s, but answer generation (Doco search +
+// a multi-turn LLM loop) routinely runs longer. We ack immediately and finish
+// the work in the background via `waitUntil`; `maxDuration` keeps that
+// background work from being cut short. (Decision: Slack events ack-then-process.)
+export const config = { maxDuration: 300 };
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -40,43 +48,69 @@ export async function action({ request }: { request: Request }) {
   if (payload.type === "event_callback" && shouldProcessSlackEvent(event)) {
     const teamId = payload.team_id;
     const channelId = event?.channel;
-    if (teamId && channelId && !event?.bot_id && !event?.subtype) {
-      const explicitReply = shouldReplyToSlackEvent(event);
-      const implicitReplyCandidate = shouldInspectSlackImplicitReplyEvent(event);
-      const threadTs = slackReplyThreadTs(event);
-      const recentMessages = shouldFetchSlackConversationContext(event)
-        ? await fetchSlackConversationContext({
-            workspaceId: teamId,
-            channelId,
-            latestTs: event.ts,
-            ...(threadTs ? { threadTs } : {}),
-          })
-        : [];
-      const botUserId = implicitReplyCandidate ? await getSlackBotUserId(teamId) : null;
-      if (
-        !explicitReply &&
-        !shouldTreatSlackMessageAsImplicitReply(event, recentMessages, botUserId)
-      ) {
-        return Response.json({ ok: true });
-      }
-      const text = await buildSlackAppMentionResponse({
-        workspaceId: teamId,
-        channelId,
-        chatUserId: event?.user ?? null,
-        messageText: event?.text ?? "",
-        recentMessages,
-        origin: new URL(request.url).origin,
-      });
-      await postSlackMessage({
-        workspaceId: teamId,
-        channelId,
-        text,
-        ...(threadTs ? { threadTs } : {}),
-      });
+    if (event && teamId && channelId && !event.bot_id && !event.subtype) {
+      // Ack now, answer in the background: Slack's ~3s deadline and the function
+      // timeout must not gate answer generation. A slow generation previously
+      // either triggered Slack retries (suppressed above) or a
+      // FUNCTION_INVOCATION_TIMEOUT, dropping the reply entirely.
+      waitUntil(
+        respondToSlackEvent({
+          teamId,
+          channelId,
+          event,
+          origin: new URL(request.url).origin,
+        }).catch((error) => {
+          console.error(
+            "[slack] event response failed:",
+            error instanceof Error ? error.message : error,
+          );
+        }),
+      );
     }
   }
 
   return Response.json({ ok: true });
+}
+
+async function respondToSlackEvent(args: {
+  teamId: string;
+  channelId: string;
+  event: SlackEventPayload;
+  origin: string;
+}): Promise<void> {
+  const { teamId, channelId, event, origin } = args;
+  const explicitReply = shouldReplyToSlackEvent(event);
+  const implicitReplyCandidate = shouldInspectSlackImplicitReplyEvent(event);
+  const threadTs = slackReplyThreadTs(event);
+  const recentMessages = shouldFetchSlackConversationContext(event)
+    ? await fetchSlackConversationContext({
+        workspaceId: teamId,
+        channelId,
+        latestTs: event.ts,
+        ...(threadTs ? { threadTs } : {}),
+      })
+    : [];
+  const botIdentity = implicitReplyCandidate ? await getSlackBotIdentity(teamId) : null;
+  if (
+    !explicitReply &&
+    !shouldTreatSlackMessageAsImplicitReply(event, recentMessages, botIdentity)
+  ) {
+    return;
+  }
+  const text = await buildSlackAppMentionResponse({
+    workspaceId: teamId,
+    channelId,
+    chatUserId: event.user ?? null,
+    messageText: event.text ?? "",
+    recentMessages,
+    origin,
+  });
+  await postSlackMessage({
+    workspaceId: teamId,
+    channelId,
+    text,
+    ...(threadTs ? { threadTs } : {}),
+  });
 }
 
 export async function loader() {
@@ -132,35 +166,47 @@ export function shouldInspectSlackImplicitReplyEvent(
 export function shouldTreatSlackMessageAsImplicitReply(
   event: SlackEventPayload | undefined,
   recentMessages: SlackRecentMessage[],
-  botUserId: string | null,
+  botIdentity: SlackBotIdentity | null,
 ): boolean {
   if (!event || !shouldInspectSlackImplicitReplyEvent(event)) return false;
-  if (!isImplicitReplyToSenorDoco(event, recentMessages, botUserId)) return false;
+  if (!isImplicitReplyToSenorDoco(event, recentMessages, botIdentity)) return false;
   return looksDirectedAtThreadBot(event?.text ?? "");
 }
 
 function isImplicitReplyToSenorDoco(
   event: SlackEventPayload,
   recentMessages: SlackRecentMessage[],
-  botUserId: string | null,
+  botIdentity: SlackBotIdentity | null,
 ): boolean {
-  if (!botUserId) return false;
+  if (!hasSlackBotIdentity(botIdentity)) return false;
   const threadTs = slackReplyThreadTs(event);
   if (threadTs) {
     const root = recentMessages.find((message) => message.ts === threadTs);
-    return isSenorDocoSlackMessage(root, botUserId);
+    return isSenorDocoSlackMessage(root, botIdentity);
   }
   const previous = recentMessages.at(-1);
-  if (!previous || previous.userId !== botUserId) return false;
-  const previousTs = previous.ts;
-  return isRecentSlackMessage(event.ts, previousTs, 10 * 60);
+  if (!previous || !isSenorDocoSlackMessage(previous, botIdentity)) return false;
+  return isRecentSlackMessage(event.ts, previous.ts, 10 * 60);
 }
 
+// Señor Doco's own prior message must be recognized for an unmentioned reply to
+// count. Match on the bot user id OR the bot id: messages posted via
+// chat.postMessage carry `user`, but some Slack message shapes carry only
+// `bot_id`, and the earlier userId-only check silently dropped those.
 function isSenorDocoSlackMessage(
   message: SlackRecentMessage | undefined,
-  botUserId: string,
+  botIdentity: SlackBotIdentity,
 ): boolean {
-  return message?.userId === botUserId;
+  if (!message) return false;
+  if (botIdentity.userId && message.userId === botIdentity.userId) return true;
+  if (botIdentity.botId && message.botId === botIdentity.botId) return true;
+  return false;
+}
+
+function hasSlackBotIdentity(
+  botIdentity: SlackBotIdentity | null,
+): botIdentity is SlackBotIdentity {
+  return Boolean(botIdentity && (botIdentity.userId || botIdentity.botId));
 }
 
 function isRecentSlackMessage(

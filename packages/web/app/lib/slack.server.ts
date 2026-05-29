@@ -56,6 +56,7 @@ const SLACK_OAUTH_ACCESS_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_CHAT_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
 const SLACK_CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.history";
 const SLACK_CONVERSATIONS_REPLIES_URL = "https://slack.com/api/conversations.replies";
+const SLACK_AUTH_TEST_URL = "https://slack.com/api/auth.test";
 const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const SLACK_DOCO_ANSWER_LIMIT = 8;
@@ -2248,16 +2249,81 @@ export async function getSlackBotToken(workspaceId: string): Promise<string | nu
   return result.rows[0]?.bot_access_token ?? null;
 }
 
+export interface SlackBotIdentity {
+  userId: string | null;
+  botId: string | null;
+}
+
 export async function getSlackBotUserId(workspaceId: string): Promise<string | null> {
+  return (await getSlackBotIdentity(workspaceId))?.userId ?? null;
+}
+
+export async function getSlackBotIdentity(workspaceId: string): Promise<SlackBotIdentity | null> {
   const result = await withClient((c) =>
-    c.query<{ bot_user_id: string | null }>(
-      `SELECT bot_user_id
+    c.query<{ bot_user_id: string | null; data: Record<string, unknown> | null }>(
+      `SELECT bot_user_id, data
          FROM group_chat_installations
         WHERE provider = 'slack' AND workspace_id = $1`,
       [workspaceId],
     ),
   );
-  return result.rows[0]?.bot_user_id ?? null;
+  const row = result.rows[0];
+  if (!row) return null;
+  const storedUserId = row.bot_user_id ?? null;
+  const storedBotId = row.data && typeof row.data.bot_id === "string" ? row.data.bot_id : null;
+  if (storedUserId && storedBotId) return { userId: storedUserId, botId: storedBotId };
+
+  // Older installs stored only bot_user_id (some stored neither). Resolve the
+  // missing piece from Slack auth.test and backfill it — otherwise implicit-reply
+  // detection, which must recognize Señor Doco's own prior message, silently
+  // fails for the whole workspace. Degrades to whatever is already stored if
+  // auth.test is unavailable.
+  const resolved = await resolveSlackBotIdentity(workspaceId);
+  const userId = storedUserId ?? resolved?.userId ?? null;
+  const botId = storedBotId ?? resolved?.botId ?? null;
+  if (resolved && (resolved.userId || resolved.botId)) {
+    await backfillSlackBotIdentity(workspaceId, { userId, botId });
+  }
+  return userId || botId ? { userId, botId } : null;
+}
+
+async function resolveSlackBotIdentity(workspaceId: string): Promise<SlackBotIdentity | null> {
+  const token = await getSlackBotToken(workspaceId);
+  if (!token) return null;
+  try {
+    const response = await fetch(SLACK_AUTH_TEST_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      user_id?: string;
+      bot_id?: string;
+    } | null;
+    if (!response.ok || !body?.ok) return null;
+    return { userId: body.user_id ?? null, botId: body.bot_id ?? null };
+  } catch {
+    return null;
+  }
+}
+
+async function backfillSlackBotIdentity(
+  workspaceId: string,
+  identity: SlackBotIdentity,
+): Promise<void> {
+  await withClient((c) =>
+    c.query(
+      `UPDATE group_chat_installations
+          SET bot_user_id = COALESCE(bot_user_id, $2),
+              data = CASE
+                       WHEN $3::text IS NULL THEN data
+                       ELSE COALESCE(data, '{}'::jsonb) || jsonb_build_object('bot_id', $3::text)
+                     END,
+              updated_at = now()
+        WHERE provider = 'slack' AND workspace_id = $1`,
+      [workspaceId, identity.userId, identity.botId],
+    ),
+  );
 }
 
 export function verifySlackRequestSignature(args: {
