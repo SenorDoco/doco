@@ -1086,7 +1086,7 @@ export default function DocoHome({
                   anchored to the right of the canvas. Outside fullscreen, the
                   same dialog renders in the right column (further down). */}
               {isPerspectiveFullscreen && neuronDialog ? (
-                <div className="absolute bottom-3 right-3 top-3 z-20 w-[min(440px,40%)]">
+                <div className="absolute bottom-3 right-3 top-3 z-[100] w-[min(440px,40%)]">
                   <NeuronDialog
                     detail={neuronDialog.detail}
                     loading={neuronDialog.loading}
@@ -1153,7 +1153,7 @@ export default function DocoHome({
                 while the user reads it. Narrow content pane: the fixed
                 wrapper below renders the same dialog over the canvas. */}
             {neuronDialog && !isPerspectiveFullscreen ? (
-              <div className="absolute inset-0">{neuronDialogPanel}</div>
+              <div className="absolute inset-0 z-[100]">{neuronDialogPanel}</div>
             ) : null}
           </div>
         </div>
@@ -1162,7 +1162,7 @@ export default function DocoHome({
             AgentSidebar so the dialog never covers it. */}
         {neuronDialog && !isPerspectiveFullscreen ? (
           <div
-            className={`fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
+            className={`fixed bottom-4 right-3 top-20 z-[100] [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
               showSidePanel ? "hidden" : "block"
             }`}
           >
