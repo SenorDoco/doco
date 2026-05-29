@@ -1373,6 +1373,56 @@ function layOutBpmn(
 
   const nodeSet = new Set(nodes.map((n) => n.id));
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+  // Edge "bow" obstruction test. A roughly-horizontal edge whose straight
+  // segment would pass through a neuron sitting between its endpoints is
+  // arced (in the renderer) around that neuron. We compute it here, where
+  // node geometry is known, so we only bow when a node ACTUALLY blocks
+  // the path — and arc toward whichever side needs the smaller lift. An
+  // edge threading the clear gap between stacked nodes is left straight.
+  const edgeObstacleBoxes = nodes.flatMap((n) => {
+    const p = nodePositions.get(n.id);
+    if (!p) return [];
+    const s = sizeByNode.get(n.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+    return [{ id: n.id, left: p.x, right: p.x + s.width, top: p.y, bottom: p.y + s.height }];
+  });
+  const boxById = new Map(edgeObstacleBoxes.map((b) => [b.id, b]));
+  const computeEdgeBow = (
+    sourceId: string,
+    targetId: string,
+  ): { dir: 1 | -1; lift: number } | null => {
+    const s = boxById.get(sourceId);
+    const t = boxById.get(targetId);
+    if (!s || !t) return null;
+    const sCy = (s.top + s.bottom) / 2;
+    const tCy = (t.top + t.bottom) / 2;
+    if (Math.abs(sCy - tCy) > 40) return null; // only roughly-horizontal edges
+    const xa = s.right; // source's right handle
+    const xb = t.left; // target's left handle
+    if (xb - xa < 60) return null; // adjacent/overlapping: nothing between
+    const yEdge = (sCy + tCy) / 2;
+    const margin = 10;
+    let minTop = Number.POSITIVE_INFINITY;
+    let maxBottom = Number.NEGATIVE_INFINITY;
+    let blocked = false;
+    for (const b of edgeObstacleBoxes) {
+      if (b.id === sourceId || b.id === targetId) continue;
+      if (b.right <= xa || b.left >= xb) continue; // outside the corridor
+      if (yEdge > b.top - margin && yEdge < b.bottom + margin) {
+        blocked = true;
+        minTop = Math.min(minTop, b.top);
+        maxBottom = Math.max(maxBottom, b.bottom);
+      }
+    }
+    if (!blocked) return null;
+    const apexUp = yEdge - minTop + margin + 6; // clear above the topmost blocker
+    const apexDown = maxBottom - yEdge + margin + 6; // clear below the lowest
+    const useUp = apexUp <= apexDown;
+    const apex = Math.min(120, useUp ? apexUp : apexDown);
+    // The cubic reaches ~3/4 of its control offset at the apex, so scale up.
+    return { dir: useUp ? -1 : 1, lift: apex / 0.75 };
+  };
+
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .filter((link) => SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type))
@@ -1387,13 +1437,6 @@ function layOutBpmn(
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
       const label = link.label?.trim() || "";
-      // Column span drives the vertical "bow": an edge that skips a
-      // column likely runs straight through an intermediate node, so the
-      // renderer arcs it into the inter-row gap to route around (it
-      // applies the bow only when the edge is roughly horizontal).
-      const sourceColumn = columnByNode.get(source) ?? 0;
-      const targetColumn = columnByNode.get(target) ?? 0;
-      const columnSpan = Math.abs(targetColumn - sourceColumn);
       const edgeData: Record<string, unknown> = {};
       if (label) {
         edgeData.label = label;
@@ -1418,7 +1461,11 @@ function layOutBpmn(
           whiteSpace: "nowrap",
         };
       }
-      if (columnSpan >= 2) edgeData.bowSpan = columnSpan;
+      const bow = computeEdgeBow(source, target);
+      if (bow) {
+        edgeData.bowDir = bow.dir;
+        edgeData.bowLift = bow.lift;
+      }
       return {
         id: `${link.source}-${link.target}-${index}`,
         source,
