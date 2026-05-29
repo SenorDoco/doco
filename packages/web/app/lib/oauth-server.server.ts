@@ -82,6 +82,82 @@ function roleForGrant(grants: Record<string, string> | undefined, id: string): s
 }
 
 // ---------------------------------------------------------------------------
+// Grant sets & additive merge.
+// ---------------------------------------------------------------------------
+
+/** The set of Docos + orgs (with per-target role scope-down) an
+ * authorization grants. Shared shape across auth codes, device rows, and
+ * the tokens they mint. */
+export interface GrantSets {
+  granted_doco_ids: string[];
+  granted_doco_roles: Record<string, string>;
+  granted_org_ids: string[];
+  granted_org_roles: Record<string, string>;
+}
+
+/** Power ordering of the four roles; the higher one wins when merging
+ * two grants on the same target. Mirrors `rankOf` in user-invite, inlined
+ * here to keep this server module free of `~/` path aliases (which the
+ * unit-test runner doesn't resolve). */
+function roleRank(role: string): number {
+  return role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0;
+}
+
+function mergeScope(
+  baseIds: string[],
+  baseRoles: Record<string, string>,
+  incomingIds: string[],
+  incomingRoles: Record<string, string>,
+): { ids: string[]; roles: Record<string, string> } {
+  const baseSet = new Set(baseIds);
+  const incomingSet = new Set(incomingIds);
+  const roles: Record<string, string> = {};
+  const ids: string[] = [];
+  for (const id of new Set([...baseIds, ...incomingIds])) {
+    ids.push(id);
+    const candidates: string[] = [];
+    if (baseSet.has(id)) candidates.push(roleForGrant(baseRoles, id));
+    if (incomingSet.has(id)) candidates.push(roleForGrant(incomingRoles, id));
+    // Keep the strongest role present — re-authorization widens, it never
+    // silently narrows an existing grant.
+    roles[id] = candidates.reduce((a, b) => (roleRank(b) > roleRank(a) ? b : a));
+  }
+  ids.sort();
+  return { ids, roles };
+}
+
+/**
+ * Union two grant sets for additive re-authorization. The merged set
+ * covers every Doco/org in EITHER input; for an id in both it keeps the
+ * STRONGER role. Re-authorizing an agent therefore only ever widens its
+ * access (more targets, or a higher role) — it never silently revokes a
+ * grant the incoming approval happened to omit. Removing access is the
+ * owner's explicit action on the agent's grants, not a side effect of
+ * re-approval. Roles remain bounded by what the approver holds — that
+ * cap is enforced by the caller before this runs.
+ */
+export function mergeGrantSets(base: GrantSets, incoming: GrantSets): GrantSets {
+  const doco = mergeScope(
+    base.granted_doco_ids,
+    base.granted_doco_roles,
+    incoming.granted_doco_ids,
+    incoming.granted_doco_roles,
+  );
+  const org = mergeScope(
+    base.granted_org_ids,
+    base.granted_org_roles,
+    incoming.granted_org_ids,
+    incoming.granted_org_roles,
+  );
+  return {
+    granted_doco_ids: doco.ids,
+    granted_doco_roles: doco.roles,
+    granted_org_ids: org.ids,
+    granted_org_roles: org.roles,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // PKCE (RFC 7636).
 // ---------------------------------------------------------------------------
 
@@ -209,7 +285,47 @@ export interface IssueAuthCodeInput {
   scope?: string;
 }
 
-async function createAuthorizedAgentUser(
+/** Read an agent user's CURRENT grants from its membership rows. These
+ * are the source of truth for what the agent can already reach, and the
+ * base we merge a fresh approval onto when re-authorizing. */
+async function readAgentGrantSets(c: QueryClient, agentId: string): Promise<GrantSets> {
+  const docoRows = await c.query("SELECT doco_id, role FROM doco_users WHERE user_id = $1", [
+    agentId,
+  ]);
+  const orgRows = await c.query("SELECT org_id, role FROM org_users WHERE user_id = $1", [agentId]);
+  const granted_doco_ids: string[] = [];
+  const granted_doco_roles: Record<string, string> = {};
+  for (const row of docoRows.rows as { doco_id: string; role: string }[]) {
+    granted_doco_ids.push(row.doco_id);
+    granted_doco_roles[row.doco_id] = row.role;
+  }
+  const granted_org_ids: string[] = [];
+  const granted_org_roles: Record<string, string> = {};
+  for (const row of orgRows.rows as { org_id: string; role: string }[]) {
+    granted_org_ids.push(row.org_id);
+    granted_org_roles[row.org_id] = row.role;
+  }
+  return { granted_doco_ids, granted_doco_roles, granted_org_ids, granted_org_roles };
+}
+
+/**
+ * Find-or-create the agent user for this (approver, OAuth client, agent
+ * name) triple, then upsert its memberships to the UNION of what it
+ * already had and the newly approved grants.
+ *
+ * Reuse is the heart of additive re-authorization: approving the same
+ * client again — e.g. to add another Doco or a whole org — lands on the
+ * SAME agent identity and WIDENS it, instead of minting a fresh agent
+ * user every time (which left orphan identities and a token that only
+ * saw the latest selection). The returned `grants` is the merged set the
+ * caller persists on the auth-code / device row, so the minted token
+ * carries the combined scope. `reused` is false on first authorization.
+ *
+ * The match key is the triple the human controls and sees: who approved,
+ * which client, and the agent's display name. Re-approving under a
+ * different name deliberately forges a separate identity.
+ */
+async function upsertAuthorizedAgentUser(
   c: QueryClient,
   input: {
     owner_id: string;
@@ -220,46 +336,79 @@ async function createAuthorizedAgentUser(
     granted_org_ids?: string[];
     granted_org_roles?: Record<string, string>;
   },
-): Promise<string> {
+): Promise<{ agentId: string; grants: GrantSets; reused: boolean }> {
   const agentName = normalizeAgentName(input.agent_name);
-  const agentId = `user_${generateUlid()}`;
-  const createdAt = new Date().toISOString();
-  await c.query(
-    `INSERT INTO users (id, kind, github_login, owner_id, data)
-     VALUES ($1, 'agent', NULL, $2, $3::jsonb)`,
-    [
-      agentId,
-      input.owner_id,
-      JSON.stringify({
-        id: agentId,
-        kind: "agent",
-        name: agentName,
-        owner_id: input.owner_id,
-        oauth_client_id: input.client_id,
-        created_at: createdAt,
-      }),
-    ],
-  );
+  const incoming: GrantSets = {
+    granted_doco_ids: input.granted_doco_ids,
+    granted_doco_roles: input.granted_doco_roles ?? {},
+    granted_org_ids: input.granted_org_ids ?? [],
+    granted_org_roles: input.granted_org_roles ?? {},
+  };
 
-  for (const docoId of input.granted_doco_ids) {
+  const existing = await c.query(
+    `SELECT id FROM users
+      WHERE kind = 'agent'
+        AND owner_id = $1
+        AND data->>'oauth_client_id' = $2
+        AND data->>'name' = $3
+        AND deactivated_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT 1`,
+    [input.owner_id, input.client_id, agentName],
+  );
+  const existingId = (existing.rows[0] as { id: string } | undefined)?.id;
+
+  let agentId: string;
+  let grants: GrantSets;
+  let reused: boolean;
+  if (existingId) {
+    agentId = existingId;
+    reused = true;
+    // Merge onto what the agent can already reach so the persisted token
+    // covers the union (existing memberships + newly approved grants).
+    grants = mergeGrantSets(await readAgentGrantSets(c, agentId), incoming);
+  } else {
+    agentId = `user_${generateUlid()}`;
+    reused = false;
+    grants = incoming;
+    const createdAt = new Date().toISOString();
+    await c.query(
+      `INSERT INTO users (id, kind, github_login, owner_id, data)
+       VALUES ($1, 'agent', NULL, $2, $3::jsonb)`,
+      [
+        agentId,
+        input.owner_id,
+        JSON.stringify({
+          id: agentId,
+          kind: "agent",
+          name: agentName,
+          owner_id: input.owner_id,
+          oauth_client_id: input.client_id,
+          created_at: createdAt,
+        }),
+      ],
+    );
+  }
+
+  for (const docoId of grants.granted_doco_ids) {
     await c.query(
       `INSERT INTO doco_users (doco_id, user_id, role)
        VALUES ($1, $2, $3)
        ON CONFLICT (doco_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-      [docoId, agentId, roleForGrant(input.granted_doco_roles, docoId)],
+      [docoId, agentId, roleForGrant(grants.granted_doco_roles, docoId)],
     );
   }
 
-  for (const orgId of input.granted_org_ids ?? []) {
+  for (const orgId of grants.granted_org_ids) {
     await c.query(
       `INSERT INTO org_users (org_id, user_id, role)
        VALUES ($1, $2, $3)
        ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-      [orgId, agentId, roleForGrant(input.granted_org_roles, orgId)],
+      [orgId, agentId, roleForGrant(grants.granted_org_roles, orgId)],
     );
   }
 
-  return agentId;
+  return { agentId, grants, reused };
 }
 
 export async function issueAuthorizationCode(
@@ -268,7 +417,7 @@ export async function issueAuthorizationCode(
   const code = mintOpaque(CODE_PREFIX);
   const expires_at = new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000);
   await withTransaction(async (c) => {
-    const agent_user_id = await createAuthorizedAgentUser(c, {
+    const { agentId, grants } = await upsertAuthorizedAgentUser(c, {
       owner_id: input.approver_user_id,
       client_id: input.client_id,
       agent_name: input.agent_name,
@@ -287,13 +436,13 @@ export async function issueAuthorizationCode(
       [
         code,
         input.client_id,
-        agent_user_id,
+        agentId,
         input.redirect_uri,
         input.code_challenge,
-        input.granted_doco_ids,
-        JSON.stringify(input.granted_doco_roles ?? {}),
-        input.granted_org_ids ?? [],
-        JSON.stringify(input.granted_org_roles ?? {}),
+        grants.granted_doco_ids,
+        JSON.stringify(grants.granted_doco_roles),
+        grants.granted_org_ids,
+        JSON.stringify(grants.granted_org_roles),
         input.scope ?? null,
         expires_at,
       ],
@@ -867,7 +1016,7 @@ export async function approveDeviceAuthorization(args: {
       );
     }
 
-    const agent_user_id = await createAuthorizedAgentUser(c, {
+    const { agentId, grants } = await upsertAuthorizedAgentUser(c, {
       owner_id: args.approver_user_id,
       client_id: row.client_id,
       agent_name: args.agent_name,
@@ -890,11 +1039,11 @@ export async function approveDeviceAuthorization(args: {
           AND expires_at > now()`,
       [
         args.device_code,
-        agent_user_id,
-        args.granted_doco_ids,
-        JSON.stringify(args.granted_doco_roles ?? {}),
-        args.granted_org_ids ?? [],
-        JSON.stringify(args.granted_org_roles ?? {}),
+        agentId,
+        grants.granted_doco_ids,
+        JSON.stringify(grants.granted_doco_roles),
+        grants.granted_org_ids,
+        JSON.stringify(grants.granted_org_roles),
       ],
     );
   });
