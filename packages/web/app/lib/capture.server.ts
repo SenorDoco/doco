@@ -305,6 +305,10 @@ export interface DecisionDraft {
   alternatives?: { name: string; rejected_because: string }[];
   /** Optional: intent ids to link via `intent_ids`. */
   intent_ids?: string[];
+  /** Optional: PR/commit Reference ids that implement this Decision.
+   *  Materializes `implemented_by` edges (Decision → Reference) — the
+   *  link layer the deployment-status rollup walks. */
+  implemented_by?: string[];
   /** Optional: BPMN forward sequence-flow targets from this Decision. */
   sequence_to?: SequenceToDraft[];
   /** Optional: principal id who made the decision. */
@@ -887,6 +891,7 @@ export async function captureDecision(
   if (!draft.chosen?.trim()) return { error: "chosen is required." };
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
+  const implementedBy: string[] = Array.isArray(draft.implemented_by) ? draft.implemented_by : [];
   const sequenceTo = normalizeSequenceTo(draft.sequence_to);
 
   const decidedBy = optionalPrincipalId(draft.decided_by_principal_id, "decided_by_principal_id");
@@ -911,6 +916,7 @@ export async function captureDecision(
     decision: decisionText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
+    ...(implementedBy.length > 0 ? { implemented_by: implementedBy } : {}),
     ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     question: draft.question.trim(),
     chosen: draft.chosen.trim(),
@@ -974,6 +980,9 @@ export interface DecisionPatch {
   intent_ids?: string[];
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
+  implemented_by?: string[];
+  implemented_by_add?: string[];
+  implemented_by_remove?: string[];
   sequence_to?: SequenceToDraft[];
   decided_by_principal_id?: string;
   born_from?: string | null;
@@ -1106,6 +1115,24 @@ export async function updateDecision(
   if (intentResult.changed) {
     if (!changed.includes("intent_ids")) changed.push("intent_ids");
     ops.push(...intentResult.ops);
+  }
+
+  // implemented_by (replace/add/remove) — PR/commit Reference ids, already
+  // ids so the lookup is a pass-through (mirrors intent_ids).
+  const implementedByResult = await applyListOp(
+    fm,
+    "implemented_by",
+    {
+      ...(patch.implemented_by !== undefined ? { replace: patch.implemented_by } : {}),
+      ...(patch.implemented_by_add !== undefined ? { add: patch.implemented_by_add } : {}),
+      ...(patch.implemented_by_remove !== undefined ? { remove: patch.implemented_by_remove } : {}),
+    },
+    (ids) => ({ ids }),
+  );
+  if (implementedByResult.error) return { error: implementedByResult.error };
+  if (implementedByResult.changed) {
+    if (!changed.includes("implemented_by")) changed.push("implemented_by");
+    ops.push(...implementedByResult.ops);
   }
 
   if (patch.sequence_to !== undefined) {

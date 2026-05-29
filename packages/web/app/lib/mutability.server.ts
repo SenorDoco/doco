@@ -84,6 +84,12 @@ const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "outcome",
   "superseded_by",
   "intent_ids_add",
+  // PR/commit Reference links accrue *after* a Decision is accepted —
+  // the PRs that implement it land later. Additive only (mirrors
+  // `intent_ids_add`): you record new implementing references as they
+  // ship; you don't rewrite or drop the implementation history on a
+  // frozen claim. This is the edge the deployment-status rollup walks.
+  "implemented_by_add",
   // Graph/perspective relations may be attached after a claim is activated.
   // The claim text stays frozen; the flow edge is authored separately.
   "sequence_to",
