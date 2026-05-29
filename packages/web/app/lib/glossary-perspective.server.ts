@@ -1,13 +1,16 @@
 // Glossary perspective — server-side data access.
 //
-// The glossaries template models each term entry as a Decision:
-//   • `data.chosen`   — the canonical term (the dictionary headword)
-//   • `data.question` — the concept the term answers
-//   • `decision`      — the definition prose (scope + examples)
-//   • `data.alternatives` — aliases / rejected / deprecated wording
+// A glossary's "term entries" can be modeled with more than one neuron
+// type. The glossaries template treats a **Decision** as the canonical
+// term (`chosen` = headword, `question` = concept, prose = definition,
+// `alternatives` = aliases), but real glossaries also define terms as
+// **References** (title = headword, prose/citation = definition), and
+// the template additionally allows Rules (terminology usage), Evals
+// (consistency checks), and an Intent (scope). So this loader reads
+// every non-policy content neuron and reshapes it into a dictionary
+// entry, rather than only Decisions — otherwise a glossary built from
+// References renders as a blank page.
 //
-// This loader reshapes those Decisions into dictionary entries the
-// `GlossaryPerspective` component renders as a printed-lexicon page.
 // It reads the same neurons the List perspective shows; only the
 // presentation differs, so there is no new write surface here.
 
@@ -15,12 +18,20 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-interface DecisionRow {
+interface NeuronRow {
   id: string;
-  decision: string;
+  entity_type: string;
+  /** First line of the type-named prose column (the candidate headword). */
+  label: string | null;
+  /** Full type-named prose column (the candidate definition). */
+  prose: string | null;
   lifecycle: string | null;
-  created_at: string | null;
   data: Record<string, unknown> | null;
+  // Reference scalars promoted out of `data` (NULL for other types).
+  ref_type: string | null;
+  locator: string | null;
+  citation: string | null;
+  title: string | null;
 }
 
 export interface GlossaryAlternative {
@@ -33,18 +44,21 @@ export interface GlossaryAlternative {
 export interface GlossaryEntry {
   id: string;
   href: string;
-  /** The canonical term — the dictionary headword. */
+  entityType: string;
+  /** The term — the dictionary headword. */
   headword: string;
   /** Uppercase first letter used for A–Z grouping ("#" when non-alpha). */
   letter: string;
-  /** Playful syllabified respelling, e.g. "do·co" → "/ ˈdoʊ koʊ /"-ish. */
+  /** Playful syllabified respelling, e.g. "do·co" → "/ ˈdo · co /"-ish. */
   pronunciation: string;
-  /** Faux part-of-speech tag — decorative dictionary flavor. */
-  partOfSpeech: string;
-  /** The concept question the term answers, shown as an italic lead-in. */
+  /** Italic dictionary label: faux part-of-speech for terms, type tag otherwise. */
+  tag: string;
+  /** The concept question / context the term answers, as an italic lead-in. */
   question: string | null;
   /** Definition prose, split into numbered senses on blank lines. */
   senses: string[];
+  /** Source line for cited terms (e.g. a Reference's locator / citation). */
+  source: string | null;
   alternatives: GlossaryAlternative[];
   lifecycle: string;
 }
@@ -79,16 +93,25 @@ function firstLine(value: string | null | undefined): string {
     .trim();
 }
 
+/** Drop a leading "<headword>:" / "<headword> —" restatement from a definition. */
+function stripHeadwordPrefix(prose: string, headword: string): string {
+  const trimmed = prose.trim();
+  const head = headword.trim();
+  if (!head) return trimmed;
+  const re = new RegExp(`^${head.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[:—–-]\\s*`, "i");
+  return trimmed.replace(re, "");
+}
+
 const VOWELS = /[aeiouy]/i;
 const DEPRECATED_HINT =
   /\b(deprecat|reject|avoid|legacy|old|former|don'?t use|do not use|banned|outdated|historical|wrong)\b/i;
 
 /**
  * A light, deliberately-approximate syllable respelling. We are not
- * claiming real IPA — this is dictionary *flavor*: chunk the word on
- * vowel groups, join the chunks with middots, and mark primary stress
- * on the first syllable. Wrapped in slashes so it reads like a
- * pronunciation key.
+ * claiming real IPA — this is dictionary *flavor*: chunk the first word
+ * on vowel groups, join the chunks with middots, and mark primary
+ * stress on the first syllable. Wrapped in slashes like a pronunciation
+ * key.
  */
 function pseudoPronunciation(term: string): string {
   const word = firstLine(term)
@@ -116,11 +139,11 @@ function pseudoPronunciation(term: string): string {
 }
 
 /**
- * Faux part-of-speech tag. Glossary headwords are overwhelmingly
- * nouns, so "n." is the honest default; multi-word terms read as
- * phrases and gerunds as verbs. Purely decorative.
+ * Faux part-of-speech tag for term headwords (Decisions / References).
+ * Headwords are overwhelmingly nouns, so "n." is the honest default;
+ * multi-word terms read as phrases and gerunds as verbs. Decorative.
  */
-function partOfSpeech(term: string): string {
+function fauxPartOfSpeech(term: string): string {
   const head = firstLine(term);
   if (!head) return "n.";
   if (/\s/.test(head.trim())) return "phr.";
@@ -128,6 +151,14 @@ function partOfSpeech(term: string): string {
   if (/ly$/i.test(head)) return "adv.";
   return "n.";
 }
+
+// Non-term content types get an honest italic register label instead of
+// a faux part-of-speech, so a usage Rule or scope Intent reads correctly.
+const TYPE_TAG: Record<string, string> = {
+  rule: "usage",
+  eval: "check",
+  intent: "scope",
+};
 
 function splitSenses(prose: string): string[] {
   return String(prose ?? "")
@@ -164,8 +195,57 @@ function letterOf(headword: string): string {
   return /[A-Z]/.test(ch) ? ch : "#";
 }
 
-function href(handle: string, id: string): string {
-  return `/${handle}/decision/${id}`;
+function href(handle: string, entityType: string, id: string): string {
+  return `/${handle}/${entityType}/${id}`;
+}
+
+/** Map one content neuron into a dictionary entry, per its type. */
+function toEntry(row: NeuronRow, handle: string): GlossaryEntry {
+  const data = row.data ?? {};
+  const lifecycle = row.lifecycle ?? "accepted";
+  let headword: string;
+  let question: string | null = null;
+  let definitionProse: string;
+  let source: string | null = null;
+  let alternatives: GlossaryAlternative[] = [];
+  let tag: string;
+
+  if (row.entity_type === "decision") {
+    headword = asString(data.chosen) ?? asString(data.term) ?? row.label ?? "(untitled term)";
+    question = asString(data.question);
+    definitionProse = stripHeadwordPrefix(row.prose ?? "", headword);
+    alternatives = parseAlternatives(data.alternatives);
+    tag = fauxPartOfSpeech(headword);
+  } else if (row.entity_type === "reference") {
+    // A Reference used as a glossary entry: title is the term, the prose
+    // body is the definition, and locator/citation is the source line.
+    headword = row.title ?? row.label ?? "(untitled reference)";
+    const body = row.title ? (row.prose ?? "") : stripHeadwordPrefix(row.prose ?? "", headword);
+    definitionProse = body;
+    source = row.citation ?? row.locator ?? null;
+    tag = row.ref_type ? row.ref_type.toLowerCase() : "ref.";
+    alternatives = parseAlternatives(data.alternatives);
+  } else {
+    // Rule / Eval / Intent: the first line is the headword, the rest the body.
+    headword = row.label ?? "(untitled)";
+    definitionProse = stripHeadwordPrefix(row.prose ?? "", headword);
+    tag = TYPE_TAG[row.entity_type] ?? row.entity_type;
+  }
+
+  return {
+    id: row.id,
+    href: href(handle, row.entity_type, row.id),
+    entityType: row.entity_type,
+    headword,
+    letter: letterOf(headword),
+    pronunciation: pseudoPronunciation(headword),
+    tag,
+    question,
+    senses: splitSenses(definitionProse),
+    source,
+    alternatives,
+    lifecycle,
+  };
 }
 
 export async function loadGlossaryPerspectiveData(
@@ -173,36 +253,47 @@ export async function loadGlossaryPerspectiveData(
   docoId: string,
   handle: string,
 ): Promise<GlossaryPerspectiveData> {
-  const { rows } = await c.query<DecisionRow>(
-    `SELECT id, decision, COALESCE(lifecycle, 'accepted') AS lifecycle,
-            created_at::text AS created_at, data
-       FROM decisions
-      WHERE doco_id = $1
-        AND COALESCE(lifecycle, 'accepted') <> 'retired'`,
+  // Union the content tables into one shape. Policies (guidance /
+  // authoring) and structural Principals are excluded — they're not
+  // glossary headwords. Each table projects its type-named prose column
+  // into `label` (first line) + `prose` (full text); only references
+  // carry the promoted scalar columns.
+  const { rows } = await c.query<NeuronRow>(
+    `
+    SELECT id, 'decision'::text AS entity_type,
+           split_part(decision, E'\n', 1) AS label, decision AS prose,
+           COALESCE(lifecycle,'accepted') AS lifecycle, data,
+           NULL::text AS ref_type, NULL::text AS locator, NULL::text AS citation, NULL::text AS title
+      FROM decisions WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+    UNION ALL
+    SELECT id, 'reference'::text,
+           split_part(COALESCE(NULLIF(title,''), reference), E'\n', 1), reference,
+           COALESCE(lifecycle,'accepted'), data,
+           ref_type, locator, citation, title
+      FROM reference_entities WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+    UNION ALL
+    SELECT id, 'rule'::text,
+           split_part(rule, E'\n', 1), rule,
+           COALESCE(lifecycle,'accepted'), data,
+           NULL, NULL, NULL, NULL
+      FROM rules WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+    UNION ALL
+    SELECT id, 'eval'::text,
+           split_part(eval, E'\n', 1), eval,
+           COALESCE(lifecycle,'accepted'), data,
+           NULL, NULL, NULL, NULL
+      FROM evals WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+    UNION ALL
+    SELECT id, 'intent'::text,
+           split_part(intent, E'\n', 1), intent,
+           COALESCE(lifecycle,'accepted'), data,
+           NULL, NULL, NULL, NULL
+      FROM intents WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+    `,
     [docoId],
   );
 
-  const entries: GlossaryEntry[] = rows.map((row) => {
-    const data = row.data ?? {};
-    const headword =
-      asString(data.chosen) ??
-      asString(data.term) ??
-      (firstLine(row.decision) || "(untitled term)");
-    const question = asString(data.question);
-    const senses = splitSenses(row.decision);
-    return {
-      id: row.id,
-      href: href(handle, row.id),
-      headword,
-      letter: letterOf(headword),
-      pronunciation: pseudoPronunciation(headword),
-      partOfSpeech: partOfSpeech(headword),
-      question,
-      senses,
-      alternatives: parseAlternatives(data.alternatives),
-      lifecycle: row.lifecycle ?? "accepted",
-    };
-  });
+  const entries: GlossaryEntry[] = rows.map((row) => toEntry(row, handle));
 
   // Alphabetical by headword, case-insensitively — the dictionary order.
   const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });

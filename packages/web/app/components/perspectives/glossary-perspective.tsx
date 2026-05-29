@@ -211,7 +211,7 @@ function EntryView({ entry }: { entry: GlossaryEntry }) {
           </span>
         ) : null}{" "}
         <span className="text-[0.85rem] italic" style={{ color: INK_SOFT }}>
-          {entry.partOfSpeech}
+          {entry.tag}
         </span>
         {entry.lifecycle !== "accepted" ? (
           <span
@@ -228,6 +228,12 @@ function EntryView({ entry }: { entry: GlossaryEntry }) {
           </span>
         ) : null}
         {renderSenses(entry.senses)}
+        {entry.source ? (
+          <span className="text-[0.82rem] italic" style={{ color: INK_SOFT }}>
+            {" "}
+            — {entry.source}
+          </span>
+        ) : null}
       </p>
       {entry.alternatives.length > 0 ? (
         <p className="mt-0.5 pl-[1em] text-[0.85rem]" style={{ color: INK_SOFT }}>

@@ -1,0 +1,103 @@
+import { describe, expect, it, vi } from "vitest";
+import { loadGlossaryPerspectiveData } from "../glossary-perspective.server";
+
+// The loader issues a single UNION-ALL query across the content tables,
+// so the mock returns rows already in the unioned NeuronRow shape.
+function makeClient(rows: unknown[]) {
+  return {
+    async query<T>(_sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+      return { rows: rows as T[] };
+    },
+  };
+}
+
+function row(over: Record<string, unknown>) {
+  return {
+    id: "x",
+    entity_type: "decision",
+    label: null,
+    prose: null,
+    lifecycle: "accepted",
+    data: {},
+    ref_type: null,
+    locator: null,
+    citation: null,
+    title: null,
+    ...over,
+  };
+}
+
+describe("loadGlossaryPerspectiveData", () => {
+  it("renders Reference neurons as entries (regression: glossary was blank with only References)", async () => {
+    const client = makeClient([
+      row({
+        id: "reference_01",
+        entity_type: "reference",
+        label: "Torre",
+        prose: "The company building this product.",
+        title: "Torre",
+        ref_type: "term",
+        citation: "Torre.ai handbook",
+      }),
+    ]);
+
+    const data = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+
+    expect(data.stats.entries).toBe(1);
+    const entry = data.groups[0].entries[0];
+    expect(entry.headword).toBe("Torre");
+    expect(entry.entityType).toBe("reference");
+    expect(entry.href).toBe("/acme/glossary/reference/reference_01");
+    expect(entry.senses).toEqual(["The company building this product."]);
+    expect(entry.source).toBe("Torre.ai handbook");
+    expect(entry.tag).toBe("term"); // ref_type used as the register label
+  });
+
+  it("maps Decisions to chosen=headword, question lead-in, and alternatives", async () => {
+    const client = makeClient([
+      row({
+        id: "decision_01",
+        entity_type: "decision",
+        label: "Neuron",
+        prose: "A single typed node in a Doco.",
+        data: {
+          chosen: "Neuron",
+          question: "What is one unit of captured knowledge?",
+          alternatives: [{ name: "node", rejected_because: "too generic" }],
+        },
+      }),
+    ]);
+
+    const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+    const entry = groups[0].entries[0];
+    expect(entry.headword).toBe("Neuron");
+    expect(entry.question).toBe("What is one unit of captured knowledge?");
+    expect(entry.tag).toBe("n.");
+    expect(entry.alternatives).toEqual([
+      { name: "node", note: "too generic", deprecated: true },
+    ]);
+  });
+
+  it("alphabetizes mixed types into letter groups and tags non-term types honestly", async () => {
+    const client = makeClient([
+      row({ id: "intent_01", entity_type: "intent", label: "Scope of this glossary", prose: "Scope of this glossary covers Torre product terms." }),
+      row({ id: "decision_01", entity_type: "decision", label: "Doco", prose: "Doco — institutional memory.", data: { chosen: "Doco" } }),
+      row({ id: "rule_01", entity_type: "rule", label: "Always capitalize Doco", prose: "Always capitalize Doco in UI copy." }),
+    ]);
+
+    const { groups, letters } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+    expect(letters).toEqual(["A", "D", "S"]);
+    const byType = Object.fromEntries(
+      groups.flatMap((g) => g.entries).map((e) => [e.entityType, e.tag]),
+    );
+    expect(byType.rule).toBe("usage");
+    expect(byType.intent).toBe("scope");
+    expect(byType.decision).toBe("n.");
+  });
+
+  it("returns empty groups when the Doco has no content neurons", async () => {
+    const data = await loadGlossaryPerspectiveData(makeClient([]), "doco_01", "acme/glossary");
+    expect(data.groups).toEqual([]);
+    expect(data.stats.entries).toBe(0);
+  });
+});
