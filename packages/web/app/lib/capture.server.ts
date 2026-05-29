@@ -305,10 +305,6 @@ export interface DecisionDraft {
   alternatives?: { name: string; rejected_because: string }[];
   /** Optional: intent ids to link via `intent_ids`. */
   intent_ids?: string[];
-  /** Optional: PR/commit Reference ids that implement this Decision.
-   *  Materializes `implemented_by` edges (Decision → Reference) — the
-   *  link layer the deployment-status rollup walks. */
-  implemented_by?: string[];
   /** Optional: BPMN forward sequence-flow targets from this Decision. */
   sequence_to?: SequenceToDraft[];
   /** Optional: principal id who made the decision. */
@@ -891,7 +887,6 @@ export async function captureDecision(
   if (!draft.chosen?.trim()) return { error: "chosen is required." };
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const implementedBy: string[] = Array.isArray(draft.implemented_by) ? draft.implemented_by : [];
   const sequenceTo = normalizeSequenceTo(draft.sequence_to);
 
   const decidedBy = optionalPrincipalId(draft.decided_by_principal_id, "decided_by_principal_id");
@@ -916,7 +911,6 @@ export async function captureDecision(
     decision: decisionText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
-    ...(implementedBy.length > 0 ? { implemented_by: implementedBy } : {}),
     ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     question: draft.question.trim(),
     chosen: draft.chosen.trim(),
@@ -981,8 +975,6 @@ export interface DecisionPatch {
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
   implemented_by?: string[];
-  implemented_by_add?: string[];
-  implemented_by_remove?: string[];
   sequence_to?: SequenceToDraft[];
   decided_by_principal_id?: string;
   born_from?: string | null;
@@ -1117,22 +1109,16 @@ export async function updateDecision(
     ops.push(...intentResult.ops);
   }
 
-  // implemented_by (replace/add/remove) — PR/commit Reference ids, already
-  // ids so the lookup is a pass-through (mirrors intent_ids).
-  const implementedByResult = await applyListOp(
-    fm,
-    "implemented_by",
-    {
-      ...(patch.implemented_by !== undefined ? { replace: patch.implemented_by } : {}),
-      ...(patch.implemented_by_add !== undefined ? { add: patch.implemented_by_add } : {}),
-      ...(patch.implemented_by_remove !== undefined ? { remove: patch.implemented_by_remove } : {}),
-    },
-    (ids) => ({ ids }),
-  );
-  if (implementedByResult.error) return { error: implementedByResult.error };
-  if (implementedByResult.changed) {
-    if (!changed.includes("implemented_by")) changed.push("implemented_by");
-    ops.push(...implementedByResult.ops);
+  // implemented_by — code-artifact Reference links. Replace-only, like
+  // every other relationship list (decision_ids, preceded_by, sequence_to);
+  // only the legacy intent_ids carries add/remove sugar.
+  if (patch.implemented_by !== undefined) {
+    const list = Array.isArray(patch.implemented_by) ? patch.implemented_by : [];
+    if (JSON.stringify(fm.implemented_by ?? []) !== JSON.stringify(list)) {
+      fm.implemented_by = list;
+      changed.push("implemented_by");
+      ops.push({ kind: "set", field: "implemented_by", value: JSON.stringify(list) });
+    }
   }
 
   if (patch.sequence_to !== undefined) {
@@ -1414,15 +1400,6 @@ export async function updateEntity(opts: {
     "intent_ids",
     "intent_ids_add",
     "intent_ids_remove",
-    // Handled by the applyListOp below — without this the *_add/*_remove
-    // keys would fall through to the catch-all and be written as literal
-    // junk fields (and deriveSynapses would emit a bogus
-    // `implemented_by_add` edge). `implemented_by` (replace) is routed
-    // through the list-op too so all three forms behave consistently on
-    // every neuron type, matching `intent_ids`.
-    "implemented_by",
-    "implemented_by_add",
-    "implemented_by_remove",
     "body_md",
     "body_md_append",
     "policy",
@@ -1469,28 +1446,11 @@ export async function updateEntity(opts: {
     ops.push(...eIntentResult.ops);
   }
 
-  // implemented_by (replace/add/remove) — code-artifact Reference links,
-  // valid on any neuron (Decision/ADR, BPMN Action, Eval, …). Already
-  // ids, so the lookup is a pass-through (mirrors intent_ids above).
-  const eImplementedByResult = await applyListOp(
-    fm,
-    "implemented_by",
-    {
-      ...(patch.implemented_by !== undefined ? { replace: patch.implemented_by as string[] } : {}),
-      ...(patch.implemented_by_add !== undefined
-        ? { add: patch.implemented_by_add as string[] }
-        : {}),
-      ...(patch.implemented_by_remove !== undefined
-        ? { remove: patch.implemented_by_remove as string[] }
-        : {}),
-    },
-    (ids) => ({ ids }),
-  );
-  if (eImplementedByResult.error) return { error: eImplementedByResult.error };
-  if (eImplementedByResult.changed) {
-    if (!changed.includes("implemented_by")) changed.push("implemented_by");
-    ops.push(...eImplementedByResult.ops);
-  }
+  // implemented_by — code-artifact Reference links. Not special-cased:
+  // the catch-all loop above already applies it as a whole-list replace,
+  // exactly like decision_ids / preceded_by / sequence_to. Replace-only,
+  // no add/remove sugar (that's the legacy intent_ids exception, not the
+  // norm).
 
   let bodyOp: "replace" | "append" | "none" = "none";
   if (isMd) {
