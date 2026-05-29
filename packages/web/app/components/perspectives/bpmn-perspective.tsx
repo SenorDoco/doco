@@ -49,6 +49,7 @@ import {
 } from "~/lib/focused-render-selection";
 import {
   computeDepthFromCenter,
+  focalEdgeWidth,
   hasFocalNode,
   opacityForDepth,
   opacityForEdge,
@@ -1481,7 +1482,7 @@ function layOutBpmn(
         interactionWidth: 0,
         style: {
           stroke,
-          strokeWidth: 1.75,
+          strokeWidth: focalEdgeWidth(source, target, centerId, 1.75),
           opacity: edgeOpacity,
         },
         markerEnd: {

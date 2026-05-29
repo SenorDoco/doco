@@ -29,6 +29,7 @@ import {
 import {
   computeDepthFromCenter,
   depthBucket,
+  focalEdgeWidth,
   hasFocalNode,
   opacityForDepth,
   opacityForEdge,
@@ -775,6 +776,7 @@ export function OverviewGraph({
         interactionWidth: 0,
         style: {
           stroke: lifecycleColor(sourceLifecycle),
+          strokeWidth: focalEdgeWidth(link.source, link.target, focusCenterId, 1),
           strokeOpacity: 0.5 * edgeOpacity * transitionOpacity,
           transition: "stroke-opacity 500ms ease, opacity 500ms ease",
           pointerEvents: "none" as const,
@@ -786,6 +788,7 @@ export function OverviewGraph({
     renderedLinks,
     depthByNodeId,
     focalActive,
+    focusCenterId,
     nodeById,
     renderWindowOpacityById,
     externalEdgeStubs.edges,

@@ -96,6 +96,28 @@ export function opacityForEdge(from: number | undefined, to: number | undefined)
   return Math.min(a, b);
 }
 
+// Doubles the stroke weight of the focal node's incident edges to match
+// the focal node's doubled border, so the "lines coming in and out" of the
+// selected neuron read as part of the same emphasis.
+const FOCAL_EDGE_WIDTH_MULTIPLIER = 2;
+
+/**
+ * Stroke width for an edge given the current focal node. Edges incident
+ * to the focal node (one endpoint === `centerId`) are scaled by the focal
+ * multiplier; every other edge — and every edge when no focal node is
+ * set — keeps `baseWidth`.
+ */
+export function focalEdgeWidth(
+  source: string,
+  target: string,
+  centerId: string | null | undefined,
+  baseWidth: number,
+): number {
+  if (!centerId) return baseWidth;
+  if (source === centerId || target === centerId) return baseWidth * FOCAL_EDGE_WIDTH_MULTIPLIER;
+  return baseWidth;
+}
+
 /**
  * `null` when no focal node is set — callers can short-circuit the
  * per-node className/style work and render at full opacity.
