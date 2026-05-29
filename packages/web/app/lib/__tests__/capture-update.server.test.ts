@@ -204,6 +204,88 @@ describe("updateEntity", () => {
     );
   });
 
+  it("captures Decision implemented_by so it links to the PR/commit References that ship it", async () => {
+    const result = await captureDecision(
+      "/tmp/doco",
+      DOCO_ID,
+      "test",
+      "doco",
+      {
+        decision: "Adopt the new vocabulary",
+        question: "What ships this?",
+        chosen: "These PRs.",
+        implemented_by: [
+          "reference_01TEST000000000000000001",
+          "reference_01TEST000000000000000002",
+        ],
+        decided_by_principal_id: "principal_decider",
+        created_by_user_id: "user_alice",
+      },
+      "https://doco.test",
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_type: "decision",
+        data: expect.objectContaining({
+          implemented_by: [
+            "reference_01TEST000000000000000001",
+            "reference_01TEST000000000000000002",
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("adds to a frozen Decision's implemented_by as PRs land after acceptance", async () => {
+    vi.mocked(getEntity).mockResolvedValue({
+      id: DECISION_ID,
+      entity_type: "decision",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "accepted",
+      body_md: "",
+      data: {
+        id: DECISION_ID,
+        doco_id: DOCO_ID,
+        neuron_type: "decision",
+        decision: "Choose payment path",
+        question: "Which payment path?",
+        chosen: "Route to the selected path.",
+        lifecycle: "accepted",
+        implemented_by: ["reference_01TEST000000000000000001"],
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateDecision(
+      "/tmp/doco",
+      DOCO_ID,
+      "test",
+      "doco",
+      DECISION_ID,
+      {
+        implemented_by_add: ["reference_01TEST000000000000000002"],
+      },
+      "https://doco.test",
+      null,
+    );
+
+    expect(result).toMatchObject({ ok: true, changed: ["implemented_by"] });
+    expect(upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          implemented_by: [
+            "reference_01TEST000000000000000001",
+            "reference_01TEST000000000000000002",
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
   it("stores Decision created_by from the user, not the decider Principal", async () => {
     const result = await captureDecision(
       "/tmp/doco",
