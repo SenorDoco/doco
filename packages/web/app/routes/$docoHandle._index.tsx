@@ -74,11 +74,15 @@ import { useFullscreen } from "~/lib/use-fullscreen";
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
-const RIGHT_COLUMN_MAIN_MIN_WIDTH = 768;
-const RIGHT_COLUMN_WIDTH = 320;
+// The side panel — the activity column, or the neuron dialog — sits to the
+// RIGHT of the perspective only when the two fit side by side: the
+// perspective and the panel together (excluding the gap between them) must
+// total at least this width. Below it the activity column is hidden and the
+// neuron dialog floats on top of the perspective instead. One flag governs
+// both, so the column and the right-hand dialog appear under the same rule.
+const SIDE_PANEL_MIN_COMBINED_WIDTH = 768;
+// Matches the grid's gap-6 between the perspective and the side panel.
 const RIGHT_COLUMN_GRID_GAP = 24;
-const RIGHT_COLUMN_MIN_CONTENT_WIDTH =
-  RIGHT_COLUMN_MAIN_MIN_WIDTH + RIGHT_COLUMN_WIDTH + RIGHT_COLUMN_GRID_GAP;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
@@ -609,21 +613,30 @@ export default function DocoHome({
   // browser convention. The neuron dialog also moves inside the aside
   // when fullscreen so it stays visible on top of the graph (the right
   // column is outside the fullscreen tree and not rendered).
-  const pageShellRef = useRef<HTMLElement>(null);
+  const contentPaneRef = useRef<HTMLDivElement>(null);
   const asideRef = useRef<HTMLElement>(null);
-  const [showRightColumn, setShowRightColumn] = useState(false);
+  const [showSidePanel, setShowSidePanel] = useState(false);
   const { isFullscreen: isPerspectiveFullscreen, toggle: togglePerspectiveFullscreen } =
     useFullscreen(asideRef);
 
+  // Re-decide the side-by-side layout whenever the pane holding the
+  // perspective + panel changes width. That pane is an in-flow flex
+  // descendant of <main>, the Señor Doco rail's sibling, so it shrinks when
+  // the rail expands (Show Thinking widens it to 640px) and grows when the
+  // rail collapses — and it tracks browser resizes. One flag governs both
+  // the activity column and where the neuron dialog renders.
   useEffect(() => {
-    const shell = pageShellRef.current;
-    if (!shell) return;
+    const pane = contentPaneRef.current;
+    if (!pane) return;
 
-    const update = (width: number) => {
-      const next = width >= RIGHT_COLUMN_MIN_CONTENT_WIDTH;
-      setShowRightColumn((prev) => (prev === next ? prev : next));
+    const update = (paneWidth: number) => {
+      // paneWidth spans perspective + gap + panel; the perspective and the
+      // panel together (gap excluded) must clear the threshold to sit side
+      // by side, otherwise the column hides and the dialog floats on top.
+      const next = paneWidth - RIGHT_COLUMN_GRID_GAP >= SIDE_PANEL_MIN_COMBINED_WIDTH;
+      setShowSidePanel((prev) => (prev === next ? prev : next));
     };
-    const measure = () => update(shell.getBoundingClientRect().width);
+    const measure = () => update(pane.getBoundingClientRect().width);
 
     measure();
     if (typeof ResizeObserver === "undefined") {
@@ -633,9 +646,9 @@ export default function DocoHome({
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      update(entry?.contentRect.width ?? shell.getBoundingClientRect().width);
+      update(entry?.contentRect.width ?? pane.getBoundingClientRect().width);
     });
-    observer.observe(shell);
+    observer.observe(pane);
     return () => observer.disconnect();
   }, []);
 
@@ -866,10 +879,11 @@ export default function DocoHome({
     },
   ];
 
-  // Shared NeuronDialog content. The dialog renders in one of two
-  // positioning wrappers (a fixed overlay below 1200px, an absolute
-  // overlay inside the right column at ≥ 1200px); both reuse this same
-  // element so the props aren't duplicated.
+  // Shared NeuronDialog content. The same `showSidePanel` flag that shows
+  // the activity column also picks the dialog's wrapper: an absolute overlay
+  // inside the right column when the pane is wide enough for both, otherwise
+  // a fixed overlay floating on top of the perspective. Both wrappers reuse
+  // this element so the props aren't duplicated.
   const neuronDialogPanel =
     neuronDialog && !isPerspectiveFullscreen ? (
       <NeuronDialog
@@ -889,7 +903,7 @@ export default function DocoHome({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <SiteHeader mode="host" me={me} />
-      <main ref={pageShellRef} className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
+      <main className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
         <div className="mb-6 shrink-0 space-y-1">
@@ -935,8 +949,9 @@ export default function DocoHome({
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
         <div
+          ref={contentPaneRef}
           className={`grid min-h-0 flex-1 gap-6 ${
-            showRightColumn ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"
+            showSidePanel ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"
           }`}
         >
           <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
@@ -1093,7 +1108,7 @@ export default function DocoHome({
               enough inline room. A viewport breakpoint is not enough
               because the Señor Doco rail can consume a large slice of
               the browser width before this page gets laid out. */}
-          <div className={`relative min-h-0 min-w-0 ${showRightColumn ? "block" : "hidden"}`}>
+          <div className={`relative min-h-0 min-w-0 ${showSidePanel ? "block" : "hidden"}`}>
             <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
               <NeuronsOverviewCard
                 sections={sections}
@@ -1148,7 +1163,7 @@ export default function DocoHome({
         {neuronDialog && !isPerspectiveFullscreen ? (
           <div
             className={`fixed bottom-4 right-3 top-20 z-[100] [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
-              showRightColumn ? "hidden" : "block"
+              showSidePanel ? "hidden" : "block"
             }`}
           >
             {neuronDialogPanel}
