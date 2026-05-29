@@ -12,6 +12,7 @@ vi.mock("@doco/db", () => ({
     decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
     idea: { table: "ideas", body: false, typeNamedColumn: "idea" },
     state: { table: "states", body: false, typeNamedColumn: "state" },
+    action: { table: "actions", body: false, typeNamedColumn: "action" },
   },
   getDocoById: vi.fn(),
   getEntity: vi.fn(),
@@ -239,6 +240,50 @@ describe("updateEntity", () => {
     );
   });
 
+  it("replaces a frozen Decision's implemented_by (full mutability so refactors don't force supersession)", async () => {
+    vi.mocked(getEntity).mockResolvedValue({
+      id: DECISION_ID,
+      entity_type: "decision",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "accepted",
+      body_md: "",
+      data: {
+        id: DECISION_ID,
+        doco_id: DOCO_ID,
+        neuron_type: "decision",
+        decision: "Choose payment path",
+        question: "Which payment path?",
+        chosen: "Route to the selected path.",
+        lifecycle: "accepted",
+        implemented_by: ["reference_01TEST000000000000000001"],
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateDecision(
+      "/tmp/doco",
+      DOCO_ID,
+      "test",
+      "doco",
+      DECISION_ID,
+      {
+        implemented_by: ["reference_01TEST000000000000000003"],
+      },
+      "https://doco.test",
+      null,
+    );
+
+    expect(result).toMatchObject({ ok: true, changed: ["implemented_by"] });
+    expect(upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          implemented_by: ["reference_01TEST000000000000000003"],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
   it("adds to a frozen Decision's implemented_by as PRs land after acceptance", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: DECISION_ID,
@@ -383,6 +428,65 @@ describe("updateEntity", () => {
 
     expect(result).toMatchObject({ error: "No fields changed." });
     expect(upsertEntity).not.toHaveBeenCalled();
+  });
+
+  it("links an accepted Action to code-artifact References via implemented_by — BPMN code↔step linkage", async () => {
+    // The BPMN code↔step probe case: an Action whose ID is referenced
+    // from code comments cannot be superseded without breaking those
+    // URLs. implemented_by must be fully patchable on a frozen Action.
+    const ACTION_ID = "action_01TEST00000000000000000001";
+    vi.mocked(getEntity).mockResolvedValue({
+      id: ACTION_ID,
+      entity_type: "action",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "accepted",
+      body_md: "",
+      data: {
+        id: ACTION_ID,
+        doco_id: DOCO_ID,
+        neuron_type: "action",
+        action: "Selects type of job",
+        verb: "select",
+        lifecycle: "accepted",
+        actor_id: "principal_clerk",
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateEntity({
+      docoDir: "/tmp/doco",
+      docoId: DOCO_ID,
+      ownerSlug: "test",
+      docoSlug: "doco",
+      entityType: "action",
+      pluralDir: "actions",
+      id: ACTION_ID,
+      patch: {
+        implemented_by: [
+          "reference_01TEST000000000000000010",
+          "reference_01TEST000000000000000011",
+        ],
+      },
+      docoHost: "https://doco.test",
+      actorId: "user_alice",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      changed: ["implemented_by"],
+    });
+    expect(upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_type: "action",
+        data: expect.objectContaining({
+          implemented_by: [
+            "reference_01TEST000000000000000010",
+            "reference_01TEST000000000000000011",
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
   });
 });
 

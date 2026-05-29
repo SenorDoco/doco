@@ -100,9 +100,13 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
-    owners: ["decision"],
+    // No `owners` constraint: any neuron can be implemented by code
+    // references. Decisions/ADRs are implemented by the PRs that ship
+    // them; BPMN Actions are implemented by the code files/locations that
+    // run them; Evals can be implemented by test files. Same edge,
+    // different reading depending on owner type.
     description:
-      "Decision is implemented by one or more PR/commit Reference neurons that shipped it.",
+      "Neuron is implemented by one or more code-artifact Reference neurons (PRs, commits, files, lines).",
   },
   reports_to: {
     kind: "reports_to",

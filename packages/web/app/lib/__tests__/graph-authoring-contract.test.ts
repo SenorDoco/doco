@@ -37,19 +37,17 @@ describe("unsupportedRelationFieldError", () => {
       kind: "implemented_by",
       field: "implemented_by",
       cardinality: "many",
-      owners: ["decision"],
     });
+    // No `owners` clause: any neuron can be implemented by code refs.
+    // Decisions/ADRs are shipped by PRs; BPMN Actions are implemented at
+    // code locations; Evals can be implemented by test files. Same edge,
+    // different reading per owner type — keep the surface unconstrained.
+    expect(spec.owners).toBeUndefined();
   });
 
-  it("rejects implemented_by on non-Decision owners (intent, action) but allows it on Decision", () => {
-    expect(unsupportedRelationFieldError("intent", { implemented_by: ["reference_01"] })).toMatch(
-      /implemented_by/,
-    );
-    expect(unsupportedRelationFieldError("action", { implemented_by: ["reference_01"] })).toMatch(
-      /decision/,
-    );
-    expect(
-      unsupportedRelationFieldError("decision", { implemented_by: ["reference_01"] }),
-    ).toBeNull();
+  it("allows implemented_by on any owner type (decision, action, intent, eval)", () => {
+    for (const owner of ["decision", "action", "intent", "eval"]) {
+      expect(unsupportedRelationFieldError(owner, { implemented_by: ["reference_01"] })).toBeNull();
+    }
   });
 });
