@@ -488,6 +488,55 @@ describe("updateEntity", () => {
       expect.anything(),
     );
   });
+
+  it("appends to a frozen Action's implemented_by via implemented_by_add (list-op, not a junk key)", async () => {
+    // Regression: without implemented_by_add in SPECIAL_CASED_KEYS + a
+    // list-op, the generic patch path wrote `implemented_by_add` as a
+    // literal data field and never merged it into `implemented_by`.
+    const ACTION_ID = "action_01TEST00000000000000000002";
+    vi.mocked(getEntity).mockResolvedValue({
+      id: ACTION_ID,
+      entity_type: "action",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "accepted",
+      body_md: "",
+      data: {
+        id: ACTION_ID,
+        doco_id: DOCO_ID,
+        neuron_type: "action",
+        action: "Renders Emma Reach checkout",
+        verb: "render",
+        lifecycle: "accepted",
+        actor_id: "principal_clerk",
+        implemented_by: ["reference_01TEST000000000000000010"],
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateEntity({
+      docoDir: "/tmp/doco",
+      docoId: DOCO_ID,
+      ownerSlug: "test",
+      docoSlug: "doco",
+      entityType: "action",
+      pluralDir: "actions",
+      id: ACTION_ID,
+      patch: {
+        implemented_by_add: ["reference_01TEST000000000000000011"],
+      },
+      docoHost: "https://doco.test",
+      actorId: "user_alice",
+    });
+
+    expect(result).toMatchObject({ ok: true, changed: ["implemented_by"] });
+    const stored = vi.mocked(upsertEntity).mock.calls.at(-1)?.[0].data as Record<string, unknown>;
+    expect(stored.implemented_by).toEqual([
+      "reference_01TEST000000000000000010",
+      "reference_01TEST000000000000000011",
+    ]);
+    // The *_add key must NOT be persisted as a literal field.
+    expect(stored.implemented_by_add).toBeUndefined();
+  });
 });
 
 describe("renderOperationLines", () => {
