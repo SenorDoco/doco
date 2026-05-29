@@ -1387,40 +1387,48 @@ function layOutBpmn(
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
       const label = link.label?.trim() || "";
+      // Column span drives the vertical "bow": an edge that skips a
+      // column likely runs straight through an intermediate node, so the
+      // renderer arcs it into the inter-row gap to route around (it
+      // applies the bow only when the edge is roughly horizontal).
+      const sourceColumn = columnByNode.get(source) ?? 0;
+      const targetColumn = columnByNode.get(target) ?? 0;
+      const columnSpan = Math.abs(targetColumn - sourceColumn);
+      const edgeData: Record<string, unknown> = {};
+      if (label) {
+        edgeData.label = label;
+        edgeData.labelOpacity = edgeOpacity;
+        edgeData.labelZIndex = 1;
+        edgeData.labelBoxStyle = {
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: `1px solid ${stroke}`,
+          borderRadius: 4,
+          background: "#ffffff",
+          boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
+          padding: "2px 6px",
+        };
+        edgeData.labelStyle = {
+          color: "#202020",
+          fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
+          fontSize: 9,
+          fontWeight: 700,
+          lineHeight: 1,
+          whiteSpace: "nowrap",
+        };
+      }
+      if (columnSpan >= 2) edgeData.bowSpan = columnSpan;
       return {
         id: `${link.source}-${link.target}-${index}`,
         source,
         target,
-        // Bezier curves keep process arrows compact and visually soft.
-        // They may pass behind intervening neurons in dense diagrams,
-        // but they read better than the heavier lane-gutter router.
+        // Bezier curves keep process arrows compact and soft; long edges
+        // that would otherwise cut through intervening neurons are bowed
+        // vertically by the renderer (see StableLabeledBezierEdge).
         type: "stableLabeledBezier",
         zIndex: 0,
-        data: label
-          ? {
-              label,
-              labelOpacity: edgeOpacity,
-              labelZIndex: 1,
-              labelBoxStyle: {
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: `1px solid ${stroke}`,
-                borderRadius: 4,
-                background: "#ffffff",
-                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
-                padding: "2px 6px",
-              },
-              labelStyle: {
-                color: "#202020",
-                fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
-                fontSize: 9,
-                fontWeight: 700,
-                lineHeight: 1,
-                whiteSpace: "nowrap",
-              },
-            }
-          : undefined,
+        data: Object.keys(edgeData).length > 0 ? edgeData : undefined,
         selectable: false,
         focusable: false,
         interactionWidth: 0,
