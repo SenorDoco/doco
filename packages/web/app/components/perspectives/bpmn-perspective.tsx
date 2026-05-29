@@ -239,6 +239,11 @@ export function BpmnPerspective({
   };
   const flowInstanceRef = useRef<FlowInstance | null>(null);
   const initialFocusAppliedRef = useRef<string | null>(null);
+  // The default (no-URL-focus) auto-fit on the highest-PageRank node is a
+  // one-time mount affordance — `defaultFocusAppliedRef` flips true after
+  // it fires so subsequent clicks (which reshuffle `selectionCenterId`)
+  // don't yank the canvas around.
+  const defaultFocusAppliedRef = useRef(false);
   const updateViewport = useCallback((next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
@@ -735,26 +740,36 @@ export function BpmnPerspective({
       subprocessEdges,
     ],
   );
+  // Initial focus: an explicit URL focus wins; otherwise fall back to the
+  // selection center (highest global PageRank in the BPMN view) so opening
+  // the perspective centers on the most important neuron, matching the
+  // overview graph's behavior.
   const initialFocusFlowNodeId = useMemo(() => {
-    if (!initialFocusId) return null;
+    const target = initialFocusId ?? selectionCenterId;
+    if (!target) return null;
     const flowNodeIds = new Set(flowNodes.map((node) => node.id));
-    if (flowNodeIds.has(initialFocusId)) return initialFocusId;
-    const pool = pools.find((candidate) => candidate.intent_id === initialFocusId);
+    if (flowNodeIds.has(target)) return target;
+    const pool = pools.find((candidate) => candidate.intent_id === target);
     if (pool) {
       const poolHeaderId = `pool-header:${pool.id}`;
       if (flowNodeIds.has(poolHeaderId)) return poolHeaderId;
     }
-    const lane = renderedLanes.find((candidate) => candidate.base_id === initialFocusId);
+    const lane = renderedLanes.find((candidate) => candidate.base_id === target);
     if (lane) {
       const id = laneNodeId(lane.id);
       if (flowNodeIds.has(id)) return id;
     }
     return null;
-  }, [flowNodes, initialFocusId, pools, renderedLanes]);
+  }, [flowNodes, initialFocusId, selectionCenterId, pools, renderedLanes]);
 
   useEffect(() => {
     if (!initialFocusFlowNodeId) return;
-    if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
+    const hasExplicitFocus = Boolean(initialFocusId);
+    if (hasExplicitFocus) {
+      if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
+    } else if (defaultFocusAppliedRef.current) {
+      return;
+    }
     const instance = flowInstanceRef.current;
     if (!instance?.fitView) return;
     const frame = requestAnimationFrame(() => {
@@ -767,10 +782,11 @@ export function BpmnPerspective({
       });
       const current = instance.getViewport?.();
       if (current) updateViewport(current);
-      initialFocusAppliedRef.current = initialFocusFlowNodeId;
+      if (hasExplicitFocus) initialFocusAppliedRef.current = initialFocusFlowNodeId;
+      else defaultFocusAppliedRef.current = true;
     });
     return () => cancelAnimationFrame(frame);
-  }, [initialFocusFlowNodeId, updateViewport]);
+  }, [initialFocusFlowNodeId, initialFocusId, updateViewport]);
 
   if (filteredLanes.length === 0 && pools.length === 0) {
     return (
@@ -929,7 +945,8 @@ export function BpmnPerspective({
                   maxZoom: 1,
                   duration: 0,
                 });
-                initialFocusAppliedRef.current = initialFocusFlowNodeId;
+                if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
+                else defaultFocusAppliedRef.current = true;
               } else {
                 instance.fitView?.({ padding: 0.18 });
               }
