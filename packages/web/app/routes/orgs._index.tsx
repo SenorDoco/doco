@@ -1,4 +1,4 @@
-// /orgs — host-level "Your orgs" listing. Mirrors /docos: the orgs
+// /orgs — host-level "Your orgs" listing: the orgs
 // the signed-in principal belongs to, ordered by recent activity
 // across each org's docos, plus an activity heatmap + latest-activity
 // feed sidebar.
@@ -127,7 +127,7 @@ export async function loader({ request }: { request: Request }) {
     return a.handle.localeCompare(b.handle);
   });
 
-  // Sidebar activity (same shape as /dashboard + /docos).
+  // Sidebar activity (same shape as /dashboard).
   const allDocos = await listAllDocos();
   const invitedDocoIds = await listInvitedDocoIdsForPrincipal(me.id);
   const mine = await Promise.all(allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)));
