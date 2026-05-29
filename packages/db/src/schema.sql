@@ -643,7 +643,7 @@ CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
   revoked           boolean NOT NULL DEFAULT false,
   superseded_by     text REFERENCES oauth_refresh_tokens(token) ON DELETE SET NULL,
   -- Non-rotating tokens skip rotation on refresh so they can be pinned
-  -- into a cloud environment's variable config (see migration 057).
+  -- into a cloud environment's variable config (see migration 058).
   non_rotating      boolean NOT NULL DEFAULT false,
   created_at        timestamptz NOT NULL DEFAULT now()
 );
@@ -717,7 +717,7 @@ ALTER TABLE oauth_device_authorizations
 ALTER TABLE oauth_device_authorizations
   ADD COLUMN IF NOT EXISTS granted_org_roles jsonb NOT NULL DEFAULT '{}'::jsonb;
 
--- Non-rotating refresh tokens for cloud-environment use (migration 057).
+-- Non-rotating refresh tokens for cloud-environment use (migration 058).
 -- Same IF NOT EXISTS guard for idempotent boot against existing deployments.
 ALTER TABLE oauth_refresh_tokens
   ADD COLUMN IF NOT EXISTS non_rotating boolean NOT NULL DEFAULT false;
