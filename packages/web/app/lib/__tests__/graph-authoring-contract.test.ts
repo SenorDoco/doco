@@ -29,4 +29,27 @@ describe("unsupportedRelationFieldError", () => {
   it("declares eval and reference as the tests-relation owners", () => {
     expect(RELATION_KINDS.tests.owners).toEqual(["eval", "reference"]);
   });
+
+  it("exposes implemented_by so changesets and the authoring-contract know about it", () => {
+    const spec = RELATION_KINDS.implemented_by;
+    expect(spec).toBeDefined();
+    expect(spec).toMatchObject({
+      kind: "implemented_by",
+      field: "implemented_by",
+      cardinality: "many",
+      owners: ["decision"],
+    });
+  });
+
+  it("rejects implemented_by on non-Decision owners (intent, action) but allows it on Decision", () => {
+    expect(unsupportedRelationFieldError("intent", { implemented_by: ["reference_01"] })).toMatch(
+      /implemented_by/,
+    );
+    expect(unsupportedRelationFieldError("action", { implemented_by: ["reference_01"] })).toMatch(
+      /decision/,
+    );
+    expect(
+      unsupportedRelationFieldError("decision", { implemented_by: ["reference_01"] }),
+    ).toBeNull();
+  });
 });

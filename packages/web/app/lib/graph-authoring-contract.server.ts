@@ -94,6 +94,16 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     cardinality: "one",
     description: "Neuron is superseded by another neuron.",
   },
+  implemented_by: {
+    kind: "implemented_by",
+    field: "implemented_by",
+    owner: "from",
+    value: "to",
+    cardinality: "many",
+    owners: ["decision"],
+    description:
+      "Decision is implemented by one or more PR/commit Reference neurons that shipped it.",
+  },
   reports_to: {
     kind: "reports_to",
     field: "reports_to",
