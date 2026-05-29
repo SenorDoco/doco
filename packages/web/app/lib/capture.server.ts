@@ -2752,6 +2752,8 @@ export interface ReferenceDraft {
   ref_type: string;
   locator: string;
   content_hash?: string | null;
+  /** Optional: id of the neuron this Reference documents (the `tests` relation). */
+  target_ref?: string;
   intent_ids?: string[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
@@ -2797,6 +2799,7 @@ export async function captureReference(
     ref_type: draft.ref_type,
     locator,
     ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
+    ...(draft.target_ref ? { target_ref: draft.target_ref } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),

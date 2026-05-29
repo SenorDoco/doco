@@ -19,6 +19,7 @@ import {
   PERSPECTIVE_CONTRACTS,
   type RelationKindSpec,
   relationKind,
+  unsupportedRelationFieldError,
 } from "~/lib/graph-authoring-contract.server";
 import { CAPTURE_REGISTRY_BY_ENTITY_TYPE, type MeLike } from "~/lib/neuron-capture-registry.server";
 
@@ -283,6 +284,13 @@ async function createNeuron(
   }
   if (!op.body || typeof op.body !== "object" || Array.isArray(op.body)) {
     return { op_index: index, op: "create", ok: false, error: "create.body must be an object." };
+  }
+  const relationError = unsupportedRelationFieldError(
+    entry.entityType,
+    op.body as Record<string, unknown>,
+  );
+  if (relationError) {
+    return { op_index: index, op: "create", ok: false, error: relationError };
   }
   const draft = stampAuthenticatedCreator({ ...op.body }, ctx.actorId);
   if (entry.fillFromAuth) {

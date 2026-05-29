@@ -11,6 +11,12 @@ export interface RelationKindSpec {
   cardinality: RelationCardinality;
   acceptsProps?: string[];
   description: string;
+  /**
+   * Entity types allowed to own this relation's field on create. When set,
+   * supplying the field on any other entity type is rejected (rather than
+   * silently dropped). Leave unset to skip owner enforcement.
+   */
+  owners?: readonly string[];
 }
 
 export const RELATION_KINDS: Record<string, RelationKindSpec> = {
@@ -70,6 +76,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     value: "to",
     cardinality: "one",
     description: "Eval or Reference targets another neuron.",
+    owners: ["eval", "reference"],
   },
   born_from: {
     kind: "born_from",
@@ -200,4 +207,29 @@ export function relationKindList(): RelationKindSpec[] {
 
 export function relationKind(kind: string): RelationKindSpec | null {
   return RELATION_KINDS[kind] ?? null;
+}
+
+/**
+ * Reject a create body that sets an owner-gated relation field on an
+ * entity type that may not own it. Returns an error string naming the
+ * field, or null when the body is clean. Pure — safe to unit test and
+ * to call before dispatching to a capture function. Closes the
+ * silent-drop footgun where, e.g., `target_ref` on a decision was
+ * accepted and quietly discarded.
+ */
+export function unsupportedRelationFieldError(
+  entityType: string,
+  body: Record<string, unknown>,
+): string | null {
+  for (const spec of Object.values(RELATION_KINDS)) {
+    if (!spec.owners) continue;
+    const value = body[spec.field];
+    if (value === undefined || value === null) continue;
+    if (!spec.owners.includes(entityType)) {
+      return `${spec.field} (the \`${spec.kind}\` relation) is only valid on ${spec.owners.join(
+        " or ",
+      )}, not ${entityType}.`;
+    }
+  }
+  return null;
 }

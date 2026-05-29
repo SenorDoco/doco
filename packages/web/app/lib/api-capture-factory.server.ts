@@ -17,6 +17,7 @@ import {
   getDocoLevelRole,
   loadDocoRouteForRead,
 } from "~/lib/doco-access.server";
+import { unsupportedRelationFieldError } from "~/lib/graph-authoring-contract.server";
 import { withIdempotency } from "~/lib/idempotency.server";
 import { recordCaptureTiming, withCaptureTelemetry } from "~/lib/telemetry.server";
 
@@ -43,6 +44,8 @@ type CaptureFn<TDraft> = (
 export interface CaptureRouteConfig<TDraft> {
   /** Plural url segment (e.g. "intents", "decisions", "references"). */
   type: string;
+  /** Singular entity type (e.g. "intent", "reference"); used for relation-owner checks. */
+  entityType: string;
   /** Backing capture function from capture.server.ts. */
   captureFn: CaptureFn<TDraft>;
   /**
@@ -110,6 +113,14 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
               { error: `Invalid JSON body: ${(e as Error).message}` },
               { status: 400 },
             );
+          }
+
+          const relationError = unsupportedRelationFieldError(
+            cfg.entityType,
+            draft as Record<string, unknown>,
+          );
+          if (relationError) {
+            return Response.json({ error: relationError }, { status: 400 });
           }
 
           // Role enforcement is doco-level — checked once here before

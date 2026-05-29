@@ -87,6 +87,9 @@ const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   // Graph/perspective relations may be attached after a claim is activated.
   // The claim text stays frozen; the flow edge is authored separately.
   "sequence_to",
+  // The `tests` relation (Eval/Reference → target neuron). Re-pointing the
+  // edge is authoring metadata, not a change to the frozen claim text.
+  "target_ref",
 ]);
 
 export interface PatchValidation {
