@@ -1,11 +1,13 @@
 import {
   type DocoRole,
+  type UserRow,
   getDocoById,
   getOrgRole,
   getUserById,
   listDocoIdsForUser,
   listDocoUsers,
   listOrganizationsForUser,
+  patchUserData,
   withClient,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
@@ -14,7 +16,7 @@ import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { InviteStore } from "~/lib/invite-store.server";
-import { getCurrentPrincipal } from "~/lib/session.server";
+import { getCurrentPrincipal, userDisplayName } from "~/lib/session.server";
 import {
   ALL_ROLES,
   type InviteLevel,
@@ -48,7 +50,7 @@ export interface OrgSection {
 }
 
 export interface DocoSection {
-  doco: { id: string; handle: string; ownerSlug: string; label: string };
+  doco: { id: string; handle: string; ownerId: string; ownerSlug: string; label: string };
   myRole: DocoRole;
   users: GrantRow[];
 }
@@ -63,12 +65,15 @@ export interface UsersPageData {
 
 async function enrichPrincipal(id: string, lastActivity: Map<string, string>): Promise<UserCell> {
   // Post-rename: per-user metadata lives in the users
-  // table; getUserById returns the kind/github_login directly.
+  // table; getUserById returns the kind/github_login + data directly.
   const c = await getUserById(id);
   const kind: PrincipalKind = c?.kind === "agent" ? "agent" : "person";
   return {
     user_id: id,
-    username: id,
+    // Display the human-facing name (agent's `data.name`, else GitHub
+    // login), not the raw user id. Agents with no name yet fall back to
+    // the id — an owner can rename them from this page.
+    username: c ? userDisplayName(c) : id,
     kind,
     last_activity_at: lastActivity.get(id) ?? null,
   };
@@ -215,6 +220,7 @@ export async function loadUserSections(principalId: string): Promise<{
       doco: {
         id: entry.doco.id,
         handle: entry.doco.handle,
+        ownerId: entry.doco.ownerId,
         ownerSlug: entry.doco.ownerSlug,
         label: entry.doco.label,
       },
@@ -225,6 +231,57 @@ export async function loadUserSections(principalId: string): Promise<{
   docoSections.sort((a, b) => a.doco.label.localeCompare(b.doco.label));
 
   return { orgSections, docoSections };
+}
+
+/**
+ * Can `meId` rename agent collaborator `agent`? True when the viewer is
+ * the person who authorized the agent, or an `owner` of an org the
+ * agent's token is granted on ("the org the token belongs to"). Only
+ * agents are renameable — people carry their GitHub login.
+ */
+export async function canRenameAgent(meId: string, agent: UserRow): Promise<boolean> {
+  if (agent.kind !== "agent") return false;
+  if (agent.owner_id === meId) return true;
+  const owned = await withClient((c) =>
+    c.query<{ org_id: string }>(
+      `SELECT ou.org_id
+         FROM org_users ou
+         JOIN org_users meo
+           ON meo.org_id = ou.org_id AND meo.user_id = $2 AND meo.role = 'owner'
+        WHERE ou.user_id = $1
+        LIMIT 1`,
+      [agent.id, meId],
+    ),
+  );
+  return owned.rows.length > 0;
+}
+
+export type RenameAgentResult =
+  | { intent: "rename"; ok: true; user_id: string; username: string }
+  | { error: string };
+
+export async function renameAgentCollaborator(args: {
+  meId: string;
+  agentId: string;
+  name: string;
+}): Promise<RenameAgentResult> {
+  const name = args.name.trim().replace(/\s+/g, " ");
+  if (!name) return { error: "Name can't be empty." };
+  if (name.length > 120) return { error: "Name must be 120 characters or less." };
+  const agent = await getUserById(args.agentId);
+  if (!agent || agent.kind !== "agent") {
+    return { error: "Only agent collaborators can be renamed." };
+  }
+  if (!(await canRenameAgent(args.meId, agent))) {
+    return { error: "Only an owner of the org this agent belongs to can rename it." };
+  }
+  const updated = await patchUserData(args.agentId, { name });
+  return {
+    intent: "rename",
+    ok: true,
+    user_id: args.agentId,
+    username: updated ? userDisplayName(updated) : name,
+  };
 }
 
 export async function loadUsersPageData(request: Request): Promise<UsersPageData> {

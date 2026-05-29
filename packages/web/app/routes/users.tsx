@@ -32,6 +32,7 @@ import {
   type UsersPageData,
   handleUserInviteAction,
   loadUsersPageData,
+  renameAgentCollaborator,
 } from "~/lib/users.server";
 
 export async function loader({ request }: { request: Request }) {
@@ -54,6 +55,12 @@ type ActionResult =
       target_ids: string[];
       user_id: string;
     }
+  | {
+      intent: "rename";
+      ok: true;
+      user_id: string;
+      username: string;
+    }
   | UserInviteActionResult
   | { error: string };
 
@@ -74,6 +81,13 @@ export async function action({
     // calls. The InviteHumanCard's useFetcher narrows on `intent === "invite"`
     // so the role-edit cases below don't interfere with it.
     return await handleUserInviteAction(request);
+  }
+
+  if (intent === "rename") {
+    const agentId = String(form.get("user_id") ?? "").trim();
+    const name = String(form.get("name") ?? "");
+    if (!agentId) return { error: "user_id missing." };
+    return await renameAgentCollaborator({ meId: me.id, agentId, name });
   }
 
   if (intent === "update" || intent === "remove") {
@@ -229,7 +243,14 @@ export default function UsersPage({
 
   const docoRows = useMemo(() => {
     const flat: GroupedRow[] = loaderData.docoSections
-      .filter((s) => scope === "all" || scope === `doco:${s.doco.id}`)
+      .filter(
+        (s) =>
+          scope === "all" ||
+          scope === `doco:${s.doco.id}` ||
+          // When an org is selected, also surface collaborators on the
+          // docos that org owns — not just the org-wide grants.
+          scope === `org:${s.doco.ownerId}`,
+      )
       .flatMap((s) =>
         s.users.map<GroupedRow>((u) => ({
           level: "doco",
@@ -251,10 +272,14 @@ export default function UsersPage({
     return groupByPrincipal(flat);
   }, [loaderData.docoSections, scope]);
 
-  // When scope filters to a specific org, hide the doco section entirely
-  // (and vice-versa) so the page doesn't show "no docos match" noise.
+  // "All" and org scopes show both sections — selecting an org surfaces
+  // its org-wide grants AND the per-doco grants on docos it owns. A doco
+  // scope shows only the per-doco section.
   const showOrgSection = scope === "all" || scope.startsWith("org:");
-  const showDocoSection = scope === "all" || scope.startsWith("doco:");
+  const showDocoSection = scope === "all" || scope.startsWith("doco:") || scope.startsWith("org:");
+  const docoSectionEmpty = scope.startsWith("org:")
+    ? "No collaborators on docos in this org yet."
+    : "You don't have any doco grants yet.";
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -315,7 +340,7 @@ export default function UsersPage({
         {showDocoSection ? (
           <Section
             title="Per-doco collaborators"
-            empty="You don't have any doco grants yet."
+            empty={docoSectionEmpty}
             rows={docoRows}
             myPrincipalId={loaderData.me.id}
           />
@@ -425,13 +450,21 @@ function UserRow({
   metaParts.push(`Active ${lastActive}`);
   const metaTooltip = `Granted ${grantedAbs}${row.principal.last_activity_at ? ` · Last active ${row.principal.last_activity_at}` : ""}`;
 
+  // Owners of the org an agent's token belongs to can give it a
+  // human-readable name (agents otherwise show their raw user id).
+  const canRename = row.level === "org" && row.principal.kind === "agent" && row.canEditAny;
+
   return (
     <tr data-testid={`row-${row.level}-${username}`}>
       <td className="py-3 pr-3 align-top">
         <div className="flex items-center gap-1.5">
-          <span className="truncate font-medium" title={username}>
-            {username}
-          </span>
+          {canRename ? (
+            <RenameAgentName principalId={row.principal.user_id} username={username} />
+          ) : (
+            <span className="truncate font-medium" title={username}>
+              {username}
+            </span>
+          )}
           {isMe ? (
             <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               you
@@ -463,6 +496,100 @@ function UserRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function RenameAgentName({
+  principalId,
+  username,
+}: {
+  principalId: string;
+  username: string;
+}) {
+  const fetcher = useFetcher<ActionResult>();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(username);
+  const saving = fetcher.state !== "idle";
+  const error = fetcher.data && "error" in fetcher.data ? fetcher.data.error : undefined;
+  const justRenamed =
+    fetcher.state === "idle" &&
+    fetcher.data &&
+    "intent" in fetcher.data &&
+    fetcher.data.intent === "rename";
+
+  // Close the editor once the rename lands; the loader revalidation
+  // repaints the row with the new name.
+  useEffect(() => {
+    if (justRenamed) setEditing(false);
+  }, [justRenamed]);
+
+  const submit = () => {
+    if (!value.trim()) return;
+    fetcher.submit({ intent: "rename", user_id: principalId, name: value }, { method: "post" });
+  };
+
+  if (!editing) {
+    return (
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate font-medium" title={username}>
+          {username}
+        </span>
+        <button
+          type="button"
+          data-testid={`rename-${principalId}`}
+          onClick={() => {
+            setValue(username);
+            setEditing(true);
+          }}
+          title="Rename this agent"
+          className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground underline hover:text-foreground"
+        >
+          rename
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      <input
+        type="text"
+        value={value}
+        // biome-ignore lint/a11y/noAutofocus: focus the field the user just opened
+        autoFocus
+        maxLength={120}
+        disabled={saving}
+        data-testid={`rename-input-${principalId}`}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          } else if (e.key === "Escape") {
+            setEditing(false);
+          }
+        }}
+        className="min-w-0 flex-1 rounded-md px-1.5 py-0.5 text-xs font-medium disabled:opacity-50"
+      />
+      <button
+        type="button"
+        disabled={saving || !value.trim()}
+        data-testid={`rename-save-${principalId}`}
+        onClick={submit}
+        className="neu-button shrink-0 rounded-md px-1.5 py-0.5 text-[10px] disabled:opacity-50"
+      >
+        {saving ? "…" : "Save"}
+      </button>
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => setEditing(false)}
+        className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground"
+      >
+        Cancel
+      </button>
+      {error ? <span className="text-[10px] text-destructive">{error}</span> : null}
+    </span>
   );
 }
 
