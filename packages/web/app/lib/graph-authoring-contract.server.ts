@@ -191,6 +191,16 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
     ],
     preferred_operations: ["create", "relate"],
   },
+  glossary: {
+    perspective: "glossary",
+    node_types: ["decision", "rule", "reference", "eval"],
+    constraints: [
+      "Each term entry is a Decision: `chosen` is the canonical headword, `question` the concept, and the prose the definition.",
+      "Keep one concept per Decision; record aliases and deprecated wording in `alternatives`.",
+      "Use Rules for terminology usage policies and References to cite authoritative sources.",
+    ],
+    preferred_operations: ["create"],
+  },
 };
 
 export function contractForAttachedPerspectives(

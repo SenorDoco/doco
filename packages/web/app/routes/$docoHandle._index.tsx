@@ -36,6 +36,7 @@ import { PerspectiveFrame } from "~/components/perspective-frame";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { ApprovalPerspective } from "~/components/perspectives/approval-perspective";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
+import { GlossaryPerspective } from "~/components/perspectives/glossary-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
@@ -50,6 +51,7 @@ import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
+import { loadGlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import {
@@ -343,6 +345,10 @@ export async function loader({
       activeKind === "approval"
         ? await loadApprovalPerspectiveData(c, ctx.meta.docoId, handle)
         : null;
+    const glossaryData =
+      activeKind === "glossary"
+        ? await loadGlossaryPerspectiveData(c, ctx.meta.docoId, handle)
+        : null;
 
     // Policy count — guidance + neuron-authoring policies
     // attached to this Doco.
@@ -383,6 +389,7 @@ export async function loader({
       orgTreeData,
       slaData,
       approvalData,
+      glossaryData,
       focusedNeuronId: selectedNeuron?.id ?? null,
       selectedNeuron: dialogNeuron,
     };
@@ -495,6 +502,7 @@ export default function DocoHome({
     orgTreeData,
     slaData,
     approvalData,
+    glossaryData,
     focusedNeuronId,
     selectedNeuron,
   } = loaderData;
@@ -1012,6 +1020,12 @@ export default function DocoHome({
                   <ListPerspective
                     nodes={graphState.nodes}
                     pageRanks={pageRanksMap}
+                    visibleLifecycles={visibleLifecycles}
+                  />
+                ) : effectivePerspectiveKind === "glossary" && glossaryData ? (
+                  <GlossaryPerspective
+                    data={glossaryData}
+                    title={handle}
                     visibleLifecycles={visibleLifecycles}
                   />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
