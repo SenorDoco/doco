@@ -27,6 +27,7 @@ import {
 } from "@xyflow/react";
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import { focalEdgeWidth } from "~/lib/graph-depth";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { ORG_TREE_NODE_H, ORG_TREE_NODE_W, layoutOrgTree } from "~/lib/org-tree-layout";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
@@ -203,7 +204,11 @@ function OrgTreeInner({
       type: "smoothstep",
       pathOptions: { borderRadius: 0, offset: 20 },
       animated: false,
-      style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: 0.6 },
+      style: {
+        stroke: edgeStroke,
+        strokeWidth: focalEdgeWidth(e.source, e.target, centerId, 1.5),
+        opacity: 0.6,
+      },
       markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
     }));
     return { nodes, edges };
