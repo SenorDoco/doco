@@ -127,7 +127,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
           }
 
           // Per-type write enforcement (decision_per_type_write_grants):
-          // the principal must hold write access on THIS neuron type
+          // the principal must hold write access on THIS node type
           // (owner writes everything; a writer's grant must cover the
           // type via the wildcard or by name), AND — for bearer auth —
           // the token's per-type scope-down must allow it too.
@@ -207,7 +207,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      // Post-rename: the 9 migrated neurons expose their prose under
+      // Post-rename: the 9 migrated nodes expose their prose under
       // a single key matching the entity type (intent/decision/rule/...).
       // Policies surface their one-line rule as `policy` (renamed from
       // `summary` in 038) plus optional `body_md`. Principals don't
@@ -264,9 +264,9 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         return Response.json({ error: `Invalid JSON: ${(e as Error).message}` }, { status: 400 });
       }
 
-      // Per-type write enforcement: editing a neuron (including lifecycle
+      // Per-type write enforcement: editing a node (including lifecycle
       // moves drafting → asserted → retired) requires write access on
-      // THIS neuron type. What a writer may do beyond that is governed by
+      // THIS node type. What a writer may do beyond that is governed by
       // the Doco's own policies, not a built-in role ladder.
       const existing = await getEntity(cfg.entityType, id);
       if (!existing || existing.doco_id !== meta.docoId) {

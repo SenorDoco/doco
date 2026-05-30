@@ -1,4 +1,4 @@
-import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_SPECS } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type {
   OverviewGraphData,
@@ -14,7 +14,7 @@ type QueryClient = {
 interface EdgeRow {
   from_id: string;
   to_id: string;
-  synapse_type: string;
+  edge_type: string;
 }
 
 interface OverviewGraphRow {
@@ -27,12 +27,12 @@ interface OverviewGraphRow {
 }
 
 // Note tables only — policies are not
-// neurons and are deliberately excluded from the graph. Policies
+// nodes and are deliberately excluded from the graph. Policies
 // have their own surface: /<handle>/policies and
 // /<handle>/api/policies.json.
-const GRAPH_TABLES = DOCO_NEURON_TABLE_SPECS;
+const GRAPH_TABLES = DOCO_NODE_TABLE_SPECS;
 
-const OVERVIEW_GRAPH_SYNAPSE_LIMIT = 5000;
+const OVERVIEW_GRAPH_EDGE_LIMIT = 5000;
 const OVERVIEW_DETAIL_LIMIT = 120;
 
 function storedFrontmatter(rawYaml: string | null | undefined): Record<string, unknown> {
@@ -70,8 +70,8 @@ function overviewEntityHref(
 }
 
 function overviewRowsSql(includeLabel = false): string {
-  const neuronLegs = GRAPH_TABLES.map((entry) => {
-    // Migrated neurons project the first line of the type-named column
+  const nodeLegs = GRAPH_TABLES.map((entry) => {
+    // Migrated nodes project the first line of the type-named column
     // as the graph node label (intent first line for intents, ...).
     // Non-migrated tables fall back to the legacy summary.
     const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
@@ -97,7 +97,7 @@ function overviewRowsSql(includeLabel = false): string {
                            FROM principals
                           WHERE doco_id = $1
                             AND COALESCE(lifecycle, 'asserted') = 'asserted'`;
-  return [...neuronLegs, principalLeg].join(" UNION ALL ");
+  return [...nodeLegs, principalLeg].join(" UNION ALL ");
 }
 
 async function loadOverviewRows(
@@ -140,20 +140,20 @@ async function loadOverviewLinks(
   if (nodeIds.length === 0) return [];
   const rows = (
     await c.query<EdgeRow>(
-      `SELECT from_id, to_id, synapse_type
-         FROM synapses
+      `SELECT from_id, to_id, edge_type
+         FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
           AND to_id = ANY($2::text[])
-        ORDER BY synapse_type
+        ORDER BY edge_type
         LIMIT $3`,
-      [docoId, nodeIds, OVERVIEW_GRAPH_SYNAPSE_LIMIT],
+      [docoId, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
     )
   ).rows;
   return rows.map((s) => ({
     source: s.from_id,
     target: s.to_id,
-    synapse_type: s.synapse_type,
+    edge_type: s.edge_type,
   }));
 }
 
@@ -189,7 +189,7 @@ export async function loadOverviewGraph(
     centerId,
     nodes,
     links,
-    detailUrl: options.handle ? `/${options.handle}/graph-neuron-details.json` : null,
+    detailUrl: options.handle ? `/${options.handle}/graph-node-details.json` : null,
   };
 }
 
@@ -238,7 +238,7 @@ export async function loadOverviewNodeDetails(
 // the right per-Doco entity URL.
 
 function overviewRowsSqlMulti(): string {
-  const neuronLegs = GRAPH_TABLES.map((entry) => {
+  const nodeLegs = GRAPH_TABLES.map((entry) => {
     const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
     const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
     return `SELECT t.id,
@@ -261,7 +261,7 @@ function overviewRowsSqlMulti(): string {
                          FROM principals
                         WHERE doco_id = ANY($1::text[])
                           AND COALESCE(lifecycle, 'asserted') = 'asserted'`;
-  return [...neuronLegs, principalLeg].join(" UNION ALL ");
+  return [...nodeLegs, principalLeg].join(" UNION ALL ");
 }
 
 export async function loadOrgOverviewGraph(
@@ -287,19 +287,19 @@ export async function loadOrgOverviewGraph(
       ? []
       : (
           await c.query<EdgeRow>(
-            `SELECT from_id, to_id, synapse_type
-               FROM synapses
+            `SELECT from_id, to_id, edge_type
+               FROM edges
               WHERE doco_id = ANY($1::text[])
                 AND from_id = ANY($2::text[])
                 AND to_id = ANY($2::text[])
-              ORDER BY synapse_type
+              ORDER BY edge_type
               LIMIT $3`,
-            [docoIds, nodeIds, OVERVIEW_GRAPH_SYNAPSE_LIMIT],
+            [docoIds, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
           )
         ).rows.map((s) => ({
           source: s.from_id,
           target: s.to_id,
-          synapse_type: s.synapse_type,
+          edge_type: s.edge_type,
         }));
   const nodes: OverviewGraphNode[] = rows.map((row) => {
     const handle = docoHandleByDocoId.get(String(row.doco_id));

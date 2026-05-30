@@ -1,7 +1,7 @@
 // Simple PageRank for the overview graph. Operates on the in-memory
 // nodes + links the loader already pulled, so there's no DB round-trip
 // or cache: we re-compute every load. The cost is ~O(iter * edges)
-// and Docos rarely exceed a few hundred neurons, so even with 30
+// and Docos rarely exceed a few hundred nodes, so even with 30
 // iterations the computation is well under a millisecond.
 //
 // Edge direction follows the OverviewGraphLink shape: `source` confers

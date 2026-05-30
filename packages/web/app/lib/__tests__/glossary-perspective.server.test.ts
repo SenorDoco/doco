@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadGlossaryPerspectiveData } from "../glossary-perspective.server";
 
 // The loader issues a single UNION-ALL query across the content tables,
-// so the mock returns rows already in the unioned NeuronRow shape.
+// so the mock returns rows already in the unioned NodeRow shape.
 function makeClient(rows: unknown[]) {
   return {
     async query<T>(_sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
@@ -28,7 +28,7 @@ function row(over: Record<string, unknown>) {
 }
 
 describe("loadGlossaryPerspectiveData", () => {
-  it("renders Reference neurons as entries (regression: glossary was blank with only References)", async () => {
+  it("renders Reference nodes as entries (regression: glossary was blank with only References)", async () => {
     const client = makeClient([
       row({
         id: "reference_01",
@@ -58,10 +58,10 @@ describe("loadGlossaryPerspectiveData", () => {
       row({
         id: "decision_01",
         entity_type: "decision",
-        label: "Neuron",
+        label: "Node",
         prose: "A single typed node in a Doco.",
         data: {
-          chosen: "Neuron",
+          chosen: "Node",
           question: "What is one unit of captured knowledge?",
           alternatives: [{ name: "node", rejected_because: "too generic" }],
         },
@@ -70,7 +70,7 @@ describe("loadGlossaryPerspectiveData", () => {
 
     const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
     const entry = groups[0].entries[0];
-    expect(entry.headword).toBe("Neuron");
+    expect(entry.headword).toBe("Node");
     expect(entry.question).toBe("What is one unit of captured knowledge?");
     expect(entry.tag).toBe("n.");
     expect(entry.alternatives).toEqual([
@@ -95,7 +95,7 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(byType.decision).toBe("n.");
   });
 
-  it("returns empty groups when the Doco has no content neurons", async () => {
+  it("returns empty groups when the Doco has no content nodes", async () => {
     const data = await loadGlossaryPerspectiveData(makeClient([]), "doco_01", "acme/glossary");
     expect(data.groups).toEqual([]);
     expect(data.stats.entries).toBe(0);

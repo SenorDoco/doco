@@ -52,10 +52,10 @@ interface PrincipalRow {
   lifecycle: string | null;
 }
 
-interface SynapseRow {
+interface EdgeRow {
   from_id: string;
   to_id: string;
-  synapse_type: string;
+  edge_type: string;
 }
 
 export interface SlaLink {
@@ -254,13 +254,13 @@ export async function loadSlaPerspectiveData(
   ]);
 
   const ruleIds = rules.rows.map((row) => row.id);
-  const synapses =
+  const edges =
     ruleIds.length === 0
       ? []
       : (
-          await c.query<SynapseRow>(
-            `SELECT from_id, to_id, synapse_type
-               FROM synapses
+          await c.query<EdgeRow>(
+            `SELECT from_id, to_id, edge_type
+               FROM edges
               WHERE doco_id = $1
                 AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))`,
             [docoId, ruleIds],
@@ -273,9 +273,9 @@ export async function loadSlaPerspectiveData(
   const actionsById = new Map(actions.rows.map((row) => [row.id, row]));
   const decisionsById = new Map(decisions.rows.map((row) => [row.id, row]));
 
-  const incoming = new Map<string, SynapseRow[]>();
-  const outgoing = new Map<string, SynapseRow[]>();
-  for (const s of synapses) {
+  const incoming = new Map<string, EdgeRow[]>();
+  const outgoing = new Map<string, EdgeRow[]>();
+  for (const s of edges) {
     if (!incoming.has(s.to_id)) incoming.set(s.to_id, []);
     incoming.get(s.to_id)?.push(s);
     if (!outgoing.has(s.from_id)) outgoing.set(s.from_id, []);
@@ -289,7 +289,7 @@ export async function loadSlaPerspectiveData(
       asString(data.owner_id) ??
       outgoing
         .get(rule.id)
-        ?.find((s) => s.synapse_type === "owned_by" && principalsById.has(s.to_id))?.to_id ??
+        ?.find((s) => s.edge_type === "owned_by" && principalsById.has(s.to_id))?.to_id ??
       (rule.created_by && principalsById.has(rule.created_by) ? rule.created_by : null);
     const ownerRow = ownerId ? principalsById.get(ownerId) : null;
     const owner = ownerRow ? linkFor(handle, "principal", ownerRow, ownerRow.name) : null;
@@ -298,7 +298,7 @@ export async function loadSlaPerspectiveData(
     const outgoingFromRule = outgoing.get(rule.id) ?? [];
     const linkedEvalIds = new Set([
       ...incomingToRule
-        .filter((s) => s.synapse_type === "tests" && evalsById.has(s.from_id))
+        .filter((s) => s.edge_type === "tests" && evalsById.has(s.from_id))
         .map((s) => s.from_id),
       ...evals.rows
         .filter((row) => asString(row.data?.target_ref) === rule.id)
@@ -315,14 +315,14 @@ export async function loadSlaPerspectiveData(
       incomingToRule
         .filter(
           (s) =>
-            (s.synapse_type === "gated_by" || s.synapse_type === "acts_on") &&
+            (s.edge_type === "gated_by" || s.edge_type === "acts_on") &&
             actionsById.has(s.from_id),
         )
         .map((s) => s.from_id),
     );
     const linkedDecisionIds = new Set([
       ...incomingToRule
-        .filter((s) => s.synapse_type === "consults" && decisionsById.has(s.from_id))
+        .filter((s) => s.edge_type === "consults" && decisionsById.has(s.from_id))
         .map((s) => s.from_id),
       ...outgoingFromRule.filter((s) => decisionsById.has(s.to_id)).map((s) => s.to_id),
     ]);

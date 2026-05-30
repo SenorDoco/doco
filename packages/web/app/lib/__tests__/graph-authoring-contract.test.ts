@@ -38,7 +38,7 @@ describe("unsupportedRelationFieldError", () => {
       field: "implemented_by",
       cardinality: "many",
     });
-    // No `owners` clause: any neuron can be implemented by code refs.
+    // No `owners` clause: any node can be implemented by code refs.
     // Decisions/ADRs are shipped by PRs; BPMN Actions are implemented at
     // code locations; Evals can be implemented by test files. Same edge,
     // different reading per owner type — keep the surface unconstrained.

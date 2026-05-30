@@ -1,6 +1,6 @@
-// /<doco-handle>/policies/neuron-authoring/new — standalone form for
-// authoring a Doco-level neuron-authoring policy. Carries a predicate
-// evaluated when a neuron is captured.
+// /<doco-handle>/policies/node-authoring/new — standalone form for
+// authoring a Doco-level node-authoring policy. Carries a predicate
+// evaluated when a node is captured.
 
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
@@ -9,8 +9,8 @@ import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
-  type NeuronAuthoringPolicyDraft,
-  captureNeuronAuthoringPolicy,
+  type NodeAuthoringPolicyDraft,
+  captureNodeAuthoringPolicy,
 } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -51,7 +51,7 @@ export async function action({
     String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
       ? "probabilistic"
       : "deterministic";
-  const lifecycle = String(form.get("fires_when_neuron_lifecycle") ?? "")
+  const lifecycle = String(form.get("fires_when_node_lifecycle") ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -61,14 +61,14 @@ export async function action({
   const authorPrincipalId = ctx.me?.id
     ? await resolvePrincipalIdForUser(ctx.meta.docoId, ctx.me.id)
     : null;
-  const draft: NeuronAuthoringPolicyDraft = stampAuthenticatedCreator(
+  const draft: NodeAuthoringPolicyDraft = stampAuthenticatedCreator(
     {
       policy,
       body_md,
       evaluation_kind: evaluationKind,
       on_violation,
       authored_by_principal_id: authorPrincipalId ?? undefined,
-      ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
+      ...(lifecycle.length > 0 ? { fires_when_node_lifecycle: lifecycle } : {}),
       ...(evaluationKind === "probabilistic"
         ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
         : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
@@ -76,7 +76,7 @@ export async function action({
     ctx.me?.id,
   );
   const docoHost = new URL(request.url).origin;
-  const result = await captureNeuronAuthoringPolicy(
+  const result = await captureNodeAuthoringPolicy(
     docoDir,
     ctx.meta.docoId,
     ownerSlug,
@@ -91,12 +91,12 @@ export async function action({
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
   return [
     {
-      title: `New neuron-authoring policy · ${params.docoHandle ?? params.docoId ?? ""} · Doco`,
+      title: `New node-authoring policy · ${params.docoHandle ?? params.docoId ?? ""} · Doco`,
     },
   ];
 }
 
-export default function NewNeuronAuthoringPolicy({
+export default function NewNodeAuthoringPolicy({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -114,13 +114,13 @@ export default function NewNeuronAuthoringPolicy({
               ownerSlug,
               handle,
               parent: { label: "Policies", to: `/${handle}/policies` },
-              pageLabel: "New neuron-authoring policy",
+              pageLabel: "New node-authoring policy",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">New neuron-authoring policy</h1>
+          <h1 className="text-2xl font-semibold">New node-authoring policy</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            An automatic check that runs every time someone adds a neuron to this doco. Write a
+            An automatic check that runs every time someone adds a node to this doco. Write a
             strict rule, or describe what an LLM judge should look for. Pick what happens on
             failure: block the capture, warn, or just log.
           </p>
@@ -175,10 +175,10 @@ export default function NewNeuronAuthoringPolicy({
                     rows={10}
                     defaultValue={JSON.stringify(
                       {
-                        kind: "requires_synapse",
-                        synapse_type: "serves",
-                        target_neuron_type: "intent",
-                        when_neuron_type: ["decision"],
+                        kind: "requires_edge",
+                        edge_type: "serves",
+                        target_node_type: "intent",
+                        when_node_type: ["decision"],
                       },
                       null,
                       2,
@@ -194,7 +194,7 @@ export default function NewNeuronAuthoringPolicy({
                   <textarea
                     name="probabilistic_spec"
                     rows={10}
-                    placeholder="Judge only the neuron being captured. Pass when..."
+                    placeholder="Judge only the node being captured. Pass when..."
                     className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                   />
                 </label>
@@ -205,7 +205,7 @@ export default function NewNeuronAuthoringPolicy({
                     Fires on lifecycles (comma-separated)
                   </span>
                   <input
-                    name="fires_when_neuron_lifecycle"
+                    name="fires_when_node_lifecycle"
                     placeholder="asserted"
                     className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                   />
@@ -230,7 +230,7 @@ export default function NewNeuronAuthoringPolicy({
                   type="submit"
                   className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
-                  Add neuron-authoring policy
+                  Add node-authoring policy
                 </button>
                 <Link
                   to={`/${handle}/policies`}

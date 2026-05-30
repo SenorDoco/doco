@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Card } from "~/components/card";
 import { cn } from "~/lib/cn";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { timeAgo } from "~/lib/time-ago";
 
 export interface NodesOverviewItem {
@@ -17,19 +17,19 @@ export interface NodesOverviewItem {
   updatedAt?: string | null;
 }
 
-export interface NeuronsOverviewSection {
+export interface NodesOverviewSection {
   title: string;
   items: NodesOverviewItem[];
 }
 
-export function NeuronsOverviewCard({
+export function NodesOverviewCard({
   search,
   sections,
   empty,
   aside,
 }: {
   search?: ReactNode;
-  sections: NeuronsOverviewSection[];
+  sections: NodesOverviewSection[];
   empty?: ReactNode;
   aside?: ReactNode;
 }) {

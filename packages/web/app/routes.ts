@@ -38,7 +38,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
  *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
  *   /<doco-handle>/settings        per-Doco settings (admin only; danger zone soft-delete; ADR-124)
- *   /<doco-handle>/policies      per-Doco policies page: guidance_policies + neuron_authoring_policies
+ *   /<doco-handle>/policies      per-Doco policies page: guidance_policies + node_authoring_policies
  *   /<doco-handle>/status.json     per-Doco status (connection signal for agent footer line)
  *   /<doco-handle>/api/*           per-Doco capture + update endpoints
  *                                  (decisions / intents / settings; ADR-128)
@@ -125,7 +125,7 @@ export default [
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
   // Per-Org home — mirrors the Doco home page but aggregates across
-  // every Doco the org owns (docos list, neuron-type/lifecycle facets,
+  // every Doco the org owns (docos list, node-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
   route("orgs/:orgHandle/settings", "routes/orgs.$orgHandle.settings.tsx"),
   route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
@@ -224,8 +224,8 @@ export default [
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
   route(":docoHandle/policies/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx"),
   route(
-    ":docoHandle/policies/neuron-authoring/new",
-    "routes/$docoHandle.policies.neuron-authoring.new.tsx",
+    ":docoHandle/policies/node-authoring/new",
+    "routes/$docoHandle.policies.node-authoring.new.tsx",
   ),
   route(
     ":docoHandle/policies/:entityType/:policyId/edit",
@@ -251,8 +251,8 @@ export default [
     "routes/$docoHandle.api.guidance_policies.$id[.]json.tsx",
   ),
   route(
-    ":docoHandle/api/neuron_authoring_policies/:id.json",
-    "routes/$docoHandle.api.neuron_authoring_policies.$id[.]json.tsx",
+    ":docoHandle/api/node_authoring_policies/:id.json",
+    "routes/$docoHandle.api.node_authoring_policies.$id[.]json.tsx",
   ),
   route(":docoHandle/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoHandle/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
@@ -271,7 +271,7 @@ export default [
     "routes/$docoHandle.api.authoring-contract[.]json.tsx",
   ),
   route(":docoHandle/api/changesets.json", "routes/$docoHandle.api.changesets[.]json.tsx"),
-  // Policies are not neurons; they live on a
+  // Policies are not nodes; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
   route(":docoHandle/api/policies.json", "routes/$docoHandle.api.policies[.]json.tsx"),
@@ -284,21 +284,21 @@ export default [
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),
   route(
-    ":docoHandle/graph-neuron-details.json",
-    "routes/$docoHandle.graph-neuron-details[.]json.tsx",
+    ":docoHandle/graph-node-details.json",
+    "routes/$docoHandle.graph-node-details[.]json.tsx",
   ),
   route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
   route(":docoHandle/rules/new", "routes/$docoHandle.rules.new.tsx"),
-  // Synapses — Doco's relationships materialize as rows in the `synapses`
-  // table (D-017, fields-as-synapses). The list view is one row per
-  // synapse; the detail view renders the two connected neurons via
-  // EntityGraph plus the synapse's metadata. Composite key
-  // `(synapse_type, from_id, to_id)` is url-encoded as
-  // `synapse_type__from_id__to_id`.
-  route(":docoHandle/synapses", "routes/$docoHandle.synapses._index.tsx"),
-  route(":docoHandle/synapses/:synapseKey", "routes/$docoHandle.synapses.$synapseKey.tsx"),
+  // Edges — Doco's relationships materialize as rows in the `edges`
+  // table (D-017, fields-as-edges). The list view is one row per
+  // edge; the detail view renders the two connected nodes via
+  // EntityGraph plus the edge's metadata. Composite key
+  // `(edge_type, from_id, to_id)` is url-encoded as
+  // `edge_type__from_id__to_id`.
+  route(":docoHandle/edges", "routes/$docoHandle.edges._index.tsx"),
+  route(":docoHandle/edges/:edgeKey", "routes/$docoHandle.edges.$edgeKey.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
   route(":docoHandle/:type", "routes/$docoHandle.$type._index.tsx"),

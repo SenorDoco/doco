@@ -15,8 +15,8 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
   const query = async <T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> => {
     captured.push({ sql, params });
     // Pick the right canned response by what the SQL is asking for.
-    if (/FROM synapses/i.test(sql)) {
-      return { rows: (rows.synapses ?? []) as T[] };
+    if (/FROM edges/i.test(sql)) {
+      return { rows: (rows.edges ?? []) as T[] };
     }
     return { rows: (rows.entities ?? []) as T[] };
   };
@@ -36,7 +36,7 @@ describe("loadOverviewGraph", () => {
           created_at: "2026-05-01T00:00:00Z",
         },
       ],
-      synapses: [],
+      edges: [],
     });
 
     const graph = await loadOverviewGraph(client, "doco_acme", { handle: "acme" });
@@ -56,7 +56,7 @@ describe("loadOverviewGraph", () => {
     });
   });
 
-  it("returns principal nodes alongside neuron nodes", async () => {
+  it("returns principal nodes alongside node nodes", async () => {
     const { client } = makeQueryClient({
       entities: [
         {
@@ -74,7 +74,7 @@ describe("loadOverviewGraph", () => {
           created_at: "2026-05-01T00:00:00Z",
         },
       ],
-      synapses: [],
+      edges: [],
     });
 
     const graph = await loadOverviewGraph(client, "doco_acme", { handle: "acme" });
@@ -83,7 +83,7 @@ describe("loadOverviewGraph", () => {
     expect(types).toEqual(["decision", "principal"]);
   });
 
-  it("loads the first-line neuron name with the base graph nodes", async () => {
+  it("loads the first-line node name with the base graph nodes", async () => {
     const { client } = makeQueryClient({
       entities: [
         {
@@ -95,7 +95,7 @@ describe("loadOverviewGraph", () => {
           created_at: "2026-05-23T20:00:00.000Z",
         },
       ],
-      synapses: [],
+      edges: [],
     });
 
     const graph = await loadOverviewGraph(client, "doco_01TEST00000000000000000001", {
@@ -122,7 +122,7 @@ describe("loadOverviewGraph", () => {
           created_at: "2026-05-01T00:00:00.000Z",
         },
       ],
-      synapses: [],
+      edges: [],
     });
 
     await loadOverviewGraph(client, "doco_large", {

@@ -56,7 +56,7 @@ export function VersionPill({ className }: VersionPillProps) {
       </span>
       {/* Tagline hides below sm so the app header keeps a single-row,
           predictable height on small screens — otherwise the tagline
-          wraps onto 3–4 lines and pushes overlays (e.g. the neuron
+          wraps onto 3–4 lines and pushes overlays (e.g. the node
           dialog at top-20) into the middle of the visible header. */}
       <span className="hidden whitespace-nowrap sm:inline">{DOCO_TAGLINE}</span>
     </span>

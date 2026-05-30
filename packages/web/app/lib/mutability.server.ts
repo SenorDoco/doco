@@ -5,13 +5,13 @@
 // reached an `accepted`/`retired` lifecycle, forcing editorial fixes
 // through supersession. That built-in freeze has been removed: any
 // principal with write access may add, edit, retire, or transition the
-// lifecycle of any neuron or synapse. Nothing is ever hard-deleted —
+// lifecycle of any node or edge. Nothing is ever hard-deleted —
 // removal is a lifecycle transition to `retired`, and every change is
 // recorded in `audit_events` — so history stays intact even though the
 // current row is mutable.
 //
 // What a writer may or may not do is now governed exclusively by the
-// Doco's own policies (guidance + neuron-authoring policies evaluated
+// Doco's own policies (guidance + node-authoring policies evaluated
 // in the authoring runner), not by a hard-coded role/lifecycle freeze.
 // This module keeps its shape so existing call sites compile, but the
 // gate is permissive: it never blocks a patch.
@@ -23,7 +23,7 @@ export type ClaimNodeType =
   | "intent"
   | "rule"
   | "guidance_policy"
-  | "neuron_authoring_policy"
+  | "node_authoring_policy"
   | "action"
   | "log"
   | "eval"
@@ -36,7 +36,7 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "intent",
   "rule",
   "guidance_policy",
-  "neuron_authoring_policy",
+  "node_authoring_policy",
   "action",
   "log",
   "eval",
@@ -49,7 +49,7 @@ export function nodeClassOf(entityType: string): NodeClass {
 
 /**
  * Whether the given claim is frozen. There is no built-in freeze any
- * more — writers may edit neurons at every lifecycle — so this always
+ * more — writers may edit nodes at every lifecycle — so this always
  * returns false. Retained for callers that still ask.
  */
 export function isFrozen(_entityType: string, _lifecycle: string | undefined | null): boolean {

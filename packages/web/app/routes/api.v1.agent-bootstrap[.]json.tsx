@@ -5,7 +5,7 @@
 //     org-membership-inherited, doco_users grant, public visibility)
 //
 // Each policy set exposes two arrays: `guidance_policies` (prose, no automated check) and
-// `neuron_authoring_policies` (rules evaluated at capture time).
+// `node_authoring_policies` (rules evaluated at capture time).
 //
 // The project owner can add, edit, or remove policies at any time
 // from /<handle>/policies — re-fetch this endpoint if you suspect
@@ -63,7 +63,7 @@ interface DocoPolicySet {
   goal: string;
   owner_id: string;
   guidance_policies: PolicyArticle[];
-  neuron_authoring_policies: PolicyArticle[];
+  node_authoring_policies: PolicyArticle[];
 }
 
 export async function loader({ request }: { request: Request }) {
@@ -139,7 +139,7 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
       ),
       c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
         `SELECT id, policy, lifecycle, body_md
-           FROM neuron_authoring_policies
+           FROM node_authoring_policies
           WHERE doco_id = $1
             AND COALESCE(lifecycle, 'asserted') = 'asserted'
           ORDER BY created_at DESC`,
@@ -157,7 +157,7 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
       goal: d.goal,
       owner_id: d.owner_id,
       guidance_policies: guidance.rows,
-      neuron_authoring_policies: nodeAuthoring.rows,
+      node_authoring_policies: nodeAuthoring.rows,
     },
   ];
 }
@@ -187,7 +187,7 @@ async function loadDocoPoliciesForPrincipal(
         ),
         c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
           `SELECT id, policy, lifecycle, body_md
-             FROM neuron_authoring_policies
+             FROM node_authoring_policies
             WHERE doco_id = $1
               AND COALESCE(lifecycle, 'asserted') = 'asserted'
             ORDER BY created_at DESC`,
@@ -207,7 +207,7 @@ async function loadDocoPoliciesForPrincipal(
       goal: d.goal,
       owner_id: d.owner_id,
       guidance_policies: guidance.rows,
-      neuron_authoring_policies: nodeAuthoring.rows,
+      node_authoring_policies: nodeAuthoring.rows,
     });
   }
   return out;

@@ -12,7 +12,7 @@
 import dagre from "@dagrejs/dagre";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import {
   computeDepthFromCenter,
   hasFocalNode,
@@ -24,19 +24,19 @@ import {
   clearGraphReferences,
   publishGraphReferences,
 } from "~/lib/graph-references";
-import { lifecycleColor } from "~/lib/neuron-colors";
-import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
+import { lifecycleColor } from "~/lib/node-colors";
+import { useNewNodeIds } from "~/lib/use-new-node-ids";
 import "@xyflow/react/dist/style.css";
 
 /**
  * Administrative edge types that carry no reading value in the rendered
  * graph and clutter every neighborhood. Filtered out at render time
- * (decision_01KRRJTW39THBW0C943G0GTH0M). The underlying synapses remain in
+ * (decision_01KRRJTW39THBW0C943G0GTH0M). The underlying edges remain in
  * the index — this is a visualization-only filter.
  *
  * Note: `created_by` / `updated_by` used to be filtered here. They're now
- * skipped at index time (see SKIP_FIELDS in packages/index/src/synapses.ts),
- * so the runtime filter is just for legacy synapses still sitting in the DB
+ * skipped at index time (see SKIP_FIELDS in packages/index/src/edges.ts),
+ * so the runtime filter is just for legacy edges still sitting in the DB
  * from before the change.
  */
 const ALWAYS_HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set(["created_by", "updated_by"]);
@@ -73,7 +73,7 @@ export interface GraphNode {
 export interface GraphLink {
   source: string;
   target: string;
-  synapse_type: string;
+  edge_type: string;
 }
 
 interface EntityGraphProps {
@@ -242,7 +242,7 @@ const GRID_TYPE_ORDER = new Map(
     "action",
     "rule",
     "guidance_policy",
-    "neuron_authoring_policy",
+    "node_authoring_policy",
     "log",
     "eval",
     "reference",
@@ -412,7 +412,7 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
   for (const n of nodes) {
     g.setNode(n.id, { width: NODE_WIDTH, height: heightById.get(n.id) ?? NODE_HEIGHT });
   }
-  // Use a deterministic edge key (the index) so duplicate synapses between
+  // Use a deterministic edge key (the index) so duplicate edges between
   // the same pair don't clobber each other.
   links.forEach((l, i) => {
     const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
@@ -601,11 +601,11 @@ function EntityNodeCard({
       data-entity-node-card={entityType}
       data-entity-node-new={isNew ? "true" : undefined}
       data-graph-reference-number={referenceNumber ?? undefined}
-      data-neuron-href={href}
-      data-neuron-id={id}
-      data-neuron-label={title}
-      data-neuron-lifecycle={lifecycle}
-      data-neuron-type={entityType}
+      data-node-href={href}
+      data-node-id={id}
+      data-node-label={title}
+      data-node-lifecycle={lifecycle}
+      data-node-type={entityType}
       draggable={false}
       onClick={(event) => event.stopPropagation()}
       style={{
@@ -646,7 +646,7 @@ function EntityNodeCard({
       </div>
       <div className="relative z-10 flex items-center gap-2 text-left">
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-foreground">
-          <NeuronTypeIcon entityType={entityType} className="!h-4 !w-4 shrink-0" />
+          <NodeTypeIcon entityType={entityType} className="!h-4 !w-4 shrink-0" />
           <span>{entityType}</span>
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
@@ -659,7 +659,7 @@ function EntityNodeCard({
             </>
           ) : showPersonalizedRank ? (
             <>
-              <span title="Personalized PageRank from focal neuron">
+              <span title="Personalized PageRank from focal node">
                 PPR <span className="text-foreground">{ppr.toFixed(3)}</span>
               </span>
               <span title="Global PageRank (over the whole Doco graph)">
@@ -667,7 +667,7 @@ function EntityNodeCard({
               </span>
             </>
           ) : count != null ? (
-            <span title="Neurons represented by this cluster">
+            <span title="Nodes represented by this cluster">
               <span className="text-foreground">{count.toLocaleString()}</span> nodes
             </span>
           ) : (
@@ -753,9 +753,9 @@ export function EntityGraph({
     });
     const ids = new Set(v.map((n) => n.id));
     const vl = links.filter((l) => {
-      // Drop administrative synapses that clutter the render and carry no
+      // Drop administrative edges that clutter the render and carry no
       // process / reasoning value (decision_01KRRJTW39THBW0C943G0GTH0M).
-      if (ALWAYS_HIDDEN_EDGE_TYPES.has(l.synapse_type)) return false;
+      if (ALWAYS_HIDDEN_EDGE_TYPES.has(l.edge_type)) return false;
       const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
       const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
       return ids.has(src) && ids.has(tgt);
@@ -776,7 +776,7 @@ export function EntityGraph({
     return dagreLayout(visible.nodes, visible.links, centerId);
   }, [visible.nodes, visible.links, centerId, layoutMode]);
 
-  // Per-node BFS depth from the focal neuron for the cross-perspective
+  // Per-node BFS depth from the focal node for the cross-perspective
   // depth-fade rule (focused 100%, 1st-degree 75%, 2nd 50%, 3rd+ 25%).
   // Edges fade with their deepest endpoint.
   const depthByNodeId = useMemo(() => {
@@ -1087,15 +1087,15 @@ export function EntityGraph({
         const edgeOpacity = focalActive
           ? opacityForEdge(depthByNodeId.get(src), depthByNodeId.get(tgt))
           : 1;
-        // Synapse inherits its origin neuron's lifecycle colour so the
+        // Edge inherits its origin node's lifecycle colour so the
         // arrow visually carries the state of its source.
         const sourceLifecycle = visibleNodeById.get(src)?.lifecycle ?? "asserted";
         const baseStroke = lifecycleColor(sourceLifecycle);
         return {
-          id: `${src}-${tgt}-${l.synapse_type}-${i}`,
+          id: `${src}-${tgt}-${l.edge_type}-${i}`,
           source: src,
           target: tgt,
-          label: l.synapse_type,
+          label: l.edge_type,
           labelStyle: {
             fontSize: 9,
             fill: "#737373",

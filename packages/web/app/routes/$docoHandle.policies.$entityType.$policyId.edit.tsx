@@ -13,9 +13,9 @@ import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
-  type NeuronAuthoringPolicyDraft,
+  type NodeAuthoringPolicyDraft,
   captureGuidancePolicy,
-  captureNeuronAuthoringPolicy,
+  captureNodeAuthoringPolicy,
   loadPolicyForEdit,
   transitionPolicyLifecycle,
 } from "~/lib/capture.server";
@@ -24,7 +24,7 @@ import { loadHostConfig } from "~/lib/host.server";
 import { derivePolicySummary } from "~/lib/policy-copy";
 import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
-type EntityType = "guidance_policy" | "neuron_authoring_policy";
+type EntityType = "guidance_policy" | "node_authoring_policy";
 type ArticleKind = "deterministic" | "probabilistic";
 
 interface ActionError {
@@ -33,8 +33,8 @@ interface ActionError {
 
 function parsePolicyType(raw: string | undefined): EntityType | null {
   if (raw === "guidance" || raw === "guidance_policy") return "guidance_policy";
-  if (raw === "neuron-authoring" || raw === "neuron_authoring_policy")
-    return "neuron_authoring_policy";
+  if (raw === "node-authoring" || raw === "node_authoring_policy")
+    return "node_authoring_policy";
   return null;
 }
 
@@ -111,7 +111,7 @@ export async function action({
       ? await resolvePrincipalIdForUser(ctx.meta.docoId, ctx.me.id)
       : null;
     let captured: Awaited<
-      ReturnType<typeof captureGuidancePolicy | typeof captureNeuronAuthoringPolicy>
+      ReturnType<typeof captureGuidancePolicy | typeof captureNodeAuthoringPolicy>
     >;
     if (entityType === "guidance_policy") {
       const draft = stampAuthenticatedCreator(
@@ -135,28 +135,28 @@ export async function action({
         String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
           ? "probabilistic"
           : "deterministic";
-      const lifecycle = String(form.get("fires_when_neuron_lifecycle") ?? "")
+      const lifecycle = String(form.get("fires_when_node_lifecycle") ?? "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
       const onViolationRaw = String(form.get("on_violation") ?? "block");
       const on_violation =
         onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
-      const draft: NeuronAuthoringPolicyDraft = stampAuthenticatedCreator(
+      const draft: NodeAuthoringPolicyDraft = stampAuthenticatedCreator(
         {
           policy,
           body_md,
           evaluation_kind: evaluationKind,
           on_violation,
           authored_by_principal_id: authorPrincipalId ?? undefined,
-          ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
+          ...(lifecycle.length > 0 ? { fires_when_node_lifecycle: lifecycle } : {}),
           ...(evaluationKind === "probabilistic"
             ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
             : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
         },
         ctx.me?.id,
       );
-      captured = await captureNeuronAuthoringPolicy(
+      captured = await captureNodeAuthoringPolicy(
         docoDir,
         ctx.meta.docoId,
         ownerSlug,
@@ -198,7 +198,7 @@ export default function EditPolicy({
 }) {
   const { ownerSlug, docoSlug, handle, me, entityType, policyId, body_md, data } = loaderData;
   const actionData = useActionData<ActionError>();
-  const isNeuronAuthoring = entityType === "neuron_authoring_policy";
+  const isNodeAuthoring = entityType === "node_authoring_policy";
   const initialEvalKind: ArticleKind =
     data.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
@@ -213,8 +213,8 @@ export default function EditPolicy({
     typeof (data.predicate as { spec?: string }).spec === "string"
       ? (data.predicate as { spec: string }).spec
       : "";
-  const initialFiresOn = Array.isArray(data.fires_when_neuron_lifecycle)
-    ? (data.fires_when_neuron_lifecycle as string[]).join(", ")
+  const initialFiresOn = Array.isArray(data.fires_when_node_lifecycle)
+    ? (data.fires_when_node_lifecycle as string[]).join(", ")
     : "";
   const initialOnViolation = typeof data.on_violation === "string" ? data.on_violation : "block";
 
@@ -228,16 +228,16 @@ export default function EditPolicy({
               ownerSlug,
               handle,
               parent: { label: "Policies", to: `/${handle}/policies` },
-              pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} policy`,
+              pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} policy`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Modify {isNeuronAuthoring ? "neuron-authoring" : "guidance"} policy
+            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} policy
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Saving changes creates a new policy and retires this one with a{" "}
-            <code>superseded_by</code> synapse. Retiring leaves the old one in place. Either way the
+            <code>superseded_by</code> edge. Retiring leaves the old one in place. Either way the
             audit log retains the full history.
           </p>
         </header>
@@ -257,7 +257,7 @@ export default function EditPolicy({
                 placeholder="Write the policy."
                 className="block w-full rounded-md px-3 py-2 text-sm"
               />
-              {isNeuronAuthoring ? (
+              {isNodeAuthoring ? (
                 <>
                   <fieldset className="flex flex-wrap gap-2">
                     <legend className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -310,7 +310,7 @@ export default function EditPolicy({
                         Fires on lifecycles (comma-separated)
                       </span>
                       <input
-                        name="fires_when_neuron_lifecycle"
+                        name="fires_when_node_lifecycle"
                         defaultValue={initialFiresOn}
                         placeholder="asserted"
                         className="mt-1 block w-full rounded-md px-3 py-2 text-sm"

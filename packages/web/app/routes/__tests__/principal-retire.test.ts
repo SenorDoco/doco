@@ -78,7 +78,7 @@ describe("principal retire API", () => {
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
       entity_type: "principal",
-      data: { neuron_type: "principal", name: "visitor" },
+      data: { node_type: "principal", name: "visitor" },
       summary: "Visitor",
       lifecycle: "asserted",
       created_at: "2026-01-01T00:00:00.000Z",
@@ -130,14 +130,14 @@ describe("principal retire API", () => {
     );
   });
 
-  it("returns 409 when an active neuron still references the principal", async () => {
+  it("returns 409 when an active node still references the principal", async () => {
     mocks.query.mockResolvedValue({
       rows: [
         {
           id: "action_01ABC",
-          neuron_type: "action",
+          node_type: "action",
           summary: "Greet customer",
-          synapse_type: "performed_by",
+          edge_type: "performed_by",
         },
       ],
     });
@@ -150,8 +150,8 @@ describe("principal retire API", () => {
     expect(response.status).toBe(409);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("active neurons still reference it"),
-      active_references: [expect.objectContaining({ id: "action_01ABC", neuron_type: "action" })],
+      error: expect.stringContaining("active nodes still reference it"),
+      active_references: [expect.objectContaining({ id: "action_01ABC", node_type: "action" })],
     });
   });
 
@@ -160,7 +160,7 @@ describe("principal retire API", () => {
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
       entity_type: "principal",
-      data: { neuron_type: "principal", name: "visitor", lifecycle: "retired" },
+      data: { node_type: "principal", name: "visitor", lifecycle: "retired" },
       summary: "Visitor",
       lifecycle: "retired",
     });
@@ -231,7 +231,7 @@ describe("principal retire API", () => {
       id: PRINCIPAL_ID,
       doco_id: "doco_other",
       entity_type: "principal",
-      data: { neuron_type: "principal", name: "visitor" },
+      data: { node_type: "principal", name: "visitor" },
       summary: "Visitor",
       lifecycle: "asserted",
     });
@@ -297,13 +297,13 @@ describe("principal retire API", () => {
       .mockResolvedValueOnce({
         id: "principal_manager",
         doco_id: "doco_acme",
-        data: { neuron_type: "principal", name: "boss" },
+        data: { node_type: "principal", name: "boss" },
       })
       .mockResolvedValueOnce({
         id: PRINCIPAL_ID,
         doco_id: "doco_acme",
         entity_type: "principal",
-        data: { neuron_type: "principal", name: "visitor" },
+        data: { node_type: "principal", name: "visitor" },
         summary: "Visitor",
         lifecycle: "asserted",
       });
@@ -330,7 +330,7 @@ describe("principal retire API", () => {
       doco_id: "doco_acme",
       entity_type: "principal",
       data: {
-        neuron_type: "principal",
+        node_type: "principal",
         name: "visitor",
         reports_to: "principal_old_manager",
       },
@@ -373,7 +373,7 @@ describe("principal retire API", () => {
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
       entity_type: "principal",
-      data: { neuron_type: "principal", name: "visitor" },
+      data: { node_type: "principal", name: "visitor" },
       body_md: "Human walking the public site. Operates under @alex.",
       lifecycle: "asserted",
       created_at: "2026-01-01T00:00:00.000Z",

@@ -10,7 +10,7 @@ export function verbFromAuditOp(op: string): string {
   if (op === "entity.update") return "updated";
   if (op === "entity.delete") return "deleted";
   if (op === "lifecycle.transition") return "transitioned";
-  if (op === "synapse.add") return "linked";
+  if (op === "edge.add") return "linked";
   return op;
 }
 
@@ -19,7 +19,7 @@ export function iconFromAuditOp(op: string): string {
   if (op === "entity.update") return "📝";
   if (op === "entity.delete") return "🗑️";
   if (op === "lifecycle.transition") return "🔁";
-  if (op === "synapse.add") return "➕";
+  if (op === "edge.add") return "➕";
   return "•";
 }
 
@@ -52,7 +52,7 @@ export function shouldStrikeActivityTarget(
   return lifecycle != null && STRUCK_ACTIVITY_LIFECYCLES.has(lifecycle);
 }
 
-/** Effective lifecycle for an activity row: the lifecycle the neuron is
+/** Effective lifecycle for an activity row: the lifecycle the node is
  *  in AFTER this event (transition target, or its current lifecycle for
  *  non-transition events). Mirrors `shouldStrikeActivityTarget` so a
  *  caller that uses both helpers gets a strike and a color from the

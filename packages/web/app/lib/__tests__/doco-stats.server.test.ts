@@ -28,7 +28,7 @@ describe("dashboard doco stats entity tables", () => {
     }
   });
 
-  it("counts Doco-authored role principals as neuron stats", () => {
+  it("counts Doco-authored role principals as node stats", () => {
     expect(ENTITY_TABLES).toContain("principals");
   });
 

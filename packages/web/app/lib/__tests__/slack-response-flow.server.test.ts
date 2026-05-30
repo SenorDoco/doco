@@ -10,7 +10,7 @@ vi.mock("@doco/db", () => ({
     decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
     intent: { table: "intents", body: false, typeNamedColumn: "intent" },
   },
-  DOCO_NEURON_TABLE_SPECS: [
+  DOCO_NODE_TABLE_SPECS: [
     { table: "decisions", entityType: "decision", body: false },
     { table: "intents", entityType: "intent", body: false },
   ],

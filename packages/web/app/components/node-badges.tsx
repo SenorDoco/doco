@@ -1,15 +1,15 @@
-// Lifecycle + neuron-type badge pills, originally from the BPMN
+// Lifecycle + node-type badge pills, originally from the BPMN
 // perspective. The Graph perspective reuses them so a node's type and
 // lifecycle read the same way wherever the node is drawn.
 //
 // Both badges use the node's lifecycle color as their background — the
 // stage controls the color, the label text says what the pill is
-// (neuron type vs lifecycle stage). On a node with multiple badges the
+// (node type vs lifecycle stage). On a node with multiple badges the
 // matching color triplet reinforces the "this lifecycle owns this
-// neuron" reading.
+// node" reading.
 
 import type { CSSProperties } from "react";
-import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
+import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/node-colors";
 
 export type BadgeAnchor =
   | "left" // sits over the top-left edge of the host box
@@ -68,7 +68,7 @@ export function badgeStyle(
 }
 
 /**
- * Compact human label for a neuron type. Used inside the type badge,
+ * Compact human label for a node type. Used inside the type badge,
  * where the four-letter pill needs to read fast — "Ref" instead of
  * "reference", etc. The full type string is still available via the
  * surrounding card's data attributes for tooling.
@@ -120,7 +120,7 @@ export function LifecycleBadge({ lifecycle, anchor = "right", className }: Badge
  * Tag row centered over the BOTTOM edge of a node — type pill followed
  * by lifecycle pill, both at the same z-level. Paired with
  * `ReferenceNumberBadge` which floats at the TOP edge of the node:
- * the in-graph numbering reads top, the neuron's identity (type +
+ * the in-graph numbering reads top, the node's identity (type +
  * lifecycle) reads bottom.
  */
 interface NodeBadgeRowProps {

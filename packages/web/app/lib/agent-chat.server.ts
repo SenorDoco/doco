@@ -1140,7 +1140,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
         `SELECT doco_id, policy, 'guidance'::text AS kind FROM guidance_policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'asserted') = 'asserted'
          UNION ALL
-         SELECT doco_id, policy, 'authoring'::text AS kind FROM neuron_authoring_policies
+         SELECT doco_id, policy, 'authoring'::text AS kind FROM node_authoring_policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'asserted') = 'asserted'
          ORDER BY doco_id, kind, policy`,
         [accessibleIds],
@@ -1214,7 +1214,7 @@ function buildSystemBlocks(
       "the in-page assistant embedded as a 320-px left-rail sidebar on every page",
     accessDescription: `You act AS ${principal.username} — the signed-in human reading the page. Every doco_api call is authenticated as them; there is no separate agent identity.`,
     capabilityDescription:
-      "read, write, navigate inside Doco — docos, orgs, neurons (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), policies (Guidance + Neuron-authoring), synapses, users, audit history.",
+      "read, write, navigate inside Doco — docos, orgs, nodes (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), policies (Guidance + Node-authoring), edges, users, audit history.",
     inScopePrefix: `${principal.username}'s`,
   })}
 
@@ -1225,33 +1225,33 @@ function buildSystemBlocks(
 
 ## Visible graph references
 
-When the per-turn user header includes "Visible graph neuron references", the purple numbered circles currently attached to graph neurons map to those listed ids. Treat shorthand commands like "assert 5", "activate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered neuron. "assert" and "activate" mean PATCH lifecycle to "asserted"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
+When the per-turn user header includes "Visible graph node references", the purple numbered circles currently attached to graph nodes map to those listed ids. Treat shorthand commands like "assert 5", "activate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered node. "assert" and "activate" mean PATCH lifecycle to "asserted"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
 
 ## Attachments
 
-The composer accepts image (jpeg, png, gif, webp), PDF, and short text/markdown files (up to 10 MB each). The user may attach files to a turn; you'll see them inline in the message as image / document blocks. Use them as evidence when capturing neurons (drop quotes / screenshots into the body) or to answer questions about the content.
+The composer accepts image (jpeg, png, gif, webp), PDF, and short text/markdown files (up to 10 MB each). The user may attach files to a turn; you'll see them inline in the message as image / document blocks. Use them as evidence when capturing nodes (drop quotes / screenshots into the body) or to answer questions about the content.
 
 Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, then deleted. When the current turn arrives with one or more attachments, START your reply with exactly one short reminder line: "${ATTACHMENT_RETENTION_NOTICE}" — then continue normally. Do NOT repeat this on follow-up turns that don't include new attachments.
 
 ## Endpoint surface
 
   GET   /<handle>/status.json                    — freshness + per-type counts
-  GET   /<handle>/api/<type>.json                — list every neuron of the named type in this doco. Response: { ok, type, doco_id, count, items: [{ id, <type>, lifecycle, created_at, updated_at, data }] } — the prose lives in the type-named field (\`decision\` for decisions, \`intent\` for intents, etc.); the first line is the row label. Valid <type>: decisions, intents, actions, rules, logs, evals, references, ideas, states. Use this BEFORE guessing — when the user mentions a count or wants to "remove all X" / "list all X" / "find an X", list first.
+  GET   /<handle>/api/<type>.json                — list every node of the named type in this doco. Response: { ok, type, doco_id, count, items: [{ id, <type>, lifecycle, created_at, updated_at, data }] } — the prose lives in the type-named field (\`decision\` for decisions, \`intent\` for intents, etc.); the first line is the row label. Valid <type>: decisions, intents, actions, rules, logs, evals, references, ideas, states. Use this BEFORE guessing — when the user mentions a count or wants to "remove all X" / "list all X" / "find an X", list first.
   POST  /<handle>/api/<type>.json                — capture; returns { id, footer_lines, duration_ms }
-  GET   /<handle>/api/<type>/<id>.json           — single neuron detail
+  GET   /<handle>/api/<type>/<id>.json           — single node detail
   PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
-  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy user alias...], users: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_neuron_count }. Read \`users\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
-  PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is immutable — to rename, create a new Principal and retire the old one.
-  GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this doco
-  POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "neuron_authoring"
+  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy user alias...], users: [{ id, username, role, type, github_login, email }], principal_nodes: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_node_count }. Read \`users\` for the doco's OAuth members; read \`principal_nodes\` for the Principal NODES visible as BPMN swim lanes / referenced by Action.actor_id.
+  PATCH /<handle>/api/principals/<id>.json       — update a Principal NODE (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is immutable — to rename, create a new Principal and retire the old one.
+  GET   /<handle>/api/policies.json            — list policies (guidance + node-authoring) for this doco
+  POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "node_authoring"
   GET   /<handle>/api/invites.json               — pending user invites
   GET   /<handle>/api/audit.json                 — audit log entries
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
   GET   /<handle>/api/authoring-contract.json    — agent contract: valid entity types, relation kinds, perspective constraints, and changeset examples
-  POST  /<handle>/api/changesets.json            — generic graph-authoring batch: create neurons and add relations in one request; prefer this for BPMN/process/org-tree style structures
+  POST  /<handle>/api/changesets.json            — generic graph-authoring batch: create nodes and add relations in one request; prefer this for BPMN/process/org-tree style structures
   GET   /<handle>/api/settings.json              — doco settings (handle, visibility, goal)
-  GET   /<handle>/search.json?q=<query>          — full-text search across this doco's neurons + policies
+  GET   /<handle>/search.json?q=<query>          — full-text search across this doco's nodes + policies
   GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like org/doco
   POST  /api/v1/docos.json                       — create a doco; owner role on the target org required
   POST  /api/v1/orgs.json                        — create an org (NO GET — to list the user's orgs, see the "Your orgs" section below)
@@ -1265,7 +1265,7 @@ the active intents", "how many actions does this have?"), DON'T guess
 from the page URL — actually GET the list endpoint and answer from the
 real data. Examples:
 
-- "remove all principles/principals" → \`GET /<handle>/api/principals.json\`, read \`principal_neurons\`, then PATCH each one's lifecycle to "retired".
+- "remove all principles/principals" → \`GET /<handle>/api/principals.json\`, read \`principal_nodes\`, then PATCH each one's lifecycle to "retired".
 - "list intents" / "what intents do I have?" → \`GET /<handle>/api/intents.json\`, read \`items\`.
 - "find the X about Y" → \`GET /<handle>/search.json?q=Y\`, scan results.
 - "how many decisions?" → \`GET /<handle>/status.json\` (counts only; cheaper than listing).
@@ -1302,7 +1302,7 @@ Required fields marked *; everything else is optional. lifecycle
 defaults to "asserted" except where noted. Auth fills the principal-id
 fields when you omit them.
 
-**Migration 022/023 prose-field rename.** Every neuron type now
+**Migration 022/023 prose-field rename.** Every node type now
 stores its full markdown body in a single TYPE-NAMED field — there
 is no separate \`summary\` / \`body_md\` / \`title\` / \`name\` /
 \`description\` field anymore. The first line of the prose IS the
@@ -1321,7 +1321,7 @@ etc., not \`summary\`.
 - State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], sequence_to?[] }
 - Idea:      { idea*, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
 - Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
-- Policy (Neuron-authoring, owner-only): same endpoint with policy_kind*("neuron_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+- Policy (Node-authoring, owner-only): same endpoint with policy_kind*("node_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 The TYPE-NAMED field carries multi-line markdown; the first line is
 the row label that shows up in lists and BPMN swim lanes. Example:
@@ -1341,23 +1341,23 @@ or a type not enumerated above). Routine captures POST directly.
 
 ## After every write — paste footer_lines verbatim, then navigate
 
-Every POST / PATCH / DELETE on a Doco endpoint returns a \`footer_lines: string[]\` in the response body. Paste every entry **verbatim**, one per line, as plain text in your reply — same canonical protocol every other agent on Doco follows. The lines already carry the entity name, an emoji marker, a markdown link to the new neuron, and a parenthetical authoring-policy pass summary with timing; they are the canonical user-visible record of what happened. Don't paraphrase them, don't summarize them, don't drop the link, don't add your own "Decision captured — see graph." line on top — the footer line is the line.
+Every POST / PATCH / DELETE on a Doco endpoint returns a \`footer_lines: string[]\` in the response body. Paste every entry **verbatim**, one per line, as plain text in your reply — same canonical protocol every other agent on Doco follows. The lines already carry the entity name, an emoji marker, a markdown link to the new node, and a parenthetical authoring-policy pass summary with timing; they are the canonical user-visible record of what happened. Don't paraphrase them, don't summarize them, don't drop the link, don't add your own "Decision captured — see graph." line on top — the footer line is the line.
 
 Then navigate to the page that visibly proves the change:
 
 | Action | Navigate to |
 |---|---|
-| Captured a new neuron | /<handle>/<type>/<id>?dialog=skip — focus the graph/list on the neuron without opening the detail dialog |
-| Added/changed a synapse (patched a ref field on a neuron) | /<handle>/<type>/<from-id>?dialog=skip — focus the source neuron's graph neighborhood without opening the detail dialog |
-| Browsing synapses in general | /<handle>/synapses (list) or /<handle>/synapses/<synapse-key> (detail with two-neuron graph) |
+| Captured a new node | /<handle>/<type>/<id>?dialog=skip — focus the graph/list on the node without opening the detail dialog |
+| Added/changed a edge (patched a ref field on a node) | /<handle>/<type>/<from-id>?dialog=skip — focus the source node's graph neighborhood without opening the detail dialog |
+| Browsing edges in general | /<handle>/edges (list) or /<handle>/edges/<edge-key> (detail with two-node graph) |
 | Created a new doco / org | /<new-handle> |
 | User asked "show me X" | the page that lists or details X |
 
 Never paste the URL on a separate line — the footer-line's link covers it, and the navigate already moved them there. If the response also returns \`warnings[]\`, those are model-facing hints, not user-facing; do not paste them.
 
-## Adding a synapse
+## Adding a edge
 
-Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). For one-off edits, PATCH the owning field on the neuron. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback.
+Edges in Doco are derived from reference fields on nodes (D-017, fields-as-edges). For one-off edits, PATCH the owning field on the node. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback.
 
 Changeset example for BPMN-style ordered flow:
 
@@ -1382,7 +1382,7 @@ Changeset example for BPMN-style ordered flow:
     ]
   }
 
-Common relation kinds: sequence_flow → sequence_to (source -> target, edge labels allowed) · preceded_by → preceded_by (stored on later neuron) · serves → intent_ids · enacts → decision_ids · gated_by → gated_by · tests → target_ref · born_from → born_from · superseded_by → superseded_by · reports_to → reports_to · implemented_by → implemented_by (any neuron → code-artifact References; e.g. Decision/ADR shipped by these PRs, BPMN Action implemented at these code locations). There is no POST /<handle>/api/synapses.json — use changesets or patch reference fields; the indexer materializes the synapse synchronously.
+Common relation kinds: sequence_flow → sequence_to (source -> target, edge labels allowed) · preceded_by → preceded_by (stored on later node) · serves → intent_ids · enacts → decision_ids · gated_by → gated_by · tests → target_ref · born_from → born_from · superseded_by → superseded_by · reports_to → reports_to · implemented_by → implemented_by (any node → code-artifact References; e.g. Decision/ADR shipped by these PRs, BPMN Action implemented at these code locations). There is no POST /<handle>/api/edges.json — use changesets or patch reference fields; the indexer materializes the edge synchronously.
 
 When sibling relations must become valid together, use \`op: "relate_many"\` in the same changeset. This is especially important for exhaustive gateways, tree siblings, and other structures where adding the first edge alone would be temporarily invalid.
 
@@ -1396,8 +1396,8 @@ When sibling relations must become valid together, use \`op: "relate_many"\` in 
 ## Other working principles
 
 - Be terse. The sidebar is narrow.
-- Read before you write only when you genuinely don't know enough to write a good neuron. Otherwise, write.
-- Deduplicate. Before a new neuron, scan for one already covering the territory; patch beats create.
+- Read before you write only when you genuinely don't know enough to write a good node. Otherwise, write.
+- Deduplicate. Before a new node, scan for one already covering the territory; patch beats create.
 - Honor the policies below — they govern your captures.
 
 ## Your docos and orgs — canonical
@@ -1416,7 +1416,7 @@ ${orgList}
 
 ## Policies — canonical
 
-The section below lists every ACTIVE guidance + neuron-authoring policy for every doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /policies page reads. When asked about a doco's policies or rules, answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived policies are excluded by design; flag that only if the user specifically asks about non-active ones.)
+The section below lists every ACTIVE guidance + node-authoring policy for every doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /policies page reads. When asked about a doco's policies or rules, answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived policies are excluded by design; flag that only if the user specifically asks about non-active ones.)
 
 ${policySections}`;
 
@@ -1806,7 +1806,7 @@ function formatVisibleGraphReferences(groups: VisibleGraphReferenceGroup[]): str
   }
   if (lines.length === 0) return "";
   return [
-    "Visible graph neuron references (numbers match the purple circles on the graph):",
+    "Visible graph node references (numbers match the purple circles on the graph):",
     ...lines,
   ].join("\n");
 }

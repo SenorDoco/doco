@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadNeuronDialogDetail } from "../neuron-detail.server";
+import { loadNodeDialogDetail } from "../node-detail.server";
 
 vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
     action: { table: "actions", body: false, typeNamedColumn: "action" },
     decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
   },
-  DOCO_NEURON_TABLE_BY_TYPE: {
+  DOCO_NODE_TABLE_BY_TYPE: {
     action: { table: "actions", entityType: "action", body: false },
     decision: { table: "decisions", entityType: "decision", body: false },
   },
@@ -26,7 +26,7 @@ function clientWithRow(row: Record<string, unknown>) {
   return {
     query: async <T>(sql: string): Promise<{ rows: T[] }> => {
       if (sql.includes("WITH input(actor_id)")) return { rows: [] };
-      if (sql.includes("FROM synapses")) return { rows: [] };
+      if (sql.includes("FROM edges")) return { rows: [] };
       if (sql.includes("UNION ALL")) return { rows: [] };
       if (sql.includes("FROM audit_events")) return { rows: [] };
       return { rows: [row as T] };
@@ -34,9 +34,9 @@ function clientWithRow(row: Record<string, unknown>) {
   };
 }
 
-describe("loadNeuronDialogDetail", () => {
+describe("loadNodeDialogDetail", () => {
   it("keeps Principal name as the dialog primary text", async () => {
-    const detail = await loadNeuronDialogDetail(
+    const detail = await loadNodeDialogDetail(
       clientWithRow({
         id: "principal_01TEST",
         primary_text: "Renan Peixoto",
@@ -67,8 +67,8 @@ describe("loadNeuronDialogDetail", () => {
     });
   });
 
-  it("keeps migrated neurons primary text in their type-named field", async () => {
-    const detail = await loadNeuronDialogDetail(
+  it("keeps migrated nodes primary text in their type-named field", async () => {
+    const detail = await loadNodeDialogDetail(
       clientWithRow({
         id: "decision_01TEST",
         primary_text: "Use display labels\n\nRationale follows.",
@@ -97,27 +97,27 @@ describe("loadNeuronDialogDetail", () => {
     });
   });
 
-  it("includes related neuron lifecycle on synapse edges", async () => {
+  it("includes related node lifecycle on edge edges", async () => {
     const client = {
       query: async <T>(sql: string): Promise<{ rows: T[] }> => {
-        if (sql.includes("FROM synapses") && sql.includes("from_id = $2")) {
+        if (sql.includes("FROM edges") && sql.includes("from_id = $2")) {
           return {
             rows: [
               {
                 to_id: "action_01ACTIVE",
-                to_neuron_type: "action",
-                synapse_type: "enacts",
+                to_node_type: "action",
+                edge_type: "enacts",
               },
             ] as T[],
           };
         }
-        if (sql.includes("FROM synapses") && sql.includes("to_id = $2")) {
+        if (sql.includes("FROM edges") && sql.includes("to_id = $2")) {
           return {
             rows: [
               {
                 from_id: "action_01RETIRED",
-                from_neuron_type: "action",
-                synapse_type: "preceded_by",
+                from_node_type: "action",
+                edge_type: "preceded_by",
               },
             ] as T[],
           };
@@ -160,7 +160,7 @@ describe("loadNeuronDialogDetail", () => {
       },
     };
 
-    const detail = await loadNeuronDialogDetail(client, meta, {
+    const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
       entityType: "decision",
       id: "decision_01TEST",
@@ -191,7 +191,7 @@ describe("loadNeuronDialogDetail", () => {
             ] as T[],
           };
         }
-        if (sql.includes("FROM synapses")) return { rows: [] };
+        if (sql.includes("FROM edges")) return { rows: [] };
         if (sql.includes("UNION ALL")) return { rows: [] };
         if (sql.includes("FROM audit_events")) return { rows: [] };
         return {
@@ -213,7 +213,7 @@ describe("loadNeuronDialogDetail", () => {
       },
     };
 
-    const detail = await loadNeuronDialogDetail(client, meta, {
+    const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
       entityType: "decision",
       id: "decision_01TEST",

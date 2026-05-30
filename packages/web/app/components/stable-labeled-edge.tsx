@@ -69,7 +69,7 @@ export interface StableLabeledEdgeData extends Record<string, unknown> {
   labelBoxStyle?: CSSProperties;
   labelOpacity?: number;
   labelZIndex?: number;
-  /** Vertical bow applied when a neuron blocks this edge's straight path.
+  /** Vertical bow applied when a node blocks this edge's straight path.
    *  `bowLift` is the cubic control-point offset in px; `bowDir` is -1 to
    *  arc up (toward smaller y) or 1 to arc down. Both are set by the
    *  layout (which knows node geometry); absent means render straight. */
@@ -135,7 +135,7 @@ export function StableLabeledBezierEdge({
   const bowDir = data?.bowDir === 1 ? 1 : -1;
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
-  // The layout sets bowLift/bowDir only when a neuron actually blocks the
+  // The layout sets bowLift/bowDir only when a node actually blocks the
   // edge's straight path (and which way to arc around it); here we just
   // apply that vertical lift so the edge bows over/under the obstacle.
   // U-turn loopbacks and unblocked edges keep bezierOrLoopPath.

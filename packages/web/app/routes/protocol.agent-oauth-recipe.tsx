@@ -613,7 +613,7 @@ becomes inert — remove or replace it in the next commit.
 
 \`doco_pt_…\` and \`doco_at_…\` are different credentials. Project
 tokens have no refresh, no expiry, no user identity, no
-write scope. If your runtime needs to capture neurons or edit the
+write scope. If your runtime needs to capture nodes or edit the
 Doco, OAuth is still the path — project tokens cannot widen.
 
 ## Refreshing

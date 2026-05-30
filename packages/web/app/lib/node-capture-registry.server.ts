@@ -124,7 +124,7 @@ function entry<TDraft>(
   };
 }
 
-// Neurons only — policies use /<handle>/api/policies.json so they
+// Nodes only — policies use /<handle>/api/policies.json so they
 // stay separate from domain captures.
 export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   decisions: entry<DecisionDraft>("decisions", "decision", captureDecision, (draft, me, docoId) =>

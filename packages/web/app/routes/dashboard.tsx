@@ -31,7 +31,7 @@ import { listDocoStats } from "~/lib/doco-stats.server";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { pickGreetingVerb } from "~/lib/greeting";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host.server";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -89,7 +89,7 @@ export async function loader({ request }: { request: Request }) {
       id: d.docoId,
       href: `/${d.handle}`,
       label: d.handle,
-      count: stats?.neurons ?? 0,
+      count: stats?.nodes ?? 0,
       lastUpdatedAt: stats?.lastUpdatedAt ?? null,
     };
 
@@ -153,7 +153,7 @@ export async function loader({ request }: { request: Request }) {
          FROM audit_events a
          LEFT JOIN users c ON c.id = a.by_user
          WHERE a.doco_id = ANY($1)
-           AND a.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
+           AND a.entity_type NOT IN ('guidance_policy', 'node_authoring_policy')
          ORDER BY a.at DESC
          LIMIT $2`,
         [myDocoIds, FEED_LIMIT],

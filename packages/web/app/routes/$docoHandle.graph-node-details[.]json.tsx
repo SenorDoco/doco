@@ -1,7 +1,7 @@
 import { withClient } from "@doco/db";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadOverviewNodeDetails } from "~/lib/full-graph.server";
-import { isGraphNeuronType, loadNeuronDialogDetail } from "~/lib/neuron-detail.server";
+import { isGraphNodeType, loadNodeDialogDetail } from "~/lib/node-detail.server";
 
 const MAX_IDS = 120;
 
@@ -29,22 +29,22 @@ export async function loader({
     selectedTypeParam ||
     (selectedId.includes("_") ? selectedId.slice(0, selectedId.indexOf("_")) : "");
 
-  const { nodes, neuron } = await withClient(async (c) => {
+  const { nodes, node } = await withClient(async (c) => {
     const nodes = await loadOverviewNodeDetails(c, ctx.meta.docoId, ids, handle);
-    if (!selectedId) return { nodes, neuron: null };
-    if (!isGraphNeuronType(selectedType)) {
-      throw new Response("Unknown neuron type", { status: 404 });
+    if (!selectedId) return { nodes, node: null };
+    if (!isGraphNodeType(selectedType)) {
+      throw new Response("Unknown node type", { status: 404 });
     }
-    const neuron = await loadNeuronDialogDetail(c, ctx.meta, {
+    const node = await loadNodeDialogDetail(c, ctx.meta, {
       handle,
       entityType: selectedType,
       id: selectedId,
       principalId: ctx.me?.id ?? null,
     });
-    if (!neuron) {
-      throw new Response(`Neuron not found: ${selectedId}`, { status: 404 });
+    if (!node) {
+      throw new Response(`Node not found: ${selectedId}`, { status: 404 });
     }
-    return { nodes, neuron };
+    return { nodes, node };
   });
-  return Response.json({ ok: true, nodes, neuron });
+  return Response.json({ ok: true, nodes, node });
 }

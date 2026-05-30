@@ -36,9 +36,9 @@ export async function createDocoInOrg(opts: CreateDocoInOrgOptions): Promise<Cre
 }
 
 export interface ReindexExtraOptions {
-  /** Skip the OpenAI embedding pass (FTS + synapses only). */
+  /** Skip the OpenAI embedding pass (FTS + edges only). */
   skipEmbeddings?: boolean;
-  /** Skip the structural FTS + synapses pass (embeddings only). */
+  /** Skip the structural FTS + edges pass (embeddings only). */
   skipStructural?: boolean;
 }
 
@@ -52,7 +52,7 @@ export interface ReindexExtraOptions {
  * write handlers call into indexing.
  *
  * `changedEntityIds` triggers the incremental path: only those entities'
- * derived rows are rebuilt, the rest of the Doco's synapses/FTS/embeddings
+ * derived rows are rebuilt, the rest of the Doco's edges/FTS/embeddings
  * stay in place. Used by single-entity capture/patch handlers. Omit
  * for full rebuilds — first build, bulk import, settings.
  *
@@ -83,7 +83,7 @@ export async function reindex(
 
 /**
  * Shorthand for the "second phase" reindex — runs only the embedding
- * pass, leaving FTS + synapses untouched. Used by capture flows that
+ * pass, leaving FTS + edges untouched. Used by capture flows that
  * already ran the structural pass inline and now want the embeddings
  * to catch up off the request path (`waitUntil`).
  *

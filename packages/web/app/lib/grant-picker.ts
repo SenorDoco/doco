@@ -1,16 +1,16 @@
 // Shared grant model for the collaborators and API-tokens pages
 // (decision_per_type_write_grants). Both pages grant access the same way:
 // pick an organization, drill into one of its Docos (or the org itself),
-// then choose read / write and — for write — which neuron and synapse
+// then choose read / write and — for write — which node and edge
 // TYPES. This module is the framework-free core: the data shapes and the
 // pure selection/normalization logic, unit-tested independently of React.
 
 import type { DocoRole } from "@doco/db";
 import {
-  NEURON_TYPES,
-  type NeuronType,
-  SYNAPSE_TYPES,
-  type SynapseType,
+  NODE_TYPES,
+  type NodeType,
+  EDGE_TYPES,
+  type EdgeType,
   WRITE_ALL,
   type WritableType,
   normalizeWriteTypes,
@@ -82,12 +82,12 @@ export function rank(role: DocoRole): number {
   return role === "owner" ? 2 : role === "writer" ? 1 : 0;
 }
 
-/** All write-gateable types split for display (neurons vs synapses). */
+/** All write-gateable types split for display (nodes vs edges). */
 export function writableTypeGroups(): {
-  neurons: readonly NeuronType[];
-  synapses: readonly SynapseType[];
+  nodes: readonly NodeType[];
+  edges: readonly EdgeType[];
 } {
-  return { neurons: NEURON_TYPES, synapses: SYNAPSE_TYPES };
+  return { nodes: NODE_TYPES, edges: EDGE_TYPES };
 }
 
 /**
@@ -117,7 +117,7 @@ export function describeWriteScope(role: DocoRole, writeTypes: string[]): string
 /** True when the type token is one the picker can offer. */
 export function isOfferableType(t: string): t is WritableType {
   return (
-    (NEURON_TYPES as readonly string[]).includes(t) ||
-    (SYNAPSE_TYPES as readonly string[]).includes(t)
+    (NODE_TYPES as readonly string[]).includes(t) ||
+    (EDGE_TYPES as readonly string[]).includes(t)
   );
 }

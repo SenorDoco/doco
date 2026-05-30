@@ -11,12 +11,12 @@ import { Form, Link, useSearchParams } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { lifecycleColor, neuronTypePlural } from "~/lib/neuron-colors";
+import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -283,9 +283,9 @@ export default function SearchInDoco({
               searchParams={sp}
               options={facets.entityType.map((f) => ({
                 value: f.value,
-                label: neuronTypePlural(f.value),
+                label: nodeTypePlural(f.value),
                 count: f.count,
-                icon: <NeuronTypeIcon entityType={f.value} />,
+                icon: <NodeTypeIcon entityType={f.value} />,
               }))}
               selected={new Set(filters.entityType ?? [])}
               wildcardActive={filters.entityType === null}
@@ -319,7 +319,7 @@ export default function SearchInDoco({
                 {activeQ
                   ? "No hits."
                   : hasFilters
-                    ? "No neurons match these filters."
+                    ? "No nodes match these filters."
                     : "Type a query to search."}
               </CardContent>
             </Card>

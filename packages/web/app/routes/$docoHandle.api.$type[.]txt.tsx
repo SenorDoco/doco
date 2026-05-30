@@ -9,8 +9,8 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  * `type` is one of the capture types, plus policies and settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  *
- * Note: policies (`guidance_policy`, `neuron_authoring_policy`)
- * are NOT neurons and do not have per-type capture routes. The dedicated
+ * Note: policies (`guidance_policy`, `node_authoring_policy`)
+ * are NOT nodes and do not have per-type capture routes. The dedicated
  * policies endpoint lives at /<handle>/api/policies.json and is
  * documented under `policies` here.
  */
@@ -31,9 +31,9 @@ const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
     "actors_principal_ids": ["principal_01..."]
 
   LIFECYCLE NOTE
-  A neuron has three life stages: drafting -> asserted -> retired.
+  A node has three life stages: drafting -> asserted -> retired.
   Before you capture, ask your client whether they are DRAFTING or
-  ASSERTING this neuron:
+  ASSERTING this node:
     - drafting  — tentative, a work in progress that may still change.
     - asserted  — committed as fact, the settled state (the default).
   Removal is never a hard delete; transition lifecycle to "retired"
@@ -79,7 +79,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "decision_<ULID>",
     "path": "docos/<doco-handle>/decisions/decision_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] <icon> <action>: [<Neuron>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"],
+    "footer_lines": ["[🔮 Doco] <icon> <action>: [<Node>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"],
     "duration_ms": 432
   }
 
@@ -551,7 +551,7 @@ Principals are the role-personas a Doco references via Action.actor_id,
 Intent.actors[], Decision.decided_by, etc. Principals are *records*
 per the "frozen claims, mutable records" Decision — descriptive fields
 stay editable across the lifecycle. \`name\` is a display label; other
-neurons reference Principals by id.
+nodes reference Principals by id.
 
 CREATE
   POST ${baseUrl}/${handle}/api/principals.json
@@ -573,7 +573,7 @@ BODY (JSON)
                                   from these signals.
   reports_to          optional   principal id (principal_<ULID>) of the
                                   manager. Materializes a \`reports_to\`
-                                  synapse — used by the \`org-chart\`
+                                  edge — used by the \`org-chart\`
                                   template to build the reporting tree.
                                   Omit for top-of-chain Principals.
 
@@ -651,7 +651,7 @@ RETIRE
 
   Retirement is a one-way lifecycle transition with an active-references
   guard: a Principal still referenced by an active Action, Log, or
-  Intent can't be retired until those neurons are retired or superseded.
+  Intent can't be retired until those nodes are retired or superseded.
 
 BODY (JSON)
   lifecycle           required   must be the literal string "retired".
@@ -679,13 +679,13 @@ ERROR RESPONSES
   HTTP 401  authentication required
   HTTP 403  write access required
   HTTP 404  principal not found in this Doco
-  HTTP 409  active neurons still reference this principal — retire or
+  HTTP 409  active nodes still reference this principal — retire or
             supersede those first. Response body:
             {
-              "error": "Cannot retire principal: active neurons still reference it. …",
+              "error": "Cannot retire principal: active nodes still reference it. …",
               "active_references": [
-                { "id": "action_<ULID>", "neuron_type": "action",
-                  "summary": "…", "synapse_type": "performed_by" },
+                { "id": "action_<ULID>", "node_type": "action",
+                  "summary": "…", "edge_type": "performed_by" },
                 ...
               ]
             }
@@ -705,7 +705,7 @@ LIST / READ
     - "principals" / "users" — OAuth users on this Doco
       (humans + agents with a role grant). Legacy field name is
       "principals"; "users" is the clearer alias.
-    - "principal_neurons" — actual Principal neurons in this Doco
+    - "principal_nodes" — actual Principal nodes in this Doco
       (what swim-lane / BPMN / org-tree views render). Mutate these
       via the create + edit + retire endpoints above.
 
@@ -716,13 +716,13 @@ RELATED
 
   policies: (baseUrl, handle) => `# Doco — Policies
 
-Policies are **not neurons**. They govern how a Doco is authored,
+Policies are **not nodes**. They govern how a Doco is authored,
 and they live on a dedicated endpoint — separate from the generic
-neuron-capture API.
+node-capture API.
 
 Two kinds:
   - guidance         contributor-facing prose; not engine-evaluated.
-  - neuron_authoring engine-evaluated capture-time checks
+  - node_authoring engine-evaluated capture-time checks
                      (deterministic predicate or probabilistic spec).
 
 ENDPOINT (list)
@@ -736,7 +736,7 @@ ENDPOINT (list)
     "doco_handle": "<handle>",
     "count": <int>,
     "guidance_count": <int>,
-    "neuron_authoring_count": <int>,
+    "node_authoring_count": <int>,
     "items": [
       {
         "policy_kind": "guidance",
@@ -770,8 +770,8 @@ BODY — policy_kind = "guidance"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
 
-BODY — policy_kind = "neuron_authoring"
-  policy_kind          required   "neuron_authoring"
+BODY — policy_kind = "node_authoring"
+  policy_kind          required   "node_authoring"
   policy                required   one-line policy rule (renamed from
                                     \`summary\` by migration 038)
   evaluation_kind       required   "deterministic" | "probabilistic"
@@ -780,7 +780,7 @@ BODY — policy_kind = "neuron_authoring"
                                   kind="probabilistic".
   spec                  required*  probabilistic spec; stored as
                                   {kind:"probabilistic", spec}
-  fires_when_neuron_lifecycle optional ["asserted", ...]
+  fires_when_node_lifecycle optional ["asserted", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block"
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
@@ -791,7 +791,7 @@ BODY — policy_kind = "neuron_authoring"
 SUCCESS RESPONSE (HTTP 201)
   {
     "ok": true,
-    "id": "guidance_policy_<ULID>" | "neuron_authoring_policy_<ULID>",
+    "id": "guidance_policy_<ULID>" | "node_authoring_policy_<ULID>",
     "footer_lines": ["[🔮 Doco] ✍️ ... Policy added: ... (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
@@ -805,48 +805,48 @@ EXAMPLE — guidance
       "policy": "Prefer concrete examples over abstract prose."
     }'
 
-EXAMPLE — neuron_authoring (deterministic)
+EXAMPLE — node_authoring (deterministic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "policy_kind": "neuron_authoring",
+      "policy_kind": "node_authoring",
       "policy": "Every Decision cites at least one Intent.",
       "evaluation_kind": "deterministic",
       "predicate": {
-        "kind": "requires_synapse",
-        "synapse_type": "serves",
-        "target_neuron_type": "intent",
-        "when_neuron_type": ["decision"]
+        "kind": "requires_edge",
+        "edge_type": "serves",
+        "target_node_type": "intent",
+        "when_node_type": ["decision"]
       }
     }'
 
-EXAMPLE — neuron_authoring (unique field)
+EXAMPLE — node_authoring (unique field)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "policy_kind": "neuron_authoring",
+      "policy_kind": "node_authoring",
       "policy": "No two active glossary terms use the same canonical term.",
       "evaluation_kind": "deterministic",
       "predicate": {
         "kind": "unique_field",
         "field": "chosen",
         "case_fold": true,
-        "when_neuron_type": ["decision"]
+        "when_node_type": ["decision"]
       },
-      "fires_when_neuron_lifecycle": ["asserted"]
+      "fires_when_node_lifecycle": ["asserted"]
     }'
 
-EXAMPLE — neuron_authoring (probabilistic)
+EXAMPLE — node_authoring (probabilistic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "policy_kind": "neuron_authoring",
+      "policy_kind": "node_authoring",
       "policy": "Decision rationale names the rejected alternatives.",
       "evaluation_kind": "probabilistic",
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
@@ -854,7 +854,7 @@ EXAMPLE — neuron_authoring (probabilistic)
 
 UPDATE A SPECIFIC POLICY
   PATCH ${baseUrl}/${handle}/api/guidance_policies/<id>.json
-  PATCH ${baseUrl}/${handle}/api/neuron_authoring_policies/<id>.json
+  PATCH ${baseUrl}/${handle}/api/node_authoring_policies/<id>.json
   Content-Type: application/json
 
   Per-id endpoints remain available for editing existing policies.

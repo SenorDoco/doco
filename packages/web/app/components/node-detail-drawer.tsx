@@ -1,25 +1,25 @@
-// Side drawer that overlays the entity graph on the neuron detail view.
-// Renders one detail "page" at a time — Relevant neurons, Synapses, History,
+// Side drawer that overlays the entity graph on the node detail view.
+// Renders one detail "page" at a time — Relevant nodes, Edges, History,
 // or Metadata — based on the `open` kind. Closing returns control to
 // the graph.
 //
-// Metadata also carries the focal neuron's id / created / Global PageRank
+// Metadata also carries the focal node's id / created / Global PageRank
 // stats (folded in after the standalone Info pane was retired — they
 // were redundant with the YAML frontmatter dump).
 //
 // Driven by the parent route's state; no internal route, no portals.
 
 import { Link } from "react-router";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
-export type DrawerKind = "relevant" | "synapses" | "history" | "metadata";
+export type DrawerKind = "relevant" | "edges" | "history" | "metadata";
 
 export interface DrawerEdge {
-  synapse_type: string;
-  /** The id of the OTHER neuron — to_id for outgoing, from_id for incoming. */
+  edge_type: string;
+  /** The id of the OTHER node — to_id for outgoing, from_id for incoming. */
   other_id: string;
-  other_neuron_type: string;
+  other_node_type: string;
 }
 
 export interface DrawerHistoryEvent {
@@ -35,7 +35,7 @@ export interface DrawerRelevantNode {
   id: string;
   entity_type: string;
   /**
-   * Human-readable one-line label. For migrated neurons this is the
+   * Human-readable one-line label. For migrated nodes this is the
    * first line of the type-named column (intent/decision/...); for
    * principals it's the `name` display label. The route building the
    * list is responsible for picking the right source — the drawer just
@@ -53,7 +53,7 @@ export interface DrawerLifecycleChange {
   to: string;
 }
 
-export interface NeuronDetailDrawerProps {
+export interface NodeDetailDrawerProps {
   open: DrawerKind | null;
   onClose: () => void;
   /** Builds the URL for a related entity (kind + id). */
@@ -65,7 +65,7 @@ export interface NeuronDetailDrawerProps {
   rankedNeighbors: DrawerRelevantNode[];
   /** Lifecycle transitions in newest-first order. Surfaced in the Metadata pane. */
   lifecycleHistory: DrawerLifecycleChange[];
-  // Synapses pane
+  // Edges pane
   outgoing: DrawerEdge[];
   incoming: DrawerEdge[];
   // History pane
@@ -90,9 +90,9 @@ function relativeTimeIso(iso: string): string {
 function paneTitle(kind: DrawerKind): string {
   switch (kind) {
     case "relevant":
-      return "Relevant neurons";
-    case "synapses":
-      return "Synapses";
+      return "Relevant nodes";
+    case "edges":
+      return "Edges";
     case "history":
       return "History";
     case "metadata":
@@ -100,7 +100,7 @@ function paneTitle(kind: DrawerKind): string {
   }
 }
 
-export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
+export function NodeDetailDrawer(props: NodeDetailDrawerProps) {
   const { open, onClose } = props;
   if (!open) return null;
   return (
@@ -120,8 +120,8 @@ export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-        {open === "relevant" ? <RelevantNeuronsPane {...props} /> : null}
-        {open === "synapses" ? <SynapsesPane {...props} /> : null}
+        {open === "relevant" ? <RelevantNodesPane {...props} /> : null}
+        {open === "edges" ? <EdgesPane {...props} /> : null}
         {open === "history" ? <HistoryPane {...props} /> : null}
         {open === "metadata" ? <MetadataPane {...props} /> : null}
       </div>
@@ -129,25 +129,25 @@ export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
   );
 }
 
-function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProps) {
+function RelevantNodesPane({ rankedNeighbors, linkTo }: NodeDetailDrawerProps) {
   if (rankedNeighbors.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No neighbors yet. This neuron sits as a leaf in the graph.
+        No neighbors yet. This node sits as a leaf in the graph.
       </p>
     );
   }
   return (
     <div className="text-xs">
       <p className="mb-2 text-[11px] text-muted-foreground">
-        Ranked by personalized PageRank from this neuron (ADR-076).
+        Ranked by personalized PageRank from this node (ADR-076).
       </p>
       <ul className="neu-surface divide-y divide-border rounded-md">
         {rankedNeighbors.map((n) => (
           <li key={n.id}>
             <Link to={linkTo(n.entity_type, n.id)} className="block px-3 py-2">
               <div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground">
-                <NeuronTypeIcon entityType={n.entity_type} />
+                <NodeTypeIcon entityType={n.entity_type} />
                 <span>{n.entity_type}</span>
                 <span className="ml-2 font-mono normal-case">PPR {n.ppr.toFixed(3)}</span>
               </div>
@@ -160,7 +160,7 @@ function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProp
   );
 }
 
-function SynapsesPane({ outgoing, incoming, linkTo }: NeuronDetailDrawerProps) {
+function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
   return (
     <div className="space-y-4 text-xs">
       <section>
@@ -168,27 +168,27 @@ function SynapsesPane({ outgoing, incoming, linkTo }: NeuronDetailDrawerProps) {
           Incoming ({incoming.length})
         </h3>
         {incoming.length === 0 ? (
-          <p className="mt-2 text-muted-foreground">No incoming synapses.</p>
+          <p className="mt-2 text-muted-foreground">No incoming edges.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>synapse</TableHead>
+                <TableHead>edge</TableHead>
                 <TableHead>source</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {incoming.map((e) => (
-                <TableRow key={`in-${e.synapse_type}-${e.other_id}`}>
-                  <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
+                <TableRow key={`in-${e.edge_type}-${e.other_id}`}>
+                  <TableCell className="font-mono text-[11px]">{e.edge_type}</TableCell>
                   <TableCell>
                     <Link
-                      to={linkTo(e.other_neuron_type, e.other_id)}
+                      to={linkTo(e.other_node_type, e.other_id)}
                       className="text-primary hover:underline"
                     >
                       {e.other_id}
                     </Link>
-                    <span className="ml-2 text-muted-foreground">({e.other_neuron_type})</span>
+                    <span className="ml-2 text-muted-foreground">({e.other_node_type})</span>
                   </TableCell>
                 </TableRow>
               ))}
@@ -201,27 +201,27 @@ function SynapsesPane({ outgoing, incoming, linkTo }: NeuronDetailDrawerProps) {
           Outgoing ({outgoing.length})
         </h3>
         {outgoing.length === 0 ? (
-          <p className="mt-2 text-muted-foreground">No outgoing synapses.</p>
+          <p className="mt-2 text-muted-foreground">No outgoing edges.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>synapse</TableHead>
+                <TableHead>edge</TableHead>
                 <TableHead>target</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {outgoing.map((e) => (
-                <TableRow key={`out-${e.synapse_type}-${e.other_id}`}>
-                  <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
+                <TableRow key={`out-${e.edge_type}-${e.other_id}`}>
+                  <TableCell className="font-mono text-[11px]">{e.edge_type}</TableCell>
                   <TableCell>
                     <Link
-                      to={linkTo(e.other_neuron_type, e.other_id)}
+                      to={linkTo(e.other_node_type, e.other_id)}
                       className="text-primary hover:underline"
                     >
                       {e.other_id}
                     </Link>
-                    <span className="ml-2 text-muted-foreground">({e.other_neuron_type})</span>
+                    <span className="ml-2 text-muted-foreground">({e.other_node_type})</span>
                   </TableCell>
                 </TableRow>
               ))}
@@ -233,7 +233,7 @@ function SynapsesPane({ outgoing, incoming, linkTo }: NeuronDetailDrawerProps) {
   );
 }
 
-function HistoryPane({ history }: NeuronDetailDrawerProps) {
+function HistoryPane({ history }: NodeDetailDrawerProps) {
   if (!history || history.length === 0) {
     return <p className="text-xs text-muted-foreground">No audit events yet for this node.</p>;
   }
@@ -265,7 +265,7 @@ function MetadataPane({
   nodeGpr,
   lifecycleHistory,
   ent,
-}: NeuronDetailDrawerProps) {
+}: NodeDetailDrawerProps) {
   return (
     <div className="space-y-3 text-xs">
       <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 pb-3">
@@ -284,7 +284,7 @@ function MetadataPane({
         </h3>
         {lifecycleHistory.length === 0 ? (
           <p className="mt-1 text-muted-foreground">
-            No lifecycle transitions recorded. The neuron remains at its initial stage since
+            No lifecycle transitions recorded. The node remains at its initial stage since
             creation.
           </p>
         ) : (

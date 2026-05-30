@@ -1,7 +1,7 @@
 import { listPrincipals } from "@doco/db";
 
 /**
- * Resolve an authenticated user to a Principal NEURON id in a
+ * Resolve an authenticated user to a Principal NODE id in a
  * Doco. Principal fields reference principals.id; user ids stay
  * in provenance fields such as created_by and audit_events.by_user.
  */

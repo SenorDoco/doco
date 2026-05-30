@@ -103,16 +103,16 @@ JSON lives under \`/api/\`. HTML pages live at the Doco root (no
 for backwards compat.
 
   GET  ${baseUrl}/<handle>/status.json              # counts + freshness
-  GET  ${baseUrl}/<handle>/api/<type>.json          # list neurons of that type
+  GET  ${baseUrl}/<handle>/api/<type>.json          # list nodes of that type
   POST ${baseUrl}/<handle>/api/<type>.json          # capture a new one (need 'writer' role)
-  GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one neuron
+  GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one node
   PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'writer' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for capture-capable body shapes
-  GET  ${baseUrl}/<handle>/api/policies.json      # list policies (NOT neurons)
+  GET  ${baseUrl}/<handle>/api/policies.json      # list policies (NOT nodes)
   POST ${baseUrl}/<handle>/api/policies.json      # capture a policy
   POST ${baseUrl}/api/v1/docos.json                 # create a Doco in one request
 
-Neuron types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,
+Node types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,
 \`actions\`, \`logs\`, \`evals\`, \`references\`, \`states\`,
 \`principals\`, \`invites\`, \`audit\`.
 
@@ -123,7 +123,7 @@ Principals expose a smaller surface (create + retire only) — read the
 Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
-Policies are not neurons. Policies (guidance + neuron-authoring)
+Policies are not nodes. Policies (guidance + node-authoring)
 live on \`/api/policies.json\`. The generic \`/api/<type>.json\` route
 refuses policy types.
 

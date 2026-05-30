@@ -1,19 +1,19 @@
 import { Loader2, X } from "lucide-react";
 import { Link } from "react-router";
-import { LifecycleBadge, TypeBadge } from "~/components/neuron-badges";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
-import { lifecycleColor } from "~/lib/neuron-colors";
-import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.server";
+import { LifecycleBadge, TypeBadge } from "~/components/node-badges";
+import { NodeTypeIcon } from "~/components/node-type-icon";
+import { lifecycleColor } from "~/lib/node-colors";
+import type { LifecycleStage, NodeDialogDetail } from "~/lib/node-detail.server";
 
-interface NeuronDialogProps {
-  detail: NeuronDialogDetail | null;
+interface NodeDialogProps {
+  detail: NodeDialogDetail | null;
   loading: boolean;
   error: string | null;
   lifecycleUpdating: LifecycleStage | null;
   lifecycleError: string | null;
   onClose: () => void;
   onLifecycleChange: (stage: LifecycleStage) => void;
-  onOpenNeuron: (entityType: string, id: string, href: string) => void;
+  onOpenNode: (entityType: string, id: string, href: string) => void;
 }
 
 function displayDate(iso: string | null): string {
@@ -41,7 +41,7 @@ function formatValue(value: unknown): string {
   }
 }
 
-function lifecycleButtonClass(detail: NeuronDialogDetail, stage: LifecycleStage, active: boolean) {
+function lifecycleButtonClass(detail: NodeDialogDetail, stage: LifecycleStage, active: boolean) {
   const base =
     "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-border px-3 text-[11px] font-semibold capitalize";
   if (active) {
@@ -54,7 +54,7 @@ function lifecycleButtonClass(detail: NeuronDialogDetail, stage: LifecycleStage,
   return `${base} neu-button`;
 }
 
-function DocoSourceLine({ doco }: { doco: NeuronDialogDetail["doco"] | null | undefined }) {
+function DocoSourceLine({ doco }: { doco: NodeDialogDetail["doco"] | null | undefined }) {
   if (!doco) return null;
   return (
     <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
@@ -69,7 +69,7 @@ function DocoSourceLine({ doco }: { doco: NeuronDialogDetail["doco"] | null | un
   );
 }
 
-export function NeuronDialog({
+export function NodeDialog({
   detail,
   loading,
   error,
@@ -77,9 +77,9 @@ export function NeuronDialog({
   lifecycleError,
   onClose,
   onLifecycleChange,
-  onOpenNeuron,
-}: NeuronDialogProps) {
-  const title = detail?.primary_text ?? detail?.name ?? detail?.summary ?? detail?.id ?? "Neuron";
+  onOpenNode,
+}: NodeDialogProps) {
+  const title = detail?.primary_text ?? detail?.name ?? detail?.summary ?? detail?.id ?? "Node";
   const disabledReason = detail?.lifecycle_options.find(
     (option) => option.disabled && !option.current,
   )?.reason;
@@ -88,18 +88,18 @@ export function NeuronDialog({
   return (
     <aside
       className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-white"
-      aria-label="Neuron details"
+      aria-label="Node details"
     >
       <header className="px-4 py-3">
         <div className="flex items-start gap-3">
           {detail ? (
-            <NeuronTypeIcon entityType={detail.entity_type} className="mt-0.5 !h-4 !w-4 shrink-0" />
+            <NodeTypeIcon entityType={detail.entity_type} className="mt-0.5 !h-4 !w-4 shrink-0" />
           ) : null}
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase text-muted-foreground">
-                  {detail?.entity_type ?? "Neuron"}
+                  {detail?.entity_type ?? "Node"}
                 </p>
                 {hasPrimaryText ? null : (
                   <h2 className="mt-0.5 break-words text-sm font-semibold leading-snug text-foreground">
@@ -111,7 +111,7 @@ export function NeuronDialog({
                 type="button"
                 onClick={onClose}
                 className="neu-button inline-flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-                aria-label="Close neuron details"
+                aria-label="Close node details"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -151,13 +151,13 @@ export function NeuronDialog({
       </header>
 
       <div
-        className="neuron-dialog-scroll min-h-0 flex-1 overflow-y-scroll px-4 pb-8 pt-4"
+        className="node-dialog-scroll min-h-0 flex-1 overflow-y-scroll px-4 pb-8 pt-4"
         style={{ scrollbarGutter: "stable" }}
       >
         {loading ? (
           <div className="flex min-h-40 items-center justify-center text-xs text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-            Loading neuron...
+            Loading node...
           </div>
         ) : null}
         {error ? (
@@ -205,11 +205,11 @@ export function NeuronDialog({
 
             <section className="pt-4">
               <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                Synapses
+                Edges
               </h3>
               <div className="space-y-4">
-                <EdgeList label="Incoming" edges={detail.incoming} onOpenNeuron={onOpenNeuron} />
-                <EdgeList label="Outgoing" edges={detail.outgoing} onOpenNeuron={onOpenNeuron} />
+                <EdgeList label="Incoming" edges={detail.incoming} onOpenNode={onOpenNode} />
+                <EdgeList label="Outgoing" edges={detail.outgoing} onOpenNode={onOpenNode} />
               </div>
             </section>
 
@@ -305,11 +305,11 @@ export function NeuronDialog({
 function EdgeList({
   label,
   edges,
-  onOpenNeuron,
+  onOpenNode,
 }: {
   label: string;
-  edges: NeuronDialogDetail["outgoing"];
-  onOpenNeuron: (entityType: string, id: string, href: string) => void;
+  edges: NodeDialogDetail["outgoing"];
+  onOpenNode: (entityType: string, id: string, href: string) => void;
 }) {
   return (
     <div>
@@ -324,28 +324,28 @@ function EdgeList({
             const edgeTitle = edge.other_name ?? edge.other_summary ?? edge.other_id;
             const retired = edge.other_lifecycle === "retired";
             return (
-              <li key={`${label}-${edge.synapse_type}-${edge.other_id}`}>
+              <li key={`${label}-${edge.edge_type}-${edge.other_id}`}>
                 <button
                   type="button"
                   className="block w-full px-3 py-2 text-left hover:bg-input/30"
                   onClick={() =>
-                    onOpenNeuron(
-                      edge.other_neuron_type,
+                    onOpenNode(
+                      edge.other_node_type,
                       edge.other_id,
-                      edge.href ?? `/${edge.other_neuron_type}/${edge.other_id}`,
+                      edge.href ?? `/${edge.other_node_type}/${edge.other_id}`,
                     )
                   }
                 >
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1" aria-label="Related neuron">
+                    <span className="inline-flex items-center gap-1" aria-label="Related node">
                       <TypeBadge
-                        entityType={edge.other_neuron_type}
+                        entityType={edge.other_node_type}
                         lifecycle={edge.other_lifecycle}
                         anchor="inline"
                       />
                       <LifecycleBadge lifecycle={edge.other_lifecycle} anchor="inline" />
                     </span>
-                    <span className="font-mono">{edge.synapse_type}</span>
+                    <span className="font-mono">{edge.edge_type}</span>
                   </div>
                   <p
                     className={`mt-1 break-words text-xs text-foreground ${

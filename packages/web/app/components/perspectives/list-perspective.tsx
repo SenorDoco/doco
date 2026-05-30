@@ -1,4 +1,4 @@
-// List perspective — vertical, sortable list of neurons.
+// List perspective — vertical, sortable list of nodes.
 //
 // Primary sort options (dropdown, top-right):
 //   recent      — created_at desc (default)
@@ -6,8 +6,8 @@
 //   rank_desc   — global PageRank, highest first
 //   rank_asc    — global PageRank, lowest first
 //
-// Type-aware secondary sort: when two neurons tie on the primary key,
-// they're broken first by neuron-type rank (intents → decisions →
+// Type-aware secondary sort: when two nodes tie on the primary key,
+// they're broken first by node-type rank (intents → decisions →
 // actions → … → policies stay pinned near the top
 // because they're meta), then by a type-specific tiebreaker:
 //   decision/intent/rule/action → lifecycle rank (active first)
@@ -18,13 +18,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import {
   type GraphReferenceItem,
   clearGraphReferences,
   publishGraphReferences,
 } from "~/lib/graph-references";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { timeAgo } from "~/lib/time-ago";
 
 export type ListSortKey = "recent" | "oldest" | "rank_desc" | "rank_asc";
@@ -38,10 +38,10 @@ const SORT_LABELS: Record<ListSortKey, string> = {
 
 const SORT_OPTIONS: ListSortKey[] = ["recent", "oldest", "rank_desc", "rank_asc"];
 
-const NEURON_TYPE_ORDER = new Map(
+const NODE_TYPE_ORDER = new Map(
   [
     "guidance_policy",
-    "neuron_authoring_policy",
+    "node_authoring_policy",
     "principal",
     "intent",
     "decision",
@@ -56,16 +56,16 @@ const NEURON_TYPE_ORDER = new Map(
 );
 
 // Canonical Lifecycle (@doco/shared) — four stages, ranked here
-// for tiebreaker sort within a neuron type. Lower index = preferred
+// for tiebreaker sort within a node type. Lower index = preferred
 // (active first since it's the most current state).
 // Canonical lifecycle progression (drafting → proposed → active → retired).
-// Used here as a tiebreaker sort within a neuron type so lists agree with
+// Used here as a tiebreaker sort within a node type so lists agree with
 // the lifecycle filter row and the doco-stats card on render order.
 const LIFECYCLE_RANK = new Map(
   ["drafting", "asserted", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
-const POLICY_TYPES = new Set(["guidance_policy", "neuron_authoring_policy"]);
+const POLICY_TYPES = new Set(["guidance_policy", "node_authoring_policy"]);
 const MAX_GRAPH_REFERENCES = 120;
 
 export interface ListPerspectiveNode {
@@ -135,7 +135,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 pb-3 pt-12">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {filtered.length} neuron{filtered.length === 1 ? "" : "s"}
+          {filtered.length} node{filtered.length === 1 ? "" : "s"}
         </p>
         <label className="inline-flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Sort by</span>
@@ -155,7 +155,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
       <div className="min-h-0 flex-1 overflow-y-auto">
         {sorted.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
-            This Doco has no neurons yet.
+            This Doco has no nodes yet.
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -187,11 +187,11 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
     <div
       className="flex items-center gap-3 px-3 py-2 text-xs"
       data-graph-reference-number={referenceNumber ?? undefined}
-      data-neuron-href={node.href ?? undefined}
-      data-neuron-id={node.id}
-      data-neuron-label={node.name ?? node.id}
-      data-neuron-lifecycle={node.lifecycle ?? "asserted"}
-      data-neuron-type={node.entity_type}
+      data-node-href={node.href ?? undefined}
+      data-node-id={node.id}
+      data-node-label={node.name ?? node.id}
+      data-node-lifecycle={node.lifecycle ?? "asserted"}
+      data-node-type={node.entity_type}
     >
       {referenceNumber ? (
         <span
@@ -203,7 +203,7 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
         </span>
       ) : null}
       <span aria-hidden className="shrink-0">
-        <NeuronTypeIcon entityType={node.entity_type} />
+        <NodeTypeIcon entityType={node.entity_type} />
       </span>
       <span className="min-w-0 flex-1 truncate" title={node.name ?? undefined}>
         {node.name ?? <span className="italic text-muted-foreground">(unnamed)</span>}
@@ -292,8 +292,8 @@ function typeAwareCompare(
   b: ListPerspectiveNode,
   sort: ListSortKey,
 ): number {
-  // First: neuron-type canonical order.
-  const typeDiff = neuronTypeRank(a.entity_type) - neuronTypeRank(b.entity_type);
+  // First: node-type canonical order.
+  const typeDiff = nodeTypeRank(a.entity_type) - nodeTypeRank(b.entity_type);
   if (typeDiff !== 0) return typeDiff;
 
   // Within type: type-specific tiebreaker.
@@ -309,7 +309,7 @@ function typeAwareCompare(
     case "eval":
       return tsValue(b.created_at) - tsValue(a.created_at);
     case "guidance_policy":
-    case "neuron_authoring_policy":
+    case "node_authoring_policy":
     case "reference":
       return (a.name ?? "").localeCompare(b.name ?? "");
   }
@@ -320,8 +320,8 @@ function typeAwareCompare(
   return tsValue(b.created_at) - tsValue(a.created_at);
 }
 
-function neuronTypeRank(type: string): number {
-  return NEURON_TYPE_ORDER.get(type) ?? NEURON_TYPE_ORDER.size + 1;
+function nodeTypeRank(type: string): number {
+  return NODE_TYPE_ORDER.get(type) ?? NODE_TYPE_ORDER.size + 1;
 }
 
 function lifecycleRank(lifecycle: string | null): number {

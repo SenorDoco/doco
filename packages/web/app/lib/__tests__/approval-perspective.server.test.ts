@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadApprovalPerspectiveData } from "../approval-perspective.server";
 
 describe("loadApprovalPerspectiveData", () => {
-  it("loads only proposed neurons with author and proposal timing metadata", async () => {
+  it("loads only proposed nodes with author and proposal timing metadata", async () => {
     const querySpy = vi.fn();
     const client = {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {

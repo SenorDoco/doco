@@ -92,8 +92,8 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.search[.]json"),
   },
   {
-    pattern: "/:docoHandle/graph-neuron-details.json",
-    load: () => import("~/routes/$docoHandle.graph-neuron-details[.]json"),
+    pattern: "/:docoHandle/graph-node-details.json",
+    load: () => import("~/routes/$docoHandle.graph-node-details[.]json"),
   },
   {
     pattern: "/:docoHandle/api/principals.json",
@@ -174,8 +174,8 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.api.guidance_policies.$id[.]json"),
   },
   {
-    pattern: "/:docoHandle/api/neuron_authoring_policies/:id.json",
-    load: () => import("~/routes/$docoHandle.api.neuron_authoring_policies.$id[.]json"),
+    pattern: "/:docoHandle/api/node_authoring_policies/:id.json",
+    load: () => import("~/routes/$docoHandle.api.node_authoring_policies.$id[.]json"),
   },
   // Generic dispatchers — LAST so the more specific routes above win.
   {

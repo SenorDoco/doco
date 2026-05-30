@@ -10,7 +10,7 @@ import {
   verbFromAuditOp,
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 
 export interface ActivityFeedLineItem {
   id: string;

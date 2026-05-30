@@ -8,7 +8,7 @@
 
 import {
   ALL_ENTITY_TABLES,
-  DOCO_NEURON_TABLE_SPECS,
+  DOCO_NODE_TABLE_SPECS,
   bufferToEmbedding,
   cosineSimilarity,
   withClient,
@@ -18,11 +18,11 @@ import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { neuronTypePlural } from "~/lib/neuron-colors";
+import { nodeTypePlural } from "~/lib/node-colors";
 import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -40,7 +40,7 @@ interface Hit {
   vector_score: number;
 }
 
-const TYPE_SPECS = DOCO_NEURON_TABLE_SPECS;
+const TYPE_SPECS = DOCO_NODE_TABLE_SPECS;
 
 async function getEmbeddingsForDocos(
   c: PoolClient,
@@ -68,8 +68,8 @@ async function hydrateHits(
   if (ids.length === 0) return [];
   const hits: Hit[] = [];
   for (const spec of TYPE_SPECS) {
-    // Every entry in DOCO_NEURON_TABLE_SPECS is one of the 9 migrated
-    // neuron types — they all carry prose in a type-named column.
+    // Every entry in DOCO_NODE_TABLE_SPECS is one of the 9 migrated
+    // node types — they all carry prose in a type-named column.
     const tnCol = ALL_ENTITY_TABLES[spec.entityType]?.typeNamedColumn ?? "summary";
     const rows = (
       await c.query<{
@@ -273,7 +273,7 @@ export default function OrgSearch({
                           className="font-medium text-primary hover:underline"
                         >
                           <span aria-hidden className="mr-1.5">
-                            <NeuronTypeIcon entityType={h.entity_type} />
+                            <NodeTypeIcon entityType={h.entity_type} />
                           </span>
                           {h.summary || h.id}
                         </Link>
@@ -283,7 +283,7 @@ export default function OrgSearch({
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                         <NodeTypeBadge entityType={h.entity_type}>
-                          {neuronTypePlural(h.entity_type)}
+                          {nodeTypePlural(h.entity_type)}
                         </NodeTypeBadge>
                         {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
                         <Link

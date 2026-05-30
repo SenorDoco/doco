@@ -29,7 +29,7 @@ const TEST_USERNAME = TEST_USERNAMES[0];
  * Ensure a user row exists for the test name and return its id.
  *
  * Post-migration-005 the session cookie holds a `user_<ulid>`
- * (per session.server.ts) — sign-in is identity, not principal-neuron.
+ * (per session.server.ts) — sign-in is identity, not principal-node.
  * Earlier versions of this route inserted into `principals`, which
  * silently broke when migration 020 made principals Doco-scoped (the
  * NOT NULL doco_id FK rejects rows with no Doco). Inserting into

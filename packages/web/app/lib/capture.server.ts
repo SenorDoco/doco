@@ -7,7 +7,7 @@ import {
   withClient,
   withTransaction,
 } from "@doco/db";
-import { FIELD_TO_SYNAPSE_TYPE, SKIP_FIELDS } from "@doco/index";
+import { FIELD_TO_EDGE_TYPE, SKIP_FIELDS } from "@doco/index";
 import { type AuthoringPredicate, generateUlid } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
@@ -22,7 +22,7 @@ import { validatePatch } from "./mutability.server";
 
 /**
  * System-managed identity / audit columns that PATCH must never
- * touch. Step B of the neuron shape sweep removed per-type field
+ * touch. Step B of the node shape sweep removed per-type field
  * whitelists; every field except these is patchable subject to the
  * frozen-claim gate. Inlined here (not imported from the factory)
  * because capture.server.ts is imported BY the factory — a forward
@@ -32,7 +32,7 @@ const SYSTEM_MANAGED_FIELDS: ReadonlySet<string> = new Set([
   "id",
   "doco_id",
   "entity_type",
-  "neuron_type",
+  "node_type",
   "created_at",
   "created_by",
   "updated_at",
@@ -228,7 +228,7 @@ async function persistEntity(args: {
 
 /**
  * Migration-022/023: derive the type-named column value for a migrated
- * neuron (`intent` for intent rows, `decision` for decision rows, …).
+ * node (`intent` for intent rows, `decision` for decision rows, …).
  * After PR #80 every captureX path populates `fm[entityType]` directly
  * with the full prose content; the value is whatever the caller stored
  * there. Non-migrated entities (policies, principal) have no
@@ -242,25 +242,25 @@ function computeTypeNamedValue(entityType: string, fm: Record<string, unknown>):
 
 /**
  * Reindex synchronously (so the caller's response reflects materialized
- * synapses/FTS/embeddings). The caller must have already `await`-ed
+ * edges/FTS/embeddings). The caller must have already `await`-ed
  * `persistEntity` so the new row is durably written before the reindex
  * reads it back.
  *
  * Why sync reindex: on Vercel-style serverless deploys the lambda is
  * frozen once the response is sent — a fire-and-forget background
- * promise may never run to completion, leaving the `synapses` table empty
+ * promise may never run to completion, leaving the `edges` table empty
  * even though the entity row carries `intent_ids` / `born_from`. The
  * fix: await the reindex before responding. Adds a few hundred ms to
  * capture/PATCH latency; in return the graph is always consistent the
  * moment the agent sees the success line.
  *
  * `changedEntityId` triggers the incremental reindex path: only that
- * entity's FTS row + outgoing synapses are rebuilt, leaving the rest of
+ * entity's FTS row + outgoing edges are rebuilt, leaving the rest of
  * the Doco's derived data untouched. Capture/patch handlers always
  * know the id of the row they just wrote, so they all pass it.
  *
  * Two-phase reindex (decision_01KRP… two-phase-reindex):
- *  1. Structural pass (FTS + synapses) — runs inline, awaited. Fast: one
+ *  1. Structural pass (FTS + edges) — runs inline, awaited. Fast: one
  *     batched INSERT per table on the changed entity's rows, ~50ms.
  *     The agent's success line reflects a real graph.
  *  2. Embedding pass — wrapped in Vercel `waitUntil` so the response
@@ -311,7 +311,7 @@ export interface DecisionDraft {
   decided_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated user. */
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: reference another entity as origin (e.g. born_from a bugfix). */
   born_from?: string;
@@ -431,7 +431,7 @@ function trunc(s: string, cap = TRUNC): string {
 
 /**
  * First non-empty line of a (possibly multi-line) prose string. Used to
- * derive the short label that identifies a migrated neuron in footer
+ * derive the short label that identifies a migrated node in footer
  * lines and audit events from the type-named prose field.
  */
 function firstLine(text: string): string {
@@ -487,7 +487,7 @@ export async function renderOperationLines(opts: {
   id: string;
   /**
    * Readable label used as the link text on every op line. For migrated
-   * neurons this is the first line of the type-named prose field
+   * nodes this is the first line of the type-named prose field
    * (`firstLine(fm[entityType])`); for policies/principals it is the
    * legacy `summary`.
    */
@@ -608,13 +608,13 @@ function emitAuditForUpdate(opts: {
   const { changed, beforeFm, afterFm, patchKeys } = opts;
   if (changed.length === 0) return;
 
-  let op: "lifecycle.transition" | "synapse.add" | "entity.update";
+  let op: "lifecycle.transition" | "edge.add" | "entity.update";
   if (changed.includes("lifecycle")) {
     op = "lifecycle.transition";
   } else {
     const hasAddPatch = patchKeys.some((k) => k.endsWith("_add"));
     const allChangesAreEdges = changed.every((f) => f === "intent_ids");
-    op = hasAddPatch && allChangesAreEdges ? "synapse.add" : "entity.update";
+    op = hasAddPatch && allChangesAreEdges ? "edge.add" : "entity.update";
   }
 
   const before: Record<string, unknown> = {};
@@ -651,7 +651,7 @@ function emitAuditForUpdate(opts: {
 /**
  * Emit an entity.create audit event after a successful capture write.
  *
- * `label` is the short identifier — for migrated neurons it's the
+ * `label` is the short identifier — for migrated nodes it's the
  * first line of the type-named prose field, for policies it's the
  * one-line `policy` rule, for principals it's the slug `name`. The
  * audit event records it under the right key per entity type.
@@ -783,7 +783,7 @@ function requiredPrincipalId(
  * Decision's `decided_by`) that the capture layer no longer mandates:
  * the field traces back to when the decision-maker was the always-present
  * signed-in collaborator, so "required" was free. Once it became a
- * Principal *neuron* (PR #66) — which may not exist for a user, and is
+ * Principal *node* (PR #66) — which may not exist for a user, and is
  * policy-blocked in some templates like glossaries — mandating it turned
  * into friction. Templates that genuinely need attribution (business-processes)
  * still enforce it through their own `requires_field` policies; the
@@ -827,7 +827,7 @@ function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureEr
 function assertNotUserId(value: string, field: string): CaptureError | null {
   if (!value.startsWith("user_")) return null;
   return {
-    error: `${field} must be a Principal NEURON id (\`principal_<ulid>\`), not a user id (\`${value}\`). Users are OAuth identities; Principals are the role-personas neurons reference. To fix: GET /<doco-handle>/api/principals.json and read \`principal_neurons\`. If empty or no matching role exists, POST /<doco-handle>/api/principals.json with body {"name": "user"} (or another role name) to create one — that endpoint returns the new id. Then retry the capture with the explicit principal id in \`${field}\`.`,
+    error: `${field} must be a Principal NODE id (\`principal_<ulid>\`), not a user id (\`${value}\`). Users are OAuth identities; Principals are the role-personas nodes reference. To fix: GET /<doco-handle>/api/principals.json and read \`principal_nodes\`. If empty or no matching role exists, POST /<doco-handle>/api/principals.json with body {"name": "user"} (or another role name) to create one — that endpoint returns the new id. Then retry the capture with the explicit principal id in \`${field}\`.`,
   };
 }
 
@@ -904,7 +904,7 @@ export async function captureDecision(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "decision",
+    node_type: "decision",
     decision: decisionText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -1192,7 +1192,7 @@ export type NodeTypeName =
   | "intent"
   | "rule"
   | "guidance_policy"
-  | "neuron_authoring_policy"
+  | "node_authoring_policy"
   | "action"
   | "log"
   | "eval"
@@ -1241,7 +1241,7 @@ function normalizePrincipalIdPatchFields(
       break;
     case "rule":
     case "guidance_policy":
-    case "neuron_authoring_policy":
+    case "node_authoring_policy":
       copy("authored_by_principal_id", "authored_by");
       break;
     case "reference":
@@ -1263,7 +1263,7 @@ export async function updateEntity(opts: {
   id: string;
   patch: EntityPatch;
   /**
-   * Legacy per-route whitelist. Now ignored — Step B of the neuron
+   * Legacy per-route whitelist. Now ignored — Step B of the node
    * shape sweep removed per-type field restrictions; every field
    * except system-managed identity/audit columns is patchable subject
    * to the frozen-claim gate. Kept as `undefined` in the type so the
@@ -1281,14 +1281,14 @@ export async function updateEntity(opts: {
   const fm = existing.fm;
   const existingBody = existing.body;
   const normalizedPatch = normalizePrincipalIdPatchFields(entityType, patch);
-  // Migration-022/023: 9 neuron types collapsed summary+body_md+extras
+  // Migration-022/023: 9 node types collapsed summary+body_md+extras
   // into a single type-named prose column. Policies use the `policy`
   // column (renamed from `summary` by 038) + body_md. Principals use
   // `name` + `body_md` after 037 dropped the summary column.
   // Distinguished by whether ALL_ENTITY_TABLES exposes a typeNamedColumn.
   const typeNamedColumn = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
   // Types with a markdown body get body_md; `reference` is pure YAML
-  // and ignores body operations. For migrated neurons body_md is gone
+  // and ignores body operations. For migrated nodes body_md is gone
   // entirely; only policies/principal still carry it.
   const isMd = !typeNamedColumn && entityType !== "reference";
 
@@ -1328,7 +1328,7 @@ export async function updateEntity(opts: {
   };
 
   if (typeNamedColumn && typeNamedColumn in normalizedPatch) {
-    // Migrated neuron: the type-named prose field replaces summary +
+    // Migrated node: the type-named prose field replaces summary +
     // body_md (+ title on intent, name/description on eval).
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
@@ -1382,7 +1382,7 @@ export async function updateEntity(opts: {
   }
 
   // Apply every other field in the patch to the entity's data jsonb.
-  // Step B of the neuron shape sweep dropped per-type whitelists: any
+  // Step B of the node shape sweep dropped per-type whitelists: any
   // user-supplied field that isn't system-managed (id/audit columns),
   // isn't a special-cased scalar handled above (lifecycle, outcome,
   // deprecated, born_from, superseded_by), isn't a list-op handled
@@ -1402,7 +1402,7 @@ export async function updateEntity(opts: {
     "policy",
     "created_by_principal_id",
     "created_by_user_id",
-    // Per migration 034 (remove-slugs PR), neurons no longer carry a
+    // Per migration 034 (remove-slugs PR), nodes no longer carry a
     // `slug` field in their data jsonb. Silently drop the key on
     // PATCH so callers that still send it (or stale clients holding
     // old captures) don't repopulate it.
@@ -1465,7 +1465,7 @@ export async function updateEntity(opts: {
   }
 
   // Compute the new body for Postgres storage. Only policies/principal
-  // still have a separate body_md column; the migrated neurons fold
+  // still have a separate body_md column; the migrated nodes fold
   // prose into the type-named column above.
   let nextBody: string | undefined;
   if (isMd) {
@@ -1596,7 +1596,7 @@ export async function captureIntent(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "intent",
+    node_type: "intent",
     intent: intentText,
     wanted_by: wantedById,
     ...(actorIds.length > 0 ? { actors: actorIds } : {}),
@@ -1652,7 +1652,7 @@ export interface IdeaDraft {
   idea: string;
   /** Internal route-filled user id that created/proposed this idea. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated user. */
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: entity this idea became once promoted. */
   promoted_to?: string | null;
@@ -1688,7 +1688,7 @@ export async function captureIdea(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "idea",
+    node_type: "idea",
     idea: ideaText,
     proposer_id: createdById,
     ...(draft.promoted_to ? { promoted_to: draft.promoted_to } : {}),
@@ -1818,7 +1818,7 @@ export async function captureEval(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "eval",
+    node_type: "eval",
     eval: evalText,
     ...(draft.kind ? { kind: draft.kind } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -1903,7 +1903,7 @@ export interface ActionDraft {
   actor_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated user. */
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: defaults to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
@@ -1950,7 +1950,7 @@ export async function captureAction(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "action",
+    node_type: "action",
     action: actionText,
     actor_id: actorId,
     verb: draft.verb.trim(),
@@ -2035,7 +2035,7 @@ export interface LogDraft {
   actor_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated user. */
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional override. Logs default to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
@@ -2091,7 +2091,7 @@ export async function captureLog(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "log",
+    node_type: "log",
     log: logText,
     actor_id: actorId,
     verb: draft.verb.trim(),
@@ -2175,7 +2175,7 @@ export interface RuleDraft {
   authored_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated user. */
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: defaults to "asserted". */
   lifecycle?: string;
@@ -2230,7 +2230,7 @@ export async function captureRule(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "rule",
+    node_type: "rule",
     rule: ruleText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -2309,7 +2309,7 @@ export interface GuidancePolicyDraft {
   outcome?: "succeeded" | "failed";
 }
 
-export interface NeuronAuthoringPolicyDraft {
+export interface NodeAuthoringPolicyDraft {
   /** Required: one-line rule statement that describes the check. */
   policy: string;
   /** Required: deterministic structural check or probabilistic LLM check. */
@@ -2324,7 +2324,7 @@ export interface NeuronAuthoringPolicyDraft {
    * { kind: "probabilistic", spec }.
    */
   spec?: string;
-  fires_when_neuron_lifecycle?: string[];
+  fires_when_node_lifecycle?: string[];
   on_violation?: "block" | "warn" | "log";
   body_md?: string;
   authored_by_principal_id?: string;
@@ -2358,7 +2358,7 @@ function parsePredicate(value: AuthoringPredicate | string | undefined): unknown
 }
 
 function normalizeNodeAuthoringPredicate(
-  draft: NeuronAuthoringPolicyDraft,
+  draft: NodeAuthoringPolicyDraft,
 ): AuthoringPredicate | CaptureError {
   if (draft.evaluation_kind === "probabilistic") {
     const spec =
@@ -2369,59 +2369,59 @@ function normalizeNodeAuthoringPredicate(
             draft.predicate.kind === "probabilistic"
           ? draft.predicate.spec.trim()
           : "";
-    if (!spec) return { error: "spec is required for probabilistic neuron_authoring_policies." };
+    if (!spec) return { error: "spec is required for probabilistic node_authoring_policies." };
     return { kind: "probabilistic", spec };
   }
 
   const parsed = parsePredicate(draft.predicate);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return {
-      error: "predicate must be a JSON object for deterministic neuron_authoring_policies.",
+      error: "predicate must be a JSON object for deterministic node_authoring_policies.",
     };
   }
   const predicate = parsed as AuthoringPredicate;
   if (predicate.kind === "probabilistic") {
     return {
       error:
-        "deterministic neuron_authoring_policies cannot use a probabilistic predicate; choose probabilistic instead.",
+        "deterministic node_authoring_policies cannot use a probabilistic predicate; choose probabilistic instead.",
     };
   }
   if (typeof predicate.kind !== "string" || predicate.kind.length === 0) {
     return { error: "predicate.kind is required." };
   }
-  const synapseTypeError = validateSynapseTypeReference(predicate);
-  if (synapseTypeError) return synapseTypeError;
+  const edgeTypeError = validateEdgeTypeReference(predicate);
+  if (edgeTypeError) return edgeTypeError;
   return predicate;
 }
 
 /**
- * Reject predicates whose `synapse_type` is a *field name* (a key in
- * `FIELD_TO_SYNAPSE_TYPE`) rather than the canonical mapped synapse type
- * — those would never match because `deriveSynapses` rewrites the field
+ * Reject predicates whose `edge_type` is a *field name* (a key in
+ * `FIELD_TO_EDGE_TYPE`) rather than the canonical mapped edge type
+ * — those would never match because `deriveEdges` rewrites the field
  * name to the canonical value before the engine sees it.
  *
- * Also reject predicates whose `synapse_type` lives under a `SKIP_FIELDS`
- * field — `deriveSynapses` doesn't walk those, so no synapse with that
- * type can exist for a `requires_synapse` to find (or `forbids_synapse`
+ * Also reject predicates whose `edge_type` lives under a `SKIP_FIELDS`
+ * field — `deriveEdges` doesn't walk those, so no edge with that
+ * type can exist for a `requires_edge` to find (or `forbids_edge`
  * to flag), making the predicate dead-on-arrival.
  */
-function validateSynapseTypeReference(predicate: AuthoringPredicate): CaptureError | null {
-  if (predicate.kind !== "requires_synapse" && predicate.kind !== "forbids_synapse") {
+function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError | null {
+  if (predicate.kind !== "requires_edge" && predicate.kind !== "forbids_edge") {
     return null;
   }
-  const synapseType = predicate.synapse_type;
-  if (typeof synapseType !== "string" || synapseType.length === 0) {
-    return { error: `predicate.synapse_type is required for \`${predicate.kind}\`.` };
+  const edgeType = predicate.edge_type;
+  if (typeof edgeType !== "string" || edgeType.length === 0) {
+    return { error: `predicate.edge_type is required for \`${predicate.kind}\`.` };
   }
-  const canonical = FIELD_TO_SYNAPSE_TYPE[synapseType];
-  if (canonical && canonical !== synapseType) {
+  const canonical = FIELD_TO_EDGE_TYPE[edgeType];
+  if (canonical && canonical !== edgeType) {
     return {
-      error: `predicate.synapse_type \`${synapseType}\` is a field name; use the canonical synapse type \`${canonical}\` (deriveSynapses rewrites the field name to its canonical type).`,
+      error: `predicate.edge_type \`${edgeType}\` is a field name; use the canonical edge type \`${canonical}\` (deriveEdges rewrites the field name to its canonical type).`,
     };
   }
-  if (SKIP_FIELDS.has(synapseType)) {
+  if (SKIP_FIELDS.has(edgeType)) {
     return {
-      error: `predicate.synapse_type \`${synapseType}\` refers to a SKIP_FIELDS field that deriveSynapses never walks; no synapse with this type can exist.`,
+      error: `predicate.edge_type \`${edgeType}\` refers to a SKIP_FIELDS field that deriveEdges never walks; no edge with this type can exist.`,
     };
   }
   return null;
@@ -2429,7 +2429,7 @@ function validateSynapseTypeReference(predicate: AuthoringPredicate): CaptureErr
 
 export type PolicyCaptureExtras = Record<string, never>;
 
-type PolicyType = "guidance_policy" | "neuron_authoring_policy";
+type PolicyType = "guidance_policy" | "node_authoring_policy";
 
 interface PolicyPayload {
   id: string;
@@ -2484,9 +2484,9 @@ async function buildGuidancePolicyPayload(
   };
 }
 
-async function buildNeuronAuthoringPolicyPayload(
+async function buildNodeAuthoringPolicyPayload(
   docoId: string,
-  draft: NeuronAuthoringPolicyDraft,
+  draft: NodeAuthoringPolicyDraft,
   _extras: PolicyCaptureExtras,
 ): Promise<PolicyPayload | CaptureError> {
   if (!draft.policy?.trim()) return { error: "policy is required." };
@@ -2498,7 +2498,7 @@ async function buildNeuronAuthoringPolicyPayload(
   const predicate = normalizeNodeAuthoringPredicate(draft);
   if ("error" in predicate) return predicate;
 
-  const id = `neuron_authoring_policy_${generateUlid()}`;
+  const id = `node_authoring_policy_${generateUlid()}`;
   const policy = draft.policy.trim();
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "asserted");
@@ -2506,18 +2506,18 @@ async function buildNeuronAuthoringPolicyPayload(
   const lifecycle = String(status.lifecycle);
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const firesWhen = Array.isArray(draft.fires_when_neuron_lifecycle)
-    ? draft.fires_when_neuron_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
+  const firesWhen = Array.isArray(draft.fires_when_node_lifecycle)
+    ? draft.fires_when_node_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
     : [];
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    policy_kind: "neuron_authoring",
+    policy_kind: "node_authoring",
     evaluation_kind: draft.evaluation_kind,
     policy,
     predicate,
     authored_by: author,
-    ...(firesWhen.length > 0 ? { fires_when_neuron_lifecycle: firesWhen } : {}),
+    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
     on_violation: draft.on_violation ?? "block",
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
@@ -2526,7 +2526,7 @@ async function buildNeuronAuthoringPolicyPayload(
 
   return {
     id,
-    entityType: "neuron_authoring_policy",
+    entityType: "node_authoring_policy",
     policy,
     lifecycle,
     fm,
@@ -2598,17 +2598,17 @@ export async function captureGuidancePolicy(
   };
 }
 
-export async function captureNeuronAuthoringPolicy(
+export async function captureNodeAuthoringPolicy(
   docoDir: string,
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  draft: NeuronAuthoringPolicyDraft,
+  draft: NodeAuthoringPolicyDraft,
   docoHost?: string,
   extras: PolicyCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildNeuronAuthoringPolicyPayload(docoId, draft, extras);
+  const payload = await buildNodeAuthoringPolicyPayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   const pred = await enforceAndPersist({
@@ -2667,7 +2667,7 @@ export async function captureNeuronAuthoringPolicy(
 export async function transitionPolicyLifecycle(opts: {
   scope: "doco";
   scopeId: string;
-  entityType: "guidance_policy" | "neuron_authoring_policy";
+  entityType: "guidance_policy" | "node_authoring_policy";
   policyId: string;
   newLifecycle: "asserted" | "retired";
   supersededBy?: string;
@@ -2675,7 +2675,7 @@ export async function transitionPolicyLifecycle(opts: {
   reason?: string;
 }): Promise<{ ok: true } | CaptureError> {
   const table =
-    opts.entityType === "guidance_policy" ? "guidance_policies" : "neuron_authoring_policies";
+    opts.entityType === "guidance_policy" ? "guidance_policies" : "node_authoring_policies";
   const scopeCol = "doco_id";
 
   const before = await withClient(async (c) => {
@@ -2740,7 +2740,7 @@ export async function transitionPolicyLifecycle(opts: {
 export async function loadPolicyForEdit(opts: {
   scope: "doco";
   scopeId: string;
-  entityType: "guidance_policy" | "neuron_authoring_policy";
+  entityType: "guidance_policy" | "node_authoring_policy";
   policyId: string;
 }): Promise<
   | {
@@ -2753,7 +2753,7 @@ export async function loadPolicyForEdit(opts: {
   | CaptureError
 > {
   const table =
-    opts.entityType === "guidance_policy" ? "guidance_policies" : "neuron_authoring_policies";
+    opts.entityType === "guidance_policy" ? "guidance_policies" : "node_authoring_policies";
   const scopeCol = "doco_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
@@ -2786,12 +2786,12 @@ export interface ReferenceDraft {
   ref_type: string;
   locator: string;
   content_hash?: string | null;
-  /** Optional: id of the neuron this Reference documents (the `tests` relation). */
+  /** Optional: id of the node this Reference documents (the `tests` relation). */
   target_ref?: string;
   intent_ids?: string[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated user. */
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
   created_by_principal_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
@@ -2828,7 +2828,7 @@ export async function captureReference(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "reference",
+    node_type: "reference",
     reference: referenceText,
     ref_type: draft.ref_type,
     locator,
@@ -2904,7 +2904,7 @@ export interface StateDraft {
   sequence_to?: SequenceToDraft[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create neurons; use the authenticated user. */
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
   created_by_principal_id?: string;
   /** Optional: explicit lifecycle override. Defaults to "asserted". */
   lifecycle?: string;
@@ -2949,7 +2949,7 @@ export async function captureState(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    neuron_type: "state",
+    node_type: "state",
     state: stateText,
     kind: draft.kind,
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),

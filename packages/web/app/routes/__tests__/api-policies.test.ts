@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   captureGuidancePolicy: vi.fn(),
-  captureNeuronAuthoringPolicy: vi.fn(),
+  captureNodeAuthoringPolicy: vi.fn(),
   getDocoLevelRole: vi.fn(),
   listPrincipals: vi.fn(),
   loadDocoRouteForRead: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock("@doco/db", () => ({
 
 vi.mock("~/lib/capture.server", () => ({
   captureGuidancePolicy: mocks.captureGuidancePolicy,
-  captureNeuronAuthoringPolicy: mocks.captureNeuronAuthoringPolicy,
+  captureNodeAuthoringPolicy: mocks.captureNodeAuthoringPolicy,
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({

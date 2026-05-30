@@ -1,24 +1,24 @@
 // Glossary perspective — server-side data access.
 //
-// A glossary's "term entries" can be modeled with more than one neuron
+// A glossary's "term entries" can be modeled with more than one node
 // type. The glossaries template treats a **Decision** as the canonical
 // term (`chosen` = headword, `question` = concept, prose = definition,
 // `alternatives` = aliases), but real glossaries also define terms as
 // **References** (title = headword, prose/citation = definition), and
 // the template additionally allows Rules (terminology usage), Evals
 // (consistency checks), and an Intent (scope). So this loader reads
-// every non-policy content neuron and reshapes it into a dictionary
+// every non-policy content node and reshapes it into a dictionary
 // entry, rather than only Decisions — otherwise a glossary built from
 // References renders as a blank page.
 //
-// It reads the same neurons the List perspective shows; only the
+// It reads the same nodes the List perspective shows; only the
 // presentation differs, so there is no new write surface here.
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-interface NeuronRow {
+interface NodeRow {
   id: string;
   entity_type: string;
   /** First line of the type-named prose column (the candidate headword). */
@@ -199,8 +199,8 @@ function href(handle: string, entityType: string, id: string): string {
   return `/${handle}/${entityType}/${id}`;
 }
 
-/** Map one content neuron into a dictionary entry, per its type. */
-function toEntry(row: NeuronRow, handle: string): GlossaryEntry {
+/** Map one content node into a dictionary entry, per its type. */
+function toEntry(row: NodeRow, handle: string): GlossaryEntry {
   const data = row.data ?? {};
   const lifecycle = row.lifecycle ?? "asserted";
   let headword: string;
@@ -258,7 +258,7 @@ export async function loadGlossaryPerspectiveData(
   // glossary headwords. Each table projects its type-named prose column
   // into `label` (first line) + `prose` (full text); only references
   // carry the promoted scalar columns.
-  const { rows } = await c.query<NeuronRow>(
+  const { rows } = await c.query<NodeRow>(
     `
     SELECT id, 'decision'::text AS entity_type,
            split_part(decision, E'\n', 1) AS label, decision AS prose,

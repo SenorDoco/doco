@@ -9,7 +9,7 @@
  * `serverInfo.instructions` field. This file remains the authoritative
  * long-form source — agents fetch it on demand for the full reference.
  *
- * `AGENT_REFERENCE` is the long-form deep reference (neuron walkthrough,
+ * `AGENT_REFERENCE` is the long-form deep reference (node walkthrough,
  * placement examples).
  */
 
@@ -25,7 +25,7 @@ agents and humans to share context.
 Git captures *what* changed in code. PR descriptions capture some of
 the *why* at merge time. Doco captures the *why* as it forms — the
 alternatives weighed, the constraints that shaped a decision, the
-rules that emerged from a bug fix — in typed neurons you can query
+rules that emerged from a bug fix — in typed nodes you can query
 across the whole project's lifetime.
 
 For you, the agent, this means:
@@ -166,15 +166,15 @@ If the Doco is **public**, you can skip OAuth entirely. Either way,
 the endpoint shapes are:
 
     GET   https://doco.to/<handle>/status.json              # counts + freshness
-    GET   https://doco.to/<handle>/api/<type>.json          # list neurons
+    GET   https://doco.to/<handle>/api/<type>.json          # list nodes
     POST  https://doco.to/<handle>/api/<type>.json          # capture (needs write access)
-    GET   https://doco.to/<handle>/api/<type>/<id>.json     # one neuron
+    GET   https://doco.to/<handle>/api/<type>/<id>.json     # one node
     PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs write access)
     GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec for capture-capable types
     GET   https://doco.to/<handle>/api/policies.json      # list policies
     POST  https://doco.to/<handle>/api/policies.json      # capture a policy (needs write access)
 
-Neuron types: decisions, ideas, rules, intents, actions, logs, evals,
+Node types: decisions, ideas, rules, intents, actions, logs, evals,
 references, states, principals, invites, audit.
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
@@ -184,8 +184,8 @@ Principals expose a smaller surface (create + retire only) — read the
 Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
-Policies are NOT neurons. Policies
-(\`guidance_policy\`, \`neuron_authoring_policy\`) live on the
+Policies are NOT nodes. Policies
+(\`guidance_policy\`, \`node_authoring_policy\`) live on the
 dedicated \`/api/policies.json\` endpoint and inside the bootstrap
 payload — never on the generic \`/api/<type>.json\` route.
 
@@ -240,14 +240,14 @@ return 403 until you finish the OAuth recipe.
 ## Bootstrap: read the policies
 
 Every Doco has a set of **policies** — short, project-owner-authored
-statements that govern how you, the agent, author neurons inside it.
+statements that govern how you, the agent, author nodes inside it.
 Two kinds, both surfaced at bootstrap:
 
   - **Guidance policies** (\`guidance_policy\`) — prose for
     context. No automated check. Read them and let them shape your
     judgement.
-  - **Neuron-authoring policies** (\`neuron_authoring_policy\`) —
-    rules evaluated when you capture a neuron. Either a deterministic
+  - **Node-authoring policies** (\`node_authoring_policy\`) —
+    rules evaluated when you capture a node. Either a deterministic
     predicate ("every Decision cites at least one Intent") or a
     probabilistic spec the host evaluates with an LLM. \`on_violation:
     block\` means the host will reject your capture.
@@ -266,7 +266,7 @@ Once you hold a Bearer token, hit:
 
 The response carries the policies for every Doco you have
 read-or-above access to, exposed as \`guidance_policies[]\` and
-\`neuron_authoring_policies[]\` arrays.
+\`node_authoring_policies[]\` arrays.
 
 The three invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
@@ -297,14 +297,14 @@ query is sent), then the N-found line AFTER the result returns:
 
    ← tool call here
 
-[🔮 Doco] <N> relevant neurons found (<X.X>s)
+[🔮 Doco] <N> relevant nodes found (<X.X>s)
 \`\`\`
 
 **Your Doco username.** Every \`doco_search\` response carries a
 \`viewer.username\`, and \`doco_complete_authentication\` returns an
 "Authenticated as @username" block. Once you know it, prefix every Doco
 indicator line with your handle — \`[🔮 Doco @username] <querying-verb>\`,
-\`[🔮 Doco @username] <N> relevant neurons found …\`, and the closing
+\`[🔮 Doco @username] <N> relevant nodes found …\`, and the closing
 tally. Before you know it (the very first line of a cold session, before
 any search returns), plain \`[🔮 Doco]\` is fine.
 
@@ -366,13 +366,13 @@ bootstrap couldn't reach Doco):
 1. **Inform.** Let prior Decisions, Rules, and Intents shape what
    you say and do. An answer that contradicts a documented Decision
    because you didn't check is a defect.
-2. **Deduplicate.** Before suggesting a new neuron, scan for neurons
+2. **Deduplicate.** Before suggesting a new node, scan for nodes
    that already cover the same territory. Patch the existing one
    rather than create a near-duplicate.
 
 ## 2. AFTER EVERY WRITE — footer_lines verbatim
 
-When the project owner captures a neuron on your behalf (via the web
+When the project owner captures a node on your behalf (via the web
 UI), the host returns \`footer_lines: string[]\` from the capture
 endpoint. If they share those with you, paste them verbatim, one
 per line:
@@ -392,7 +392,7 @@ Render one tally line per source the agent has potential access to
 **Connected source** (you queried or wrote — even if N == 0):
 
 \`\`\`
-[🔮 Doco @username] <doco-or-org-name>: **<N>** neurons added/updated
+[🔮 Doco @username] <doco-or-org-name>: **<N>** nodes added/updated
 \`\`\`
 
 (Prefix with your \`@username\` once you know it — see "Your Doco
@@ -434,10 +434,10 @@ This is the deep reference the canonical
 (/protocol/canonical-instructions) points to. Fetch on demand, not
 preemptively.
 
-## The neuron + policy model
+## The node + policy model
 
-Doco's data model is a graph of typed neurons, plus two kinds of
-policies that govern how neurons are authored:
+Doco's data model is a graph of typed nodes, plus two kinds of
+policies that govern how nodes are authored:
 
 - **Intent** — what someone wants. Source of every downstream Decision.
 - **Decision** — a chosen resolution to a question, with alternatives
@@ -448,16 +448,16 @@ policies that govern how neurons are authored:
 - **Rule** — an ongoing domain constraint.
 - **Guidance policy** — one kind of policy. Contributors read
   it while working; no automated check.
-- **Neuron-authoring policy** — the other kind. Evaluated when
-  neurons are captured; deterministic predicates or probabilistic
+- **Node-authoring policy** — the other kind. Evaluated when
+  nodes are captured; deterministic predicates or probabilistic
   specs. The project owner can edit either kind any time from
   \`/<handle>/policies\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
-- **State** — a neuron in a formal state machine.
+- **State** — a node in a formal state machine.
 - **Idea** — exploratory capture; promote to Intent / Decision once
   it firms up.
-- **Principal** — a role-persona neuron referenced by actor_id /
+- **Principal** — a role-persona node referenced by actor_id /
   actors[]. Distinct from a User (the OAuth identity layer).
 
 ## Things only people can do

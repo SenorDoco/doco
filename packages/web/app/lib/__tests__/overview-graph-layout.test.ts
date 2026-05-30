@@ -6,8 +6,8 @@ const nodes = ["focus", "a", "b", "c", "d", "e", "f"].map((id) => ({
   entity_type: "idea",
 }));
 
-function link(source: string, target: string, synapse_type = "serves") {
-  return { source, target, synapse_type };
+function link(source: string, target: string, edge_type = "serves") {
+  return { source, target, edge_type };
 }
 
 function distance(positions: Map<string, { x: number; y: number }>, a: string, b: string): number {

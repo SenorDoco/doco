@@ -27,7 +27,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { focalEdgeWidth } from "~/lib/graph-depth";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { ORG_TREE_NODE_H, ORG_TREE_NODE_W, layoutOrgTree } from "~/lib/org-tree-layout";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import { type ReferenceCandidate, usePerspectiveReferences } from "~/lib/perspective-references";
@@ -46,7 +46,7 @@ interface OrgTreePerspectiveProps {
   initialFocusId?: string | null;
   onCenterChange?: (id: string | null) => void;
   onPaneClick?: () => void;
-  onNeuronClick?: (node: OrgTreeNode) => void;
+  onNodeClick?: (node: OrgTreeNode) => void;
 }
 
 interface OrgTreeNodeData extends Record<string, unknown> {
@@ -117,7 +117,7 @@ function OrgTreeInner({
   initialFocusId,
   onCenterChange,
   onPaneClick,
-  onNeuronClick,
+  onNodeClick,
 }: OrgTreePerspectiveProps) {
   const filtered = useMemo(() => {
     if (!visibleLifecycles) return nodes;
@@ -272,9 +272,9 @@ function OrgTreeInner({
   const handleNodeClick = useCallback(
     (_e: React.MouseEvent, node: Node<OrgTreeNodeData>) => {
       onCenterChange?.(node.id);
-      onNeuronClick?.(node.data.org);
+      onNodeClick?.(node.data.org);
     },
-    [onCenterChange, onNeuronClick],
+    [onCenterChange, onNodeClick],
   );
 
   if (filtered.length === 0) {

@@ -8,7 +8,7 @@ import type {
 import type { EntityRecord } from "@doco/db";
 import {
   ALL_ENTITY_TABLES,
-  DOCO_NEURON_TABLE_SPECS,
+  DOCO_NODE_TABLE_SPECS,
   getEntity,
   getUserById,
   listDocoUsers,
@@ -117,7 +117,7 @@ export interface SlackRecentMessage {
 export interface SlackDocoAnswerHit {
   entityId: string;
   docoLabel: string;
-  neuronType: string;
+  nodeType: string;
   summary: string | null;
   body: string | null;
   rank: number;
@@ -858,7 +858,7 @@ export function detectSlackDocoOverviewQuestion(
   }
   if (!/\b(they|those|that|it)\b/.test(lower)) return false;
   return recentMessages.some((message) =>
-    /\b(doco|docos|neurons?|decisions?|rules?|actions?|logs?|references?)\b/i.test(message.text),
+    /\b(doco|docos|nodes?|decisions?|rules?|actions?|logs?|references?)\b/i.test(message.text),
   );
 }
 
@@ -914,7 +914,7 @@ export function formatSlackDocoAnswerResponse(
     intro,
     ...uniqueHits.map(
       (hit) =>
-        `• ${capitalize(hit.neuronType)} in ${hit.docoLabel}: ${formatSlackDocoHitText(hit)}`,
+        `• ${capitalize(hit.nodeType)} in ${hit.docoLabel}: ${formatSlackDocoHitText(hit)}`,
     ),
   ].join("\n");
 }
@@ -1306,15 +1306,15 @@ function isSlackDocoRouteStart(segment: string): boolean {
 
 async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record<string, unknown>> {
   const typeMap = [
-    ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
+    ...DOCO_NODE_TABLE_SPECS.map((spec) => ({
       table: spec.table,
       plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
       group: "note" as const,
     })),
     { table: "guidance_policies", plural: "guidance_policies", group: "policy" as const },
     {
-      table: "neuron_authoring_policies",
-      plural: "neuron_authoring_policies",
+      table: "node_authoring_policies",
+      plural: "node_authoring_policies",
       group: "policy" as const,
     },
   ];
@@ -1378,7 +1378,7 @@ async function readSlackDocoApiSearch(
     count: hits.length,
     hits: hits.map((hit) => ({
       id: hit.entityId,
-      entity_type: hit.neuronType,
+      entity_type: hit.nodeType,
       doco_label: hit.docoLabel,
       name: hit.summary,
       summary: hit.body ?? hit.summary,
@@ -1445,7 +1445,7 @@ async function readSlackDocoApiDetail(
 async function readSlackDocoApiPrincipals(
   doco: SlackAccessibleDoco,
 ): Promise<Record<string, unknown>> {
-  const [docoUsers, neuronRows] = await Promise.all([
+  const [docoUsers, nodeRows] = await Promise.all([
     listDocoUsers(doco.id),
     listEntitiesByDoco("principal", doco.id),
   ]);
@@ -1472,9 +1472,9 @@ async function readSlackDocoApiPrincipals(
     qualified_handle: doco.qualifiedHandle,
     principals: users,
     users,
-    principal_neurons: neuronRows.map(slackEntityRecordToApiItem),
+    principal_nodes: nodeRows.map(slackEntityRecordToApiItem),
     user_count: users.length,
-    principal_neuron_count: neuronRows.length,
+    principal_node_count: nodeRows.length,
   };
 }
 
@@ -1506,17 +1506,17 @@ async function readSlackDocoApiPolicies(
         updated_at: string | null;
       }>(
         `SELECT id, policy, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
-           FROM neuron_authoring_policies
+           FROM node_authoring_policies
           WHERE doco_id = $1
           ORDER BY created_at DESC`,
         [doco.id],
       ),
     ]),
   );
-  const [guidance, neuronAuthoring] = result;
+  const [guidance, nodeAuthoring] = result;
   const items = [
     ...guidance.rows.map((row) => ({ ...row, policy_kind: "guidance" as const })),
-    ...neuronAuthoring.rows.map((row) => ({ ...row, policy_kind: "neuron_authoring" as const })),
+    ...nodeAuthoring.rows.map((row) => ({ ...row, policy_kind: "node_authoring" as const })),
   ];
   return {
     doco_id: doco.id,
@@ -1524,7 +1524,7 @@ async function readSlackDocoApiPolicies(
     qualified_handle: doco.qualifiedHandle,
     count: items.length,
     guidance_count: guidance.rows.length,
-    neuron_authoring_count: neuronAuthoring.rows.length,
+    node_authoring_count: nodeAuthoring.rows.length,
     items,
   };
 }
@@ -1565,7 +1565,7 @@ const SLACK_AUDIT_OPS: ReadonlySet<AuditOp> = new Set([
   "entity.update",
   "entity.delete",
   "lifecycle.transition",
-  "synapse.add",
+  "edge.add",
 ]);
 
 async function readSlackDocoApiAudit(
@@ -1750,7 +1750,7 @@ async function readSlackDocoApiAuthoringContract(
     ok: true,
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
-    entity_types: DOCO_NEURON_TABLE_SPECS.map((spec) => ({
+    entity_types: DOCO_NODE_TABLE_SPECS.map((spec) => ({
       entity_type: spec.entityType,
       collection: spec.table,
       capture_endpoint: `/${doco.handle}/api/${spec.table}.json`,
@@ -1780,7 +1780,7 @@ function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> 
 
 function slackApiEntityType(type: string): string | null {
   const normalized = type.toLowerCase();
-  for (const spec of DOCO_NEURON_TABLE_SPECS) {
+  for (const spec of DOCO_NODE_TABLE_SPECS) {
     const plural = spec.entityType === "reference" ? "references" : spec.table;
     if (normalized === plural) return spec.entityType;
   }
@@ -1789,7 +1789,7 @@ function slackApiEntityType(type: string): string | null {
 
 function slackSupportedApiTypes(): string[] {
   return [
-    ...DOCO_NEURON_TABLE_SPECS.map((spec) =>
+    ...DOCO_NODE_TABLE_SPECS.map((spec) =>
       spec.entityType === "reference" ? "references" : spec.table,
     ),
     "principals",
@@ -1887,7 +1887,7 @@ async function readSlackConnectionSearchHits(
     c.query<{
       entity_id: string;
       doco_label: string;
-      neuron_type: string;
+      node_type: string;
       summary: string | null;
       body: string | null;
       rank: string | number;
@@ -1903,11 +1903,11 @@ async function readSlackConnectionSearchHits(
        )
        SELECT f.entity_id,
               sd.doco_label,
-              f.neuron_type,
+              f.node_type,
               f.summary,
               f.body,
               ts_rank_cd(f.search_tsv, query.q) AS rank
-         FROM entity_fts_neurons f
+         FROM entity_fts_nodes f
          JOIN scoped_docos sd ON sd.id = f.doco_id
          CROSS JOIN query
         WHERE f.search_tsv @@ query.q
@@ -1919,7 +1919,7 @@ async function readSlackConnectionSearchHits(
   return result.rows.map((row) => ({
     entityId: row.entity_id,
     docoLabel: row.doco_label,
-    neuronType: row.neuron_type,
+    nodeType: row.node_type,
     summary: row.summary,
     body: row.body,
     rank: Number(row.rank ?? 0),
@@ -1943,7 +1943,7 @@ async function readSlackConnectionOverviewHits(
     c.query<{
       entity_id: string;
       doco_label: string;
-      neuron_type: string;
+      node_type: string;
       summary: string | null;
       body: string | null;
       priority: string | number;
@@ -1955,15 +1955,15 @@ async function readSlackConnectionOverviewHits(
            LEFT JOIN organizations o ON o.id = d.org_id
           WHERE ${where}
        ),
-       all_neurons AS (
+       all_nodes AS (
          ${slackOverviewUnionSql()}
        )
        SELECT n.entity_id,
               sd.doco_label,
-              n.neuron_type,
+              n.node_type,
               n.summary,
               n.body,
-              CASE n.neuron_type
+              CASE n.node_type
                 WHEN 'intent' THEN 5
                 WHEN 'decision' THEN 4
                 WHEN 'rule' THEN 3
@@ -1971,7 +1971,7 @@ async function readSlackConnectionOverviewHits(
                 ELSE 1
               END AS priority,
               n.created_at::text AS created_at
-         FROM all_neurons n
+         FROM all_nodes n
          JOIN scoped_docos sd ON sd.id = n.doco_id
         WHERE NULLIF(trim(COALESCE(n.summary, '')), '') IS NOT NULL
         ORDER BY priority DESC, n.created_at DESC NULLS LAST, n.entity_id
@@ -1982,7 +1982,7 @@ async function readSlackConnectionOverviewHits(
   return result.rows.map((row) => ({
     entityId: row.entity_id,
     docoLabel: row.doco_label,
-    neuronType: row.neuron_type,
+    nodeType: row.node_type,
     summary: row.summary,
     body: row.body,
     rank: Number(row.priority ?? 0),
@@ -1999,11 +1999,11 @@ function latestHumanSlackQuestion(recentMessages: SlackRecentMessage[]): string 
 }
 
 function slackOverviewUnionSql(): string {
-  return DOCO_NEURON_TABLE_SPECS.map((spec) => {
+  return DOCO_NODE_TABLE_SPECS.map((spec) => {
     const tnCol = ALL_ENTITY_TABLES[spec.entityType]?.typeNamedColumn ?? "summary";
     return `SELECT id AS entity_id,
                    doco_id,
-                   ${sqlString(spec.entityType)} AS neuron_type,
+                   ${sqlString(spec.entityType)} AS node_type,
                    split_part(${tnCol}, E'\\n', 1) AS summary,
                    ${tnCol} AS body,
                    created_at
@@ -2041,7 +2041,7 @@ export function slackLlmSystemPrompt(): string {
     "Available Slack doco_api writes when this Slack user has linked personal Doco access: POST /api/v1/docos.json; POST /<handle>/api/<type>.json; PATCH /<handle>/api/<type>/<id>.json; POST /<handle>/api/principals.json; PATCH /<handle>/api/principals/<id>.json; POST /<handle>/api/policies.json; POST /<handle>/api/changesets.json.",
     "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
-    "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, writer for adding, editing, retiring, and changing the lifecycle of neurons.",
+    "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, writer for adding, editing, retiring, and changing the lifecycle of nodes.",
     "If the user is already personally linked, try the appropriate doco_api write instead of saying authorization has not come through. If the write returns 401/403, explain the missing Doco role or scope from the tool result.",
     "After any successful POST/PATCH/DELETE, paste every returned footer_lines entry verbatim. Do not paraphrase or drop those lines.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
@@ -2072,7 +2072,7 @@ function formatSlackLlmHit(hit: SlackDocoAnswerHit, index: number): string {
   const body = cleanSlackAnswerText(hit.body ?? "");
   const bodyText =
     body && body !== summary ? `\n  Detail: ${truncateSlackAnswerText(body, 900)}` : "";
-  return `[${index + 1}] ${capitalize(hit.neuronType)} in ${hit.docoLabel}: ${summary || "No summary."}${bodyText}`;
+  return `[${index + 1}] ${capitalize(hit.nodeType)} in ${hit.docoLabel}: ${summary || "No summary."}${bodyText}`;
 }
 
 function cleanSlackLlmAnswer(

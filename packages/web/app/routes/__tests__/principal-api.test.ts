@@ -113,7 +113,7 @@ describe("principal API", () => {
         updated_by: "user_author",
         data: expect.objectContaining({
           doco_id: "doco_acme",
-          neuron_type: "principal",
+          node_type: "principal",
           name: "Visitor",
           created_by: "user_author",
           lifecycle: "asserted",
@@ -248,7 +248,7 @@ describe("principal API", () => {
     mocks.getEntity.mockResolvedValue({
       id: "principal_manager",
       doco_id: "doco_acme",
-      data: { neuron_type: "principal", name: "boss" },
+      data: { node_type: "principal", name: "boss" },
     });
 
     const response = await action({
@@ -296,7 +296,7 @@ describe("principal API", () => {
     mocks.getEntity.mockResolvedValue({
       id: "principal_stranger",
       doco_id: "doco_other",
-      data: { neuron_type: "principal", name: "stranger" },
+      data: { node_type: "principal", name: "stranger" },
     });
 
     const response = await action({

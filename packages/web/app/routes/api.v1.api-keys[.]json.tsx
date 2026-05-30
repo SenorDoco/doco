@@ -106,7 +106,7 @@ export async function action({ request }: { request: Request }) {
         );
       }
       // Optional per-type write scope (decision_per_type_write_grants):
-      // an array of neuron/synapse type tokens, or ["*"] for all.
+      // an array of node/edge type tokens, or ["*"] for all.
       const write_types = Array.isArray(r.write_types)
         ? r.write_types.filter((t): t is string => typeof t === "string")
         : undefined;

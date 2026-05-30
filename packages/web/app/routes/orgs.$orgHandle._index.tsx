@@ -28,7 +28,7 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { listDocoStats } from "~/lib/doco-stats.server";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -40,7 +40,7 @@ const TOP_CONTRIBUTORS_LIMIT = 10;
 interface OrgDoco {
   docoId: string;
   handle: string;
-  neurons: number;
+  nodes: number;
   lastUpdatedAt: string | null;
 }
 
@@ -94,11 +94,11 @@ export async function loader({
     const docos: OrgDoco[] = docoRows
       .map((r): OrgDoco => {
         const id = String(r.id);
-        const stats = statsByDocoId.get(id) ?? { neurons: 0, lastUpdatedAt: null };
+        const stats = statsByDocoId.get(id) ?? { nodes: 0, lastUpdatedAt: null };
         return {
           docoId: id,
           handle: String(r.handle),
-          neurons: stats.neurons,
+          nodes: stats.nodes,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
       })
@@ -195,7 +195,7 @@ export async function loader({
            UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE id = ANY($1::text[])
            UNION ALL SELECT id, policy AS label, lifecycle FROM guidance_policies WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, policy AS label, lifecycle FROM neuron_authoring_policies WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, policy AS label, lifecycle FROM node_authoring_policies WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE id = ANY($1::text[])
@@ -254,7 +254,7 @@ export default function OrgHome({
     href: `/${d.handle}`,
     handle: d.handle,
     ownerHandle: org.handle,
-    nodeCount: d.neurons,
+    nodeCount: d.nodes,
     lastUpdatedAt: d.lastUpdatedAt,
   }));
 

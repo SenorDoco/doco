@@ -1,4 +1,4 @@
-import { DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
+import { DOCO_NODE_TABLE_SPECS, withClient } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
@@ -40,15 +40,15 @@ export async function loader({
 
 /**
  * Per-table accessor for the status counts. `group` tells consumers
- * whether the table holds notes (domain neurons a Doco captures) or
+ * whether the table holds notes (domain nodes a Doco captures) or
  * policies. Keeping the two apart in the
- * response prevents callers from summing policies into a "neuron
+ * response prevents callers from summing policies into a "node
  * total" — an empty Doco with only template policies would
  * otherwise misread as having captured work.
  */
 type StatusGroup = "note" | "policy";
 const TYPE_MAP: { entityType: string; table: string; plural: string; group: StatusGroup }[] = [
-  ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
+  ...DOCO_NODE_TABLE_SPECS.map((spec) => ({
     entityType: spec.entityType,
     table: spec.table,
     plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
@@ -61,9 +61,9 @@ const TYPE_MAP: { entityType: string; table: string; plural: string; group: Stat
     group: "policy",
   },
   {
-    entityType: "neuron_authoring_policy",
-    table: "neuron_authoring_policies",
-    plural: "neuron_authoring_policies",
+    entityType: "node_authoring_policy",
+    table: "node_authoring_policies",
+    plural: "node_authoring_policies",
     group: "policy",
   },
 ];

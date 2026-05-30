@@ -4,7 +4,7 @@
 // Doco. A pool is a bordered horizontal section with its own internal
 // structure (milestone band on top, actor lanes in the middle,
 // artifacts band on the bottom). Pools stack vertically. An
-// "Unassigned" pool catches neurons that don't cite an Intent.
+// "Unassigned" pool catches nodes that don't cite an Intent.
 //
 // Inside each pool, lane assignment follows the same three-category
 // model as before:
@@ -23,10 +23,10 @@
 //
 // Pool selection for multi-intent flow nodes (Action/Decision/State/Log can
 // list multiple `intent_ids`) uses **PageRank**: the candidate intent
-// with the highest score on the doco's synapse graph wins. With no
-// focal neuron, this is plain global PageRank; the personalized variant
+// with the highest score on the doco's edge graph wins. With no
+// focal node, this is plain global PageRank; the personalized variant
 // (teleport biased to a focal node) is computed client-side from
-// `centerId` so the same graph can re-pool around whichever neuron
+// `centerId` so the same graph can re-pool around whichever node
 // the user clicked into.
 //
 // Shape map:
@@ -65,8 +65,8 @@ export interface BpmnPool {
   id: string; // "pool:<intent_id>" or POOL_UNASSIGNED_ID
   intent_id: string | null; // null for the Unassigned pool
   label: string; // Intent prose (first line), or "Unassigned"
-  /** Per-neuron PageRank score on the doco's synapse graph; drives
-   *  pool ordering and primary-intent picks for multi-intent neurons. */
+  /** Per-node PageRank score on the doco's edge graph; drives
+   *  pool ordering and primary-intent picks for multi-intent nodes. */
   pagerank: number;
   /** Intent's lifecycle (drafting / proposed / active / retired). Null
    *  for the Unassigned pool. Drives the lifecycle badge on the pool
@@ -85,10 +85,10 @@ export interface BpmnLane {
   base_id: string;
   label: string;
   kind: BpmnLaneKind;
-  /** Underlying entity's lifecycle when the lane represents a neuron
+  /** Underlying entity's lifecycle when the lane represents a node
    *  (actor lanes carry the Principal's lifecycle). Null for bands
    *  and synthetic catch-all lanes — they have no single owning
-   *  neuron. */
+   *  node. */
   lifecycle: string | null;
 }
 
@@ -102,7 +102,7 @@ export interface BpmnNode {
   shape: BpmnShape;
   laneId: string;
   pool_id: string;
-  /** When this neuron has multi-valued `intent_ids`, the full list of
+  /** When this node has multi-valued `intent_ids`, the full list of
    *  candidate intent ids (so the client can recompute the primary
    *  intent under personalized PageRank without re-fetching). */
   intent_ids?: string[];
@@ -119,9 +119,9 @@ export interface BpmnGraphData {
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
-  /** Per-neuron global PageRank score, exposed so the client can
+  /** Per-node global PageRank score, exposed so the client can
    *  reuse the same graph to compute personalized PageRank from a
-   *  focal neuron without re-running queries. */
+   *  focal node without re-running queries. */
   global_pagerank?: Record<string, number>;
 }
 
@@ -145,7 +145,7 @@ const BAND_UNASSIGNED_BASE = "__unassigned__";
 
 export const POOL_UNASSIGNED_ID = "pool:unassigned";
 
-// Non-actor neuron types: their pool placement comes from a different
+// Non-actor node types: their pool placement comes from a different
 // signal (the host they re-home onto, or the Unassigned pool).
 const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
@@ -162,7 +162,7 @@ export function shapeForEntityType(entityType: string): BpmnShape {
   return SHAPE_BY_TYPE[entityType] ?? "rectangle";
 }
 
-interface NeuronRow {
+interface NodeRow {
   id: string;
   entity_type: string;
   summary: string | null;
@@ -182,11 +182,11 @@ interface UserRow {
   github_login: string | null;
 }
 
-interface SynapseRow {
+interface EdgeRow {
   from_id: string;
   to_id: string;
-  synapse_type: string;
-  synapse_props_json: Record<string, unknown> | null;
+  edge_type: string;
+  edge_props_json: Record<string, unknown> | null;
 }
 
 export async function loadBpmnGraph(
@@ -194,7 +194,7 @@ export async function loadBpmnGraph(
   docoId: string,
   opts: { focusId?: string; handle?: string; nodeLimit?: number } = {},
 ): Promise<BpmnGraphData> {
-  const neuronSql = BPMN_TABLES.map((entry) => {
+  const nodeSql = BPMN_TABLES.map((entry) => {
     const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
     const summarySelect = tnCol ? `split_part(t.${tnCol}, E'\n', 1) AS summary` : "t.summary";
     return `SELECT t.id,
@@ -208,8 +208,8 @@ export async function loadBpmnGraph(
           AND COALESCE(t.lifecycle, 'asserted') <> 'retired'`;
   }).join(" UNION ALL ");
 
-  const [neuronRows, principalRows, userRows] = await Promise.all([
-    c.query<NeuronRow>(neuronSql, [docoId]),
+  const [nodeRows, principalRows, userRows] = await Promise.all([
+    c.query<NodeRow>(nodeSql, [docoId]),
     c.query<PrincipalRow>(
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
          FROM principals
@@ -238,63 +238,63 @@ export async function loadBpmnGraph(
     userById.set(cr.id, cr);
   }
 
-  const allRows = neuronRows.rows;
+  const allRows = nodeRows.rows;
 
   // Index of every Intent row by id — Intents define pools (and don't
   // render as flow nodes themselves).
-  const intentsById = new Map<string, NeuronRow>();
+  const intentsById = new Map<string, NodeRow>();
   for (const row of allRows) {
     if (row.entity_type === "intent") intentsById.set(row.id, row);
   }
 
-  // Load synapses up front: we need them for PageRank below.
+  // Load edges up front: we need them for PageRank below.
   const nodeIdSet = new Set(allRows.map((r) => r.id));
   let links: OverviewGraphLink[] = [];
   if (nodeIdSet.size > 0) {
-    const synapseRows = await c.query<SynapseRow>(
-      `SELECT from_id, to_id, synapse_type, synapse_props_json
-         FROM synapses
+    const edgeRows = await c.query<EdgeRow>(
+      `SELECT from_id, to_id, edge_type, edge_props_json
+         FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
           AND to_id   = ANY($2::text[])
         LIMIT 5000`,
       [docoId, Array.from(nodeIdSet)],
     );
-    links = synapseRows.rows.map((r) => ({
+    links = edgeRows.rows.map((r) => ({
       source: r.from_id,
       target: r.to_id,
-      synapse_type: r.synapse_type,
-      label: r.synapse_type === "sequence_flow" ? sequenceFlowLabel(r.synapse_props_json) : null,
+      edge_type: r.edge_type,
+      label: r.edge_type === "sequence_flow" ? sequenceFlowLabel(r.edge_props_json) : null,
     }));
   }
 
-  // ── Global PageRank over the synapse graph ────────────────────────
+  // ── Global PageRank over the edge graph ────────────────────────
   // Drives:
   //   1. Pool order (most important Intent's pool first).
-  //   2. Primary-intent picks for multi-intent neurons.
+  //   2. Primary-intent picks for multi-intent nodes.
   // The personalized variant (teleport biased to a focal node) is the
   // client's job — we just expose the raw global scores so it can
-  // recompute when the user clicks into a neuron.
+  // recompute when the user clicks into a node.
   const pr = pageRank(
     allRows.map((r) => ({ id: r.id })),
     links,
   );
 
-  // ── Pool assignment per neuron ────────────────────────────────────
+  // ── Pool assignment per node ────────────────────────────────────
   // 1. Intents themselves are pool headers, not nodes — they live in
   //    their own pool ("pool:<intent_id>").
   // 2. Flow nodes (Action / Decision / State / Log) with an intent_ids
   //    list go in their primary intent's pool (PR-picked).
   // 3. Flow nodes with no intent_ids → Unassigned.
-  // 4. Non-actor neurons (Reference / Idea / Rule / Eval) start
+  // 4. Non-actor nodes (Reference / Idea / Rule / Eval) start
   //    in Unassigned; Rules and Evals get re-homed below if they have
-  //    a host neuron whose pool is known.
-  const poolByNeuron = new Map<string, string>();
-  const intentIdsByNeuron = new Map<string, string[]>();
+  //    a host node whose pool is known.
+  const poolByNode = new Map<string, string>();
+  const intentIdsByNode = new Map<string, string[]>();
 
   for (const row of allRows) {
     if (row.entity_type === "intent") {
-      poolByNeuron.set(row.id, `pool:${row.id}`);
+      poolByNode.set(row.id, `pool:${row.id}`);
       continue;
     }
     const data = row.data ?? {};
@@ -305,11 +305,11 @@ export async function loadBpmnGraph(
       row.entity_type === "log"
     ) {
       const intentIds = toStringArray(data.intent_ids).filter((id) => intentsById.has(id));
-      if (intentIds.length > 0) intentIdsByNeuron.set(row.id, intentIds);
+      if (intentIds.length > 0) intentIdsByNode.set(row.id, intentIds);
       const primary = intentIds.length > 0 ? highestRanked(intentIds, pr) : null;
-      poolByNeuron.set(row.id, primary ? `pool:${primary}` : POOL_UNASSIGNED_ID);
+      poolByNode.set(row.id, primary ? `pool:${primary}` : POOL_UNASSIGNED_ID);
     } else {
-      poolByNeuron.set(row.id, POOL_UNASSIGNED_ID);
+      poolByNode.set(row.id, POOL_UNASSIGNED_ID);
     }
   }
 
@@ -320,12 +320,12 @@ export async function loadBpmnGraph(
     const data = row.data ?? {};
     const gatedBy = toStringArray(data.gated_by);
     if (gatedBy.length === 0) continue;
-    const actionPool = poolByNeuron.get(row.id);
+    const actionPool = poolByNode.get(row.id);
     if (!actionPool) continue;
     for (const ruleId of gatedBy) {
-      const existing = poolByNeuron.get(ruleId);
+      const existing = poolByNode.get(ruleId);
       if (existing === POOL_UNASSIGNED_ID && actionPool !== POOL_UNASSIGNED_ID) {
-        poolByNeuron.set(ruleId, actionPool);
+        poolByNode.set(ruleId, actionPool);
       }
     }
   }
@@ -336,32 +336,32 @@ export async function loadBpmnGraph(
     if (row.entity_type !== "eval") continue;
     const targetRef = typeof row.data?.target_ref === "string" ? row.data.target_ref : null;
     if (!targetRef) continue;
-    const targetPool = poolByNeuron.get(targetRef);
+    const targetPool = poolByNode.get(targetRef);
     if (targetPool && targetPool !== POOL_UNASSIGNED_ID) {
-      poolByNeuron.set(row.id, targetPool);
+      poolByNode.set(row.id, targetPool);
     }
   }
 
   // ── No-Unassigned-pool policy ─────────────────────────────────────
-  // Every neuron lands in *some* Intent's pool. Direct-host rules above
-  // win. Remaining neurons use a single multi-source BFS from all
-  // Intents over the synapse graph; disconnected neurons fall back to
-  // the highest-global-PR Intent. Avoid per-neuron personalized
+  // Every node lands in *some* Intent's pool. Direct-host rules above
+  // win. Remaining nodes use a single multi-source BFS from all
+  // Intents over the edge graph; disconnected nodes fall back to
+  // the highest-global-PR Intent. Avoid per-node personalized
   // PageRank here — that multiplied render cost by every homeless
-  // neuron and made medium Docos feel huge.
+  // node and made medium Docos feel huge.
   if (intentsById.size > 0) {
     const intentIds = Array.from(intentsById.keys());
-    const homeless: NeuronRow[] = [];
+    const homeless: NodeRow[] = [];
     for (const row of allRows) {
       if (row.entity_type === "intent") continue;
-      if (poolByNeuron.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
+      if (poolByNode.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
     }
     if (homeless.length > 0) {
       const nearestIntentByNode = computeNearestIntentByNode(intentIds, links, pr);
       const defaultIntent = highestRanked(intentIds, pr);
       for (const row of homeless) {
         const bestIntent = nearestIntentByNode.get(row.id) ?? defaultIntent;
-        if (bestIntent) poolByNeuron.set(row.id, `pool:${bestIntent}`);
+        if (bestIntent) poolByNode.set(row.id, `pool:${bestIntent}`);
       }
     }
   }
@@ -376,7 +376,7 @@ export async function loadBpmnGraph(
 
   for (const row of allRows) {
     if (row.entity_type === "intent") continue; // pool header, not a node
-    const poolId = poolByNeuron.get(row.id) ?? POOL_UNASSIGNED_ID;
+    const poolId = poolByNode.get(row.id) ?? POOL_UNASSIGNED_ID;
     const data = row.data ?? {};
 
     let baseId: string;
@@ -423,8 +423,8 @@ export async function loadBpmnGraph(
     const laneId = `${poolId}::${baseId}`;
     if (!lanesById.has(laneId)) {
       // Actor lanes carry the Principal's lifecycle so the lane header
-      // can render the same type/lifecycle badge stack a neuron does.
-      // Bands and synthetic catch-alls have no owning neuron — null.
+      // can render the same type/lifecycle badge stack a node does.
+      // Bands and synthetic catch-alls have no owning node — null.
       const laneLifecycle: string | null =
         kind === "actor" ? (principalById.get(baseId)?.lifecycle ?? null) : null;
       lanesById.set(laneId, {
@@ -448,14 +448,14 @@ export async function loadBpmnGraph(
       laneId,
       pool_id: poolId,
     };
-    const intentIds = intentIdsByNeuron.get(row.id);
+    const intentIds = intentIdsByNode.get(row.id);
     if (intentIds && intentIds.length > 0) node.intent_ids = intentIds;
     nodes.push(node);
   }
 
   // ── Forward sequence depth ────────────────────────────────────────
   // BPMN ordering is based on explicit forward sequence flow only.
-  // Association synapses such as `serves`, `enacts`, and `gated_by`
+  // Association edges such as `serves`, `enacts`, and `gated_by`
   // should not move nodes horizontally.
   const sequenceDepthById = computeForwardSequenceDepths(nodes, links);
   for (const node of nodes) {
@@ -466,7 +466,7 @@ export async function loadBpmnGraph(
   // ── Build pools[] ─────────────────────────────────────────────────
   const pools: BpmnPool[] = [];
   const usedPoolIds = new Set<string>();
-  for (const id of poolByNeuron.values()) usedPoolIds.add(id);
+  for (const id of poolByNode.values()) usedPoolIds.add(id);
   for (const intentId of intentsById.keys()) usedPoolIds.add(`pool:${intentId}`);
 
   for (const id of usedPoolIds) {
@@ -501,9 +501,9 @@ export async function loadBpmnGraph(
     return b.pagerank - a.pagerank;
   });
 
-  // Drop pools with no neurons assigned (a freshly-captured Intent
+  // Drop pools with no nodes assigned (a freshly-captured Intent
   // gets a pool the moment any Action/Decision serves it; an Intent
-  // with zero serving neurons would otherwise show an empty pool).
+  // with zero serving nodes would otherwise show an empty pool).
   // EXCEPTION: we keep an Intent's pool even when empty IF the
   // intent_id is in usedPoolIds via the intentsById loop above —
   // that's deliberately how authors see "I have a goal but no work
@@ -544,9 +544,9 @@ export async function loadBpmnGraph(
     return a.label.localeCompare(b.label);
   });
 
-  // Expose per-neuron PageRank scores so the client can compute
-  // personalized PageRank from a focal neuron without re-running the
-  // synapse query.
+  // Expose per-node PageRank scores so the client can compute
+  // personalized PageRank from a focal node without re-running the
+  // edge query.
   const globalPagerank: Record<string, number> = {};
   for (const [id, score] of pr) globalPagerank[id] = score;
 
@@ -772,8 +772,8 @@ function resolveLane(
  * host with a resolved actor lane exists.
  */
 function resolveRehomeHostLane(
-  row: NeuronRow,
-  allRows: NeuronRow[],
+  row: NodeRow,
+  allRows: NodeRow[],
   principalById: Map<string, PrincipalRow>,
   principalByName: Map<string, PrincipalRow>,
   userById: Map<string, UserRow>,

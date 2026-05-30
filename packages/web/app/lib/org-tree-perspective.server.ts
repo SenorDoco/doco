@@ -1,10 +1,10 @@
 // Org-tree perspective data loader.
 //
-// Renders a Doco's Principal neurons as a top-down reporting tree:
+// Renders a Doco's Principal nodes as a top-down reporting tree:
 // the unique top-of-chain Principal (no `reports_to`) at the root,
 // direct reports beneath, and so on. Edges come from the
-// `reports_to` synapse — derived from each Principal's data field
-// by `deriveSynapses` and materialized in the `synapses` table.
+// `reports_to` edge — derived from each Principal's data field
+// by `deriveEdges` and materialized in the `edges` table.
 //
 // Only the `org-chart` template attaches this perspective by default,
 // but any Doco can opt in via the perspectives picker. The loader

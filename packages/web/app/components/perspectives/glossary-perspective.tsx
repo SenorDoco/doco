@@ -194,7 +194,7 @@ function EntryView({ entry }: { entry: GlossaryEntry }) {
     <article
       className="mb-4 break-inside-avoid"
       style={{ textIndent: 0 }}
-      data-neuron-id={entry.id}
+      data-node-id={entry.id}
       data-glossary-headword={entry.headword}
     >
       <p className="leading-snug" style={{ textIndent: "-1em", paddingLeft: "1em" }}>

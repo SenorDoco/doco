@@ -75,11 +75,11 @@ export default function NewDocoStep4({
             <ul className="ml-5 list-disc space-y-2">
               <li>Doco helps keep people, agents, and work aligned</li>
               <li>
-                Docos are made of neurons (any type of information) and synapses (connections
-                between neurons)
+                Docos are made of nodes (any type of information) and edges (connections
+                between nodes)
               </li>
               <li>
-                Users, agents, and tools can query docos and add information (neurons) to them (if
+                Users, agents, and tools can query docos and add information (nodes) to them (if
                 they have the permission)
               </li>
               <li>

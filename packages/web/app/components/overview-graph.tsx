@@ -2,8 +2,8 @@ import { type Edge, Handle, MarkerType, type Node, Position } from "@xyflow/reac
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
-import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/node-badges";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { CurvedBezierEdge } from "~/components/stable-labeled-edge";
 import {
@@ -19,12 +19,12 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { type Point, layoutOverviewGraphNodes } from "~/lib/overview-graph-layout";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
 import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
-import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
+import { useNewNodeIds } from "~/lib/use-new-node-ids";
 import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
@@ -40,7 +40,7 @@ export interface OverviewGraphNode {
 export interface OverviewGraphLink {
   source: string;
   target: string;
-  synapse_type: string;
+  edge_type: string;
   label?: string | null;
 }
 
@@ -68,11 +68,11 @@ interface OverviewGraphProps extends OverviewGraphData {
   search?: ReactNode;
   /**
    * One-shot viewport instruction used when the page opens directly
-   * on a neuron URL. Unlike click focus, this should center the node
+   * on a node URL. Unlike click focus, this should center the node
    * at 100% zoom instead of fitting the whole graph.
    */
   initialFocusId?: string | null;
-  onNeuronClick?: (node: OverviewGraphNode) => void;
+  onNodeClick?: (node: OverviewGraphNode) => void;
   /**
    * Externally-controlled lifecycle visibility set. When provided, the
    * graph uses it as the source of truth; otherwise it manages state
@@ -81,7 +81,7 @@ interface OverviewGraphProps extends OverviewGraphData {
    */
   visibleLifecycles?: Set<string>;
   /**
-   * When the user clicks a neuron on the canvas, we want the graph
+   * When the user clicks a node on the canvas, we want the graph
    * to re-center on it: depth-based opacity recomputes from the new
    * focal node and the clustered layout re-runs so relevant neighbours
    * settle near each other. The parent owns `centerId` state; this
@@ -205,11 +205,11 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
       <div
         className={`neu-surface overview-graph-node nodrag nopan relative flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden rounded-md border bg-white px-3 py-2 pl-4 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
         data-graph-reference-number={data.referenceNumber ?? undefined}
-        data-neuron-href={detail?.href ?? data.node.href ?? undefined}
-        data-neuron-id={data.node.id}
-        data-neuron-label={title}
-        data-neuron-lifecycle={lifecycle}
-        data-neuron-type={data.node.entity_type}
+        data-node-href={detail?.href ?? data.node.href ?? undefined}
+        data-node-id={data.node.id}
+        data-node-label={title}
+        data-node-lifecycle={lifecycle}
+        data-node-type={data.node.entity_type}
         data-overview-node-new={data.isNew ? "true" : undefined}
         style={{
           borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
@@ -219,7 +219,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         title={title}
       >
         <div className="flex items-center gap-2">
-          <NeuronTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
+          <NodeTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">
             {title}
           </span>
@@ -259,7 +259,7 @@ export function OverviewGraph({
   fillHeight = false,
   search,
   initialFocusId,
-  onNeuronClick,
+  onNodeClick,
   visibleLifecycles: externalVisibleLifecycles,
   onCenterChange,
   onPaneClick,
@@ -500,7 +500,7 @@ export function OverviewGraph({
   //
   // We DON'T gate on detail being loaded — detail-fetch is gated by
   // DETAIL_ZOOM (0.95) and only fires when the user zooms in, so on
-  // fresh load of a many-neuron Doco no details exist and badges
+  // fresh load of a many-node Doco no details exist and badges
   // wouldn't appear until the user manually zoomed past 0.95.
   // `overviewNodeDisplayLabel` falls back to `node.name ?? node.id`
   // when detail is absent, and the href falls back to `node.href`.
@@ -646,7 +646,7 @@ export function OverviewGraph({
   }, [detailUrl, detailIds]);
 
   const flowNodes = useMemo(() => {
-    const neuronNodes = renderedNodes.map((node) => {
+    const nodeNodes = renderedNodes.map((node) => {
       const position = positions.get(node.id) ?? { x: 0, y: 0 };
       const depthOpacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
       const transitionOpacity = renderWindowOpacityById.get(node.id) ?? 1;
@@ -677,7 +677,7 @@ export function OverviewGraph({
         },
       };
     });
-    return [...neuronNodes, ...externalEdgeStubs.nodes];
+    return [...nodeNodes, ...externalEdgeStubs.nodes];
   }, [
     renderedNodes,
     positions,
@@ -692,7 +692,7 @@ export function OverviewGraph({
   ]);
 
   const flowEdges = useMemo(() => {
-    const neuronEdges = renderedLinks.map((link, index) => {
+    const nodeEdges = renderedLinks.map((link, index) => {
       const edgeOpacity = focalActive
         ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
         : 1;
@@ -700,7 +700,7 @@ export function OverviewGraph({
         renderWindowOpacityById.get(link.source) ?? 1,
         renderWindowOpacityById.get(link.target) ?? 1,
       );
-      // Synapse inherits the origin neuron's lifecycle colour. 0.5 is
+      // Edge inherits the origin node's lifecycle colour. 0.5 is
       // the baseline stroke alpha so coloured lines stay readable on
       // the pale canvas without competing with the node strokes.
       const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "asserted";
@@ -721,7 +721,7 @@ export function OverviewGraph({
         },
       };
     });
-    return [...neuronEdges, ...externalEdgeStubs.edges];
+    return [...nodeEdges, ...externalEdgeStubs.edges];
   }, [
     renderedLinks,
     depthByNodeId,
@@ -835,8 +835,8 @@ export function OverviewGraph({
               // positionCacheRef; the render window may add/remove
               // nodes around the new focus.
               if (target && onCenterChange) onCenterChange(target.id);
-              if (target && onNeuronClick) {
-                onNeuronClick(target);
+              if (target && onNodeClick) {
+                onNodeClick(target);
                 return;
               }
               if (target?.href) navigate(target.href);

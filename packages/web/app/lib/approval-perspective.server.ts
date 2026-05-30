@@ -1,4 +1,4 @@
-import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_SPECS } from "@doco/db";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -53,7 +53,7 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 function approvalRowsSql(): string {
-  const neuronLegs = DOCO_NEURON_TABLE_SPECS.map((entry) => {
+  const nodeLegs = DOCO_NODE_TABLE_SPECS.map((entry) => {
     const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
     const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
     const nameExpr = entry.nameExpr ?? "NULL::text";
@@ -76,7 +76,7 @@ function approvalRowsSql(): string {
                                data->>'created_by_user_id' AS created_by_user_id
                           FROM principals
                          WHERE doco_id = $1`;
-  return [...neuronLegs, principalLeg].join(" UNION ALL ");
+  return [...nodeLegs, principalLeg].join(" UNION ALL ");
 }
 
 export async function loadApprovalPerspectiveData(

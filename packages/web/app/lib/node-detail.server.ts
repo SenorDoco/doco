@@ -1,4 +1,4 @@
-import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 
@@ -10,17 +10,17 @@ const LIFECYCLE_STAGES = ["drafting", "asserted", "retired"] as const;
 
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
-export interface NeuronDialogEdge {
-  synapse_type: string;
+export interface NodeDialogEdge {
+  edge_type: string;
   other_id: string;
-  other_neuron_type: string;
+  other_node_type: string;
   other_summary: string | null;
   other_name: string | null;
   other_lifecycle: string;
   href: string | null;
 }
 
-export interface NeuronDialogHistoryEvent {
+export interface NodeDialogHistoryEvent {
   event_id: string;
   at: string;
   by: string | null;
@@ -29,18 +29,18 @@ export interface NeuronDialogHistoryEvent {
   after: unknown;
 }
 
-export interface NeuronDialogLifecycleChange {
+export interface NodeDialogLifecycleChange {
   at: string;
   from: string | null;
   to: string;
 }
 
-export interface NeuronDialogDocoRef {
+export interface NodeDialogDocoRef {
   handle: string;
   href: string;
 }
 
-export interface NeuronLifecycleOption {
+export interface NodeLifecycleOption {
   value: LifecycleStage;
   label: string;
   current: boolean;
@@ -48,7 +48,7 @@ export interface NeuronLifecycleOption {
   reason: string | null;
 }
 
-export interface NeuronDialogDetail {
+export interface NodeDialogDetail {
   id: string;
   entity_type: string;
   summary: string;
@@ -61,18 +61,18 @@ export interface NeuronDialogDetail {
   created_at: string | null;
   updated_at: string | null;
   body_md: string | null;
-  doco: NeuronDialogDocoRef;
+  doco: NodeDialogDocoRef;
   frontmatter: Record<string, unknown>;
   raw_json: string;
   href: string;
   update_url: string | null;
   user_role: DocoRole | null;
   can_change_lifecycle: boolean;
-  lifecycle_options: NeuronLifecycleOption[];
-  outgoing: NeuronDialogEdge[];
-  incoming: NeuronDialogEdge[];
-  history: NeuronDialogHistoryEvent[];
-  lifecycle_history: NeuronDialogLifecycleChange[];
+  lifecycle_options: NodeLifecycleOption[];
+  outgoing: NodeDialogEdge[];
+  incoming: NodeDialogEdge[];
+  history: NodeDialogHistoryEvent[];
+  lifecycle_history: NodeDialogLifecycleChange[];
 }
 
 const UPDATE_SEGMENTS: Record<string, string> = {
@@ -87,7 +87,7 @@ const UPDATE_SEGMENTS: Record<string, string> = {
   idea: "ideas",
 };
 
-type GraphNeuronConfig = {
+type GraphNodeConfig = {
   table: string;
   typeNamedColumn: string | null;
   primaryColumn: string;
@@ -97,9 +97,9 @@ type GraphNeuronConfig = {
   updateSegment: string;
 };
 
-const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = {
+const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
   ...(Object.fromEntries(
-    Object.entries(DOCO_NEURON_TABLE_BY_TYPE).map(([entityType, spec]) => [
+    Object.entries(DOCO_NODE_TABLE_BY_TYPE).map(([entityType, spec]) => [
       entityType,
       {
         table: spec.table,
@@ -111,12 +111,12 @@ const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = {
         updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
       },
     ]),
-  ) as Record<string, GraphNeuronConfig>),
-  // Principal lives outside DOCO_NEURON_TABLE_SPECS (which is scoped to
-  // the 9 migrated neurons) but the Graph perspective DOES render
+  ) as Record<string, GraphNodeConfig>),
+  // Principal lives outside DOCO_NODE_TABLE_SPECS (which is scoped to
+  // the 9 migrated nodes) but the Graph perspective DOES render
   // Principal cards (full-graph.server.ts UNIONs a principal leg in).
   // The detail dialog must know about it too, otherwise clicking a
-  // Principal card 404s with "Unknown neuron type".
+  // Principal card 404s with "Unknown node type".
   principal: {
     table: "principals",
     typeNamedColumn: null,
@@ -174,7 +174,7 @@ function lifecycleOptions(input: {
   canChange: boolean;
   role: DocoRole | null;
   updateUrl: string | null;
-}): NeuronLifecycleOption[] {
+}): NodeLifecycleOption[] {
   const current = LIFECYCLE_STAGES.includes(input.current as LifecycleStage)
     ? (input.current as LifecycleStage)
     : "asserted";
@@ -185,7 +185,7 @@ function lifecycleOptions(input: {
     const isCurrent = stage === current;
     let reason: string | null = null;
     if (isCurrent) reason = "Current stage.";
-    else if (!input.updateUrl) reason = "Lifecycle updates are not available for this neuron type.";
+    else if (!input.updateUrl) reason = "Lifecycle updates are not available for this node type.";
     else if (!input.canChange) reason = roleReason;
     return {
       value: stage,
@@ -197,13 +197,13 @@ function lifecycleOptions(input: {
   });
 }
 
-export function isGraphNeuronType(
+export function isGraphNodeType(
   type: string | undefined,
-): type is keyof typeof GRAPH_NEURON_TABLES {
-  return Boolean(type && GRAPH_NEURON_TABLES[type]);
+): type is keyof typeof GRAPH_NODE_TABLES {
+  return Boolean(type && GRAPH_NODE_TABLES[type]);
 }
 
-interface DialogRelatedNeuronDetail {
+interface DialogRelatedNodeDetail {
   id: string;
   entity_type: string;
   summary: string;
@@ -213,7 +213,7 @@ interface DialogRelatedNeuronDetail {
 }
 
 function relatedDetailsSql(): string {
-  return Object.entries(GRAPH_NEURON_TABLES)
+  return Object.entries(GRAPH_NODE_TABLES)
     .map(([entityType, cfg]) => {
       const nameExpr =
         cfg.primaryField === "name" ? `${cfg.primaryColumn}::text AS name` : "NULL::text AS name";
@@ -234,7 +234,7 @@ async function loadDialogRelatedDetails(
   docoId: string,
   ids: string[],
   handle: string,
-): Promise<DialogRelatedNeuronDetail[]> {
+): Promise<DialogRelatedNodeDetail[]> {
   const requested = Array.from(new Set(ids.filter(Boolean)));
   if (requested.length === 0) return [];
   const rows = (
@@ -325,7 +325,7 @@ async function resolveUserMetadata(
   return next;
 }
 
-export async function loadNeuronDialogDetail(
+export async function loadNodeDialogDetail(
   c: QueryClient,
   meta: { docoId: string; ownerId: string },
   options: {
@@ -334,11 +334,11 @@ export async function loadNeuronDialogDetail(
     id: string;
     principalId: string | null;
   },
-): Promise<NeuronDialogDetail | null> {
-  const cfg = GRAPH_NEURON_TABLES[options.entityType];
+): Promise<NodeDialogDetail | null> {
+  const cfg = GRAPH_NODE_TABLES[options.entityType];
   if (!cfg) return null;
 
-  // Post-migration: the 9 migrated neurons store their primary text in
+  // Post-migration: the 9 migrated nodes store their primary text in
   // a type-named column (intent/decision/...). Principal keeps a real
   // `name` display label plus optional `body_md`; keep those channels
   // distinct so the dialog does not promote the body over the label.
@@ -380,33 +380,33 @@ export async function loadNeuronDialogDetail(
   const summary =
     primaryFirstLine ?? stringField(frontmatter, "summary") ?? name ?? bodyFirstLine ?? row.id;
   // Backwards-compatible field for older client code. For migrated
-  // neurons, this remains the type-named primary text; for Principal it
+  // nodes, this remains the type-named primary text; for Principal it
   // remains the secondary markdown body.
   const bodyMdCompat = cfg.typeNamedColumn ? (row.primary_text ?? null) : row.body_text;
 
   const outgoingRows = (
     await c.query<{
       to_id: string;
-      to_neuron_type: string;
-      synapse_type: string;
+      to_node_type: string;
+      edge_type: string;
     }>(
-      `SELECT to_id, to_neuron_type, synapse_type
-         FROM synapses
+      `SELECT to_id, to_node_type, edge_type
+         FROM edges
         WHERE doco_id = $1 AND from_id = $2
-        ORDER BY synapse_type, to_id`,
+        ORDER BY edge_type, to_id`,
       [meta.docoId, row.id],
     )
   ).rows;
   const incomingRows = (
     await c.query<{
       from_id: string;
-      from_neuron_type: string;
-      synapse_type: string;
+      from_node_type: string;
+      edge_type: string;
     }>(
-      `SELECT from_id, from_neuron_type, synapse_type
-         FROM synapses
+      `SELECT from_id, from_node_type, edge_type
+         FROM edges
         WHERE doco_id = $1 AND to_id = $2
-        ORDER BY synapse_type, from_id`,
+        ORDER BY edge_type, from_id`,
       [meta.docoId, row.id],
     )
   ).rows;
@@ -419,28 +419,28 @@ export async function loadNeuronDialogDetail(
   );
   const relatedDetails = await loadDialogRelatedDetails(c, meta.docoId, relatedIds, options.handle);
   const relatedById = new Map(relatedDetails.map((detail) => [detail.id, detail]));
-  const outgoing: NeuronDialogEdge[] = outgoingRows.map((edge) => {
+  const outgoing: NodeDialogEdge[] = outgoingRows.map((edge) => {
     const detail = relatedById.get(edge.to_id);
     return {
-      synapse_type: edge.synapse_type,
+      edge_type: edge.edge_type,
       other_id: edge.to_id,
-      other_neuron_type: edge.to_neuron_type,
+      other_node_type: edge.to_node_type,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
       other_lifecycle: detail?.lifecycle ?? "asserted",
-      href: detail?.href ?? `/${options.handle}/${edge.to_neuron_type}/${edge.to_id}`,
+      href: detail?.href ?? `/${options.handle}/${edge.to_node_type}/${edge.to_id}`,
     };
   });
-  const incoming: NeuronDialogEdge[] = incomingRows.map((edge) => {
+  const incoming: NodeDialogEdge[] = incomingRows.map((edge) => {
     const detail = relatedById.get(edge.from_id);
     return {
-      synapse_type: edge.synapse_type,
+      edge_type: edge.edge_type,
       other_id: edge.from_id,
-      other_neuron_type: edge.from_neuron_type,
+      other_node_type: edge.from_node_type,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
       other_lifecycle: detail?.lifecycle ?? "asserted",
-      href: detail?.href ?? `/${options.handle}/${edge.from_neuron_type}/${edge.from_id}`,
+      href: detail?.href ?? `/${options.handle}/${edge.from_node_type}/${edge.from_id}`,
     };
   });
 

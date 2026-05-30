@@ -1,6 +1,6 @@
 import { withClient } from "@doco/db";
-import { normalizeNeuronType } from "@doco/shared";
-// Per-Doco home — bare title up top, then the search input, neuron overview,
+import { normalizeNodeType } from "@doco/shared";
+// Per-Doco home — bare title up top, then the search input, node overview,
 // activity heatmap, and latest activity feed in a single content column.
 //
 // The feed renders one line per recent audit event in the same family as
@@ -21,12 +21,12 @@ import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
-import { NeuronDialog } from "~/components/neuron-dialog";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeDialog } from "~/components/node-dialog";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import {
-  NeuronsOverviewCard,
-  type NeuronsOverviewSection,
-} from "~/components/neurons-overview-card";
+  NodesOverviewCard,
+  type NodesOverviewSection,
+} from "~/components/nodes-overview-card";
 import {
   OverviewGraph,
   type OverviewGraphData,
@@ -53,13 +53,13 @@ import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadGlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import {
   type LifecycleStage,
-  type NeuronDialogDetail,
-  isGraphNeuronType,
-  loadNeuronDialogDetail,
-} from "~/lib/neuron-detail.server";
+  type NodeDialogDetail,
+  isGraphNodeType,
+  loadNodeDialogDetail,
+} from "~/lib/node-detail.server";
 import { loadOrgTreeData } from "~/lib/org-tree-perspective.server";
 import { computePageRank } from "~/lib/page-rank";
 import {
@@ -76,11 +76,11 @@ import { useFullscreen } from "~/lib/use-fullscreen";
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
-// The side panel — the activity column, or the neuron dialog — sits to the
+// The side panel — the activity column, or the node dialog — sits to the
 // RIGHT of the perspective only when the two fit side by side: the
 // perspective and the panel together (excluding the gap between them) must
 // total at least this width. Below it the activity column is hidden and the
-// neuron dialog floats on top of the perspective instead. One flag governs
+// node dialog floats on top of the perspective instead. One flag governs
 // both, so the column and the right-hand dialog appear under the same rule.
 const SIDE_PANEL_MIN_COMBINED_WIDTH = 768;
 // Matches the grid's gap-6 between the perspective and the side panel.
@@ -97,21 +97,21 @@ interface TopContributor {
   eventCount: number;
 }
 
-const NEURON_TYPE_LABELS: Record<string, string> = {
+const NODE_TYPE_LABELS: Record<string, string> = {
   decision: "Decisions",
   action: "Actions",
   intent: "Intents",
   rule: "Rules",
   guidance_policy: "Guidance policies",
-  neuron_authoring_policy: "Neuron-authoring policies",
+  node_authoring_policy: "Node-authoring policies",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",
 };
 
-function neuronTypeLabel(type: string): string {
+function nodeTypeLabel(type: string): string {
   return (
-    NEURON_TYPE_LABELS[type] ??
+    NODE_TYPE_LABELS[type] ??
     `${type
       .split("_")
       .filter(Boolean)
@@ -132,16 +132,16 @@ export async function loader({
   const me = ctx.me;
   const dir = docoPath(handle);
   const requestedEntityType =
-    typeof params.type === "string" ? normalizeNeuronType(params.type) : null;
-  const requestedNeuron =
+    typeof params.type === "string" ? normalizeNodeType(params.type) : null;
+  const requestedNode =
     requestedEntityType && typeof params.id === "string"
       ? { entityType: requestedEntityType, id: params.id }
       : null;
-  if (requestedNeuron && !isGraphNeuronType(requestedNeuron.entityType)) {
-    throw new Response("Unknown neuron type", { status: 404 });
+  if (requestedNode && !isGraphNodeType(requestedNode.entityType)) {
+    throw new Response("Unknown node type", { status: 404 });
   }
-  if (typeof params.type === "string" && typeof params.id === "string" && !requestedNeuron) {
-    throw new Response("Unknown neuron type", { status: 404 });
+  if (typeof params.type === "string" && typeof params.id === "string" && !requestedNode) {
+    throw new Response("Unknown node type", { status: 404 });
   }
   return withClient(async (c) => {
     type AuditFeedRow = {
@@ -162,7 +162,7 @@ export async function loader({
         `SELECT event_id, at, entity_type, entity_id, op, before_json, after_json
            FROM audit_events
           WHERE doco_id = $1
-            AND entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
+            AND entity_type NOT IN ('guidance_policy', 'node_authoring_policy')
           ORDER BY at DESC
           LIMIT $2`,
         [ctx.meta.docoId, FEED_LIMIT],
@@ -182,7 +182,7 @@ export async function loader({
          UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, policy AS label, lifecycle FROM guidance_policies WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, policy AS label, lifecycle FROM neuron_authoring_policies WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, policy AS label, lifecycle FROM node_authoring_policies WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
@@ -199,7 +199,7 @@ export async function loader({
     const items: FeedItem[] = rawItems.map((it) => {
       const entity = entityById.get(it.entity_id);
       // Audit events may carry the prose under the type-named key for
-      // migrated neurons (intent/decision/...) or `summary` for legacy
+      // migrated nodes (intent/decision/...) or `summary` for legacy
       // captures. Look both up; the first non-empty line wins.
       const proseKey = it.entity_type;
       return {
@@ -262,7 +262,7 @@ export async function loader({
            FROM audit_events ae
            JOIN users c ON c.id = ae.by_user
           WHERE ae.doco_id = $1
-            AND ae.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
+            AND ae.entity_type NOT IN ('guidance_policy', 'node_authoring_policy')
           GROUP BY ae.by_user, c.github_login, c.email, c.id
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
@@ -278,24 +278,24 @@ export async function loader({
           : new Date(String(r.last_at)).toISOString(),
       eventCount: Number(r.event_count),
     }));
-    const selectedNeuron = requestedNeuron
-      ? await loadNeuronDialogDetail(c, ctx.meta, {
+    const selectedNode = requestedNode
+      ? await loadNodeDialogDetail(c, ctx.meta, {
           handle,
-          entityType: requestedNeuron.entityType,
-          id: requestedNeuron.id,
+          entityType: requestedNode.entityType,
+          id: requestedNode.id,
           principalId: me?.id ?? null,
         })
       : null;
-    if (requestedNeuron && !selectedNeuron) {
-      throw new Response(`Neuron not found: ${requestedNeuron.id}`, { status: 404 });
+    if (requestedNode && !selectedNode) {
+      throw new Response(`Node not found: ${requestedNode.id}`, { status: 404 });
     }
     // `?dialog=skip` lets the agent's auto-focus center the graph on
-    // a neuron without popping the detail overlay over the chat. We
+    // a node without popping the detail overlay over the chat. We
     // still load the detail above (the 404 check stays meaningful)
     // and still center the graph on it below — only the dialog state
     // stays empty.
     const skipDialog = new URL(request.url).searchParams.get("dialog") === "skip";
-    const dialogNeuron = skipDialog ? null : selectedNeuron;
+    const dialogNode = skipDialog ? null : selectedNode;
     // Visualization perspectives — tabs above the graph body. Existing
     // Docos created before migration 007 may have no perspectives
     // attached; ensureDefaultsAttached backfills built-ins on first
@@ -313,12 +313,12 @@ export async function loader({
     const graph = shouldLoadOverviewGraph
       ? await loadOverviewGraph(c, ctx.meta.docoId, {
           handle,
-          ...(selectedNeuron ? { centerId: selectedNeuron.id } : {}),
+          ...(selectedNode ? { centerId: selectedNode.id } : {}),
         })
       : null;
 
     // PageRank over the loaded graph, for the List perspective's rank
-    // sort options. Cheap (~ms even for thousands of neurons) so we
+    // sort options. Cheap (~ms even for thousands of nodes) so we
     // compute it on every load rather than caching.
     const pageRankMap = graph ? computePageRank(graph.nodes, graph.links) : new Map();
     const pageRanks: Record<string, number> = {};
@@ -329,7 +329,7 @@ export async function loader({
     const bpmnGraph =
       activeKind === "bpmn"
         ? await loadBpmnGraph(c, ctx.meta.docoId, {
-            focusId: selectedNeuron?.id,
+            focusId: selectedNode?.id,
             handle,
           })
         : null;
@@ -350,13 +350,13 @@ export async function loader({
         ? await loadGlossaryPerspectiveData(c, ctx.meta.docoId, handle)
         : null;
 
-    // Policy count — guidance + neuron-authoring policies
+    // Policy count — guidance + node-authoring policies
     // attached to this Doco.
     const policyRow = (
       await c.query<{ n: string }>(
         `SELECT
            ((SELECT COUNT(*) FROM guidance_policies WHERE doco_id = $1)
-          + (SELECT COUNT(*) FROM neuron_authoring_policies WHERE doco_id = $1))::text AS n`,
+          + (SELECT COUNT(*) FROM node_authoring_policies WHERE doco_id = $1))::text AS n`,
         [ctx.meta.docoId],
       )
     ).rows[0];
@@ -390,8 +390,8 @@ export async function loader({
       slaData,
       approvalData,
       glossaryData,
-      focusedNeuronId: selectedNeuron?.id ?? null,
-      selectedNeuron: dialogNeuron,
+      focusedNodeId: selectedNode?.id ?? null,
+      selectedNode: dialogNode,
     };
   });
 }
@@ -420,8 +420,8 @@ function lifecycleSearchPath(handle: string, lifecycle: string): string {
   return `/${handle}/search?${params.toString()}`;
 }
 
-interface NeuronDialogState {
-  detail: NeuronDialogDetail | null;
+interface NodeDialogState {
+  detail: NodeDialogDetail | null;
   loading: boolean;
   error: string | null;
 }
@@ -438,15 +438,15 @@ function graphWithCenter(graph: OverviewGraphData, centerId: string | null): Ove
   };
 }
 
-function graphWithNeuronLifecycle(
+function graphWithNodeLifecycle(
   graph: OverviewGraphData,
-  neuronId: string,
+  nodeId: string,
   lifecycle: string,
 ): OverviewGraphData {
   return {
     ...graph,
     nodes: graph.nodes.map((node) =>
-      node.id === neuronId
+      node.id === nodeId
         ? {
             ...node,
             lifecycle,
@@ -463,9 +463,9 @@ export function meta({
   data: Awaited<ReturnType<typeof loader>> | undefined;
   params: { docoHandle?: string; docoId?: string };
 }) {
-  if (data?.selectedNeuron) {
+  if (data?.selectedNode) {
     const display =
-      data.selectedNeuron.name ?? data.selectedNeuron.summary ?? data.selectedNeuron.id;
+      data.selectedNode.name ?? data.selectedNode.summary ?? data.selectedNode.id;
     return [{ title: `${display} · ${data.handle} · Doco` }];
   }
   return [{ title: `${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
@@ -503,15 +503,15 @@ export default function DocoHome({
     slaData,
     approvalData,
     glossaryData,
-    focusedNeuronId,
-    selectedNeuron,
+    focusedNodeId,
+    selectedNode,
   } = loaderData;
 
   const pageRanksMap = useMemo(() => new Map(Object.entries(pageRanks)), [pageRanks]);
   const defaultFocusId = useMemo(
     () =>
-      focusedNeuronId ?? (graph ? highestRankedNodeId(graph.nodes, pageRanksMap) : null) ?? docoId,
-    [focusedNeuronId, graph, pageRanksMap, docoId],
+      focusedNodeId ?? (graph ? highestRankedNodeId(graph.nodes, pageRanksMap) : null) ?? docoId,
+    [focusedNodeId, graph, pageRanksMap, docoId],
   );
   const graphData = useMemo<OverviewGraphData>(() => {
     const base = graph ?? {
@@ -524,29 +524,29 @@ export default function DocoHome({
   }, [graph, defaultFocusId, pageRanksMap]);
   const activeSlug = activePerspectiveSlug ?? "graph";
   const effectivePerspectiveKind = activePerspectiveKind ?? "graph";
-  const routeFocusId = focusedNeuronId;
+  const routeFocusId = focusedNodeId;
   const [graphState, setGraphState] = useState<OverviewGraphData>(() => graphData);
-  const [neuronDialog, setNeuronDialog] = useState<NeuronDialogState | null>(() =>
-    selectedNeuron ? { detail: selectedNeuron, loading: false, error: null } : null,
+  const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(() =>
+    selectedNode ? { detail: selectedNode, loading: false, error: null } : null,
   );
   const [lifecycleUpdating, setLifecycleUpdating] = useState<LifecycleStage | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const clientDialogOverrideRef = useRef(false);
 
-  // While the neuron dialog is open it overlays the right column on
+  // While the node dialog is open it overlays the right column on
   // wide screens and the whole content area on narrow screens. The
   // audit panel underneath shouldn't scroll out of position when the
   // user wheels over (or near) the dialog — only the dialog's own
   // body should scroll. Lock body scroll for the duration the dialog
   // is open and restore on close.
   useEffect(() => {
-    if (!neuronDialog) return;
+    if (!nodeDialog) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [neuronDialog]);
+  }, [nodeDialog]);
 
   useEffect(() => {
     setGraphState((prev) => {
@@ -561,25 +561,25 @@ export default function DocoHome({
   }, [graphData]);
 
   useEffect(() => {
-    if (!selectedNeuron) return;
+    if (!selectedNode) return;
     if (clientDialogOverrideRef.current) return;
-    setNeuronDialog({ detail: selectedNeuron, loading: false, error: null });
-    setGraphState((prev) => graphWithCenter(prev, selectedNeuron.id));
-  }, [selectedNeuron]);
+    setNodeDialog({ detail: selectedNode, loading: false, error: null });
+    setGraphState((prev) => graphWithCenter(prev, selectedNode.id));
+  }, [selectedNode]);
 
   // Lifecycle filter is page-level so it persists across perspective
   // tab switches. The set of lifecycles present in the data drives
-  // which checkboxes appear; defaults hide retired neurons.
+  // which checkboxes appear; defaults hide retired nodes.
   const availableLifecycles = useMemo(() => {
     const set = new Set<string>(LIFECYCLE_ORDER);
     for (const facet of facets.lifecycle) set.add(facet.value);
-    if (selectedNeuron?.lifecycle) set.add(selectedNeuron.lifecycle);
+    if (selectedNode?.lifecycle) set.add(selectedNode.lifecycle);
     return set;
-  }, [facets.lifecycle, selectedNeuron?.lifecycle]);
+  }, [facets.lifecycle, selectedNode?.lifecycle]);
 
   const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(() =>
-    selectedNeuron
-      ? new Set([...initialVisibleLifecycles(availableLifecycles), selectedNeuron.lifecycle])
+    selectedNode
+      ? new Set([...initialVisibleLifecycles(availableLifecycles), selectedNode.lifecycle])
       : initialVisibleLifecycles(availableLifecycles),
   );
 
@@ -618,7 +618,7 @@ export default function DocoHome({
   // Native browser fullscreen on the aside (tabs + search + canvas +
   // lifecycle filter ride along because they're all inside the aside).
   // Native API gives an actual OS-level fullscreen — Esc exits per
-  // browser convention. The neuron dialog also moves inside the aside
+  // browser convention. The node dialog also moves inside the aside
   // when fullscreen so it stays visible on top of the graph (the right
   // column is outside the fullscreen tree and not rendered).
   const contentPaneRef = useRef<HTMLDivElement>(null);
@@ -632,7 +632,7 @@ export default function DocoHome({
   // descendant of <main>, the Señor Doco rail's sibling, so it shrinks when
   // the rail expands (Show Thinking widens it to 640px) and grows when the
   // rail collapses — and it tracks browser resizes. One flag governs both
-  // the activity column and where the neuron dialog renders.
+  // the activity column and where the node dialog renders.
   useEffect(() => {
     const pane = contentPaneRef.current;
     if (!pane) return;
@@ -690,7 +690,7 @@ export default function DocoHome({
     };
   }, [revalidator]);
 
-  const loadNeuronDialog = useCallback(
+  const loadNodeDialog = useCallback(
     async (
       entityType: string,
       id: string,
@@ -700,16 +700,16 @@ export default function DocoHome({
       const pushUrl = options.pushUrl ?? true;
       if (pushUrl && typeof window !== "undefined") {
         clientDialogOverrideRef.current = true;
-        window.history.pushState({ docoNeuronDialog: id }, "", href);
+        window.history.pushState({ docoNodeDialog: id }, "", href);
       }
       setLifecycleError(null);
-      setNeuronDialog((prev) => ({
+      setNodeDialog((prev) => ({
         detail: options.keepDetail ? (prev?.detail ?? null) : null,
         loading: true,
         error: null,
       }));
       try {
-        const detailUrl = new URL(`/${handle}/graph-neuron-details.json`, window.location.origin);
+        const detailUrl = new URL(`/${handle}/graph-node-details.json`, window.location.origin);
         detailUrl.searchParams.set("type", entityType);
         detailUrl.searchParams.set("id", id);
         const res = await fetch(detailUrl.toString(), {
@@ -719,14 +719,14 @@ export default function DocoHome({
           const text = await res.text();
           throw new Error(text || `Request failed with ${res.status}`);
         }
-        const json = (await res.json()) as { neuron?: NeuronDialogDetail | null };
-        const neuron = json.neuron;
-        if (!neuron) throw new Error(`Neuron not found: ${id}`);
-        setNeuronDialog({ detail: neuron, loading: false, error: null });
-        setGraphState((prev) => graphWithCenter(prev, neuron.id));
-        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "asserted"]));
+        const json = (await res.json()) as { node?: NodeDialogDetail | null };
+        const node = json.node;
+        if (!node) throw new Error(`Node not found: ${id}`);
+        setNodeDialog({ detail: node, loading: false, error: null });
+        setGraphState((prev) => graphWithCenter(prev, node.id));
+        setVisibleLifecycles((prev) => new Set([...prev, node.lifecycle ?? "asserted"]));
       } catch (err) {
-        setNeuronDialog((prev) => ({
+        setNodeDialog((prev) => ({
           detail: options.keepDetail ? (prev?.detail ?? null) : null,
           loading: false,
           error: err instanceof Error ? err.message : String(err),
@@ -736,17 +736,17 @@ export default function DocoHome({
     [handle],
   );
 
-  const handleGraphNeuronClick = useCallback(
+  const handleGraphNodeClick = useCallback(
     (node: OverviewGraphNode) => {
       const href = node.href ?? `/${handle}/${node.entity_type}/${node.id}`;
-      void loadNeuronDialog(node.entity_type, node.id, href);
+      void loadNodeDialog(node.entity_type, node.id, href);
     },
-    [handle, loadNeuronDialog],
+    [handle, loadNodeDialog],
   );
 
-  const closeNeuronDialog = useCallback(() => {
+  const closeNodeDialog = useCallback(() => {
     clientDialogOverrideRef.current = true;
-    setNeuronDialog(null);
+    setNodeDialog(null);
     setLifecycleError(null);
     if (typeof window !== "undefined") {
       window.history.replaceState(window.history.state, "", `/${handle}`);
@@ -755,7 +755,7 @@ export default function DocoHome({
 
   const clearPerspectiveFocus = useCallback(() => {
     clientDialogOverrideRef.current = true;
-    setNeuronDialog(null);
+    setNodeDialog(null);
     setLifecycleError(null);
     setGraphState((prev) => graphWithCenter(prev, null));
     if (typeof window !== "undefined") {
@@ -769,7 +769,7 @@ export default function DocoHome({
 
   const handleLifecycleChange = useCallback(
     async (stage: LifecycleStage) => {
-      const detail = neuronDialog?.detail;
+      const detail = nodeDialog?.detail;
       if (!detail) return;
       const option = detail.lifecycle_options.find((candidate) => candidate.value === stage);
       if (!option || option.disabled || !detail.update_url) return;
@@ -788,8 +788,8 @@ export default function DocoHome({
           const body = (await res.json().catch(() => null)) as { error?: string } | null;
           throw new Error(body?.error ?? `Lifecycle update failed with ${res.status}`);
         }
-        setGraphState((prev) => graphWithNeuronLifecycle(prev, detail.id, stage));
-        setNeuronDialog((prev) =>
+        setGraphState((prev) => graphWithNodeLifecycle(prev, detail.id, stage));
+        setNodeDialog((prev) =>
           prev?.detail?.id === detail.id
             ? {
                 ...prev,
@@ -800,7 +800,7 @@ export default function DocoHome({
               }
             : prev,
         );
-        await loadNeuronDialog(detail.entity_type, detail.id, detail.href, {
+        await loadNodeDialog(detail.entity_type, detail.id, detail.href, {
           pushUrl: false,
           keepDetail: true,
         });
@@ -810,7 +810,7 @@ export default function DocoHome({
         setLifecycleUpdating(null);
       }
     },
-    [loadNeuronDialog, neuronDialog],
+    [loadNodeDialog, nodeDialog],
   );
 
   const handleApprovalLifecycleTransition = useCallback(
@@ -819,7 +819,7 @@ export default function DocoHome({
       stage: Extract<LifecycleStage, "asserted" | "drafting">,
     ) => {
       if (!node.update_url) {
-        throw new Error("Lifecycle updates are not available for this neuron type.");
+        throw new Error("Lifecycle updates are not available for this node type.");
       }
       const res = await fetch(node.update_url, {
         method: "PATCH",
@@ -833,8 +833,8 @@ export default function DocoHome({
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `Lifecycle update failed with ${res.status}`);
       }
-      setGraphState((prev) => graphWithNeuronLifecycle(prev, node.id, stage));
-      setNeuronDialog((prev) =>
+      setGraphState((prev) => graphWithNodeLifecycle(prev, node.id, stage));
+      setNodeDialog((prev) =>
         prev?.detail?.id === node.id
           ? {
               ...prev,
@@ -846,30 +846,30 @@ export default function DocoHome({
           : prev,
       );
       setVisibleLifecycles((prev) => new Set([...prev, stage]));
-      if (neuronDialog?.detail?.id === node.id) {
-        await loadNeuronDialog(node.entity_type, node.id, node.href, {
+      if (nodeDialog?.detail?.id === node.id) {
+        await loadNodeDialog(node.entity_type, node.id, node.href, {
           pushUrl: false,
           keepDetail: true,
         });
       }
       revalidator.revalidate();
     },
-    [loadNeuronDialog, neuronDialog?.detail?.id, revalidator],
+    [loadNodeDialog, nodeDialog?.detail?.id, revalidator],
   );
 
   const allSearchHref = allNodesSearchPath(handle);
 
-  const sections: NeuronsOverviewSection[] = [
+  const sections: NodesOverviewSection[] = [
     {
-      title: "Neuron types",
+      title: "Node types",
       items: facets.entityType.map((t) => ({
         key: `type-${t.value}`,
         href: nodeTypeSearchPath(handle, t.value),
-        label: neuronTypeLabel(t.value),
-        icon: <NeuronTypeIcon entityType={t.value} />,
+        label: nodeTypeLabel(t.value),
+        icon: <NodeTypeIcon entityType={t.value} />,
         count: t.count,
         activeCount: t.activeCount,
-        ariaLabel: `Search ${t.count} ${neuronTypeLabel(t.value).toLowerCase()}`,
+        ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
         updatedAt: t.updatedAt,
       })),
     },
@@ -880,30 +880,30 @@ export default function DocoHome({
         href: lifecycleSearchPath(handle, l.value),
         label: l.value,
         count: l.count,
-        ariaLabel: `Search ${l.count} neurons in lifecycle ${l.value}`,
+        ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
         color: lifecycleColor(l.value),
         updatedAt: l.updatedAt,
       })),
     },
   ];
 
-  // Shared NeuronDialog content. The same `showSidePanel` flag that shows
+  // Shared NodeDialog content. The same `showSidePanel` flag that shows
   // the activity column also picks the dialog's wrapper: an absolute overlay
   // inside the right column when the pane is wide enough for both, otherwise
   // a fixed overlay floating on top of the perspective. Both wrappers reuse
   // this element so the props aren't duplicated.
-  const neuronDialogPanel =
-    neuronDialog && !isPerspectiveFullscreen ? (
-      <NeuronDialog
-        detail={neuronDialog.detail}
-        loading={neuronDialog.loading}
-        error={neuronDialog.error}
+  const nodeDialogPanel =
+    nodeDialog && !isPerspectiveFullscreen ? (
+      <NodeDialog
+        detail={nodeDialog.detail}
+        loading={nodeDialog.loading}
+        error={nodeDialog.error}
         lifecycleUpdating={lifecycleUpdating}
         lifecycleError={lifecycleError}
-        onClose={closeNeuronDialog}
+        onClose={closeNodeDialog}
         onLifecycleChange={handleLifecycleChange}
-        onOpenNeuron={(entityType, id, href) => {
-          void loadNeuronDialog(entityType, id, href);
+        onOpenNode={(entityType, id, href) => {
+          void loadNodeDialog(entityType, id, href);
         }}
       />
     ) : null;
@@ -982,8 +982,8 @@ export default function DocoHome({
                       handle={handle}
                       placeholder={
                         totalNodes > 0
-                          ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
-                          : "Search neurons…"
+                          ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
+                          : "Search nodes…"
                       }
                       compact
                     />
@@ -1011,8 +1011,8 @@ export default function DocoHome({
                   <ApprovalPerspective
                     nodes={approvalData.nodes}
                     canChangeLifecycle={canAdminPerspectives}
-                    onOpenNeuron={(node) => {
-                      void loadNeuronDialog(node.entity_type, node.id, node.href);
+                    onOpenNode={(node) => {
+                      void loadNodeDialog(node.entity_type, node.id, node.href);
                     }}
                     onLifecycleTransition={handleApprovalLifecycleTransition}
                   />
@@ -1038,8 +1038,8 @@ export default function DocoHome({
                     initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onPaneClick={clearPerspectiveFocus}
-                    onNeuronClick={(node) => {
-                      void loadNeuronDialog("principal", node.id, node.href);
+                    onNodeClick={(node) => {
+                      void loadNodeDialog("principal", node.id, node.href);
                     }}
                   />
                 ) : effectivePerspectiveKind === "bpmn" && bpmnGraph ? (
@@ -1055,8 +1055,8 @@ export default function DocoHome({
                     initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onPaneClick={clearPerspectiveFocus}
-                    onNeuronClick={(node) => {
-                      void loadNeuronDialog(
+                    onNodeClick={(node) => {
+                      void loadNodeDialog(
                         node.entity_type,
                         node.id,
                         node.href ?? `/${handle}/${node.entity_type}/${node.id}`,
@@ -1064,7 +1064,7 @@ export default function DocoHome({
                     }}
                     onPoolClick={(pool) => {
                       if (!pool.intent_id) return;
-                      void loadNeuronDialog(
+                      void loadNodeDialog(
                         "intent",
                         pool.intent_id,
                         `/${handle}/intent/${pool.intent_id}`,
@@ -1072,7 +1072,7 @@ export default function DocoHome({
                     }}
                     onLaneClick={(lane) => {
                       if (lane.kind !== "actor" || !lane.base_id.startsWith("principal_")) return;
-                      void loadNeuronDialog(
+                      void loadNodeDialog(
                         "principal",
                         lane.base_id,
                         `/${handle}/principal/${lane.base_id}`,
@@ -1092,25 +1092,25 @@ export default function DocoHome({
                     initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onPaneClick={clearPerspectiveFocus}
-                    onNeuronClick={handleGraphNeuronClick}
+                    onNodeClick={handleGraphNodeClick}
                   />
                 )}
               </PerspectiveFrame>
-              {/* Fullscreen-only: render the neuron dialog inside the aside,
+              {/* Fullscreen-only: render the node dialog inside the aside,
                   anchored to the right of the canvas. Outside fullscreen, the
                   same dialog renders in the right column (further down). */}
-              {isPerspectiveFullscreen && neuronDialog ? (
+              {isPerspectiveFullscreen && nodeDialog ? (
                 <div className="absolute bottom-3 right-3 top-3 z-[100] w-[min(440px,40%)]">
-                  <NeuronDialog
-                    detail={neuronDialog.detail}
-                    loading={neuronDialog.loading}
-                    error={neuronDialog.error}
+                  <NodeDialog
+                    detail={nodeDialog.detail}
+                    loading={nodeDialog.loading}
+                    error={nodeDialog.error}
                     lifecycleUpdating={lifecycleUpdating}
                     lifecycleError={lifecycleError}
-                    onClose={closeNeuronDialog}
+                    onClose={closeNodeDialog}
                     onLifecycleChange={handleLifecycleChange}
-                    onOpenNeuron={(entityType, id, href) => {
-                      void loadNeuronDialog(entityType, id, href);
+                    onOpenNode={(entityType, id, href) => {
+                      void loadNodeDialog(entityType, id, href);
                     }}
                   />
                 </div>
@@ -1124,11 +1124,11 @@ export default function DocoHome({
               the browser width before this page gets laid out. */}
           <div className={`relative min-h-0 min-w-0 ${showSidePanel ? "block" : "hidden"}`}>
             <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
-              <NeuronsOverviewCard
+              <NodesOverviewCard
                 sections={sections}
                 empty={
                   <p className="text-xs italic text-muted-foreground">
-                    This Doco has no neurons yet.
+                    This Doco has no nodes yet.
                   </p>
                 }
                 aside={<TopContributorsList contributors={topContributors} />}
@@ -1150,7 +1150,7 @@ export default function DocoHome({
                 <CardContent className="p-0">
                   {items.length === 0 ? (
                     <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                      No recorded activity yet. Capture a neuron from the API or CLI; this feed
+                      No recorded activity yet. Capture a node from the API or CLI; this feed
                       records UI, CLI, and API writes.
                     </div>
                   ) : (
@@ -1166,21 +1166,21 @@ export default function DocoHome({
             {/* Wide content pane: dialog overlays the right column
                 while the user reads it. Narrow content pane: the fixed
                 wrapper below renders the same dialog over the canvas. */}
-            {neuronDialog && !isPerspectiveFullscreen ? (
-              <div className="absolute inset-0 z-[100]">{neuronDialogPanel}</div>
+            {nodeDialog && !isPerspectiveFullscreen ? (
+              <div className="absolute inset-0 z-[100]">{nodeDialogPanel}</div>
             ) : null}
           </div>
         </div>
         {/* Narrow content pane: floating dialog over the canvas. The
             Señor Doco rail's width is published as a CSS var by
             AgentSidebar so the dialog never covers it. */}
-        {neuronDialog && !isPerspectiveFullscreen ? (
+        {nodeDialog && !isPerspectiveFullscreen ? (
           <div
             className={`fixed bottom-4 right-3 top-20 z-[100] [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
               showSidePanel ? "hidden" : "block"
             }`}
           >
-            {neuronDialogPanel}
+            {nodeDialogPanel}
           </div>
         ) : null}
       </main>

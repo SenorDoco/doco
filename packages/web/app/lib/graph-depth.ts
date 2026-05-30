@@ -1,7 +1,7 @@
-// Per-node BFS depth from a focused neuron, plus an opacity ramp that
+// Per-node BFS depth from a focused node, plus an opacity ramp that
 // fades nodes further from the focus. Used by every graph perspective
 // (overview, BPMN, entity-detail) so the rule stays the same wherever
-// a focal neuron is shown:
+// a focal node is shown:
 //
 //   • focus                 → 100% opacity
 //   • 1 hop                 → 75%
@@ -11,7 +11,7 @@
 // Edges fade with whichever endpoint sits further from the focus.
 //
 // BFS is undirected — "first-degree neighbour" matches the social-graph
-// meaning, independent of synapse arrow direction (BPMN sequenceFlow
+// meaning, independent of edge arrow direction (BPMN sequenceFlow
 // shows arrows visually but a downstream step is just as related to a
 // focused upstream step as the other way around).
 
@@ -98,7 +98,7 @@ export function opacityForEdge(from: number | undefined, to: number | undefined)
 
 // Doubles the stroke weight of the focal node's incident edges to match
 // the focal node's doubled border, so the "lines coming in and out" of the
-// selected neuron read as part of the same emphasis.
+// selected node read as part of the same emphasis.
 const FOCAL_EDGE_WIDTH_MULTIPLIER = 2;
 
 /**
