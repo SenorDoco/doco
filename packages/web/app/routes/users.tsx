@@ -17,6 +17,7 @@ import {
   upsertDocoUser,
   upsertOrgUser,
 } from "@doco/db";
+import { normalizeWriteTypes } from "@doco/shared";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
@@ -47,6 +48,7 @@ type ActionResult =
       target_ids: string[];
       user_id: string;
       role: DocoRole;
+      write_types: string[];
     }
   | {
       intent: "remove";
@@ -119,9 +121,24 @@ export async function action({
     if (intent === "update") {
       const role = String(form.get("role") ?? "") as DocoRole;
       if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
+      // Optional per-type write set (decision_per_type_write_grants),
+      // comma-separated type tokens or "*". Absent → upsert defaults
+      // (wildcard for a writer, empty otherwise), preserving the old
+      // whole-Doco behavior for callers that don't send it.
+      const rawWriteTypes = form.get("write_types");
+      const write_types =
+        rawWriteTypes === null
+          ? undefined
+          : normalizeWriteTypes(
+              String(rawWriteTypes)
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+            );
       for (const targetId of targetIds) {
-        if (level === "org") await upsertOrgUser({ org_id: targetId, user_id: principalId, role });
-        else await upsertDocoUser({ doco_id: targetId, user_id: principalId, role });
+        if (level === "org")
+          await upsertOrgUser({ org_id: targetId, user_id: principalId, role, write_types });
+        else await upsertDocoUser({ doco_id: targetId, user_id: principalId, role, write_types });
       }
       return {
         intent: "update",
@@ -130,6 +147,7 @@ export async function action({
         target_ids: targetIds,
         user_id: principalId,
         role,
+        write_types: write_types ?? (role === "writer" ? ["*"] : []),
       };
     }
     for (const targetId of targetIds) {
