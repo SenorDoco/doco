@@ -131,7 +131,7 @@ NUDGE_BODY=$(printf '%s' "$FINAL_MATCHES" | jq -r --arg host "$DOCO_BASE_URL" --
 
 [ -z "$NUDGE_BODY" ] && exit 0
 
-NUDGE=$(printf '🔮 Doco PostToolUse — file just edited (%s) is referenced in an existing Decision\n\nThis edit touched **%s**. The following Decision(s) from this prompt'\''s search hits cite this path in their body (vector_score > 0.45):\n\n%s\n\n**Consider PATCHing one of these Decisions** instead of opening a sibling. If a high-vector_score hit already governs the change, PATCH it via the Doco MCP write tools or `PATCH https://doco.to/<handle>/api/decisions/<id>.json` rather than skipping the capture or creating a near-duplicate. Two overlapping neurons are strictly worse than one stale one.' \
+NUDGE=$(printf '🔮 Doco PostToolUse — file just edited (%s) is referenced in an existing Decision\n\nThis edit touched **%s**. The following Decision(s) from this prompt'\''s search hits cite this path in their body (vector_score > 0.45):\n\n%s\n\n**Consider PATCHing one of these Decisions** instead of opening a sibling. If a high-vector_score hit already governs the change, PATCH it via the Doco MCP write tools or `PATCH https://doco.to/<handle>/api/decisions/<id>.json` rather than skipping the capture or creating a near-duplicate. Two overlapping nodes are strictly worse than one stale one.' \
   "$RELPATH" "$RELPATH" "$NUDGE_BODY")
 
 # 7. Emit the JSON envelope.

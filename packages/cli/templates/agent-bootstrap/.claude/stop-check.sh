@@ -184,10 +184,10 @@ DOCO_WRITES="${DOCO_WRITES:-0}"
 ASSISTANT_FOOTERS="${ASSISTANT_FOOTERS:-0}"
 TOOL_FOOTERS="${TOOL_FOOTERS:-0}"
 
-# 3a. Doco wrote neurons, but the assistant didn't paste every returned
+# 3a. Doco wrote nodes, but the assistant didn't paste every returned
 #     footer line into user-facing text.
 if [ "$TOOL_FOOTERS" -gt "$ASSISTANT_FOOTERS" ] 2>/dev/null; then
-  NUDGE=$(printf '🔮 Doco Stop nudge — Doco write footer_lines not shown to user\n\nThis turn'\''s Doco write tool output contained %s footer line(s), but assistant text emitted %s. The closing tally is not a substitute for per-operation updates.\n\nBefore declaring done, paste every returned `footer_lines` entry verbatim, one per line, above the final tally. If multiple neurons were added or updated, the user should see one Doco operation line for each returned footer line.' \
+  NUDGE=$(printf '🔮 Doco Stop nudge — Doco write footer_lines not shown to user\n\nThis turn'\''s Doco write tool output contained %s footer line(s), but assistant text emitted %s. The closing tally is not a substitute for per-operation updates.\n\nBefore declaring done, paste every returned `footer_lines` entry verbatim, one per line, above the final tally. If multiple nodes were added or updated, the user should see one Doco operation line for each returned footer line.' \
     "$TOOL_FOOTERS" "$ASSISTANT_FOOTERS")
 
   jq -nc --arg c "$NUDGE" \
@@ -200,7 +200,7 @@ if [ "$EDITS" = "0" ] || [ "$DOCO_WRITES" != "0" ] || [ "$ASSISTANT_FOOTERS" != 
   exit 0
 fi
 
-NUDGE=$(printf '🔮 Doco Stop nudge — turn had edits but no captures\n\nThis turn made %s Edit/Write tool call(s) but no Doco write call was detected and no footer-line was emitted. Before declaring done:\n\n1. **Name the existing neuron you'\''re relying on.** If a Decision, Rule, or Action already covers what you changed, the capture obligation is satisfied — but say *which* neuron. "Too small for a Decision" is not naming a neuron.\n2. **If no neuron fits**, capture one now via the Doco MCP write tools or a direct POST to `https://doco.to/<handle>/api/<type>.json`. One short Decision beats a months-from-now archaeology dig through `git log`.\n3. The Stop hook reminded you. Suppress this nudge by either capturing or by stating the neuron name you'\''re relying on in your final summary.' \
+NUDGE=$(printf '🔮 Doco Stop nudge — turn had edits but no captures\n\nThis turn made %s Edit/Write tool call(s) but no Doco write call was detected and no footer-line was emitted. Before declaring done:\n\n1. **Name the existing node you'\''re relying on.** If a Decision, Rule, or Action already covers what you changed, the capture obligation is satisfied — but say *which* node. "Too small for a Decision" is not naming a node.\n2. **If no node fits**, capture one now via the Doco MCP write tools or a direct POST to `https://doco.to/<handle>/api/<type>.json`. One short Decision beats a months-from-now archaeology dig through `git log`.\n3. The Stop hook reminded you. Suppress this nudge by either capturing or by stating the node name you'\''re relying on in your final summary.' \
   "$EDITS")
 
 jq -nc --arg c "$NUDGE" \
