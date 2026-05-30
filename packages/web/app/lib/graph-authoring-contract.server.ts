@@ -148,6 +148,18 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     cardinality: "many",
     description: "Intent has a stakeholder Principal.",
   },
+  relates_to: {
+    kind: "relates_to",
+    // No node scalar projects this edge — it is authored only as a
+    // first-class edge via /api/edges.json, so `field` is a stable label
+    // that never appears on a node body (no owner enforcement fires).
+    field: "relates_to",
+    owner: "from",
+    value: "to",
+    cardinality: "many",
+    description:
+      "Associative 'see also' link between two peer nodes (the SKOS `related` analogue). No hierarchy or direction implied. Glossaries use it to connect related, confusable, parent/child, or homograph terms.",
+  },
 };
 
 export interface PerspectiveAuthoringContract {
@@ -212,8 +224,9 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
       "Each term entry is a Decision: `chosen` is the canonical headword, `question` the concept, and the prose the definition.",
       "Keep one concept per Decision; record aliases and deprecated wording in `alternatives`.",
       "Use Rules for terminology usage policies and References to cite authoritative sources.",
+      "Link related, confusable, or homograph terms with `relates_to`; point deprecated terms at their replacement with `superseded_by`.",
     ],
-    preferred_operations: ["create"],
+    preferred_operations: ["create", "relate"],
   },
 };
 
