@@ -55,7 +55,7 @@ doco install-agent-bootstrap                # drop AGENTS.md, MCP server, hooks
 Run `doco --help` for the full command list. The CLI carries just two commands —
 `login` (mint a token, write `.env` + `.doco/connections.md` + install bootstrap)
 and `install-agent-bootstrap` (drop the discovery files into an existing repo).
-Searching, capturing, and patching neurons all flow through the MCP server at
+Searching, capturing, and patching nodes all flow through the MCP server at
 `.agents/doco-mcp-server.mjs` (auto-discovered by Claude Code, Cursor, and
 Codex CLI) or the HTTP API at `https://doco.to/<handle>/api/`.
 
