@@ -582,3 +582,17 @@ button[class*="bg-primary"]:active {
   max-width: 14px;
   max-height: 14px;
 }
+
+/* Append-only version-history pane in the node detail drawer (doco-vnext). */
+.node-detail-drawer__history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.node-detail-drawer__history-empty { color: #888; padding: 12px; font-size: 13px; }
+.node-detail-drawer__history-entry { border-left: 3px solid #ddd; padding: 6px 10px; background: rgba(0,0,0,0.02); border-radius: 0 4px 4px 0; }
+.node-detail-drawer__history-entry.op-create { border-left-color: #3b82f6; }
+.node-detail-drawer__history-entry.op-update { border-left-color: #f59e0b; }
+.node-detail-drawer__history-entry.op-retire { border-left-color: #ef4444; }
+.node-detail-drawer__history-head { display: flex; align-items: baseline; gap: 8px; }
+.node-detail-drawer__history-op { font-weight: 600; text-transform: capitalize; font-size: 13px; }
+.node-detail-drawer__history-ver { color: #888; font-size: 12px; }
+.node-detail-drawer__history-when { margin-left: auto; color: #888; font-size: 12px; }
+.node-detail-drawer__history-who { color: #888; font-size: 12px; margin-top: 2px; }
+.node-detail-drawer__history-why { font-size: 13px; font-style: italic; margin-top: 2px; }
