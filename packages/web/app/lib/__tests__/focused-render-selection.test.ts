@@ -8,11 +8,11 @@ import {
 
 describe("focused render selection", () => {
   const nodes = [
-    { id: "a", lifecycle: "accepted", created_at: "2026-01-01T00:00:00Z" },
-    { id: "b", lifecycle: "accepted", created_at: "2026-01-02T00:00:00Z" },
+    { id: "a", lifecycle: "asserted", created_at: "2026-01-01T00:00:00Z" },
+    { id: "b", lifecycle: "asserted", created_at: "2026-01-02T00:00:00Z" },
     { id: "c", lifecycle: "drafting", created_at: "2026-01-03T00:00:00Z" },
-    { id: "d", lifecycle: "accepted", created_at: "2026-01-04T00:00:00Z" },
-    { id: "e", lifecycle: "accepted", created_at: "2026-01-05T00:00:00Z" },
+    { id: "d", lifecycle: "asserted", created_at: "2026-01-04T00:00:00Z" },
+    { id: "e", lifecycle: "asserted", created_at: "2026-01-05T00:00:00Z" },
   ];
   const ranks = new Map([
     ["a", 0.01],
@@ -38,10 +38,10 @@ describe("focused render selection", () => {
 
   it("fills the focused window by personalized PageRank from the focus", () => {
     const personalNodes = [
-      { id: "focus", lifecycle: "accepted", created_at: "2026-01-01T00:00:00Z" },
-      { id: "near", lifecycle: "accepted", created_at: "2026-01-02T00:00:00Z" },
-      { id: "far", lifecycle: "accepted", created_at: "2026-01-03T00:00:00Z" },
-      { id: "global", lifecycle: "accepted", created_at: "2026-01-04T00:00:00Z" },
+      { id: "focus", lifecycle: "asserted", created_at: "2026-01-01T00:00:00Z" },
+      { id: "near", lifecycle: "asserted", created_at: "2026-01-02T00:00:00Z" },
+      { id: "far", lifecycle: "asserted", created_at: "2026-01-03T00:00:00Z" },
+      { id: "global", lifecycle: "asserted", created_at: "2026-01-04T00:00:00Z" },
     ];
     const personalLinks = [
       { source: "focus", target: "near" },
@@ -61,10 +61,10 @@ describe("focused render selection", () => {
 
   it("reserves requested first-degree neighbors before filling by rank", () => {
     const quotaNodes = [
-      { id: "focus", lifecycle: "accepted", created_at: "2026-01-01T00:00:00Z" },
-      { id: "incoming", lifecycle: "accepted", created_at: "2026-01-02T00:00:00Z" },
-      { id: "outgoing", lifecycle: "accepted", created_at: "2026-01-03T00:00:00Z" },
-      { id: "second-degree", lifecycle: "accepted", created_at: "2026-01-04T00:00:00Z" },
+      { id: "focus", lifecycle: "asserted", created_at: "2026-01-01T00:00:00Z" },
+      { id: "incoming", lifecycle: "asserted", created_at: "2026-01-02T00:00:00Z" },
+      { id: "outgoing", lifecycle: "asserted", created_at: "2026-01-03T00:00:00Z" },
+      { id: "second-degree", lifecycle: "asserted", created_at: "2026-01-04T00:00:00Z" },
     ];
     const quotaLinks = [
       { source: "incoming", target: "focus" },
@@ -91,9 +91,9 @@ describe("focused render selection", () => {
 
   it("can reserve first-degree neighbors when the focus is not renderable", () => {
     const quotaNodes = [
-      { id: "pool-node-a", lifecycle: "accepted", created_at: "2026-01-01T00:00:00Z" },
-      { id: "pool-node-b", lifecycle: "accepted", created_at: "2026-01-02T00:00:00Z" },
-      { id: "outside", lifecycle: "accepted", created_at: "2026-01-03T00:00:00Z" },
+      { id: "pool-node-a", lifecycle: "asserted", created_at: "2026-01-01T00:00:00Z" },
+      { id: "pool-node-b", lifecycle: "asserted", created_at: "2026-01-02T00:00:00Z" },
+      { id: "outside", lifecycle: "asserted", created_at: "2026-01-03T00:00:00Z" },
     ];
     const quotaLinks = [
       { source: "intent-pool", target: "pool-node-a" },

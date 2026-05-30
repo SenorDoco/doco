@@ -1,8 +1,8 @@
 // /<doco-handle>/perspectives — the picker page reached from the "+"
 // tab. Lists every available perspective (builtin + user-created) and
-// lets owners/approvers attach the ones that aren't already attached.
+// lets owners and writers attach the ones that aren't already attached.
 //
-// Loader is read-gated, action is approver-gated. Form posts route to
+// Loader is read-gated, action is writer-gated. Form posts route to
 // the /api/perspectives.json action which already enforces the gate
 // and returns JSON.
 
@@ -111,7 +111,7 @@ export default function PerspectivesPicker({
             Visualization perspectives switch how the Doco's neurons and synapses render. Add any of
             the perspectives below to put a tab on this Doco's overview page.
             {!canAdmin ? (
-              <span className="ml-1 italic">Adding requires owner or approver access.</span>
+              <span className="ml-1 italic">Adding requires owner or writer access.</span>
             ) : null}
           </p>
         </div>

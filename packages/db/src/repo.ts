@@ -690,7 +690,7 @@ export async function listOrganizations(): Promise<OrganizationRow[]> {
 
 export async function listOrganizationsForUser(
   userId: string,
-  roles: string[] = ["owner", "approver", "author", "reader"],
+  roles: string[] = ["owner", "writer", "reader"],
 ): Promise<OrganizationRow[]> {
   return withClient(async (c) => {
     const r = await c.query(

@@ -74,7 +74,7 @@ describe("/<doco>/api/policies.json", () => {
   });
 
   it("requires owner scope before attempting to write a policy", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("author");
+    mocks.getDocoLevelRole.mockResolvedValue("writer");
 
     const response = await action({
       request: jsonRequest({

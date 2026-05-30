@@ -113,7 +113,7 @@ export async function loader({ request }: { request: Request }) {
   }
 
   const client = await getClient(row.client_id);
-  // Only owners can grant agent access (approvers/authors/readers
+  // Only owners can grant agent access (writers/readers
   // can't extend access). Filter the candidate Doco list to
   // owner-role only; the action re-checks on submit as a tamper
   // defense.

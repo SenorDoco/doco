@@ -179,8 +179,8 @@ function lifecycleOptions(input: {
     ? (input.current as LifecycleStage)
     : "asserted";
   const roleReason = input.role
-    ? `Approver or owner role required; your role is ${input.role}.`
-    : "Sign in with an approver or owner role to change lifecycle.";
+    ? `Write access required to change lifecycle; your role is ${input.role}.`
+    : "Sign in with write access to change lifecycle.";
   return LIFECYCLE_STAGES.map((stage) => {
     const isCurrent = stage === current;
     let reason: string | null = null;

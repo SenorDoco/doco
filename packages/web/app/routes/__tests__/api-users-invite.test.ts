@@ -67,22 +67,22 @@ describe("/api/v1/users/invite.json", () => {
       device_url: "https://doco.test/device",
       invite_expires_at: "2026-06-01T00:00:00Z",
       level: "doco",
-      role: "author",
+      role: "writer",
     });
     const response = await action({
-      request: jsonRequest({ level: "doco", target_id: "doco_acme", role: "author" }),
+      request: jsonRequest({ level: "doco", target_id: "doco_acme", role: "writer" }),
     } as never);
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.invite_url).toBe("https://doco.test/invite/abc");
     expect(body.level).toBe("doco");
-    expect(body.role).toBe("author");
+    expect(body.role).toBe("writer");
     expect(body.prompt).toContain("https://doco.test/invite/abc");
   });
 
   it("returns 403 when caller tries to grant above their own role", async () => {
     mocks.handleUserInviteAction.mockResolvedValue({
-      error: "Cannot mint a 'owner' invite -- you only hold 'author' on this target.",
+      error: "Cannot mint a 'owner' invite -- you only hold 'writer' on this target.",
     });
     const response = await action({
       request: jsonRequest({ level: "doco", target_id: "doco_acme" }),

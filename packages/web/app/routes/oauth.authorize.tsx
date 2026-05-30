@@ -179,7 +179,7 @@ export async function action({ request }: { request: Request }) {
   }
   // Defense against form tampering. Two checks per selected id:
   //   1. Principal must hold OWNER on this Doco — only owners can
-  //      grant agent access (approvers/authors/readers cannot).
+  //      grant agent access (writers/readers cannot).
   //   2. The per-Doco role on the form must be a valid DocoRole.
   //      Since owners hold all roles, the cap is always "owner";
   //      we still validate the value to reject garbage.

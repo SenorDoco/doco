@@ -63,46 +63,46 @@ describe("handleUserInviteAction", () => {
     mocks.issueInvite.mockResolvedValue({
       code: "invite_code",
       expires_at: "2026-06-01T00:00:00Z",
-      role: "author",
+      role: "writer",
     });
   });
 
   it("allows non-owner users to invite at their own role", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("author");
+    mocks.getDocoLevelRole.mockResolvedValue("writer");
 
     const result = await handleUserInviteAction(
       formRequest({
         intent: "invite",
         level: "doco",
         target_id: "doco_bpms",
-        role: "author",
+        role: "writer",
       }),
     );
 
     expect(result).toMatchObject({
       ok: true,
       invite_url: "https://doco.test/invite/invite_code",
-      role: "author",
+      role: "writer",
     });
-    expect(mocks.issueInvite).toHaveBeenCalledWith("doco_bpms", "user_alice", 3, "author", {
+    expect(mocks.issueInvite).toHaveBeenCalledWith("doco_bpms", "user_alice", 3, "writer", {
       level: "doco",
     });
   });
 
   it("caps user invites to the inviter's role", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("author");
+    mocks.getDocoLevelRole.mockResolvedValue("writer");
 
     const result = await handleUserInviteAction(
       formRequest({
         intent: "invite",
         level: "doco",
         target_id: "doco_bpms",
-        role: "approver",
+        role: "owner",
       }),
     );
 
     expect(result).toEqual({
-      error: "Cannot mint a 'approver' invite -- you only hold 'author' on this target.",
+      error: "Cannot mint a 'owner' invite -- you only hold 'writer' on this target.",
     });
     expect(mocks.issueInvite).not.toHaveBeenCalled();
   });
@@ -125,7 +125,7 @@ describe("handleUserInviteAction", () => {
   });
 
   it("mints org invites even when the org has no doco anchor yet", async () => {
-    mocks.getOrgRole.mockResolvedValue("author");
+    mocks.getOrgRole.mockResolvedValue("writer");
     mocks.withClient.mockImplementation(async (callback) =>
       callback({
         query: vi.fn().mockResolvedValue({
@@ -139,7 +139,7 @@ describe("handleUserInviteAction", () => {
         intent: "invite",
         level: "org",
         target_id: "organization_torre",
-        role: "author",
+        role: "writer",
       }),
     );
 
@@ -148,9 +148,9 @@ describe("handleUserInviteAction", () => {
       invite_url: "https://doco.test/invite/invite_code",
       doco_url: "https://doco.test/orgs/torre/",
       level: "org",
-      role: "author",
+      role: "writer",
     });
-    expect(mocks.issueInvite).toHaveBeenCalledWith(null, "user_alice", 3, "author", {
+    expect(mocks.issueInvite).toHaveBeenCalledWith(null, "user_alice", 3, "writer", {
       level: "org",
       org_id: "organization_torre",
     });

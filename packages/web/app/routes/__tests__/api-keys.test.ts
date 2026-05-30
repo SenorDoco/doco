@@ -154,7 +154,7 @@ describe("/api/v1/api-keys.json", () => {
 
   it("returns 403 when role exceeds caller's own", async () => {
     mocks.mintApiKey.mockRejectedValue(
-      new Error("Cannot grant 'owner' on a doco where you only hold 'author'."),
+      new Error("Cannot grant 'owner' on a doco where you only hold 'writer'."),
     );
     const response = await action({
       request: jsonRequest({

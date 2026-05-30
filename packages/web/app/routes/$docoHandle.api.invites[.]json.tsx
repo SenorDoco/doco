@@ -9,7 +9,7 @@
 //     invite_url:        "https://<host>/invite/<code>",
 //     invite_expires_at: "<ISO timestamp>",
 //     code:              "<64-hex>",
-//     role:              "owner|approver|author|reader",
+//     role:              "owner|writer|reader",
 //     doco_url:          "https://<host>/<handle>/",
 //     human_prompt:      "<verbatim text to share with a human user>",
 //     agent_prompt:      "<verbatim text to paste into an AI agent>"

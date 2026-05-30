@@ -64,7 +64,7 @@ describe("updateEntity", () => {
       entity_type: "state",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       body_md: "",
       data: {
         id: STATE_ID,
@@ -72,7 +72,7 @@ describe("updateEntity", () => {
         neuron_type: "state",
         state: "Original state name",
         kind: "intermediate",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -118,14 +118,14 @@ describe("updateEntity", () => {
       entity_type: "idea",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       body_md: "",
       data: {
         id: IDEA_ID,
         doco_id: DOCO_ID,
         neuron_type: "idea",
         idea: "Original idea name",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -165,7 +165,7 @@ describe("updateEntity", () => {
       entity_type: "decision",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       body_md: "",
       data: {
         id: DECISION_ID,
@@ -174,7 +174,7 @@ describe("updateEntity", () => {
         decision: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -211,7 +211,7 @@ describe("updateEntity", () => {
       entity_type: "decision",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       body_md: "",
       data: {
         id: DECISION_ID,
@@ -220,7 +220,7 @@ describe("updateEntity", () => {
         decision: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
         implemented_by: ["reference_01TEST000000000000000001"],
       },
     } as Awaited<ReturnType<typeof getEntity>>);
@@ -283,7 +283,7 @@ describe("updateEntity", () => {
     });
   });
 
-  it('coerces the deprecated lifecycle alias "active" to "accepted" on capture', async () => {
+  it('coerces the deprecated lifecycle alias "active" to "asserted" on capture', async () => {
     const result = await captureDecision(
       "/tmp/doco",
       DOCO_ID,
@@ -292,7 +292,7 @@ describe("updateEntity", () => {
       {
         decision: "Adopt the new vocabulary",
         question: "What lifecycle is stored?",
-        chosen: "accepted",
+        chosen: "asserted",
         lifecycle: "active",
         decided_by_principal_id: "principal_decider",
         created_by_user_id: "user_alice",
@@ -304,8 +304,8 @@ describe("updateEntity", () => {
     expect(upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         entity_type: "decision",
-        lifecycle: "accepted",
-        data: expect.objectContaining({ lifecycle: "accepted" }),
+        lifecycle: "asserted",
+        data: expect.objectContaining({ lifecycle: "asserted" }),
       }),
       expect.anything(),
     );
@@ -358,7 +358,7 @@ describe("updateEntity", () => {
       entity_type: "action",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       body_md: "",
       data: {
         id: ACTION_ID,
@@ -366,7 +366,7 @@ describe("updateEntity", () => {
         neuron_type: "action",
         action: "Selects type of job",
         verb: "select",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
         actor_id: "principal_clerk",
       },
     } as Awaited<ReturnType<typeof getEntity>>);

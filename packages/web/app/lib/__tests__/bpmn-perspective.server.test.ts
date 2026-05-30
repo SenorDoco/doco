@@ -62,8 +62,8 @@ describe("loadBpmnGraph", () => {
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
 
     const principalQuery = captured.find((q) => /FROM principals/i.test(q.sql));
-    expect(principalQuery?.sql).toMatch(/COALESCE\(lifecycle, 'accepted'\) <> 'retired'/);
-    expect(principalQuery?.sql).not.toMatch(/COALESCE\(lifecycle, 'accepted'\) = 'accepted'/);
+    expect(principalQuery?.sql).toMatch(/COALESCE\(lifecycle, 'asserted'\) <> 'retired'/);
+    expect(principalQuery?.sql).not.toMatch(/COALESCE\(lifecycle, 'asserted'\) = 'asserted'/);
 
     expect(graph.lanes).toContainEqual(
       expect.objectContaining({
@@ -113,7 +113,7 @@ describe("loadBpmnGraph", () => {
           id: stateId,
           entity_type: "state",
           summary: "Process started",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:02:00.000Z",
           data: {
             kind: "initial",
@@ -125,7 +125,7 @@ describe("loadBpmnGraph", () => {
           id: requestId,
           entity_type: "action",
           summary: "Requests to activate Torre Reach",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:03:00.000Z",
           data: {
             actor_id: "principal_talent",
@@ -137,7 +137,7 @@ describe("loadBpmnGraph", () => {
           id: presentId,
           entity_type: "action",
           summary: "Presents payment options",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:04:00.000Z",
           data: {
             actor_id: "principal_sud",
@@ -149,12 +149,12 @@ describe("loadBpmnGraph", () => {
         {
           id: "principal_sud",
           name: "SuD",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         },
         {
           id: "principal_talent",
           name: "Talent seeker",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         },
       ],
       users: [],
@@ -185,7 +185,7 @@ describe("loadBpmnGraph", () => {
           id: intentId,
           entity_type: "intent",
           summary: "Route yes/no process",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:00:00.000Z",
           data: {},
         },
@@ -193,7 +193,7 @@ describe("loadBpmnGraph", () => {
           id: decisionId,
           entity_type: "decision",
           summary: "Does the user qualify?",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:01:00.000Z",
           data: {
             decided_by: "principal_system",
@@ -204,7 +204,7 @@ describe("loadBpmnGraph", () => {
           id: yesId,
           entity_type: "action",
           summary: "Approve request",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:02:00.000Z",
           data: {
             actor_id: "principal_system",
@@ -215,7 +215,7 @@ describe("loadBpmnGraph", () => {
           id: noId,
           entity_type: "action",
           summary: "Reject request",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:03:00.000Z",
           data: {
             actor_id: "principal_system",
@@ -227,7 +227,7 @@ describe("loadBpmnGraph", () => {
         {
           id: "principal_system",
           name: "System",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         },
       ],
       users: [],
@@ -280,7 +280,7 @@ describe("loadBpmnGraph", () => {
           id: intentId,
           entity_type: "intent",
           summary: "Talent seeker pays to activate Torre Reach",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:00:00.000Z",
           data: {},
         },
@@ -288,7 +288,7 @@ describe("loadBpmnGraph", () => {
           id: decisionId,
           entity_type: "decision",
           summary: "Are credits enough for the first day?",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:07:00.000Z",
           data: {
             decided_by: "principal_system",
@@ -299,7 +299,7 @@ describe("loadBpmnGraph", () => {
           id: checkoutId,
           entity_type: "action",
           summary: "Talent seeker completes Stripe checkout for credits",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:15:00.000Z",
           data: {
             actor_id: "principal_talent",
@@ -311,12 +311,12 @@ describe("loadBpmnGraph", () => {
         {
           id: "principal_system",
           name: "System",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         },
         {
           id: "principal_talent",
           name: "Talent seeker",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         },
       ],
       users: [],
@@ -340,7 +340,7 @@ describe("loadBpmnGraph", () => {
           id: "intent_active",
           entity_type: "intent",
           summary: "Active process",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:00:00.000Z",
           data: {},
         },
@@ -356,7 +356,7 @@ describe("loadBpmnGraph", () => {
           id: "action_active",
           entity_type: "action",
           summary: "Active work",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-26T00:10:00.000Z",
           data: {
             actor_id: "principal_owner",
@@ -379,7 +379,7 @@ describe("loadBpmnGraph", () => {
         {
           id: "principal_owner",
           name: "Owner",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         },
       ],
       users: [],

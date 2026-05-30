@@ -73,7 +73,7 @@ describe("principal API", () => {
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
-    mocks.getDocoLevelRole.mockResolvedValue("author");
+    mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.runAuthoringPolicies.mockResolvedValue({
       evaluated: 0,
       passed: 0,
@@ -98,7 +98,7 @@ describe("principal API", () => {
     expect(mocks.loadDocoRouteForRead).toHaveBeenCalledWith(
       expect.any(Request),
       { docoHandle: "acme" },
-      "author",
+      "writer",
     );
     expect(mocks.getDocoLevelRole).toHaveBeenCalledWith(
       { ownerId: "organization_acme", docoId: "doco_acme" },
@@ -116,7 +116,7 @@ describe("principal API", () => {
           neuron_type: "principal",
           name: "Visitor",
           created_by: "user_author",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         }),
       }),
     );
@@ -144,7 +144,7 @@ describe("principal API", () => {
         after: expect.objectContaining({
           name: "Visitor",
           body_md: "Human site visitor — no Doco account required.",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         }),
       }),
     );
@@ -240,7 +240,7 @@ describe("principal API", () => {
     expect(response.status).toBe(403);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      error: "Forbidden: author role required to create a principal.",
+      error: "Forbidden: write access required to create a principal.",
     });
   });
 
