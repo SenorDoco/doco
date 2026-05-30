@@ -620,6 +620,80 @@ describe("slack.server", () => {
     );
   });
 
+  it("rewrites a bold-wrapped bare URL into a clean Slack link", async () => {
+    const createMessage = vi.fn().mockResolvedValueOnce({
+      content: [
+        {
+          type: "text",
+          text: "Here you go: **https://doco.com/torre/glossary**",
+        },
+      ],
+      stop_reason: "end_turn",
+    });
+
+    const answer = await generateSlackDocoLlmAnswer(
+      {
+        questionText: "What's the link to the glossary?",
+        overview: false,
+        repair: false,
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "reader",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+      {
+        createMessage: createMessage as never,
+      },
+    );
+
+    expect(answer).toBe("Here you go: <https://doco.com/torre/glossary>");
+  });
+
+  it("collapses CommonMark double-asterisk bold to Slack single-asterisk bold", async () => {
+    const createMessage = vi.fn().mockResolvedValueOnce({
+      content: [
+        {
+          type: "text",
+          text: "**Torrex** is a full-time member of the team.",
+        },
+      ],
+      stop_reason: "end_turn",
+    });
+
+    const answer = await generateSlackDocoLlmAnswer(
+      {
+        questionText: "What is a Torrex?",
+        overview: false,
+        repair: false,
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "reader",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+      {
+        createMessage: createMessage as never,
+      },
+    );
+
+    expect(answer).toBe("*Torrex* is a full-time member of the team.");
+  });
+
   it("preserves doco_api footer lines with Slack-renderable links", async () => {
     const createMessage = vi
       .fn()
