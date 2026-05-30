@@ -89,6 +89,17 @@ export async function action({
   // agent / vacant gate still fires (it's lifecycle-independent), but
   // the asserted-only reports_to warning holds off until the seat is
   // committed.
+  //
+  // EXCEPTION — business-processes. There, Principals are swim-lane
+  // actors that Actions reference via `actor_id`, and the actor-resolution
+  // policy only accepts non-retired/asserted Principals. Inheriting the
+  // template's `drafting` flow-node default would make a freshly-created
+  // lane actor fail `requires_field_resolves_to_principal` on the very
+  // next Action — breaking the create-principal → create-action happy
+  // path. Org-chart's draftable seats are about reporting lines, not
+  // actor resolution, so the inheritance only makes sense there. Default
+  // business-processes Principals to `asserted` unless the caller is
+  // explicit.
   const VALID_PRINCIPAL_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
   let lifecycle = "asserted";
   if (body.lifecycle !== undefined) {
@@ -101,8 +112,14 @@ export async function action({
     lifecycle = body.lifecycle;
   } else {
     const doco = await getDocoById(meta.docoId);
+    const templateHandle =
+      typeof doco?.data?.template_handle === "string" ? doco.data.template_handle : null;
     const dflt = doco?.default_node_lifecycle;
-    if (dflt && VALID_PRINCIPAL_LIFECYCLES.has(dflt)) lifecycle = dflt;
+    // Skip the drafting inheritance for business-processes (see above) —
+    // its lane actors must be resolvable the moment they're created.
+    if (templateHandle !== "business-processes" && dflt && VALID_PRINCIPAL_LIFECYCLES.has(dflt)) {
+      lifecycle = dflt;
+    }
   }
 
   // Validate a single manager id (primary reporting line).
