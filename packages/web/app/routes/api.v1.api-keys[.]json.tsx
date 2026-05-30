@@ -77,12 +77,22 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
-    const grants: Array<{ level: "org" | "doco"; target_id: string; role: DocoRole }> = [];
+    const grants: Array<{
+      level: "org" | "doco";
+      target_id: string;
+      role: DocoRole;
+      write_types?: string[];
+    }> = [];
     for (const raw of body.grants) {
       if (raw === null || typeof raw !== "object") {
         return Response.json({ error: "invalid_grant_entry" }, { status: 400 });
       }
-      const r = raw as { level?: unknown; target_id?: unknown; role?: unknown };
+      const r = raw as {
+        level?: unknown;
+        target_id?: unknown;
+        role?: unknown;
+        write_types?: unknown;
+      };
       const level = r.level === "org" || r.level === "doco" ? r.level : null;
       const target_id = typeof r.target_id === "string" ? r.target_id : null;
       const role = typeof r.role === "string" ? (r.role as DocoRole) : null;
@@ -95,7 +105,12 @@ export async function action({ request }: { request: Request }) {
           { status: 400 },
         );
       }
-      grants.push({ level, target_id, role });
+      // Optional per-type write scope (decision_per_type_write_grants):
+      // an array of neuron/synapse type tokens, or ["*"] for all.
+      const write_types = Array.isArray(r.write_types)
+        ? r.write_types.filter((t): t is string => typeof t === "string")
+        : undefined;
+      grants.push({ level, target_id, role, write_types });
     }
 
     const nonRotating = body.non_rotating === true;

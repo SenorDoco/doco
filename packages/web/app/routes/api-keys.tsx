@@ -70,18 +70,30 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     const rawGrants = String(form.get("grants") ?? "").trim();
     if (!rawGrants) return { error: "Pick at least one org or doco to scope this key to." };
 
-    // grants is a JSON-encoded array of { level, target_id, role }.
-    let grants: Array<{ level: "org" | "doco"; target_id: string; role: DocoRole }> = [];
+    // grants is a JSON-encoded array of { level, target_id, role,
+    // write_types? } — write_types narrows write to specific neuron/
+    // synapse types (decision_per_type_write_grants).
+    let grants: Array<{
+      level: "org" | "doco";
+      target_id: string;
+      role: DocoRole;
+      write_types?: string[];
+    }> = [];
     try {
       const parsed = JSON.parse(rawGrants);
       if (!Array.isArray(parsed)) throw new Error("grants must be an array");
-      grants = parsed.map((g: { level?: unknown; target_id?: unknown; role?: unknown }) => {
-        const level = g.level === "org" || g.level === "doco" ? g.level : null;
-        const target_id = typeof g.target_id === "string" ? g.target_id : "";
-        const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
-        if (!level || !target_id) throw new Error("invalid grant entry");
-        return { level, target_id, role };
-      });
+      grants = parsed.map(
+        (g: { level?: unknown; target_id?: unknown; role?: unknown; write_types?: unknown }) => {
+          const level = g.level === "org" || g.level === "doco" ? g.level : null;
+          const target_id = typeof g.target_id === "string" ? g.target_id : "";
+          const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
+          if (!level || !target_id) throw new Error("invalid grant entry");
+          const write_types = Array.isArray(g.write_types)
+            ? g.write_types.filter((t): t is string => typeof t === "string")
+            : undefined;
+          return { level, target_id, role, write_types };
+        },
+      );
     } catch (err) {
       return {
         error: err instanceof Error ? err.message : "Malformed grants list.",
