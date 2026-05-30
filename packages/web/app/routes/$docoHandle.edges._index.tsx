@@ -111,9 +111,8 @@ export default function EdgesIndex({
           <CardContent className="p-0">
             {edges.length === 0 ? (
               <p className="px-5 py-6 text-xs text-muted-foreground">
-                No edges yet. Edges materialize automatically when a node references another
-                node (e.g. a Decision's intent_ids). Patch a node's reference field and the
-                edge appears.
+                No edges yet. Edges materialize automatically when a node references another node
+                (e.g. a Decision's intent_ids). Patch a node's reference field and the edge appears.
               </p>
             ) : (
               <Table>
@@ -135,9 +134,7 @@ export default function EdgesIndex({
                         >
                           {e.from_summary ?? e.from_id}
                         </Link>
-                        <div className="text-[10px] text-muted-foreground">
-                          {e.from_node_type}
-                        </div>
+                        <div className="text-[10px] text-muted-foreground">{e.from_node_type}</div>
                       </TableCell>
                       <TableCell>
                         <code className="rounded bg-input px-1.5 py-0.5 font-mono text-[11px]">

@@ -108,8 +108,8 @@ export default function PerspectivesPicker({
             </Link>
           </div>
           <p className="text-sm text-muted-foreground">
-            Visualization perspectives switch how the Doco's nodes and edges render. Add any of
-            the perspectives below to put a tab on this Doco's overview page.
+            Visualization perspectives switch how the Doco's nodes and edges render. Add any of the
+            perspectives below to put a tab on this Doco's overview page.
             {!canAdmin ? (
               <span className="ml-1 italic">Adding requires owner or writer access.</span>
             ) : null}

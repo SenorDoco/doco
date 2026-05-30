@@ -281,10 +281,7 @@ function evaluatePredicate(p: LoadedPolicy, opts: EvaluateOpts): Violation | nul
           if (n[pred.incoming_field_must_match] !== id) return false;
           // Verify the edge exists: incoming.id --edge_type--> candidate.id
           return opts.edges.some(
-            (s) =>
-              s.from_id === n.id &&
-              s.to_id === candidate.id &&
-              s.edge_type === pred.edge_type,
+            (s) => s.from_id === n.id && s.to_id === candidate.id && s.edge_type === pred.edge_type,
           );
         });
         if (!covered) missing.push(id);

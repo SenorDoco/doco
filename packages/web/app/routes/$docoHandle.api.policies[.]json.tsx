@@ -130,8 +130,7 @@ export async function action({
     if (policyKind !== "guidance" && policyKind !== "node_authoring") {
       return Response.json(
         {
-          error:
-            'Body must include "policy_kind": "guidance" | "node_authoring" to disambiguate.',
+          error: 'Body must include "policy_kind": "guidance" | "node_authoring" to disambiguate.',
         },
         { status: 400 },
       );

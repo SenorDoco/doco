@@ -87,7 +87,9 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
       id: edge.id,
       path: `/api/edges/${edge.id}.json`,
       edge,
-      footer_lines: [`edge ${edge.id} created (${input.edgeType}: ${input.fromId} → ${input.toId})`],
+      footer_lines: [
+        `edge ${edge.id} created (${input.edgeType}: ${input.fromId} → ${input.toId})`,
+      ],
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -126,7 +128,12 @@ export async function retireEdgeRequest(input: {
   const existing = await getEdgeById(input.docoId, input.id);
   if (!existing) return { error: `edge not found: ${input.id}`, status: 404 };
   if (existing.lifecycle === "retired") {
-    return { ok: true, id: existing.id, edge: existing, footer_lines: [`edge ${existing.id} already retired`] };
+    return {
+      ok: true,
+      id: existing.id,
+      edge: existing,
+      footer_lines: [`edge ${existing.id} already retired`],
+    };
   }
   const edge = await withTransaction(async (c) => {
     const txId = await createChangeset(c, {

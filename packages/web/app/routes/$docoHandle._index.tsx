@@ -23,10 +23,7 @@ import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
 import { NodeTypeIcon } from "~/components/node-type-icon";
-import {
-  NodesOverviewCard,
-  type NodesOverviewSection,
-} from "~/components/nodes-overview-card";
+import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import {
   OverviewGraph,
   type OverviewGraphData,
@@ -464,8 +461,7 @@ export function meta({
   params: { docoHandle?: string; docoId?: string };
 }) {
   if (data?.selectedNode) {
-    const display =
-      data.selectedNode.name ?? data.selectedNode.summary ?? data.selectedNode.id;
+    const display = data.selectedNode.name ?? data.selectedNode.summary ?? data.selectedNode.id;
     return [{ title: `${display} · ${data.handle} · Doco` }];
   }
   return [{ title: `${params.docoHandle ?? params.docoId ?? ""} · Doco` }];

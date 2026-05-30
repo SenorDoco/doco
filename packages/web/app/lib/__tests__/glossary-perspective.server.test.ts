@@ -73,19 +73,37 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(entry.headword).toBe("Node");
     expect(entry.question).toBe("What is one unit of captured knowledge?");
     expect(entry.tag).toBe("n.");
-    expect(entry.alternatives).toEqual([
-      { name: "node", note: "too generic", deprecated: true },
-    ]);
+    expect(entry.alternatives).toEqual([{ name: "node", note: "too generic", deprecated: true }]);
   });
 
   it("alphabetizes mixed types into letter groups and tags non-term types honestly", async () => {
     const client = makeClient([
-      row({ id: "intent_01", entity_type: "intent", label: "Scope of this glossary", prose: "Scope of this glossary covers Torre product terms." }),
-      row({ id: "decision_01", entity_type: "decision", label: "Doco", prose: "Doco — institutional memory.", data: { chosen: "Doco" } }),
-      row({ id: "rule_01", entity_type: "rule", label: "Always capitalize Doco", prose: "Always capitalize Doco in UI copy." }),
+      row({
+        id: "intent_01",
+        entity_type: "intent",
+        label: "Scope of this glossary",
+        prose: "Scope of this glossary covers Torre product terms.",
+      }),
+      row({
+        id: "decision_01",
+        entity_type: "decision",
+        label: "Doco",
+        prose: "Doco — institutional memory.",
+        data: { chosen: "Doco" },
+      }),
+      row({
+        id: "rule_01",
+        entity_type: "rule",
+        label: "Always capitalize Doco",
+        prose: "Always capitalize Doco in UI copy.",
+      }),
     ]);
 
-    const { groups, letters } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+    const { groups, letters } = await loadGlossaryPerspectiveData(
+      client,
+      "doco_01",
+      "acme/glossary",
+    );
     expect(letters).toEqual(["A", "D", "S"]);
     const byType = Object.fromEntries(
       groups.flatMap((g) => g.entries).map((e) => [e.entityType, e.tag]),

@@ -284,8 +284,7 @@ function MetadataPane({
         </h3>
         {lifecycleHistory.length === 0 ? (
           <p className="mt-1 text-muted-foreground">
-            No lifecycle transitions recorded. The node remains at its initial stage since
-            creation.
+            No lifecycle transitions recorded. The node remains at its initial stage since creation.
           </p>
         ) : (
           <ol className="mt-2 space-y-1">

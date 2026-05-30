@@ -86,7 +86,13 @@ export async function action({ request, params }: { request: Request; params: Pa
     return Response.json({ error: result.error }, { status: result.status });
   }
   return Response.json(
-    { ok: true, id: result.id, path: result.path, edge: result.edge, footer_lines: result.footer_lines },
+    {
+      ok: true,
+      id: result.id,
+      path: result.path,
+      edge: result.edge,
+      footer_lines: result.footer_lines,
+    },
     { status: 201 },
   );
 }

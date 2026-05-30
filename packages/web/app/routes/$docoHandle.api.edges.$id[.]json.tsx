@@ -87,5 +87,10 @@ export async function action({ request, params }: { request: Request; params: Pa
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: result.status });
   }
-  return Response.json({ ok: true, id: result.id, edge: result.edge, footer_lines: result.footer_lines });
+  return Response.json({
+    ok: true,
+    id: result.id,
+    edge: result.edge,
+    footer_lines: result.footer_lines,
+  });
 }

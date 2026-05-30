@@ -101,14 +101,25 @@ async function main(): Promise<void> {
     check("edge carries provenance created_by", edge.created_by === userId);
 
     // --- Edge update (props mutation) ---
-    const tx2 = await createChangeset(c, { docoId, actor: userId, source: "api", reason: "annotate" });
+    const tx2 = await createChangeset(c, {
+      docoId,
+      actor: userId,
+      source: "api",
+      reason: "annotate",
+    });
     const updated = await updateEdge(c, tx2, {
       id: edge.id,
       props: { note: "ships in PR #634", verified: true },
       actor: userId,
     });
-    check("edge update kept endpoints immutable", updated.from_id === decisionId && updated.to_id === refId);
-    check("edge update changed props", (updated.props as Record<string, unknown>)?.verified === true);
+    check(
+      "edge update kept endpoints immutable",
+      updated.from_id === decisionId && updated.to_id === refId,
+    );
+    check(
+      "edge update changed props",
+      (updated.props as Record<string, unknown>)?.verified === true,
+    );
 
     // --- Live-unique: a second LIVE duplicate must be rejected ---
     let dupRejected = false;
@@ -131,7 +142,12 @@ async function main(): Promise<void> {
     check("duplicate LIVE edge rejected by live-unique index", dupRejected);
 
     // --- Retire (the only "delete") ---
-    const tx3 = await createChangeset(c, { docoId, actor: userId, source: "api", reason: "superseded" });
+    const tx3 = await createChangeset(c, {
+      docoId,
+      actor: userId,
+      source: "api",
+      reason: "superseded",
+    });
     const retired = await retireEdge(c, tx3, { id: edge.id, actor: userId });
     check("retire sets lifecycle=retired", retired.lifecycle === "retired");
     check("retire stamps retired_at", retired.retired_at !== null);
@@ -141,7 +157,12 @@ async function main(): Promise<void> {
     check("retired edge row still exists (nothing deleted)", stillThere.rowCount === 1);
 
     // --- After retire, the live slot is free: recreate succeeds ---
-    const tx4 = await createChangeset(c, { docoId, actor: userId, source: "api", reason: "re-link" });
+    const tx4 = await createChangeset(c, {
+      docoId,
+      actor: userId,
+      source: "api",
+      reason: "re-link",
+    });
     const recreated = await createEdge(c, tx4, {
       docoId,
       edgeType: "implemented_by",
@@ -161,7 +182,10 @@ async function main(): Promise<void> {
         edgeVersions.map((v) => v.op).join(",") === "create,update,retire",
     );
     const nodeVersions = await getVersions(c, "node", decisionId);
-    check("node has a version snapshot", nodeVersions.length === 1 && nodeVersions[0].op === "create");
+    check(
+      "node has a version snapshot",
+      nodeVersions.length === 1 && nodeVersions[0].op === "create",
+    );
 
     // --- Commit log: monotonic tx_ids carrying the "why" ---
     const cs = await c.query<{ tx_id: string; reason: string }>(
@@ -173,7 +197,10 @@ async function main(): Promise<void> {
       "tx_ids are monotonic",
       cs.rows.every((r, i) => i === 0 || Number(r.tx_id) > Number(cs.rows[i - 1].tx_id)),
     );
-    check("commit log carries the 'why'", cs.rows[1].reason === "link decision to the PR that ships it");
+    check(
+      "commit log carries the 'why'",
+      cs.rows[1].reason === "link decision to the PR that ships it",
+    );
 
     // --- Time-travel: as-of the edge's first commit shows the original props ---
     const asOfCreate = await entityAsOf(c, "edge", edge.id, tx1);

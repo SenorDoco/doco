@@ -212,9 +212,7 @@ export function ApprovalPerspective({
                       type="button"
                       onClick={() => void changeLifecycle(node, "asserted")}
                       disabled={disabled}
-                      title={
-                        canChangeLifecycle ? "Assert node" : "Write access required"
-                      }
+                      title={canChangeLifecycle ? "Assert node" : "Write access required"}
                       className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {pending === approveKey ? (
@@ -229,9 +227,7 @@ export function ApprovalPerspective({
                       onClick={() => void changeLifecycle(node, "drafting")}
                       disabled={disabled}
                       title={
-                        canChangeLifecycle
-                          ? "Reject back to drafting"
-                          : "Write access required"
+                        canChangeLifecycle ? "Reject back to drafting" : "Write access required"
                       }
                       className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                     >

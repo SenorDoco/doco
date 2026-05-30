@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { NODE_TYPES } from "../branded.js";
 import {
+  EDGE_TYPES,
+  WRITABLE_TYPES,
+  WRITE_ALL,
   canWriteAnything,
   canWriteType,
   isWritableType,
   normalizeWriteTypes,
-  EDGE_TYPES,
-  WRITABLE_TYPES,
-  WRITE_ALL,
 } from "../access-types.js";
+import { NODE_TYPES } from "../branded.js";
 
 describe("access-types", () => {
   it("WRITABLE_TYPES is the union of node and edge types, no dupes", () => {

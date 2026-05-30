@@ -913,8 +913,7 @@ export function formatSlackDocoAnswerResponse(
   return [
     intro,
     ...uniqueHits.map(
-      (hit) =>
-        `• ${capitalize(hit.nodeType)} in ${hit.docoLabel}: ${formatSlackDocoHitText(hit)}`,
+      (hit) => `• ${capitalize(hit.nodeType)} in ${hit.docoLabel}: ${formatSlackDocoHitText(hit)}`,
     ),
   ].join("\n");
 }

@@ -197,9 +197,7 @@ function lifecycleOptions(input: {
   });
 }
 
-export function isGraphNodeType(
-  type: string | undefined,
-): type is keyof typeof GRAPH_NODE_TABLES {
+export function isGraphNodeType(type: string | undefined): type is keyof typeof GRAPH_NODE_TABLES {
   return Boolean(type && GRAPH_NODE_TABLES[type]);
 }
 

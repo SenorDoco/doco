@@ -287,9 +287,8 @@ export async function loadSlaPerspectiveData(
     const title = firstLine(rule.rule);
     const ownerId =
       asString(data.owner_id) ??
-      outgoing
-        .get(rule.id)
-        ?.find((s) => s.edge_type === "owned_by" && principalsById.has(s.to_id))?.to_id ??
+      outgoing.get(rule.id)?.find((s) => s.edge_type === "owned_by" && principalsById.has(s.to_id))
+        ?.to_id ??
       (rule.created_by && principalsById.has(rule.created_by) ? rule.created_by : null);
     const ownerRow = ownerId ? principalsById.get(ownerId) : null;
     const owner = ownerRow ? linkFor(handle, "principal", ownerRow, ownerRow.name) : null;
@@ -315,8 +314,7 @@ export async function loadSlaPerspectiveData(
       incomingToRule
         .filter(
           (s) =>
-            (s.edge_type === "gated_by" || s.edge_type === "acts_on") &&
-            actionsById.has(s.from_id),
+            (s.edge_type === "gated_by" || s.edge_type === "acts_on") && actionsById.has(s.from_id),
         )
         .map((s) => s.from_id),
     );

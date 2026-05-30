@@ -11,8 +11,8 @@ import {
   upsertEmbeddings,
 } from "@doco/db";
 import type { LoadedDoco } from "@doco/shared";
-import { loadDocoFromPostgres } from "./loadDoco.js";
 import { deriveEdges } from "./edges.js";
+import { loadDocoFromPostgres } from "./loadDoco.js";
 
 export interface BuildReport {
   inserted: number;

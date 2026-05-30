@@ -75,7 +75,13 @@ export async function appendNodeVersion(
 /** Append an immutable snapshot of an edge to edge_versions. */
 export async function appendEdgeVersion(
   c: pg.PoolClient,
-  v: { entityId: string; op: Op; payload: Record<string, unknown>; txId: number; actor?: string | null },
+  v: {
+    entityId: string;
+    op: Op;
+    payload: Record<string, unknown>;
+    txId: number;
+    actor?: string | null;
+  },
 ): Promise<number> {
   const version = await nextVersion(c, "edge_versions", v.entityId);
   await c.query(

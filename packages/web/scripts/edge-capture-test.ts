@@ -83,9 +83,21 @@ async function main(): Promise<void> {
   check("duplicate live edge rejected (409)", "error" in dup && dup.status === 409);
 
   // --- validation ---
-  const badType = await captureEdge({ docoId, actorId: userId, edgeType: "nope", fromId: decisionId, toId: refId });
+  const badType = await captureEdge({
+    docoId,
+    actorId: userId,
+    edgeType: "nope",
+    fromId: decisionId,
+    toId: refId,
+  });
   check("unknown edge_type rejected (400)", "error" in badType && badType.status === 400);
-  const selfEdge = await captureEdge({ docoId, actorId: userId, edgeType: "serves", fromId: decisionId, toId: decisionId });
+  const selfEdge = await captureEdge({
+    docoId,
+    actorId: userId,
+    edgeType: "serves",
+    fromId: decisionId,
+    toId: decisionId,
+  });
   check("self-edge rejected (400)", "error" in selfEdge && selfEdge.status === 400);
   const missing = await captureEdge({
     docoId,
@@ -103,12 +115,20 @@ async function main(): Promise<void> {
   check("history has create version", versions.length === 1 && versions[0].op === "create");
 
   // --- retire ---
-  const retired = await retireEdgeRequest({ docoId, actorId: userId, id: edgeId, reason: "superseded" });
+  const retired = await retireEdgeRequest({
+    docoId,
+    actorId: userId,
+    id: edgeId,
+    reason: "superseded",
+  });
   check("retireEdgeRequest succeeds", "ok" in retired && retired.ok === true);
   const afterRetire = await getEdgeById(docoId, edgeId);
   check("edge lifecycle now retired (not deleted)", afterRetire?.lifecycle === "retired");
   versions = await withClient((c) => getVersions(c, "edge", edgeId));
-  check("history append-only (create,retire)", versions.map((v) => v.op).join(",") === "create,retire");
+  check(
+    "history append-only (create,retire)",
+    versions.map((v) => v.op).join(",") === "create,retire",
+  );
 
   // --- recreate after retire (live slot freed) ---
   const recreated = await captureEdge({

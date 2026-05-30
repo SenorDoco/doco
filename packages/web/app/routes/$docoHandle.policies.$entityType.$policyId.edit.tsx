@@ -33,8 +33,7 @@ interface ActionError {
 
 function parsePolicyType(raw: string | undefined): EntityType | null {
   if (raw === "guidance" || raw === "guidance_policy") return "guidance_policy";
-  if (raw === "node-authoring" || raw === "node_authoring_policy")
-    return "node_authoring_policy";
+  if (raw === "node-authoring" || raw === "node_authoring_policy") return "node_authoring_policy";
   return null;
 }
 

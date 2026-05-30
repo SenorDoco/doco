@@ -8,10 +8,7 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
-import {
-  type NodeAuthoringPolicyDraft,
-  captureNodeAuthoringPolicy,
-} from "~/lib/capture.server";
+import { type NodeAuthoringPolicyDraft, captureNodeAuthoringPolicy } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { derivePolicySummary } from "~/lib/policy-copy";
@@ -120,9 +117,9 @@ export default function NewNodeAuthoringPolicy({
           />
           <h1 className="text-2xl font-semibold">New node-authoring policy</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            An automatic check that runs every time someone adds a node to this doco. Write a
-            strict rule, or describe what an LLM judge should look for. Pick what happens on
-            failure: block the capture, warn, or just log.
+            An automatic check that runs every time someone adds a node to this doco. Write a strict
+            rule, or describe what an LLM judge should look for. Pick what happens on failure: block
+            the capture, warn, or just log.
           </p>
         </header>
         <Card>

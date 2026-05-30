@@ -71,18 +71,16 @@ describe("group-chat UX helpers", () => {
     expect(canInviteUserFromChat({ inviterRole: "writer", requestedRole: "reader" })).toEqual({
       ok: true,
     });
-    expect(
-      canInviteUserFromChat({ inviterRole: "writer", requestedRole: "owner" }),
-    ).toMatchObject({
+    expect(canInviteUserFromChat({ inviterRole: "writer", requestedRole: "owner" })).toMatchObject({
       ok: false,
       error: "Cannot invite at 'owner' because your access is 'writer'.",
     });
   });
 
   it("caps shared-default authorization at the requester's personal access", () => {
-    expect(
-      canSetChannelDefaultAccess({ personalRole: "writer", requestedRole: "reader" }),
-    ).toEqual({ ok: true });
+    expect(canSetChannelDefaultAccess({ personalRole: "writer", requestedRole: "reader" })).toEqual(
+      { ok: true },
+    );
     expect(
       canSetChannelDefaultAccess({ personalRole: "writer", requestedRole: "owner" }),
     ).toMatchObject({

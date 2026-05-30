@@ -289,10 +289,7 @@ export default [
   route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),
-  route(
-    ":docoHandle/graph-node-details.json",
-    "routes/$docoHandle.graph-node-details[.]json.tsx",
-  ),
+  route(":docoHandle/graph-node-details.json", "routes/$docoHandle.graph-node-details[.]json.tsx"),
   route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),

@@ -1013,9 +1013,7 @@ export function BpmnPerspective({
                   cursor: isClickablePool ? "pointer" : undefined,
                   pointerEvents: isClickablePool ? "auto" : undefined,
                 }}
-                onClick={
-                  isClickablePool && sourcePool ? () => openPoolNode(sourcePool) : undefined
-                }
+                onClick={isClickablePool && sourcePool ? () => openPoolNode(sourcePool) : undefined}
                 onKeyDown={
                   isClickablePool && sourcePool
                     ? (event) => {

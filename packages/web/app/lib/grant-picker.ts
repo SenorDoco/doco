@@ -7,10 +7,10 @@
 
 import type { DocoRole } from "@doco/db";
 import {
-  NODE_TYPES,
-  type NodeType,
   EDGE_TYPES,
   type EdgeType,
+  NODE_TYPES,
+  type NodeType,
   WRITE_ALL,
   type WritableType,
   normalizeWriteTypes,
@@ -117,7 +117,6 @@ export function describeWriteScope(role: DocoRole, writeTypes: string[]): string
 /** True when the type token is one the picker can offer. */
 export function isOfferableType(t: string): t is WritableType {
   return (
-    (NODE_TYPES as readonly string[]).includes(t) ||
-    (EDGE_TYPES as readonly string[]).includes(t)
+    (NODE_TYPES as readonly string[]).includes(t) || (EDGE_TYPES as readonly string[]).includes(t)
   );
 }
