@@ -283,7 +283,7 @@ describe("updateEntity", () => {
     });
   });
 
-  it('coerces the deprecated lifecycle alias "active" to "asserted" on capture', async () => {
+  it('rejects the retired lifecycle vocabulary ("active"/"proposed") on capture', async () => {
     const result = await captureDecision(
       "/tmp/doco",
       DOCO_ID,
@@ -300,15 +300,8 @@ describe("updateEntity", () => {
       "https://doco.test",
     );
 
-    expect(result).toMatchObject({ ok: true });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entity_type: "decision",
-        lifecycle: "asserted",
-        data: expect.objectContaining({ lifecycle: "asserted" }),
-      }),
-      expect.anything(),
-    );
+    expect(result).toMatchObject({ error: expect.stringContaining("Unknown lifecycle: active") });
+    expect(upsertEntity).not.toHaveBeenCalled();
   });
 
   it("ignores legacy created_by_principal_id patches", async () => {
