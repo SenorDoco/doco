@@ -2210,7 +2210,10 @@ export async function captureRule(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.rule?.trim()) return { error: "rule is required." };
-  if (!draft.predicate?.trim()) return { error: "predicate is required." };
+  if (typeof draft.predicate !== "string") {
+    return { error: "predicate must be a string (a prose or machine-checkable assertion)." };
+  }
+  if (!draft.predicate.trim()) return { error: "predicate is required." };
   // Author attribution is optional — same vestige as a Decision's
   // decided_by (see optionalPrincipalId). Templates that want it can
   // enforce authored_by via their own requires_field policies.
