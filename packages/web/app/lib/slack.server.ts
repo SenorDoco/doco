@@ -2091,16 +2091,27 @@ function cleanSlackLlmAnswer(
 }
 
 function cleanSlackLlmOutputText(text: string): string {
-  return text
-    .replace(/`{1,3}/g, "")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_match, label: string, url: string) =>
-      formatSlackLink(url, label),
-    )
-    .split("\n")
-    .map((line) => line.replace(/[ \t]+/g, " ").trim())
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return (
+    text
+      .replace(/`{1,3}/g, "")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_match, label: string, url: string) =>
+        formatSlackLink(url, label),
+      )
+      // A bare URL wrapped in asterisks renders broken in Slack: `**` is not mrkdwn
+      // bold, and Slack's auto-linker swallows the trailing asterisks into the URL
+      // (so the link points at `…/glossary**`). Emit an explicit Slack link instead.
+      .replace(
+        /\*{1,2}(?:<)?(https?:\/\/[^\s*<>|]+)(?:>)?\*{1,2}/g,
+        (_match, url: string) => `<${url}>`,
+      )
+      // Slack bold is single-asterisk; collapse CommonMark `**bold**` to `*bold*`.
+      .replace(/\*\*(.+?)\*\*/g, "*$1*")
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+/g, " ").trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 function extractSlackDocoFooterLines(toolResults: DocoApiToolResult[]): string[] {
