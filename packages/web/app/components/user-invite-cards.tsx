@@ -55,6 +55,9 @@ export function UserInviteCards({
   // invites and points owners at the API Tokens page for agents.
   return (
     <div className="space-y-4">
+      <h2 className="text-lg font-semibold" data-testid="invite-person-title">
+        Invite a person
+      </h2>
       <InviteHumanCard
         orgs={invite.orgs}
         docos={invite.docos}
