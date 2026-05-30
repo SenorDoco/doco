@@ -1,7 +1,7 @@
 // Factories for the per-type capture (POST) and update (PATCH/POST) routes.
 // Collapses ~13 near-identical handler files into one parameter set per route.
 
-import { getEntity, roleAtLeast } from "@doco/db";
+import { entityAsOf, getEntity, getVersions, roleAtLeast, withClient } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
@@ -206,6 +206,23 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       // returning 404 for "wrong doco" matches the agent-facing contract.
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
+      }
+      // Time-travel reads (doco-vnext): ?history=1 returns the full append-only
+      // version timeline; ?as_of=<tx_id> reconstructs the snapshot at/​before
+      // that commit. O(1) snapshot reads — never a replay.
+      const tt = new URL(request.url).searchParams;
+      if (tt.get("history")) {
+        const versions = await withClient((c) => getVersions(c, "node", id));
+        return Response.json({ id, entity_type: cfg.entityType, versions });
+      }
+      const asOf = tt.get("as_of");
+      if (asOf) {
+        const txId = Number(asOf);
+        if (!Number.isFinite(txId)) {
+          return Response.json({ error: "as_of must be a numeric tx_id." }, { status: 400 });
+        }
+        const snapshot = await withClient((c) => entityAsOf(c, "node", id, txId));
+        return Response.json({ id, as_of: txId, snapshot });
       }
       // Post-rename: the 9 migrated nodes expose their prose under
       // a single key matching the entity type (intent/decision/rule/...).
