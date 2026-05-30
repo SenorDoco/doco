@@ -26,6 +26,7 @@ import {
 } from "~/lib/doco-access.server";
 import { unsupportedRelationFieldError } from "~/lib/graph-authoring-contract.server";
 import { withIdempotency } from "~/lib/idempotency.server";
+import { NODE_TYPE_META } from "~/lib/node-types";
 import { recordCaptureTiming, withCaptureTelemetry } from "~/lib/telemetry.server";
 
 interface MeLike {
@@ -35,18 +36,11 @@ interface MeLike {
 
 // The type-named prose field each captureX function calls `.trim()` on.
 // Used by the factory to reject non-string values with a 400 instead of
-// letting `.trim()` throw a 500 deep in the capture function.
-const PROSE_FIELD: Readonly<Record<string, string>> = {
-  intent: "intent",
-  idea: "idea",
-  rule: "rule",
-  decision: "decision",
-  action: "action",
-  log: "log",
-  eval: "eval",
-  reference: "reference",
-  state: "state",
-};
+// letting `.trim()` throw a 500 deep in the capture function. Derived from
+// the shared per-type registry (`NODE_TYPE_META`).
+const PROSE_FIELD: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(NODE_TYPE_META).map(([type, meta]) => [type, meta.proseField]),
+);
 
 type RouteParams = DocoRouteParams;
 
