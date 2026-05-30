@@ -54,7 +54,7 @@ export const loginCmd = defineCommand({
     console.log(rule());
     console.log(c.dim(`Host:     ${normalizedHost}`));
     console.log(c.dim(`Machine:  ${hostname()} (${process.platform})`));
-    if (targetDocoHandle) console.log(c.dim(`Target:   ${targetDocoHandle} (author)`));
+    if (targetDocoHandle) console.log(c.dim(`Target:   ${targetDocoHandle} (writer)`));
     console.log();
 
     // 1. Register a public OAuth client, then start the device flow.
@@ -384,7 +384,7 @@ async function startDeviceAuthorization(
   });
   if (targetDocoHandle) {
     body.set("target_doco_handle", targetDocoHandle);
-    body.set("requested_role", "author");
+    body.set("requested_role", "writer");
   }
   const res = await fetch(`${normalizedHost}/oauth/device_authorization`, {
     method: "POST",

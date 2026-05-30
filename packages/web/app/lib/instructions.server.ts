@@ -167,12 +167,12 @@ the endpoint shapes are:
 
     GET   https://doco.to/<handle>/status.json              # counts + freshness
     GET   https://doco.to/<handle>/api/<type>.json          # list neurons
-    POST  https://doco.to/<handle>/api/<type>.json          # capture (needs author)
+    POST  https://doco.to/<handle>/api/<type>.json          # capture (needs write access)
     GET   https://doco.to/<handle>/api/<type>/<id>.json     # one neuron
-    PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
+    PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs write access)
     GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec for capture-capable types
     GET   https://doco.to/<handle>/api/policies.json      # list policies
-    POST  https://doco.to/<handle>/api/policies.json      # capture a policy (needs author)
+    POST  https://doco.to/<handle>/api/policies.json      # capture a policy (needs write access)
 
 Neuron types: decisions, ideas, rules, intents, actions, logs, evals,
 references, states, principals, invites, audit.

@@ -104,9 +104,9 @@ for backwards compat.
 
   GET  ${baseUrl}/<handle>/status.json              # counts + freshness
   GET  ${baseUrl}/<handle>/api/<type>.json          # list neurons of that type
-  POST ${baseUrl}/<handle>/api/<type>.json          # capture a new one (need 'author' role)
+  POST ${baseUrl}/<handle>/api/<type>.json          # capture a new one (need 'writer' role)
   GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one neuron
-  PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'author' role)
+  PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'writer' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for capture-capable body shapes
   GET  ${baseUrl}/<handle>/api/policies.json      # list policies (NOT neurons)
   POST ${baseUrl}/<handle>/api/policies.json      # capture a policy

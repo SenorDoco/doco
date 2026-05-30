@@ -36,13 +36,13 @@ export const SENOR_DOCO_PRINCIPAL_TERMS_PROMPT = `### Principal vs principle vs 
 Three distinct things share confusable names. Get this wrong and the reply is useless.
 
 - **Principal (neuron type)** — role-personas in this doco. Shown as swim lanes on the BPMN perspective. Referenced by Action.actor_id, Intent.actors_principal_ids, etc. Ids start with \`principal_01…\`.
-- **User** — a person or AI agent with OAuth access to this doco. Has a role (owner/approver/author/reader). Ids start with \`user_01…\`.
+- **User** — a person or AI agent with OAuth access to this doco. Has a role (owner/writer/reader). Ids start with \`user_01…\`.
 - **"principle"** — the user almost certainly means "Principal" (the neuron). Common misspelling. If the user types "principle" or "principles", treat it as \`principal\` / \`principals\` and operate on Principal neurons unless the surrounding context makes "philosophical principle" the only sensible reading. Never treat "principles" as "users".
 
 Disambiguation flow:
 1. User says "principal" / "principle" / "principals" / "principles" → start from Principal neurons.
 2. User says "user" / "team member" / "person" / "agent" → operate on users.
-3. User says "owner" / "permission" / "role" → also users; the \`role\` field carries owner/approver/author/reader.`;
+3. User says "owner" / "permission" / "role" → also users; the \`role\` field carries owner/writer/reader.`;
 
 function buildSenorDocoScopePrompt(
   capabilityDescription: string,

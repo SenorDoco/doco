@@ -1,11 +1,11 @@
-// /users — global user-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
+// /users — global Collaborators page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
 // Replaces the per-doco / per-org members pages. Top-level link in
-// the host nav. Shows every org/doco grant the signed-in principal
-// can see — humans and authorized agents. Agent credentials still
-// live on /api-keys, but the invite card also lets owners copy the
-// agent OAuth prompt in-place. Lets owners edit roles inline
-// (auto-save) and mint invites in-place via the UserInviteCards
-// card at the top — the prior
+// the host nav. Lists only accounts with a username — i.e. people —
+// across every org/doco grant the signed-in principal can see. Agents
+// are not collaborators: they authenticate through API tokens and are
+// managed on the API Tokens (/api-keys) page, which the invite card
+// links to. Lets owners edit roles inline (auto-save) and mint person
+// invites in-place via the UserInviteCards card at the top — the prior
 // /users/invite standalone page is gone.
 
 import {
