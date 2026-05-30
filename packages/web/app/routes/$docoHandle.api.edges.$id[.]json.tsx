@@ -6,7 +6,7 @@
 // Time-travel reads are O(1) snapshot lookups (doco-vnext): "how it was"
 // never replays a log.
 
-import { entityAsOf, getVersions, withClient } from "@doco/db";
+import { entityAsOf, getVersions, verifyHistory, withClient } from "@doco/db";
 import { canWriteDocoTypeForRequest, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getEdgeById, retireEdgeRequest } from "~/lib/edge-capture.server";
 
@@ -39,6 +39,12 @@ export async function loader({ request, params }: { request: Request; params: Pa
   if (url.searchParams.get("history")) {
     const versions = await withClient((c) => getVersions(c, "edge", id));
     return Response.json({ id, edge, versions });
+  }
+
+  // ?verify=1 — verify the Merkle hash chain (tamper-evidence).
+  if (url.searchParams.get("verify")) {
+    const result = await withClient((c) => verifyHistory(c, "edge", id));
+    return Response.json({ id, ...result });
   }
 
   return Response.json({ edge });
