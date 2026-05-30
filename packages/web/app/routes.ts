@@ -271,6 +271,12 @@ export default [
     "routes/$docoHandle.api.authoring-contract[.]json.tsx",
   ),
   route(":docoHandle/api/changesets.json", "routes/$docoHandle.api.changesets[.]json.tsx"),
+
+  // First-class edge authoring (doco-vnext): create/list + read(+history,
+  // ?as_of)/retire. Writes go through the append-only commit() boundary.
+  // Registered before the generic :type dispatcher so the static segment wins.
+  route(":docoHandle/api/edges.json", "routes/$docoHandle.api.edges[.]json.tsx"),
+  route(":docoHandle/api/edges/:id.json", "routes/$docoHandle.api.edges.$id[.]json.tsx"),
   // Policies are not nodes; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
