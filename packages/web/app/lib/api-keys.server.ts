@@ -19,6 +19,7 @@
 // /authorize endpoint rejects it as a callback target.
 
 import { type DocoRole, getOrgRole, listOrganizationsForUser, withClient } from "@doco/db";
+import { normalizeWriteTypes } from "@doco/shared";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { issueTokens, registerClient } from "~/lib/oauth-server.server";
@@ -292,6 +293,8 @@ export interface MintApiKeyInput {
     level: "org" | "doco";
     target_id: string;
     role: DocoRole;
+    /** Per-type write set (decision_per_type_write_grants); "*" = all. */
+    write_types?: string[];
   }>;
   // When the key is for a cloud dev environment, mint a non-rotating
   // refresh token so it survives as a pinned environment variable.
@@ -331,8 +334,10 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
 
   const granted_doco_ids: string[] = [];
   const granted_doco_roles: Record<string, string> = {};
+  const granted_doco_write_types: Record<string, string[]> = {};
   const granted_org_ids: string[] = [];
   const granted_org_roles: Record<string, string> = {};
+  const granted_org_write_types: Record<string, string[]> = {};
   const scopeGrants: ApiKeyScopeGrant[] = [];
 
   const docoLabels = await loadDocoLabels(
@@ -342,10 +347,24 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     input.grants.filter((g) => g.level === "org").map((g) => g.target_id),
   );
 
+  // Effective write-type scope for a grant: owner writes everything
+  // (no per-type entry needed); an explicit set is normalized; absent →
+  // wildcard for a writer, nothing for a reader (back-compat).
+  const writeTypesFor = (grant: { role: DocoRole; write_types?: string[] }): string[] | null => {
+    if (grant.role === "owner") return null;
+    if (grant.write_types !== undefined) {
+      const norm = normalizeWriteTypes(grant.write_types);
+      return norm.length > 0 ? norm : null;
+    }
+    return grant.role === "writer" ? ["*"] : null;
+  };
+
   for (const grant of input.grants) {
+    const wt = writeTypesFor(grant);
     if (grant.level === "org") {
       granted_org_ids.push(grant.target_id);
       granted_org_roles[grant.target_id] = grant.role;
+      if (wt) granted_org_write_types[grant.target_id] = wt;
       const handle = orgHandles.get(grant.target_id) ?? grant.target_id;
       scopeGrants.push({
         level: "org",
@@ -357,6 +376,7 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     } else {
       granted_doco_ids.push(grant.target_id);
       granted_doco_roles[grant.target_id] = grant.role;
+      if (wt) granted_doco_write_types[grant.target_id] = wt;
       const label = docoLabels.get(grant.target_id);
       const handle = label?.handle ?? grant.target_id;
       scopeGrants.push({
@@ -374,8 +394,10 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     user_id: input.me.id,
     granted_doco_ids,
     granted_doco_roles,
+    granted_doco_write_types,
     granted_org_ids,
     granted_org_roles,
+    granted_org_write_types,
     scope: null,
     non_rotating: input.non_rotating ?? false,
   });

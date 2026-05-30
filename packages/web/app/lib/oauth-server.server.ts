@@ -578,8 +578,12 @@ export interface IssueTokensInput {
   user_id: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
+  /** Per-type write scope-down keyed by doco_id (decision_per_type_write_grants). */
+  granted_doco_write_types?: Record<string, string[]>;
   granted_org_ids?: string[];
   granted_org_roles?: Record<string, string>;
+  /** Per-type write scope-down keyed by org_id. */
+  granted_org_write_types?: Record<string, string[]>;
   scope: string | null;
   // When true the refresh token does not rotate on use — /oauth/token
   // reissues only the access token and keeps this refresh token valid,
@@ -601,23 +605,28 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
   const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
   const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
   const rolesJson = JSON.stringify(input.granted_doco_roles ?? {});
+  const docoWriteTypesJson = JSON.stringify(input.granted_doco_write_types ?? {});
   const orgIds = input.granted_org_ids ?? [];
   const orgRolesJson = JSON.stringify(input.granted_org_roles ?? {});
+  const orgWriteTypesJson = JSON.stringify(input.granted_org_write_types ?? {});
   await withTransaction(async (c) => {
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, user_id, granted_doco_ids,
-          granted_doco_roles, granted_org_ids, granted_org_roles,
+          granted_doco_roles, granted_doco_write_types,
+          granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         access_token,
         input.client_id,
         input.user_id,
         input.granted_doco_ids,
         rolesJson,
+        docoWriteTypesJson,
         orgIds,
         orgRolesJson,
+        orgWriteTypesJson,
         input.scope,
         access_expires,
       ],
@@ -625,17 +634,20 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, user_id, granted_doco_ids,
-          granted_doco_roles, granted_org_ids, granted_org_roles,
+          granted_doco_roles, granted_doco_write_types,
+          granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at, non_rotating)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         refresh_token,
         input.client_id,
         input.user_id,
         input.granted_doco_ids,
         rolesJson,
+        docoWriteTypesJson,
         orgIds,
         orgRolesJson,
+        orgWriteTypesJson,
         input.scope,
         refresh_expires,
         input.non_rotating ?? false,
