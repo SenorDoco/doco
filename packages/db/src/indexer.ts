@@ -83,7 +83,12 @@ export async function rebuildDocoDerivedData(
   opts: RebuildOptions = {},
 ): Promise<{ ftsRows: number; edgeRows: number }> {
   const dedupedFts = dedupeFts(fts);
-  const dedupedEdges = dedupeEdges(edges);
+  // Edges are FIRST-CLASS (doco-vnext): authored via commit() + edge CRUD
+  // (see vnext.ts), each with its own id, lifecycle, provenance, and history.
+  // The indexer no longer derives, wipes, or owns them — doing so would delete
+  // authored edges and violate the append-only invariant. The `edges` arg is
+  // accepted for call-site compatibility and intentionally ignored.
+  void edges;
 
   // Split FTS rows by category — nodes vs policies.
   const nodeFts = dedupedFts.filter((r) => NODE_TYPES.has(r.entity_type));
@@ -91,11 +96,7 @@ export async function rebuildDocoDerivedData(
 
   return withTransaction(async (c) => {
     if (opts.onlyEntityIds && opts.onlyEntityIds.length > 0) {
-      // Incremental wipe.
-      await c.query("DELETE FROM edges WHERE doco_id = $1 AND from_id = ANY($2::text[])", [
-        docoId,
-        opts.onlyEntityIds,
-      ]);
+      // Incremental wipe (FTS only — edges are not derived).
       await c.query(
         "DELETE FROM entity_fts_nodes WHERE doco_id = $1 AND entity_id = ANY($2::text[])",
         [docoId, opts.onlyEntityIds],
@@ -105,7 +106,6 @@ export async function rebuildDocoDerivedData(
         [docoId, opts.onlyEntityIds],
       );
     } else {
-      await c.query("DELETE FROM edges WHERE doco_id = $1", [docoId]);
       await c.query("DELETE FROM entity_fts_nodes WHERE doco_id = $1", [docoId]);
       await c.query("DELETE FROM entity_fts_policies WHERE doco_id = $1", [docoId]);
     }
@@ -157,37 +157,7 @@ export async function rebuildDocoDerivedData(
       );
     }
 
-    if (dedupedEdges.length > 0) {
-      await c.query(
-        `INSERT INTO edges (
-            from_id, from_node_type, to_id, to_node_type, edge_type,
-            doco_id, edge_props_json
-         )
-         SELECT u.from_id, u.from_node_type, u.to_id, u.to_node_type,
-                u.edge_type, $1, u.props::jsonb
-         FROM unnest(
-                $2::text[], $3::text[], $4::text[], $5::text[],
-                $6::text[], $7::text[]
-              ) AS u(from_id, from_node_type, to_id, to_node_type,
-                     edge_type, props)
-         ON CONFLICT (from_id, to_id, edge_type) DO UPDATE SET
-            from_node_type   = EXCLUDED.from_node_type,
-            to_node_type     = EXCLUDED.to_node_type,
-            doco_id            = EXCLUDED.doco_id,
-            edge_props_json = EXCLUDED.edge_props_json`,
-        [
-          docoId,
-          dedupedEdges.map((e) => e.from_id),
-          dedupedEdges.map((e) => e.from_node_type),
-          dedupedEdges.map((e) => e.to_id),
-          dedupedEdges.map((e) => e.to_node_type),
-          dedupedEdges.map((e) => e.edge_type),
-          dedupedEdges.map((e) => (e.edge_props ? JSON.stringify(e.edge_props) : null)),
-        ],
-      );
-    }
-
-    return { ftsRows: dedupedFts.length, edgeRows: dedupedEdges.length };
+    return { ftsRows: dedupedFts.length, edgeRows: 0 };
   });
 }
 
@@ -198,11 +168,6 @@ function dedupeFts(rows: FtsRowInput[]): FtsRowInput[] {
   return [...map.values()];
 }
 
-function dedupeEdges(edges: EdgeRowInput[]): EdgeRowInput[] {
-  if (edges.length < 2) return edges;
-  const map = new Map<string, EdgeRowInput>();
-  for (const e of edges) {
-    map.set(`${e.from_id}|${e.to_id}|${e.edge_type}`, e);
-  }
-  return [...map.values()];
-}
+// dedupeEdges removed (doco-vnext): the indexer no longer derives edges.
+// EdgeRowInput is retained for call-site compatibility until callers stop
+// computing derived edges (tracked in docs/plans/doco-vnext.md, Phase 3).
