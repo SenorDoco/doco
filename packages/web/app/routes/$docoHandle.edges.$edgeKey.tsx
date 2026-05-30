@@ -1,16 +1,11 @@
-// Per-Doco edge detail at /<handle>/edges/<edge-key>.
+// Per-Doco edge detail at /<handle>/edges/<edge-id>.
 //
-// `edgeKey` encodes the composite PK as `<edge_type>__<from_id>__<to_id>`.
-// Underscore-double is rare in any of the prefixes — node ids are
-// `<type>_<ULID>`, edge_type is a single lowercase word with no double
-// underscore, and the type prefix never contains an underscore-pair
-// either — so the simple split-on-`__` is unambiguous.
-//
-// Renders the two connected nodes via EntityGraph (the same mini-graph
-// component the entity detail page uses) and surfaces the metadata a
-// edge carries: type and props blob if present.
+// First-class edges (doco-vnext): the URL segment is the edge's surrogate id
+// (edge_<ULID>). Renders the two connected nodes via EntityGraph, the edge's
+// metadata (type / lifecycle / provenance / props), and its append-only
+// version history (create / update / retire — who / when / why).
 
-import { withClient } from "@doco/db";
+import { getVersions, withClient } from "@doco/db";
 import { Link } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -21,12 +16,18 @@ import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface EdgeRow {
+  id: string;
   from_id: string;
   from_node_type: string;
   to_id: string;
   to_node_type: string;
   edge_type: string;
-  edge_props_json: Record<string, unknown> | null;
+  props: Record<string, unknown> | null;
+  lifecycle: string;
+  created_at: string | null;
+  created_by: string | null;
+  updated_at: string | null;
+  retired_at: string | null;
 }
 
 interface NodeLabel {
@@ -36,16 +37,6 @@ interface NodeLabel {
   created_at: string | null;
 }
 
-function parseEdgeKey(
-  edgeKey: string,
-): { edge_type: string; from_id: string; to_id: string } | null {
-  const parts = edgeKey.split("__");
-  if (parts.length !== 3) return null;
-  const [edge_type, from_id, to_id] = parts as [string, string, string];
-  if (!edge_type || !from_id || !to_id) return null;
-  return { edge_type, from_id, to_id };
-}
-
 export async function loader({
   params,
   request,
@@ -53,19 +44,17 @@ export async function loader({
   params: { docoHandle: string; edgeKey: string };
   request: Request;
 }) {
-  const parsed = parseEdgeKey(params.edgeKey);
-  if (!parsed) {
-    throw new Response(`Bad edge key: ${params.edgeKey}`, { status: 404 });
-  }
   const ctx = await loadDocoRouteForRead(request, params);
   const { handle, ownerSlug } = ctx;
+  const edgeId = params.edgeKey;
 
   return withClient(async (c) => {
     const edgeQuery = await c.query<EdgeRow>(
-      `SELECT from_id, from_node_type, to_id, to_node_type, edge_type, edge_props_json
+      `SELECT id, from_id, from_node_type, to_id, to_node_type, edge_type,
+              props, lifecycle, created_at, created_by, updated_at, retired_at
          FROM edges
-        WHERE doco_id = $1 AND edge_type = $2 AND from_id = $3 AND to_id = $4`,
-      [ctx.meta.docoId, parsed.edge_type, parsed.from_id, parsed.to_id],
+        WHERE doco_id = $1 AND id = $2`,
+      [ctx.meta.docoId, edgeId],
     );
     const edge = edgeQuery.rows[0];
     if (!edge) {
@@ -90,8 +79,10 @@ export async function loader({
       )
     ).rows;
     const byId = new Map(labelRows.map((r) => [r.id, r] as const));
+    const versions = await getVersions(c, "edge", edge.id);
     return {
       edge,
+      versions,
       from_label: byId.get(edge.from_id) ?? null,
       to_label: byId.get(edge.to_id) ?? null,
       handle,
@@ -112,7 +103,7 @@ export default function EdgeDetail({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { edge, from_label, to_label, handle, ownerSlug, me } = loaderData;
+  const { edge, versions, from_label, to_label, handle, ownerSlug, me } = loaderData;
 
   const nodes: GraphNode[] = [
     {
@@ -145,9 +136,8 @@ export default function EdgeDetail({
     },
   ];
 
-  const propsEntries: [string, unknown][] = edge.edge_props_json
-    ? Object.entries(edge.edge_props_json)
-    : [];
+  const propsEntries: [string, unknown][] = edge.props ? Object.entries(edge.props) : [];
+  const isRetired = edge.lifecycle === "retired";
 
   return (
     <div>
@@ -179,6 +169,13 @@ export default function EdgeDetail({
               {to_label?.summary ?? edge.to_id}
             </Link>
           </h1>
+          <span
+            className={`rounded px-2 py-0.5 text-xs font-medium ${
+              isRetired ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+            }`}
+          >
+            {edge.lifecycle}
+          </span>
         </header>
 
         <Card>
@@ -206,10 +203,16 @@ export default function EdgeDetail({
           </CardHeader>
           <CardContent className="p-0">
             <dl className="grid grid-cols-[160px_1fr] gap-x-4 gap-y-1 px-5 py-3 text-xs">
+              <dt className="text-muted-foreground">id</dt>
+              <dd>
+                <code className="font-mono text-[11px]">{edge.id}</code>
+              </dd>
               <dt className="text-muted-foreground">edge_type</dt>
               <dd>
                 <code className="font-mono">{edge.edge_type}</code>
               </dd>
+              <dt className="text-muted-foreground">lifecycle</dt>
+              <dd>{edge.lifecycle}</dd>
               <dt className="text-muted-foreground">from</dt>
               <dd>
                 <code className="font-mono text-[11px]">{edge.from_id}</code>{" "}
@@ -220,17 +223,61 @@ export default function EdgeDetail({
                 <code className="font-mono text-[11px]">{edge.to_id}</code>{" "}
                 <span className="text-muted-foreground">({edge.to_node_type})</span>
               </dd>
+              {edge.created_by ? (
+                <>
+                  <dt className="text-muted-foreground">created_by</dt>
+                  <dd>
+                    <code className="font-mono text-[11px]">{edge.created_by}</code>
+                  </dd>
+                </>
+              ) : null}
               {propsEntries.length > 0 ? (
                 <>
                   <dt className="text-muted-foreground">props</dt>
                   <dd>
                     <pre className="overflow-auto rounded bg-input px-2 py-1.5 font-mono text-[11px]">
-                      {JSON.stringify(edge.edge_props_json, null, 2)}
+                      {JSON.stringify(edge.props, null, 2)}
                     </pre>
                   </dd>
                 </>
               ) : null}
             </dl>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="px-5 py-3">
+            <CardTitle className="text-sm">History</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {versions.length === 0 ? (
+              <p className="px-5 py-3 text-xs text-muted-foreground">No recorded history.</p>
+            ) : (
+              <ol className="divide-y divide-border">
+                {[...versions].reverse().map((v) => (
+                  <li key={v.version} className="flex items-baseline gap-3 px-5 py-2 text-xs">
+                    <span
+                      className={`min-w-[56px] font-medium capitalize ${
+                        v.op === "retire"
+                          ? "text-destructive"
+                          : v.op === "create"
+                            ? "text-primary"
+                            : "text-foreground"
+                      }`}
+                    >
+                      {v.op}
+                    </span>
+                    <span className="text-muted-foreground">v{v.version}</span>
+                    {v.recorded_at ? (
+                      <span className="text-muted-foreground">
+                        {new Date(v.recorded_at).toLocaleString()}
+                      </span>
+                    ) : null}
+                    {v.reason ? <span className="italic">“{v.reason}”</span> : null}
+                  </li>
+                ))}
+              </ol>
+            )}
           </CardContent>
         </Card>
       </main>
