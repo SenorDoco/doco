@@ -315,8 +315,13 @@ export interface DecisionDraft {
   decision: string;
   /** Required: the question the Decision answers. */
   question: string;
-  /** Required: chosen resolution (multi-line ok). */
-  chosen: string;
+  /** Optional: chosen resolution (multi-line ok). Resolution-style
+   *  Decisions (ADRs, glossary terms) carry a `chosen`; BPMN gateway
+   *  Decisions route flow through `sequence_to` branches and have no
+   *  single chosen answer. Templates that need it re-require it via a
+   *  `requires_field` policy (e.g. glossaries). Matches the entity type,
+   *  where `chosen` is `string | null` (null while drafting). */
+  chosen?: string;
 
   /** Optional: rejected alternatives. */
   alternatives?: { name: string; rejected_because: string }[];
@@ -898,7 +903,10 @@ export async function captureDecision(
   const startedAt = performance.now();
   if (!draft.decision?.trim()) return { error: "decision is required." };
   if (!draft.question?.trim()) return { error: "question is required." };
-  if (!draft.chosen?.trim()) return { error: "chosen is required." };
+  // `chosen` is optional: a BPMN gateway Decision routes flow through its
+  // `sequence_to` branches and has no single chosen answer. Resolution-style
+  // Decisions still get `chosen` enforced by their template (glossaries' and
+  // any ADR-style requires_field policy).
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const sequenceTo = normalizeSequenceTo(draft.sequence_to);
@@ -927,7 +935,7 @@ export async function captureDecision(
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     question: draft.question.trim(),
-    chosen: draft.chosen.trim(),
+    ...(draft.chosen?.trim() ? { chosen: draft.chosen.trim() } : {}),
     ...(Array.isArray(draft.alternatives) && draft.alternatives.length > 0
       ? { alternatives: draft.alternatives }
       : {}),
