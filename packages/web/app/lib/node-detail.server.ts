@@ -1,6 +1,7 @@
 import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
+import { NODE_TYPE_META } from "~/lib/node-types";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -75,17 +76,12 @@ export interface NodeDialogDetail {
   lifecycle_history: NodeDialogLifecycleChange[];
 }
 
-const UPDATE_SEGMENTS: Record<string, string> = {
-  decision: "decisions",
-  intent: "intents",
-  action: "actions",
-  log: "logs",
-  rule: "rules",
-  eval: "evals",
-  reference: "references",
-  state: "states",
-  idea: "ideas",
-};
+// Plural URL segment per node type. Derived from the shared per-type
+// registry (`NODE_TYPE_META`); the `?? entityType` fallback below covers any
+// type not in the registry (e.g. principal, handled by its own literal entry).
+const UPDATE_SEGMENTS: Record<string, string> = Object.fromEntries(
+  Object.entries(NODE_TYPE_META).map(([type, meta]) => [type, meta.segment]),
+);
 
 type GraphNodeConfig = {
   table: string;

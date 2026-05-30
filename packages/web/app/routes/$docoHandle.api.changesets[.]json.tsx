@@ -285,14 +285,19 @@ async function createNode(
   if (!op.body || typeof op.body !== "object" || Array.isArray(op.body)) {
     return { op_index: index, op: "create", ok: false, error: "create.body must be an object." };
   }
-  const relationError = unsupportedRelationFieldError(
-    entry.entityType,
-    op.body as Record<string, unknown>,
-  );
+  // Resolve `$alias` refs in the body so the node is created WITH its
+  // own-field relations (serves/reports_to/actor/gated_by/sequence_to),
+  // letting an asserted node satisfy requires_edge atomically.
+  const resolvedBody = resolveAliasesInBody(op.body as Record<string, unknown>, aliases);
+  if ("error" in resolvedBody) {
+    return { op_index: index, op: "create", ok: false, error: resolvedBody.error };
+  }
+  const body = resolvedBody.body;
+  const relationError = unsupportedRelationFieldError(entry.entityType, body);
   if (relationError) {
     return { op_index: index, op: "create", ok: false, error: relationError };
   }
-  const draft = stampAuthenticatedCreator({ ...op.body }, ctx.actorId);
+  const draft = stampAuthenticatedCreator({ ...body }, ctx.actorId);
   if (entry.fillFromAuth) {
     await entry.fillFromAuth(draft, ctx.me, ctx.docoId);
   }
@@ -305,7 +310,13 @@ async function createNode(
     ctx.docoHost,
   );
   if ("error" in result) {
-    return { op_index: index, op: "create", ok: false, error: result.error };
+    // Pave the draft-first path: if an asserted node blocked on a missing
+    // required edge, point the author at the two ways to fix it.
+    const hint =
+      /missing required/i.test(result.error) && /edge|field/i.test(result.error)
+        ? ' (tip: pass the relationship inline on this create op — set the owning field, e.g. "intent_ids"/"reports_to"/"actor_principal_id", to "$alias" — or create the node as "drafting", add the edge, then assert.)'
+        : "";
+    return { op_index: index, op: "create", ok: false, error: `${result.error}${hint}` };
   }
   if (op.alias) aliases.set(cleanAlias(op.alias), result.id);
   return {
@@ -656,6 +667,61 @@ function resolveRef(value: unknown, aliases: Map<string, string>): string | null
   const trimmed = value.trim();
   if (trimmed.startsWith("$")) return aliases.get(cleanAlias(trimmed)) ?? null;
   return aliases.get(cleanAlias(trimmed)) ?? trimmed;
+}
+
+/**
+ * Resolve `$alias` references inside a create body so a node can be born
+ * WITH the relations stored on its own fields — `intent_ids` (serves),
+ * `reports_to`, `actor_principal_id`, `gated_by`, `sequence_to`, etc.
+ *
+ * Without this, the only way to satisfy a `requires_edge` policy was to
+ * create the node `drafting`, add the edge in a later `relate` op, then
+ * assert — because a `create` is policy-checked the instant it runs, before
+ * any later op. Setting `lifecycle:"asserted"` up front then failed with a
+ * confusing "missing required edge". Resolving aliases here makes
+ * "create an asserted node + its constitutive edges" a single atomic op,
+ * which matters for every relational thing Doco documents (org charts,
+ * OKRs, traceability, dependencies — not just BPMN flows).
+ *
+ * Only a string whose ENTIRE trimmed value is a `$`-prefixed token is
+ * treated as a reference (so prose like "Charge $5" is untouched). Walks
+ * arrays and nested objects (e.g. `sequence_to: [{ target: "$next" }]`).
+ * An unknown `$alias` is a hard error — it almost always means a typo or a
+ * forward reference to an op that hasn't run yet.
+ */
+function resolveAliasesInBody(
+  body: Record<string, unknown>,
+  aliases: Map<string, string>,
+): { body: Record<string, unknown> } | { error: string } {
+  const unresolved = new Set<string>();
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (t.startsWith("$")) {
+        const id = aliases.get(cleanAlias(t));
+        if (!id) {
+          unresolved.add(t);
+          return v;
+        }
+        return id;
+      }
+      return v;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  const resolved = walk(body) as Record<string, unknown>;
+  if (unresolved.size > 0) {
+    return {
+      error: `create.body references unknown alias(es): ${[...unresolved].join(", ")}. Define each with an earlier create op (its \`alias\`) before referencing it.`,
+    };
+  }
+  return { body: resolved };
 }
 
 function cleanAlias(alias: string): string {

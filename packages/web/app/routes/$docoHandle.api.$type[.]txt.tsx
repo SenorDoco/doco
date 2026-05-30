@@ -60,7 +60,10 @@ BODY (JSON)
                                   chosen path, why, multi-line ok.
   question           required   the question the Decision answers
   chosen             required   chosen resolution (multi-line ok)
-  alternatives       required   non-empty [{ "name": "...", "rejected_because": "..." }, ...]
+  alternatives       optional   [{ "name": "...", "rejected_because": "..." }, ...] — the
+                                  options weighed and rejected. Omit it when there are none
+                                  (e.g. a glossary term entry with no alternate names); do
+                                  not invent filler to satisfy a non-existent requirement.
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
   sequence_to        optional   BPMN forward flow targets: ["action_01..."] or
                                   [{ "target": "action_01...", "label": "Yes" }]
