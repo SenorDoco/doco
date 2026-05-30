@@ -3,6 +3,7 @@ import {
   type PoolClient,
   getDocoById,
   getEntity,
+  recordEntityVersion,
   upsertEntity,
   withClient,
   withTransaction,
@@ -218,6 +219,22 @@ async function persistEntity(args: {
       },
       args.client,
     );
+    // Append-only history (doco-vnext): record an immutable version snapshot +
+    // changeset for this write — atomic with the projection when a tx client is
+    // provided. op (create/update/retire) is derived inside recordEntityVersion.
+    const versionActor =
+      (typeof fm.updated_by === "string" && fm.updated_by) ||
+      (typeof fm.created_by === "string" ? fm.created_by : null);
+    const recordVersion = (c: PoolClient) =>
+      recordEntityVersion(c, {
+        docoId: args.docoId,
+        entityType: args.entityType,
+        entityId: args.id,
+        payload: fm,
+        actor: versionActor,
+      });
+    if (args.client) await recordVersion(args.client);
+    else await withClient(recordVersion);
   } catch (err) {
     console.error(`postgres persist failed for ${args.entityType}/${args.id}:`, err);
     throw err;
