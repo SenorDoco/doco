@@ -14,6 +14,7 @@ import { type PoolClient, withClient } from "@doco/db";
 import { NODE_TABLES } from "@doco/db";
 import { deriveEdges } from "@doco/index";
 import {
+  type AuthoringPredicate,
   type CandidateFields,
   type EngineEdge,
   type Lifecycle,
@@ -25,6 +26,25 @@ import {
 } from "@doco/shared";
 import type { Entity } from "@doco/shared";
 import { judgeProbabilisticPredicate } from "./llm-judge.server";
+
+/**
+ * Predicate kinds that assert a lifecycle-independent invariant — they
+ * describe what may exist in the Doco at all, not what an *active* node
+ * must look like. These keep firing even on terminal (retired)
+ * candidates: a Doco's declared type/membership scope ("only these
+ * node types belong here", "this node must not carry X") must hold
+ * regardless of lifecycle, otherwise a node captured terminal-by-default
+ * (e.g. an Action, which defaults to `retired`) could slip past a
+ * template's entity-type allowlist. Every other kind is a
+ * shape/completeness gate ("an active node of this kind must have field
+ * X / edge Y") and is skipped on the way out — see `runAuthoringPolicies`.
+ */
+const LIFECYCLE_INDEPENDENT_KINDS: ReadonlySet<AuthoringPredicate["kind"]> = new Set([
+  "requires_entity_type",
+  "requires_node_type",
+  "forbids_edge",
+  "forbids_field",
+]);
 
 export interface AuthoringResult {
   /** Number of loaded policies that applied to this candidate. */
@@ -68,16 +88,18 @@ export async function runAuthoringPolicies(opts: {
     warnings: [],
   });
 
-  // Skip enforcement when the candidate is in a terminal lifecycle.
+  // Terminal (retired) candidates skip *content-quality* enforcement.
   // Retire is a winding-down operation: the content was valid when it
-  // was active, and gating the transition behind content-quality rules
-  // would block authors from ever closing out stale nodes. The
-  // structural-validity story is "you can't get here without having
-  // passed validation already" — re-validating on the way out adds no
-  // safety and a lot of friction.
-  if (opts.candidate.lifecycle === "retired") {
-    return emptyResult();
-  }
+  // was active, and gating the transition behind shape/completeness
+  // rules would block authors from ever closing out stale nodes — the
+  // node already passed those checks on the way in. But type/membership
+  // invariants are lifecycle-independent: a Doco's declared scope ("only
+  // these node types belong here") must hold even for a node recorded as
+  // already retired. Without this, a node that defaults to a terminal
+  // lifecycle (Actions/Logs default `retired`) would slip past a
+  // template's entity-type allowlist entirely. So on terminal candidates
+  // we keep only the LIFECYCLE_INDEPENDENT_KINDS gates and drop the rest.
+  const terminal = opts.candidate.lifecycle === "retired";
 
   const candidateEdges = deriveEdges(opts.candidate as unknown as Entity).map(
     (s): EngineEdge => ({
@@ -92,7 +114,12 @@ export async function runAuthoringPolicies(opts: {
     if (policies.length === 0) {
       return emptyResult();
     }
-    const applicablePolicies = policies.filter((p) => policyFiresFor(p, opts.candidate));
+    let applicablePolicies = policies.filter((p) => policyFiresFor(p, opts.candidate));
+    if (terminal) {
+      applicablePolicies = applicablePolicies.filter((p) =>
+        LIFECYCLE_INDEPENDENT_KINDS.has(p.predicate.kind),
+      );
+    }
     const evaluated = applicablePolicies.length;
     if (evaluated === 0) {
       return emptyResult();
