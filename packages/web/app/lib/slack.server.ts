@@ -1745,7 +1745,7 @@ async function readSlackDocoApiAuthoringContract(
   doco: SlackAccessibleDoco,
 ): Promise<Record<string, unknown>> {
   const attached = await listPerspectivesForDoco(doco.id);
-  const canAuthor = slackRoleRank(doco.role) >= slackRoleRank("author");
+  const canWrite = slackRoleRank(doco.role) >= slackRoleRank("writer");
   return {
     ok: true,
     doco_id: doco.id,
@@ -1758,8 +1758,8 @@ async function readSlackDocoApiAuthoringContract(
     relation_kinds: relationKindList(),
     perspective_contracts: contractForAttachedPerspectives(attached),
     changeset_endpoint: `/${doco.handle}/api/changesets.json`,
-    slack_write_capability: canAuthor
-      ? "This Slack user appears to have author-or-higher personal access for this Doco. POST/PATCH/DELETE doco_api calls will still be checked against that linked user's real Doco role."
+    slack_write_capability: canWrite
+      ? "This Slack user appears to have writer-or-higher personal access for this Doco. POST/PATCH/DELETE doco_api calls will still be checked against that linked user's real Doco role."
       : "Slack exposes this contract for planning. POST/PATCH/DELETE doco_api calls require the Slack user to run /doco connect and have the needed Doco role.",
   };
 }

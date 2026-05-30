@@ -46,7 +46,7 @@ export async function action({ request }: { request: Request }) {
 
   const level = body.level === "org" || body.level === "doco" ? body.level : null;
   const target_id = typeof body.target_id === "string" ? body.target_id.trim() : "";
-  const role = typeof body.role === "string" ? body.role : "author";
+  const role = typeof body.role === "string" ? body.role : "writer";
   if (!level) {
     return Response.json(
       { error: "level_required", hint: "Pass level: 'org' or 'doco'." },
