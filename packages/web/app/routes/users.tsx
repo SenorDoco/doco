@@ -472,49 +472,87 @@ function UserRow({
   // human-readable name (agents otherwise show their raw user id).
   const canRename = row.level === "org" && row.principal.kind === "agent" && row.canEditAny;
 
+  // Master-detail: the row lists the collaborator and a summary; the
+  // per-grant access controls are hidden behind a "View access" toggle so
+  // the list isn't a wall of inline permissions.
+  const [open, setOpen] = useState(false);
+  const grantCount = row.grants.length;
+  const accessSummary =
+    grantCount === 1
+      ? `${describeRole(row.grants[0]?.role)} on ${row.grants[0]?.target_label}`
+      : `${grantCount} ${row.level === "org" ? "org" : "doco"} grant${grantCount === 1 ? "" : "s"}`;
+
   return (
-    <tr data-testid={`row-${row.level}-${username}`}>
-      <td className="py-3 pr-3 align-top">
-        <div className="flex items-center gap-1.5">
-          {canRename ? (
-            <RenameAgentName principalId={row.principal.user_id} username={username} />
-          ) : (
-            <span className="truncate font-medium" title={username}>
-              {username}
-            </span>
-          )}
-          {isMe ? (
-            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              you
-            </span>
-          ) : null}
-          {row.principal.kind === "agent" ? (
-            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              agent
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={metaTooltip}>
-          {metaParts.join(" · ")}
-        </div>
-      </td>
-      <td className="py-3 align-top">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Access to</div>
-        <div className="mt-1 flex flex-col gap-1.5">
-          {row.grants.map((g) => (
-            <AccessLine
-              key={g.target_id}
-              level={row.level}
-              principalId={row.principal.user_id}
-              username={username}
-              grant={g}
-              isMe={isMe}
-            />
-          ))}
-        </div>
-      </td>
-    </tr>
+    <>
+      <tr data-testid={`row-${row.level}-${username}`}>
+        <td className="py-3 pr-3 align-top">
+          <div className="flex items-center gap-1.5">
+            {canRename ? (
+              <RenameAgentName principalId={row.principal.user_id} username={username} />
+            ) : (
+              <span className="truncate font-medium" title={username}>
+                {username}
+              </span>
+            )}
+            {isMe ? (
+              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                you
+              </span>
+            ) : null}
+            {row.principal.kind === "agent" ? (
+              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                agent
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground" title={metaTooltip}>
+            {metaParts.join(" · ")}
+          </div>
+        </td>
+        <td className="py-3 align-top">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">{accessSummary}</span>
+            <button
+              type="button"
+              data-testid={`view-access-${row.level}-${username}`}
+              onClick={() => setOpen((v) => !v)}
+              className="shrink-0 text-sm font-semibold text-primary underline-offset-4 hover:underline"
+              aria-expanded={open}
+            >
+              {open ? "Hide access" : "View access"}
+            </button>
+          </div>
+        </td>
+      </tr>
+      {open ? (
+        <tr data-testid={`row-detail-${row.level}-${username}`}>
+          <td colSpan={2} className="pb-4 pl-3">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Access details
+            </div>
+            <div className="mt-1 flex flex-col gap-1.5">
+              {row.grants.map((g) => (
+                <AccessLine
+                  key={g.target_id}
+                  level={row.level}
+                  principalId={row.principal.user_id}
+                  username={username}
+                  grant={g}
+                  isMe={isMe}
+                />
+              ))}
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
+}
+
+function describeRole(role: DocoRole | undefined): string {
+  if (role === "owner") return "Owner";
+  if (role === "writer") return "Writer";
+  return "Reader";
 }
 
 function RenameAgentName({
