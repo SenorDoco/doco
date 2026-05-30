@@ -7,7 +7,11 @@ import {
 } from "../org-tree-layout";
 import type { OrgTreeNode } from "../org-tree-perspective.server";
 
-function principal(id: string, reportsTo: string | null = null): OrgTreeNode {
+function principal(
+  id: string,
+  reportsTo: string | null = null,
+  dottedReportsTo: string[] = [],
+): OrgTreeNode {
   return {
     id,
     name: id,
@@ -15,6 +19,7 @@ function principal(id: string, reportsTo: string | null = null): OrgTreeNode {
     type: "person",
     lifecycle: "asserted",
     reports_to: reportsTo,
+    dotted_reports_to: dottedReportsTo,
     href: `/acme/principal/${id}`,
   };
 }
@@ -46,6 +51,39 @@ describe("layoutOrgTree", () => {
       byId.get("principal_b1")?.position.x ?? 0,
     );
     expect(byId.get("principal_a1")?.position.y).toBe(leafY);
+  });
+
+  it("adds dotted (matrix) edges without reparenting the node in the tree", () => {
+    // b reports primarily to root, dotted-line to a. The primary tree
+    // must still place b under root; the dotted edge layers on top.
+    const layout = layoutOrgTree(
+      [
+        principal("principal_root"),
+        principal("principal_a", "principal_root"),
+        principal("principal_b", "principal_root", ["principal_a"]),
+      ],
+      null,
+    );
+    const solid = layout.edges.filter((e) => !e.dotted).map((e) => [e.source, e.target]);
+    const dotted = layout.edges.filter((e) => e.dotted).map((e) => [e.source, e.target]);
+    // primary tree edges unchanged (root→a, root→b)
+    expect(solid.sort()).toEqual([
+      ["principal_root", "principal_a"],
+      ["principal_root", "principal_b"],
+    ]);
+    // one dashed matrix edge a→b
+    expect(dotted).toEqual([["principal_a", "principal_b"]]);
+  });
+
+  it("drops dotted edges that point outside the active node set", () => {
+    const layout = layoutOrgTree(
+      [
+        principal("principal_root"),
+        principal("principal_x", "principal_root", ["principal_ghost"]),
+      ],
+      null,
+    );
+    expect(layout.edges.some((e) => e.dotted)).toBe(false);
   });
 
   it("keeps cyclic imported data visible as fallback roots", () => {
