@@ -19,14 +19,20 @@
 -- ============================================================
 
 -- 1. Convert existing channel-default role grants BEFORE tightening.
+-- 1. Drop the OLD four-role CHECK first, so rewriting surviving rows to
+--    'writer' can't trip the stale constraint (the same ordering bug
+--    that took down 060 on production). The inline constraint from 047
+--    got Postgres's auto-generated name.
+ALTER TABLE group_chat_channel_connections
+  DROP CONSTRAINT IF EXISTS group_chat_channel_connections_role_check;
+
+-- 2. Convert existing channel-default role grants now that no CHECK
+--    forbids 'writer'.
 UPDATE group_chat_channel_connections
    SET role = 'writer'
  WHERE role IN ('author', 'approver');
 
--- 2. Swap the role CHECK to the three-role set. The inline constraint in
---    047 got Postgres's auto-generated name.
-ALTER TABLE group_chat_channel_connections
-  DROP CONSTRAINT IF EXISTS group_chat_channel_connections_role_check;
+-- 3. Re-add the role CHECK as the three-role set.
 ALTER TABLE group_chat_channel_connections
   ADD CONSTRAINT group_chat_channel_connections_role_check
   CHECK (role IN ('owner', 'writer', 'reader'));
