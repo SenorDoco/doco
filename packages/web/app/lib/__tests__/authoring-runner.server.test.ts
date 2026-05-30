@@ -365,7 +365,7 @@ describe("authoring runner — integration", () => {
         chosen: "Activation key",
         decided_by: PRINCIPAL_ALICE,
         decided_at: new Date().toISOString(),
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       },
     });
 
@@ -379,7 +379,7 @@ describe("authoring runner — integration", () => {
         question: "What does activation key mean?",
         chosen: " activation KEY ",
         decided_by: PRINCIPAL_ALICE,
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       },
     });
 
@@ -735,7 +735,7 @@ describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
         id,
         doco_id: DOCO_ID,
         entity_type: "rule",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
         data: {
           id,
           neuron_type: "rule",

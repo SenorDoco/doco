@@ -1,6 +1,6 @@
 import type { DocoRole } from "@doco/db";
 
-export const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
+export const ALL_ROLES: DocoRole[] = ["owner", "writer", "reader"];
 
 export type InviteLevel = "org" | "doco";
 export type InviteOption = { id: string; label: string; maxRole: DocoRole };
@@ -27,7 +27,7 @@ export type UserInviteActionResult =
   | { error: string };
 
 export function rankOf(role: DocoRole): number {
-  return role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0;
+  return role === "owner" ? 2 : role === "writer" ? 1 : 0;
 }
 
 export function parseInviteLevel(value: string | null): InviteLevel | null {

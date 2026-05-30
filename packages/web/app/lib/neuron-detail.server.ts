@@ -488,7 +488,7 @@ export async function loadNeuronDialogDetail(
     { ownerId: meta.ownerId, docoId: meta.docoId },
     options.principalId,
   );
-  const canChangeLifecycle = roleAtLeast(userRole, "approver");
+  const canChangeLifecycle = roleAtLeast(userRole, "writer");
   const updateUrl = cfg.updateSegment
     ? `/${options.handle}/api/${cfg.updateSegment}/${row.id}.json`
     : null;

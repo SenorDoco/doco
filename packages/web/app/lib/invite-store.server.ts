@@ -44,7 +44,7 @@ export interface Invite {
    * falls back to `owner` (matching the v8 backfill posture). Mint
    * paths after the cutover always set it explicitly.
    */
-  role?: "owner" | "approver" | "author" | "reader";
+  role?: "owner" | "writer" | "reader";
   /** ISO timestamp this invite expires (default 7 days from issue). */
   expires_at: string;
   /** ISO timestamp this invite was issued. */
@@ -124,7 +124,7 @@ export class InviteStore {
     docoId: EntityId<"doco"> | null,
     mintedByUserId: EntityId<"principal"> | null,
     ttlDays = 7,
-    role: "owner" | "approver" | "author" | "reader" = "author",
+    role: "owner" | "writer" | "reader" = "writer",
     opts: {
       level?: "org" | "doco";
       org_id?: EntityId<"organization">;

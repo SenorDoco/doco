@@ -52,7 +52,7 @@ export async function action({
   }
   const startedAt = performance.now();
 
-  const { me, meta } = await loadDocoRouteForRead(request, params, "author");
+  const { me, meta } = await loadDocoRouteForRead(request, params, "writer");
   if (!me) {
     return Response.json(
       { error: "Authentication required to create a principal." },
@@ -61,9 +61,9 @@ export async function action({
   }
 
   const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!docoRole || !roleAtLeast(docoRole, "author")) {
+  if (!docoRole || !roleAtLeast(docoRole, "writer")) {
     return Response.json(
-      { error: "Forbidden: author role required to create a principal." },
+      { error: "Forbidden: write access required to create a principal." },
       { status: 403 },
     );
   }

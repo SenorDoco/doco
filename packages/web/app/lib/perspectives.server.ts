@@ -2,11 +2,11 @@
 //
 // Mirrors the doco-templates pattern: built-in perspectives ship with
 // the framework (graph, list, bpmn), users can attach any of them to
-// a Doco's overview page, and owners/approvers can flip the default.
+// a Doco's overview page, and owners and writers can flip the default.
 //
 // Gating: read access follows the Doco's read gate (handled by the
 // route's loadDocoForRead). Mutating operations (attach, detach,
-// set-default) require approver-or-owner via canApproveDoco().
+// set-default) require writer-or-owner via canWriteDoco().
 //
 // Storage: see migrations/007_perspectives.sql.
 
@@ -162,7 +162,7 @@ export async function getPerspectiveBySlug(slug: string): Promise<Perspective | 
 /**
  * Attach `perspectiveId` to `docoId` at the next position. Idempotent —
  * if already attached, returns silently. Caller must gate on
- * `canApproveDoco()`.
+ * `canWriteDoco()`.
  */
 export async function attachPerspectiveToDoco(args: {
   docoId: string;
@@ -188,7 +188,7 @@ export async function attachPerspectiveToDoco(args: {
 /**
  * Detach a perspective from a Doco. Refuses to detach the current
  * default — the caller must promote a different tab first. Caller
- * must gate on `canApproveDoco()`.
+ * must gate on `canWriteDoco()`.
  */
 export async function detachPerspectiveFromDoco(args: {
   docoId: string;
@@ -214,7 +214,7 @@ export async function detachPerspectiveFromDoco(args: {
  * Mark one attached perspective as the Doco's default, unmarking any
  * previous default. Wrapped in a transaction so the partial-unique
  * `doco_perspectives_one_default` index never sees two true rows.
- * Caller must gate on `canApproveDoco()`.
+ * Caller must gate on `canWriteDoco()`.
  */
 export async function setDefaultPerspective(args: {
   docoId: string;

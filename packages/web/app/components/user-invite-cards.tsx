@@ -150,7 +150,7 @@ function InviteHumanCard({
     ? ALL_ROLES.filter((role) => rankOf(role) <= rankOf(selected.maxRole))
     : [];
   const defaultRole =
-    selected && rankOf(selected.maxRole) >= rankOf("author") ? "author" : selected?.maxRole;
+    selected && rankOf(selected.maxRole) >= rankOf("writer") ? "writer" : selected?.maxRole;
 
   return (
     <div className="space-y-3">

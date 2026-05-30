@@ -150,7 +150,7 @@ export async function loader({ request }: { request: Request }) {
 
   const requestedRole: DocoRole | null =
     row.requested_role &&
-    (["reader", "author", "approver", "owner"] as const).includes(row.requested_role as DocoRole)
+    (["reader", "writer", "owner"] as const).includes(row.requested_role as DocoRole)
       ? (row.requested_role as DocoRole)
       : null;
 

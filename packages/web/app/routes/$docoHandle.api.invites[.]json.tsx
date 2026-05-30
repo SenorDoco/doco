@@ -37,7 +37,7 @@ import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { InviteStore } from "~/lib/invite-store.server";
 
-const ROLE_VALUES = new Set<DocoRole>(["owner", "approver", "author", "reader"]);
+const ROLE_VALUES = new Set<DocoRole>(["owner", "writer", "reader"]);
 function parseRole(v: unknown): DocoRole | null {
   return typeof v === "string" && ROLE_VALUES.has(v as DocoRole) ? (v as DocoRole) : null;
 }
@@ -102,7 +102,7 @@ export async function action({
     );
   }
   const requestedRole: DocoRole =
-    parsedRole ?? (ROLE_RANK[inviterRole] >= ROLE_RANK.author ? "author" : inviterRole);
+    parsedRole ?? (ROLE_RANK[inviterRole] >= ROLE_RANK.writer ? "writer" : inviterRole);
   if (ROLE_RANK[requestedRole] > ROLE_RANK[inviterRole]) {
     return Response.json(
       {

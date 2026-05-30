@@ -124,14 +124,14 @@ export async function action({
   if (!ct.includes("application/json")) {
     return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
   }
-  const { me, meta } = await loadDocoRouteForRead(request, params, "author");
+  const { me, meta } = await loadDocoRouteForRead(request, params, "writer");
   if (!me) {
     return Response.json({ error: "Authentication required to edit." }, { status: 401 });
   }
   const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!roleAtLeast(docoRole, "author")) {
+  if (!roleAtLeast(docoRole, "writer")) {
     return Response.json(
-      { error: "Forbidden: author role required to edit a principal." },
+      { error: "Forbidden: write access required to edit a principal." },
       { status: 403 },
     );
   }

@@ -37,9 +37,8 @@ export interface InviteDmResult {
 }
 
 const ROLE_RANK: Record<DocoRole, number> = {
-  owner: 3,
-  approver: 2,
-  author: 1,
+  owner: 2,
+  writer: 1,
   reader: 0,
 };
 

@@ -48,7 +48,7 @@ import {
 } from "~/lib/approval-perspective.server";
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
 import { docoPath } from "~/lib/db.server";
-import { canAdminDoco, canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadGlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
@@ -308,7 +308,7 @@ export async function loader({
     const requestedSlug = new URL(request.url).searchParams.get("perspective");
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
     const activeKind = activePerspective?.kind ?? "graph";
-    const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
+    const canAdminPerspectives = await canWriteDoco(ctx.meta, me?.id ?? null);
     const shouldLoadOverviewGraph = activeKind === "graph" || activeKind === "list";
     const graph = shouldLoadOverviewGraph
       ? await loadOverviewGraph(c, ctx.meta.docoId, {

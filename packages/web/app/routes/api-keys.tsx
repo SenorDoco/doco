@@ -396,7 +396,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
 }
 
 function rankOrZero(role: DocoRole): number {
-  return role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0;
+  return role === "owner" ? 2 : role === "writer" ? 1 : 0;
 }
 
 function MintedReveal({ minted }: { minted: MintedApiKey }) {

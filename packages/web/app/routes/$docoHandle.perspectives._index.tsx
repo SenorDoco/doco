@@ -9,7 +9,7 @@
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { SiteHeader } from "~/components/site-header";
-import { canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import {
   attachPerspectiveToDoco,
@@ -28,7 +28,7 @@ export async function loader({
   const [available, attached, canAdmin, host] = await Promise.all([
     listAvailablePerspectives(),
     listPerspectivesForDoco(ctx.meta.docoId),
-    canApproveDoco(ctx.meta, ctx.me?.id ?? null),
+    canWriteDoco(ctx.meta, ctx.me?.id ?? null),
     loadHostConfig(),
   ]);
   const attachedIds = new Set(attached.map((p) => p.id));
@@ -54,7 +54,7 @@ export async function action({
   if (!ctx.me) {
     return Response.json({ ok: false, error: "anonymous_forbidden" }, { status: 403 });
   }
-  if (!(await canApproveDoco(ctx.meta, ctx.me.id))) {
+  if (!(await canWriteDoco(ctx.meta, ctx.me.id))) {
     return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
   const form = await request.formData();

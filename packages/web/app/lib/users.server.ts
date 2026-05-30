@@ -415,7 +415,7 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
     return { error: "You don't have a role on this target." };
   }
   const role: DocoRole =
-    parsedRole || (rankOf(inviterRole) >= rankOf("author") ? "author" : inviterRole);
+    parsedRole || (rankOf(inviterRole) >= rankOf("writer") ? "writer" : inviterRole);
   if (rankOf(role) > rankOf(inviterRole)) {
     return {
       error: `Cannot mint a '${role}' invite -- you only hold '${inviterRole}' on this target.`,
