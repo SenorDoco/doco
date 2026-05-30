@@ -48,8 +48,8 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     handle: "org-chart",
     label: "Org Chart",
     description:
-      "Map the people and AI agents in an organization — reporting lines, teams, and appointments. Every member must declare whether they're a person or an AI agent.",
-    updatedAt: "2026-05-24",
+      "Map the people and AI agents in an organization — reporting lines, teams, roles, and appointments. Every seat declares whether it's filled by a person, filled by an AI agent, or currently vacant.",
+    updatedAt: "2026-05-30",
     owner: TEMPLATE_OWNER,
   },
 ];
