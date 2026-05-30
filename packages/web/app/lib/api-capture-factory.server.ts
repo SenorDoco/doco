@@ -1,7 +1,14 @@
 // Factories for the per-type capture (POST) and update (PATCH/POST) routes.
 // Collapses ~13 near-identical handler files into one parameter set per route.
 
-import { entityAsOf, getEntity, getVersions, roleAtLeast, withClient } from "@doco/db";
+import {
+  entityAsOf,
+  getEntity,
+  getVersions,
+  roleAtLeast,
+  verifyHistory,
+  withClient,
+} from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
@@ -214,6 +221,10 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (tt.get("history")) {
         const versions = await withClient((c) => getVersions(c, "node", id));
         return Response.json({ id, entity_type: cfg.entityType, versions });
+      }
+      if (tt.get("verify")) {
+        const result = await withClient((c) => verifyHistory(c, "node", id));
+        return Response.json({ id, entity_type: cfg.entityType, ...result });
       }
       const asOf = tt.get("as_of");
       if (asOf) {
