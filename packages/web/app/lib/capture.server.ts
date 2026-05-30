@@ -785,7 +785,7 @@ function requiredPrincipalId(
  * signed-in collaborator, so "required" was free. Once it became a
  * Principal *neuron* (PR #66) — which may not exist for a user, and is
  * policy-blocked in some templates like glossaries — mandating it turned
- * into friction. Templates that genuinely need attribution (user-flows)
+ * into friction. Templates that genuinely need attribution (business-processes)
  * still enforce it through their own `requires_field` policies; the
  * capture layer just validates the shape when a value is present.
  */

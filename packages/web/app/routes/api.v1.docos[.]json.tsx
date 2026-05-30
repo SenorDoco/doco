@@ -9,7 +9,7 @@
 // ownership ∪ org membership ∪ explicit `doco_users` grant.
 //
 // POST body (JSON):
-//   { template_handle?: string,        // "generic" | "user-flows" | ...
+//   { template_handle?: string,        // "generic" | "business-processes" | ...
 //     org_id: string,                  // ULID of the owning organization
 //     name: string,                    // requested globally-unique handle
 //     privacy?: "private"|"public",    // alias: visibility

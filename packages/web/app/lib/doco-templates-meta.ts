@@ -29,20 +29,6 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
-    handle: "user-flows",
-    label: "User Flows",
-    description: "Document end-to-end user journeys as steps, branches, and decisions.",
-    updatedAt: "2026-02-15",
-    owner: TEMPLATE_OWNER,
-  },
-  {
-    handle: "state-machines",
-    label: "State Machines",
-    description: "Formal state-machine modeling — states, transitions, invariants.",
-    updatedAt: "2026-03-10",
-    owner: TEMPLATE_OWNER,
-  },
-  {
     handle: "business-processes",
     label: "Business Processes",
     description:
@@ -51,26 +37,10 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
-    handle: "test",
-    label: "Tests",
-    description:
-      "Executable tests and AI evals. Each Eval pins one checkable claim about a decision, policy, or action.",
-    updatedAt: "2026-05-26",
-    owner: TEMPLATE_OWNER,
-  },
-  {
     handle: "glossaries",
     label: "Glossaries",
     description:
       "Document product and domain terminology — canonical terms, definitions, aliases, deprecated wording, sources, and consistency checks.",
-    updatedAt: "2026-05-26",
-    owner: TEMPLATE_OWNER,
-  },
-  {
-    handle: "slas",
-    label: "SLAs",
-    description:
-      "Document service-level agreements — commitments, owners, measurement rules, evidence links, exclusions, remedies, and review history.",
     updatedAt: "2026-05-26",
     owner: TEMPLATE_OWNER,
   },
