@@ -31,9 +31,9 @@ const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
     "actors_principal_ids": ["principal_01..."]
 
   LIFECYCLE NOTE
-  The lifecycle value "active" was renamed to "accepted". "active" is
-  still accepted on input as a deprecated alias (coerced to "accepted")
-  for one release; prefer "accepted" in new clients.
+  The lifecycle value "active" was renamed to "asserted". "active" is
+  still accepted on input as a deprecated alias (coerced to "asserted")
+  for one release; prefer "asserted" in new clients.
 `;
 
 const SPECS: Record<string, SpecRenderer> = {
@@ -59,7 +59,7 @@ BODY (JSON)
                                   [{ "target": "action_01...", "label": "Yes" }]
   decided_by_principal_id optional  principal id who made the decision; auth fills this
   born_from          optional   reference id (e.g. born_from a bugfix decision)
-  lifecycle          optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted"
+  lifecycle          optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted"
   deprecated         optional   boolean warning label; lifecycle is unchanged
   outcome            optional   "succeeded" | "failed"
   superseded_by      optional   id of the Decision that replaces this one; pair with lifecycle="retired"
@@ -131,7 +131,7 @@ BODY (JSON)
   idea                required   full prose: the idea, context, tradeoffs
   promoted_to         optional   entity id once the idea is picked up
   rejection_reason    optional   why the idea was rejected or parked
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "drafting"
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "drafting"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
 
@@ -169,7 +169,7 @@ BODY (JSON)
   wanted_by_principal_id optional principal id who wants this; auth fills this.
   actors_principal_ids optional  principal ids expected to act in the process.
   stakeholders_principal_ids optional principal ids with a say in the outcome.
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted".
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted".
   deprecated          optional   boolean warning label; lifecycle is unchanged.
   outcome             optional   "succeeded" | "failed".
 
@@ -233,7 +233,7 @@ BODY (JSON)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
   actor_principal_id  optional   principal id who performs the action; auth fills this
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "retired"
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "retired"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"; default "succeeded"
 
@@ -293,7 +293,7 @@ BODY (JSON)
   preceded_by         optional   entity ids that precede this Log
   inputs              optional   event input object or value
   actor_principal_id  optional   principal id who performed it; auth fills this
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "retired"
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "retired"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"; default "succeeded"
 
@@ -345,7 +345,7 @@ BODY (JSON)
   severity            optional   "hard" | "soft"
   born_from           optional   Decision id this Rule came from
   authored_by_principal_id optional principal id who authored it; auth fills this
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted"
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
 
@@ -402,7 +402,7 @@ BODY (JSON)
   target_ref          optional   id of the entity this Eval tests
   intent_ids          optional   ["intent_01...", ...]
   authored_by_principal_id optional principal id who authored it; auth fills this
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted"
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
 
@@ -455,7 +455,7 @@ BODY (JSON)
   locator             required   path, URL, ticket id, commit sha, or other locator
   content_hash        optional   content hash when available
   intent_ids          optional   ["intent_01...", ...]
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted"
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
 
@@ -506,7 +506,7 @@ BODY (JSON)
   preceded_by         optional   entity ids that precede this state
   sequence_to         optional   BPMN forward flow targets: ["action_01..."] or
                                   [{ "target": "action_01...", "label": "start" }]
-  lifecycle           optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted"
+  lifecycle           optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
 
@@ -618,7 +618,7 @@ SUCCESS RESPONSE — edit (HTTP 200, application/json)
   {
     "ok": true,
     "id": "principal_<ULID>",
-    "lifecycle": "accepted",
+    "lifecycle": "asserted",
     "footer_lines": ["[🔮 Doco] 👤 Principal updated: [<name>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
@@ -735,7 +735,7 @@ ENDPOINT (list)
         "policy_kind": "guidance",
         "id": "guidance_policy_<ULID>",
         "policy": "...",
-        "lifecycle": "accepted",
+        "lifecycle": "asserted",
         "body_md": "...",
         "created_at": "...",
         "updated_at": "..."
@@ -759,7 +759,7 @@ BODY — policy_kind = "guidance"
                                     \`summary\` by migration 038)
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
-  lifecycle             optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted"
+  lifecycle             optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
 
@@ -773,11 +773,11 @@ BODY — policy_kind = "neuron_authoring"
                                   kind="probabilistic".
   spec                  required*  probabilistic spec; stored as
                                   {kind:"probabilistic", spec}
-  fires_when_neuron_lifecycle optional ["accepted", ...]
+  fires_when_neuron_lifecycle optional ["asserted", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block"
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
-  lifecycle             optional   one of "drafting" | "proposed" | "accepted" | "retired"; default "accepted"
+  lifecycle             optional   one of "drafting" | "drafting" | "asserted" | "retired"; default "asserted"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
 
@@ -830,7 +830,7 @@ EXAMPLE — neuron_authoring (unique field)
         "case_fold": true,
         "when_neuron_type": ["decision"]
       },
-      "fires_when_neuron_lifecycle": ["accepted"]
+      "fires_when_neuron_lifecycle": ["asserted"]
     }'
 
 EXAMPLE — neuron_authoring (probabilistic)

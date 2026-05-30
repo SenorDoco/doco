@@ -222,7 +222,7 @@ export async function loader({
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
     const totalNodes = facets.entityType.reduce((sum, t) => sum + t.count, 0);
-    const proposedCount = facets.lifecycle.find((facet) => facet.value === "proposed")?.count ?? 0;
+    const proposedCount = facets.lifecycle.find((facet) => facet.value === "drafting")?.count ?? 0;
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -724,7 +724,7 @@ export default function DocoHome({
         if (!neuron) throw new Error(`Neuron not found: ${id}`);
         setNeuronDialog({ detail: neuron, loading: false, error: null });
         setGraphState((prev) => graphWithCenter(prev, neuron.id));
-        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "accepted"]));
+        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "asserted"]));
       } catch (err) {
         setNeuronDialog((prev) => ({
           detail: options.keepDetail ? (prev?.detail ?? null) : null,
@@ -816,7 +816,7 @@ export default function DocoHome({
   const handleApprovalLifecycleTransition = useCallback(
     async (
       node: ApprovalPerspectiveNode,
-      stage: Extract<LifecycleStage, "accepted" | "drafting">,
+      stage: Extract<LifecycleStage, "asserted" | "drafting">,
     ) => {
       if (!node.update_url) {
         throw new Error("Lifecycle updates are not available for this neuron type.");

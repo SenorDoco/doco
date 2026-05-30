@@ -111,7 +111,7 @@ export async function action({
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
     created_at: now,
     created_by: me.id,
-    lifecycle: "accepted",
+    lifecycle: "asserted",
   };
 
   // Run the doco's authoring policies against the Principal before
@@ -139,7 +139,7 @@ export async function action({
     entity_type: "principal",
     data: raw,
     body_md: bodyMd,
-    lifecycle: "accepted",
+    lifecycle: "asserted",
     created_at: now,
     created_by: me.id,
     updated_at: now,
@@ -161,7 +161,7 @@ export async function action({
     after: {
       name,
       body_md: bodyMd,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       ...(body.reports_to ? { reports_to: body.reports_to } : {}),
     },
   });

@@ -51,7 +51,7 @@ export async function loader({
       `SELECT id, policy, lifecycle, created_at, body_md, data
          FROM guidance_policies
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') = 'accepted'
+          AND COALESCE(lifecycle, 'asserted') = 'asserted'
         ORDER BY created_at DESC`,
       [ctx.meta.docoId],
     );
@@ -59,7 +59,7 @@ export async function loader({
       `SELECT id, policy, lifecycle, created_at, body_md, data
          FROM neuron_authoring_policies
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') = 'accepted'
+          AND COALESCE(lifecycle, 'asserted') = 'asserted'
         ORDER BY created_at DESC`,
       [ctx.meta.docoId],
     );
@@ -201,7 +201,7 @@ function ArticleSection({
                     ) : null}
                   </Link>
                   <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
-                    {item.lifecycle ?? "accepted"}
+                    {item.lifecycle ?? "asserted"}
                   </span>
                   {editHrefBase ? (
                     <Link

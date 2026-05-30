@@ -713,7 +713,7 @@ function readParams(url: URL): AuthorizeParams {
     scope: url.searchParams.get("scope"),
     target_doco_handle: url.searchParams.get("target_doco_handle"),
     requested_role:
-      requested && ["reader", "author", "approver", "owner"].includes(requested) ? requested : null,
+      requested && ["reader", "writer", "owner"].includes(requested) ? requested : null,
   };
 }
 

@@ -49,7 +49,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
       c.query<{ doco_id: string; n: string; active_n: string; last_entity_at: string | null }>(
         `SELECT doco_id,
                 COUNT(*)::text AS n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'accepted') = 'accepted')::text AS active_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted')::text AS active_n,
                 MAX(updated_at)::text AS last_entity_at
            FROM (${neuronsSql}) t
           GROUP BY doco_id`,

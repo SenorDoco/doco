@@ -42,7 +42,7 @@ const AUTH_CODE_TTL_SECONDS = 60;
 // so there's no JWT-style revocation-lag window from a longer lifetime.
 const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60; // 60d
-const DOCO_ROLES = ["reader", "author", "approver", "owner"] as const;
+const DOCO_ROLES = ["reader", "writer", "owner"] as const;
 
 type QueryClient = {
   query: (
@@ -95,12 +95,12 @@ export interface GrantSets {
   granted_org_roles: Record<string, string>;
 }
 
-/** Power ordering of the four roles; the higher one wins when merging
+/** Power ordering of the three roles; the higher one wins when merging
  * two grants on the same target. Mirrors `rankOf` in user-invite, inlined
  * here to keep this server module free of `~/` path aliases (which the
  * unit-test runner doesn't resolve). */
 function roleRank(role: string): number {
-  return role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0;
+  return role === "owner" ? 2 : role === "writer" ? 1 : 0;
 }
 
 function mergeScope(

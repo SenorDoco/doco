@@ -108,7 +108,7 @@ interface OverviewNodeData {
 
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
 // order.
-const LIFECYCLE_ORDER = ["drafting", "proposed", "accepted", "retired"];
+const LIFECYCLE_ORDER = ["drafting", "asserted", "retired"];
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 
 // Card size — wide and tall enough to fit the badge row plus a few
@@ -136,7 +136,7 @@ function lifecycleLabel(lifecycle: string): string {
 }
 
 function nodeLifecycle(node: { lifecycle: string | null }): string {
-  return node.lifecycle ?? "accepted";
+  return node.lifecycle ?? "asserted";
 }
 
 function isVisibleInViewport(
@@ -292,7 +292,7 @@ export function OverviewGraph({
   }, []);
 
   const allLifecycles = useMemo(() => {
-    const set = new Set<string>(["accepted"]);
+    const set = new Set<string>(["asserted"]);
     for (const node of nodes) set.add(nodeLifecycle(node));
     return Array.from(set).sort((a, b) => {
       const ai = LIFECYCLE_ORDER.indexOf(a);
@@ -569,7 +569,7 @@ export function OverviewGraph({
         direction === "incoming"
           ? visibleNodeById.get(matchingLink?.source ?? "")
           : visibleNodeById.get(anchorId);
-      const stroke = lifecycleColor(colorNode ? nodeLifecycle(colorNode) : "accepted");
+      const stroke = lifecycleColor(colorNode ? nodeLifecycle(colorNode) : "asserted");
 
       nodes.push({
         id,
@@ -703,7 +703,7 @@ export function OverviewGraph({
       // Synapse inherits the origin neuron's lifecycle colour. 0.5 is
       // the baseline stroke alpha so coloured lines stay readable on
       // the pale canvas without competing with the node strokes.
-      const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "accepted";
+      const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "asserted";
       return {
         id: `${link.source}-${link.target}-${index}`,
         source: link.source,

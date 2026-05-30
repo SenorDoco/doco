@@ -80,7 +80,7 @@ function overviewRowsSql(includeLabel = false): string {
     return `SELECT t.id,
                    '${entry.entityType}'::text AS entity_type,
                    ${nameExpr} AS name,
-                   COALESCE(t.lifecycle, 'accepted') AS lifecycle,
+                   COALESCE(t.lifecycle, 'asserted') AS lifecycle,
                    t.created_at::text AS created_at
                    ${includeLabel ? `, ${labelExpr} AS label` : ""}
               FROM ${entry.table} t
@@ -91,12 +91,12 @@ function overviewRowsSql(includeLabel = false): string {
   const principalLeg = `SELECT id,
                                 'principal'::text AS entity_type,
                                 name,
-                                COALESCE(lifecycle, 'accepted') AS lifecycle,
+                                COALESCE(lifecycle, 'asserted') AS lifecycle,
                                 created_at::text AS created_at
                                 ${includeLabel ? ", name AS label" : ""}
                            FROM principals
                           WHERE doco_id = $1
-                            AND COALESCE(lifecycle, 'accepted') = 'accepted'`;
+                            AND COALESCE(lifecycle, 'asserted') = 'asserted'`;
   return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }
 
@@ -118,12 +118,11 @@ async function loadOverviewRows(
          FROM (${overviewRowsSql(true)}) nodes
         ORDER BY
           ${limit !== null ? "id = $3 DESC," : ""}
-          CASE COALESCE(lifecycle, 'accepted')
-            WHEN 'accepted' THEN 0
-            WHEN 'proposed' THEN 1
-            WHEN 'drafting' THEN 2
-            WHEN 'retired' THEN 3
-            ELSE 4
+          CASE COALESCE(lifecycle, 'asserted')
+            WHEN 'asserted' THEN 0
+            WHEN 'drafting' THEN 1
+            WHEN 'retired' THEN 2
+            ELSE 3
           END,
           created_at DESC NULLS LAST,
           id
@@ -173,7 +172,7 @@ export async function loadOverviewGraph(
     id: row.id,
     entity_type: row.entity_type,
     name: row.label ?? row.name,
-    lifecycle: row.lifecycle ?? "accepted",
+    lifecycle: row.lifecycle ?? "asserted",
     created_at: toIso(row.created_at),
     href: overviewEntityHref(options.handle, row.entity_type, row.id),
     is_center: row.id === options.centerId,
@@ -224,7 +223,7 @@ export async function loadOverviewNodeDetails(
         entity_type: row.entity_type,
         summary: row.label ?? row.name ?? row.id,
         name: row.name,
-        lifecycle: row.lifecycle ?? "accepted",
+        lifecycle: row.lifecycle ?? "asserted",
         created_at: toIso(row.created_at),
         href: overviewEntityHref(handle, row.entity_type, row.id),
       },
@@ -246,7 +245,7 @@ function overviewRowsSqlMulti(): string {
                      '${entry.entityType}'::text AS entity_type,
                      NULL::text AS name,
                      ${labelExpr} AS label,
-                     COALESCE(t.lifecycle, 'accepted') AS lifecycle,
+                     COALESCE(t.lifecycle, 'asserted') AS lifecycle,
                      t.created_at::text AS created_at,
                      t.doco_id AS doco_id
                 FROM ${entry.table} t
@@ -256,12 +255,12 @@ function overviewRowsSqlMulti(): string {
                               'principal'::text AS entity_type,
                               name,
                               name AS label,
-                              COALESCE(lifecycle, 'accepted') AS lifecycle,
+                              COALESCE(lifecycle, 'asserted') AS lifecycle,
                               created_at::text AS created_at,
                               doco_id AS doco_id
                          FROM principals
                         WHERE doco_id = ANY($1::text[])
-                          AND COALESCE(lifecycle, 'accepted') = 'accepted'`;
+                          AND COALESCE(lifecycle, 'asserted') = 'asserted'`;
   return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }
 
@@ -308,7 +307,7 @@ export async function loadOrgOverviewGraph(
       id: row.id,
       entity_type: row.entity_type,
       name: row.label ?? row.name,
-      lifecycle: row.lifecycle ?? "accepted",
+      lifecycle: row.lifecycle ?? "asserted",
       created_at: toIso(row.created_at),
       href: overviewEntityHref(handle, row.entity_type, row.id),
       is_center: false,

@@ -315,7 +315,7 @@ export interface DecisionDraft {
   created_by_principal_id?: string;
   /** Optional: reference another entity as origin (e.g. born_from a bugfix). */
   born_from?: string;
-  /** Optional: defaults to "accepted". */
+  /** Optional: defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -361,7 +361,7 @@ export type Op =
 
 const TRUNC = 120;
 const STRUCK_LIFECYCLES = new Set(["retired"]);
-const VALID_LIFECYCLES = new Set(["drafting", "proposed", "accepted", "retired"]);
+const VALID_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
 const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
 
 interface LifecycleAttrs {
@@ -378,9 +378,13 @@ interface ResolvedLifecycleAttrs {
 
 function normalizeLifecycle(value: unknown, fallback: string): string | CaptureError {
   let lifecycle = typeof value === "string" && value.trim() ? value.trim() : fallback;
-  // Back-compat alias kept one release so existing API clients/agents that
-  // still send the old value don't break: "active" coerces to "accepted".
-  if (lifecycle === "active") lifecycle = "accepted";
+  // Back-compat aliases kept one release so existing API clients/agents
+  // that still send a retired vocabulary don't break. The lifecycle ladder
+  // collapsed from drafting → proposed → accepted/active → retired down to
+  // drafting → asserted → retired: "proposed" folds into "drafting" (the
+  // tentative state) and "accepted"/"active" into "asserted".
+  if (lifecycle === "active" || lifecycle === "accepted") lifecycle = "asserted";
+  if (lifecycle === "proposed") lifecycle = "drafting";
   if (!VALID_LIFECYCLES.has(lifecycle)) {
     return {
       error: `Unknown lifecycle: ${lifecycle}. Expected one of: ${[...VALID_LIFECYCLES].join(", ")}.`,
@@ -901,7 +905,7 @@ export async function captureDecision(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -1054,7 +1058,7 @@ export async function updateDecision(
     });
   }
   if (patch.lifecycle !== undefined) {
-    const lifecycle = normalizeLifecycle(patch.lifecycle, "accepted");
+    const lifecycle = normalizeLifecycle(patch.lifecycle, "asserted");
     if (typeof lifecycle !== "string") return lifecycle;
     setScalar("lifecycle", lifecycle);
   }
@@ -1345,7 +1349,7 @@ export async function updateEntity(opts: {
     );
   }
   if (normalizedPatch.lifecycle !== undefined) {
-    const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "accepted");
+    const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "asserted");
     if (typeof lifecycle !== "string") return lifecycle;
     setScalar("lifecycle", lifecycle);
   }
@@ -1553,7 +1557,7 @@ export interface IntentDraft {
   stakeholders_principal_ids?: string[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** Optional: defaults to "accepted". */
+  /** Optional: defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -1594,7 +1598,7 @@ export async function captureIntent(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1765,7 +1769,7 @@ export interface EvalDraft {
   authored_by_principal_id?: string;
   /** Internal route-filled user id that created this Eval. */
   created_by_user_id?: string;
-  /** Optional default: lifecycle = "accepted". */
+  /** Optional default: lifecycle = "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -1816,7 +1820,7 @@ export async function captureEval(
   const label = firstLine(evalText);
 
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -2180,7 +2184,7 @@ export interface RuleDraft {
   created_by_user_id?: string;
   /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
-  /** Optional: defaults to "accepted". */
+  /** Optional: defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -2223,7 +2227,7 @@ export async function captureRule(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
 
   // Empty selector — matches everything by having nothing to filter
@@ -2306,7 +2310,7 @@ export interface GuidancePolicyDraft {
   created_by_user_id?: string;
   /** @deprecated Principals do not create policies; use the authenticated user. */
   created_by_principal_id?: string;
-  /** Optional: defaults to "accepted". */
+  /** Optional: defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -2458,7 +2462,7 @@ async function buildGuidancePolicyPayload(
   const id = `guidance_policy_${generateUlid()}`;
   const policy = draft.policy.trim();
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
   const createdById = userCreatorId(draft);
@@ -2504,7 +2508,7 @@ async function buildNeuronAuthoringPolicyPayload(
   const id = `neuron_authoring_policy_${generateUlid()}`;
   const policy = draft.policy.trim();
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
   const createdById = userCreatorId(draft);
@@ -2672,7 +2676,7 @@ export async function transitionPolicyLifecycle(opts: {
   scopeId: string;
   entityType: "guidance_policy" | "neuron_authoring_policy";
   policyId: string;
-  newLifecycle: "accepted" | "retired";
+  newLifecycle: "asserted" | "retired";
   supersededBy?: string;
   actorId: string | null;
   reason?: string;
@@ -2723,7 +2727,7 @@ export async function transitionPolicyLifecycle(opts: {
     entity_type: opts.entityType,
     entity_id: opts.policyId,
     op: "lifecycle.transition",
-    before: { lifecycle: before.lifecycle ?? "accepted" },
+    before: { lifecycle: before.lifecycle ?? "asserted" },
     after: {
       lifecycle: opts.newLifecycle,
       ...(opts.supersededBy ? { superseded_by: opts.supersededBy } : {}),
@@ -2776,7 +2780,7 @@ export async function loadPolicyForEdit(opts: {
     ok: true,
     policy: row.policy ?? "",
     body_md: row.body_md ?? "",
-    lifecycle: row.lifecycle ?? "accepted",
+    lifecycle: row.lifecycle ?? "asserted",
     data: row.data ?? {},
   };
 }
@@ -2825,7 +2829,7 @@ export async function captureReference(
   const referenceText = draft.reference.trim();
   const label = firstLine(referenceText);
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -2909,7 +2913,7 @@ export interface StateDraft {
   created_by_user_id?: string;
   /** @deprecated Principals do not create neurons; use the authenticated user. */
   created_by_principal_id?: string;
-  /** Optional: explicit lifecycle override. Defaults to "accepted". */
+  /** Optional: explicit lifecycle override. Defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -2939,7 +2943,7 @@ export async function captureState(
   const label = firstLine(stateText);
   const now = new Date().toISOString();
 
-  const status = lifecycleAttrs(draft, "accepted");
+  const status = lifecycleAttrs(draft, "asserted");
   if ("error" in status) return status;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];

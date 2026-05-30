@@ -39,7 +39,7 @@ interface ApprovalPerspectiveProps {
   onOpenNeuron: (node: ApprovalPerspectiveNode) => void;
   onLifecycleTransition: (
     node: ApprovalPerspectiveNode,
-    lifecycle: Extract<LifecycleStage, "accepted" | "drafting">,
+    lifecycle: Extract<LifecycleStage, "asserted" | "drafting">,
   ) => Promise<void>;
 }
 
@@ -72,7 +72,7 @@ export function ApprovalPerspective({
 
   const changeLifecycle = async (
     node: ApprovalPerspectiveNode,
-    lifecycle: Extract<LifecycleStage, "accepted" | "drafting">,
+    lifecycle: Extract<LifecycleStage, "asserted" | "drafting">,
   ) => {
     const key = `${node.id}:${lifecycle}`;
     setPending(key);
@@ -210,7 +210,7 @@ export function ApprovalPerspective({
                   <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => void changeLifecycle(node, "accepted")}
+                      onClick={() => void changeLifecycle(node, "asserted")}
                       disabled={disabled}
                       title={
                         canChangeLifecycle ? "Approve neuron" : "Approver or owner role required"

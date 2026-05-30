@@ -174,7 +174,7 @@ function linkFor(
     id: row.id,
     label: firstLine(label),
     href: href(handle, entityType, row.id),
-    lifecycle: row.lifecycle ?? "accepted",
+    lifecycle: row.lifecycle ?? "asserted",
   };
 }
 
@@ -203,52 +203,52 @@ export async function loadSlaPerspectiveData(
 ): Promise<SlaPerspectiveData> {
   const [rules, evals, references, actions, decisions, principals] = await Promise.all([
     c.query<RuleRow>(
-      `SELECT id, rule, COALESCE(lifecycle, 'accepted') AS lifecycle,
+      `SELECT id, rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, created_by, data
          FROM rules
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') <> 'retired'
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
         ORDER BY created_at DESC`,
       [docoId],
     ),
     c.query<EvalRow>(
-      `SELECT id, eval, COALESCE(lifecycle, 'accepted') AS lifecycle,
+      `SELECT id, eval, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
          FROM evals
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') <> 'retired'`,
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<ReferenceRow>(
       `SELECT id, reference, ref_type, locator, title,
-              COALESCE(lifecycle, 'accepted') AS lifecycle,
+              COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
          FROM reference_entities
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') <> 'retired'`,
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<ActionRow>(
-      `SELECT id, action, COALESCE(lifecycle, 'accepted') AS lifecycle,
+      `SELECT id, action, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
          FROM actions
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') <> 'retired'`,
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<DecisionRow>(
-      `SELECT id, decision, COALESCE(lifecycle, 'accepted') AS lifecycle,
+      `SELECT id, decision, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
          FROM decisions
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') <> 'retired'`,
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<PrincipalRow>(
-      `SELECT id, name, COALESCE(lifecycle, 'accepted') AS lifecycle
+      `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
          FROM principals
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'accepted') <> 'retired'`,
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
   ]);
@@ -378,7 +378,7 @@ export async function loadSlaPerspectiveData(
       id: rule.id,
       href: href(handle, "rule", rule.id),
       title,
-      lifecycle: rule.lifecycle ?? "accepted",
+      lifecycle: rule.lifecycle ?? "asserted",
       promise: rule.rule,
       owner,
       metric,

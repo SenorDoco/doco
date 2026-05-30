@@ -1138,10 +1138,10 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     const rows = await withClient(async (c) =>
       c.query<{ doco_id: string; policy: string; kind: "guidance" | "authoring" }>(
         `SELECT doco_id, policy, 'guidance'::text AS kind FROM guidance_policies
-          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'accepted') = 'accepted'
+          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'asserted') = 'asserted'
          UNION ALL
          SELECT doco_id, policy, 'authoring'::text AS kind FROM neuron_authoring_policies
-          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'accepted') = 'accepted'
+          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'asserted') = 'asserted'
          ORDER BY doco_id, kind, policy`,
         [accessibleIds],
       ),
@@ -1225,7 +1225,7 @@ function buildSystemBlocks(
 
 ## Visible graph references
 
-When the per-turn user header includes "Visible graph neuron references", the purple numbered circles currently attached to graph neurons map to those listed ids. Treat shorthand commands like "activate 5", "activeate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered neuron. "activate" means PATCH lifecycle to "accepted"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "propose" means "proposed"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
+When the per-turn user header includes "Visible graph neuron references", the purple numbered circles currently attached to graph neurons map to those listed ids. Treat shorthand commands like "assert 5", "activate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered neuron. "assert" and "activate" mean PATCH lifecycle to "asserted"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
 
 ## Attachments
 
@@ -1299,7 +1299,7 @@ API-facing principal-id fields above only for domain actors.
 ### Inline body cheatsheet (post directly — no spec round trip needed)
 
 Required fields marked *; everything else is optional. lifecycle
-defaults to "accepted" except where noted. Auth fills the principal-id
+defaults to "asserted" except where noted. Auth fills the principal-id
 fields when you omit them.
 
 **Migration 022/023 prose-field rename.** Every neuron type now

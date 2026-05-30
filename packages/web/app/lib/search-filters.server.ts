@@ -157,7 +157,7 @@ export async function resolveFilteredCandidates(
       const r = await c.query<{ id: string }>(
         `SELECT id FROM ${spec.table}
           WHERE ${spec.docoWhereSql}
-            AND COALESCE(lifecycle, 'accepted') = ANY($2::text[])`,
+            AND COALESCE(lifecycle, 'asserted') = ANY($2::text[])`,
         [docoId, filters.lifecycle],
       );
       for (const row of r.rows) lifecycleIds.add(row.id);
@@ -209,7 +209,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
   for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
     const r = await c.query<{ value: string; n: string; updated_at: Date | string | null }>(
-      `SELECT COALESCE(lifecycle, 'accepted') AS value,
+      `SELECT COALESCE(lifecycle, 'asserted') AS value,
               COUNT(*)::text AS n,
               MAX(updated_at) AS updated_at
          FROM ${spec.table}
@@ -240,7 +240,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       updated_at: Date | string | null;
     }>(
       `SELECT COUNT(*)::text AS n,
-              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'accepted') = 'accepted'))::text AS active_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted'))::text AS active_n,
               MAX(updated_at) AS updated_at
          FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
       [docoId],
@@ -265,7 +265,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
         // Canonical lifecycle progression — render in the same order
         // everywhere so the stats card, the filter row, and the audit
         // panel agree.
-        const order = ["drafting", "proposed", "accepted", "retired"];
+        const order = ["drafting", "asserted", "retired"];
         const ai = order.indexOf(a.value);
         const bi = order.indexOf(b.value);
         if (ai !== -1 && bi !== -1) return ai - bi;

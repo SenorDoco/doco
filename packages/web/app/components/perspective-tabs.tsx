@@ -87,7 +87,7 @@ export function PerspectiveTabs({
               active={p.slug === activeSlug}
               isFirst
               isLast
-              variant="proposed"
+              variant="drafting"
             />
           ))}
         </nav>
@@ -103,7 +103,7 @@ interface PerspectiveTabProps {
   active: boolean;
   isFirst: boolean;
   isLast: boolean;
-  variant?: "strip" | "proposed";
+  variant?: "strip" | "drafting";
 }
 
 function PerspectiveTab({
@@ -116,8 +116,8 @@ function PerspectiveTab({
   variant = "strip",
 }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
-  const isProposedTab = variant === "proposed";
-  const proposedBlue = lifecycleColor("proposed");
+  const isProposedTab = variant === "drafting";
+  const proposedBlue = lifecycleColor("drafting");
   // Real tab-strip styling:
   //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
   //     border overlap the previous tab's right border so adjacent tabs

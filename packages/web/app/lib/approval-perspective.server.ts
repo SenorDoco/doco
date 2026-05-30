@@ -60,7 +60,7 @@ function approvalRowsSql(): string {
     return `SELECT t.id,
                    '${entry.entityType}'::text AS entity_type,
                    COALESCE(NULLIF(${labelExpr}, ''), ${nameExpr}, t.id) AS name,
-                   COALESCE(t.lifecycle, 'accepted') AS lifecycle,
+                   COALESCE(t.lifecycle, 'asserted') AS lifecycle,
                    t.created_at,
                    t.created_by,
                    t.data->>'created_by_user_id' AS created_by_user_id
@@ -70,7 +70,7 @@ function approvalRowsSql(): string {
   const principalLeg = `SELECT id,
                                'principal'::text AS entity_type,
                                name,
-                               COALESCE(lifecycle, 'accepted') AS lifecycle,
+                               COALESCE(lifecycle, 'asserted') AS lifecycle,
                                created_at,
                                created_by,
                                data->>'created_by_user_id' AS created_by_user_id
@@ -95,13 +95,13 @@ export async function loadApprovalPerspectiveData(
            FROM audit_events
           WHERE doco_id = $1
             AND op = 'lifecycle.transition'
-            AND after_json->>'lifecycle' = 'proposed'
+            AND after_json->>'lifecycle' = 'drafting'
           ORDER BY entity_type, entity_id, at DESC
        ),
        proposed_nodes AS (
          SELECT *
            FROM (${approvalRowsSql()}) nodes
-          WHERE lifecycle = 'proposed'
+          WHERE lifecycle = 'drafting'
        ),
        resolved_actors AS (
          SELECT n.*,
@@ -148,7 +148,7 @@ export async function loadApprovalPerspectiveData(
         id: row.id,
         entity_type: row.entity_type,
         name: row.name,
-        lifecycle: row.lifecycle ?? "proposed",
+        lifecycle: row.lifecycle ?? "drafting",
         created_at: toIso(row.created_at),
         proposed_at: toIso(row.proposed_at),
         author_id: row.author_id,

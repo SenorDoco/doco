@@ -62,7 +62,7 @@ const NEURON_TYPE_ORDER = new Map(
 // Used here as a tiebreaker sort within a neuron type so lists agree with
 // the lifecycle filter row and the doco-stats card on render order.
 const LIFECYCLE_RANK = new Map(
-  ["drafting", "proposed", "accepted", "retired"].map((lifecycle, index) => [lifecycle, index]),
+  ["drafting", "asserted", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
 const POLICY_TYPES = new Set(["guidance_policy", "neuron_authoring_policy"]);
@@ -94,7 +94,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
 
   const filtered = useMemo(() => {
     if (!visibleLifecycles) return nodes;
-    return nodes.filter((node) => visibleLifecycles.has(node.lifecycle ?? "accepted"));
+    return nodes.filter((node) => visibleLifecycles.has(node.lifecycle ?? "asserted"));
   }, [nodes, visibleLifecycles]);
 
   const sorted = useMemo(() => sortNodes(filtered, sort, pageRanks), [filtered, sort, pageRanks]);
@@ -106,7 +106,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
         id: node.id,
         entity_type: node.entity_type,
         label: node.name ?? node.id,
-        lifecycle: node.lifecycle ?? "accepted",
+        lifecycle: node.lifecycle ?? "asserted",
         href: node.href ?? null,
       })),
     [sorted],
@@ -190,7 +190,7 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
       data-neuron-href={node.href ?? undefined}
       data-neuron-id={node.id}
       data-neuron-label={node.name ?? node.id}
-      data-neuron-lifecycle={node.lifecycle ?? "accepted"}
+      data-neuron-lifecycle={node.lifecycle ?? "asserted"}
       data-neuron-type={node.entity_type}
     >
       {referenceNumber ? (
@@ -325,7 +325,7 @@ function neuronTypeRank(type: string): number {
 }
 
 function lifecycleRank(lifecycle: string | null): number {
-  return LIFECYCLE_RANK.get(lifecycle ?? "accepted") ?? LIFECYCLE_RANK.size + 1;
+  return LIFECYCLE_RANK.get(lifecycle ?? "asserted") ?? LIFECYCLE_RANK.size + 1;
 }
 
 function policyPin(node: ListPerspectiveNode): number {
