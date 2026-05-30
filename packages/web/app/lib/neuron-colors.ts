@@ -9,11 +9,12 @@
 
 // Canonical lifecycle has three stages: drafting, asserted, retired.
 // Per project owner the color mapping is, in that order:
-//   drafting → yellow (provisional / work in motion)
+//   drafting → blue   (provisional / work in motion)
 //   asserted → black  (settled, in force)
 //   retired  → red    (no longer in use)
 export const LIFECYCLE_COLOR: Record<string, string> = {
-  drafting: "#ca8a04", // yellow-600 — provisional
+  // Same blue the now-removed `proposed` stage used, re-used for drafting.
+  drafting: "#2563eb", // blue-600 — provisional
   asserted: "#171717", // gray-900 — settled and in force
   retired: "#dc2626", // red-600 — no longer in use
 };
@@ -27,8 +28,8 @@ export function lifecycleColor(lifecycle: string | null | undefined): string {
 /**
  * Picks a readable foreground color (dark or white) for text placed
  * on a lifecycle-colored background. Uses WCAG relative luminance:
- * light backgrounds (e.g. the sky-400 used for `drafting`) get dark
- * text; everything else gets white. Returns hex.
+ * light backgrounds get dark text; everything else gets white.
+ * Returns hex.
  */
 export function textOnLifecycle(lifecycle: string | null | undefined): string {
   const bg = lifecycleColor(lifecycle);
