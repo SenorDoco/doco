@@ -389,7 +389,7 @@ export async function normalizeDocoParams(params: DocoRouteParams): Promise<{
 /**
  * Load + privacy-gate a Doco for a read route. `minRole` (default
  * `reader`) is the minimum role the OAuth-token scope-down must
- * grant on this Doco for the request to pass — pass `"author"` for
+ * grant on this Doco for the request to pass — pass `"writer"` for
  * capture endpoints, `"owner"` for admin endpoints (or use
  * `loadDocoForAdmin`).
  */
