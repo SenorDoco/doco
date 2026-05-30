@@ -15,10 +15,10 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
   const client: QueryClientLike = {
     async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
       captured.push({ sql, params });
-      if (/FROM synapses/i.test(sql)) return { rows: (rows.synapses ?? []) as T[] };
+      if (/FROM edges/i.test(sql)) return { rows: (rows.edges ?? []) as T[] };
       if (/FROM users/i.test(sql)) return { rows: (rows.users ?? []) as T[] };
       if (/FROM principals/i.test(sql)) return { rows: (rows.principals ?? []) as T[] };
-      return { rows: (rows.neurons ?? []) as T[] };
+      return { rows: (rows.nodes ?? []) as T[] };
     },
   };
   return { client, captured };
@@ -27,7 +27,7 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
 describe("loadBpmnGraph", () => {
   it("resolves drafting Principals as BPMN actor lanes", async () => {
     const { client, captured } = makeQueryClient({
-      neurons: [
+      nodes: [
         {
           id: "intent_01PROCESS",
           entity_type: "intent",
@@ -56,7 +56,7 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      synapses: [],
+      edges: [],
     });
 
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
@@ -89,7 +89,7 @@ describe("loadBpmnGraph", () => {
     const presentId = "action_01PRESENT";
 
     const { client } = makeQueryClient({
-      neurons: [
+      nodes: [
         {
           id: intentId,
           entity_type: "intent",
@@ -158,9 +158,9 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      synapses: [
-        { from_id: stateId, to_id: requestId, synapse_type: "sequence_flow" },
-        { from_id: requestId, to_id: presentId, synapse_type: "sequence_flow" },
+      edges: [
+        { from_id: stateId, to_id: requestId, edge_type: "sequence_flow" },
+        { from_id: requestId, to_id: presentId, edge_type: "sequence_flow" },
       ],
     });
 
@@ -180,7 +180,7 @@ describe("loadBpmnGraph", () => {
     const noId = "action_01NO";
 
     const { client, captured } = makeQueryClient({
-      neurons: [
+      nodes: [
         {
           id: intentId,
           entity_type: "intent",
@@ -231,38 +231,38 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      synapses: [
+      edges: [
         {
           from_id: decisionId,
           to_id: yesId,
-          synapse_type: "sequence_flow",
-          synapse_props_json: { label: "Yes" },
+          edge_type: "sequence_flow",
+          edge_props_json: { label: "Yes" },
         },
         {
           from_id: decisionId,
           to_id: noId,
-          synapse_type: "sequence_flow",
-          synapse_props_json: { condition: "No" },
+          edge_type: "sequence_flow",
+          edge_props_json: { condition: "No" },
         },
       ],
     });
 
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
-    const synapseQuery = captured.find((q) => /FROM synapses/i.test(q.sql));
+    const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
 
-    expect(synapseQuery?.sql).toMatch(/synapse_props_json/);
+    expect(edgeQuery?.sql).toMatch(/edge_props_json/);
     expect(graph.links).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: decisionId,
           target: yesId,
-          synapse_type: "sequence_flow",
+          edge_type: "sequence_flow",
           label: "Yes",
         }),
         expect.objectContaining({
           source: decisionId,
           target: noId,
-          synapse_type: "sequence_flow",
+          edge_type: "sequence_flow",
           label: "No",
         }),
       ]),
@@ -275,7 +275,7 @@ describe("loadBpmnGraph", () => {
     const checkoutId = "action_01CHECKOUT";
 
     const { client } = makeQueryClient({
-      neurons: [
+      nodes: [
         {
           id: intentId,
           entity_type: "intent",
@@ -320,9 +320,9 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      synapses: [
-        { from_id: decisionId, to_id: checkoutId, synapse_type: "sequence_flow" },
-        { from_id: checkoutId, to_id: decisionId, synapse_type: "sequence_flow" },
+      edges: [
+        { from_id: decisionId, to_id: checkoutId, edge_type: "sequence_flow" },
+        { from_id: checkoutId, to_id: decisionId, edge_type: "sequence_flow" },
       ],
     });
 
@@ -335,7 +335,7 @@ describe("loadBpmnGraph", () => {
 
   it("renders a bounded active-first slice for large Docos", async () => {
     const { client } = makeQueryClient({
-      neurons: [
+      nodes: [
         {
           id: "intent_active",
           entity_type: "intent",
@@ -383,7 +383,7 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      synapses: [],
+      edges: [],
     });
 
     const graph = await loadBpmnGraph(client, "doco_01", {
@@ -406,9 +406,9 @@ describe("computeNearestIntentByNode", () => {
     const nearest = computeNearestIntentByNode(
       ["intent_a", "intent_b"],
       [
-        { source: "intent_a", target: "action_a", synapse_type: "serves" },
-        { source: "action_a", target: "decision_a", synapse_type: "sequence_flow" },
-        { source: "intent_b", target: "action_b", synapse_type: "serves" },
+        { source: "intent_a", target: "action_a", edge_type: "serves" },
+        { source: "action_a", target: "decision_a", edge_type: "sequence_flow" },
+        { source: "intent_b", target: "action_b", edge_type: "serves" },
       ],
       ranks,
     );
@@ -425,8 +425,8 @@ describe("computeNearestIntentByNode", () => {
     const nearest = computeNearestIntentByNode(
       ["intent_a", "intent_b"],
       [
-        { source: "intent_a", target: "shared", synapse_type: "serves" },
-        { source: "intent_b", target: "shared", synapse_type: "serves" },
+        { source: "intent_a", target: "shared", edge_type: "serves" },
+        { source: "intent_b", target: "shared", edge_type: "serves" },
       ],
       ranks,
     );

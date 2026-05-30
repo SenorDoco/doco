@@ -67,7 +67,7 @@ function iconPath(entityType: string) {
           <path d="M9 9h6M9 12h4M9 15h5" />
         </>
       );
-    case "neuron_authoring_policy":
+    case "node_authoring_policy":
       return (
         <>
           <path d="M5.5 6.5h13v11h-13z" />
@@ -135,7 +135,7 @@ function iconPath(entityType: string) {
   }
 }
 
-export function NeuronTypeIcon({ entityType, className, ...props }: NodeTypeIconProps) {
+export function NodeTypeIcon({ entityType, className, ...props }: NodeTypeIconProps) {
   return (
     <svg
       aria-hidden="true"

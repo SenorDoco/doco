@@ -24,7 +24,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
   {
     handle: "generic",
     label: "Generic (empty)",
-    description: "Start with a blank doco. No rules, no neuron-type restrictions.",
+    description: "Start with a blank doco. No rules, no node-type restrictions.",
     updatedAt: "2026-01-01",
     owner: TEMPLATE_OWNER,
   },

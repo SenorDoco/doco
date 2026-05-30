@@ -56,21 +56,21 @@ export function readGraphReferenceGroups(): GraphReferenceGroup[] {
   if (published.length > 0) return published;
 
   const references = Array.from(
-    window.document.querySelectorAll<HTMLElement>("[data-graph-reference-number][data-neuron-id]"),
+    window.document.querySelectorAll<HTMLElement>("[data-graph-reference-number][data-node-id]"),
   )
     .flatMap((element) => {
       const number = Number(element.dataset.graphReferenceNumber);
-      const id = element.dataset.neuronId ?? "";
-      const entityType = element.dataset.neuronType ?? "";
+      const id = element.dataset.nodeId ?? "";
+      const entityType = element.dataset.nodeType ?? "";
       if (!Number.isInteger(number) || number < 1 || !id || !entityType) return [];
       return [
         {
           number,
           id,
           entity_type: entityType,
-          label: element.dataset.neuronLabel ?? element.textContent?.trim() ?? id,
-          lifecycle: element.dataset.neuronLifecycle ?? null,
-          href: element.dataset.neuronHref ?? null,
+          label: element.dataset.nodeLabel ?? element.textContent?.trim() ?? id,
+          lifecycle: element.dataset.nodeLifecycle ?? null,
+          href: element.dataset.nodeHref ?? null,
         },
       ];
     })

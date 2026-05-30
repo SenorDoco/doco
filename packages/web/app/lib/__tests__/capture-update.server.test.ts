@@ -58,7 +58,7 @@ describe("updateEntity", () => {
     } as Awaited<ReturnType<typeof getDocoById>>);
   });
 
-  it("does not change the neuron name when the route does not allow renaming", async () => {
+  it("does not change the node name when the route does not allow renaming", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: STATE_ID,
       entity_type: "state",
@@ -69,7 +69,7 @@ describe("updateEntity", () => {
       data: {
         id: STATE_ID,
         doco_id: DOCO_ID,
-        neuron_type: "state",
+        node_type: "state",
         state: "Original state name",
         kind: "intermediate",
         lifecycle: "asserted",
@@ -112,7 +112,7 @@ describe("updateEntity", () => {
     );
   });
 
-  it("updates the neuron name when the route explicitly allows renaming", async () => {
+  it("updates the node name when the route explicitly allows renaming", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: IDEA_ID,
       entity_type: "idea",
@@ -123,7 +123,7 @@ describe("updateEntity", () => {
       data: {
         id: IDEA_ID,
         doco_id: DOCO_ID,
-        neuron_type: "idea",
+        node_type: "idea",
         idea: "Original idea name",
         lifecycle: "asserted",
       },
@@ -170,7 +170,7 @@ describe("updateEntity", () => {
       data: {
         id: DECISION_ID,
         doco_id: DOCO_ID,
-        neuron_type: "decision",
+        node_type: "decision",
         decision: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
@@ -216,7 +216,7 @@ describe("updateEntity", () => {
       data: {
         id: DECISION_ID,
         doco_id: DOCO_ID,
-        neuron_type: "decision",
+        node_type: "decision",
         decision: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
@@ -257,7 +257,7 @@ describe("updateEntity", () => {
       "doco",
       {
         decision: "Use user provenance",
-        question: "Who created this neuron?",
+        question: "Who created this node?",
         chosen: "The authenticated user.",
         decided_by_principal_id: "principal_decider",
         created_by_principal_id: "principal_legacy_creator",
@@ -315,7 +315,7 @@ describe("updateEntity", () => {
       data: {
         id: IDEA_ID,
         doco_id: DOCO_ID,
-        neuron_type: "idea",
+        node_type: "idea",
         idea: "Original idea",
         lifecycle: "drafting",
         created_by: "user_alice",
@@ -356,7 +356,7 @@ describe("updateEntity", () => {
       data: {
         id: ACTION_ID,
         doco_id: DOCO_ID,
-        neuron_type: "action",
+        node_type: "action",
         action: "Selects type of job",
         verb: "select",
         lifecycle: "asserted",

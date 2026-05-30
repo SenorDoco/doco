@@ -7,7 +7,7 @@
 export const GUIDANCE_POLICY_EXPLAINER =
   "Policies AI agents read while working. Not auto-checked — they're a shared agreement.";
 
-export const NEURON_AUTHORING_POLICY_EXPLAINER =
+export const NODE_AUTHORING_POLICY_EXPLAINER =
   "Rules that are automatically evaluated when something is added to Doco.";
 
 export const AGENT_EXPOSURE_NOTE =

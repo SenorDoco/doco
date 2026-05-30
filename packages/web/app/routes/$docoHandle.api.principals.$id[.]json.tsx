@@ -13,7 +13,7 @@ import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server
 // Principal is a Record per the "frozen claims, mutable records"
 // Decision (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ). The only identity
 // field locked in place is `name` — it's the lookup slug other
-// neurons and prose mention by hand, so changing it would silently
+// nodes and prose mention by hand, so changing it would silently
 // break callers. Everything else on the Record (body_md, reports_to,
 // lifecycle) is editable. The `summary` one-liner column was dropped
 // by migration 037 — body_md carries the entire narrative now.
@@ -35,7 +35,7 @@ function principalLine(
 
 interface PrincipalPatch {
   body_md?: string;
-  /** `null` clears the synapse (Principal becomes top-of-chain). */
+  /** `null` clears the edge (Principal becomes top-of-chain). */
   reports_to?: string | null;
   /** Only `"retired"` is accepted; the lifecycle path is one-way. */
   lifecycle?: "retired";
@@ -43,15 +43,15 @@ interface PrincipalPatch {
 
 interface ActiveReference {
   id: string;
-  neuron_type: string;
+  node_type: string;
   summary: string | null;
-  synapse_type: string;
+  edge_type: string;
 }
 
-// Find every active neuron in this Doco that references the principal.
+// Find every active node in this Doco that references the principal.
 // Targets the three currently-known principal-shaped reference fields:
 //   Action.actor_id, Log.actor_id, Intent.{stakeholders, actors}
-// Synapses materialize all of these, so a single UNION across the
+// Edges materialize all of these, so a single UNION across the
 // referencing tables is enough — no per-row N+1 lookup.
 async function findActiveReferencesToPrincipal(
   docoId: string,
@@ -59,27 +59,27 @@ async function findActiveReferencesToPrincipal(
 ): Promise<ActiveReference[]> {
   return withClient(async (c) => {
     const sql = `
-      SELECT a.id AS id, 'action'::text AS neuron_type, split_part(a.action, E'\n', 1) AS summary, s.synapse_type AS synapse_type
+      SELECT a.id AS id, 'action'::text AS node_type, split_part(a.action, E'\n', 1) AS summary, s.edge_type AS edge_type
         FROM actions a
-        JOIN synapses s
+        JOIN edges s
           ON s.from_id = a.id
-         AND s.from_neuron_type = 'action'
+         AND s.from_node_type = 'action'
        WHERE s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'asserted'
       UNION ALL
-      SELECT l.id, 'log'::text, split_part(l.log, E'\n', 1), s.synapse_type
+      SELECT l.id, 'log'::text, split_part(l.log, E'\n', 1), s.edge_type
         FROM logs l
-        JOIN synapses s
+        JOIN edges s
           ON s.from_id = l.id
-         AND s.from_neuron_type = 'log'
+         AND s.from_node_type = 'log'
        WHERE s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'asserted'
       UNION ALL
-      SELECT i.id, 'intent'::text, split_part(i.intent, E'\n', 1), s.synapse_type
+      SELECT i.id, 'intent'::text, split_part(i.intent, E'\n', 1), s.edge_type
         FROM intents i
-        JOIN synapses s
+        JOIN edges s
           ON s.from_id = i.id
-         AND s.from_neuron_type = 'intent'
+         AND s.from_node_type = 'intent'
        WHERE s.doco_id = $1 AND s.to_id = $2 AND i.lifecycle = 'asserted'
-      ORDER BY neuron_type, id`;
+      ORDER BY node_type, id`;
     const r = await c.query<ActiveReference>(sql, [docoId, principalId]);
     return r.rows;
   });
@@ -148,7 +148,7 @@ export async function action({
 
   // Reject unknown keys up-front so typos don't silently no-op. `name`
   // is intentionally absent from PATCHABLE_KEYS — it's the slug other
-  // neurons reference, so it stays immutable.
+  // nodes reference, so it stays immutable.
   const unknown = Object.keys(rawPatch).filter((k) => !PATCHABLE_KEYS.has(k));
   if (unknown.length > 0) {
     return Response.json(
@@ -227,7 +227,7 @@ export async function action({
       return Response.json(
         {
           error:
-            "Cannot retire principal: active neurons still reference it. Retire or supersede those neurons first.",
+            "Cannot retire principal: active nodes still reference it. Retire or supersede those nodes first.",
           active_references: activeRefs,
         },
         { status: 409 },
@@ -235,13 +235,13 @@ export async function action({
     }
   }
 
-  // Build the merged data object. `reports_to: null` clears the synapse;
+  // Build the merged data object. `reports_to: null` clears the edge;
   // `undefined` (key absent from patch) leaves the existing value alone.
   const oldData = (existing.data ?? {}) as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...oldData };
   if (patch.reports_to === null) {
-    // Remove the key entirely so `deriveSynapses` doesn't see it and
-    // doesn't emit a `reports_to` synapse — promotes the Principal
+    // Remove the key entirely so `deriveEdges` doesn't see it and
+    // doesn't emit a `reports_to` edge — promotes the Principal
     // back to top-of-chain.
     // biome-ignore lint/performance/noDelete: removing the key (not setting undefined) keeps the data JSONB clean and lets downstream `toHaveProperty` assertions stay honest.
     delete merged.reports_to;

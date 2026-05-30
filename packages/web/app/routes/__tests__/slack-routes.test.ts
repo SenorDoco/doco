@@ -153,10 +153,10 @@ describe("Slack integration routes", () => {
   });
 
   it("posts an app mention answer instead of repeating default permissions", async () => {
-    mocks.buildSlackAppMentionResponse.mockResolvedValue("doco has 42 neurons.");
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("doco has 42 nodes.");
     mocks.fetchSlackConversationContext.mockResolvedValue([
       {
-        text: "User A: how many neurons are in Doco?",
+        text: "User A: how many nodes are in Doco?",
         ts: "1700000000.000050",
         userId: "U456",
         botId: null,
@@ -174,7 +174,7 @@ describe("Slack integration routes", () => {
             channel: "C123",
             channel_type: "channel",
             user: "U123",
-            text: "How many neurons do we have, <@U999>?",
+            text: "How many nodes do we have, <@U999>?",
             ts: "1700000000.000100",
           },
         }),
@@ -186,10 +186,10 @@ describe("Slack integration routes", () => {
       workspaceId: "T123",
       channelId: "C123",
       chatUserId: "U123",
-      messageText: "How many neurons do we have, <@U999>?",
+      messageText: "How many nodes do we have, <@U999>?",
       recentMessages: [
         {
-          text: "User A: how many neurons are in Doco?",
+          text: "User A: how many nodes are in Doco?",
           ts: "1700000000.000050",
           userId: "U456",
           botId: null,
@@ -205,7 +205,7 @@ describe("Slack integration routes", () => {
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
-      text: "doco has 42 neurons.",
+      text: "doco has 42 nodes.",
     });
   });
 
@@ -491,7 +491,7 @@ describe("Slack integration routes", () => {
   });
 
   it("continues adjacent channel replies right after Señor Doco without requiring a mention", async () => {
-    mocks.buildSlackAppMentionResponse.mockResolvedValue("The last neuron was updated just now.");
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("The last node was updated just now.");
     mocks.fetchSlackConversationContext.mockResolvedValue([
       {
         text: "Outside my lane — I work on your docos.",
@@ -512,7 +512,7 @@ describe("Slack integration routes", () => {
             channel_type: "channel",
             channel: "C123",
             user: "U123",
-            text: "How long ago was the last neuron updated?",
+            text: "How long ago was the last node updated?",
             ts: "1700000010.000100",
           },
         }),
@@ -529,7 +529,7 @@ describe("Slack integration routes", () => {
       workspaceId: "T123",
       channelId: "C123",
       chatUserId: "U123",
-      messageText: "How long ago was the last neuron updated?",
+      messageText: "How long ago was the last node updated?",
       recentMessages: [
         {
           text: "Outside my lane — I work on your docos.",
@@ -543,7 +543,7 @@ describe("Slack integration routes", () => {
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
-      text: "The last neuron was updated just now.",
+      text: "The last node was updated just now.",
     });
   });
 
@@ -570,7 +570,7 @@ describe("Slack integration routes", () => {
             channel_type: "channel",
             channel: "C123",
             user: "U123",
-            text: "How long ago was the last neuron updated?",
+            text: "How long ago was the last node updated?",
             ts: "1700000010.000100",
           },
         }),
@@ -606,7 +606,7 @@ describe("Slack integration routes", () => {
             channel_type: "channel",
             channel: "C123",
             user: "U123",
-            text: "How long ago was the last neuron updated?",
+            text: "How long ago was the last node updated?",
             ts: "1700000010.000100",
           },
         }),
@@ -708,7 +708,7 @@ describe("Slack integration routes", () => {
       shouldFetchSlackConversationContext({
         type: "message",
         channel_type: "channel",
-        text: "How long ago was the last neuron updated?",
+        text: "How long ago was the last node updated?",
         ts: "2",
       }),
     ).toBe(true);
@@ -730,7 +730,7 @@ describe("Slack integration routes", () => {
       shouldInspectSlackImplicitReplyEvent({
         type: "message",
         channel_type: "channel",
-        text: "How long ago was the last neuron updated?",
+        text: "How long ago was the last node updated?",
         ts: "2",
       }),
     ).toBe(true);
@@ -747,7 +747,7 @@ describe("Slack integration routes", () => {
         {
           type: "message",
           channel_type: "channel",
-          text: "How long ago was the last neuron updated?",
+          text: "How long ago was the last node updated?",
           ts: "2",
         },
         [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],
@@ -759,7 +759,7 @@ describe("Slack integration routes", () => {
         {
           type: "message",
           channel_type: "channel",
-          text: "How long ago was the last neuron updated?",
+          text: "How long ago was the last node updated?",
           ts: "700",
         },
         [{ text: "Answer", ts: "1", userId: "U999", botId: "B999" }],

@@ -23,7 +23,7 @@ purpose-built for AI agents and humans to share context.
 Git captures *what* changed in code. PR descriptions capture some of
 the *why* at merge time. Doco captures the *why* as it forms — the
 alternatives weighed, the constraints that shaped a decision, the
-rules that emerged from a bug fix — in typed neurons you can query
+rules that emerged from a bug fix — in typed nodes you can query
 across the whole project's lifetime.
 
 For you, the agent, this means:
@@ -126,14 +126,14 @@ query is sent), then the N-found line AFTER the result returns:
 
    ← tool call here
 
-[🔮 Doco] <N> neurons found (<X>s)
+[🔮 Doco] <N> nodes found (<X>s)
 ```
 
 **Your Doco username.** Every `doco_search` response carries a
 `viewer.username`, and `doco_complete_authentication` returns an
 "Authenticated as @username" block. Once you know it, prefix every Doco
 indicator line with your handle — `[🔮 Doco @username] Loading ...`,
-`[🔮 Doco @username] <corky verb>...`, `[🔮 Doco @username] <N> neurons
+`[🔮 Doco @username] <corky verb>...`, `[🔮 Doco @username] <N> nodes
 found ...`, and the closing tally. Before you know it (the very first
 line of a cold session, before any search returns), plain `[🔮 Doco]`
 is fine.
@@ -204,7 +204,7 @@ end of the response.
 **Connected source** (you queried or wrote to it this turn — even if
 N == 0):
 ```
-[🔮 Doco @username] <doco-or-org-name>: **<N>** neurons added/updated
+[🔮 Doco @username] <doco-or-org-name>: **<N>** nodes added/updated
 ```
 (Prefix with your `@username` once known — see "Your Doco username" in
 §1. Plain `[🔮 Doco]` only before your first search of a cold session.)

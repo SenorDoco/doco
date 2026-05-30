@@ -7,10 +7,10 @@ interface SequenceDepthNode {
 interface SequenceDepthLink {
   source: string;
   target: string;
-  synapse_type: string;
+  edge_type: string;
 }
 
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["sequence_flow"]);
+const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["sequence_flow"]);
 
 /**
  * Longest-path BPMN column depth for explicit forward sequence flow.
@@ -38,11 +38,11 @@ export function computeForwardSequenceDepths(
 
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
-    if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
+    if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
     sequenceLinks.push({
       source: link.source,
       target: link.target,
-      synapse_type: link.synapse_type,
+      edge_type: link.edge_type,
     });
   }
 

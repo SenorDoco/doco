@@ -24,7 +24,7 @@ import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { ENTITY_TABLES } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs } from "~/lib/host.server";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -169,7 +169,7 @@ export async function loader({ request }: { request: Request }) {
            FROM audit_events a
            LEFT JOIN users c ON c.id = a.by_user
           WHERE a.doco_id = ANY($1)
-            AND a.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
+            AND a.entity_type NOT IN ('guidance_policy', 'node_authoring_policy')
           ORDER BY a.at DESC
           LIMIT $2`,
         [myDocoIds, FEED_LIMIT],

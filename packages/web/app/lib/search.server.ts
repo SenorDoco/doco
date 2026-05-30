@@ -23,7 +23,7 @@ export interface SearchTypeSpec {
 }
 
 function entitySpec(table: string, entityType: string): SearchTypeSpec {
-  // Migrated neurons carry prose in a type-named column; everything
+  // Migrated nodes carry prose in a type-named column; everything
   // else still uses `summary`. Either way the projected alias here is
   // `summary` so the rest of the search hit shape doesn't change.
   const tnCol = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
@@ -45,8 +45,8 @@ function entitySpec(table: string, entityType: string): SearchTypeSpec {
   };
 }
 
-// Note types only — policies are not neurons
-// and do not participate in neuron search/ranking. To fetch policies,
+// Note types only — policies are not nodes
+// and do not participate in node search/ranking. To fetch policies,
 // hit /<handle>/api/policies.json or read the bootstrap payload.
 export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   entitySpec("decisions", "decision"),
@@ -164,17 +164,17 @@ export async function attachSearchGlobalPageRank(
   hits: SearchHit[],
 ): Promise<void> {
   if (hits.length === 0) return;
-  const synapseRows = (
-    await c.query<{ from_id: string; to_id: string; synapse_type: string }>(
-      "SELECT from_id, to_id, synapse_type FROM synapses WHERE doco_id = $1",
+  const edgeRows = (
+    await c.query<{ from_id: string; to_id: string; edge_type: string }>(
+      "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1",
       [docoId],
     )
   ).rows;
   const gpr = globalPageRank(
-    synapseRows.map((s) => ({
+    edgeRows.map((s) => ({
       from: s.from_id,
       to: s.to_id,
-      synapse_type: s.synapse_type,
+      edge_type: s.edge_type,
     })),
     { alpha: 0.85 },
   );

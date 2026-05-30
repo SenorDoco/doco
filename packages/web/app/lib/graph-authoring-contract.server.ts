@@ -35,7 +35,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "to",
     value: "from",
     cardinality: "many",
-    description: "Causal/chronological predecessor. Stored on the later neuron.",
+    description: "Causal/chronological predecessor. Stored on the later node.",
   },
   serves: {
     kind: "serves",
@@ -43,7 +43,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Neuron serves an Intent.",
+    description: "Node serves an Intent.",
   },
   enacts: {
     kind: "enacts",
@@ -51,7 +51,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Neuron enacts or cites a Decision.",
+    description: "Node enacts or cites a Decision.",
   },
   gated_by: {
     kind: "gated_by",
@@ -59,7 +59,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Neuron is guarded by a Rule.",
+    description: "Node is guarded by a Rule.",
   },
   consults: {
     kind: "consults",
@@ -67,7 +67,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Neuron consulted a Rule.",
+    description: "Node consulted a Rule.",
   },
   tests: {
     kind: "tests",
@@ -75,7 +75,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "one",
-    description: "Eval or Reference targets another neuron.",
+    description: "Eval or Reference targets another node.",
     owners: ["eval", "reference"],
   },
   born_from: {
@@ -84,7 +84,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "one",
-    description: "Neuron was born from another neuron.",
+    description: "Node was born from another node.",
   },
   superseded_by: {
     kind: "superseded_by",
@@ -92,7 +92,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "one",
-    description: "Neuron is superseded by another neuron.",
+    description: "Node is superseded by another node.",
   },
   implemented_by: {
     kind: "implemented_by",
@@ -100,13 +100,13 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
-    // No `owners` constraint: any neuron can be implemented by code
+    // No `owners` constraint: any node can be implemented by code
     // references. Decisions/ADRs are implemented by the PRs that ship
     // them; BPMN Actions are implemented by the code files/locations that
     // run them; Evals can be implemented by test files. Same edge,
     // different reading depending on owner type.
     description:
-      "Neuron is implemented by one or more code-artifact Reference neurons (PRs, commits, files, lines).",
+      "Node is implemented by one or more code-artifact Reference nodes (PRs, commits, files, lines).",
   },
   reports_to: {
     kind: "reports_to",
@@ -130,7 +130,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "one",
-    description: "Neuron is owned by a Principal.",
+    description: "Node is owned by a Principal.",
   },
   has_parent: {
     kind: "has_parent",

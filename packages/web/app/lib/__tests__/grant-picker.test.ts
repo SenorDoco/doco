@@ -85,9 +85,9 @@ describe("describeWriteScope", () => {
 });
 
 describe("writableTypeGroups", () => {
-  it("exposes both neuron and synapse lists", () => {
+  it("exposes both node and edge lists", () => {
     const g = writableTypeGroups();
-    expect(g.neurons).toContain("decision");
-    expect(g.synapses).toContain("sequence_flow");
+    expect(g.nodes).toContain("decision");
+    expect(g.edges).toContain("sequence_flow");
   });
 });

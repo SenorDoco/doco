@@ -37,8 +37,6 @@ function lifecycleRank(lifecycle: string | null | undefined): number {
       return 0;
     case "drafting":
       return 1;
-    case "drafting":
-      return 2;
     case "retired":
       return 3;
     default:

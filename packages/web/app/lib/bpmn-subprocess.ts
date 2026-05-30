@@ -2,7 +2,7 @@
 //
 // In BPMN a *collapsed sub-process* is an activity that stands in for a
 // whole nested process — drawn as a task with a small "+" marker. In a
-// Doco that maps onto an Action whose `serves` synapse points at an
+// Doco that maps onto an Action whose `serves` edge points at an
 // Intent *other than its own pool's*: the Action is laid out inside its
 // primary Intent's pool, but it also advances a second Intent that is
 // itself a process (with its own pool). The renderer surfaces that as a
@@ -15,9 +15,9 @@
 
 export interface SubprocessCandidate {
   entity_type: string;
-  /** The pool the neuron is laid out in: `pool:<intent_id>`. */
+  /** The pool the node is laid out in: `pool:<intent_id>`. */
   pool_id: string;
-  /** Every Intent this neuron `serves`. The primary one (highest
+  /** Every Intent this node `serves`. The primary one (highest
    *  PageRank) is its `pool_id`; the rest are sub-process candidates. */
   intent_ids?: string[];
 }

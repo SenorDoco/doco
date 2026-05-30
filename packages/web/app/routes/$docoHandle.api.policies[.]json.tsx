@@ -1,7 +1,7 @@
 // GET/POST /<doco-handle>/api/policies.json — dedicated policies endpoint.
 //
-// Policies (`guidance_policy`, `neuron_authoring_policy`) are not
-// neurons. They are Doco-level metadata and are *only* reachable from
+// Policies (`guidance_policy`, `node_authoring_policy`) are not
+// nodes. They are Doco-level metadata and are *only* reachable from
 // this endpoint, the agent bootstrap response, or the HTML policies
 // page. The generic /<handle>/api/<type>.json dispatcher refuses
 // policy types.
@@ -9,17 +9,17 @@
 // GET  → list every policy in the Doco, both kinds, with a
 //        `policy_kind` discriminator.
 // POST → capture a new policy. Body shape:
-//        { "policy_kind": "guidance" | "neuron_authoring", ...draft }
+//        { "policy_kind": "guidance" | "node_authoring", ...draft }
 //        Where `...draft` follows GuidancePolicyDraft or
-//        NeuronAuthoringPolicyDraft from capture.server.ts.
+//        NodeAuthoringPolicyDraft from capture.server.ts.
 
 import { withClient } from "@doco/db";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import {
   type GuidancePolicyDraft,
-  type NeuronAuthoringPolicyDraft,
+  type NodeAuthoringPolicyDraft,
   captureGuidancePolicy,
-  captureNeuronAuthoringPolicy,
+  captureNodeAuthoringPolicy,
 } from "~/lib/capture.server";
 import {
   type DocoRouteParams,
@@ -39,7 +39,7 @@ interface PolicyRow {
 }
 
 interface PolicyListEntry extends PolicyRow {
-  policy_kind: "guidance" | "neuron_authoring";
+  policy_kind: "guidance" | "node_authoring";
 }
 
 export async function loader({
@@ -51,7 +51,7 @@ export async function loader({
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   return withClient(async (c) => {
-    const [guidance, neuronAuthoring] = await Promise.all([
+    const [guidance, nodeAuthoring] = await Promise.all([
       c.query<PolicyRow>(
         `SELECT id, policy, lifecycle, body_md,
                 created_at::text AS created_at,
@@ -65,7 +65,7 @@ export async function loader({
         `SELECT id, policy, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
-           FROM neuron_authoring_policies
+           FROM node_authoring_policies
           WHERE doco_id = $1
           ORDER BY created_at DESC`,
         [ctx.meta.docoId],
@@ -76,9 +76,9 @@ export async function loader({
         ...r,
         policy_kind: "guidance" as const,
       })),
-      ...neuronAuthoring.rows.map((r) => ({
+      ...nodeAuthoring.rows.map((r) => ({
         ...r,
-        policy_kind: "neuron_authoring" as const,
+        policy_kind: "node_authoring" as const,
       })),
     ];
     return Response.json({
@@ -86,7 +86,7 @@ export async function loader({
       doco_handle: ctx.handle,
       count: items.length,
       guidance_count: guidance.rows.length,
-      neuron_authoring_count: neuronAuthoring.rows.length,
+      node_authoring_count: nodeAuthoring.rows.length,
       items,
     });
   });
@@ -127,11 +127,10 @@ export async function action({
       );
     }
     const policyKind = parsed.policy_kind;
-    if (policyKind !== "guidance" && policyKind !== "neuron_authoring") {
+    if (policyKind !== "guidance" && policyKind !== "node_authoring") {
       return Response.json(
         {
-          error:
-            'Body must include "policy_kind": "guidance" | "neuron_authoring" to disambiguate.',
+          error: 'Body must include "policy_kind": "guidance" | "node_authoring" to disambiguate.',
         },
         { status: 400 },
       );
@@ -166,12 +165,12 @@ export async function action({
       return Response.json(result, { status: 201 });
     }
 
-    const draft = stampAuthenticatedCreator(rest as unknown as NeuronAuthoringPolicyDraft, me.id);
+    const draft = stampAuthenticatedCreator(rest as unknown as NodeAuthoringPolicyDraft, me.id);
     if (!draft.authored_by_principal_id && me.id) {
       draft.authored_by_principal_id =
         (await resolvePrincipalIdForUser(meta.docoId, me.id)) ?? undefined;
     }
-    const result = await captureNeuronAuthoringPolicy(
+    const result = await captureNodeAuthoringPolicy(
       dir,
       meta.docoId,
       ownerSlug,

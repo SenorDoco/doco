@@ -1,10 +1,10 @@
 import { Check, Loader2, X, ZoomIn } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import type { ApprovalPerspectiveNode } from "~/lib/approval-perspective.server";
-import { lifecycleColor } from "~/lib/neuron-colors";
-import type { LifecycleStage } from "~/lib/neuron-detail.server";
+import { lifecycleColor } from "~/lib/node-colors";
+import type { LifecycleStage } from "~/lib/node-detail.server";
 import { timeAgo } from "~/lib/time-ago";
 
 type ApprovalSortKey =
@@ -36,7 +36,7 @@ const SORT_OPTIONS: ApprovalSortKey[] = [
 interface ApprovalPerspectiveProps {
   nodes: readonly ApprovalPerspectiveNode[];
   canChangeLifecycle: boolean;
-  onOpenNeuron: (node: ApprovalPerspectiveNode) => void;
+  onOpenNode: (node: ApprovalPerspectiveNode) => void;
   onLifecycleTransition: (
     node: ApprovalPerspectiveNode,
     lifecycle: Extract<LifecycleStage, "asserted" | "drafting">,
@@ -46,7 +46,7 @@ interface ApprovalPerspectiveProps {
 export function ApprovalPerspective({
   nodes,
   canChangeLifecycle,
-  onOpenNeuron,
+  onOpenNode,
   onLifecycleTransition,
 }: ApprovalPerspectiveProps) {
   const [query, setQuery] = useState("");
@@ -126,7 +126,7 @@ export function ApprovalPerspective({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {visible.length} of {nodes.length} proposed neuron{nodes.length === 1 ? "" : "s"}
+          {visible.length} of {nodes.length} proposed node{nodes.length === 1 ? "" : "s"}
         </p>
         <label className="inline-flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Sort by</span>
@@ -158,8 +158,8 @@ export function ApprovalPerspective({
         {visible.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
             {nodes.length === 0
-              ? "No neurons are waiting for approval."
-              : "No proposed neurons match this search."}
+              ? "No nodes are waiting for approval."
+              : "No proposed nodes match this search."}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -174,17 +174,17 @@ export function ApprovalPerspective({
                 >
                   <button
                     type="button"
-                    onClick={() => onOpenNeuron(node)}
+                    onClick={() => onOpenNode(node)}
                     className="w-full min-w-0 cursor-pointer text-left"
-                    data-neuron-href={node.href}
-                    data-neuron-id={node.id}
-                    data-neuron-label={node.name ?? node.id}
-                    data-neuron-lifecycle={node.lifecycle}
-                    data-neuron-type={node.entity_type}
+                    data-node-href={node.href}
+                    data-node-id={node.id}
+                    data-node-label={node.name ?? node.id}
+                    data-node-lifecycle={node.lifecycle}
+                    data-node-type={node.entity_type}
                   >
                     <span className="flex min-w-0 items-center gap-3">
                       <span aria-hidden className="shrink-0">
-                        <NeuronTypeIcon entityType={node.entity_type} />
+                        <NodeTypeIcon entityType={node.entity_type} />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-xs font-medium text-foreground">
@@ -212,9 +212,7 @@ export function ApprovalPerspective({
                       type="button"
                       onClick={() => void changeLifecycle(node, "asserted")}
                       disabled={disabled}
-                      title={
-                        canChangeLifecycle ? "Assert neuron" : "Write access required"
-                      }
+                      title={canChangeLifecycle ? "Assert node" : "Write access required"}
                       className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {pending === approveKey ? (
@@ -229,9 +227,7 @@ export function ApprovalPerspective({
                       onClick={() => void changeLifecycle(node, "drafting")}
                       disabled={disabled}
                       title={
-                        canChangeLifecycle
-                          ? "Reject back to drafting"
-                          : "Write access required"
+                        canChangeLifecycle ? "Reject back to drafting" : "Write access required"
                       }
                       className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                     >

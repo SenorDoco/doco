@@ -1,20 +1,20 @@
-// Per-Doco aggregate stats (Neurons, Active neurons, Synapses, Last updated)
+// Per-Doco aggregate stats (Nodes, Active nodes, Edges, Last updated)
 // shown on the dashboard and owner-profile docos tables.
 //
-// `neurons` counts domain neurons: decisions, intents, rules,
+// `nodes` counts domain nodes: decisions, intents, rules,
 // actions, evals, ideas, reference_entities, logs, states, and the
-// Doco's principals. Policies are not neurons and are deliberately
+// Doco's principals. Policies are not nodes and are deliberately
 // excluded — they are surfaced via /<handle>/api/policies.json.
-// `synapses` reads the materialized `synapses` table.
+// `edges` reads the materialized `edges` table.
 // `lastUpdatedAt` prefers the max `at` from `audit_events`, and falls
 // back to entity `updated_at` for imported/pre-audit Docos.
 
 import { withClient } from "@doco/db";
 
 export interface DocoStats {
-  neurons: number;
-  activeNeurons: number;
-  synapses: number;
+  nodes: number;
+  activeNodes: number;
+  edges: number;
   lastUpdatedAt: string | null;
 }
 
@@ -33,7 +33,7 @@ const STATS_ENTITY_TABLE_SPECS = [
 
 export const ENTITY_TABLES = STATS_ENTITY_TABLE_SPECS.map((spec) => spec.table);
 
-const EMPTY: DocoStats = { neurons: 0, activeNeurons: 0, synapses: 0, lastUpdatedAt: null };
+const EMPTY: DocoStats = { nodes: 0, activeNodes: 0, edges: 0, lastUpdatedAt: null };
 
 export async function listDocoStats(docoIds: readonly string[]): Promise<Map<string, DocoStats>> {
   const out = new Map<string, DocoStats>();
@@ -41,22 +41,22 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   const ids = [...docoIds];
 
   return withClient(async (c) => {
-    const neuronsSql = STATS_ENTITY_TABLE_SPECS.map(
+    const nodesSql = STATS_ENTITY_TABLE_SPECS.map(
       (spec) =>
         `SELECT ${spec.docoIdSql} AS doco_id, lifecycle, updated_at FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
     ).join(" UNION ALL ");
-    const [neuronsRows, synapsesRows, updatedRows] = await Promise.all([
+    const [nodesRows, edgesRows, updatedRows] = await Promise.all([
       c.query<{ doco_id: string; n: string; active_n: string; last_entity_at: string | null }>(
         `SELECT doco_id,
                 COUNT(*)::text AS n,
                 COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted')::text AS active_n,
                 MAX(updated_at)::text AS last_entity_at
-           FROM (${neuronsSql}) t
+           FROM (${nodesSql}) t
           GROUP BY doco_id`,
         [ids],
       ),
       c.query<{ doco_id: string; n: string }>(
-        "SELECT doco_id, COUNT(*)::text AS n FROM synapses WHERE doco_id = ANY($1) GROUP BY doco_id",
+        "SELECT doco_id, COUNT(*)::text AS n FROM edges WHERE doco_id = ANY($1) GROUP BY doco_id",
         [ids],
       ),
       c.query<{ doco_id: string; last_at: string }>(
@@ -66,17 +66,17 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     ]);
 
     for (const id of ids) out.set(id, { ...EMPTY });
-    for (const r of neuronsRows.rows) {
+    for (const r of nodesRows.rows) {
       const s = out.get(r.doco_id);
       if (s) {
-        s.neurons = Number(r.n);
-        s.activeNeurons = Number(r.active_n);
+        s.nodes = Number(r.n);
+        s.activeNodes = Number(r.active_n);
         s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_entity_at);
       }
     }
-    for (const r of synapsesRows.rows) {
+    for (const r of edgesRows.rows) {
       const s = out.get(r.doco_id);
-      if (s) s.synapses = Number(r.n);
+      if (s) s.edges = Number(r.n);
     }
     for (const r of updatedRows.rows) {
       const s = out.get(r.doco_id);

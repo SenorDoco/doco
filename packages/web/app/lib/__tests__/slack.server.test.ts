@@ -153,8 +153,8 @@ describe("slack.server", () => {
 
   it("cleans Slack app mentions out of message text", () => {
     expect(cleanSlackMentionText("Hola, <@U999>")).toBe("Hola,");
-    expect(cleanSlackMentionText("<@U999> How many neurons do we have?")).toBe(
-      "How many neurons do we have?",
+    expect(cleanSlackMentionText("<@U999> How many nodes do we have?")).toBe(
+      "How many nodes do we have?",
     );
   });
 
@@ -181,7 +181,7 @@ describe("slack.server", () => {
   it("builds a Doco overview query for vague Slack follow-ups", () => {
     const query = buildSlackDocoAnswerQuery("And what do they explain?", [
       {
-        text: "all doco's docos as reader: 1 Doco (doco/doco-bpms). It contains 94 neurons.",
+        text: "all doco's docos as reader: 1 Doco (doco/doco-bpms). It contains 94 nodes.",
         ts: "123.456",
         userId: null,
         botId: "B123",
@@ -192,7 +192,7 @@ describe("slack.server", () => {
       overview: true,
     });
     expect(query?.text).toContain("what do they explain");
-    expect(query?.text).toContain("94 neurons");
+    expect(query?.text).toContain("94 nodes");
     expect(detectSlackDocoOverviewQuestion("What do we document?")).toBe(true);
     expect(detectSlackDocoOverviewQuestion("What do the docos we have explain?")).toBe(true);
   });
@@ -204,8 +204,8 @@ describe("slack.server", () => {
     expect(buildSlackDocoAnswerQuery("What docos do we have?")).toMatchObject({
       questionText: "What docos do we have?",
     });
-    expect(buildSlackDocoAnswerQuery("How many neurons does bpm26o have?")).toMatchObject({
-      questionText: "How many neurons does bpm26o have?",
+    expect(buildSlackDocoAnswerQuery("How many nodes does bpm26o have?")).toMatchObject({
+      questionText: "How many nodes does bpm26o have?",
       overview: false,
     });
   });
@@ -320,9 +320,9 @@ describe("slack.server", () => {
         {
           entityId: "intent_01",
           docoLabel: "doco/doco-bpms",
-          neuronType: "intent",
+          nodeType: "intent",
           summary: "Doco core work loop",
-          body: "Doco captures software project memory as typed neurons.",
+          body: "Doco captures software project memory as typed nodes.",
           rank: 1,
         },
       ],
@@ -371,7 +371,7 @@ describe("slack.server", () => {
           {
             entityId: "decision_01",
             docoLabel: "doco/doco-bpms",
-            neuronType: "decision",
+            nodeType: "decision",
             summary: "Slack follow-up questions should search Doco content.",
             body: null,
             rank: 1,
@@ -379,7 +379,7 @@ describe("slack.server", () => {
           {
             entityId: "rule_01",
             docoLabel: "doco/doco-bpms",
-            neuronType: "rule",
+            nodeType: "rule",
             summary: "Default Slack access is shared, while linked users can use higher access.",
             body: null,
             rank: 0.8,

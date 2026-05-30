@@ -1,17 +1,17 @@
 /**
- * PageRank over a directed graph of neurons + synapses, with an
+ * PageRank over a directed graph of nodes + edges, with an
  * optional personalization vector for "personalized PageRank" from a
  * focal node.
  *
- * Used by the BPMN perspective to pick a primary Intent when a neuron
+ * Used by the BPMN perspective to pick a primary Intent when a node
  * lists multiple `intent_ids`. With no focal node, the unweighted
  * teleport distribution gives standard PageRank — the Intent that the
  * graph's structure says is most important wins. With a focal node,
  * teleport biases back to the focal so the Intent most relevant *to
- * that neuron's neighbourhood* wins.
+ * that node's neighbourhood* wins.
  *
  * Algorithm: power iteration. ~50 iterations is far more than enough
- * for the graph sizes we render here (typically < 1k neurons, < 5k
+ * for the graph sizes we render here (typically < 1k nodes, < 5k
  * edges); the loop terminates early when the L1 delta drops below
  * `tolerance`.
  */

@@ -1,6 +1,6 @@
 /**
  * Color in Doco encodes *lifecycle stage* only — anywhere, in any
- * perspective or view. Neuron type is communicated by shape, icon,
+ * perspective or view. Node type is communicated by shape, icon,
  * and text labels; color is reserved so it always means lifecycle.
  * The previous per-type color palette (NODE_TYPE_COLOR / nodeTypeColor)
  * was removed because it competed with the lifecycle stroke and
@@ -50,7 +50,7 @@ export function lifecycleLabel(lifecycle: string | null | undefined): string {
   return (lifecycle ?? "asserted").replaceAll("_", " ");
 }
 
-const NEURON_TYPE_PLURAL: Record<string, string> = {
+const NODE_TYPE_PLURAL: Record<string, string> = {
   doco: "docos",
   principal: "principals",
   organization: "organizations",
@@ -58,7 +58,7 @@ const NEURON_TYPE_PLURAL: Record<string, string> = {
   idea: "ideas",
   rule: "rules",
   guidance_policy: "guidance policies",
-  neuron_authoring_policy: "neuron-authoring policies",
+  node_authoring_policy: "node-authoring policies",
   decision: "decisions",
   action: "actions",
   log: "logs",
@@ -66,6 +66,6 @@ const NEURON_TYPE_PLURAL: Record<string, string> = {
   reference: "references",
 };
 
-export function neuronTypePlural(type: string): string {
-  return NEURON_TYPE_PLURAL[type] ?? `${type}s`;
+export function nodeTypePlural(type: string): string {
+  return NODE_TYPE_PLURAL[type] ?? `${type}s`;
 }

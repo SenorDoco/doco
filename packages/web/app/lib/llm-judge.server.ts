@@ -24,11 +24,11 @@ export interface JudgeResult {
   reason?: string;
 }
 
-const SYSTEM_PROMPT = `You are an authoring-policy judge for a knowledge graph that stores neurons (graph nodes) and policies in a project doco.
+const SYSTEM_PROMPT = `You are an authoring-policy judge for a knowledge graph that stores nodes (graph nodes) and policies in a project doco.
 
 You receive two inputs:
-1. A SPEC describing a quality predicate the author wants enforced on neurons of a given type.
-2. A CANDIDATE — the frontmatter of a neuron that's about to be persisted.
+1. A SPEC describing a quality predicate the author wants enforced on nodes of a given type.
+2. A CANDIDATE — the frontmatter of a node that's about to be persisted.
 
 Decide whether the candidate satisfies the spec. Reply with a JSON object: {"ok": true} when it satisfies the spec, or {"ok": false, "reason": "..."} with a single-sentence reason when it does not.
 

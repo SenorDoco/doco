@@ -121,12 +121,12 @@ export async function getDocoLevelGrant(
 }
 
 /**
- * Per-type write gate: can `principalId` write neurons/synapses of
+ * Per-type write gate: can `principalId` write nodes/edges of
  * `type` in this Doco? Combines the Doco-level grant (role + write-type
  * set) via `canWriteType` — owners write everything; otherwise the type
  * must be covered by the wildcard or named explicitly.
  *
- * Policy types (guidance_policy, neuron_authoring_policy) are NOT
+ * Policy types (guidance_policy, node_authoring_policy) are NOT
  * write-gateable content — they configure the Doco and stay owner-only,
  * matching `canEditPolicies`. Any non-writable type therefore requires
  * the owner role.
@@ -295,7 +295,7 @@ async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
   return p?.name === "host-bootstrap";
 }
 
-/** Read the owner_id field for either a user identity or Principal neuron. */
+/** Read the owner_id field for either a user identity or Principal node. */
 async function getPrincipalOwnerId(principalId: string): Promise<string | null> {
   if (principalId.startsWith("user_")) {
     const c = await getUserById(principalId);
@@ -405,7 +405,7 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
  * Same as `canAccessDoco` but for write/admin operations — the
  * owner-tier gate. Per decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, owner-tier
  * is the only role that can add users, delete the doco, or edit
- * policies. Writers can add/edit/retire neurons and synapses but
+ * policies. Writers can add/edit/retire nodes and edges but
  * cannot administer the doco; readers can read only.
  */
 export async function canAdminDoco(
@@ -420,7 +420,7 @@ export async function canAdminDoco(
 
 /**
  * Writer-tier check — can add, edit, retire, or transition the
- * lifecycle of neurons and synapses in this doco. The old reader /
+ * lifecycle of nodes and edges in this doco. The old reader /
  * author / approver / owner ladder collapsed to reader / writer /
  * owner: anyone with write may modify everything (subject only to the
  * Doco's own policies), so this is the gate for all content writes

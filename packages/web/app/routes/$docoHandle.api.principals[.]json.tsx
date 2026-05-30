@@ -105,7 +105,7 @@ export async function action({
   const raw = {
     id,
     doco_id: meta.docoId,
-    neuron_type: "principal",
+    node_type: "principal",
     name,
     body_md: bodyMd,
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
@@ -146,7 +146,7 @@ export async function action({
     updated_by: me.id,
   });
 
-  // Reindex so derived rows (synapses table for `reports_to`, FTS,
+  // Reindex so derived rows (edges table for `reports_to`, FTS,
   // embeddings) reflect the new Principal. Other capture routes do this
   // via the generic capture factory; principals use a bespoke handler
   // and need to call the helper directly.
@@ -211,15 +211,15 @@ export async function loader({
   //     Pre-v16 we called them "principals"; the new vocab calls them
   //     "users" but the field name stays for API back-compat.
   //
-  //   * `principal_neurons` (new field) — actual Principal neurons in
+  //   * `principal_nodes` (new field) — actual Principal nodes in
   //     this doco (role-personas referenced by Action.actor_id,
   //     Intent.actors[], etc.). These are what the BPMN swim-lane view
   //     renders. Agents that want to mutate / list the visible Principal
-  //     neurons read this field, not `principals`.
+  //     nodes read this field, not `principals`.
   //
   // `users` is exposed as a clearer alias for the legacy
   // `principals` field — pick whichever name a caller prefers.
-  const [docoUsers, neuronRows] = await Promise.all([
+  const [docoUsers, nodeRows] = await Promise.all([
     listDocoUsers(meta.docoId),
     listEntitiesByDoco("principal", meta.docoId),
   ]);
@@ -240,7 +240,7 @@ export async function loader({
       }),
     )
   ).filter((p) => p !== null);
-  const principal_neurons = neuronRows.map((r) => ({
+  const principal_nodes = nodeRows.map((r) => ({
     id: r.id,
     name: r.name ?? null,
     lifecycle: r.lifecycle ?? null,
@@ -253,9 +253,9 @@ export async function loader({
     ok: true,
     principals: users,
     users,
-    principal_neurons,
+    principal_nodes,
     user_count: users.length,
-    principal_neuron_count: principal_neurons.length,
+    principal_node_count: principal_nodes.length,
   });
 }
 

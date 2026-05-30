@@ -7,7 +7,7 @@
 // /api/invites, /api/settings, /api/audit) keep their dedicated route
 // files and win the match by being more specific in routes.ts.
 //
-// GET behaviour: returns a list of every neuron of the named type
+// GET behaviour: returns a list of every node of the named type
 // for this doco. Originally this loader returned a 405 telling the
 // caller to POST, but the agent (and external scripts) want a real
 // list endpoint per type. The list response shape is uniform across
@@ -16,13 +16,13 @@
 
 import { listEntitiesByDoco } from "@doco/db";
 import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { CAPTURE_REGISTRY } from "~/lib/neuron-capture-registry.server";
+import { CAPTURE_REGISTRY } from "~/lib/node-capture-registry.server";
 
 function notFound(type: string | undefined): Response {
-  if (type === "guidance_policies" || type === "neuron_authoring_policies") {
+  if (type === "guidance_policies" || type === "node_authoring_policies") {
     return Response.json(
       {
-        error: `${type} are policies, not neurons. Use /api/policies.json instead (GET to list, POST with "policy_kind" to capture). See /api/policies.txt for the body shape.`,
+        error: `${type} are policies, not nodes. Use /api/policies.json instead (GET to list, POST with "policy_kind" to capture). See /api/policies.txt for the body shape.`,
       },
       { status: 404 },
     );

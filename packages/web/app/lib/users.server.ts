@@ -199,8 +199,7 @@ export async function loadUserSections(principalId: string): Promise<{
   // people. Agents are not collaborators: they authenticate through API
   // tokens and are managed on the API Tokens (/api-keys) page, so they
   // are filtered out of every section here.
-  const personOnly = (users: GrantRow[]): GrantRow[] =>
-    users.filter((u) => u.kind !== "agent");
+  const personOnly = (users: GrantRow[]): GrantRow[] => users.filter((u) => u.kind !== "agent");
 
   const orgSections: OrgSection[] = [];
   for (const entry of orgRoleRows) {

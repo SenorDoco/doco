@@ -8,7 +8,7 @@
 // `initialVisibleLifecycles(...)` to seed the state with the project
 // default (everything except retired, which hides out of the box).
 
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 
 /**
  * Canonical render order. The filter row renders entries in this

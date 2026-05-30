@@ -182,7 +182,7 @@ if printf '%s' "$RESP" | jq -e '.constitution and (.constitution | type == "obje
               elif .kind == "forbids_field" then
                 "- `forbids_field` `" + .field + "`" + (if .reason then " — " + .reason else "" end)
               elif .kind == "mandatory_scope" then
-                "- `mandatory_scope` → every neuron must list scope `" + .scope_id + "`" + (if .reason then " — " + .reason else "" end)
+                "- `mandatory_scope` → every node must list scope `" + .scope_id + "`" + (if .reason then " — " + .reason else "" end)
               elif .kind == "probabilistic" then
                 "- `probabilistic` (LLM-judged) — " + (.spec // "")
               else
@@ -202,14 +202,14 @@ if printf '%s' "$RESP" | jq -e '.scopes and (.scopes | type == "array") and ((.s
   SCOPES_TEXT=$(printf '%s' "$RESP" | jq -r '
     (.scopes | map(select(.is_mandatory == true))) as $mand |
     (.scopes | map(select(.is_mandatory != true))) as $opt |
-    "### Mandatory — every neuron must list these (capture aborts without them)\n\n"
+    "### Mandatory — every node must list these (capture aborts without them)\n\n"
     + (if ($mand | length) > 0
         then (($mand | map(
             "- " + (.icon // "🏷️") + " `" + .name + "` — " + (.purpose // "(no purpose set)")
           )) | join("\n"))
         else "_(none in this Doco — no `mandatory_scope` rule on the Constitution)_"
         end)
-    + "\n\n### Optional — pick by what the neuron is about\n\n"
+    + "\n\n### Optional — pick by what the node is about\n\n"
     + (if ($opt | length) > 0
         then (($opt | map(
             "- " + (.icon // "🏷️") + " `" + .name + "` — " + (.purpose // "(no purpose set)")
@@ -219,7 +219,7 @@ if printf '%s' "$RESP" | jq -e '.scopes and (.scopes | type == "array") and ((.s
         end)
   ' 2>/dev/null)
   if [ -n "$SCOPES_TEXT" ]; then
-    SCOPES_BLOCK=$(printf '\n\n---\n\n## scopes — this Doco\047s topical neighborhoods\n\nEvery captured neuron must list at least one scope. Mandatory scopes apply to ALL neurons; optional scopes are picked by what the neuron is about.\n\n%s\n' "$SCOPES_TEXT")
+    SCOPES_BLOCK=$(printf '\n\n---\n\n## scopes — this Doco\047s topical neighborhoods\n\nEvery captured node must list at least one scope. Mandatory scopes apply to ALL nodes; optional scopes are picked by what the node is about.\n\n%s\n' "$SCOPES_TEXT")
   fi
 fi
 

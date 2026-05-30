@@ -34,7 +34,7 @@ import {
  * perspective. Single source of truth — each perspective imports
  * this rather than declaring its own.
  *
- * 0.1 chosen so the auto-fit zoom on a many-neuron Doco still
+ * 0.1 chosen so the auto-fit zoom on a many-node Doco still
  * surfaces the badges on first paint (0.35 was the previous value
  * and caused medium+ Dococs to load blank).
  */

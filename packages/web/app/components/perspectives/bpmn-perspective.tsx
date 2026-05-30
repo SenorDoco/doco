@@ -3,17 +3,17 @@
 //
 // Layout strategy:
 //   • One horizontal lane per principal (plus process bands).
-//   • Lanes are React Flow parent nodes; neurons set parentId to nest
+//   • Lanes are React Flow parent nodes; nodes set parentId to nest
 //     visually inside their lane.
-//   • Within each lane, neurons are placed in a topological sweep over
+//   • Within each lane, nodes are placed in a topological sweep over
 //     explicit `sequence_flow` edges. Stored source -> target direction
-//     is rendered directly; association synapses do not become arrows.
+//     is rendered directly; association edges do not become arrows.
 //   • Lifecycle color renders as the shape's stroke; the type icon
-//     identifies the neuron type at a glance.
+//     identifies the node type at a glance.
 //
 // Shape rendering uses custom React Flow node types — one component
 // per shape (circle, diamond, rectangle, document, rounded). Handles
-// sit on left/right edges so synapses connect cleanly regardless of
+// sit on left/right edges so edges connect cleanly regardless of
 // lane vertical offset.
 
 import { Handle, MarkerType, Position } from "@xyflow/react";
@@ -25,7 +25,7 @@ import {
   NodeBadgeRow,
   ReferenceNumberBadge,
   TypeBadge,
-} from "~/components/neuron-badges";
+} from "~/components/node-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
@@ -47,7 +47,7 @@ import {
   opacityForEdge,
 } from "~/lib/graph-depth";
 import type { GraphReferenceItem } from "~/lib/graph-references";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
 import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import "@xyflow/react/dist/style.css";
@@ -63,7 +63,7 @@ interface BpmnPerspectiveProps {
   docoHandle?: string | null;
   /**
    * One pool per Intent in the Doco (plus an "Unassigned" pool for
-   * neurons that don't cite an Intent). Pools are rendered in the
+   * nodes that don't cite an Intent). Pools are rendered in the
    * order given — the server emits them sorted by descending global
    * PageRank, with the Unassigned pool pinned to the bottom.
    */
@@ -78,15 +78,15 @@ interface BpmnPerspectiveProps {
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
   /**
-   * Per-neuron global PageRank score on the doco's synapse graph.
+   * Per-node global PageRank score on the doco's edge graph.
    * The server emits this for diagnostics and stable pool ordering.
    */
   globalPagerank?: Record<string, number>;
-  onNeuronClick?: (node: BpmnNode) => void;
+  onNodeClick?: (node: BpmnNode) => void;
   onPoolClick?: (pool: BpmnPool) => void;
   onLaneClick?: (lane: BpmnLane) => void;
   /**
-   * Lift focal-node state to the parent. Clicking a neuron on the
+   * Lift focal-node state to the parent. Clicking a node on the
    * canvas should re-center the graph on it so depth-based opacity
    * recomputes from the new focal node; the parent owns the centerId
    * state and this callback is how the canvas asks it to update.
@@ -102,14 +102,14 @@ interface BpmnPerspectiveProps {
    */
   visibleLifecycles?: Set<string>;
   /**
-   * When set, the BPMN canvas fades non-neighbours of this neuron
+   * When set, the BPMN canvas fades non-neighbours of this node
    * based on BFS depth (focused 100%, 1st-degree 75%, 2nd 50%, 3rd+ 25%).
    * Edges fade with their deepest endpoint. When null/undefined,
    * every node and edge renders at full opacity.
    */
   centerId?: string | null;
   /**
-   * One-shot viewport instruction for direct neuron URLs. Centers the
+   * One-shot viewport instruction for direct node URLs. Centers the
    * matching BPMN node, pool header, or actor lane at 100% zoom.
    */
   initialFocusId?: string | null;
@@ -135,7 +135,7 @@ const MILESTONE_NODE_WIDTH = 120;
 // inside don't crowd, but still shorter than an actor lane.
 const ARTIFACTS_BAND_HEIGHT = 120;
 const LANE_LABEL_WIDTH = 140;
-// Keep the first neuron visually separated from the swim-lane label
+// Keep the first node visually separated from the swim-lane label
 // divider. Without this, column-zero nodes can sit flush against the
 // label boundary when they are the widest shape in the graph.
 const LANE_CONTENT_LEFT_GUTTER = 32;
@@ -200,7 +200,7 @@ export function BpmnPerspective({
   nodes: nodesRaw,
   links,
   globalPagerank,
-  onNeuronClick,
+  onNodeClick,
   onPoolClick,
   onLaneClick,
   onCenterChange,
@@ -423,7 +423,7 @@ export function BpmnPerspective({
     () => new Map(renderedPools.map((pool) => [`pool-header:${pool.id}`, pool])),
     [renderedPools],
   );
-  const openPoolNeuron = useCallback(
+  const openPoolNode = useCallback(
     (pool: BpmnPool) => {
       if (!pool.intent_id) return;
       if (onCenterChange) onCenterChange(pool.intent_id);
@@ -431,7 +431,7 @@ export function BpmnPerspective({
     },
     [onCenterChange, onPoolClick],
   );
-  const openLaneNeuron = useCallback(
+  const openLaneNode = useCallback(
     (lane: BpmnLane) => {
       if (!isActorLane(lane) || !lane.base_id.startsWith("principal_")) return;
       if (onCenterChange) onCenterChange(lane.base_id);
@@ -638,12 +638,12 @@ export function BpmnPerspective({
       if (!isRendered) return [];
       // Lane FlowNodes carry data.lane; shape FlowNodes carry data.node.
       // Each pulls its reference number from the unified map by the
-      // underlying entity id (principal_<ulid> or neuron id).
+      // underlying entity id (principal_<ulid> or node id).
       if (laneData) {
         const referenceNumber = referenceNumberByEntityId.get(laneData.id);
         const data = {
           ...node.data,
-          onLaneClick: isActorLane(laneData) ? openLaneNeuron : undefined,
+          onLaneClick: isActorLane(laneData) ? openLaneNode : undefined,
         };
         if (!referenceNumber) return [{ ...node, data }];
         return [{ ...node, data: { ...data, referenceNumber } }];
@@ -669,7 +669,7 @@ export function BpmnPerspective({
     renderedPoolIds,
     renderedNodeIds,
     renderWindowOpacityById,
-    openLaneNeuron,
+    openLaneNode,
     externalEdgeStubs.nodes,
   ]);
   const flowEdges = useMemo<FlowEdge[]>(
@@ -728,7 +728,7 @@ export function BpmnPerspective({
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
   // selection center (highest global PageRank in the BPMN view) so opening
-  // the perspective centers on the most important neuron, matching the
+  // the perspective centers on the most important node, matching the
   // overview graph's behavior.
   const initialFocusFlowNodeId = useMemo(() => {
     const target = initialFocusId ?? selectionCenterId;
@@ -835,13 +835,13 @@ export function BpmnPerspective({
               pointerEvents: isClickableLane ? "auto" : undefined,
             }}
             data-bpmn-lane-rail={lane.id}
-            onClick={isClickableLane && sourceLane ? () => openLaneNeuron(sourceLane) : undefined}
+            onClick={isClickableLane && sourceLane ? () => openLaneNode(sourceLane) : undefined}
             onKeyDown={
               isClickableLane && sourceLane
                 ? (event) => {
                     if (event.key !== "Enter" && event.key !== " ") return;
                     event.preventDefault();
-                    openLaneNeuron(sourceLane);
+                    openLaneNode(sourceLane);
                   }
                 : undefined
             }
@@ -946,7 +946,7 @@ export function BpmnPerspective({
           onNodeClick={(_e: unknown, node: { id: string }) => {
             const pool = poolByHeaderId.get(node.id);
             if (pool) {
-              openPoolNeuron(pool);
+              openPoolNode(pool);
               return;
             }
             const target = nodeById.get(node.id);
@@ -955,8 +955,8 @@ export function BpmnPerspective({
             // geometry from that small window. The stable BPMN layout
             // above keeps already-rendered nodes anchored.
             if (onCenterChange) onCenterChange(target.id);
-            if (onNeuronClick) {
-              onNeuronClick(target);
+            if (onNodeClick) {
+              onNodeClick(target);
               return;
             }
             if (target.href) navigate(target.href);
@@ -1013,15 +1013,13 @@ export function BpmnPerspective({
                   cursor: isClickablePool ? "pointer" : undefined,
                   pointerEvents: isClickablePool ? "auto" : undefined,
                 }}
-                onClick={
-                  isClickablePool && sourcePool ? () => openPoolNeuron(sourcePool) : undefined
-                }
+                onClick={isClickablePool && sourcePool ? () => openPoolNode(sourcePool) : undefined}
                 onKeyDown={
                   isClickablePool && sourcePool
                     ? (event) => {
                         if (event.key !== "Enter" && event.key !== " ") return;
                         event.preventDefault();
-                        openPoolNeuron(sourcePool);
+                        openPoolNode(sourcePool);
                       }
                     : undefined
                 }
@@ -1156,7 +1154,7 @@ function layOutBpmn(
   links: OverviewGraphLink[],
   centerId: string | null | undefined,
 ): BpmnLayout {
-  // Per-node BFS depth from the focal neuron — used to fade non-
+  // Per-node BFS depth from the focal node — used to fade non-
   // neighbours. Separate from `computeDepths` below, which is the
   // topological column position used for left-to-right layout.
   const focusNodes = bpmnGraphRankNodes(pools, nodes);
@@ -1330,7 +1328,7 @@ function layOutBpmn(
     });
   }
 
-  // Emit neuron nodes nested in their lane.
+  // Emit node nodes nested in their lane.
   for (const lane of lanes) {
     const list = orderedByLane.get(lane.id) ?? [];
     const containerHeight = laneHeightById.get(lane.id) ?? baseLaneHeight;
@@ -1378,8 +1376,8 @@ function layOutBpmn(
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
   // Edge "bow" obstruction test. A roughly-horizontal edge whose straight
-  // segment would pass through a neuron sitting between its endpoints is
-  // arced (in the renderer) around that neuron. We compute it here, where
+  // segment would pass through a node sitting between its endpoints is
+  // arced (in the renderer) around that node. We compute it here, where
   // node geometry is known, so we only bow when a node ACTUALLY blocks
   // the path — and arc toward whichever side needs the smaller lift. An
   // edge threading the clear gap between stacked nodes is left straight.
@@ -1428,14 +1426,14 @@ function layOutBpmn(
 
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
-    .filter((link) => SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type))
+    .filter((link) => SEQUENCE_FLOW_EDGES.has(link.edge_type))
     .map((link, index) => {
       const source = link.source;
       const target = link.target;
       const edgeOpacity = focalActive
         ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
         : 1;
-      // Synapse inherits the origin neuron's lifecycle color so an
+      // Edge inherits the origin node's lifecycle color so an
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
@@ -1474,7 +1472,7 @@ function layOutBpmn(
         source,
         target,
         // Bezier curves keep process arrows compact and soft; long edges
-        // that would otherwise cut through intervening neurons are bowed
+        // that would otherwise cut through intervening nodes are bowed
         // vertically by the renderer (see StableLabeledBezierEdge).
         type: "stableLabeledBezier",
         zIndex: 0,
@@ -1506,13 +1504,13 @@ function layOutBpmn(
 }
 
 /**
- * Synapse types that express BPMN sequence flow for layout and arrows.
+ * Edge types that express BPMN sequence flow for layout and arrows.
  * `sequence_flow` is derived from the `sequence_to` field and is stored
  * in the same direction it renders: source -> target. Association
- * synapses (`serves`, `enacts`, `gated_by`, `tests`, …) remain visible
+ * edges (`serves`, `enacts`, `gated_by`, `tests`, …) remain visible
  * in detail panes, but they do not draw process arrows on this canvas.
  */
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["sequence_flow"]);
+const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["sequence_flow"]);
 
 function nodeTypeForShape(shape: BpmnShape): string {
   switch (shape) {
@@ -1754,11 +1752,11 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
 
 /**
  * Type + lifecycle badges above a lane's label, matching the badge
- * row at the top of every neuron card. Only actor lanes have a
- * single owning neuron (the Principal), so they get the type +
+ * row at the top of every node card. Only actor lanes have a
+ * single owning node (the Principal), so they get the type +
  * lifecycle pair. Bands (milestone / artifacts) are structural
- * containers that hold a set of neurons — labelling the band itself
- * with one of those neuron types is misleading, so we render nothing.
+ * containers that hold a set of nodes — labelling the band itself
+ * with one of those node types is misleading, so we render nothing.
  */
 function LaneBadgeRow({ lane }: { lane: BpmnLane }) {
   if (lane.kind !== "actor") return null;
@@ -2137,11 +2135,11 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
 function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | number | undefined> {
   return {
     "data-graph-reference-number": data.referenceNumber,
-    "data-neuron-href": data.node.href ?? undefined,
-    "data-neuron-id": data.node.id,
-    "data-neuron-label": data.node.name ?? data.node.id,
-    "data-neuron-lifecycle": data.node.lifecycle ?? "asserted",
-    "data-neuron-type": data.node.entity_type,
+    "data-node-href": data.node.href ?? undefined,
+    "data-node-id": data.node.id,
+    "data-node-label": data.node.name ?? data.node.id,
+    "data-node-lifecycle": data.node.lifecycle ?? "asserted",
+    "data-node-type": data.node.entity_type,
   };
 }
 
@@ -2149,7 +2147,7 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
  * Tag row floated centered over the TOP edge of a BPMN shape (type
  * pill + lifecycle pill) and reference-number badge centered over the
  * BOTTOM edge. Shared with the Graph perspective via
- * `~/components/neuron-badges` so both perspectives read the same.
+ * `~/components/node-badges` so both perspectives read the same.
  *
  * `circular` is preserved as a no-op anchor hint — the new layout is
  * already top-center for every shape, so circles don't need a special

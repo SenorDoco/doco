@@ -10,7 +10,7 @@ export interface OverviewLayoutNode {
 export interface OverviewLayoutLink {
   source: string;
   target: string;
-  synapse_type?: string | null;
+  edge_type?: string | null;
 }
 
 export interface Point {
@@ -26,7 +26,7 @@ const NODE_TYPE_ORDER = new Map(
     "action",
     "rule",
     "guidance_policy",
-    "neuron_authoring_policy",
+    "node_authoring_policy",
     "log",
     "eval",
     "reference",
@@ -40,7 +40,7 @@ const NODE_HEIGHT = 91;
 const COLLISION_PADDING = 48;
 const TARGET_AVERAGE_RADIUS = 360;
 
-const SYNAPSE_LAYOUT_WEIGHT = new Map<string, number>([
+const EDGE_LAYOUT_WEIGHT = new Map<string, number>([
   ["sequence_flow", 2.4],
   ["reports_to", 2.1],
   ["serves", 1.8],
@@ -223,7 +223,7 @@ function connectedComponents(
 }
 
 function layoutWeight(link: OverviewLayoutLink, centerId: string): number {
-  const base = SYNAPSE_LAYOUT_WEIGHT.get(link.synapse_type ?? "") ?? 1;
+  const base = EDGE_LAYOUT_WEIGHT.get(link.edge_type ?? "") ?? 1;
   const touchesCenter = link.source === centerId || link.target === centerId;
   return touchesCenter ? base * 1.15 : base;
 }

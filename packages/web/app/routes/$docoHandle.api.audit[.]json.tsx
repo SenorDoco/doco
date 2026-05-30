@@ -23,7 +23,7 @@ const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.update",
   "entity.delete",
   "lifecycle.transition",
-  "synapse.add",
+  "edge.add",
 ]);
 
 export async function loader({

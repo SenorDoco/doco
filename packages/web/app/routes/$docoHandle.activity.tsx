@@ -14,14 +14,14 @@ import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { cn } from "~/lib/cn";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 
 const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.create",
   "entity.update",
   "entity.delete",
   "lifecycle.transition",
-  "synapse.add",
+  "edge.add",
 ]);
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {

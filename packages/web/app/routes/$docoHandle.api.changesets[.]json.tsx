@@ -1,7 +1,7 @@
 // Generic graph-authoring changesets.
 //
 // This endpoint is deliberately not BPMN-specific. It lets agents create
-// neurons and add typed relations in one request; perspective-specific
+// nodes and add typed relations in one request; perspective-specific
 // contracts then interpret those relations for rendering.
 
 import { getEntity, roleAtLeast, withClient } from "@doco/db";
@@ -21,7 +21,7 @@ import {
   relationKind,
   unsupportedRelationFieldError,
 } from "~/lib/graph-authoring-contract.server";
-import { CAPTURE_REGISTRY_BY_ENTITY_TYPE, type MeLike } from "~/lib/neuron-capture-registry.server";
+import { CAPTURE_REGISTRY_BY_ENTITY_TYPE, type MeLike } from "~/lib/node-capture-registry.server";
 
 type Operation = CreateOperation | RelateOperation | RelateManyOperation | AppendOperation;
 
@@ -219,23 +219,23 @@ async function applyOperation(
     return { op_index: index, op: "create", ok: false, error: "Operation must be an object." };
   }
   if (op.op === "create") {
-    return createNeuron(op, index, ctx, aliases);
+    return createNode(op, index, ctx, aliases);
   }
   if (op.op === "relate") {
-    return relateNeurons(op, index, ctx, aliases);
+    return relateNodes(op, index, ctx, aliases);
   }
   if (op.op === "relate_many") {
     return relateMany(op, index, ctx, aliases);
   }
   if (op.op === "append") {
-    const created = await createNeuron(
+    const created = await createNode(
       { op: "create", entity_type: op.entity_type, alias: op.alias, body: op.body },
       index,
       ctx,
       aliases,
     );
     if (!created.ok || !created.id) return created;
-    const related = await relateNeurons(
+    const related = await relateNodes(
       {
         op: "relate",
         relation_kind: op.relation_kind,
@@ -266,7 +266,7 @@ async function applyOperation(
   };
 }
 
-async function createNeuron(
+async function createNode(
   op: CreateOperation,
   index: number,
   ctx: ChangesetContext,
@@ -457,7 +457,7 @@ async function relateMany(
   };
 }
 
-async function relateNeurons(
+async function relateNodes(
   op: RelateOperation,
   index: number,
   ctx: ChangesetContext,
@@ -724,9 +724,9 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
               count(*) FILTER (WHERE s.to_id = ids.id)::text AS incoming,
               count(*) FILTER (WHERE s.from_id = ids.id)::text AS outgoing
          FROM unnest($2::text[]) AS ids(id)
-         LEFT JOIN synapses s
+         LEFT JOIN edges s
            ON s.doco_id = $1
-          AND s.synapse_type = $3
+          AND s.edge_type = $3
           AND (s.to_id = ids.id OR s.from_id = ids.id)
         GROUP BY ids.id`,
       [docoId, createdIds, primary],

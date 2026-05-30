@@ -231,7 +231,7 @@ button[class*="bg-primary"]:active {
   box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }
 /* `border border-border` (1px on all four sides — e.g. the graph
-   canvas container, neuron-dialog lifecycle buttons, perspective
+   canvas container, node-dialog lifecycle buttons, perspective
    tabs, etc.). The visible `border-border` line at 22% alpha already
    draws the dark side of the edge on all four sides, so the etched
    look only needs the top-left HIGHLIGHT on top of it. Painting the

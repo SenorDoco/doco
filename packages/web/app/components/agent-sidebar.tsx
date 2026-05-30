@@ -6,7 +6,7 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
-import { normalizeNeuronType } from "@doco/shared";
+import { normalizeNodeType } from "@doco/shared";
 import {
   type ReactNode,
   useCallback,
@@ -400,29 +400,29 @@ function formatRelativeTime(iso: string): string {
 // when the plural isn't a policy.
 function pluralToPolicyKindSlug(plural: string): string | null {
   if (plural === "guidance_policies") return "guidance";
-  if (plural === "neuron_authoring_policies") return "neuron-authoring";
+  if (plural === "node_authoring_policies") return "node-authoring";
   return null;
 }
 
 // Resolve the URL kind slug from a doco_api POST body for the shared
 // `/<handle>/api/policies.json` create endpoint. The body's
-// `policy_kind` field is either "guidance" or "neuron_authoring";
+// `policy_kind` field is either "guidance" or "node_authoring";
 // translate to the slug the policy edit route expects.
 function bodyToPolicyKindSlug(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
   const k = (body as { policy_kind?: unknown }).policy_kind;
   if (k === "guidance") return "guidance";
-  if (k === "neuron_authoring") return "neuron-authoring";
+  if (k === "node_authoring") return "node-authoring";
   return null;
 }
 
 type PendingCreate =
-  | { kind: "neuron"; handle: string; entityType: string }
+  | { kind: "node"; handle: string; entityType: string }
   | { kind: "policy"; handle: string; policyKindSlug: string };
 
 // When the agent drives focus (vs. an explicit user click), center
-// the graph on the neuron without opening the detail dialog. The
-// route loader reads `?dialog=skip` and leaves `selectedNeuron` null.
+// the graph on the node without opening the detail dialog. The
+// route loader reads `?dialog=skip` and leaves `selectedNode` null.
 function withDialogSkip(target: string): string {
   if (!target.startsWith("/")) return target;
   try {
@@ -434,13 +434,13 @@ function withDialogSkip(target: string): string {
   }
 }
 
-function withDialogSkipForNeuronTarget(target: string): string {
+function withDialogSkipForNodeTarget(target: string): string {
   if (!target.startsWith("/")) return target;
   try {
     const url = new URL(target, "https://doco.local");
     const segments = url.pathname.split("/").filter(Boolean);
     const [handle, entityType, id] = segments;
-    const canonicalType = normalizeNeuronType(entityType);
+    const canonicalType = normalizeNodeType(entityType);
     if (segments.length !== 3 || !handle || !id || !canonicalType) {
       return target;
     }
@@ -537,7 +537,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     collapsedRef.current = collapsed;
   }, [collapsed]);
   // Publish the rail's current width as a CSS variable so floating
-  // overlays (the neuron-detail dialog, etc.) can avoid covering it on
+  // overlays (the node-detail dialog, etc.) can avoid covering it on
   // small screens. Three widths now: collapsed (32), default
   // expanded (320), and Show-Thinking expanded (640). Thinking is a
   // chat-only feature so the rail narrows back to 320 whenever the
@@ -604,7 +604,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   // Mirror of `inputText.trim().length > 0`, kept in a ref so callbacks
   // that read it don't have to depend on (and re-bind every keystroke
-  // on) the `inputText` state. Used by `maybeFollowToolToNeuron` to
+  // on) the `inputText` state. Used by `maybeFollowToolToNode` to
   // skip auto-focus while the user has unsent text in the composer.
   const composerHasTextRef = useRef(false);
   useEffect(() => {
@@ -1340,8 +1340,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   );
 
   // Auto-focus: when the agent makes a doco_api tool call targeting
-  // a specific neuron (path matches /<handle>/api/<plural-type>/<id>.{json,txt}),
-  // pull the user into that neuron's perspective view so they can
+  // a specific node (path matches /<handle>/api/<plural-type>/<id>.{json,txt}),
+  // pull the user into that node's perspective view so they can
   // see what Señor Doco is doing in real time. No-op when the user
   // is already at the target URL — React Router would treat the
   // navigate as a no-op anyway, but skipping avoids touching history.
@@ -1354,11 +1354,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // on the composer's *content* instead — handed in via a ref so the
   // callback doesn't re-bind on every keystroke.
   //
-  // Policies aren't neurons, but the agent edits them the same way:
-  // PATCH /<handle>/api/{guidance,neuron_authoring}_policies/<id>.json.
+  // Policies aren't nodes, but the agent edits them the same way:
+  // PATCH /<handle>/api/{guidance,node_authoring}_policies/<id>.json.
   // They get a different target URL — the policy edit page —
   // instead of a perspective view.
-  const maybeFollowToolToNeuron = useCallback(
+  const maybeFollowToolToNode = useCallback(
     (toolName: string, input: unknown) => {
       if (toolName !== "doco_api") return;
       if (!input || typeof input !== "object") return;
@@ -1374,9 +1374,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         target = `/${handle}/policies/${policyKind}/${id}/edit`;
       } else {
         // Plurals are uniformly the entity-type + "s" across all
-        // neuron tables shipped today (decisions, intents, actions,
+        // node tables shipped today (decisions, intents, actions,
         // logs, rules, evals, references, ideas, states, principals).
-        const entityType = normalizeNeuronType(plural);
+        const entityType = normalizeNodeType(plural);
         if (!entityType) return;
         target = `/${handle}/${entityType}/${id}`;
       }
@@ -1398,10 +1398,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // the id out of the preview and navigate.
   //
   // Two shapes:
-  //   - "neuron" creates go to /<handle>/<entity-type>/<id>
+  //   - "node" creates go to /<handle>/<entity-type>/<id>
   //   - "policy" creates go to /<handle>/policies/<kind-slug>/<id>/edit.
   //     The plural endpoint is /<handle>/api/policies.json for both
-  //     guidance and neuron-authoring policies; the kind is in the
+  //     guidance and node-authoring policies; the kind is in the
   //     request body's `policy_kind` field, which we capture at
   //     note-create time.
   const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map());
@@ -1428,9 +1428,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       });
       return;
     }
-    const entityType = normalizeNeuronType(plural);
+    const entityType = normalizeNodeType(plural);
     if (!entityType) return;
-    pendingCreatesRef.current.set(toolUseId, { kind: "neuron", handle, entityType });
+    pendingCreatesRef.current.set(toolUseId, { kind: "node", handle, entityType });
   }, []);
 
   const maybeFollowCreateResult = useCallback(
@@ -1662,10 +1662,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 b.input = event.input;
                 bumpInFlight();
                 // Auto-focus: when the agent reads/updates a specific
-                // neuron via doco_api, take the user to that neuron's
+                // node via doco_api, take the user to that node's
                 // perspective view so they can watch what's happening.
                 // Skipped silently if the user is already there.
-                maybeFollowToolToNeuron(b.name, event.input);
+                maybeFollowToolToNode(b.name, event.input);
                 // Record creates here so the matching tool_use_result
                 // (which carries the server-generated id) can navigate.
                 maybeNoteCreate(event.tool_use_id, b.name, event.input);
@@ -1689,10 +1689,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 preview: event.preview,
                 ok: event.ok,
               });
-              // Create flow: navigate to the freshly-minted neuron.
+              // Create flow: navigate to the freshly-minted node.
               maybeFollowCreateResult(event.tool_use_id, event.ok, event.preview);
             } else if (event.kind === "navigate") {
-              const targetUrl = withDialogSkipForNeuronTarget(event.url);
+              const targetUrl = withDialogSkipForNodeTarget(event.url);
               navigate(targetUrl);
               appendThinking({ kind: "navigate", url: targetUrl });
             } else if (event.kind === "message_saved") {
@@ -1804,7 +1804,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       conversationId,
       conversationTitle,
       loadConversationsList,
-      maybeFollowToolToNeuron,
+      maybeFollowToolToNode,
       maybeNoteCreate,
       maybeFollowCreateResult,
     ],
@@ -3502,12 +3502,12 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
 }
 
 /**
- * Type-named prose field per neuron type (post-migration 023). The
+ * Type-named prose field per node type (post-migration 023). The
  * server stores the prose under this field name; the agent's POST
  * bodies use the same key. Lets the chip label show the actual
  * intent of a capture instead of just the URL.
  */
-const NEURON_PROSE_FIELD: Record<string, string> = {
+const NODE_PROSE_FIELD: Record<string, string> = {
   decisions: "decision",
   intents: "intent",
   ideas: "idea",
@@ -3522,7 +3522,7 @@ const NEURON_PROSE_FIELD: Record<string, string> = {
 
 /**
  * First-line preview of a possibly-multiline prose field. The first
- * line of every neuron's prose is the headline (the Decision summary,
+ * line of every node's prose is the headline (the Decision summary,
  * the Intent statement, etc.) — perfect for a one-line chip.
  */
 function firstLine(s: unknown, cap = 60): string {
@@ -3547,7 +3547,7 @@ function toolLabel(name: string, input: unknown): string {
       const type = m[1] ?? "";
       const id = m[2] ?? "";
       const body = i.body as Record<string, unknown> | undefined;
-      const proseField = NEURON_PROSE_FIELD[type];
+      const proseField = NODE_PROSE_FIELD[type];
       const label = proseField && body ? firstLine(body[proseField], 60) : "";
       const typeLabel = type.replace(/_/g, " ");
       if (method === "POST" && label) return `Adding ${typeLabel.replace(/s$/, "")}: ${label}`;

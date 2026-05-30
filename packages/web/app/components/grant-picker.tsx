@@ -17,7 +17,7 @@ import {
 //   1. pick an organization
 //   2. see its Docos (and the org itself) listed below
 //   3. expand a target → choose read / write / owner
-//   4. for write → tick the neuron and synapse TYPES to grant
+//   4. for write → tick the node and edge TYPES to grant
 //
 // Emits a ComposedGrant via onChange; the host page renders the submit
 // affordance (invite button / token mint / save) so this component stays
@@ -103,7 +103,7 @@ function TargetRow({
   const role: DocoRole = selected?.role ?? "reader";
   const writeTypes = selected?.writeTypes ?? [];
   const roles = grantableRoles(target.maxRole);
-  const { neurons, synapses } = writableTypeGroups();
+  const { nodes, edges } = writableTypeGroups();
 
   const emit = (next: { role?: DocoRole; writeTypes?: string[] }) =>
     onSelect({
@@ -120,7 +120,7 @@ function TargetRow({
     emit({ writeTypes: [...set] });
   };
 
-  const allTypes = [...neurons, ...synapses];
+  const allTypes = [...nodes, ...edges];
   const wildcard = writeTypes.includes("*");
   const writeMode = role !== "reader" || writeTypes.length > 0;
 
@@ -178,15 +178,15 @@ function TargetRow({
               {!wildcard ? (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
                   <TypeGroup
-                    title="Neurons"
-                    types={neurons}
+                    title="Nodes"
+                    types={nodes}
                     targetId={target.id}
                     writeTypes={writeTypes}
                     onToggle={toggleType}
                   />
                   <TypeGroup
-                    title="Synapses"
-                    types={synapses}
+                    title="Edges"
+                    types={edges}
                     targetId={target.id}
                     writeTypes={writeTypes}
                     onToggle={toggleType}

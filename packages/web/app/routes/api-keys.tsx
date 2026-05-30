@@ -71,8 +71,8 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     if (!rawGrants) return { error: "Pick at least one org or doco to scope this key to." };
 
     // grants is a JSON-encoded array of { level, target_id, role,
-    // write_types? } — write_types narrows write to specific neuron/
-    // synapse types (decision_per_type_write_grants).
+    // write_types? } — write_types narrows write to specific node/
+    // edge types (decision_per_type_write_grants).
     let grants: Array<{
       level: "org" | "doco";
       target_id: string;

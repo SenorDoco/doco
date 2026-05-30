@@ -10,7 +10,7 @@ import { Pin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import type { AttachedPerspective, Perspective } from "~/lib/perspectives.server";
 
 interface PerspectiveTabsProps {

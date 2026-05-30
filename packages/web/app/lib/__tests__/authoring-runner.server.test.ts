@@ -1,7 +1,7 @@
 import { upsertEntity, withClient } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAuthoringPolicies } from "../authoring-runner.server";
-import { type NeuronAuthoringPolicyDraft, captureNeuronAuthoringPolicy } from "../capture.server";
+import { type NodeAuthoringPolicyDraft, captureNodeAuthoringPolicy } from "../capture.server";
 import { judgeProbabilisticPredicate } from "../llm-judge.server";
 
 // Required test DB lifecycle hooks (beforeAll/beforeEach/afterAll).
@@ -19,10 +19,10 @@ beforeEach(() => {
 const DOCO_ID = "doco_01TEST00000000000000000001";
 const ORG_ID = "organization_01TESTORG000000000000001";
 const PRINCIPAL_ALICE = "principal_01TESTALICE0000000000001";
-const POLICY_ID_PRINCIPAL = "neuron_authoring_policy_01TESTPRINCIPAL000000001";
-const POLICY_ID_FIELD = "neuron_authoring_policy_01TESTFIELD000000000001";
-const POLICY_ID_PROBABILISTIC = "neuron_authoring_policy_01TESTPROB0000000000001";
-const POLICY_ID_UNIQUE = "neuron_authoring_policy_01TESTUNIQUE00000000001";
+const POLICY_ID_PRINCIPAL = "node_authoring_policy_01TESTPRINCIPAL000000001";
+const POLICY_ID_FIELD = "node_authoring_policy_01TESTFIELD000000000001";
+const POLICY_ID_PROBABILISTIC = "node_authoring_policy_01TESTPROB0000000000001";
+const POLICY_ID_UNIQUE = "node_authoring_policy_01TESTUNIQUE00000000001";
 
 interface SeedOpts {
   withPrincipalRule?: boolean;
@@ -41,7 +41,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       [ORG_ID],
     );
 
-    // Insert a doco — required for the FK on neuron_authoring_policies.
+    // Insert a doco — required for the FK on node_authoring_policies.
     await c.query(
       `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
          VALUES ($1, 'smoke-test', $2, $2, '{}'::jsonb, now(), now())`,
@@ -59,20 +59,20 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       const yaml = JSON.stringify({
         id: POLICY_ID_PRINCIPAL,
         doco_id: DOCO_ID,
-        neuron_type: "neuron_authoring_policy",
-        policy_kind: "neuron_authoring",
+        node_type: "node_authoring_policy",
+        policy_kind: "node_authoring",
         policy: "Action.actor_id resolves to a Principal",
         evaluation_kind: "deterministic",
         predicate: {
           kind: "requires_field_resolves_to_principal",
           field: "actor_id",
-          when_neuron_type: ["action"],
+          when_node_type: ["action"],
         },
         on_violation: "block",
-        ...(opts.firesOnActive ? { fires_when_neuron_lifecycle: ["asserted"] } : {}),
+        ...(opts.firesOnActive ? { fires_when_node_lifecycle: ["asserted"] } : {}),
       });
       await c.query(
-        `INSERT INTO neuron_authoring_policies
+        `INSERT INTO node_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_PRINCIPAL, DOCO_ID, "Action.actor_id resolves to a Principal", yaml],
@@ -83,19 +83,19 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       const yaml = JSON.stringify({
         id: POLICY_ID_FIELD,
         doco_id: DOCO_ID,
-        neuron_type: "neuron_authoring_policy",
-        policy_kind: "neuron_authoring",
+        node_type: "node_authoring_policy",
+        policy_kind: "node_authoring",
         policy: "Action.actor_id is set",
         evaluation_kind: "deterministic",
         predicate: {
           kind: "requires_field",
           fields: ["actor_id"],
-          when_neuron_type: ["action"],
+          when_node_type: ["action"],
         },
         on_violation: "block",
       });
       await c.query(
-        `INSERT INTO neuron_authoring_policies
+        `INSERT INTO node_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
@@ -106,19 +106,19 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       const yaml = JSON.stringify({
         id: POLICY_ID_PROBABILISTIC,
         doco_id: DOCO_ID,
-        neuron_type: "neuron_authoring_policy",
-        policy_kind: "neuron_authoring",
+        node_type: "node_authoring_policy",
+        policy_kind: "node_authoring",
         policy: "Action prose is atomic",
         evaluation_kind: "probabilistic",
         predicate: {
           kind: "probabilistic",
           spec: "The Action's `action` field reads as an atomic business activity, not a vague umbrella phase.",
-          when_neuron_type: ["action"],
+          when_node_type: ["action"],
         },
         on_violation: "block",
       });
       await c.query(
-        `INSERT INTO neuron_authoring_policies
+        `INSERT INTO node_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action prose is atomic", yaml],
@@ -129,21 +129,21 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       const yaml = JSON.stringify({
         id: POLICY_ID_UNIQUE,
         doco_id: DOCO_ID,
-        neuron_type: "neuron_authoring_policy",
-        policy_kind: "neuron_authoring",
+        node_type: "node_authoring_policy",
+        policy_kind: "node_authoring",
         policy: "Decision.chosen is unique",
         evaluation_kind: "deterministic",
         predicate: {
           kind: "unique_field",
           field: "chosen",
           case_fold: true,
-          when_neuron_type: ["decision"],
+          when_node_type: ["decision"],
         },
-        fires_when_neuron_lifecycle: ["asserted"],
+        fires_when_node_lifecycle: ["asserted"],
         on_violation: "block",
       });
       await c.query(
-        `INSERT INTO neuron_authoring_policies
+        `INSERT INTO node_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_UNIQUE, DOCO_ID, "Decision.chosen is unique", yaml],
@@ -159,7 +159,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTBAD000000000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         action: "send invoice",
         verb: "send",
@@ -182,7 +182,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTGOOD00000000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         action: "send invoice",
         verb: "send",
@@ -203,7 +203,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTNOACTOR00000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         action: "send invoice",
         verb: "send",
@@ -216,13 +216,13 @@ describe("authoring runner — integration", () => {
     expect(result.blocking?.policy_id).toBe(POLICY_ID_FIELD);
   });
 
-  it("skips a policy whose fires_when_neuron_lifecycle excludes the candidate", async () => {
+  it("skips a policy whose fires_when_node_lifecycle excludes the candidate", async () => {
     await seed({ withPrincipalRule: true, firesOnActive: true });
     const result = await runAuthoringPolicies({
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTDRAFTED00000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         action: "send invoice",
         verb: "send",
@@ -243,7 +243,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTNOPRIMS00000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         action: "send invoice",
         verb: "send",
@@ -268,7 +268,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTVAGUE000000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         summary: "handle order",
         verb: "handle",
@@ -289,7 +289,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTATOMIC00000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         summary: "invoice mailed to customer",
         verb: "mail",
@@ -309,7 +309,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTJUDGEDOWN000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         summary: "handle order",
         verb: "handle",
@@ -324,7 +324,7 @@ describe("authoring runner — integration", () => {
   });
 
   it("skips enforcement entirely when the candidate is transitioning to retired", async () => {
-    // Reported in chat: a probabilistic policy (no fires_when_neuron_lifecycle
+    // Reported in chat: a probabilistic policy (no fires_when_node_lifecycle
     // filter) blocked a State's retirement because the current content didn't
     // satisfy a quality rule. Retiring is a winding-down operation — the runner
     // should short-circuit and let the lifecycle transition through.
@@ -333,7 +333,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTRETIRE00000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         action: "send invoice",
         verb: "send",
@@ -358,7 +358,7 @@ describe("authoring runner — integration", () => {
       entity_type: "decision",
       data: {
         id: existingId,
-        neuron_type: "decision",
+        node_type: "decision",
         doco_id: DOCO_ID,
         decision: "Activation key means the code used to activate an account.",
         question: "What does activation key mean?",
@@ -373,7 +373,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "decision_01TESTTERMDUPLICATE0000001",
-        neuron_type: "decision",
+        node_type: "decision",
         doco_id: DOCO_ID,
         decision: "Duplicate glossary term.",
         question: "What does activation key mean?",
@@ -408,13 +408,13 @@ describe("authoring runner — integration", () => {
       const yaml = JSON.stringify({
         id: POLICY_ID_FIELD,
         summary: "Action.actor_id is set",
-        predicate: { kind: "requires_field", fields: ["actor_id"], when_neuron_type: ["action"] },
+        predicate: { kind: "requires_field", fields: ["actor_id"], when_node_type: ["action"] },
         on_violation: "block",
       });
       // Explicit NULL on the lifecycle column — should still load because
       // the loader COALESCEs NULL → 'asserted'.
       await c.query(
-        `INSERT INTO neuron_authoring_policies
+        `INSERT INTO node_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, NULL, now(), now())`,
         [POLICY_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
@@ -425,7 +425,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTNULL00000000000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         // actor_id missing → should trip the policy
       },
@@ -442,10 +442,10 @@ describe("authoring runner — integration", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       await seed({ withRequiredFieldRule: true });
-      const malformedId = "neuron_authoring_policy_01TESTBORKED00000000000001";
+      const malformedId = "node_authoring_policy_01TESTBORKED00000000000001";
       await withClient(async (c) => {
         await c.query(
-          `INSERT INTO neuron_authoring_policies
+          `INSERT INTO node_authoring_policies
              (id, doco_id, policy, data, lifecycle, created_at, updated_at)
              VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
           [
@@ -463,7 +463,7 @@ describe("authoring runner — integration", () => {
         docoId: DOCO_ID,
         candidate: {
           id: "action_01TESTBORKED0000000000000001",
-          neuron_type: "action",
+          node_type: "action",
           doco_id: DOCO_ID,
           // actor_id missing → still tripped by the good policy
         },
@@ -478,11 +478,11 @@ describe("authoring runner — integration", () => {
     }
   });
 
-  it("rejects a graph-completeness check whose covering neuron is RETIRED", async () => {
+  it("rejects a graph-completeness check whose covering node is RETIRED", async () => {
     // Defends fix #6 (population side): loadPopulation previously selected
-    // all neurons regardless of lifecycle. A retired covering neuron
+    // all nodes regardless of lifecycle. A retired covering node
     // therefore still satisfied a graph-completeness check. Now retired
-    // neurons drop out of the population, so the check fails — consistent
+    // nodes drop out of the population, so the check fails — consistent
     // with the principals filter.
     await withClient(async (c) => {
       await c.query(
@@ -501,7 +501,7 @@ describe("authoring runner — integration", () => {
         [PRINCIPAL_ALICE, DOCO_ID],
       );
       // graph-completeness policy: every id in `actors` on an Intent
-      // must be covered by an incoming Action with synapse_type=performed_by
+      // must be covered by an incoming Action with edge_type=performed_by
       // whose actor_id equals that id.
       const yaml = JSON.stringify({
         id: POLICY_ID_PRINCIPAL,
@@ -509,15 +509,15 @@ describe("authoring runner — integration", () => {
         predicate: {
           kind: "graph-completeness",
           list_field: "actors",
-          synapse_type: "performed_by",
-          incoming_neuron_type: "action",
+          edge_type: "performed_by",
+          incoming_node_type: "action",
           incoming_field_must_match: "actor_id",
-          when_neuron_type: ["intent"],
+          when_node_type: ["intent"],
         },
         on_violation: "block",
       });
       await c.query(
-        `INSERT INTO neuron_authoring_policies
+        `INSERT INTO node_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_PRINCIPAL, DOCO_ID, "Intent.actors are covered by Actions", yaml],
@@ -525,9 +525,9 @@ describe("authoring runner — integration", () => {
     });
 
     // Persist a *retired* covering action via upsertEntity (mirrors what a
-    // capture would do). Synapse derivation runs at indexer time, but the
+    // capture would do). Edge derivation runs at indexer time, but the
     // population query reads from the actions table — so we also seed the
-    // synapse row directly.
+    // edge row directly.
     const coveringActionId = "action_01TESTCOVER000000000000001";
     const intentId = "intent_01TESTINTENTCOVERED00000001";
     await upsertEntity({
@@ -536,7 +536,7 @@ describe("authoring runner — integration", () => {
       entity_type: "action",
       data: {
         id: coveringActionId,
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         action: "do work",
         verb: "do",
@@ -546,7 +546,7 @@ describe("authoring runner — integration", () => {
     });
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO synapses (doco_id, from_id, to_id, from_neuron_type, to_neuron_type, synapse_type)
+        `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type)
            VALUES ($1, $2, $3, 'action', 'intent', 'performed_by')`,
         [DOCO_ID, coveringActionId, intentId],
       );
@@ -556,7 +556,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: intentId,
-        neuron_type: "intent",
+        node_type: "intent",
         doco_id: DOCO_ID,
         intent: "ship the thing",
         actors: [PRINCIPAL_ALICE],
@@ -589,7 +589,7 @@ describe("authoring runner — integration", () => {
       docoId: DOCO_ID,
       candidate: {
         id: "action_01TESTRETIREDACTOR000000001",
-        neuron_type: "action",
+        node_type: "action",
         doco_id: DOCO_ID,
         verb: "send",
         actor_id: retiredPrincipal,
@@ -602,7 +602,7 @@ describe("authoring runner — integration", () => {
   });
 });
 
-describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
+describe("captureNodeAuthoringPolicy — edge_type validation", () => {
   async function seedDoco(): Promise<void> {
     await withClient(async (c) => {
       await c.query(
@@ -626,7 +626,7 @@ describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
   function draft(
     predicate: Record<string, unknown>,
     policyText = "test predicate",
-  ): NeuronAuthoringPolicyDraft {
+  ): NodeAuthoringPolicyDraft {
     return {
       policy: policyText,
       evaluation_kind: "deterministic",
@@ -636,18 +636,18 @@ describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
     };
   }
 
-  it("rejects a requires_synapse predicate whose synapse_type is a field name", async () => {
-    // Defends fix #11: a predicate that says synapse_type = "intent_ids"
-    // (the field name) would never match because deriveSynapses rewrites
+  it("rejects a requires_edge predicate whose edge_type is a field name", async () => {
+    // Defends fix #11: a predicate that says edge_type = "intent_ids"
+    // (the field name) would never match because deriveEdges rewrites
     // the field name to "serves". The validator now catches this at
     // capture time and surfaces the canonical name.
     await seedDoco();
-    const result = await captureNeuronAuthoringPolicy(
+    const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
       "val-org",
       "val-test",
-      draft({ kind: "requires_synapse", synapse_type: "intent_ids" }),
+      draft({ kind: "requires_edge", edge_type: "intent_ids" }),
     );
     expect("error" in result).toBe(true);
     if ("error" in result) {
@@ -656,17 +656,17 @@ describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
     }
   });
 
-  it("rejects a forbids_synapse predicate whose synapse_type is a SKIP_FIELDS field", async () => {
-    // Defends fix #10/#11: deriveSynapses skips `inputs`, so a synapse
+  it("rejects a forbids_edge predicate whose edge_type is a SKIP_FIELDS field", async () => {
+    // Defends fix #10/#11: deriveEdges skips `inputs`, so a edge
     // with that type can never exist. The validator surfaces this rather
     // than letting the policy sit silently dead.
     await seedDoco();
-    const result = await captureNeuronAuthoringPolicy(
+    const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
       "val-org",
       "val-test",
-      draft({ kind: "forbids_synapse", synapse_type: "inputs" }),
+      draft({ kind: "forbids_edge", edge_type: "inputs" }),
     );
     expect("error" in result).toBe(true);
     if ("error" in result) {
@@ -674,32 +674,32 @@ describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
     }
   });
 
-  it("accepts a requires_synapse predicate with a canonical synapse_type", async () => {
+  it("accepts a requires_edge predicate with a canonical edge_type", async () => {
     await seedDoco();
-    const result = await captureNeuronAuthoringPolicy(
+    const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
       "val-org",
       "val-test",
-      draft({ kind: "requires_synapse", synapse_type: "serves" }),
+      draft({ kind: "requires_edge", edge_type: "serves" }),
     );
     expect("error" in result).toBe(false);
   });
 
-  it("accepts a requires_synapse predicate when the field name IS the canonical type", async () => {
+  it("accepts a requires_edge predicate when the field name IS the canonical type", async () => {
     // `preceded_by` (and a handful of others: `premise`, `born_from`,
-    // `superseded_by`) are identity-mapped in FIELD_TO_SYNAPSE_TYPE:
-    // the field on the neuron and the canonical synapse share the same
+    // `superseded_by`) are identity-mapped in FIELD_TO_EDGE_TYPE:
+    // the field on the node and the canonical edge share the same
     // name. The validator's field-name-vs-canonical check used to reject
     // these outright, blocking BPMN templates from authoring a
-    // `requires_synapse: preceded_by` policy via the API.
+    // `requires_edge: preceded_by` policy via the API.
     await seedDoco();
-    const result = await captureNeuronAuthoringPolicy(
+    const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
       "val-org",
       "val-test",
-      draft({ kind: "requires_synapse", synapse_type: "preceded_by" }),
+      draft({ kind: "requires_edge", edge_type: "preceded_by" }),
     );
     expect("error" in result).toBe(false);
   });
@@ -738,7 +738,7 @@ describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
         lifecycle: "asserted",
         data: {
           id,
-          neuron_type: "rule",
+          node_type: "rule",
           doco_id: DOCO_ID,
           rule: "drift example",
           lifecycle: "retired",

@@ -22,7 +22,7 @@ export function linksWithFocusedPoolMembership(
   // In BPMN, an Intent renders as the pool header. When that header is
   // focused, every rendered node inside the pool is direct context even
   // if the membership came from server-side grouping instead of a stored
-  // synapse.
+  // edge.
   const focusedPool = pools.find((pool) => pool.intent_id === centerId);
   if (!focusedPool || !centerId) return [...links];
 

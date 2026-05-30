@@ -69,10 +69,10 @@ beforeEach(async () => {
         principals,
         organizations,
         docos,
-        neuron_authoring_policies,
+        node_authoring_policies,
         actions,
         intents,
-        synapses
+        edges
       RESTART IDENTITY CASCADE`,
     );
   });

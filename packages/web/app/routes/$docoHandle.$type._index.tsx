@@ -1,5 +1,5 @@
-import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
-import { entityUrl, normalizeNeuronType } from "@doco/shared";
+import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_SPECS, withClient } from "@doco/db";
+import { entityUrl, normalizeNodeType } from "@doco/shared";
 // Per-Doco entity list at the short URL `/<doco-handle>/<type>`.
 //
 // Note: this route IS the catch-all for any unknown `<type>` segment
@@ -16,7 +16,7 @@ import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 const TABLE_BY_TYPE: Record<string, string> = Object.fromEntries(
-  DOCO_NEURON_TABLE_SPECS.map((spec) => [spec.entityType, spec.table]),
+  DOCO_NODE_TABLE_SPECS.map((spec) => [spec.entityType, spec.table]),
 );
 const KNOWN = new Set<string>(Object.keys(TABLE_BY_TYPE));
 
@@ -27,7 +27,7 @@ export async function loader({
   params: { docoId: string; type: string };
   request: Request;
 }) {
-  const type = normalizeNeuronType(params.type);
+  const type = normalizeNodeType(params.type);
   if (!type || !KNOWN.has(type)) {
     throw new Response("Unknown type", { status: 404 });
   }
@@ -35,7 +35,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   return withClient(async (c) => {
     const table = TABLE_BY_TYPE[type] ?? type;
-    // Post-migration: all 9 neuron tables here carry prose in the
+    // Post-migration: all 9 node tables here carry prose in the
     // type-named column (intent on intents, decision on decisions,
     // ...). Project the first line for the list "summary" cell.
     const tnCol = ALL_ENTITY_TABLES[type]?.typeNamedColumn ?? "summary";
@@ -73,7 +73,7 @@ export function meta({
 }: {
   params: { docoHandle?: string; docoId?: string; type: string };
 }) {
-  const type = normalizeNeuronType(params.type) ?? params.type;
+  const type = normalizeNodeType(params.type) ?? params.type;
   return [{ title: `${capitalize(type)}s · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 

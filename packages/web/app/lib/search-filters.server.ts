@@ -11,7 +11,7 @@ import type { PoolClient } from "pg";
 export interface SearchFilters {
   /** Allowed lifecycle values. `null` = no filter (all values). */
   lifecycle: string[] | null;
-  /** Allowed neuron types. `null` = no filter (all types). */
+  /** Allowed node types. `null` = no filter (all types). */
   entityType: string[] | null;
   /** Top-N to return after filtering + cosine. */
   limit: number;
@@ -74,23 +74,23 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
 }
 
 /**
- * Doco-scoped neuron tables (PG plural names). Each carries a
+ * Doco-scoped node tables (PG plural names). Each carries a
  * `lifecycle` column directly and a typed `doco_id` column.
  *
- * Policies (`guidance_policies`, `neuron_authoring_policies`)
- * are not neurons — they are Doco-level metadata with their own
+ * Policies (`guidance_policies`, `node_authoring_policies`)
+ * are not nodes — they are Doco-level metadata with their own
  * surface (/<handle>/policies and /<handle>/api/policies.json)
- * and are intentionally absent here. Anything iterating "neurons of
+ * and are intentionally absent here. Anything iterating "nodes of
  * a Doco" must use this list, never a list that includes policy
  * tables.
  */
-interface DocoNeuronTableFilterSpec {
+interface DocoNodeTableFilterSpec {
   table: string;
   entityType: string;
   docoWhereSql: string;
 }
 
-const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE: DocoNeuronTableFilterSpec[] = [
+const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE: DocoNodeTableFilterSpec[] = [
   { table: "intents", entityType: "intent", docoWhereSql: "doco_id = $1" },
   { table: "ideas", entityType: "idea", docoWhereSql: "doco_id = $1" },
   { table: "rules", entityType: "rule", docoWhereSql: "doco_id = $1" },
@@ -105,12 +105,12 @@ const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE: DocoNeuronTableFilterSpec[] = [
 
 /**
  * Map from external entity_type (singular) → PG table (plural).
- * Policies (`guidance_policy`, `neuron_authoring_policy`) are
- * not neurons and are intentionally omitted — they are reachable
+ * Policies (`guidance_policy`, `node_authoring_policy`) are
+ * not nodes and are intentionally omitted — they are reachable
  * only via /<handle>/api/policies.json and the policies
  * surface.
  */
-const NEURON_TYPE_TO_TABLE: Record<string, DocoNeuronTableFilterSpec | null> = {
+const NODE_TYPE_TO_TABLE: Record<string, DocoNodeTableFilterSpec | null> = {
   intent: { table: "intents", entityType: "intent", docoWhereSql: "doco_id = $1" },
   idea: { table: "ideas", entityType: "idea", docoWhereSql: "doco_id = $1" },
   rule: { table: "rules", entityType: "rule", docoWhereSql: "doco_id = $1" },
@@ -134,8 +134,8 @@ const NEURON_TYPE_TO_TABLE: Record<string, DocoNeuronTableFilterSpec | null> = {
 
 /** Inverse: PG table → external entity_type used on the wire. */
 const TABLE_TO_ENTITY_TYPE: Record<string, string> = Object.fromEntries(
-  Object.entries(NEURON_TYPE_TO_TABLE)
-    .filter((entry): entry is [string, DocoNeuronTableFilterSpec] => entry[1] !== null)
+  Object.entries(NODE_TYPE_TO_TABLE)
+    .filter((entry): entry is [string, DocoNodeTableFilterSpec] => entry[1] !== null)
     .map(([nt, spec]) => [spec.table, nt]),
 );
 
@@ -151,8 +151,8 @@ export async function resolveFilteredCandidates(
   let lifecycleIds: Set<string> | null = null;
   if (filters.lifecycle !== null) {
     lifecycleIds = new Set();
-    // Notes only — policies are not neurons and never participate in
-    // neuron search results, even when their lifecycle matches.
+    // Notes only — policies are not nodes and never participate in
+    // node search results, even when their lifecycle matches.
     for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
       const r = await c.query<{ id: string }>(
         `SELECT id FROM ${spec.table}
@@ -168,7 +168,7 @@ export async function resolveFilteredCandidates(
   if (filters.entityType !== null) {
     entityTypeIds = new Set();
     for (const nt of filters.entityType) {
-      const spec = NEURON_TYPE_TO_TABLE[nt];
+      const spec = NODE_TYPE_TO_TABLE[nt];
       if (!spec) continue;
       const r = await c.query<{ id: string }>(
         `SELECT id FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
@@ -201,11 +201,11 @@ export interface FilterFacets {
 }
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
-  // Facets describe the neuron records of a Doco. Policies are
+  // Facets describe the node records of a Doco. Policies are
   // intentionally excluded — they have their own
-  // surface and counting them as neurons makes a Doco with only a
+  // surface and counting them as nodes makes a Doco with only a
   // template policies misread as having captured work. Principals
-  // are included because role-personas are first-class neurons.
+  // are included because role-personas are first-class nodes.
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
   for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
     const r = await c.query<{ value: string; n: string; updated_at: Date | string | null }>(

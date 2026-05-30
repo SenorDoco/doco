@@ -246,7 +246,7 @@ function looksDirectedAtThreadBot(text: string): boolean {
     /\b(add|show|explain|summarize|fix|format|rewrite|create|update|change|invite|link|open|try|tell|answer|continue|include|exclude|remove|again|same|also)\b/i.test(
       cleanText,
     ) ||
-    /\b(doco|docos?|neuron|neurons?|decision|intent|action|rule|log|reference|principal|policy)\b/i.test(
+    /\b(doco|docos?|node|nodes?|decision|intent|action|rule|log|reference|principal|policy)\b/i.test(
       cleanText,
     )
   );

@@ -1,6 +1,6 @@
 import { type ReactNode, createContext, useContext } from "react";
 import { cn } from "~/lib/cn";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 
 interface LifecycleFilterSpec {
   visible: Set<string>;

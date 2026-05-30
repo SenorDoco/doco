@@ -9,7 +9,7 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
     if (/FROM actions/i.test(sql)) return { rows: rows.actions ?? [] };
     if (/FROM decisions/i.test(sql)) return { rows: rows.decisions ?? [] };
     if (/FROM principals/i.test(sql)) return { rows: rows.principals ?? [] };
-    if (/FROM synapses/i.test(sql)) return { rows: rows.synapses ?? [] };
+    if (/FROM edges/i.test(sql)) return { rows: rows.edges ?? [] };
     return { rows: [] };
   });
   return {
@@ -84,11 +84,11 @@ describe("loadSlaPerspectiveData", () => {
         },
       ],
       principals: [{ id: "principal_platform", name: "Platform Owner", lifecycle: "asserted" }],
-      synapses: [
-        { from_id: "eval_availability", to_id: "rule_01SLA", synapse_type: "tests" },
-        { from_id: "rule_01SLA", to_id: "reference_contract", synapse_type: "source_ref" },
-        { from_id: "action_breach", to_id: "rule_01SLA", synapse_type: "gated_by" },
-        { from_id: "decision_approval", to_id: "rule_01SLA", synapse_type: "consults" },
+      edges: [
+        { from_id: "eval_availability", to_id: "rule_01SLA", edge_type: "tests" },
+        { from_id: "rule_01SLA", to_id: "reference_contract", edge_type: "source_ref" },
+        { from_id: "action_breach", to_id: "rule_01SLA", edge_type: "gated_by" },
+        { from_id: "decision_approval", to_id: "rule_01SLA", edge_type: "consults" },
       ],
     });
 
@@ -134,7 +134,7 @@ describe("loadSlaPerspectiveData", () => {
           lifecycle: "asserted",
         },
       ],
-      synapses: [],
+      edges: [],
     });
 
     const data = await loadSlaPerspectiveData(client, "doco_01", "acme-slas");

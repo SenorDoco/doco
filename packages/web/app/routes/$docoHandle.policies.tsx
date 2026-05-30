@@ -2,14 +2,14 @@ import { withClient } from "@doco/db";
 import { Link } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { canEditPolicies, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import {
   AGENT_EXPOSURE_NOTE,
   GUIDANCE_POLICY_EXPLAINER,
-  NEURON_AUTHORING_POLICY_EXPLAINER,
+  NODE_AUTHORING_POLICY_EXPLAINER,
   policyFullText,
 } from "~/lib/policy-copy";
 
@@ -57,7 +57,7 @@ export async function loader({
     );
     const nodeAuthoring = await c.query<ArticleRow>(
       `SELECT id, policy, lifecycle, created_at, body_md, data
-         FROM neuron_authoring_policies
+         FROM node_authoring_policies
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'asserted') = 'asserted'
         ORDER BY created_at DESC`,
@@ -105,7 +105,7 @@ export default function Policies({
           />
           <h1 className="text-2xl font-semibold">Policies</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Rules that govern how neurons get added to this doco. {AGENT_EXPOSURE_NOTE}
+            Rules that govern how nodes get added to this doco. {AGENT_EXPOSURE_NOTE}
           </p>
         </header>
 
@@ -121,14 +121,14 @@ export default function Policies({
         />
 
         <ArticleSection
-          title="Neuron-authoring policies"
-          entityType="neuron_authoring_policy"
-          description={NEURON_AUTHORING_POLICY_EXPLAINER}
-          addHref={canEdit ? `/${handle}/policies/neuron-authoring/new` : null}
-          editHrefBase={canEdit ? `/${handle}/policies/neuron-authoring` : null}
+          title="Node-authoring policies"
+          entityType="node_authoring_policy"
+          description={NODE_AUTHORING_POLICY_EXPLAINER}
+          addHref={canEdit ? `/${handle}/policies/node-authoring/new` : null}
+          editHrefBase={canEdit ? `/${handle}/policies/node-authoring` : null}
           items={nodeAuthoringArticles}
           handle={handle}
-          empty="No neuron-authoring policies yet."
+          empty="No node-authoring policies yet."
         />
       </main>
     </div>
@@ -146,7 +146,7 @@ function ArticleSection({
   empty,
 }: {
   title: string;
-  entityType: "guidance_policy" | "neuron_authoring_policy";
+  entityType: "guidance_policy" | "node_authoring_policy";
   description: string;
   addHref: string | null;
   editHrefBase: string | null;
@@ -160,7 +160,7 @@ function ArticleSection({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1.5">
             <CardTitle className="flex items-center gap-2">
-              <NeuronTypeIcon entityType={entityType} className="h-4 w-4" />
+              <NodeTypeIcon entityType={entityType} className="h-4 w-4" />
               <span>{title}</span>
               <span className="font-mono text-xs font-normal text-muted-foreground">
                 {items.length}
