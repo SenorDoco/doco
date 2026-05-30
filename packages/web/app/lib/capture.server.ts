@@ -377,14 +377,7 @@ interface ResolvedLifecycleAttrs {
 }
 
 function normalizeLifecycle(value: unknown, fallback: string): string | CaptureError {
-  let lifecycle = typeof value === "string" && value.trim() ? value.trim() : fallback;
-  // Back-compat aliases kept one release so existing API clients/agents
-  // that still send a retired vocabulary don't break. The lifecycle ladder
-  // collapsed from drafting → proposed → accepted/active → retired down to
-  // drafting → asserted → retired: "proposed" folds into "drafting" (the
-  // tentative state) and "accepted"/"active" into "asserted".
-  if (lifecycle === "active" || lifecycle === "accepted") lifecycle = "asserted";
-  if (lifecycle === "proposed") lifecycle = "drafting";
+  const lifecycle = typeof value === "string" && value.trim() ? value.trim() : fallback;
   if (!VALID_LIFECYCLES.has(lifecycle)) {
     return {
       error: `Unknown lifecycle: ${lifecycle}. Expected one of: ${[...VALID_LIFECYCLES].join(", ")}.`,
