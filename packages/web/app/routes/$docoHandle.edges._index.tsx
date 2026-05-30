@@ -22,6 +22,7 @@ import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface EdgeRow {
+  id: string;
   from_id: string;
   from_node_type: string;
   from_summary: string | null;
@@ -29,6 +30,7 @@ interface EdgeRow {
   to_node_type: string;
   to_summary: string | null;
   edge_type: string;
+  lifecycle: string;
 }
 
 export async function loader({
@@ -55,13 +57,13 @@ export async function loader({
            UNION ALL SELECT id, split_part(eval, E'\n', 1)     FROM evals               WHERE doco_id = $1
            UNION ALL SELECT id, split_part(reference, E'\n', 1) FROM reference_entities WHERE doco_id = $1
          )
-         SELECT e.from_id, e.from_node_type, fl.summary AS from_summary,
+         SELECT e.id, e.from_id, e.from_node_type, fl.summary AS from_summary,
                 e.to_id,   e.to_node_type,   tl.summary AS to_summary,
-                e.edge_type
+                e.edge_type, e.lifecycle
            FROM edges e
            LEFT JOIN labels fl ON fl.id = e.from_id
            LEFT JOIN labels tl ON tl.id = e.to_id
-          WHERE e.doco_id = $1
+          WHERE e.doco_id = $1 AND e.lifecycle <> 'retired'
           ORDER BY e.edge_type, e.from_id, e.to_id
           LIMIT 500`,
         [ctx.meta.docoId],
@@ -81,10 +83,6 @@ export async function loader({
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
   if (!data) return [{ title: "Edges · Doco" }];
   return [{ title: `Edges · ${data.handle} · Doco` }];
-}
-
-function edgeKey(e: { edge_type: string; from_id: string; to_id: string }): string {
-  return `${e.edge_type}__${e.from_id}__${e.to_id}`;
 }
 
 export default function EdgesIndex({
@@ -126,7 +124,7 @@ export default function EdgesIndex({
                 </TableHeader>
                 <TableBody>
                   {edges.map((e) => (
-                    <TableRow key={edgeKey(e)}>
+                    <TableRow key={e.id}>
                       <TableCell>
                         <Link
                           to={`/${handle}/${e.from_node_type}/${e.from_id}`}
@@ -152,7 +150,7 @@ export default function EdgesIndex({
                       </TableCell>
                       <TableCell className="text-right">
                         <Link
-                          to={`/${handle}/edges/${edgeKey(e)}`}
+                          to={`/${handle}/edges/${e.id}`}
                           className="text-xs text-primary hover:underline"
                         >
                           open →
