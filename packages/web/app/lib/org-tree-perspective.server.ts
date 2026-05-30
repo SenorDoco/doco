@@ -32,6 +32,11 @@ export interface OrgTreeNode {
   lifecycle: string;
   /** Manager principal id; null for top-of-chain. */
   reports_to: string | null;
+  /**
+   * Secondary / dotted-line (matrix) manager principal ids. Rendered as
+   * dashed edges layered on top of the primary `reports_to` tree.
+   */
+  dotted_reports_to: string[];
   href: string;
 }
 
@@ -121,6 +126,9 @@ export async function loadOrgTreeData(
     const type = inferKindFromProse(r.body_md);
     const role = roleFromProse(r.body_md, r.name, type);
     const reports_to = typeof data.reports_to === "string" ? data.reports_to : null;
+    const dotted_reports_to = Array.isArray(data.dotted_reports_to)
+      ? data.dotted_reports_to.filter((v): v is string => typeof v === "string")
+      : [];
     return {
       id: r.id,
       name: r.name,
@@ -128,6 +136,7 @@ export async function loadOrgTreeData(
       type,
       lifecycle: r.lifecycle ?? "asserted",
       reports_to,
+      dotted_reports_to,
       href: `/${handle}/principal/${r.id}`,
     };
   });

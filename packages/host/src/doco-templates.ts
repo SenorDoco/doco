@@ -227,8 +227,15 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
       {
+        // Warn, not block: a clashing `chosen` is usually a duplicate
+        // entry, but genuine homographs (distinct concepts sharing a
+        // surface form) are legitimate terminology. Surface the clash so
+        // the author either merges the duplicate or disambiguates the
+        // homograph with a qualifier — don't hard-block the correct
+        // modeling choice. See the homograph guidance below.
+        on_violation: "warn",
         policy:
-          "Active glossary Decisions must have a unique canonical term in `chosen`, compared case-insensitively.",
+          "Active glossary Decisions should have a unique canonical term in `chosen`, compared case-insensitively. A clash is usually a duplicate entry to merge; genuine homographs (distinct concepts sharing a surface form) are allowed when disambiguated with a qualifier.",
         predicate: {
           kind: "unique_field",
           field: "chosen",
@@ -238,32 +245,24 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
       {
+        // One combined quality judge for term-entry Decisions. This used to
+        // be three separate probabilistic policies (one-concept, definition
+        // completeness, acronym expansion); stress-testing showed three
+        // problems they now fix together: (1) they BLOCKED by default, so a
+        // single judge misfire lost the author's work — a quality nudge, not
+        // an integrity constraint, so it now WARNs; (2) the acronym check
+        // fired on any incidental abbreviation in prose (`rep`, `WIP`), so it
+        // is now scoped to the headword in `chosen`; (3) one combined judge
+        // call replaces three, cutting latency and the misfire surface.
+        on_violation: "warn",
         policy:
-          "A glossary Decision defines one concept. Split entries that define multiple independent terms or concepts.",
+          "A glossary term-entry Decision defines exactly one concept with a usable definition. It keeps one concept per entry, its `decision` prose gives a concise definition plus the product/domain scope, and — when the canonical term in `chosen` is itself an acronym or abbreviation — spells out the expanded form and says when the short form is acceptable.",
         predicate: {
           kind: "probabilistic",
           when_node_type: ["decision"],
-          spec: "Read the Decision's `question`, `chosen`, and `decision` prose. PASS when the entry defines one concept or one canonical term. FAIL with a reason when it defines multiple independent terms, bundles a term with an unrelated policy, or uses one entry as a catch-all for several concepts.",
-        },
-      },
-      {
-        policy:
-          "An active glossary Decision's `decision` prose includes a concise definition, product/domain scope, and at least one example or non-example.",
-        predicate: {
-          kind: "probabilistic",
-          when_node_type: ["decision"],
-          spec: "Read the Decision's `decision` prose. PASS when it includes (1) a concise definition, (2) the product or domain scope where the term applies, and (3) at least one concrete example or non-example. FAIL with which element is missing when the prose is too vague for a reader to use the term consistently.",
+          spec: "Judge a glossary term-entry Decision on three aspects; report each failing aspect with a reason, but treat them as warnings, not hard errors. (a) ONE CONCEPT: PASS when the entry defines one concept or one canonical term; FAIL when it defines multiple independent terms, bundles a term with an unrelated policy, or is a catch-all for several concepts. (b) USABLE DEFINITION: PASS when the `decision` prose gives a concise definition AND the product or domain scope where the term applies AND at least one concrete example OR non-example — EITHER an example or a non-example is sufficient, do not require both; FAIL only when one of those three is genuinely absent. (c) ACRONYMS AND ABBREVIATIONS: only inspect the canonical term in `chosen`. If `chosen` is itself an acronym or abbreviation, PASS when the prose expands it at least once and states whether the short form is acceptable in product/docs/UI copy; FAIL when it is left unexpanded. Incidental abbreviations that merely appear in the prose (not the headword) are OUT OF SCOPE — ignore them. If `chosen` is not an acronym, this aspect PASSES.",
         },
         fires_when_node_lifecycle: ["asserted"],
-      },
-      {
-        policy:
-          "Acronyms and abbreviations in glossary entries spell out the expanded form and state when the short form is acceptable.",
-        predicate: {
-          kind: "probabilistic",
-          when_node_type: ["decision"],
-          spec: "Inspect the Decision's `chosen` term and `decision` prose. PASS when acronyms or abbreviations are expanded at least once and the prose states whether the short form is acceptable in product/docs/UI copy. If there are no acronyms or abbreviations, PASS. FAIL when a short form appears without expansion or usage guidance.",
-        },
       },
 
       // ── Eval shape ─────────────────────────────────────────────
@@ -278,6 +277,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
       {
+        // Quality nudge, not an integrity constraint: warn rather than block
+        // so a borderline `how_to_run` (or a judge misfire) never loses the
+        // author's Eval. The deterministic requires_field gate above still
+        // blocks a truly missing field.
+        on_violation: "warn",
         policy:
           "An active glossary Eval's `how_to_run` names a concrete command, query, URL, or review procedure plus any scope needed to reproduce the terminology check.",
         predicate: {
@@ -293,6 +297,16 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         kind: "guidance",
         policy:
           "When rejected, deprecated, misleading, synonymous, or historical terms exist, record them in `alternatives`; otherwise omit `alternatives` rather than inventing filler.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "When two distinct concepts share a surface form (homographs, e.g. `Order` in commerce vs. `Order` as a sort operation), give each its own Decision and disambiguate `chosen` with a qualifier — `Order (commerce)` vs. `Order (sorting)` — so every entry stays uniquely addressable.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "Connect related glossary terms in the graph instead of leaving entries isolated — use a `relates_to` edge to link a term to terms it is easily confused with, its parent or sub-concepts, or the homographs it shares a surface form with, so the vocabulary reads as a navigable network. Deprecation links use `superseded_by` (see below).",
       },
       {
         kind: "guidance",
@@ -634,18 +648,29 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     ],
   },
   {
-    // Organizational chart template. Principals are the org members,
-    // `reports_to` edges form the hierarchy, Intents represent
-    // teams/units, Decisions record reorgs and appointments. After
-    // the Principal slim-down (decision_01KSDR_PRINCIPAL_SLIM_DOWN)
-    // a Principal carries only `name` + `body_md`; the person-vs-agent
-    // distinction lives in the body_md prose, enforced by a
-    // probabilistic policy rather than a `requires_field` check.
+    // Organizational chart template. Principals are the org *seats*
+    // (a role plus its current occupant), `reports_to` edges form the
+    // primary hierarchy, Intents represent teams/units, Decisions
+    // record reorgs and appointments. After the Principal slim-down
+    // (decision_01KSDR_PRINCIPAL_SLIM_DOWN) a Principal carries only
+    // `name` + `body_md`; the person / AI-agent / vacant distinction
+    // lives in the body_md prose, enforced by a probabilistic policy
+    // rather than a `requires_field` check.
+    //
+    // Industry alignment (W3C Organization Ontology + HR practice):
+    // a seat that can stand vacant approximates `org:Post`; secondary
+    // (dotted-line / matrix) reporting layers on top of the single
+    // primary `reports_to` line via guidance, since the Principal
+    // schema carries exactly one manager. A fully structural
+    // Post/Membership split (separate occupant nodes, a versioned
+    // `member_of` / `held_by` edge, a real vacancy field) would need a
+    // schema change beyond this template and is intentionally left as a
+    // follow-up rather than half-modeled here.
     name: "org-chart",
     label: "org-chart",
     icon: "🏢",
     description:
-      "Map the people and AI agents in an organization — reporting lines, teams, roles, and appointments. Every member declares whether they're a person or an AI agent in their `body_md` prose.",
+      "Map the people and AI agents in an organization — reporting lines, teams, roles, and appointments. Every seat declares in its `body_md` prose whether it's filled by a person, filled by an AI agent, or currently vacant.",
     defaultNodeLifecycle: "drafting",
     perspectives: [{ slug: "org-tree", isDefault: true }],
     policies: [
@@ -683,13 +708,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // person-vs-agent out of a structured field and into the
         // body_md prose. Org charts still need the declaration, so
         // this probabilistic policy reads body_md and blocks captures
-        // that leave the distinction ambiguous.
+        // that leave the distinction ambiguous. A third state —
+        // `vacant` — lets a budgeted-but-unfilled seat live on the
+        // chart (HR best practice: omitting open roles breaks headcount
+        // and reporting structure). A vacant seat is the closest this
+        // template gets to W3C `org:Post` without a schema change.
         policy:
-          "Every Principal in an org chart must declare whether it's a person or an AI agent in its `body_md` prose. The org-tree perspective infers the distinction from the prose; without an explicit declaration a chart can't tell humans from AI agents.",
+          "Every Principal in an org chart is a seat: its `body_md` must declare whether the seat is filled by a person, filled by an AI agent, or currently vacant. The org-tree perspective infers this from the prose; without an explicit declaration a chart can't tell humans from AI agents from open roles.",
         predicate: {
           kind: "probabilistic",
           when_node_type: ["principal"],
-          spec: "Read the Principal's `body_md`. PASS if the prose clearly states the role is filled by a human person (e.g. 'Human director of …', 'Person responsible for …') OR by an AI agent (e.g. 'AI agent operated by @alice', 'Autonomous research bot'). FAIL with a reason if `body_md` is empty or doesn't take a stance on person-vs-agent.",
+          spec: "Read the Principal's `body_md`. PASS if the prose clearly states the seat is filled by a human person (e.g. 'Human director of …', 'Person responsible for …'), filled by an AI agent (e.g. 'AI agent operated by @alice', 'Autonomous research bot'), OR currently vacant/open (e.g. 'Vacant — budgeted Staff Engineer seat, reporting to …'). FAIL with a reason if `body_md` is empty or doesn't take a stance on person / AI agent / vacant.",
         },
       },
 
@@ -719,6 +748,13 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // the business-processes convention. Stakeholders
         // (people interested in the unit's outcomes without being on
         // the team) optionally go in `stakeholders`.
+        //
+        // Gated to `asserted` so a team can be sketched first and have
+        // its roster filled in later — the template defaults new nodes
+        // to `drafting`, and an ungated requires_field would block that
+        // sketch the moment the unit is created. Matches the
+        // asserted-gating glossaries and business-processes use on
+        // their own completeness rules.
         policy:
           "Every Intent in an org chart must declare `actors` — the Principals who are members of this team or unit.",
         predicate: {
@@ -726,6 +762,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           fields: ["actors"],
           when_node_type: ["intent"],
         },
+        fires_when_node_lifecycle: ["asserted"],
       },
 
       // ── Guidance (prose-only) ───────────────────────────────────
@@ -752,7 +789,22 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         policy:
+          "Team membership lives in the Intent's `actors` list, which the org-tree renders but does not version. When someone joins or leaves a team, record it as a Decision linking the affected Principals so the *why* and *when* survive the in-place edit. Once a Doco needs real join/leave history, prefer a first-class `member_of` edge over editing `actors`, mirroring how `reports_to` is already a versioned edge — an `actors` array overwrite leaves no trail.",
+      },
+      {
+        kind: "guidance",
+        policy:
           "`reports_to` is a first-class edge with its own lifecycle and history, and its endpoints are immutable. When a reporting line moves, retire the old `reports_to` edge and add the new one rather than rewriting it in place — the prior line stays recoverable alongside the Decision that explains the reorg.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "`reports_to` carries exactly one manager — the primary (solid-line) reporting relationship — so the org tree stays a clean hierarchy. Model secondary, dotted-line, or matrix reporting on top of it with `dotted_reports_to` (a list of additional managers on the Principal); the org-tree perspective draws those dashed and never reparents the node. Add a Decision when a matrix assignment needs rationale (project lead, functional vs operational manager). Don't overload `reports_to` with a second manager — it breaks the primary tree the perspective draws.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "One occupant can hold several seats — the CEO who also acts as VP Eng, a founder covering two roles. Model each seat as its own Principal (so each keeps its own `reports_to` and team memberships) and link them with `same_occupant_as` so the chart knows it's one person, not two. Don't collapse two distinct roles into one Principal just because the same person fills them today.",
       },
       {
         kind: "guidance",
@@ -767,12 +819,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         policy:
+          "Treat each Principal as a seat — a role plus its current occupant — not just a person. A budgeted-but-unfilled seat is a valid Principal: declare it `vacant` in `body_md`, name the role it's budgeted for, and keep its `reports_to` line so the tree stays complete. Omitting open roles hides headcount and distorts the reporting structure (the same mistake as leaving vacant boxes off a printed chart).",
+      },
+      {
+        kind: "guidance",
+        policy:
           "Person vs agent isn't about who signed in — it's about who fills the seat. A Principal whose `body_md` describes an AI agent (a code reviewer, a triage bot, a research agent) is an agent regardless of whether any User has signed in as it. A Principal whose `body_md` describes a human is a person, even if that human has no Doco account.",
       },
       {
         kind: "guidance",
         policy:
-          "When an AI-agent role is replaced by a human (or vice-versa), retire the old Principal and create a new one with `body_md` describing the new occupant. Person-vs-agent is part of the role's identity in this Doco — flipping it via a body_md edit on the same Principal erases the history of the seat's prior occupant.",
+          "Seats persist across routine turnover: when one person leaves and another fills the same seat — or a seat goes vacant and is later refilled by the same kind of occupant — keep the Principal, update `body_md`, and record the change as a Decision, so the `reports_to` line and team memberships stay intact and the seat's history reads continuously. Only when the seat's *nature* flips between person and AI agent do you retire the old Principal and create a new one: person-vs-agent is part of the seat's identity in this Doco, and flipping it via a body_md edit erases the prior occupant's history.",
       },
     ],
   },

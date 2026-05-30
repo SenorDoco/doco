@@ -423,13 +423,39 @@ function lifecycleAttrs(
 ): ResolvedLifecycleAttrs | CaptureError {
   const lifecycle = normalizeLifecycle(draft.lifecycle, defaultLifecycle);
   if (typeof lifecycle !== "string") return lifecycle;
-  const outcome = normalizeOutcome(draft.outcome ?? defaultOutcome);
+  // A default outcome (e.g. Action/Log default to retired+succeeded)
+  // only makes sense when the node actually lands in a terminal
+  // lifecycle. When a Doco's `default_node_lifecycle` (or an explicit
+  // draft) pulls the node to a non-terminal state, don't stamp the
+  // success outcome onto a still-in-flight node.
+  const effectiveDefaultOutcome = STRUCK_LIFECYCLES.has(lifecycle) ? defaultOutcome : undefined;
+  const outcome = normalizeOutcome(draft.outcome ?? effectiveDefaultOutcome);
   if (outcome && typeof outcome !== "string") return outcome;
   return {
     lifecycle,
     ...(draft.deprecated !== undefined ? { deprecated: Boolean(draft.deprecated) } : {}),
     ...(outcome ? { outcome } : {}),
   };
+}
+
+/**
+ * Resolve the lifecycle fallback for a capture: the Doco's
+ * template-seeded `default_node_lifecycle` when set, otherwise the
+ * node type's built-in default. Wires up the `defaultNodeLifecycle`
+ * the templates already declare — it was stored on the Doco but never
+ * consulted at capture time, so e.g. `org-chart`'s `drafting` default
+ * (and the asserted-only completeness gates it implies) didn't take
+ * effect through the capture API. A per-process memo keeps this to one
+ * Doco read even across a multi-node changeset.
+ */
+const docoDefaultLifecycleCache = new Map<string, string | null>();
+async function resolveDefaultLifecycle(docoId: string, perTypeFallback: string): Promise<string> {
+  let dflt = docoDefaultLifecycleCache.get(docoId);
+  if (dflt === undefined) {
+    dflt = (await getDocoById(docoId))?.default_node_lifecycle ?? null;
+    docoDefaultLifecycleCache.set(docoId, dflt);
+  }
+  return dflt && VALID_LIFECYCLES.has(dflt) ? dflt : perTypeFallback;
 }
 
 /**
@@ -892,6 +918,80 @@ function normalizeSequenceTo(value: unknown): (string | Record<string, unknown>)
   return result;
 }
 
+/**
+ * Shared tail for every node `captureX()` create path. Each capture
+ * function does its own type-specific work — prose/required-field
+ * validation, principal-id resolution, `id`/`label`/`now`/`createdById`/
+ * lifecycle setup, and `fm` construction — then hands the finished `fm`
+ * here. This runs the identical scaffold the 9 node creators shared
+ * verbatim:
+ *
+ *   enforceAndPersist → blocking short-circuit → emitAuditForCreate →
+ *   reindexAndScheduleAttach → renderOperationLines → append authoring
+ *   warnings → return the CaptureResult.
+ *
+ * Behavior-preserving extraction (the per-type body stays local in each
+ * captureX). `createdById` is already narrowed to `string | null` by the
+ * caller's `userCreatorId` guard, so `actorId: createdById ?? null`
+ * passes byte-identical values to the prior call sites (some passed
+ * `createdById`, two passed `createdById ?? null`).
+ */
+async function finishNodeCapture(args: {
+  docoDir: string;
+  docoId: string;
+  ownerSlug: string;
+  docoSlug: string;
+  docoHost?: string;
+  entityType: string;
+  id: string;
+  label: string;
+  fm: Record<string, unknown>;
+  createdById: string | null;
+  startedAt: number;
+}): Promise<CaptureResult | CaptureError> {
+  const { docoDir, docoId, ownerSlug, docoSlug, docoHost, entityType, id, label, fm, createdById } =
+    args;
+  const pred = await enforceAndPersist({ docoId, fm, entityType, id });
+  if (pred.blocking) {
+    return {
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+  emitAuditForCreate({
+    docoDir,
+    docoId,
+    actorId: createdById ?? null,
+    entity_type: entityType,
+    entity_id: id,
+    label,
+  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
+  const duration_ms = Math.round(performance.now() - args.startedAt);
+  const footer_lines = await renderOperationLines({
+    docoId,
+    ownerSlug,
+    docoSlug,
+    entityType,
+    id,
+    label,
+    docoHost,
+    ops: [{ kind: "added", summary: label }],
+    duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+  });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
+  return {
+    ok: true,
+    id,
+    path: syntheticPath(entityType, id),
+    footer_lines,
+    duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+  };
+}
+
 export async function captureDecision(
   docoDir: string,
   docoId: string,
@@ -923,7 +1023,7 @@ export async function captureDecision(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -946,46 +1046,19 @@ export async function captureDecision(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "decision", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById,
-    entity_type: "decision",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "decision",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("decision", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 export interface DecisionPatch {
@@ -1616,7 +1689,7 @@ export async function captureIntent(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1631,45 +1704,19 @@ export async function captureIntent(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "intent", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById,
-    entity_type: "intent",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "intent",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("intent", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 export interface IdeaDraft {
@@ -1708,7 +1755,7 @@ export async function captureIdea(
   const ideaText = draft.idea.trim();
   const label = firstLine(ideaText);
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "drafting");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "drafting"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1723,45 +1770,19 @@ export async function captureIdea(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "idea", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById,
-    entity_type: "idea",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "idea",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("idea", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 export interface EvalDraft {
@@ -1838,7 +1859,7 @@ export async function captureEval(
   const label = firstLine(evalText);
 
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1860,46 +1881,19 @@ export async function captureEval(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "eval", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById,
-    entity_type: "eval",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "eval",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("eval", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 // ─── Action ───────────────────────────────────────────────────────────────
@@ -1969,7 +1963,11 @@ export async function captureAction(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "retired", "succeeded");
+  const status = lifecycleAttrs(
+    draft,
+    await resolveDefaultLifecycle(docoId, "retired"),
+    "succeeded",
+  );
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -1992,46 +1990,19 @@ export async function captureAction(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "action", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById,
-    entity_type: "action",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "action",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("action", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 // ─── Log (recorded happening) ─────────────────────────────────────────────
@@ -2110,7 +2081,11 @@ export async function captureLog(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "retired", "succeeded");
+  const status = lifecycleAttrs(
+    draft,
+    await resolveDefaultLifecycle(docoId, "retired"),
+    "succeeded",
+  );
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -2132,46 +2107,19 @@ export async function captureLog(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "log", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById,
-    entity_type: "log",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "log",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("log", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 // ─── Rule ─────────────────────────────────────────────────────────────────
@@ -2248,7 +2196,7 @@ export async function captureRule(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   // Empty selector — matches everything by having nothing to filter
@@ -2276,46 +2224,19 @@ export async function captureRule(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "rule", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById,
-    entity_type: "rule",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "rule",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("rule", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 // ─── Policies ───────────────────────────────────────────────────────────
@@ -2850,7 +2771,7 @@ export async function captureReference(
   const referenceText = draft.reference.trim();
   const label = firstLine(referenceText);
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -2868,46 +2789,19 @@ export async function captureReference(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "reference", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById ?? null,
-    entity_type: "reference",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "reference",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("reference", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }
 
 // ─── State (v7 — state-machine node) ──────────────────────────────────────
@@ -2964,7 +2858,7 @@ export async function captureState(
   const label = firstLine(stateText);
   const now = new Date().toISOString();
 
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
@@ -2989,44 +2883,17 @@ export async function captureState(
     ...status,
   };
 
-  const pred = await enforceAndPersist({ docoId, fm, entityType: "state", id });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
+  return finishNodeCapture({
     docoDir,
-    docoId,
-    actorId: createdById ?? null,
-    entity_type: "state",
-    entity_id: id,
-    label,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id);
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
+    docoHost,
     entityType: "state",
     id,
     label,
-    docoHost,
-    ops: [{ kind: "added", summary: label }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
+    fm,
+    createdById,
+    startedAt,
   });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("state", id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
 }

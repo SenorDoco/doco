@@ -17,6 +17,9 @@ export interface OrgTreeLayoutEdge {
   id: string;
   source: string;
   target: string;
+  /** Secondary / dotted-line (matrix) reporting edge — rendered dashed
+   *  and excluded from the parent/child tree placement. */
+  dotted?: boolean;
 }
 
 export interface OrgTreeLayout {
@@ -117,13 +120,23 @@ export function layoutOrgTree(rawNodes: OrgTreeNode[], centerId: string | null):
       isCenter: n.id === centerId,
     }));
 
-  const edges = rawNodes
+  const edges: OrgTreeLayoutEdge[] = rawNodes
     .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
     .map((n) => ({
       id: `${n.id}->${n.reports_to}`,
       source: n.reports_to as string,
       target: n.id,
     }));
+
+  // Secondary / dotted-line (matrix) edges layer on top of the tree —
+  // they point manager→report like the solid edges but never affect
+  // placement (the hierarchy above used `reports_to` only).
+  for (const n of rawNodes) {
+    for (const mgr of n.dotted_reports_to ?? []) {
+      if (!byId.has(mgr) || mgr === n.id) continue;
+      edges.push({ id: `${n.id}⇢${mgr}`, source: mgr, target: n.id, dotted: true });
+    }
+  }
 
   return { nodes, edges };
 }

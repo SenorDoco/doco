@@ -15,7 +15,7 @@ import {
   withClient,
   withTransaction,
 } from "@doco/db";
-import { EDGE_TYPES, isEntityId, parseEntityId } from "@doco/shared";
+import { EDGE_ENDPOINT_TYPES, EDGE_TYPES, isEntityId, parseEntityId } from "@doco/shared";
 
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
 
@@ -61,6 +61,25 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
   if ("error" in from) return { error: `from_id ${from.error}.`, status: 400 };
   const to = await resolveEndpoint(input.docoId, input.toId);
   if ("error" in to) return { error: `to_id ${to.error}.`, status: 400 };
+
+  // Endpoint node-type enforcement: a `serves` edge must point at an Intent,
+  // `reports_to` must run Principal→Principal, etc. Keeps the graph free of
+  // nonsense edges that the node-authoring `requires_edge` rules would catch
+  // but the edge endpoint otherwise bypasses. Edge types absent from the map
+  // accept any endpoints.
+  const endpoints = EDGE_ENDPOINT_TYPES[input.edgeType];
+  if (endpoints?.from && !endpoints.from.includes(from.type as never)) {
+    return {
+      error: `A '${input.edgeType}' edge must start from ${endpoints.from.join(" or ")} (got ${from.type}).`,
+      status: 400,
+    };
+  }
+  if (endpoints?.to && !endpoints.to.includes(to.type as never)) {
+    return {
+      error: `A '${input.edgeType}' edge must point at ${endpoints.to.join(" or ")} (got ${to.type}).`,
+      status: 400,
+    };
+  }
 
   try {
     const edge = await withTransaction(async (c) => {
