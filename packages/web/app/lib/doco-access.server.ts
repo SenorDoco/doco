@@ -5,7 +5,9 @@ import {
   type DocoRole,
   isOrgUser as dbIsOrgMember,
   getDocoByIdOrHandle,
+  getDocoUserGrant,
   getDocoUserRole,
+  getOrgGrant,
   getOrgRole,
   getPrincipalById,
   getUserById,
@@ -14,7 +16,14 @@ import {
   roleAtLeast,
   withClient,
 } from "@doco/db";
-import type { DocoHandle } from "@doco/shared";
+import {
+  type DocoHandle,
+  WRITE_ALL,
+  type WritableType,
+  canWriteType,
+  isWritableType,
+  normalizeWriteTypes,
+} from "@doco/shared";
 import { redirect } from "react-router";
 import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
@@ -63,6 +72,141 @@ export async function getDocoLevelRole(
   }
 
   return role;
+}
+
+/**
+ * Like `getDocoLevelRole`, but also resolves the per-type WRITE set
+ * (decision_per_type_write_grants). The effective grant is the strongest
+ * role across all sources unioned with every source's write-type set: a
+ * principal who is a writer-on-decisions via org membership and a
+ * writer-on-actions via a direct doco_users row can write both. An owner
+ * from any source writes everything (represented as the wildcard).
+ *
+ * Returns null when the principal has no doco-level grant at all.
+ */
+export async function getDocoLevelGrant(
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+): Promise<{ role: DocoRole; writeTypes: string[] } | null> {
+  if (!principalId) return null;
+
+  let role: DocoRole | null = null;
+  const writeTypes = new Set<string>();
+  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
+
+  const fold = (grant: { role: DocoRole; writeTypes: string[] } | null) => {
+    if (!grant) return;
+    role = maxRole(role, grant.role);
+    if (grant.role === "owner") writeTypes.add(WRITE_ALL);
+    for (const t of grant.writeTypes) writeTypes.add(t);
+  };
+
+  if (meta.ownerId === principalId) fold({ role: "owner", writeTypes: [WRITE_ALL] });
+  if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) {
+    fold({ role: "owner", writeTypes: [WRITE_ALL] });
+  }
+
+  if (meta.ownerId.startsWith("organization_")) {
+    fold(await getOrgGrant(meta.ownerId, principalId));
+    if (ownerOfPrincipal) fold(await getOrgGrant(meta.ownerId, ownerOfPrincipal));
+  }
+
+  if (meta.docoId) {
+    fold(await getDocoUserGrant(meta.docoId, principalId));
+    if (ownerOfPrincipal) fold(await getDocoUserGrant(meta.docoId, ownerOfPrincipal));
+  }
+
+  if (!role) return null;
+  return { role, writeTypes: normalizeWriteTypes([...writeTypes]) };
+}
+
+/**
+ * Per-type write gate: can `principalId` write neurons/synapses of
+ * `type` in this Doco? Combines the Doco-level grant (role + write-type
+ * set) via `canWriteType` — owners write everything; otherwise the type
+ * must be covered by the wildcard or named explicitly.
+ *
+ * Policy types (guidance_policy, neuron_authoring_policy) are NOT
+ * write-gateable content — they configure the Doco and stay owner-only,
+ * matching `canEditPolicies`. Any non-writable type therefore requires
+ * the owner role.
+ *
+ * This does NOT enforce the OAuth-token scope-down; for bearer-auth API
+ * routes the caller still routes through the token gate
+ * (`enforceOauthGrant`) which now also narrows per type.
+ */
+export async function canWriteDocoType(
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+  type: string,
+): Promise<boolean> {
+  if (!principalId) return false;
+  const grant = await getDocoLevelGrant(meta, principalId);
+  if (!grant) return false;
+  if (!isWritableType(type)) return grant.role === "owner";
+  return canWriteType(grant.role, grant.writeTypes, type as WritableType);
+}
+
+/**
+ * The token's per-type write cap for this Doco, or null when there is no
+ * bearer token (cookie-session request → no scope-down). When a token IS
+ * present, the returned set caps the membership grant: the principal may
+ * write a type only if BOTH the membership grant and this set allow it.
+ *
+ * A token that granted writer (wildcard) on the target returns ["*"]; a
+ * token that granted only specific types returns those; a token scoped
+ * to the Doco/org but with no write returns []. The wildcard is also
+ * returned for a missing per-type entry on a role-only ('writer') grant,
+ * preserving back-compat for tokens minted before per-type scope existed.
+ */
+function tokenWriteTypeCap(
+  token: ValidAccessToken | null,
+  meta: { ownerId: string; docoId?: string },
+): string[] | null {
+  if (!token) return null;
+  const caps = new Set<string>();
+  let matched = false;
+
+  if (meta.docoId && token.granted_doco_ids.includes(meta.docoId)) {
+    matched = true;
+    const wt = token.granted_doco_write_types?.[meta.docoId];
+    if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
+    else if (token.granted_doco_roles?.[meta.docoId] === "writer") caps.add(WRITE_ALL);
+  }
+  if (meta.ownerId.startsWith("organization_") && token.granted_org_ids.includes(meta.ownerId)) {
+    matched = true;
+    const wt = token.granted_org_write_types?.[meta.ownerId];
+    if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
+    else if (token.granted_org_roles?.[meta.ownerId] === "writer") caps.add(WRITE_ALL);
+  }
+
+  if (!matched) return [];
+  return normalizeWriteTypes([...caps]);
+}
+
+/**
+ * Request-aware per-type write gate (the unified human + agent path).
+ * Effective write on `type` = membership grant allows it AND, when a
+ * bearer token is attached, the token's per-type cap allows it too.
+ * Cookie-session requests carry no token and fall back to membership.
+ *
+ * This is what content-mutation routes (capture / update) call.
+ */
+export async function canWriteDocoTypeForRequest(
+  request: Request,
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+  type: string,
+): Promise<boolean> {
+  if (!(await canWriteDocoType(meta, principalId, type))) return false;
+  // Policy types are owner-only and not token-scopeable per type; the
+  // membership check above already required owner, so allow.
+  if (!isWritableType(type)) return true;
+
+  const token = await getOauthTokenForRequest(request);
+  const cap = tokenWriteTypeCap(token, meta);
+  if (cap === null) return true; // cookie session: no token scope-down
+  return canWriteType("reader", cap, type as WritableType);
 }
 
 /**

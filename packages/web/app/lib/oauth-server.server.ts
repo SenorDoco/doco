@@ -657,8 +657,12 @@ export interface ValidAccessToken {
   user_id: string;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  /** Per-type write scope-down keyed by doco_id (migration 062). */
+  granted_doco_write_types: Record<string, string[]>;
   granted_org_ids: string[];
   granted_org_roles: Record<string, string>;
+  /** Per-type write scope-down keyed by org_id (migration 062). */
+  granted_org_write_types: Record<string, string[]>;
   scope: string | null;
   expires_at: Date;
 }
@@ -673,7 +677,8 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
   return await withClient(async (c) => {
     const r = await c.query<ValidAccessToken>(
       `SELECT token, client_id, user_id, granted_doco_ids,
-              granted_doco_roles, granted_org_ids, granted_org_roles,
+              granted_doco_roles, granted_doco_write_types,
+              granted_org_ids, granted_org_roles, granted_org_write_types,
               scope, expires_at
          FROM oauth_access_tokens
         WHERE token = $1 AND revoked = false AND expires_at > now()`,
@@ -684,8 +689,10 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
     return {
       ...row,
       granted_doco_roles: row.granted_doco_roles ?? {},
+      granted_doco_write_types: row.granted_doco_write_types ?? {},
       granted_org_ids: row.granted_org_ids ?? [],
       granted_org_roles: row.granted_org_roles ?? {},
+      granted_org_write_types: row.granted_org_write_types ?? {},
     };
   });
 }
