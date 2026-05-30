@@ -33,6 +33,21 @@ interface MeLike {
   username: string;
 }
 
+// The type-named prose field each captureX function calls `.trim()` on.
+// Used by the factory to reject non-string values with a 400 instead of
+// letting `.trim()` throw a 500 deep in the capture function.
+const PROSE_FIELD: Readonly<Record<string, string>> = {
+  intent: "intent",
+  idea: "idea",
+  rule: "rule",
+  decision: "decision",
+  action: "action",
+  log: "log",
+  eval: "eval",
+  reference: "reference",
+  state: "state",
+};
+
 type RouteParams = DocoRouteParams;
 
 interface IdRouteParams extends RouteParams {
@@ -131,6 +146,18 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
           );
           if (relationError) {
             return Response.json({ error: relationError }, { status: 400 });
+          }
+
+          // Reject non-string prose fields up front: the captureX functions
+          // call `.trim()` on the type-named prose field (intent/decision/…),
+          // which throws TypeError → 500 when a client sends an object or
+          // array. A typed boundary check turns that into a clean 400.
+          const proseField = PROSE_FIELD[cfg.entityType];
+          if (proseField) {
+            const v = (draft as Record<string, unknown>)[proseField];
+            if (v !== undefined && typeof v !== "string") {
+              return Response.json({ error: `'${proseField}' must be a string.` }, { status: 400 });
+            }
           }
 
           // Per-type write enforcement (decision_per_type_write_grants):
