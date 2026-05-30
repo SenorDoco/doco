@@ -14,7 +14,7 @@ import {
 } from "~/lib/capture.server";
 import {
   type DocoRouteParams,
-  getDocoLevelRole,
+  canWriteDocoTypeForRequest,
   loadDocoRouteForRead,
 } from "~/lib/doco-access.server";
 import { unsupportedRelationFieldError } from "~/lib/graph-authoring-contract.server";
@@ -79,13 +79,16 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       request: Request;
       params: RouteParams;
     }) {
-      // Captures are writes — require the OAuth-token role gate to grant
-      // at least "writer" on this Doco. Cookie-session users are
-      // unaffected (enforceOauthGrant only fires on Bearer auth).
+      // Captures are writes, but write is now granted per type
+      // (decision_per_type_write_grants), so the route gate only requires
+      // read; the per-type write gate below is the real check. A token
+      // scoped to a Doco for write-on-some-types is role-reader at the
+      // Doco level, so a blanket "writer" route gate would wrongly reject
+      // it before the per-type check ran.
       const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
         request,
         params,
-        "writer",
+        "reader",
       );
       if (!me) {
         return Response.json({ error: "Authentication required to write." }, { status: 401 });
@@ -123,15 +126,20 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             return Response.json({ error: relationError }, { status: 400 });
           }
 
-          // Role enforcement is doco-level — checked once here before
-          // dispatching to the type-specific capture handler.
-          const docoRole = await getDocoLevelRole(
+          // Per-type write enforcement (decision_per_type_write_grants):
+          // the principal must hold write access on THIS neuron type
+          // (owner writes everything; a writer's grant must cover the
+          // type via the wildcard or by name), AND — for bearer auth —
+          // the token's per-type scope-down must allow it too.
+          const mayWrite = await canWriteDocoTypeForRequest(
+            request,
             { ownerId: meta.ownerId, docoId: meta.docoId },
             me.id,
+            cfg.entityType,
           );
-          if (!docoRole || !roleAtLeast(docoRole, "writer")) {
+          if (!mayWrite) {
             return Response.json(
-              { error: "Forbidden: write access required to write." },
+              { error: `Forbidden: write access on '${cfg.entityType}' required to write.` },
               { status: 403 },
             );
           }
@@ -232,11 +240,12 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       params: IdRouteParams;
     }) {
       const { id } = params;
-      // Patches are writes — gate on at least "writer" via the token.
+      // Patches are writes, gated per type below (see POST note); the
+      // route gate only requires read.
       const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
         request,
         params,
-        "writer",
+        "reader",
       );
       if (!me) {
         return Response.json({ error: "Authentication required to edit." }, { status: 401 });
@@ -255,22 +264,23 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         return Response.json({ error: `Invalid JSON: ${(e as Error).message}` }, { status: 400 });
       }
 
-      // Role enforcement is strictly doco-level: any writer may edit a
-      // neuron and move its lifecycle (drafting → asserted → retired).
-      // There is no separate approver tier — what a writer may or may
-      // not do is governed by the Doco's own policies, not a built-in
-      // role ladder.
+      // Per-type write enforcement: editing a neuron (including lifecycle
+      // moves drafting → asserted → retired) requires write access on
+      // THIS neuron type. What a writer may do beyond that is governed by
+      // the Doco's own policies, not a built-in role ladder.
       const existing = await getEntity(cfg.entityType, id);
       if (!existing || existing.doco_id !== meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      const docoRole = await getDocoLevelRole(
+      const mayWrite = await canWriteDocoTypeForRequest(
+        request,
         { ownerId: meta.ownerId, docoId: meta.docoId },
         me.id,
+        cfg.entityType,
       );
-      if (!docoRole || !roleAtLeast(docoRole, "writer")) {
+      if (!mayWrite) {
         return Response.json(
-          { error: "Forbidden: write access required to edit." },
+          { error: `Forbidden: write access on '${cfg.entityType}' required to edit.` },
           { status: 403 },
         );
       }
