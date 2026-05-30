@@ -706,6 +706,22 @@ function entityTypeFromId(id: string): string | null {
   return m?.[1] ?? null;
 }
 
+/** Pull entity-id refs out of a relation field value — a bare id, an id
+ *  list, or a list of `{ target, ... }` objects (e.g. sequence_to). */
+function relationFieldTargets(value: unknown): string[] {
+  const out: string[] = [];
+  const push = (x: unknown) => {
+    if (typeof x === "string" && ENTITY_ID_RE.test(x)) out.push(x);
+    else if (x && typeof x === "object" && typeof (x as { target?: unknown }).target === "string") {
+      const t = (x as { target: string }).target;
+      if (ENTITY_ID_RE.test(t)) out.push(t);
+    }
+  };
+  if (Array.isArray(value)) for (const v of value) push(v);
+  else push(value);
+  return out;
+}
+
 async function summarizeIntegrity(docoId: string, perspective: string, createdIds: string[]) {
   const contract = PERSPECTIVE_CONTRACTS[perspective];
   if (!contract?.primary_relation || createdIds.length === 0) {
@@ -718,6 +734,14 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
   }
   const nodeTypes = new Set(contract.node_types);
   const primary = contract.primary_relation;
+  // Edge-table counts catch incoming edges from PRE-EXISTING nodes (sources
+  // outside this changeset). They can miss edges added within this same
+  // changeset, because the relation lives on the owner node's JSON field
+  // (e.g. `sequence_to`) and only materializes into `edges` on reindex —
+  // which can lag the integrity check. So we ALSO read that JSON field
+  // (the synchronous source of truth) and union the two signals. Without
+  // this, a fully-wired process authored in one changeset reported every
+  // node as `created_without_incoming` / `open_frontiers`.
   const counts = await withClient(async (c) => {
     const { rows } = await c.query<{ id: string; incoming: string; outgoing: string }>(
       `SELECT ids.id,
@@ -733,17 +757,34 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
     );
     return new Map(rows.map((row) => [row.id, row]));
   });
-  const createdWithoutIncoming: string[] = [];
-  const openFrontiers: string[] = [];
+  // JSON source-of-truth pass. `primary` is a relation kind (e.g.
+  // "sequence_flow"); resolve it to the owner field ("sequence_to"), then
+  // read the just-written values straight off each created node.
+  const ownerField = relationKind(primary)?.field;
+  const jsonOutgoing = new Map<string, number>();
+  const jsonHasIncoming = new Set<string>();
+  const entities = new Map<string, Awaited<ReturnType<typeof getEntity>>>();
   for (const id of createdIds) {
     const entityType = entityTypeFromId(id);
     if (!entityType) continue;
     const entity = await getEntity(entityType, id);
     if (!entity || entity.doco_id !== docoId) continue;
+    entities.set(id, entity);
+    if (ownerField) {
+      const targets = relationFieldTargets((entity.data as Record<string, unknown>)?.[ownerField]);
+      if (targets.length > 0) jsonOutgoing.set(id, targets.length);
+      for (const t of targets) jsonHasIncoming.add(t);
+    }
+  }
+  const createdWithoutIncoming: string[] = [];
+  const openFrontiers: string[] = [];
+  for (const id of createdIds) {
+    const entity = entities.get(id);
+    if (!entity) continue;
     if (nodeTypes.size > 0 && !nodeTypes.has(entity.entity_type)) continue;
     const count = counts.get(id);
-    const incoming = Number(count?.incoming ?? 0);
-    const outgoing = Number(count?.outgoing ?? 0);
+    const incoming = Number(count?.incoming ?? 0) + (jsonHasIncoming.has(id) ? 1 : 0);
+    const outgoing = Number(count?.outgoing ?? 0) + (jsonOutgoing.get(id) ?? 0);
     const isInitial = entity.entity_type === "state" && entity.data?.kind === "initial";
     const isTerminal = entity.entity_type === "state" && entity.data?.kind === "terminal";
     if (incoming === 0 && !isInitial) createdWithoutIncoming.push(id);

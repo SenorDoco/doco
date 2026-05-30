@@ -327,8 +327,9 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   },
   {
     // Repeatable business processes modeled on BPMN swimlanes and
-    // gateways. Sequence flow is explicit and forward-only via
-    // `sequence_to`, which materializes as `sequence_flow`; generic Doco
+    // gateways. Sequence flow is explicit via `sequence_to`, which
+    // materializes as `sequence_flow`; flow normally runs forward, but
+    // rework loops may route back through a gateway. Generic Doco
     // dependency / rationale edges remain associations and are not
     // treated as BPMN arrows.
     name: "business-processes",
@@ -355,13 +356,22 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // when_node_type. Personal / informal workflows pass too:
         // the gate cares about "workflow with steps, actors, outcome",
         // not "this is paid work at a company".
+        //
+        // State is ALSO exempt. A milestone State viewed in isolation
+        // ("loan approved", "incident mitigated") genuinely reads like a
+        // bare state-machine stage, so the judge warned on the very
+        // initial/terminal States the template REQUIRES — a false-positive
+        // on every process. States are structural flow nodes admitted by
+        // the entity-type allowlist; their quality is governed by the
+        // milestone-naming probabilistic policy below, not this membership
+        // gate.
         on_violation: "warn",
         policy:
           "A node belongs in business-processes when it describes a workflow — a sequence of steps with actors and an outcome — or a policy/guard for one. Workflows can be commercial, operational, or personal; what matters is that the work is repeatable and the steps can be named. One-off incidents, UI-specific user journeys, and pure state machines without a workflow outcome belong elsewhere.",
         predicate: {
           kind: "probabilistic",
           spec: "A node belongs in business-processes when it describes a workflow — a sequence of steps with actors and an outcome — or a policy/guard for one. Workflows can be commercial, operational, or personal; what matters is that the work is repeatable and the steps can be named. Pass when the candidate describes a step, gateway, milestone, validation, reference, or policy for such a workflow. Fail only when the candidate is a one-off incident with no repeatable structure, a UI-specific user journey, or a pure state machine without a workflow outcome.",
-          when_node_type: ["intent", "action", "decision", "state", "eval", "reference"],
+          when_node_type: ["intent", "action", "decision", "eval", "reference"],
         },
       },
       {
@@ -448,51 +458,42 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
       {
+        // One rule for all three flow-node types. `requires_edge` filters
+        // by `when_node_type`, so a single policy covers Action, gateway
+        // Decision, and milestone State — they share the same constraint
+        // (be tied to a concrete process/pool) and previously shipped as
+        // three near-identical entries.
         policy:
-          "Every Action in business-processes must `serves` an Intent. Without it the process renderer can't tie the step to the business outcome it advances.",
+          "Every flow node in business-processes — Action, gateway Decision, or milestone State — must `serves` an Intent. Without it the BPMN renderer can't place the node in a pool, and the step floats free of the business outcome it advances.",
         predicate: {
           kind: "requires_edge",
           edge_type: "serves",
           target_node_type: "intent",
-          when_node_type: ["action"],
+          when_node_type: ["action", "decision", "state"],
         },
         fires_when_node_lifecycle: ["asserted"],
       },
       {
-        // Atomic activity prose — reject umbrella phases and
-        // implementation chores divorced from business meaning.
+        // Atomic activity prose — surface umbrella phases and
+        // implementation chores divorced from business meaning. Fires as a
+        // `warn`, not a block: it's an LLM-judged style check, so a blocking
+        // verdict both stopped legitimate single-verb steps ("Reviews the
+        // legal terms") and was non-deterministic (an identical retry could
+        // pass). Warn keeps the nudge without trapping the author. The spec
+        // now PASSES an ordinary single-verb business step and reserves the
+        // FAIL for true umbrellas and conjunction ("examine AND treat")
+        // steps that bundle two activities.
+        on_violation: "warn",
         policy:
-          "Action `action` reads as an atomic business activity — a single unit of work an actor performs. Reject vague umbrella phases (`handle request`, `do the thing`) and reject implementation chores divorced from business meaning (`call API`, `update row`).",
+          "Action `action` reads as an atomic business activity — a single unit of work an actor performs. Avoid vague umbrella phases (`handle request`, `do the thing`), steps that bundle two activities with `and`, and implementation chores divorced from business meaning (`call API`, `update row`).",
         predicate: {
           kind: "probabilistic",
-          spec: "Check the Action's `action` and `verb`. PASS when the text names an atomic business activity — a single unit of work the named actor performs. FAIL with reason if the text is a vague umbrella phase (e.g. `handle request`, `do the thing`, `process order`) or an implementation chore divorced from business meaning (e.g. `call API`, `update row`, `write to DB`).",
+          spec: "Check the Action's `action` and `verb`. PASS when the text names a single business activity the named actor performs — an ordinary single-verb step like `review the legal terms`, `approve the invoice`, or `pack the order` PASSES. FAIL with reason only if the text (a) is a vague umbrella phase covering many steps (e.g. `handle request`, `do the thing`, `process order`), (b) bundles two distinct activities joined by `and` (e.g. `examine and treat the patient`), or (c) is an implementation chore divorced from business meaning (e.g. `call API`, `update row`, `write to DB`).",
           when_node_type: ["action"],
         },
         fires_when_node_lifecycle: ["asserted"],
       },
       // ── Decision shape ──────────────────────────────────────────
-      {
-        policy:
-          "Every Decision in business-processes must `serves` an Intent — gateways belong to a concrete process/pool and need that link to be explicit.",
-        predicate: {
-          kind: "requires_edge",
-          edge_type: "serves",
-          target_node_type: "intent",
-          when_node_type: ["decision"],
-        },
-        fires_when_node_lifecycle: ["asserted"],
-      },
-      {
-        policy:
-          "Every State in business-processes must `serves` an Intent — milestones and events belong to a concrete process/pool and need that link to be explicit.",
-        predicate: {
-          kind: "requires_edge",
-          edge_type: "serves",
-          target_node_type: "intent",
-          when_node_type: ["state"],
-        },
-        fires_when_node_lifecycle: ["asserted"],
-      },
       {
         // Exhaustive branches: question reads as yes/no or enumerated,
         // and the alternatives list either has a default/else branch
@@ -507,40 +508,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
 
-      // ── State shape & sequence wiring ───────────────────────────
+      // ── State shape & sequence wiring (graph invariants kept as
+      //    guidance until the evaluator can express subgraph shape) ──
       {
-        policy:
-          "State `state` is unique within a business process — duplicate milestone names ambiguate references and hide wiring mistakes.",
         kind: "guidance",
+        policy:
+          "A business process has ≥1 active initial State and ≥1 active terminal State, with each `state` name unique within the process. Every process starts somewhere, ends at a business outcome (or an explicitly cancelled outcome), and names its milestones unambiguously.",
       },
       {
+        kind: "guidance",
         policy:
-          "An active business process has ≥1 active State of kind `initial` — every process starts somewhere.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "An active business process has ≥1 active State of kind `terminal` — every process has a business outcome (or an explicitly cancelled outcome).",
-        kind: "guidance",
-      },
-      {
-        policy: "Terminal States have no outgoing `sequence_to` flow — they end the process path.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "Each active initial State has at least one outgoing `sequence_to` target — otherwise the process starts but never moves.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "Every `sequence_to` target should be a flow node in the same process Intent. Use branch labels or conditions on `sequence_to` objects for gateway edges.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "Every non-initial flow node should be reachable from an earlier flow node through forward `sequence_to`; every non-terminal flow node should have at least one outgoing `sequence_to` target.",
-        kind: "guidance",
+          "Flow runs forward from the initial State: each active initial State has ≥1 outgoing `sequence_to`, every non-initial flow node is reachable from an earlier flow node through forward `sequence_to`, and every non-terminal flow node has ≥1 outgoing `sequence_to` target in the same process Intent. Terminal States have no outgoing `sequence_to` — they end the process path.",
       },
       {
         // State summary as milestone/condition — noun or past-participle
@@ -600,6 +578,16 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         policy:
+          "When a step is itself a whole sub-process, model it as its own child process Intent and link the calling Action to that Intent (the BPMN call-activity pattern) instead of inlining dozens of Actions. The BPMN view collapses the child Intent into its own pool, keeping the parent process readable.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "Name the single accountable process owner in the purpose Intent — the Principal answerable for the whole process's outcome. This is the RACI 'Accountable' role, distinct from the per-step 'Responsible' actors named in each Action's `actor_id`.",
+      },
+      {
+        kind: "guidance",
+        policy:
           "Agents should read `GET /<handle>/api/authoring-contract.json` and write structured flows with `POST /<handle>/api/changesets.json`; create flow nodes with their incoming `sequence_flow` edge in the same changeset instead of creating disconnected nodes.",
       },
       {
@@ -616,6 +604,21 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         kind: "guidance",
         policy:
           "`sequence_to` may be a list of target ids or objects like `{ target, label, condition, kind }`. Put gateway branch labels and default/exception/timer metadata on the outgoing edge, not by reversing a relationship from the downstream Action back to the Decision.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "For parallel work, give one flow node multiple unconditional `sequence_to` targets — an AND-split needs no gateway Decision. Reserve gateway Decisions for exclusive or conditional (XOR/inclusive) branching, and reconverge parallel branches on a shared downstream node.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "Rework and retry loops are allowed: a `sequence_to` may target an earlier flow node to send work back (revise-and-resubmit, fix-and-recheck). Route the loop back through a gateway Decision so the cycle has an explicit exit and can't spin forever. A single edge still renders source -> target — a loop is about where the edge points, not reversing its direction.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          'Model the unhappy path. Use `sequence_to` objects with `kind: "exception"` or `kind: "timer"` to route failures, rejections, and timeouts to a recovery step or an explicitly cancelled terminal State, so the process documents what happens when the happy path does not hold.',
       },
       {
         kind: "guidance",
@@ -645,18 +648,29 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     ],
   },
   {
-    // Organizational chart template. Principals are the org members,
-    // `reports_to` edges form the hierarchy, Intents represent
-    // teams/units, Decisions record reorgs and appointments. After
-    // the Principal slim-down (decision_01KSDR_PRINCIPAL_SLIM_DOWN)
-    // a Principal carries only `name` + `body_md`; the person-vs-agent
-    // distinction lives in the body_md prose, enforced by a
-    // probabilistic policy rather than a `requires_field` check.
+    // Organizational chart template. Principals are the org *seats*
+    // (a role plus its current occupant), `reports_to` edges form the
+    // primary hierarchy, Intents represent teams/units, Decisions
+    // record reorgs and appointments. After the Principal slim-down
+    // (decision_01KSDR_PRINCIPAL_SLIM_DOWN) a Principal carries only
+    // `name` + `body_md`; the person / AI-agent / vacant distinction
+    // lives in the body_md prose, enforced by a probabilistic policy
+    // rather than a `requires_field` check.
+    //
+    // Industry alignment (W3C Organization Ontology + HR practice):
+    // a seat that can stand vacant approximates `org:Post`; secondary
+    // (dotted-line / matrix) reporting layers on top of the single
+    // primary `reports_to` line via guidance, since the Principal
+    // schema carries exactly one manager. A fully structural
+    // Post/Membership split (separate occupant nodes, a versioned
+    // `member_of` / `held_by` edge, a real vacancy field) would need a
+    // schema change beyond this template and is intentionally left as a
+    // follow-up rather than half-modeled here.
     name: "org-chart",
     label: "org-chart",
     icon: "🏢",
     description:
-      "Map the people and AI agents in an organization — reporting lines, teams, roles, and appointments. Every member declares whether they're a person or an AI agent in their `body_md` prose.",
+      "Map the people and AI agents in an organization — reporting lines, teams, roles, and appointments. Every seat declares in its `body_md` prose whether it's filled by a person, filled by an AI agent, or currently vacant.",
     defaultNodeLifecycle: "drafting",
     perspectives: [{ slug: "org-tree", isDefault: true }],
     policies: [
@@ -694,13 +708,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // person-vs-agent out of a structured field and into the
         // body_md prose. Org charts still need the declaration, so
         // this probabilistic policy reads body_md and blocks captures
-        // that leave the distinction ambiguous.
+        // that leave the distinction ambiguous. A third state —
+        // `vacant` — lets a budgeted-but-unfilled seat live on the
+        // chart (HR best practice: omitting open roles breaks headcount
+        // and reporting structure). A vacant seat is the closest this
+        // template gets to W3C `org:Post` without a schema change.
         policy:
-          "Every Principal in an org chart must declare whether it's a person or an AI agent in its `body_md` prose. The org-tree perspective infers the distinction from the prose; without an explicit declaration a chart can't tell humans from AI agents.",
+          "Every Principal in an org chart is a seat: its `body_md` must declare whether the seat is filled by a person, filled by an AI agent, or currently vacant. The org-tree perspective infers this from the prose; without an explicit declaration a chart can't tell humans from AI agents from open roles.",
         predicate: {
           kind: "probabilistic",
           when_node_type: ["principal"],
-          spec: "Read the Principal's `body_md`. PASS if the prose clearly states the role is filled by a human person (e.g. 'Human director of …', 'Person responsible for …') OR by an AI agent (e.g. 'AI agent operated by @alice', 'Autonomous research bot'). FAIL with a reason if `body_md` is empty or doesn't take a stance on person-vs-agent.",
+          spec: "Read the Principal's `body_md`. PASS if the prose clearly states the seat is filled by a human person (e.g. 'Human director of …', 'Person responsible for …'), filled by an AI agent (e.g. 'AI agent operated by @alice', 'Autonomous research bot'), OR currently vacant/open (e.g. 'Vacant — budgeted Staff Engineer seat, reporting to …'). FAIL with a reason if `body_md` is empty or doesn't take a stance on person / AI agent / vacant.",
         },
       },
 
@@ -730,6 +748,13 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // the business-processes convention. Stakeholders
         // (people interested in the unit's outcomes without being on
         // the team) optionally go in `stakeholders`.
+        //
+        // Gated to `asserted` so a team can be sketched first and have
+        // its roster filled in later — the template defaults new nodes
+        // to `drafting`, and an ungated requires_field would block that
+        // sketch the moment the unit is created. Matches the
+        // asserted-gating glossaries and business-processes use on
+        // their own completeness rules.
         policy:
           "Every Intent in an org chart must declare `actors` — the Principals who are members of this team or unit.",
         predicate: {
@@ -737,6 +762,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           fields: ["actors"],
           when_node_type: ["intent"],
         },
+        fires_when_node_lifecycle: ["asserted"],
       },
 
       // ── Guidance (prose-only) ───────────────────────────────────
@@ -763,7 +789,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         policy:
+          "Team membership lives in the Intent's `actors` list, which the org-tree renders but does not version. When someone joins or leaves a team, record it as a Decision linking the affected Principals so the *why* and *when* survive the in-place edit. Once a Doco needs real join/leave history, prefer a first-class `member_of` edge over editing `actors`, mirroring how `reports_to` is already a versioned edge — an `actors` array overwrite leaves no trail.",
+      },
+      {
+        kind: "guidance",
+        policy:
           "`reports_to` is a first-class edge with its own lifecycle and history, and its endpoints are immutable. When a reporting line moves, retire the old `reports_to` edge and add the new one rather than rewriting it in place — the prior line stays recoverable alongside the Decision that explains the reorg.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "`reports_to` carries exactly one manager — the primary (solid-line) reporting relationship — so the org tree stays a clean hierarchy. Model secondary, dotted-line, or matrix reporting on top of it: use a `dotted_reports_to` association edge, or a Decision when the matrix assignment needs rationale (project lead, functional vs operational manager). Don't overload `reports_to` with a second manager — it breaks the primary tree the perspective draws.",
       },
       {
         kind: "guidance",
@@ -778,12 +814,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         policy:
+          "Treat each Principal as a seat — a role plus its current occupant — not just a person. A budgeted-but-unfilled seat is a valid Principal: declare it `vacant` in `body_md`, name the role it's budgeted for, and keep its `reports_to` line so the tree stays complete. Omitting open roles hides headcount and distorts the reporting structure (the same mistake as leaving vacant boxes off a printed chart).",
+      },
+      {
+        kind: "guidance",
+        policy:
           "Person vs agent isn't about who signed in — it's about who fills the seat. A Principal whose `body_md` describes an AI agent (a code reviewer, a triage bot, a research agent) is an agent regardless of whether any User has signed in as it. A Principal whose `body_md` describes a human is a person, even if that human has no Doco account.",
       },
       {
         kind: "guidance",
         policy:
-          "When an AI-agent role is replaced by a human (or vice-versa), retire the old Principal and create a new one with `body_md` describing the new occupant. Person-vs-agent is part of the role's identity in this Doco — flipping it via a body_md edit on the same Principal erases the history of the seat's prior occupant.",
+          "Seats persist across routine turnover: when one person leaves and another fills the same seat — or a seat goes vacant and is later refilled by the same kind of occupant — keep the Principal, update `body_md`, and record the change as a Decision, so the `reports_to` line and team memberships stay intact and the seat's history reads continuously. Only when the seat's *nature* flips between person and AI agent do you retire the old Principal and create a new one: person-vs-agent is part of the seat's identity in this Doco, and flipping it via a body_md edit erases the prior occupant's history.",
       },
     ],
   },
