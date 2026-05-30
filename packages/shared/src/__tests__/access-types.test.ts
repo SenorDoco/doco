@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { NEURON_TYPES } from "../branded.js";
+import { NODE_TYPES } from "../branded.js";
 import {
   canWriteAnything,
   canWriteType,
   isWritableType,
   normalizeWriteTypes,
-  SYNAPSE_TYPES,
+  EDGE_TYPES,
   WRITABLE_TYPES,
   WRITE_ALL,
 } from "../access-types.js";
 
 describe("access-types", () => {
-  it("WRITABLE_TYPES is the union of neuron and synapse types, no dupes", () => {
-    expect(WRITABLE_TYPES).toEqual([...NEURON_TYPES, ...SYNAPSE_TYPES]);
+  it("WRITABLE_TYPES is the union of node and edge types, no dupes", () => {
+    expect(WRITABLE_TYPES).toEqual([...NODE_TYPES, ...EDGE_TYPES]);
     expect(new Set(WRITABLE_TYPES).size).toBe(WRITABLE_TYPES.length);
   });
 
