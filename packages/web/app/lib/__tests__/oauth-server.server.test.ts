@@ -61,7 +61,7 @@ describe("OAuth agent user authorization", () => {
       redirect_uri: "http://127.0.0.1:4321/callback",
       code_challenge: "challenge",
       granted_doco_ids: ["doco_bpms"],
-      granted_doco_roles: { doco_bpms: "author" },
+      granted_doco_roles: { doco_bpms: "writer" },
       granted_org_ids: ["organization_torre"],
       granted_org_roles: { organization_torre: "reader" },
       scope: "doco",
@@ -77,7 +77,7 @@ describe("OAuth agent user authorization", () => {
     expect(agentData.name).toBe("Claude Code");
     expect(agentData.oauth_client_id).toBe("doco_client_browser");
 
-    expect(callsTo("INSERT INTO doco_users")[0]?.[1]).toEqual(["doco_bpms", agentId, "author"]);
+    expect(callsTo("INSERT INTO doco_users")[0]?.[1]).toEqual(["doco_bpms", agentId, "writer"]);
     expect(callsTo("INSERT INTO org_users")[0]?.[1]).toEqual([
       "organization_torre",
       agentId,
@@ -102,7 +102,7 @@ describe("OAuth agent user authorization", () => {
       approver_user_id: "user_owner",
       agent_name: "Codex sandbox",
       granted_doco_ids: ["doco_bpms"],
-      granted_doco_roles: { doco_bpms: "approver" },
+      granted_doco_roles: { doco_bpms: "writer" },
       granted_org_ids: [],
       granted_org_roles: {},
     });
@@ -112,7 +112,7 @@ describe("OAuth agent user authorization", () => {
     expect(userInsert?.[1]).toEqual(expect.arrayContaining([agentId, "user_owner"]));
     const agentData = JSON.parse((userInsert?.[1] as unknown[])[2] as string);
     expect(agentData.name).toBe("Codex sandbox");
-    expect(callsTo("INSERT INTO doco_users")[0]?.[1]).toEqual(["doco_bpms", agentId, "approver"]);
+    expect(callsTo("INSERT INTO doco_users")[0]?.[1]).toEqual(["doco_bpms", agentId, "writer"]);
     const update = callsTo("UPDATE oauth_device_authorizations")[0];
     expect(update?.[1]).toEqual(expect.arrayContaining(["doco_dc_123", agentId]));
   });
@@ -141,7 +141,7 @@ describe("OAuth agent user authorization", () => {
       approver_user_id: "user_owner",
       agent_name: "Codex sandbox",
       granted_doco_ids: ["doco_new"],
-      granted_doco_roles: { doco_new: "author" },
+      granted_doco_roles: { doco_new: "writer" },
       granted_org_ids: [],
       granted_org_roles: {},
     });
@@ -158,7 +158,7 @@ describe("OAuth agent user authorization", () => {
     expect((update?.[1] as unknown[])[1]).toBe("user_existing");
     expect((update?.[1] as unknown[])[2]).toEqual(expect.arrayContaining(["doco_old", "doco_new"]));
     const mergedRoles = JSON.parse((update?.[1] as unknown[])[3] as string);
-    expect(mergedRoles).toMatchObject({ doco_old: "reader", doco_new: "author" });
+    expect(mergedRoles).toMatchObject({ doco_old: "reader", doco_new: "writer" });
   });
 });
 
@@ -169,13 +169,13 @@ describe("mergeGrantSets", () => {
       {
         ...emptyGrants,
         granted_doco_ids: ["b"],
-        granted_doco_roles: { b: "author" },
+        granted_doco_roles: { b: "writer" },
         granted_org_ids: ["organization_x"],
         granted_org_roles: { organization_x: "owner" },
       },
     );
     expect(merged.granted_doco_ids).toEqual(["a", "b"]);
-    expect(merged.granted_doco_roles).toEqual({ a: "reader", b: "author" });
+    expect(merged.granted_doco_roles).toEqual({ a: "reader", b: "writer" });
     expect(merged.granted_org_ids).toEqual(["organization_x"]);
     expect(merged.granted_org_roles).toEqual({ organization_x: "owner" });
   });
@@ -188,10 +188,10 @@ describe("mergeGrantSets", () => {
     expect(merged.granted_doco_roles.a).toBe("owner");
 
     const merged2 = mergeGrantSets(
-      { ...emptyGrants, granted_doco_ids: ["a"], granted_doco_roles: { a: "approver" } },
-      { ...emptyGrants, granted_doco_ids: ["a"], granted_doco_roles: { a: "author" } },
+      { ...emptyGrants, granted_doco_ids: ["a"], granted_doco_roles: { a: "writer" } },
+      { ...emptyGrants, granted_doco_ids: ["a"], granted_doco_roles: { a: "writer" } },
     );
-    expect(merged2.granted_doco_roles.a).toBe("approver");
+    expect(merged2.granted_doco_roles.a).toBe("writer");
   });
 
   it("never drops an existing grant the incoming approval omits", () => {
@@ -199,11 +199,11 @@ describe("mergeGrantSets", () => {
       {
         ...emptyGrants,
         granted_org_ids: ["organization_x"],
-        granted_org_roles: { organization_x: "approver" },
+        granted_org_roles: { organization_x: "writer" },
       },
       emptyGrants,
     );
     expect(merged.granted_org_ids).toEqual(["organization_x"]);
-    expect(merged.granted_org_roles.organization_x).toBe("approver");
+    expect(merged.granted_org_roles.organization_x).toBe("writer");
   });
 });

@@ -31,7 +31,7 @@ export async function loader({
       await c.query<IntentOption>(
         `SELECT id, split_part(intent, E'\n', 1) AS label FROM intents
           WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'accepted') = 'accepted'
+            AND COALESCE(lifecycle, 'asserted') = 'asserted'
           ORDER BY created_at DESC`,
         [meta.docoId],
       )

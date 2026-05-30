@@ -17,7 +17,7 @@ import { lifecycleColor } from "~/lib/neuron-colors";
  */
 // The four canonical lifecycle stages from @doco/shared, in
 // progression order. The filter row renders them in this sequence.
-export const LIFECYCLE_ORDER: readonly string[] = ["drafting", "proposed", "accepted", "retired"];
+export const LIFECYCLE_ORDER: readonly string[] = ["drafting", "asserted", "retired"];
 
 /**
  * Lifecycles hidden out of the box. `retired` is the "no longer

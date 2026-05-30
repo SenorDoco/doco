@@ -65,7 +65,7 @@ export function NeuronsOverviewCard({
                 >
                   {typeof item.activeCount === "number" ? (
                     <>
-                      <span style={{ color: lifecycleColor("accepted") }}>{item.activeCount}</span>
+                      <span style={{ color: lifecycleColor("asserted") }}>{item.activeCount}</span>
                       {`/${item.count}`}
                     </>
                   ) : (

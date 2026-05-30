@@ -32,7 +32,7 @@ describe("loadOverviewGraph", () => {
           id: "principal_alice",
           entity_type: "principal",
           name: "alice",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-01T00:00:00Z",
         },
       ],
@@ -45,7 +45,7 @@ describe("loadOverviewGraph", () => {
     expect(entityQuery, "principals leg should be present in the UNION").toBeDefined();
     expect(entityQuery?.sql).toMatch(/\bdoco_id\s*=\s*\$1/);
     expect(entityQuery?.sql).not.toMatch(/data->>'doco_id'/);
-    expect(entityQuery?.sql).toMatch(/lifecycle.*=\s*'accepted'/i);
+    expect(entityQuery?.sql).toMatch(/lifecycle.*=\s*'asserted'/i);
     expect(entityQuery?.params).toEqual(["doco_acme"]);
 
     expect(graph.nodes).toHaveLength(1);
@@ -63,14 +63,14 @@ describe("loadOverviewGraph", () => {
           id: "decision_01",
           entity_type: "decision",
           name: null,
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-04-01T00:00:00Z",
         },
         {
           id: "principal_alice",
           entity_type: "principal",
           name: "alice",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-01T00:00:00Z",
         },
       ],
@@ -91,7 +91,7 @@ describe("loadOverviewGraph", () => {
           entity_type: "state",
           name: null,
           label: "Waiting for approval",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
           created_at: "2026-05-23T20:00:00.000Z",
         },
       ],

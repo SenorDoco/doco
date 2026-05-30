@@ -20,9 +20,9 @@ vi.mock("~/lib/doco-access.server", () => ({
 }));
 
 vi.mock("~/lib/user-invite", () => ({
-  ALL_ROLES: ["reader", "author", "approver", "owner"],
+  ALL_ROLES: ["reader", "writer", "owner"],
   rankOf: (role: string) =>
-    role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0,
+    role === "owner" ? 3 : role === "writer" ? 2 : role === "writer" ? 1 : 0,
 }));
 
 vi.mock("~/lib/doco-labels", () => ({

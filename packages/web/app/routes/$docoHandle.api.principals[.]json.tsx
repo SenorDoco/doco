@@ -52,7 +52,7 @@ export async function action({
   }
   const startedAt = performance.now();
 
-  const { me, meta } = await loadDocoRouteForRead(request, params, "author");
+  const { me, meta } = await loadDocoRouteForRead(request, params, "writer");
   if (!me) {
     return Response.json(
       { error: "Authentication required to create a principal." },
@@ -61,9 +61,9 @@ export async function action({
   }
 
   const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!docoRole || !roleAtLeast(docoRole, "author")) {
+  if (!docoRole || !roleAtLeast(docoRole, "writer")) {
     return Response.json(
-      { error: "Forbidden: author role required to create a principal." },
+      { error: "Forbidden: write access required to create a principal." },
       { status: 403 },
     );
   }
@@ -111,7 +111,7 @@ export async function action({
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
     created_at: now,
     created_by: me.id,
-    lifecycle: "accepted",
+    lifecycle: "asserted",
   };
 
   // Run the doco's authoring policies against the Principal before
@@ -139,7 +139,7 @@ export async function action({
     entity_type: "principal",
     data: raw,
     body_md: bodyMd,
-    lifecycle: "accepted",
+    lifecycle: "asserted",
     created_at: now,
     created_by: me.id,
     updated_at: now,
@@ -161,7 +161,7 @@ export async function action({
     after: {
       name,
       body_md: bodyMd,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       ...(body.reports_to ? { reports_to: body.reports_to } : {}),
     },
   });

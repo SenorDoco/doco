@@ -6,7 +6,7 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-const LIFECYCLE_STAGES = ["drafting", "proposed", "accepted", "retired"] as const;
+const LIFECYCLE_STAGES = ["drafting", "asserted", "retired"] as const;
 
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
@@ -177,10 +177,10 @@ function lifecycleOptions(input: {
 }): NeuronLifecycleOption[] {
   const current = LIFECYCLE_STAGES.includes(input.current as LifecycleStage)
     ? (input.current as LifecycleStage)
-    : "accepted";
+    : "asserted";
   const roleReason = input.role
-    ? `Approver or owner role required; your role is ${input.role}.`
-    : "Sign in with an approver or owner role to change lifecycle.";
+    ? `Write access required to change lifecycle; your role is ${input.role}.`
+    : "Sign in with write access to change lifecycle.";
   return LIFECYCLE_STAGES.map((stage) => {
     const isCurrent = stage === current;
     let reason: string | null = null;
@@ -221,7 +221,7 @@ function relatedDetailsSql(): string {
                      '${entityType}'::text AS entity_type,
                      NULLIF(split_part(${cfg.primaryColumn}::text, E'\n', 1), '') AS summary,
                      ${nameExpr},
-                     COALESCE(lifecycle, 'accepted') AS lifecycle
+                     COALESCE(lifecycle, 'asserted') AS lifecycle
                 FROM ${cfg.table}
                WHERE doco_id = $1
                  AND id = ANY($2::text[])`;
@@ -251,7 +251,7 @@ async function loadDialogRelatedDetails(
     entity_type: row.entity_type,
     summary: row.summary ?? row.name ?? row.id,
     name: row.name,
-    lifecycle: row.lifecycle ?? "accepted",
+    lifecycle: row.lifecycle ?? "asserted",
     href: `/${handle}/${row.entity_type}/${row.id}`,
   }));
 }
@@ -356,7 +356,7 @@ export async function loadNeuronDialogDetail(
       `SELECT id,
               ${cfg.primaryColumn} AS primary_text,
               ${bodySelect},
-              COALESCE(lifecycle, 'accepted') AS lifecycle,
+              COALESCE(lifecycle, 'asserted') AS lifecycle,
               data::text AS raw_json,
               created_at,
               updated_at
@@ -427,7 +427,7 @@ export async function loadNeuronDialogDetail(
       other_neuron_type: edge.to_neuron_type,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
-      other_lifecycle: detail?.lifecycle ?? "accepted",
+      other_lifecycle: detail?.lifecycle ?? "asserted",
       href: detail?.href ?? `/${options.handle}/${edge.to_neuron_type}/${edge.to_id}`,
     };
   });
@@ -439,7 +439,7 @@ export async function loadNeuronDialogDetail(
       other_neuron_type: edge.from_neuron_type,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
-      other_lifecycle: detail?.lifecycle ?? "accepted",
+      other_lifecycle: detail?.lifecycle ?? "asserted",
       href: detail?.href ?? `/${options.handle}/${edge.from_neuron_type}/${edge.from_id}`,
     };
   });
@@ -488,7 +488,7 @@ export async function loadNeuronDialogDetail(
     { ownerId: meta.ownerId, docoId: meta.docoId },
     options.principalId,
   );
-  const canChangeLifecycle = roleAtLeast(userRole, "approver");
+  const canChangeLifecycle = roleAtLeast(userRole, "writer");
   const updateUrl = cfg.updateSegment
     ? `/${options.handle}/api/${cfg.updateSegment}/${row.id}.json`
     : null;
@@ -502,7 +502,7 @@ export async function loadNeuronDialogDetail(
     primary_text: row.primary_text,
     body_field: cfg.bodyField,
     body_text: row.body_text,
-    lifecycle: row.lifecycle ?? "accepted",
+    lifecycle: row.lifecycle ?? "asserted",
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
     body_md: bodyMdCompat,
@@ -517,7 +517,7 @@ export async function loadNeuronDialogDetail(
     user_role: userRole,
     can_change_lifecycle: canChangeLifecycle,
     lifecycle_options: lifecycleOptions({
-      current: row.lifecycle ?? "accepted",
+      current: row.lifecycle ?? "asserted",
       canChange: canChangeLifecycle,
       role: userRole,
       updateUrl,

@@ -50,7 +50,7 @@ interface SlackGrantInput {
 
 const WORKSPACE_DEFAULT_CHANNEL_ID = "*";
 const WORKSPACE_DEFAULT_CHANNEL_NAME = "workspace";
-const DEFAULT_ROLES: DocoRole[] = ["reader", "author", "approver"];
+const DEFAULT_ROLES: DocoRole[] = ["reader", "writer"];
 const ROLE_SELECT_CLASS = "rounded-md px-3 py-2 text-sm font-semibold";
 
 export async function loader({ request }: { request: Request }): Promise<SlackSetupPageData> {

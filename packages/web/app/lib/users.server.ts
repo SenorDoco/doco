@@ -195,26 +195,37 @@ export async function loadUserSections(principalId: string): Promise<{
 
   const lastActivity = await loadLastActivity([...allPrincipalIds]);
 
+  // The Collaborators page lists only accounts with a username — i.e.
+  // people. Agents are not collaborators: they authenticate through API
+  // tokens and are managed on the API Tokens (/api-keys) page, so they
+  // are filtered out of every section here.
+  const personOnly = (users: GrantRow[]): GrantRow[] =>
+    users.filter((u) => u.kind !== "agent");
+
   const orgSections: OrgSection[] = [];
   for (const entry of orgRoleRows) {
-    const users: GrantRow[] = await Promise.all(
-      entry.rows.map(async (row) => ({
-        ...(await enrichPrincipal(row.user_id, lastActivity)),
-        role: row.role,
-        joined_at: row.joined_at,
-      })),
+    const users: GrantRow[] = personOnly(
+      await Promise.all(
+        entry.rows.map(async (row) => ({
+          ...(await enrichPrincipal(row.user_id, lastActivity)),
+          role: row.role,
+          joined_at: row.joined_at,
+        })),
+      ),
     );
     orgSections.push({ org: entry.org, myRole: entry.myRole, users });
   }
 
   const docoSections: DocoSection[] = [];
   for (const entry of docoRoleRows) {
-    const users: GrantRow[] = await Promise.all(
-      entry.rows.map(async (row) => ({
-        ...(await enrichPrincipal(row.user_id, lastActivity)),
-        role: row.role,
-        joined_at: row.joined_at,
-      })),
+    const users: GrantRow[] = personOnly(
+      await Promise.all(
+        entry.rows.map(async (row) => ({
+          ...(await enrichPrincipal(row.user_id, lastActivity)),
+          role: row.role,
+          joined_at: row.joined_at,
+        })),
+      ),
     );
     docoSections.push({
       doco: {
@@ -415,7 +426,7 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
     return { error: "You don't have a role on this target." };
   }
   const role: DocoRole =
-    parsedRole || (rankOf(inviterRole) >= rankOf("author") ? "author" : inviterRole);
+    parsedRole || (rankOf(inviterRole) >= rankOf("writer") ? "writer" : inviterRole);
   if (rankOf(role) > rankOf(inviterRole)) {
     return {
       error: `Cannot mint a '${role}' invite -- you only hold '${inviterRole}' on this target.`,

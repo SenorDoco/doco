@@ -202,7 +202,7 @@ function href(handle: string, entityType: string, id: string): string {
 /** Map one content neuron into a dictionary entry, per its type. */
 function toEntry(row: NeuronRow, handle: string): GlossaryEntry {
   const data = row.data ?? {};
-  const lifecycle = row.lifecycle ?? "accepted";
+  const lifecycle = row.lifecycle ?? "asserted";
   let headword: string;
   let question: string | null = null;
   let definitionProse: string;
@@ -262,33 +262,33 @@ export async function loadGlossaryPerspectiveData(
     `
     SELECT id, 'decision'::text AS entity_type,
            split_part(decision, E'\n', 1) AS label, decision AS prose,
-           COALESCE(lifecycle,'accepted') AS lifecycle, data,
+           COALESCE(lifecycle,'asserted') AS lifecycle, data,
            NULL::text AS ref_type, NULL::text AS locator, NULL::text AS citation, NULL::text AS title
-      FROM decisions WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+      FROM decisions WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
     UNION ALL
     SELECT id, 'reference'::text,
            split_part(COALESCE(NULLIF(title,''), reference), E'\n', 1), reference,
-           COALESCE(lifecycle,'accepted'), data,
+           COALESCE(lifecycle,'asserted'), data,
            ref_type, locator, citation, title
-      FROM reference_entities WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+      FROM reference_entities WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
     UNION ALL
     SELECT id, 'rule'::text,
            split_part(rule, E'\n', 1), rule,
-           COALESCE(lifecycle,'accepted'), data,
+           COALESCE(lifecycle,'asserted'), data,
            NULL, NULL, NULL, NULL
-      FROM rules WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+      FROM rules WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
     UNION ALL
     SELECT id, 'eval'::text,
            split_part(eval, E'\n', 1), eval,
-           COALESCE(lifecycle,'accepted'), data,
+           COALESCE(lifecycle,'asserted'), data,
            NULL, NULL, NULL, NULL
-      FROM evals WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+      FROM evals WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
     UNION ALL
     SELECT id, 'intent'::text,
            split_part(intent, E'\n', 1), intent,
-           COALESCE(lifecycle,'accepted'), data,
+           COALESCE(lifecycle,'asserted'), data,
            NULL, NULL, NULL, NULL
-      FROM intents WHERE doco_id = $1 AND COALESCE(lifecycle,'accepted') <> 'retired'
+      FROM intents WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
     `,
     [docoId],
   );

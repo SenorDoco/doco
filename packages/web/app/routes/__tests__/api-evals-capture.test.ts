@@ -68,7 +68,7 @@ describe("generic eval capture API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getDocoById.mockResolvedValue({ handle: "acme" });
-    mocks.getDocoLevelRole.mockResolvedValue("author");
+    mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.listPrincipals.mockResolvedValue([]);
     mocks.loadDocoRouteForRead.mockResolvedValue({
       dir: "/tmp/docos/acme",

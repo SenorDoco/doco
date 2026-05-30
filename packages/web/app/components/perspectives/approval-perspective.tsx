@@ -39,7 +39,7 @@ interface ApprovalPerspectiveProps {
   onOpenNeuron: (node: ApprovalPerspectiveNode) => void;
   onLifecycleTransition: (
     node: ApprovalPerspectiveNode,
-    lifecycle: Extract<LifecycleStage, "accepted" | "drafting">,
+    lifecycle: Extract<LifecycleStage, "asserted" | "drafting">,
   ) => Promise<void>;
 }
 
@@ -72,7 +72,7 @@ export function ApprovalPerspective({
 
   const changeLifecycle = async (
     node: ApprovalPerspectiveNode,
-    lifecycle: Extract<LifecycleStage, "accepted" | "drafting">,
+    lifecycle: Extract<LifecycleStage, "asserted" | "drafting">,
   ) => {
     const key = `${node.id}:${lifecycle}`;
     setPending(key);
@@ -145,7 +145,7 @@ export function ApprovalPerspective({
       </div>
 
       {canChangeLifecycle ? null : (
-        <p className="text-xs text-muted-foreground">Approver or owner role required to approve.</p>
+        <p className="text-xs text-muted-foreground">Write access required to change lifecycle.</p>
       )}
 
       {error ? (
@@ -210,10 +210,10 @@ export function ApprovalPerspective({
                   <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => void changeLifecycle(node, "accepted")}
+                      onClick={() => void changeLifecycle(node, "asserted")}
                       disabled={disabled}
                       title={
-                        canChangeLifecycle ? "Approve neuron" : "Approver or owner role required"
+                        canChangeLifecycle ? "Assert neuron" : "Write access required"
                       }
                       className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -231,7 +231,7 @@ export function ApprovalPerspective({
                       title={
                         canChangeLifecycle
                           ? "Reject back to drafting"
-                          : "Approver or owner role required"
+                          : "Write access required"
                       }
                       className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                     >

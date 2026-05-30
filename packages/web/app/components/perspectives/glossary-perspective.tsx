@@ -213,7 +213,7 @@ function EntryView({ entry }: { entry: GlossaryEntry }) {
         <span className="text-[0.85rem] italic" style={{ color: INK_SOFT }}>
           {entry.tag}
         </span>
-        {entry.lifecycle !== "accepted" ? (
+        {entry.lifecycle !== "asserted" ? (
           <span
             className="ml-1.5 align-[0.1em] text-[9px] uppercase tracking-wider"
             style={{ color: INK_SOFT }}

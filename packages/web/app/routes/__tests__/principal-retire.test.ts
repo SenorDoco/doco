@@ -73,14 +73,14 @@ describe("principal retire API", () => {
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
-    mocks.getDocoLevelRole.mockResolvedValue("author");
+    mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.getEntity.mockResolvedValue({
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
       entity_type: "principal",
       data: { neuron_type: "principal", name: "visitor" },
       summary: "Visitor",
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "user_admin",
     });
@@ -124,7 +124,7 @@ describe("principal retire API", () => {
         entity_type: "principal",
         entity_id: PRINCIPAL_ID,
         op: "lifecycle.transition",
-        before: expect.objectContaining({ lifecycle: "accepted" }),
+        before: expect.objectContaining({ lifecycle: "asserted" }),
         after: expect.objectContaining({ lifecycle: "retired" }),
       }),
     );
@@ -180,7 +180,7 @@ describe("principal retire API", () => {
 
   it("rejects lifecycle values other than retired", async () => {
     const response = await action({
-      request: retireRequest({ lifecycle: "accepted" }),
+      request: retireRequest({ lifecycle: "asserted" }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 
@@ -233,7 +233,7 @@ describe("principal retire API", () => {
       entity_type: "principal",
       data: { neuron_type: "principal", name: "visitor" },
       summary: "Visitor",
-      lifecycle: "accepted",
+      lifecycle: "asserted",
     });
 
     const response = await action({
@@ -258,11 +258,11 @@ describe("principal retire API", () => {
       expect.objectContaining({
         id: PRINCIPAL_ID,
         entity_type: "principal",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
         body_md: "Updated bio prose.",
         data: expect.objectContaining({
           name: "visitor",
-          lifecycle: "accepted",
+          lifecycle: "asserted",
         }),
         updated_by: "user_author",
       }),
@@ -275,7 +275,7 @@ describe("principal retire API", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       id: PRINCIPAL_ID,
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       footer_lines: [expect.stringContaining("Principal updated: [visitor]")],
     });
     expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
@@ -305,7 +305,7 @@ describe("principal retire API", () => {
         entity_type: "principal",
         data: { neuron_type: "principal", name: "visitor" },
         summary: "Visitor",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       });
 
     const response = await action({
@@ -335,7 +335,7 @@ describe("principal retire API", () => {
         reports_to: "principal_old_manager",
       },
       summary: "Visitor",
-      lifecycle: "accepted",
+      lifecycle: "asserted",
     });
 
     const response = await action({
@@ -375,7 +375,7 @@ describe("principal retire API", () => {
       entity_type: "principal",
       data: { neuron_type: "principal", name: "visitor" },
       body_md: "Human walking the public site. Operates under @alex.",
-      lifecycle: "accepted",
+      lifecycle: "asserted",
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "user_admin",
     });

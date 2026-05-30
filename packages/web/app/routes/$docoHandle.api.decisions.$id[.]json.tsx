@@ -31,7 +31,7 @@ export async function action({
   const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
     request,
     params,
-    "author",
+    "writer",
   );
   if (!me) {
     return Response.json({ error: "Authentication required to edit." }, { status: 401 });
@@ -53,18 +53,9 @@ export async function action({
   if (!existing || existing.doco_id !== meta.docoId) {
     return Response.json({ error: `decision not found: ${id}` }, { status: 404 });
   }
-  const lifecycleChange = patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle;
-  const claimStateChange =
-    lifecycleChange || patch.deprecated !== undefined || patch.outcome !== undefined;
   const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!roleAtLeast(docoRole, "author")) {
-    return Response.json({ error: "Forbidden: author role required to edit." }, { status: 403 });
-  }
-  if (claimStateChange && !roleAtLeast(docoRole, "approver")) {
-    return Response.json(
-      { error: "Forbidden: approver role required to change lifecycle/deprecated/outcome." },
-      { status: 403 },
-    );
+  if (!roleAtLeast(docoRole, "writer")) {
+    return Response.json({ error: "Forbidden: write access required to edit." }, { status: 403 });
   }
   const docoHost = new URL(request.url).origin;
   const result = await updateDecision(

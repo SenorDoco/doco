@@ -1,15 +1,15 @@
 // /<doco-handle>/perspectives — the picker page reached from the "+"
 // tab. Lists every available perspective (builtin + user-created) and
-// lets owners/approvers attach the ones that aren't already attached.
+// lets owners and writers attach the ones that aren't already attached.
 //
-// Loader is read-gated, action is approver-gated. Form posts route to
+// Loader is read-gated, action is writer-gated. Form posts route to
 // the /api/perspectives.json action which already enforces the gate
 // and returns JSON.
 
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { SiteHeader } from "~/components/site-header";
-import { canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import {
   attachPerspectiveToDoco,
@@ -28,7 +28,7 @@ export async function loader({
   const [available, attached, canAdmin, host] = await Promise.all([
     listAvailablePerspectives(),
     listPerspectivesForDoco(ctx.meta.docoId),
-    canApproveDoco(ctx.meta, ctx.me?.id ?? null),
+    canWriteDoco(ctx.meta, ctx.me?.id ?? null),
     loadHostConfig(),
   ]);
   const attachedIds = new Set(attached.map((p) => p.id));
@@ -54,7 +54,7 @@ export async function action({
   if (!ctx.me) {
     return Response.json({ ok: false, error: "anonymous_forbidden" }, { status: 403 });
   }
-  if (!(await canApproveDoco(ctx.meta, ctx.me.id))) {
+  if (!(await canWriteDoco(ctx.meta, ctx.me.id))) {
     return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
   const form = await request.formData();
@@ -111,7 +111,7 @@ export default function PerspectivesPicker({
             Visualization perspectives switch how the Doco's neurons and synapses render. Add any of
             the perspectives below to put a tab on this Doco's overview page.
             {!canAdmin ? (
-              <span className="ml-1 italic">Adding requires owner or approver access.</span>
+              <span className="ml-1 italic">Adding requires owner or writer access.</span>
             ) : null}
           </p>
         </div>

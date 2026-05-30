@@ -261,8 +261,8 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
  * Same as `canAccessDoco` but for write/admin operations — the
  * owner-tier gate. Per decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, owner-tier
  * is the only role that can add users, delete the doco, or edit
- * policies. Approver-tier can approve lifecycle but cannot
- * administer the doco; lower tiers can author or read only.
+ * policies. Writers can add/edit/retire neurons and synapses but
+ * cannot administer the doco; readers can read only.
  */
 export async function canAdminDoco(
   meta: { ownerId: string; docoId?: string },
@@ -274,19 +274,26 @@ export async function canAdminDoco(
   return role === "owner";
 }
 
-/** Approver-tier check — can flip lifecycle on authored nodes in this doco. */
-export async function canApproveDoco(
+/**
+ * Writer-tier check — can add, edit, retire, or transition the
+ * lifecycle of neurons and synapses in this doco. The old reader /
+ * author / approver / owner ladder collapsed to reader / writer /
+ * owner: anyone with write may modify everything (subject only to the
+ * Doco's own policies), so this is the gate for all content writes
+ * and lifecycle moves.
+ */
+export async function canWriteDoco(
   meta: { ownerId: string; docoId?: string },
   principalId: string | null,
 ): Promise<boolean> {
   if (!principalId) return false;
   const role = await getDocoLevelRole(meta, principalId);
-  return roleAtLeast(role, "approver");
+  return roleAtLeast(role, "writer");
 }
 
 /**
  * Policy-edit gate. Policies accept edits only from doco-level
- * owners — author/approver grants do not promote to policy editor.
+ * owners — a writer grant does not promote to policy editor.
  */
 export async function canEditPolicies(
   meta: { ownerId: string; docoId?: string },

@@ -45,7 +45,7 @@ const ORG_INVITE = {
   level: "org",
   org_id: "organization_torre",
   minted_by_user_id: "user_owner",
-  role: "author",
+  role: "writer",
   expires_at: "2026-06-01T00:00:00.000Z",
   issued_at: "2026-05-30T00:00:00.000Z",
   status: "pending",
@@ -110,7 +110,7 @@ describe("/invite/:code", () => {
     expect(mocks.upsertOrgUser).toHaveBeenCalledWith({
       org_id: "organization_torre",
       user_id: "user_alice",
-      role: "author",
+      role: "writer",
     });
     expect(mocks.upsertDocoUser).not.toHaveBeenCalled();
   });

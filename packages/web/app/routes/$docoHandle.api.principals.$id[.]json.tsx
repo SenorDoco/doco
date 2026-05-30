@@ -64,21 +64,21 @@ async function findActiveReferencesToPrincipal(
         JOIN synapses s
           ON s.from_id = a.id
          AND s.from_neuron_type = 'action'
-       WHERE s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'accepted'
+       WHERE s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'asserted'
       UNION ALL
       SELECT l.id, 'log'::text, split_part(l.log, E'\n', 1), s.synapse_type
         FROM logs l
         JOIN synapses s
           ON s.from_id = l.id
          AND s.from_neuron_type = 'log'
-       WHERE s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'accepted'
+       WHERE s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'asserted'
       UNION ALL
       SELECT i.id, 'intent'::text, split_part(i.intent, E'\n', 1), s.synapse_type
         FROM intents i
         JOIN synapses s
           ON s.from_id = i.id
          AND s.from_neuron_type = 'intent'
-       WHERE s.doco_id = $1 AND s.to_id = $2 AND i.lifecycle = 'accepted'
+       WHERE s.doco_id = $1 AND s.to_id = $2 AND i.lifecycle = 'asserted'
       ORDER BY neuron_type, id`;
     const r = await c.query<ActiveReference>(sql, [docoId, principalId]);
     return r.rows;
@@ -124,14 +124,14 @@ export async function action({
   if (!ct.includes("application/json")) {
     return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
   }
-  const { me, meta } = await loadDocoRouteForRead(request, params, "author");
+  const { me, meta } = await loadDocoRouteForRead(request, params, "writer");
   if (!me) {
     return Response.json({ error: "Authentication required to edit." }, { status: 401 });
   }
   const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!roleAtLeast(docoRole, "author")) {
+  if (!roleAtLeast(docoRole, "writer")) {
     return Response.json(
-      { error: "Forbidden: author role required to edit a principal." },
+      { error: "Forbidden: write access required to edit a principal." },
       { status: 403 },
     );
   }
@@ -248,7 +248,7 @@ export async function action({
   } else if (patch.reports_to !== undefined) {
     merged.reports_to = patch.reports_to;
   }
-  const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "accepted";
+  const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "asserted";
   merged.lifecycle = nextLifecycle;
 
   const nextBodyMd =
@@ -307,7 +307,7 @@ export async function action({
     after.reports_to = patch.reports_to ?? null;
   }
   if (patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle) {
-    before.lifecycle = existing.lifecycle ?? "accepted";
+    before.lifecycle = existing.lifecycle ?? "asserted";
     after.lifecycle = nextLifecycle;
   }
   appendAuditEvent({

@@ -134,14 +134,14 @@ export async function action({
   const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
     request,
     params,
-    "author",
+    "writer",
   );
   if (!me) {
     return Response.json({ error: "Authentication required to write." }, { status: 401 });
   }
   const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!docoRole || !roleAtLeast(docoRole, "author")) {
-    return Response.json({ error: "Forbidden: author role required to write." }, { status: 403 });
+  if (!docoRole || !roleAtLeast(docoRole, "writer")) {
+    return Response.json({ error: "Forbidden: write access required to write." }, { status: 403 });
   }
 
   let body: ChangesetBody;

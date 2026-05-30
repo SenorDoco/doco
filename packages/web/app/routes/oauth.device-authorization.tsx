@@ -16,7 +16,7 @@
 //                        DOCO.md), pass the handle here and the
 //                        /device approve screen will show only that
 //                        Doco instead of the full picker.
-//   requested_role     — optional. reader / author / approver / owner.
+//   requested_role     — optional. reader / writer / owner.
 //                        The /device approve screen pre-fills the
 //                        role dropdown to this value. The human can
 //                        still adjust before approving.
@@ -47,7 +47,7 @@ export async function action({ request }: { request: Request }) {
   if (!client_id) {
     return jsonError("invalid_request", "client_id required", 400);
   }
-  const validRoles = ["reader", "author", "approver", "owner"];
+  const validRoles = ["reader", "writer", "owner"];
   const requested_role =
     requested_role_raw && validRoles.includes(requested_role_raw) ? requested_role_raw : null;
   try {

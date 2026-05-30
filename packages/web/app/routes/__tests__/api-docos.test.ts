@@ -78,7 +78,7 @@ describe("/api/v1/docos.json", () => {
   });
 
   it("requires owner on the target org to create a doco", async () => {
-    mocks.getOrgRole.mockResolvedValue("author");
+    mocks.getOrgRole.mockResolvedValue("writer");
 
     const response = await action({
       request: jsonRequest({ org_id: "organization_torre", name: "bpms" }),
@@ -86,7 +86,7 @@ describe("/api/v1/docos.json", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
-      error: "Only org owners can create docos -- you hold 'author' on this org.",
+      error: "Only org owners can create docos -- you hold 'writer' on this org.",
     });
     expect(mocks.createDocoInOrg).not.toHaveBeenCalled();
   });

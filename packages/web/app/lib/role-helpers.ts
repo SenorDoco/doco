@@ -14,13 +14,12 @@ import type { DocoRole } from "@doco/db";
 
 export const ROLE_RANK: Record<DocoRole, number> = {
   reader: 1,
-  author: 2,
-  approver: 3,
-  owner: 4,
+  writer: 2,
+  owner: 3,
 };
 
 export function roleAtLeast(have: DocoRole, want: DocoRole): boolean {
   return ROLE_RANK[have] >= ROLE_RANK[want];
 }
 
-export const DOCO_ROLES: DocoRole[] = ["reader", "author", "approver", "owner"];
+export const DOCO_ROLES: DocoRole[] = ["reader", "writer", "owner"];

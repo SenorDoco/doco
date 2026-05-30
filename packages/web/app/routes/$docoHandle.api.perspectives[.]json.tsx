@@ -5,7 +5,7 @@
 //   {
 //     attached:  AttachedPerspective[]   // tabs in order
 //     available: Perspective[]           // for the picker page
-//     can_admin: boolean                 // canApproveDoco()
+//     can_admin: boolean                 // canWriteDoco()
 //   }
 //
 // POST (action):
@@ -18,9 +18,9 @@
 //   403 -> { ok: false, error: "forbidden" }
 //
 // Gating: GET follows the Doco's read gate. POST requires
-// canApproveDoco() (owner or approver), per the spec.
+// canWriteDoco() (owner or writer), per the spec.
 
-import { canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
   attachPerspectiveToDoco,
   detachPerspectiveFromDoco,
@@ -43,7 +43,7 @@ export async function loader({
   const [attached, available, canAdmin] = await Promise.all([
     listPerspectivesForDoco(meta.docoId),
     listAvailablePerspectives(),
-    canApproveDoco(meta, me?.id ?? null),
+    canWriteDoco(meta, me?.id ?? null),
   ]);
   return Response.json({ attached, available, can_admin: canAdmin });
 }
@@ -62,7 +62,7 @@ export async function action({
   if (!me) {
     return Response.json({ ok: false, error: "anonymous_forbidden" }, { status: 403 });
   }
-  if (!(await canApproveDoco(meta, me.id))) {
+  if (!(await canWriteDoco(meta, me.id))) {
     return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 

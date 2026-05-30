@@ -80,12 +80,12 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       params: RouteParams;
     }) {
       // Captures are writes — require the OAuth-token role gate to grant
-      // at least "author" on this Doco. Cookie-session users are
+      // at least "writer" on this Doco. Cookie-session users are
       // unaffected (enforceOauthGrant only fires on Bearer auth).
       const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
         request,
         params,
-        "author",
+        "writer",
       );
       if (!me) {
         return Response.json({ error: "Authentication required to write." }, { status: 401 });
@@ -129,9 +129,9 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             { ownerId: meta.ownerId, docoId: meta.docoId },
             me.id,
           );
-          if (!docoRole || !roleAtLeast(docoRole, "author")) {
+          if (!docoRole || !roleAtLeast(docoRole, "writer")) {
             return Response.json(
-              { error: "Forbidden: author role required to write." },
+              { error: "Forbidden: write access required to write." },
               { status: 403 },
             );
           }
@@ -232,11 +232,11 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       params: IdRouteParams;
     }) {
       const { id } = params;
-      // Patches are writes — gate on at least "author" via the token.
+      // Patches are writes — gate on at least "writer" via the token.
       const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
         request,
         params,
-        "author",
+        "writer",
       );
       if (!me) {
         return Response.json({ error: "Authentication required to edit." }, { status: 401 });
@@ -255,29 +255,22 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         return Response.json({ error: `Invalid JSON: ${(e as Error).message}` }, { status: 400 });
       }
 
-      // v16: role enforcement is strictly doco-level now. Lifecycle
-      // PATCH requires approver+; everything else requires author+.
+      // Role enforcement is strictly doco-level: any writer may edit a
+      // neuron and move its lifecycle (drafting → asserted → retired).
+      // There is no separate approver tier — what a writer may or may
+      // not do is governed by the Doco's own policies, not a built-in
+      // role ladder.
       const existing = await getEntity(cfg.entityType, id);
       if (!existing || existing.doco_id !== meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      const lifecycleChange =
-        patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle;
-      const claimStateChange =
-        lifecycleChange || patch.deprecated !== undefined || patch.outcome !== undefined;
       const docoRole = await getDocoLevelRole(
         { ownerId: meta.ownerId, docoId: meta.docoId },
         me.id,
       );
-      if (!docoRole || !roleAtLeast(docoRole, "author")) {
+      if (!docoRole || !roleAtLeast(docoRole, "writer")) {
         return Response.json(
-          { error: "Forbidden: author role required to edit." },
-          { status: 403 },
-        );
-      }
-      if (claimStateChange && !roleAtLeast(docoRole, "approver")) {
-        return Response.json(
-          { error: "Forbidden: approver role required to change lifecycle/deprecated/outcome." },
+          { error: "Forbidden: write access required to edit." },
           { status: 403 },
         );
       }

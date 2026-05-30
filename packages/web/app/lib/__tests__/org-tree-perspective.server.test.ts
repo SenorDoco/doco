@@ -7,14 +7,14 @@ describe("loadOrgTreeData", () => {
       {
         id: "principal_alex",
         name: "Alexander Torrenegra",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
         body_md: "Person. CEO and top-of-chain - founder.",
         data: {},
       },
       {
         id: "principal_research",
         name: "Research Agent",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
         body_md: "AI agent: research synthesis and brief generation.",
         data: { reports_to: "principal_alex" },
       },

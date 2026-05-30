@@ -69,12 +69,12 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
           when_neuron_type: ["action"],
         },
         on_violation: "block",
-        ...(opts.firesOnActive ? { fires_when_neuron_lifecycle: ["accepted"] } : {}),
+        ...(opts.firesOnActive ? { fires_when_neuron_lifecycle: ["asserted"] } : {}),
       });
       await c.query(
         `INSERT INTO neuron_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'accepted', now(), now())`,
+           VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_PRINCIPAL, DOCO_ID, "Action.actor_id resolves to a Principal", yaml],
       );
     }
@@ -97,7 +97,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       await c.query(
         `INSERT INTO neuron_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'accepted', now(), now())`,
+           VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
       );
     }
@@ -120,7 +120,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       await c.query(
         `INSERT INTO neuron_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'accepted', now(), now())`,
+           VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action prose is atomic", yaml],
       );
     }
@@ -139,13 +139,13 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
           case_fold: true,
           when_neuron_type: ["decision"],
         },
-        fires_when_neuron_lifecycle: ["accepted"],
+        fires_when_neuron_lifecycle: ["asserted"],
         on_violation: "block",
       });
       await c.query(
         `INSERT INTO neuron_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'accepted', now(), now())`,
+           VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_UNIQUE, DOCO_ID, "Decision.chosen is unique", yaml],
       );
     }
@@ -365,7 +365,7 @@ describe("authoring runner — integration", () => {
         chosen: "Activation key",
         decided_by: PRINCIPAL_ALICE,
         decided_at: new Date().toISOString(),
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       },
     });
 
@@ -379,7 +379,7 @@ describe("authoring runner — integration", () => {
         question: "What does activation key mean?",
         chosen: " activation KEY ",
         decided_by: PRINCIPAL_ALICE,
-        lifecycle: "accepted",
+        lifecycle: "asserted",
       },
     });
 
@@ -390,9 +390,9 @@ describe("authoring runner — integration", () => {
   });
 
   it("loads policies whose lifecycle column is NULL (treated as accepted)", async () => {
-    // Defends fix #1: loadPolicies used WHERE lifecycle = 'accepted' (strict)
-    // while the rest of the codebase uses COALESCE(lifecycle, 'accepted') =
-    // 'accepted'. A policy seeded by a migration / restored from backup
+    // Defends fix #1: loadPolicies used WHERE lifecycle = 'asserted' (strict)
+    // while the rest of the codebase uses COALESCE(lifecycle, 'asserted') =
+    // 'asserted'. A policy seeded by a migration / restored from backup
     // with a NULL lifecycle column was silently invisible to the enforcer.
     await withClient(async (c) => {
       await c.query(
@@ -412,7 +412,7 @@ describe("authoring runner — integration", () => {
         on_violation: "block",
       });
       // Explicit NULL on the lifecycle column — should still load because
-      // the loader COALESCEs NULL → 'accepted'.
+      // the loader COALESCEs NULL → 'asserted'.
       await c.query(
         `INSERT INTO neuron_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
@@ -447,7 +447,7 @@ describe("authoring runner — integration", () => {
         await c.query(
           `INSERT INTO neuron_authoring_policies
              (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-             VALUES ($1, $2, $3, $4::jsonb, 'accepted', now(), now())`,
+             VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
           [
             malformedId,
             DOCO_ID,
@@ -519,7 +519,7 @@ describe("authoring runner — integration", () => {
       await c.query(
         `INSERT INTO neuron_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'accepted', now(), now())`,
+           VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_PRINCIPAL, DOCO_ID, "Intent.actors are covered by Actions", yaml],
       );
     });
@@ -735,7 +735,7 @@ describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
         id,
         doco_id: DOCO_ID,
         entity_type: "rule",
-        lifecycle: "accepted",
+        lifecycle: "asserted",
         data: {
           id,
           neuron_type: "rule",

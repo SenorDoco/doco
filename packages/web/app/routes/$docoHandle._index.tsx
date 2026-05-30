@@ -48,7 +48,7 @@ import {
 } from "~/lib/approval-perspective.server";
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
 import { docoPath } from "~/lib/db.server";
-import { canAdminDoco, canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadGlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
@@ -222,7 +222,7 @@ export async function loader({
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
     const totalNodes = facets.entityType.reduce((sum, t) => sum + t.count, 0);
-    const proposedCount = facets.lifecycle.find((facet) => facet.value === "proposed")?.count ?? 0;
+    const proposedCount = facets.lifecycle.find((facet) => facet.value === "drafting")?.count ?? 0;
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -308,7 +308,7 @@ export async function loader({
     const requestedSlug = new URL(request.url).searchParams.get("perspective");
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
     const activeKind = activePerspective?.kind ?? "graph";
-    const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
+    const canAdminPerspectives = await canWriteDoco(ctx.meta, me?.id ?? null);
     const shouldLoadOverviewGraph = activeKind === "graph" || activeKind === "list";
     const graph = shouldLoadOverviewGraph
       ? await loadOverviewGraph(c, ctx.meta.docoId, {
@@ -724,7 +724,7 @@ export default function DocoHome({
         if (!neuron) throw new Error(`Neuron not found: ${id}`);
         setNeuronDialog({ detail: neuron, loading: false, error: null });
         setGraphState((prev) => graphWithCenter(prev, neuron.id));
-        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "accepted"]));
+        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "asserted"]));
       } catch (err) {
         setNeuronDialog((prev) => ({
           detail: options.keepDetail ? (prev?.detail ?? null) : null,
@@ -816,7 +816,7 @@ export default function DocoHome({
   const handleApprovalLifecycleTransition = useCallback(
     async (
       node: ApprovalPerspectiveNode,
-      stage: Extract<LifecycleStage, "accepted" | "drafting">,
+      stage: Extract<LifecycleStage, "asserted" | "drafting">,
     ) => {
       if (!node.update_url) {
         throw new Error("Lifecycle updates are not available for this neuron type.");

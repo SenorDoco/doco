@@ -181,7 +181,7 @@ ${baseUrl}/oauth/authorize
   &state=<random>
   &scope=doco
   &target_doco_handle=<doco-handle>    # optional but recommended
-  &requested_role=author                # optional; reader|author|approver|owner
+  &requested_role=writer                # optional; reader|writer|owner
 \`\`\`
 
 **Targeted grants (recommended).** If you already know which Doco
@@ -253,7 +253,7 @@ Content-Type: application/x-www-form-urlencoded
 client_id=<your-client-id>
 &scope=doco
 &target_doco_handle=<doco-handle>      # optional but recommended
-&requested_role=author                  # optional; reader|author|approver|owner
+&requested_role=writer                  # optional; reader|writer|owner
 \`\`\`
 
 **Targeted grants (recommended).** If you already know which Doco you
@@ -400,19 +400,19 @@ from \`oauth_grant.granted_org_roles[org_id]\` (or
 phrasing. The role table:
 
   - \`reader\` — list + read nodes
-  - \`author\` — author can capture + patch nodes (+ everything reader
-    can do)
-  - \`approver\` — approver can change a node's \`lifecycle\` /
-    approve-reject lifecycle transitions (+ author + reader)
+  - \`writer\` — capture, patch, retire, and change a node's
+    \`lifecycle\` (drafting → asserted → retired) (+ everything reader
+    can do). What a writer may or may not do is governed by the Doco's
+    own policies, not a built-in role ladder.
   - \`owner\` — Doco settings, invites, role changes, granting agent
-    access (+ approver + author + reader)
+    access, editing policies (+ everything writer + reader can do)
 
 Saying "Orgs I can read: doco, torrenegra" when you actually hold
-\`approver\` on both is misleading — the user can't tell how much
+\`writer\` on both is misleading — the user can't tell how much
 work you're authorized to do without re-checking. Prefer:
 
-> "Orgs I can act on: doco (approver), torrenegra (approver)"
-> "Docos I can act on: doco-bpms (approver, via doco-org grant)"
+> "Orgs I can act on: doco (writer), torrenegra (writer)"
+> "Docos I can act on: doco-bpms (writer, via doco-org grant)"
 
 If the user asks "what can you do?", read out the role from
 \`oauth_grant\` for each grant — don't collapse to the lowest
@@ -519,12 +519,10 @@ inside the set but with insufficient role you get 403
 error="insufficient_scope"\`. The operation→role table:
 
   - List + read GETs require \`reader\`
-  - Capture + patch require \`author\` (PATCH of \`lifecycle\` is the
-    exception — see \`approver\` below)
-  - Approving / archiving a node (PATCH that changes \`lifecycle\`)
-    requires \`approver\`
+  - Capture, patch, retire, and any \`lifecycle\` change require
+    \`writer\`
   - Admin (Doco settings, invites, role changes, granting agent
-    access) requires \`owner\`
+    access, editing policies) requires \`owner\`
 
 ## Project tokens — committable, read-only, no OAuth
 

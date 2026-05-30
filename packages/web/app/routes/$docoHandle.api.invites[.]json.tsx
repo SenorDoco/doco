@@ -9,7 +9,7 @@
 //     invite_url:        "https://<host>/invite/<code>",
 //     invite_expires_at: "<ISO timestamp>",
 //     code:              "<64-hex>",
-//     role:              "owner|approver|author|reader",
+//     role:              "owner|writer|reader",
 //     doco_url:          "https://<host>/<handle>/",
 //     human_prompt:      "<verbatim text to share with a human user>",
 //     agent_prompt:      "<verbatim text to paste into an AI agent>"
@@ -37,7 +37,7 @@ import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { InviteStore } from "~/lib/invite-store.server";
 
-const ROLE_VALUES = new Set<DocoRole>(["owner", "approver", "author", "reader"]);
+const ROLE_VALUES = new Set<DocoRole>(["owner", "writer", "reader"]);
 function parseRole(v: unknown): DocoRole | null {
   return typeof v === "string" && ROLE_VALUES.has(v as DocoRole) ? (v as DocoRole) : null;
 }
@@ -102,7 +102,7 @@ export async function action({
     );
   }
   const requestedRole: DocoRole =
-    parsedRole ?? (ROLE_RANK[inviterRole] >= ROLE_RANK.author ? "author" : inviterRole);
+    parsedRole ?? (ROLE_RANK[inviterRole] >= ROLE_RANK.writer ? "writer" : inviterRole);
   if (ROLE_RANK[requestedRole] > ROLE_RANK[inviterRole]) {
     return Response.json(
       {

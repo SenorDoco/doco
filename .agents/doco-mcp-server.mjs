@@ -258,10 +258,10 @@ const AUTH_TOOL = {
       },
       requested_role: {
         type: "string",
-        enum: ["reader", "author", "approver", "owner"],
+        enum: ["reader", "writer", "owner"],
         default: "reader",
         description:
-          "Role level to request. 'reader' suffices for doco_search; 'author' is needed for future capture tools.",
+          "Role level to request. 'reader' suffices for doco_search; 'writer' is needed for future capture tools.",
       },
     },
   },

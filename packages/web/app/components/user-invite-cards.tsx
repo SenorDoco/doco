@@ -1,7 +1,5 @@
-import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
-import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import {
   ALL_ROLES,
@@ -46,70 +44,33 @@ function buildCombinedOptions(
 
 export function UserInviteCards({
   invite,
-  host,
 }: {
   invite: UserInviteData;
-  host: string;
+  // `host` is still accepted from callers but no longer used here — the
+  // agent OAuth prompt now lives entirely on the API Tokens page.
+  host?: string;
 }) {
-  const [mode, setMode] = useState<"person" | "agent">("person");
+  // Collaborators are people. Agents are not invited from here: they
+  // authenticate through API tokens, so this card only mints person
+  // invites and points owners at the API Tokens page for agents.
   return (
     <div className="space-y-4">
-      <div
-        role="tablist"
-        aria-label="User invite type"
-        className="inline-flex rounded-md border border-border bg-background p-0.5"
-      >
-        <InviteModeButton mode="person" current={mode} onSelect={setMode}>
-          Invite a person
-        </InviteModeButton>
-        <InviteModeButton mode="agent" current={mode} onSelect={setMode}>
-          Invite an agent
-        </InviteModeButton>
-      </div>
-
-      {mode === "person" ? (
-        <InviteHumanCard
-          orgs={invite.orgs}
-          docos={invite.docos}
-          defaultSelection={invite.defaultSelection}
-        />
-      ) : (
-        <AgentInvitePrompt
-          host={host}
-          promptTestId="users-invite-agent-prompt"
-          copyButtonTestId="users-invite-agent-copy"
-        />
-      )}
+      <InviteHumanCard
+        orgs={invite.orgs}
+        docos={invite.docos}
+        defaultSelection={invite.defaultSelection}
+      />
+      <p className="text-sm text-muted-foreground">
+        Adding an AI agent instead?{" "}
+        <a
+          href="/api-keys"
+          data-testid="invite-agent-link"
+          className="font-semibold text-primary underline-offset-4 hover:underline"
+        >
+          Invite an agent from the API Tokens page →
+        </a>
+      </p>
     </div>
-  );
-}
-
-function InviteModeButton({
-  mode,
-  current,
-  onSelect,
-  children,
-}: {
-  mode: "person" | "agent";
-  current: "person" | "agent";
-  onSelect: (mode: "person" | "agent") => void;
-  children: ReactNode;
-}) {
-  const active = mode === current;
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={() => onSelect(mode)}
-      className={
-        active
-          ? "rounded-md bg-primary px-3 py-1.5 text-base font-semibold text-primary-foreground"
-          : "rounded-md px-3 py-1.5 text-base font-semibold text-muted-foreground hover:text-foreground"
-      }
-    >
-      {children}
-    </button>
   );
 }
 
@@ -150,7 +111,7 @@ function InviteHumanCard({
     ? ALL_ROLES.filter((role) => rankOf(role) <= rankOf(selected.maxRole))
     : [];
   const defaultRole =
-    selected && rankOf(selected.maxRole) >= rankOf("author") ? "author" : selected?.maxRole;
+    selected && rankOf(selected.maxRole) >= rankOf("writer") ? "writer" : selected?.maxRole;
 
   return (
     <div className="space-y-3">

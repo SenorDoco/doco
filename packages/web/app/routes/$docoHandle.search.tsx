@@ -216,7 +216,7 @@ function withHitDerivedCounts(facets: FilterFacets, hits: SearchHit[]): FilterFa
   const lifecycleCounts = new Map<string, number>();
   const nodeTypeCounts = new Map<string, number>();
   for (const h of hits) {
-    const lc = h.lifecycle ?? "accepted";
+    const lc = h.lifecycle ?? "asserted";
     lifecycleCounts.set(lc, (lifecycleCounts.get(lc) ?? 0) + 1);
     nodeTypeCounts.set(h.entity_type, (nodeTypeCounts.get(h.entity_type) ?? 0) + 1);
   }

@@ -7,8 +7,8 @@ describe("loadApprovalPerspectiveData", () => {
     const client = {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
         querySpy(sql, params);
-        expect(sql).toMatch(/after_json->>'lifecycle'\s*=\s*'proposed'/);
-        expect(sql).toMatch(/WHERE lifecycle = 'proposed'/);
+        expect(sql).toMatch(/after_json->>'lifecycle'\s*=\s*'drafting'/);
+        expect(sql).toMatch(/WHERE lifecycle = 'drafting'/);
         expect(sql).toMatch(/FROM principals/);
         expect(sql).toMatch(/resolved_actors AS/);
         expect(sql).toMatch(/created_by_user_id/);
@@ -21,7 +21,7 @@ describe("loadApprovalPerspectiveData", () => {
               id: "decision_01TEST",
               entity_type: "decision",
               name: "Approve the new policy",
-              lifecycle: "proposed",
+              lifecycle: "drafting",
               created_at: "2026-05-25T10:00:00.000Z",
               proposed_at: "2026-05-26T12:30:00.000Z",
               author_id: "user_alice",
@@ -40,7 +40,7 @@ describe("loadApprovalPerspectiveData", () => {
         id: "decision_01TEST",
         entity_type: "decision",
         name: "Approve the new policy",
-        lifecycle: "proposed",
+        lifecycle: "drafting",
         created_at: "2026-05-25T10:00:00.000Z",
         proposed_at: "2026-05-26T12:30:00.000Z",
         author_id: "user_alice",

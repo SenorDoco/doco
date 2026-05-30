@@ -229,9 +229,8 @@ interface SlackAccessibleDoco {
 
 const SLACK_ROLE_RANK: Record<string, number> = {
   reader: 1,
-  author: 2,
-  approver: 3,
-  owner: 4,
+  writer: 2,
+  owner: 3,
 };
 
 export function getSlackConfig(): SlackConfig {
@@ -1738,7 +1737,7 @@ async function readSlackDocoApiPerspectives(
     qualified_handle: doco.qualifiedHandle,
     attached,
     available,
-    can_admin: slackRoleRank(doco.role) >= slackRoleRank("approver"),
+    can_admin: slackRoleRank(doco.role) >= slackRoleRank("writer"),
   };
 }
 
@@ -2042,7 +2041,7 @@ export function slackLlmSystemPrompt(): string {
     "Available Slack doco_api writes when this Slack user has linked personal Doco access: POST /api/v1/docos.json; POST /<handle>/api/<type>.json; PATCH /<handle>/api/<type>/<id>.json; POST /<handle>/api/principals.json; PATCH /<handle>/api/principals/<id>.json; POST /<handle>/api/policies.json; POST /<handle>/api/changesets.json.",
     "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
-    "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, author for adding neurons, approver for approval actions.",
+    "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, writer for adding, editing, retiring, and changing the lifecycle of neurons.",
     "If the user is already personally linked, try the appropriate doco_api write instead of saying authorization has not come through. If the write returns 401/403, explain the missing Doco role or scope from the tool result.",
     "After any successful POST/PATCH/DELETE, paste every returned footer_lines entry verbatim. Do not paraphrase or drop those lines.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",

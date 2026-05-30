@@ -40,13 +40,13 @@ describe("/integrations/slack/setup", () => {
         level: "doco",
         id: "doco_bpms",
         label: "torre/bpms",
-        myRole: "author",
+        myRole: "writer",
       },
       {
         level: "doco",
         id: "doco_sales",
         label: "torre/sales",
-        myRole: "approver",
+        myRole: "writer",
       },
     ]);
     mocks.listSlackInstallations.mockResolvedValue([
@@ -93,12 +93,12 @@ describe("/integrations/slack/setup", () => {
           {
             id: "doco_bpms",
             label: "torre/bpms",
-            myRole: "author",
+            myRole: "writer",
           },
           {
             id: "doco_sales",
             label: "torre/sales",
-            myRole: "approver",
+            myRole: "writer",
           },
         ],
       },
@@ -121,7 +121,7 @@ describe("/integrations/slack/setup", () => {
       workspace_id: "T123",
       org_key: "torre",
       "org_mode:torre": "all",
-      "org_role:torre": "approver",
+      "org_role:torre": "writer",
     });
 
     const response = (await action({
@@ -141,7 +141,7 @@ describe("/integrations/slack/setup", () => {
         {
           targetLevel: "org",
           targetId: "org_torre",
-          role: "approver",
+          role: "writer",
         },
       ],
       createdByUserId: "user_alice",
@@ -208,11 +208,21 @@ describe("/integrations/slack/setup", () => {
   });
 
   it("rejects workspace defaults above the user's Doco role", async () => {
+    // This user only holds reader on doco_bpms, so a writer default is
+    // above their access.
+    mocks.loadScopeOptions.mockResolvedValueOnce([
+      {
+        level: "doco",
+        id: "doco_bpms",
+        label: "torre/bpms",
+        myRole: "reader",
+      },
+    ]);
     const body = new URLSearchParams({
       workspace_id: "T123",
       org_key: "torre",
       "org_mode:torre": "specific",
-      "doco_role:doco_bpms": "approver",
+      "doco_role:doco_bpms": "writer",
     });
 
     const response = (await action({
@@ -224,7 +234,7 @@ describe("/integrations/slack/setup", () => {
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
-      error: "Cannot set default permissions 'approver' because your access is 'author'.",
+      error: "Cannot set default permissions 'writer' because your access is 'reader'.",
     });
     expect(mocks.replaceSlackChannelConnections).not.toHaveBeenCalled();
   });

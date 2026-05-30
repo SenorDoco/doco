@@ -144,7 +144,7 @@ interface GraphSize {
 
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
 // order.
-const LIFECYCLE_ORDER = ["drafting", "proposed", "accepted", "retired"];
+const LIFECYCLE_ORDER = ["drafting", "asserted", "retired"];
 
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 
@@ -153,7 +153,7 @@ function lifecycleLabel(lifecycle: string): string {
 }
 
 function nodeLifecycle(node: GraphNode): string {
-  return node.lifecycle ?? "accepted";
+  return node.lifecycle ?? "asserted";
 }
 
 const UNKNOWN_PRINCIPAL_KEY = "__unknown_principal__";
@@ -711,7 +711,7 @@ export function EntityGraph({
   const graphReferenceIdRef = useRef(`entity-${Math.random().toString(36).slice(2)}`);
 
   const allLifecycles = useMemo(() => {
-    const set = new Set<string>(["accepted"]);
+    const set = new Set<string>(["asserted"]);
     for (const n of nodes) {
       if (n.entity_type === "principal") continue;
       set.add(nodeLifecycle(n));
@@ -927,7 +927,7 @@ export function EntityGraph({
         id: entry.node.id,
         entity_type: entry.node.entity_type,
         label: entry.node.name ?? entry.node.summary ?? entry.node.id,
-        lifecycle: entry.node.lifecycle ?? "accepted",
+        lifecycle: entry.node.lifecycle ?? "asserted",
         href: entry.href,
       }));
   }, [visible.nodes, positions, viewport, graphSize, hrefFor]);
@@ -1089,7 +1089,7 @@ export function EntityGraph({
           : 1;
         // Synapse inherits its origin neuron's lifecycle colour so the
         // arrow visually carries the state of its source.
-        const sourceLifecycle = visibleNodeById.get(src)?.lifecycle ?? "accepted";
+        const sourceLifecycle = visibleNodeById.get(src)?.lifecycle ?? "asserted";
         const baseStroke = lifecycleColor(sourceLifecycle);
         return {
           id: `${src}-${tgt}-${l.synapse_type}-${i}`,

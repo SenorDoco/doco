@@ -247,7 +247,7 @@ export function BpmnPerspective({
   // by the existing nodeSet check inside layOutBpmn.
   const { filteredNodes, filteredLanes } = useMemo(() => {
     if (!visibleLifecycles) return { filteredNodes: nodes, filteredLanes: lanes };
-    const fn = nodes.filter((n) => visibleLifecycles.has(n.lifecycle ?? "accepted"));
+    const fn = nodes.filter((n) => visibleLifecycles.has(n.lifecycle ?? "asserted"));
     return { filteredNodes: fn, filteredLanes: lanes };
   }, [nodes, lanes, visibleLifecycles]);
 
@@ -454,7 +454,7 @@ export function BpmnPerspective({
           id: lane.id,
           entity_type: "principal",
           label: lane.label,
-          lifecycle: lane.lifecycle ?? "accepted",
+          lifecycle: lane.lifecycle ?? "asserted",
           href: null,
         })),
     [renderedLanes],
@@ -470,7 +470,7 @@ export function BpmnPerspective({
             id: node.id,
             entity_type: node.entity_type,
             label: node.name ?? node.id,
-            lifecycle: node.lifecycle ?? "accepted",
+            lifecycle: node.lifecycle ?? "asserted",
             href: node.href ?? null,
             position,
             width: size.width,
@@ -2140,7 +2140,7 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
     "data-neuron-href": data.node.href ?? undefined,
     "data-neuron-id": data.node.id,
     "data-neuron-label": data.node.name ?? data.node.id,
-    "data-neuron-lifecycle": data.node.lifecycle ?? "accepted",
+    "data-neuron-lifecycle": data.node.lifecycle ?? "asserted",
     "data-neuron-type": data.node.entity_type,
   };
 }

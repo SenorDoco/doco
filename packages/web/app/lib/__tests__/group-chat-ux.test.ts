@@ -13,11 +13,11 @@ import {
   resolveEffectiveChatAccess,
 } from "../group-chat-ux";
 
-const channelAuthor: ChatAccessTarget = {
+const channelWriter: ChatAccessTarget = {
   level: "doco",
   orgHandle: "torre",
   docoHandle: "bpms",
-  role: "author",
+  role: "writer",
   source: "channel_default",
 };
 
@@ -31,7 +31,7 @@ const personalOwner: ChatAccessTarget = {
 
 describe("group-chat UX helpers", () => {
   it("qualifies doco targets with the org handle", () => {
-    expect(chatTargetLabel(channelAuthor)).toBe("torre/bpms");
+    expect(chatTargetLabel(channelWriter)).toBe("torre/bpms");
     expect(
       chatTargetLabel({
         level: "org",
@@ -44,7 +44,7 @@ describe("group-chat UX helpers", () => {
 
   it("resolves effective access to the strongest role per target", () => {
     const result = resolveEffectiveChatAccess([
-      channelAuthor,
+      channelWriter,
       personalOwner,
       {
         level: "doco",
@@ -62,32 +62,32 @@ describe("group-chat UX helpers", () => {
 
   it("gates create-doco and policy-change actions to owners", () => {
     expect(canCreateDocoFromChat("owner")).toBe(true);
-    expect(canCreateDocoFromChat("approver")).toBe(false);
+    expect(canCreateDocoFromChat("writer")).toBe(false);
     expect(canChangePoliciesFromChat("owner")).toBe(true);
-    expect(canChangePoliciesFromChat("author")).toBe(false);
+    expect(canChangePoliciesFromChat("writer")).toBe(false);
   });
 
   it("allows user invites at or below the inviter role", () => {
-    expect(canInviteUserFromChat({ inviterRole: "author", requestedRole: "reader" })).toEqual({
+    expect(canInviteUserFromChat({ inviterRole: "writer", requestedRole: "reader" })).toEqual({
       ok: true,
     });
     expect(
-      canInviteUserFromChat({ inviterRole: "author", requestedRole: "approver" }),
+      canInviteUserFromChat({ inviterRole: "writer", requestedRole: "owner" }),
     ).toMatchObject({
       ok: false,
-      error: "Cannot invite at 'approver' because your access is 'author'.",
+      error: "Cannot invite at 'owner' because your access is 'writer'.",
     });
   });
 
   it("caps shared-default authorization at the requester's personal access", () => {
     expect(
-      canSetChannelDefaultAccess({ personalRole: "approver", requestedRole: "author" }),
+      canSetChannelDefaultAccess({ personalRole: "writer", requestedRole: "reader" }),
     ).toEqual({ ok: true });
     expect(
-      canSetChannelDefaultAccess({ personalRole: "author", requestedRole: "owner" }),
+      canSetChannelDefaultAccess({ personalRole: "writer", requestedRole: "owner" }),
     ).toMatchObject({
       ok: false,
-      error: "Cannot set default permissions 'owner' because your access is 'author'.",
+      error: "Cannot set default permissions 'owner' because your access is 'writer'.",
     });
   });
 
@@ -95,11 +95,11 @@ describe("group-chat UX helpers", () => {
     const text = formatConnectionAuthorizationPreview({
       channelName: "#product",
       requesterLabel: "@ana",
-      defaultTargets: [channelAuthor],
+      defaultTargets: [channelWriter],
     });
     expect(text).toContain("Set the default permissions for Señor Doco?");
     expect(text).toContain("This will become the shared default access:");
-    expect(text).toContain("• torre/bpms · author");
+    expect(text).toContain("• torre/bpms · writer");
     expect(text).toContain(
       "If they already have higher access in Doco, Señor Doco may use that higher personal access, but never more than the access they already hold.",
     );
@@ -112,7 +112,7 @@ describe("group-chat UX helpers", () => {
     expect(
       formatChatAccessSummary({
         channelName: "#product",
-        channelDefaults: [channelAuthor],
+        channelDefaults: [channelWriter],
         personalTargets: [personalOwner],
         linkedAs: "torrenegra",
       }),
@@ -121,7 +121,7 @@ describe("group-chat UX helpers", () => {
 
   it("formats ambiguous target prompts with qualified labels", () => {
     const text = formatAmbiguousTargetPrompt([
-      channelAuthor,
+      channelWriter,
       {
         level: "doco",
         orgHandle: "acme",
@@ -131,7 +131,7 @@ describe("group-chat UX helpers", () => {
       },
     ]);
     expect(text).toContain("1. acme/bpms · reader via shared default");
-    expect(text).toContain("2. torre/bpms · author via shared default");
+    expect(text).toContain("2. torre/bpms · writer via shared default");
   });
 
   it("formats direct-message invite success and failure without exposing invite links publicly", () => {
@@ -140,7 +140,7 @@ describe("group-chat UX helpers", () => {
         status: "sent",
         recipientLabel: "@maria",
         target: personalOwner,
-        role: "author",
+        role: "writer",
         grantedByLabel: "torrenegra",
       }),
     ).toContain("I sent @maria a direct message with the torre/bpms invite.");
@@ -149,7 +149,7 @@ describe("group-chat UX helpers", () => {
       status: "failed",
       recipientLabel: "@maria",
       target: personalOwner,
-      role: "author",
+      role: "writer",
       grantedByLabel: "torrenegra",
       reason: "Their Slack settings block bot DMs.",
     });
