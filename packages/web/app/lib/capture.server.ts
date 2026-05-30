@@ -423,13 +423,39 @@ function lifecycleAttrs(
 ): ResolvedLifecycleAttrs | CaptureError {
   const lifecycle = normalizeLifecycle(draft.lifecycle, defaultLifecycle);
   if (typeof lifecycle !== "string") return lifecycle;
-  const outcome = normalizeOutcome(draft.outcome ?? defaultOutcome);
+  // A default outcome (e.g. Action/Log default to retired+succeeded)
+  // only makes sense when the node actually lands in a terminal
+  // lifecycle. When a Doco's `default_node_lifecycle` (or an explicit
+  // draft) pulls the node to a non-terminal state, don't stamp the
+  // success outcome onto a still-in-flight node.
+  const effectiveDefaultOutcome = STRUCK_LIFECYCLES.has(lifecycle) ? defaultOutcome : undefined;
+  const outcome = normalizeOutcome(draft.outcome ?? effectiveDefaultOutcome);
   if (outcome && typeof outcome !== "string") return outcome;
   return {
     lifecycle,
     ...(draft.deprecated !== undefined ? { deprecated: Boolean(draft.deprecated) } : {}),
     ...(outcome ? { outcome } : {}),
   };
+}
+
+/**
+ * Resolve the lifecycle fallback for a capture: the Doco's
+ * template-seeded `default_node_lifecycle` when set, otherwise the
+ * node type's built-in default. Wires up the `defaultNodeLifecycle`
+ * the templates already declare — it was stored on the Doco but never
+ * consulted at capture time, so e.g. `org-chart`'s `drafting` default
+ * (and the asserted-only completeness gates it implies) didn't take
+ * effect through the capture API. A per-process memo keeps this to one
+ * Doco read even across a multi-node changeset.
+ */
+const docoDefaultLifecycleCache = new Map<string, string | null>();
+async function resolveDefaultLifecycle(docoId: string, perTypeFallback: string): Promise<string> {
+  let dflt = docoDefaultLifecycleCache.get(docoId);
+  if (dflt === undefined) {
+    dflt = (await getDocoById(docoId))?.default_node_lifecycle ?? null;
+    docoDefaultLifecycleCache.set(docoId, dflt);
+  }
+  return dflt && VALID_LIFECYCLES.has(dflt) ? dflt : perTypeFallback;
 }
 
 /**
@@ -923,7 +949,7 @@ export async function captureDecision(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -1616,7 +1642,7 @@ export async function captureIntent(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1708,7 +1734,7 @@ export async function captureIdea(
   const ideaText = draft.idea.trim();
   const label = firstLine(ideaText);
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "drafting");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "drafting"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1838,7 +1864,7 @@ export async function captureEval(
   const label = firstLine(evalText);
 
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1969,7 +1995,11 @@ export async function captureAction(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "retired", "succeeded");
+  const status = lifecycleAttrs(
+    draft,
+    await resolveDefaultLifecycle(docoId, "retired"),
+    "succeeded",
+  );
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -2110,7 +2140,11 @@ export async function captureLog(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "retired", "succeeded");
+  const status = lifecycleAttrs(
+    draft,
+    await resolveDefaultLifecycle(docoId, "retired"),
+    "succeeded",
+  );
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -2248,7 +2282,7 @@ export async function captureRule(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   // Empty selector — matches everything by having nothing to filter
@@ -2850,7 +2884,7 @@ export async function captureReference(
   const referenceText = draft.reference.trim();
   const label = firstLine(referenceText);
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -2964,7 +2998,7 @@ export async function captureState(
   const label = firstLine(stateText);
   const now = new Date().toISOString();
 
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];

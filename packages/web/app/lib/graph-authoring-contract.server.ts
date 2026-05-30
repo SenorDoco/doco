@@ -114,7 +114,28 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "one",
-    description: "Principal reports to another Principal.",
+    owners: ["principal"],
+    description: "Principal reports to another Principal (primary, solid line).",
+  },
+  dotted_reports_to: {
+    kind: "dotted_reports_to",
+    field: "dotted_reports_to",
+    owner: "from",
+    value: "to",
+    cardinality: "many",
+    owners: ["principal"],
+    description:
+      "Principal has a secondary / dotted-line (matrix) manager, layered on top of the single primary `reports_to`.",
+  },
+  same_occupant_as: {
+    kind: "same_occupant_as",
+    field: "same_occupant_as",
+    owner: "from",
+    value: "to",
+    cardinality: "many",
+    owners: ["principal"],
+    description:
+      "Seat is filled by the same occupant as another Principal (one person, many seats).",
   },
   performed_by: {
     kind: "performed_by",

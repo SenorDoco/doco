@@ -155,7 +155,10 @@ function OrgTreeInner({
       style: {
         stroke: edgeStroke,
         strokeWidth: focalEdgeWidth(e.source, e.target, centerId, 1.5),
-        opacity: 0.6,
+        // Dotted-line (matrix) reporting renders dashed and fainter so
+        // it reads as secondary to the solid primary `reports_to` tree.
+        opacity: e.dotted ? 0.4 : 0.6,
+        ...(e.dotted ? { strokeDasharray: "5 4" } : {}),
       },
       markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
     }));

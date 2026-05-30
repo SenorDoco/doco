@@ -1,4 +1,5 @@
 import {
+  getDocoById,
   getEntity,
   getUserById,
   listDocoUsers,
@@ -72,11 +73,39 @@ export async function action({
     name?: string;
     body_md?: string;
     reports_to?: string;
+    dotted_reports_to?: unknown;
+    same_occupant_as?: unknown;
+    lifecycle?: string;
   };
   const name = String(body.name ?? "").trim();
   if (!name) {
     return Response.json({ error: "name is required." }, { status: 400 });
   }
+
+  // Resolve the new Principal's lifecycle. Honors an explicit
+  // `lifecycle` (drafting | asserted | retired), then the Doco's
+  // template default (`org-chart` ships `drafting`), then `asserted`.
+  // Lets a tentative seat be sketched as `drafting` — the person /
+  // agent / vacant gate still fires (it's lifecycle-independent), but
+  // the asserted-only reports_to warning holds off until the seat is
+  // committed.
+  const VALID_PRINCIPAL_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
+  let lifecycle = "asserted";
+  if (body.lifecycle !== undefined) {
+    if (typeof body.lifecycle !== "string" || !VALID_PRINCIPAL_LIFECYCLES.has(body.lifecycle)) {
+      return Response.json(
+        { error: "lifecycle must be one of: drafting, asserted, retired." },
+        { status: 400 },
+      );
+    }
+    lifecycle = body.lifecycle;
+  } else {
+    const doco = await getDocoById(meta.docoId);
+    const dflt = doco?.default_node_lifecycle;
+    if (dflt && VALID_PRINCIPAL_LIFECYCLES.has(dflt)) lifecycle = dflt;
+  }
+
+  // Validate a single manager id (primary reporting line).
   if (body.reports_to !== undefined) {
     if (typeof body.reports_to !== "string" || !body.reports_to.startsWith("principal_")) {
       return Response.json(
@@ -92,6 +121,44 @@ export async function action({
       );
     }
   }
+
+  // Validate a Principal-id list field (dotted_reports_to /
+  // same_occupant_as): every entry must be a Principal id that exists
+  // in this Doco. Returns the cleaned list or a JSON error Response.
+  async function validatePrincipalList(field: string, raw: unknown): Promise<string[] | Response> {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) {
+      return Response.json(
+        { error: `${field} must be an array of principal ids.` },
+        {
+          status: 400,
+        },
+      );
+    }
+    const ids: string[] = [];
+    for (const v of raw) {
+      if (typeof v !== "string" || !v.startsWith("principal_")) {
+        return Response.json(
+          { error: `${field} entries must be principal ids (principal_<ULID>).` },
+          { status: 400 },
+        );
+      }
+      const ent = await getEntity("principal", v as EntityId<"principal">);
+      if (!ent || ent.doco_id !== meta.docoId) {
+        return Response.json(
+          { error: `${field} principal not found in this Doco: ${v}` },
+          { status: 400 },
+        );
+      }
+      if (!ids.includes(v)) ids.push(v);
+    }
+    return ids;
+  }
+
+  const dottedReportsTo = await validatePrincipalList("dotted_reports_to", body.dotted_reports_to);
+  if (dottedReportsTo instanceof Response) return dottedReportsTo;
+  const sameOccupantAs = await validatePrincipalList("same_occupant_as", body.same_occupant_as);
+  if (sameOccupantAs instanceof Response) return sameOccupantAs;
 
   const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
   const now = nowIso();
@@ -109,9 +176,11 @@ export async function action({
     name,
     body_md: bodyMd,
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
+    ...(dottedReportsTo.length > 0 ? { dotted_reports_to: dottedReportsTo } : {}),
+    ...(sameOccupantAs.length > 0 ? { same_occupant_as: sameOccupantAs } : {}),
     created_at: now,
     created_by: me.id,
-    lifecycle: "asserted",
+    lifecycle,
   };
 
   // Run the doco's authoring policies against the Principal before
@@ -139,7 +208,7 @@ export async function action({
     entity_type: "principal",
     data: raw,
     body_md: bodyMd,
-    lifecycle: "asserted",
+    lifecycle,
     created_at: now,
     created_by: me.id,
     updated_at: now,
@@ -161,8 +230,10 @@ export async function action({
     after: {
       name,
       body_md: bodyMd,
-      lifecycle: "asserted",
+      lifecycle,
       ...(body.reports_to ? { reports_to: body.reports_to } : {}),
+      ...(dottedReportsTo.length > 0 ? { dotted_reports_to: dottedReportsTo } : {}),
+      ...(sameOccupantAs.length > 0 ? { same_occupant_as: sameOccupantAs } : {}),
     },
   });
 

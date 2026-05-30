@@ -17,6 +17,7 @@ vi.mock("@doco/db", () => {
   return {
     getUserById: vi.fn(),
     getEntity: mocks.getEntity,
+    getDocoById: vi.fn(async () => null),
     listDocoUsers: vi.fn(),
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
