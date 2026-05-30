@@ -38,11 +38,11 @@ async function resolveEndpoint(
   docoId: string,
   id: string,
 ): Promise<{ ok: true; type: string } | { error: string }> {
-  if (!isEntityId(id)) return { error: `is not a valid entity id` };
+  if (!isEntityId(id)) return { error: "is not a valid entity id" };
   const parsed = parseEntityId(id);
-  if (!parsed) return { error: `is not a valid entity id` };
+  if (!parsed) return { error: "is not a valid entity id" };
   const rec = await getEntity(parsed.type, id);
-  if (!rec || rec.doco_id !== docoId) return { error: `does not exist in this Doco` };
+  if (!rec || rec.doco_id !== docoId) return { error: "does not exist in this Doco" };
   return { ok: true, type: parsed.type };
 }
 

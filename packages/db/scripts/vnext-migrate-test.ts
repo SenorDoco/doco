@@ -24,7 +24,7 @@ async function seedDirtyOldProd(): Promise<void> {
   const c = await pool.connect();
   try {
     await c.query(
-      `CREATE TABLE IF NOT EXISTS applied_migrations (id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`,
+      "CREATE TABLE IF NOT EXISTS applied_migrations (id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())",
     );
     await c.query(
       `INSERT INTO applied_migrations (id) VALUES
@@ -32,10 +32,10 @@ async function seedDirtyOldProd(): Promise<void> {
        ON CONFLICT DO NOTHING`,
     );
     await c.query(
-      `CREATE TABLE IF NOT EXISTS synapses (from_id text, to_id text, synapse_type text)`,
+      "CREATE TABLE IF NOT EXISTS synapses (from_id text, to_id text, synapse_type text)",
     );
     await c.query(`INSERT INTO synapses VALUES ('a','b','serves')`);
-    await c.query(`CREATE TABLE IF NOT EXISTS neuron_authoring_policies (id text PRIMARY KEY)`);
+    await c.query("CREATE TABLE IF NOT EXISTS neuron_authoring_policies (id text PRIMARY KEY)");
     await c.query(
       `CREATE TABLE IF NOT EXISTS decisions (id text PRIMARY KEY, doco_id text, lifecycle text,
          decision text, data jsonb, created_at timestamptz, created_by text, updated_at timestamptz, updated_by text)`,
