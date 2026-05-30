@@ -101,5 +101,22 @@ export {
   type EdgeRowInput,
 } from "./indexer.js";
 
+// Append-only write runtime (doco-vnext): commit boundary + first-class
+// edge CRUD + immutable version snapshots + as-of reads.
+export {
+  createChangeset,
+  appendNodeVersion,
+  appendEdgeVersion,
+  createEdge,
+  updateEdge,
+  retireEdge,
+  getVersions,
+  entityAsOf,
+  type CommitInput,
+  type CommitSource,
+  type CreateEdgeInput,
+  type EdgeRow,
+} from "./vnext.js";
+
 // Postgres is the only source-of-truth. There is no legacy filesystem
 // fallback (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
