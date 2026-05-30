@@ -227,8 +227,15 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
       {
+        // Warn, not block: a clashing `chosen` is usually a duplicate
+        // entry, but genuine homographs (distinct concepts sharing a
+        // surface form) are legitimate terminology. Surface the clash so
+        // the author either merges the duplicate or disambiguates the
+        // homograph with a qualifier — don't hard-block the correct
+        // modeling choice. See the homograph guidance below.
+        on_violation: "warn",
         policy:
-          "Active glossary Decisions must have a unique canonical term in `chosen`, compared case-insensitively.",
+          "Active glossary Decisions should have a unique canonical term in `chosen`, compared case-insensitively. A clash is usually a duplicate entry to merge; genuine homographs (distinct concepts sharing a surface form) are allowed when disambiguated with a qualifier.",
         predicate: {
           kind: "unique_field",
           field: "chosen",
@@ -297,6 +304,16 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         policy:
+          "When two distinct concepts share a surface form (homographs, e.g. `Order` in commerce vs. `Order` as a sort operation), give each its own Decision and disambiguate `chosen` with a qualifier — `Order (commerce)` vs. `Order (sorting)` — so every entry stays uniquely addressable.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "Connect related glossary terms in the graph instead of leaving entries isolated — link a term to the broader concept it specializes, to the narrower terms beneath it, and to terms it is easily confused with, so the vocabulary reads as a navigable network. Deprecation links use `superseded_by` (see below).",
+      },
+      {
+        kind: "guidance",
+        policy:
           "Borrowed, standards-based, or industry terms cite a Reference when possible. Product-internal terms state that they are product-specific so readers don't mistake them for external standards.",
       },
       {
@@ -313,8 +330,9 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   },
   {
     // Repeatable business processes modeled on BPMN swimlanes and
-    // gateways. Sequence flow is explicit and forward-only via
-    // `sequence_to`, which materializes as `sequence_flow`; generic Doco
+    // gateways. Sequence flow is explicit via `sequence_to`, which
+    // materializes as `sequence_flow`; flow normally runs forward, but
+    // rework loops may route back through a gateway. Generic Doco
     // dependency / rationale edges remain associations and are not
     // treated as BPMN arrows.
     name: "business-processes",
@@ -341,13 +359,22 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // when_node_type. Personal / informal workflows pass too:
         // the gate cares about "workflow with steps, actors, outcome",
         // not "this is paid work at a company".
+        //
+        // State is ALSO exempt. A milestone State viewed in isolation
+        // ("loan approved", "incident mitigated") genuinely reads like a
+        // bare state-machine stage, so the judge warned on the very
+        // initial/terminal States the template REQUIRES — a false-positive
+        // on every process. States are structural flow nodes admitted by
+        // the entity-type allowlist; their quality is governed by the
+        // milestone-naming probabilistic policy below, not this membership
+        // gate.
         on_violation: "warn",
         policy:
           "A node belongs in business-processes when it describes a workflow — a sequence of steps with actors and an outcome — or a policy/guard for one. Workflows can be commercial, operational, or personal; what matters is that the work is repeatable and the steps can be named. One-off incidents, UI-specific user journeys, and pure state machines without a workflow outcome belong elsewhere.",
         predicate: {
           kind: "probabilistic",
           spec: "A node belongs in business-processes when it describes a workflow — a sequence of steps with actors and an outcome — or a policy/guard for one. Workflows can be commercial, operational, or personal; what matters is that the work is repeatable and the steps can be named. Pass when the candidate describes a step, gateway, milestone, validation, reference, or policy for such a workflow. Fail only when the candidate is a one-off incident with no repeatable structure, a UI-specific user journey, or a pure state machine without a workflow outcome.",
-          when_node_type: ["intent", "action", "decision", "state", "eval", "reference"],
+          when_node_type: ["intent", "action", "decision", "eval", "reference"],
         },
       },
       {
@@ -434,51 +461,42 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
       {
+        // One rule for all three flow-node types. `requires_edge` filters
+        // by `when_node_type`, so a single policy covers Action, gateway
+        // Decision, and milestone State — they share the same constraint
+        // (be tied to a concrete process/pool) and previously shipped as
+        // three near-identical entries.
         policy:
-          "Every Action in business-processes must `serves` an Intent. Without it the process renderer can't tie the step to the business outcome it advances.",
+          "Every flow node in business-processes — Action, gateway Decision, or milestone State — must `serves` an Intent. Without it the BPMN renderer can't place the node in a pool, and the step floats free of the business outcome it advances.",
         predicate: {
           kind: "requires_edge",
           edge_type: "serves",
           target_node_type: "intent",
-          when_node_type: ["action"],
+          when_node_type: ["action", "decision", "state"],
         },
         fires_when_node_lifecycle: ["asserted"],
       },
       {
-        // Atomic activity prose — reject umbrella phases and
-        // implementation chores divorced from business meaning.
+        // Atomic activity prose — surface umbrella phases and
+        // implementation chores divorced from business meaning. Fires as a
+        // `warn`, not a block: it's an LLM-judged style check, so a blocking
+        // verdict both stopped legitimate single-verb steps ("Reviews the
+        // legal terms") and was non-deterministic (an identical retry could
+        // pass). Warn keeps the nudge without trapping the author. The spec
+        // now PASSES an ordinary single-verb business step and reserves the
+        // FAIL for true umbrellas and conjunction ("examine AND treat")
+        // steps that bundle two activities.
+        on_violation: "warn",
         policy:
-          "Action `action` reads as an atomic business activity — a single unit of work an actor performs. Reject vague umbrella phases (`handle request`, `do the thing`) and reject implementation chores divorced from business meaning (`call API`, `update row`).",
+          "Action `action` reads as an atomic business activity — a single unit of work an actor performs. Avoid vague umbrella phases (`handle request`, `do the thing`), steps that bundle two activities with `and`, and implementation chores divorced from business meaning (`call API`, `update row`).",
         predicate: {
           kind: "probabilistic",
-          spec: "Check the Action's `action` and `verb`. PASS when the text names an atomic business activity — a single unit of work the named actor performs. FAIL with reason if the text is a vague umbrella phase (e.g. `handle request`, `do the thing`, `process order`) or an implementation chore divorced from business meaning (e.g. `call API`, `update row`, `write to DB`).",
+          spec: "Check the Action's `action` and `verb`. PASS when the text names a single business activity the named actor performs — an ordinary single-verb step like `review the legal terms`, `approve the invoice`, or `pack the order` PASSES. FAIL with reason only if the text (a) is a vague umbrella phase covering many steps (e.g. `handle request`, `do the thing`, `process order`), (b) bundles two distinct activities joined by `and` (e.g. `examine and treat the patient`), or (c) is an implementation chore divorced from business meaning (e.g. `call API`, `update row`, `write to DB`).",
           when_node_type: ["action"],
         },
         fires_when_node_lifecycle: ["asserted"],
       },
       // ── Decision shape ──────────────────────────────────────────
-      {
-        policy:
-          "Every Decision in business-processes must `serves` an Intent — gateways belong to a concrete process/pool and need that link to be explicit.",
-        predicate: {
-          kind: "requires_edge",
-          edge_type: "serves",
-          target_node_type: "intent",
-          when_node_type: ["decision"],
-        },
-        fires_when_node_lifecycle: ["asserted"],
-      },
-      {
-        policy:
-          "Every State in business-processes must `serves` an Intent — milestones and events belong to a concrete process/pool and need that link to be explicit.",
-        predicate: {
-          kind: "requires_edge",
-          edge_type: "serves",
-          target_node_type: "intent",
-          when_node_type: ["state"],
-        },
-        fires_when_node_lifecycle: ["asserted"],
-      },
       {
         // Exhaustive branches: question reads as yes/no or enumerated,
         // and the alternatives list either has a default/else branch
@@ -493,40 +511,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: ["asserted"],
       },
 
-      // ── State shape & sequence wiring ───────────────────────────
+      // ── State shape & sequence wiring (graph invariants kept as
+      //    guidance until the evaluator can express subgraph shape) ──
       {
-        policy:
-          "State `state` is unique within a business process — duplicate milestone names ambiguate references and hide wiring mistakes.",
         kind: "guidance",
+        policy:
+          "A business process has ≥1 active initial State and ≥1 active terminal State, with each `state` name unique within the process. Every process starts somewhere, ends at a business outcome (or an explicitly cancelled outcome), and names its milestones unambiguously.",
       },
       {
+        kind: "guidance",
         policy:
-          "An active business process has ≥1 active State of kind `initial` — every process starts somewhere.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "An active business process has ≥1 active State of kind `terminal` — every process has a business outcome (or an explicitly cancelled outcome).",
-        kind: "guidance",
-      },
-      {
-        policy: "Terminal States have no outgoing `sequence_to` flow — they end the process path.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "Each active initial State has at least one outgoing `sequence_to` target — otherwise the process starts but never moves.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "Every `sequence_to` target should be a flow node in the same process Intent. Use branch labels or conditions on `sequence_to` objects for gateway edges.",
-        kind: "guidance",
-      },
-      {
-        policy:
-          "Every non-initial flow node should be reachable from an earlier flow node through forward `sequence_to`; every non-terminal flow node should have at least one outgoing `sequence_to` target.",
-        kind: "guidance",
+          "Flow runs forward from the initial State: each active initial State has ≥1 outgoing `sequence_to`, every non-initial flow node is reachable from an earlier flow node through forward `sequence_to`, and every non-terminal flow node has ≥1 outgoing `sequence_to` target in the same process Intent. Terminal States have no outgoing `sequence_to` — they end the process path.",
       },
       {
         // State summary as milestone/condition — noun or past-participle
@@ -586,6 +581,16 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         policy:
+          "When a step is itself a whole sub-process, model it as its own child process Intent and link the calling Action to that Intent (the BPMN call-activity pattern) instead of inlining dozens of Actions. The BPMN view collapses the child Intent into its own pool, keeping the parent process readable.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "Name the single accountable process owner in the purpose Intent — the Principal answerable for the whole process's outcome. This is the RACI 'Accountable' role, distinct from the per-step 'Responsible' actors named in each Action's `actor_id`.",
+      },
+      {
+        kind: "guidance",
+        policy:
           "Agents should read `GET /<handle>/api/authoring-contract.json` and write structured flows with `POST /<handle>/api/changesets.json`; create flow nodes with their incoming `sequence_flow` edge in the same changeset instead of creating disconnected nodes.",
       },
       {
@@ -602,6 +607,21 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         kind: "guidance",
         policy:
           "`sequence_to` may be a list of target ids or objects like `{ target, label, condition, kind }`. Put gateway branch labels and default/exception/timer metadata on the outgoing edge, not by reversing a relationship from the downstream Action back to the Decision.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "For parallel work, give one flow node multiple unconditional `sequence_to` targets — an AND-split needs no gateway Decision. Reserve gateway Decisions for exclusive or conditional (XOR/inclusive) branching, and reconverge parallel branches on a shared downstream node.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          "Rework and retry loops are allowed: a `sequence_to` may target an earlier flow node to send work back (revise-and-resubmit, fix-and-recheck). Route the loop back through a gateway Decision so the cycle has an explicit exit and can't spin forever. A single edge still renders source -> target — a loop is about where the edge points, not reversing its direction.",
+      },
+      {
+        kind: "guidance",
+        policy:
+          'Model the unhappy path. Use `sequence_to` objects with `kind: "exception"` or `kind: "timer"` to route failures, rejections, and timeouts to a recovery step or an explicitly cancelled terminal State, so the process documents what happens when the happy path does not hold.',
       },
       {
         kind: "guidance",
