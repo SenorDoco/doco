@@ -150,13 +150,67 @@ async function writeConnections(docoId: string, conns: GitHubConnection[]): Prom
   });
 }
 
-/** Add a connection (replacing any existing one for the same repo). Returns the new list. */
+/**
+ * Enforce one-repo-one-Doco: remove `repo` from every Doco's connections
+ * EXCEPT `keepDocoId`. Covers both the connections[] list shape and the legacy
+ * single { repo, installation_id } shape. Idempotent; the indexed `@>`/`->>'`
+ * predicates touch only the Docos that actually hold the repo.
+ */
+export async function detachRepoFromOtherDocos(repo: string, keepDocoId: string): Promise<void> {
+  await withClient(async (c) => {
+    // List shape: filter the matching element out of connections[].
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                data,
+                '{github_integration,connections}',
+                COALESCE((
+                  SELECT jsonb_agg(elem)
+                    FROM jsonb_array_elements(data->'github_integration'->'connections') AS elem
+                   WHERE elem->>'repo' <> $1
+                ), '[]'::jsonb)
+              ),
+              updated_at = now()
+        WHERE id <> $2
+          AND data->'github_integration'->'connections'
+                @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
+      [repo, keepDocoId],
+    );
+    // Legacy single shape: if the whole github_integration *is* this repo, drop it.
+    await c.query(
+      `UPDATE docos
+          SET data = data - 'github_integration', updated_at = now()
+        WHERE id <> $2
+          AND data->'github_integration'->>'repo' = $1`,
+      [repo, keepDocoId],
+    );
+  });
+}
+
+/** Injectable seams so the move orchestration is unit-testable without a DB. */
+export interface AddConnectionDeps {
+  detachElsewhere: (repo: string, keepDocoId: string) => Promise<void>;
+  list: (docoId: string) => Promise<GitHubConnection[]>;
+  write: (docoId: string, conns: GitHubConnection[]) => Promise<void>;
+}
+
+/**
+ * Attach `conn` to `docoId`, enforcing one-repo-one-Doco. The repo is first
+ * detached from any OTHER Doco (move semantics, per the project decision), then
+ * added here — replacing any stale entry for the same repo on this Doco so a
+ * re-connect never duplicates. Returns this Doco's new connection list.
+ */
 export async function addConnection(
   docoId: string,
   conn: GitHubConnection,
+  deps?: Partial<AddConnectionDeps>,
 ): Promise<GitHubConnection[]> {
-  const next = [...(await listConnections(docoId)).filter((c) => c.repo !== conn.repo), conn];
-  await writeConnections(docoId, next);
+  const detach = deps?.detachElsewhere ?? detachRepoFromOtherDocos;
+  const list = deps?.list ?? listConnections;
+  const write = deps?.write ?? writeConnections;
+  await detach(conn.repo, docoId);
+  const next = [...(await list(docoId)).filter((c) => c.repo !== conn.repo), conn];
+  await write(docoId, next);
   return next;
 }
 

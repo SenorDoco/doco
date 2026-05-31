@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
 import {
+  type GitHubConnection,
+  addConnection,
   buildInstallUrl,
   importInstallationConnections,
   normalizeConnections,
@@ -66,6 +68,43 @@ describe("buildInstallUrl", () => {
   it("returns null when the slug isn't configured", () => {
     process.env.DOCO_GITHUB_APP_SLUG = "";
     expect(buildInstallUrl("doco_1")).toBeNull();
+  });
+});
+
+describe("addConnection — one repo ↔ one Doco", () => {
+  it("detaches the repo from every other Doco (move) before attaching it here", async () => {
+    const order: string[] = [];
+    const detachElsewhere = vi.fn(async (repo: string, keep: string) => {
+      order.push(`detach:${repo}:${keep}`);
+    });
+    const list = vi.fn(async () => [{ repo: "x/old", installation_id: 1 }] as GitHubConnection[]);
+    const write = vi.fn(async (_id: string, conns: GitHubConnection[]) => {
+      order.push(`write:${conns.map((c) => c.repo).join(",")}`);
+    });
+    const result = await addConnection(
+      "doco_target",
+      { repo: "acme/store", installation_id: 9 },
+      { detachElsewhere, list, write },
+    );
+    expect(detachElsewhere).toHaveBeenCalledWith("acme/store", "doco_target");
+    // Detach must happen before the write, and the existing repo is kept.
+    expect(order).toEqual(["detach:acme/store:doco_target", "write:x/old,acme/store"]);
+    expect(result).toEqual([
+      { repo: "x/old", installation_id: 1 },
+      { repo: "acme/store", installation_id: 9 },
+    ]);
+  });
+
+  it("replaces a stale entry for the same repo on this Doco (no duplicate)", async () => {
+    const list = vi.fn(
+      async () => [{ repo: "acme/store", installation_id: 1 }] as GitHubConnection[],
+    );
+    const result = await addConnection(
+      "doco_1",
+      { repo: "acme/store", installation_id: 2 },
+      { detachElsewhere: vi.fn(async () => {}), list, write: vi.fn(async () => {}) },
+    );
+    expect(result).toEqual([{ repo: "acme/store", installation_id: 2 }]);
   });
 });
 
