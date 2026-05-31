@@ -19,7 +19,8 @@ export type PerspectiveKind =
   | "org-tree"
   | "sla"
   | "approval"
-  | "glossary";
+  | "glossary"
+  | "pull-requests";
 
 export interface Perspective {
   id: string;
