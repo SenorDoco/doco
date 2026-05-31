@@ -10,19 +10,11 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { activityRowLifecycle, shouldStrikeActivityTarget } from "~/lib/activity-feed";
-import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
+import { AUDIT_OP_SET, type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { cn } from "~/lib/cn";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { lifecycleColor } from "~/lib/node-colors";
-
-const VALID_OPS: ReadonlySet<string> = new Set([
-  "entity.create",
-  "entity.update",
-  "entity.delete",
-  "lifecycle.transition",
-  "edge.add",
-]);
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
   return [{ title: `Activity · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
@@ -51,7 +43,7 @@ export async function loader({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (parts.every((p) => VALID_OPS.has(p))) op = parts as AuditOp[];
+    if (parts.every((p) => AUDIT_OP_SET.has(p as AuditOp))) op = parts as AuditOp[];
   }
   const limitRaw = url.searchParams.get("limit");
   let limit = 100;

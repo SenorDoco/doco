@@ -1,18 +1,30 @@
 // Per-Doco audit-events log (decision_01KRKESCBTYG4005VMPKYNYR53).
 //
-// Postgres-backed `audit_events` table. Five op types cover the
-// mutation surface: entity.create, entity.update, entity.delete,
-// lifecycle.transition, edge.add.
+// Postgres-backed `audit_events` table. Four op types cover the
+// mutation surface: entity.create, entity.update, lifecycle.transition,
+// edge.add. (Removal is never a hard delete — it's a lifecycle.transition
+// to "retired" — so there is no entity.delete op.)
 
 import { appendAuditEventRow, readAuditEventRows } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 
-export type AuditOp =
-  | "entity.create"
-  | "entity.update"
-  | "entity.delete"
-  | "lifecycle.transition"
-  | "edge.add";
+/**
+ * The full set of audit op values — the single source of truth. The
+ * `AuditOp` type, the API/route filter validators, and the Slack op
+ * allow-list all derive from this array so there is one list to keep
+ * in sync with the `audit_events` op CHECK in schema.sql.
+ */
+export const AUDIT_OPS = [
+  "entity.create",
+  "entity.update",
+  "lifecycle.transition",
+  "edge.add",
+] as const;
+
+export type AuditOp = (typeof AUDIT_OPS)[number];
+
+/** Membership-test set over `AUDIT_OPS`, for validating op query params. */
+export const AUDIT_OP_SET: ReadonlySet<AuditOp> = new Set(AUDIT_OPS);
 
 export interface AuditEvent {
   event_id: string;

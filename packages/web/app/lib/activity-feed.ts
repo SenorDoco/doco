@@ -8,7 +8,6 @@ const STRUCK_ACTIVITY_LIFECYCLES: ReadonlySet<string> = new Set(["retired"]);
 export function verbFromAuditOp(op: string): string {
   if (op === "entity.create") return "added";
   if (op === "entity.update") return "updated";
-  if (op === "entity.delete") return "deleted";
   if (op === "lifecycle.transition") return "transitioned";
   if (op === "edge.add") return "linked";
   return op;
@@ -17,7 +16,6 @@ export function verbFromAuditOp(op: string): string {
 export function iconFromAuditOp(op: string): string {
   if (op === "entity.create") return "✍️";
   if (op === "entity.update") return "📝";
-  if (op === "entity.delete") return "🗑️";
   if (op === "lifecycle.transition") return "🔁";
   if (op === "edge.add") return "➕";
   return "•";

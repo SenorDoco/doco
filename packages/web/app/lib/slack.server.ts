@@ -19,7 +19,12 @@ import {
   createSenorDocoMessage,
   missingSenorDocoAnthropicMessage,
 } from "./assistant-runtime.server";
-import { type AuditOp, type ReadAuditFilters, readAuditEvents } from "./audit-log.server";
+import {
+  AUDIT_OP_SET,
+  type AuditOp,
+  type ReadAuditFilters,
+  readAuditEvents,
+} from "./audit-log.server";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "./doco-access.server";
 import {
   DOCO_API_TOOL,
@@ -1577,14 +1582,6 @@ async function readSlackDocoApiSettings(
   };
 }
 
-const SLACK_AUDIT_OPS: ReadonlySet<AuditOp> = new Set([
-  "entity.create",
-  "entity.update",
-  "entity.delete",
-  "lifecycle.transition",
-  "edge.add",
-]);
-
 async function readSlackDocoApiAudit(
   doco: SlackAccessibleDoco,
   searchParams: URLSearchParams,
@@ -1596,10 +1593,10 @@ async function readSlackDocoApiAudit(
       .split(",")
       .map((part) => part.trim())
       .filter(Boolean);
-    const invalid = parts.filter((part) => !SLACK_AUDIT_OPS.has(part as AuditOp));
+    const invalid = parts.filter((part) => !AUDIT_OP_SET.has(part as AuditOp));
     if (invalid.length > 0) {
       return {
-        error: `Invalid op value(s): ${invalid.join(", ")}. Allowed: ${[...SLACK_AUDIT_OPS].join(
+        error: `Invalid op value(s): ${invalid.join(", ")}. Allowed: ${[...AUDIT_OP_SET].join(
           ", ",
         )}.`,
       };
