@@ -72,12 +72,11 @@ describe("reconcileNodeEdges", () => {
     expect(res).toEqual({ created: 1, retired: 0 });
     expect(mocks.createChangeset).toHaveBeenCalledTimes(1);
     expect(mocks.createEdge).toHaveBeenCalledTimes(1);
-    expect(mocks.createEdge.mock.calls[0][2]).toMatchObject({
-      edgeType: "decided_by",
-      fromId: DEC,
-      toId: P1,
-      origin: "field",
-    });
+    expect(mocks.createEdge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ edgeType: "decided_by", fromId: DEC, toId: P1, origin: "field" }),
+    );
     expect(mocks.retireEdge).not.toHaveBeenCalled();
   });
 
@@ -92,8 +91,16 @@ describe("reconcileNodeEdges", () => {
       actor: ACTOR,
     });
     expect(res).toEqual({ created: 1, retired: 1 });
-    expect(mocks.createEdge.mock.calls[0][2]).toMatchObject({ toId: P1, origin: "field" });
-    expect(mocks.retireEdge.mock.calls[0][2]).toMatchObject({ id: "edge_stale" });
+    expect(mocks.createEdge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ toId: P1, origin: "field" }),
+    );
+    expect(mocks.retireEdge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ id: "edge_stale" }),
+    );
   });
 
   it("never retires an authored edge with the same target", async () => {

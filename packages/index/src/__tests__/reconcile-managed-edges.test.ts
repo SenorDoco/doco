@@ -61,7 +61,9 @@ describe("reconcileManagedEdges", () => {
       [desired("decided_by", P2)],
       [existing("edge_old", "decided_by", P1, "field")],
     );
-    expect(plan.toCreate).toEqual([expect.objectContaining({ edge_type: "decided_by", to_id: P2 })]);
+    expect(plan.toCreate).toEqual([
+      expect.objectContaining({ edge_type: "decided_by", to_id: P2 }),
+    ]);
     expect(plan.toRetireIds).toEqual(["edge_old"]);
   });
 

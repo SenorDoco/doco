@@ -14,7 +14,7 @@ import {
   managedEdges,
   reconcileManagedEdges,
 } from "@doco/index";
-import { NODE_TYPES, type Entity } from "@doco/shared";
+import { type Entity, NODE_TYPES } from "@doco/shared";
 
 const NODE_TYPE_SET: ReadonlySet<string> = new Set(NODE_TYPES);
 const MANAGED_TYPES: readonly string[] = [...MANAGED_RELATION_EDGE_TYPES];
