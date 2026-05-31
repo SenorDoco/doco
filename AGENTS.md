@@ -124,6 +124,36 @@ mid-conversation (gap under two hours).
 
 ---
 
+## Test-first — and the gate that enforces it
+
+We practice test-driven development. For any behavior change, write a
+failing test that captures the intended behavior *first*, watch it go
+red, then write the code that turns it green, then refactor. A behavior
+change isn't "done" without a test that was red before the change and
+green after. (Pure docs, comments, or config don't need a test — but
+they still pass the gate below.)
+
+One contract, run everywhere:
+
+```sh
+pnpm verify   # builds the workspace, typechecks, runs the test suite, lints
+```
+
+Run `pnpm verify` before opening a PR. For the inner TDD loop, stay fast
+with `pnpm vitest related <file>` (or `vitest --changed`) — `verify` is
+the pre-PR gate, not the per-edit loop.
+
+This is enforced **agent-neutrally**, not by any single tool's config:
+`.github/workflows/ci.yml` runs `pnpm verify` on every PR to `main`, so a
+red suite blocks the merge for every agent *and* every human — even for
+commits pushed through the GitHub API, which bypass all local and
+per-tool hooks. (Mark the check required in branch protection to make it
+blocking.) A tool's own hooks — Claude Code's `.claude/`, a git
+pre-push hook — may call the same `pnpm verify` for faster feedback, but
+CI is the gate that always runs.
+
+---
+
 <!-- BEGIN DOCO -->
 # STOP — read this every turn, not just once
 
