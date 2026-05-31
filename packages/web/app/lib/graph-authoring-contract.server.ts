@@ -169,6 +169,22 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     cardinality: "many",
     description: "Intent has a stakeholder Principal.",
   },
+  decided_by: {
+    kind: "decided_by",
+    field: "decided_by",
+    owner: "from",
+    value: "to",
+    cardinality: "one",
+    description: "Decision was made by a Principal.",
+  },
+  templated_by: {
+    kind: "templated_by",
+    field: "template_id",
+    owner: "from",
+    value: "to",
+    cardinality: "one",
+    description: "Log instantiates an Action that serves as its template.",
+  },
   relates_to: {
     kind: "relates_to",
     // No node scalar projects this edge — it is authored only as a
