@@ -1,0 +1,31 @@
+name: CI
+
+# Agent-neutral enforcement gate: runs the same `pnpm verify` contract that
+# humans and any agent run locally, on every PR into `main`. Make this a
+# required status check in branch protection so a red suite blocks the merge
+# for everyone — including commits made through the GitHub API (which bypass
+# every local/per-tool hook).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: build · typecheck · test · lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # reads packageManager (pnpm@10.x) from package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
