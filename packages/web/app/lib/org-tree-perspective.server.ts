@@ -2,9 +2,11 @@
 //
 // Renders a Doco's Principal nodes as a top-down reporting tree:
 // the unique top-of-chain Principal (no `reports_to`) at the root,
-// direct reports beneath, and so on. Edges come from the
-// `reports_to` edge — derived from each Principal's data field
-// by `deriveEdges` and materialized in the `edges` table.
+// direct reports beneath, and so on. The reporting line is the
+// `reports_to` id-shaped pointer field in each Principal's `data`
+// (the same value `deriveEdges` projects into a `reports_to` graph
+// edge); this loader reads it straight from the node's `data`, so it
+// needs no edges-table join.
 //
 // Only the `org-chart` template attaches this perspective by default,
 // but any Doco can opt in via the perspectives picker. The loader
