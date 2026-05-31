@@ -7,6 +7,7 @@ interface SettingsPatch {
   handle?: string;
   visibility?: "private" | "public";
   goal?: string;
+  constitution?: string;
 }
 
 /**
@@ -34,6 +35,7 @@ export async function loader({
     doco_handle: meta.handle,
     visibility: meta.visibility,
     goal: meta.goal,
+    constitution: meta.constitution,
   });
 }
 
@@ -77,6 +79,7 @@ export async function action({
       handle: finalHandle,
       ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
       ...(patch.goal !== undefined ? { goal: patch.goal } : {}),
+      ...(patch.constitution !== undefined ? { constitution: patch.constitution } : {}),
     });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
@@ -91,6 +94,7 @@ export async function action({
       doco_handle: finalHandle,
       visibility: row?.visibility ?? "private",
       goal: row?.goal ?? "",
+      constitution: row?.constitution ?? "",
     },
     { status: 200 },
   );

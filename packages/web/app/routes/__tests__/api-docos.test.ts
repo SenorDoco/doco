@@ -99,6 +99,7 @@ describe("/api/v1/docos.json", () => {
       orgId: "organization_torre",
       orgHandle: "torre",
       goal: "Process memory.",
+      constitution: "Follow every policy.",
       companionChatId: "conv_123",
     });
 

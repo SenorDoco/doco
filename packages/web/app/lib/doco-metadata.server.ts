@@ -18,6 +18,12 @@ export interface DocoMetadata {
    * in the agent-bootstrap manifest. Empty string when unset.
    */
   goal: string;
+  /**
+   * Free-form governing charter for the Doco — the standing "how work is
+   * done here" text agents read at bootstrap, alongside the goal and the
+   * policy set. Seeded with a default on creation; editable from settings.
+   */
+  constitution: string;
 }
 
 /**
@@ -37,5 +43,6 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
     orgId: row.org_id,
     visibility: row.visibility,
     goal: row.goal,
+    constitution: row.constitution,
   };
 }

@@ -10,6 +10,7 @@
 // has burned through. The wrapper preserves the provider's contract
 // exactly; it just records.
 import {
+  type EmbeddingInputType,
   type EmbeddingProvider,
   NoopEmbeddingProvider,
   getDefaultEmbeddingProvider,
@@ -23,11 +24,11 @@ function wrapWithUsageLog(inner: EmbeddingProvider): EmbeddingProvider {
   return {
     modelId: inner.modelId,
     dimensions: inner.dimensions,
-    async embed(texts: string[]): Promise<Float32Array[]> {
+    async embed(texts: string[], inputType?: EmbeddingInputType): Promise<Float32Array[]> {
       const start = performance.now();
       const totalChars = texts.reduce((n, s) => n + s.length, 0);
       try {
-        const out = await inner.embed(texts);
+        const out = await inner.embed(texts, inputType);
         waitUntil(
           recordOpenAiUsage({
             model: inner.modelId,

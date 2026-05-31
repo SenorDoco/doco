@@ -5,7 +5,10 @@
 //     org-membership-inherited, doco_users grant, public visibility)
 //
 // Each policy set exposes two arrays: `guidance_policies` (prose, no automated check) and
-// `node_authoring_policies` (rules evaluated at capture time).
+// `node_authoring_policies` (rules evaluated at capture time). It also
+// carries the Doco's `goal` (one-liner about what it's for) and its
+// `constitution` (the project-level governing charter) — both meant to be
+// read before the rules.
 //
 // The project owner can add, edit, or remove policies at any time
 // from /<handle>/policies — re-fetch this endpoint if you suspect
@@ -61,6 +64,13 @@ interface DocoPolicySet {
    * Empty string when unset.
    */
   goal: string;
+  /**
+   * Project-level governing charter — the standing "how work is done
+   * here" text. Read at bootstrap alongside the goal and the policy
+   * set; seeded with a default on creation. Empty string only when an
+   * owner has explicitly cleared it.
+   */
+  constitution: string;
   owner_id: string;
   guidance_policies: PolicyArticle[];
   node_authoring_policies: PolicyArticle[];
@@ -147,7 +157,12 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
       ),
     ]),
   );
-  if (guidance.rows.length === 0 && nodeAuthoring.rows.length === 0 && d.goal.length === 0) {
+  if (
+    guidance.rows.length === 0 &&
+    nodeAuthoring.rows.length === 0 &&
+    d.goal.length === 0 &&
+    d.constitution.length === 0
+  ) {
     return [];
   }
   return [
@@ -155,6 +170,7 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
       doco_id: d.id,
       doco_handle: d.handle,
       goal: d.goal,
+      constitution: d.constitution,
       owner_id: d.owner_id,
       guidance_policies: guidance.rows,
       node_authoring_policies: nodeAuthoring.rows,
@@ -195,16 +211,23 @@ async function loadDocoPoliciesForPrincipal(
         ),
       ]),
     );
-    // A Doco shows up in bootstrap when it has at least one policy
-    // OR a non-empty goal — the goal is itself bootstrap context, not
-    // just decoration on top of policies.
-    if (guidance.rows.length === 0 && nodeAuthoring.rows.length === 0 && d.goal.length === 0) {
+    // A Doco shows up in bootstrap when it has at least one policy OR a
+    // non-empty goal OR a non-empty constitution — the goal and the
+    // constitution are themselves bootstrap context, not just decoration
+    // on top of policies.
+    if (
+      guidance.rows.length === 0 &&
+      nodeAuthoring.rows.length === 0 &&
+      d.goal.length === 0 &&
+      d.constitution.length === 0
+    ) {
       continue;
     }
     out.push({
       doco_id: d.id,
       doco_handle: d.handle,
       goal: d.goal,
+      constitution: d.constitution,
       owner_id: d.owner_id,
       guidance_policies: guidance.rows,
       node_authoring_policies: nodeAuthoring.rows,

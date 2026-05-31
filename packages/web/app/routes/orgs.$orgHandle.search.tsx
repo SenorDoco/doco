@@ -153,7 +153,7 @@ export async function loader({
 
     let queryEmbedding: Float32Array;
     try {
-      const [v] = await provider.embed([q]);
+      const [v] = await provider.embed([q], "query");
       if (!v || v.length === 0) {
         return {
           org,
