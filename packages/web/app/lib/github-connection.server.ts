@@ -1,5 +1,5 @@
 // Per-Doco GitHub connection config, stored in docos.data.github_integration.
-// This is the glue the webhook (findDocoConnectionsByRepo) and backfill read:
+// This is the glue the webhook (findDocoByInstallation) and backfill read:
 // it records which GitHub repo + App installation a Doco is wired to. Written
 // by the settings panel / connect endpoint.
 import { withClient } from "@doco/db";
@@ -257,56 +257,128 @@ export async function getDocoConnectionsContext(
   });
 }
 
-/**
- * Batch lookup: for each of `repos`, the handle of the Doco that currently
- * holds it (under the one-repo-one-Doco invariant, at most one). Repos not
- * attached anywhere are absent from the result. Covers the connections[] list
- * shape and the legacy single shape. Used by the connect-time repo picker to
- * warn "currently on ‹other Doco› — attaching moves it".
- */
-export async function findDocoHandlesForRepos(repos: string[]): Promise<Record<string, string>> {
-  if (repos.length === 0) return {};
+// ─── Org-level installation subscription ─────────────────────────────────
+// A Doco subscribes to a GitHub App *installation* (an org/owner). The webhook
+// routes every PR carrying that installation id to the subscribed Doco, so new
+// repos in the org are covered automatically — no per-repo management. Stored
+// as docos.data.github_integration.installations = [{ installation_id, account }].
+// One installation maps to one Doco (subscribing moves it), so a PR is never
+// duplicated across Docos.
+
+export interface GitHubInstallationSub {
+  /** GitHub App installation id (the org/owner install). */
+  installation_id: number;
+  /** Org / owner login the installation belongs to. */
+  account: string;
+  connected_at?: string;
+}
+
+/** Read docos.data.github_integration.installations as a list. Pure. */
+export function normalizeInstallations(raw: unknown): GitHubInstallationSub[] {
+  if (!raw || typeof raw !== "object") return [];
+  const list = (raw as { installations?: unknown }).installations;
+  if (!Array.isArray(list)) return [];
+  const out: GitHubInstallationSub[] = [];
+  for (const x of list) {
+    if (!x || typeof x !== "object") continue;
+    const e = x as { installation_id?: unknown; account?: unknown; connected_at?: unknown };
+    if (typeof e.installation_id !== "number" || typeof e.account !== "string") continue;
+    out.push({
+      installation_id: e.installation_id,
+      account: e.account,
+      ...(typeof e.connected_at === "string" ? { connected_at: e.connected_at } : {}),
+    });
+  }
+  return out;
+}
+
+export async function listInstallations(docoId: string): Promise<GitHubInstallationSub[]> {
   return withClient(async (c) => {
-    const r = await c.query<{ repo: string; handle: string }>(
-      `SELECT elem->>'repo' AS repo, d.handle
-         FROM docos d,
-              jsonb_array_elements(d.data->'github_integration'->'connections') AS elem
-        WHERE elem->>'repo' = ANY($1)
-       UNION
-       SELECT d.data->'github_integration'->>'repo' AS repo, d.handle
-         FROM docos d
-        WHERE d.data->'github_integration'->>'repo' = ANY($1)`,
-      [repos],
+    const r = await c.query<{ gh: unknown }>(
+      `SELECT data->'github_integration' AS gh FROM docos WHERE id = $1`,
+      [docoId],
     );
-    const out: Record<string, string> = {};
-    for (const row of r.rows) if (row.repo) out[row.repo] = row.handle;
-    return out;
+    return normalizeInstallations(r.rows[0]?.gh);
   });
 }
 
-/** One row of the connect-time repo picker. Pure view-model. */
-export interface RepoPickerChoice {
-  repo: string;
-  /** Handle of the Doco currently holding this repo, or null if unattached. */
-  attachedTo: string | null;
-  /** True when the repo is already attached to the Doco being viewed. */
-  here: boolean;
+/** Write the Doco's installation subscriptions, preserving sibling keys (e.g.
+ *  connections) under github_integration. */
+async function writeInstallations(docoId: string, subs: GitHubInstallationSub[]): Promise<void> {
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                COALESCE(data, '{}'::jsonb)
+                  || jsonb_build_object(
+                       'github_integration',
+                       COALESCE(data->'github_integration', '{}'::jsonb)),
+                '{github_integration,installations}', $2::jsonb, true),
+              updated_at = now()
+        WHERE id = $1`,
+      [docoId, JSON.stringify(subs)],
+    );
+  });
 }
 
 /**
- * Build the picker rows for an installation's repos: annotate each with the
- * Doco it currently belongs to (if any) and whether that's the current Doco.
- * Pure.
+ * Enforce one-installation-one-Doco: drop the installation from every OTHER
+ * Doco's installations[]. Idempotent; the indexed `@>` predicate touches only
+ * the Docos that actually hold the installation.
  */
-export function buildRepoPickerChoices(
-  installationRepos: string[],
-  currentHandleByRepo: Record<string, string>,
-  thisHandle: string,
-): RepoPickerChoice[] {
-  return installationRepos.map((repo) => {
-    const attachedTo = currentHandleByRepo[repo] ?? null;
-    return { repo, attachedTo, here: attachedTo === thisHandle };
+export async function detachInstallationFromOtherDocos(
+  installationId: number,
+  keepDocoId: string,
+): Promise<void> {
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                data,
+                '{github_integration,installations}',
+                COALESCE((
+                  SELECT jsonb_agg(elem)
+                    FROM jsonb_array_elements(data->'github_integration'->'installations') AS elem
+                   WHERE (elem->>'installation_id')::int <> $1
+                ), '[]'::jsonb)
+              ),
+              updated_at = now()
+        WHERE id <> $2
+          AND data->'github_integration'->'installations'
+                @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))`,
+      [installationId, keepDocoId],
+    );
   });
+}
+
+/** Injectable seams so the move orchestration is unit-testable without a DB. */
+export interface SubscribeInstallationDeps {
+  detachElsewhere: (installationId: number, keepDocoId: string) => Promise<void>;
+  list: (docoId: string) => Promise<GitHubInstallationSub[]>;
+  write: (docoId: string, subs: GitHubInstallationSub[]) => Promise<void>;
+}
+
+/**
+ * Subscribe `docoId` to an App installation (an org), enforcing
+ * one-installation-one-Doco: the installation is first detached from any other
+ * Doco (move), then recorded here — replacing any stale entry for the same
+ * installation id. Returns this Doco's new subscription list.
+ */
+export async function subscribeInstallation(
+  docoId: string,
+  sub: GitHubInstallationSub,
+  deps?: Partial<SubscribeInstallationDeps>,
+): Promise<GitHubInstallationSub[]> {
+  const detach = deps?.detachElsewhere ?? detachInstallationFromOtherDocos;
+  const list = deps?.list ?? listInstallations;
+  const write = deps?.write ?? writeInstallations;
+  await detach(sub.installation_id, docoId);
+  const next = [
+    ...(await list(docoId)).filter((s) => s.installation_id !== sub.installation_id),
+    sub,
+  ];
+  await write(docoId, next);
+  return next;
 }
 
 /**

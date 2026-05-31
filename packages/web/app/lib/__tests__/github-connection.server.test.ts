@@ -4,12 +4,14 @@ vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
 import {
   type GitHubConnection,
+  type GitHubInstallationSub,
   addConnection,
   buildInstallUrl,
-  buildRepoPickerChoices,
   importInstallationConnections,
   normalizeConnections,
+  normalizeInstallations,
   parseRepoSlug,
+  subscribeInstallation,
 } from "../github-connection.server";
 
 describe("parseRepoSlug", () => {
@@ -109,19 +111,55 @@ describe("addConnection — one repo ↔ one Doco", () => {
   });
 });
 
-describe("buildRepoPickerChoices", () => {
-  it("annotates each installation repo with its current Doco and whether it's already here", () => {
+describe("normalizeInstallations", () => {
+  it("reads the installations[] org-subscription shape", () => {
     expect(
-      buildRepoPickerChoices(
-        ["acme/store", "acme/site", "acme/api"],
-        { "acme/store": "this-doco", "acme/site": "other-doco" },
-        "this-doco",
-      ),
-    ).toEqual([
-      { repo: "acme/store", attachedTo: "this-doco", here: true },
-      { repo: "acme/site", attachedTo: "other-doco", here: false },
-      { repo: "acme/api", attachedTo: null, here: false },
+      normalizeInstallations({ installations: [{ installation_id: 5, account: "acme" }] }),
+    ).toEqual([{ installation_id: 5, account: "acme" }]);
+  });
+  it("drops invalid entries and junk", () => {
+    expect(normalizeInstallations(null)).toEqual([]);
+    expect(
+      normalizeInstallations({ installations: [{ account: "acme" }, { installation_id: 5 }] }),
+    ).toEqual([]);
+  });
+});
+
+describe("subscribeInstallation — one installation ↔ one Doco", () => {
+  it("detaches the installation from other Docos, then records it here (append, dedup by id)", async () => {
+    const order: string[] = [];
+    const detachElsewhere = vi.fn(async (id: number, keep: string) => {
+      order.push(`detach:${id}:${keep}`);
+    });
+    const list = vi.fn(
+      async () => [{ installation_id: 1, account: "old" }] as GitHubInstallationSub[],
+    );
+    const write = vi.fn(async (_id: string, subs: GitHubInstallationSub[]) => {
+      order.push(`write:${subs.map((s) => s.installation_id).join(",")}`);
+    });
+    const result = await subscribeInstallation(
+      "doco_target",
+      { installation_id: 5, account: "acme" },
+      { detachElsewhere, list, write },
+    );
+    expect(detachElsewhere).toHaveBeenCalledWith(5, "doco_target");
+    expect(order).toEqual(["detach:5:doco_target", "write:1,5"]);
+    expect(result).toEqual([
+      { installation_id: 1, account: "old" },
+      { installation_id: 5, account: "acme" },
     ]);
+  });
+
+  it("replaces a stale entry for the same installation (no duplicate)", async () => {
+    const list = vi.fn(
+      async () => [{ installation_id: 5, account: "old-name" }] as GitHubInstallationSub[],
+    );
+    const result = await subscribeInstallation(
+      "doco_1",
+      { installation_id: 5, account: "acme" },
+      { detachElsewhere: vi.fn(async () => {}), list, write: vi.fn(async () => {}) },
+    );
+    expect(result).toEqual([{ installation_id: 5, account: "acme" }]);
   });
 });
 
