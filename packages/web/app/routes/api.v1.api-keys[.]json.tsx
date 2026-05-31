@@ -1,12 +1,12 @@
-// /api/v1/api-keys.json — JSON API for personal access tokens.
+// /api/v1/api-keys.json — JSON API for access tokens.
 //
 // Companion to /api/v1/users/invite.json. That endpoint mints
 // human invites; this one mints long-lived Bearer tokens. Splitting
 // the two means API consumers don't have to encode "is this a human
 // or an agent?" in a single endpoint's shape.
 //
-// GET    — list active personal access tokens for the signed-in user.
-// POST   — mint a new personal access token. Body shape:
+// GET    — list active access tokens for the signed-in user.
+// POST   — mint a new access token. Body shape:
 //            { label: string, grants: [{ level, target_id, role }],
 //              non_rotating?: boolean }
 //          Set non_rotating for a cloud-environment token: the refresh

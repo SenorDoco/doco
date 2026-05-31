@@ -134,7 +134,7 @@ does not travel to a fresh cloud container. Pick by what the agent
 needs:
 
 1. **Cloud environment, write access (recommended for ephemeral
-   runtimes).** Mint a *non-rotating* personal access token: open
+   runtimes).** Mint a *non-rotating* access token: open
    \`/api-keys\`, scope it, tick "runs in a cloud environment", and set
    the revealed \`DOCO_REFRESH\` + \`DOCO_CLIENT_ID\` (and optionally
    \`DOCO_ACCESS\`) as environment variables on the runtime (Claude Code
