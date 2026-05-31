@@ -12,19 +12,11 @@
 //
 // Response: `{ ok, count, events: AuditEvent[] }` newest-first.
 
-import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
+import { AUDIT_OP_SET, type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { docoPath } from "~/lib/db.server";
 import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
-
-const VALID_OPS: ReadonlySet<string> = new Set([
-  "entity.create",
-  "entity.update",
-  "entity.delete",
-  "lifecycle.transition",
-  "edge.add",
-]);
 
 export async function loader({
   request,
@@ -58,11 +50,11 @@ export async function loader({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const invalid = parts.filter((p) => !VALID_OPS.has(p));
+    const invalid = parts.filter((p) => !AUDIT_OP_SET.has(p as AuditOp));
     if (invalid.length > 0) {
       return Response.json(
         {
-          error: `Invalid op value(s): ${invalid.join(", ")}. Allowed: ${[...VALID_OPS].join(", ")}.`,
+          error: `Invalid op value(s): ${invalid.join(", ")}. Allowed: ${[...AUDIT_OP_SET].join(", ")}.`,
         },
         { status: 400 },
       );
