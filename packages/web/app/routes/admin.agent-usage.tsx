@@ -291,7 +291,7 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
   // a low-volume admin page.
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader mode="host" />
+      <SiteHeader />
       <meta httpEquiv="refresh" content="30" />
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <div className="mb-4 flex items-center justify-between">

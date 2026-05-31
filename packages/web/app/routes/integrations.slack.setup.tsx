@@ -159,7 +159,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="space-y-6 py-8">
         <Breadcrumb
           items={[...hostBreadcrumb({ pageLabel: "Integrations" }), { label: "Slack setup" }]}

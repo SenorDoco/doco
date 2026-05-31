@@ -50,7 +50,7 @@ export default function OnboardingAgent({
   const { handle, ownerSlug, inviteUrl, me } = loaderData;
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Breadcrumb
           items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Bootstrap and collaborate" })}
@@ -75,8 +75,8 @@ export default function OnboardingAgent({
           <CardHeader>
             <CardTitle>Add an AI agent</CardTitle>
             <CardDescription>
-              Agents authenticate via OAuth or via a long-lived access token you mint for
-              them. Tokens are scoped per org / doco and revocable any time.
+              Agents authenticate via OAuth or via a long-lived access token you mint for them.
+              Tokens are scoped per org / doco and revocable any time.
             </CardDescription>
           </CardHeader>
           <CardContent>

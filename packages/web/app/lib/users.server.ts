@@ -57,7 +57,6 @@ export interface DocoSection {
 
 export interface UsersPageData {
   me: CurrentPrincipal;
-  host: string;
   orgSections: OrgSection[];
   docoSections: DocoSection[];
   invite: UserInviteData;
@@ -296,10 +295,9 @@ export async function renameAgentCollaborator(args: {
 
 export async function loadUsersPageData(request: Request): Promise<UsersPageData> {
   const me = await requireCurrentPrincipal(request);
-  const url = new URL(request.url);
   const { orgSections, docoSections } = await loadUserSections(me.id);
   const invite = buildUserInviteData({ request, orgSections, docoSections });
-  return { me, host: `${url.protocol}//${url.host}`, orgSections, docoSections, invite };
+  return { me, orgSections, docoSections, invite };
 }
 
 function buildUserInviteData({

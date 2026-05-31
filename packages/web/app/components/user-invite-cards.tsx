@@ -46,9 +46,6 @@ export function UserInviteCards({
   invite,
 }: {
   invite: UserInviteData;
-  // `host` is still accepted from callers but no longer used here — the
-  // agent OAuth prompt now lives entirely on the API Tokens page.
-  host?: string;
 }) {
   // Collaborators are people. Agents are not invited from here: they
   // authenticate through API tokens, so this card only mints person

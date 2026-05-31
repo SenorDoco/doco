@@ -258,7 +258,7 @@ export default function AuthorizePage() {
   const data = useLoaderData() as LoaderData;
   return (
     <div>
-      <SiteHeader mode="host" me={data.me} />
+      <SiteHeader me={data.me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Approve access" }]} />
         <Card>

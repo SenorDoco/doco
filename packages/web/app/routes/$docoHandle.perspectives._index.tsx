@@ -89,7 +89,7 @@ export default function PerspectivesPicker({
   const submitting = navigation.state === "submitting";
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <main className="mx-auto max-w-3xl px-6 py-6">
         <div className="mb-4 space-y-1">
           <Breadcrumb

@@ -301,7 +301,7 @@ export default function UsersPage({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <SiteHeader mode="host" me={loaderData.me} />
+      <SiteHeader me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
         <header>
@@ -310,7 +310,7 @@ export default function UsersPage({
 
         <Card>
           <CardContent className="pt-4">
-            <UserInviteCards invite={loaderData.invite} host={loaderData.host} />
+            <UserInviteCards invite={loaderData.invite} />
           </CardContent>
         </Card>
 

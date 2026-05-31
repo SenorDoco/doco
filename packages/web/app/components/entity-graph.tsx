@@ -28,19 +28,6 @@ import { lifecycleColor } from "~/lib/node-colors";
 import { useNewNodeIds } from "~/lib/use-new-node-ids";
 import "@xyflow/react/dist/style.css";
 
-/**
- * Administrative edge types that carry no reading value in the rendered
- * graph and clutter every neighborhood. Filtered out at render time
- * (decision_01KRRJTW39THBW0C943G0GTH0M). The underlying edges remain in
- * the index — this is a visualization-only filter.
- *
- * Note: `created_by` / `updated_by` used to be filtered here. They're now
- * skipped at index time (see SKIP_FIELDS in packages/index/src/edges.ts),
- * so the runtime filter is just for legacy edges still sitting in the DB
- * from before the change.
- */
-const ALWAYS_HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set(["created_by", "updated_by"]);
-
 export interface GraphNode {
   id: string;
   entity_type: string;
@@ -753,9 +740,6 @@ export function EntityGraph({
     });
     const ids = new Set(v.map((n) => n.id));
     const vl = links.filter((l) => {
-      // Drop administrative edges that clutter the render and carry no
-      // process / reasoning value (decision_01KRRJTW39THBW0C943G0GTH0M).
-      if (ALWAYS_HIDDEN_EDGE_TYPES.has(l.edge_type)) return false;
       const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
       const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
       return ids.has(src) && ids.has(tgt);

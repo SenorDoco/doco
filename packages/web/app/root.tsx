@@ -87,7 +87,7 @@ export default function App() {
   // so per-route <SiteHeader> calls (default shellOwner=false) render null.
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <SiteHeader mode="host" me={me} shellOwner />
+      <SiteHeader me={me} shellOwner />
       <div className="flex min-h-0 flex-1">
         <AgentSidebar me={me} />
         <main className="min-w-0 flex-1 overflow-y-auto">

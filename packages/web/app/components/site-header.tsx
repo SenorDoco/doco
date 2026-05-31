@@ -7,12 +7,6 @@ import { cn } from "~/lib/cn";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
 interface SiteHeaderProps {
-  /**
-   * Mode parameter — historically toggled host vs. single-doco shape (per ADR-093
-   * single-doco mode is removed). Kept on the props for caller-site compatibility;
-   * the only legal value today is "host". The branch fields a tighter type later.
-   */
-  mode: "host";
   /** Currently signed-in Principal. */
   me?: CurrentPrincipal | null;
   /** Root shell headers stay visible while route-level headers are suppressed. */

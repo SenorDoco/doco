@@ -120,7 +120,7 @@ export default function ApprovedPage() {
   )}); }, ${Math.round(REDIRECT_DELAY_SECONDS * 1000)});`;
   return (
     <div>
-      <SiteHeader mode="host" me={data.me} />
+      <SiteHeader me={data.me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>

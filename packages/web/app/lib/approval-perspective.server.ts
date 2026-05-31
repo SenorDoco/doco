@@ -102,13 +102,9 @@ export async function loadApprovalPerspectiveData(
                 COALESCE(
                   CASE WHEN left(pe.by_user, 13) = 'user_' THEN pe.by_user END,
                   CASE WHEN left(proposed_principal.created_by, 13) = 'user_' THEN proposed_principal.created_by END,
-                  CASE WHEN left(proposed_principal.data->>'owner_id', 13) = 'user_' THEN proposed_principal.data->>'owner_id' END,
-                  CASE WHEN left(proposed_principal.data->>'created_by', 13) = 'user_' THEN proposed_principal.data->>'created_by' END,
                   CASE WHEN left(n.created_by_user_id, 13) = 'user_' THEN n.created_by_user_id END,
                   CASE WHEN left(n.created_by, 13) = 'user_' THEN n.created_by END,
-                  CASE WHEN left(created_principal.created_by, 13) = 'user_' THEN created_principal.created_by END,
-                  CASE WHEN left(created_principal.data->>'owner_id', 13) = 'user_' THEN created_principal.data->>'owner_id' END,
-                  CASE WHEN left(created_principal.data->>'created_by', 13) = 'user_' THEN created_principal.data->>'created_by' END
+                  CASE WHEN left(created_principal.created_by, 13) = 'user_' THEN created_principal.created_by END
                 ) AS author_id
            FROM proposed_nodes n
            LEFT JOIN proposed_events pe

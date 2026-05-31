@@ -215,7 +215,7 @@ export default function OrgSearch({
   const { org, me, q, hits, warning } = loaderData;
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-5">
         <header className="space-y-1">
           <Breadcrumb

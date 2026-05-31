@@ -222,7 +222,7 @@ export default function DocoSettings({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Settings" })} />
         {actionData?.error ? (
