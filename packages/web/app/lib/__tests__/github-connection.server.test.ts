@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
-import { buildInstallUrl, normalizeConnections, parseRepoSlug } from "../github-connection.server";
+import {
+  buildInstallUrl,
+  importInstallationConnections,
+  normalizeConnections,
+  parseRepoSlug,
+} from "../github-connection.server";
 
 describe("parseRepoSlug", () => {
   it("splits owner/name", () => {
@@ -61,5 +66,24 @@ describe("buildInstallUrl", () => {
   it("returns null when the slug isn't configured", () => {
     process.env.DOCO_GITHUB_APP_SLUG = "";
     expect(buildInstallUrl("doco_1")).toBeNull();
+  });
+});
+
+describe("importInstallationConnections", () => {
+  it("mints a token, lists the installation's repos, and connects each", async () => {
+    const mintToken = vi.fn(async () => ({ token: "t", expires_at: "" }));
+    const listRepos = vi.fn(async () => ["acme/a", "acme/b"]);
+    const add = vi.fn(async () => []);
+    const { repos } = await importInstallationConnections(
+      { docoId: "doco_1", installationId: 42 },
+      { mintToken: mintToken as never, listRepos: listRepos as never, add: add as never },
+    );
+    expect(repos).toEqual(["acme/a", "acme/b"]);
+    expect(mintToken).toHaveBeenCalledWith(42);
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenCalledWith(
+      "doco_1",
+      expect.objectContaining({ repo: "acme/a", installation_id: 42 }),
+    );
   });
 });
