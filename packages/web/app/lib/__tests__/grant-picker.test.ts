@@ -210,3 +210,12 @@ describe("per-type access levels", () => {
     });
   });
 });
+
+describe("scopeShowsPerTypeControls", () => {
+  it("ONLY the types scope shows per-type controls", () => {
+    expect(scopeShowsPerTypeControls("types")).toBe(true);
+    expect(scopeShowsPerTypeControls("account")).toBe(false);
+    expect(scopeShowsPerTypeControls("org")).toBe(false);
+    expect(scopeShowsPerTypeControls("doco")).toBe(false);
+  });
+});

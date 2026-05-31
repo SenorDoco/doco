@@ -12,6 +12,7 @@ import {
   describeWriteScope,
   grantableRoles,
   inheritedTypeLevel,
+  scopeShowsPerTypeControls,
   setTypeLevel,
   targetsByOrg,
   typeDropdownValue,
@@ -105,7 +106,9 @@ export function GrantPicker({
         </div>
       </fieldset>
 
-      {/* Steps 2–3 — adapt to the chosen scope */}
+      {/* Steps 2–3 — adapt to the chosen scope. Only the "types" scope
+          shows per-type controls (scopeShowsPerTypeControls); account,
+          org, and doco are role-only. */}
       {scope === "account" ? (
         <AccountStep value={value} onChange={onChange} catalog={catalog} />
       ) : scope === "org" ? (
@@ -114,7 +117,7 @@ export function GrantPicker({
           catalog={catalog}
           value={value}
           onChange={onChange}
-          typesAllowed={false}
+          typesAllowed={scopeShowsPerTypeControls("org")}
         />
       ) : scope === "doco" ? (
         <TargetStep
@@ -122,7 +125,7 @@ export function GrantPicker({
           catalog={catalog}
           value={value}
           onChange={onChange}
-          typesAllowed={false}
+          typesAllowed={scopeShowsPerTypeControls("doco")}
         />
       ) : scope === "types" ? (
         <TargetStep
@@ -130,7 +133,7 @@ export function GrantPicker({
           catalog={catalog}
           value={value}
           onChange={onChange}
-          typesAllowed={true}
+          typesAllowed={scopeShowsPerTypeControls("types")}
         />
       ) : null}
     </div>
@@ -168,7 +171,7 @@ function AccountStep({
         maxRole={maxRole}
         role={current.role}
         writeTypes={current.writeTypes}
-        typesAllowed={true}
+        typesAllowed={scopeShowsPerTypeControls("account")}
         onChange={(role, writeTypes) =>
           onChange({ level: "account", targetId: "", role, writeTypes })
         }
