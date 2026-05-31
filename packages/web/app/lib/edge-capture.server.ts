@@ -15,9 +15,16 @@ import {
   withClient,
   withTransaction,
 } from "@doco/db";
-import { EDGE_ENDPOINT_TYPES, EDGE_TYPES, isEntityId, parseEntityId } from "@doco/shared";
+import {
+  EDGE_ENDPOINT_TYPES,
+  EDGE_TYPES,
+  NODE_TYPES,
+  isEntityId,
+  parseEntityId,
+} from "@doco/shared";
 
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
+const NODE_TYPE_SET: ReadonlySet<string> = new Set(NODE_TYPES);
 
 export interface CaptureEdgeInput {
   docoId: string;
@@ -61,6 +68,24 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
   if ("error" in from) return { error: `from_id ${from.error}.`, status: 400 };
   const to = await resolveEndpoint(input.docoId, input.toId);
   if ("error" in to) return { error: `to_id ${to.error}.`, status: 400 };
+
+  // Edges connect graph nodes only. Org/doco containment rides on the
+  // doco_id / org_id columns, never on a graph edge; a policy is governance
+  // config, not a node. The `edges.from_id` / `edges.to_id` → nodes(id) FKs
+  // (migration 070) enforce this in the DB — this check fails fast with a
+  // clear message instead of surfacing a raw FK violation.
+  if (!NODE_TYPE_SET.has(from.type)) {
+    return {
+      error: `from_id must be a node, not a ${from.type} (edges connect nodes only).`,
+      status: 400,
+    };
+  }
+  if (!NODE_TYPE_SET.has(to.type)) {
+    return {
+      error: `to_id must be a node, not a ${to.type} (edges connect nodes only).`,
+      status: 400,
+    };
+  }
 
   // Endpoint node-type enforcement: a `serves` edge must point at an Intent,
   // `reports_to` must run Principal→Principal, etc. Keeps the graph free of
