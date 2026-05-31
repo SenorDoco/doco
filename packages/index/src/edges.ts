@@ -195,4 +195,37 @@ export const FIELD_TO_EDGE_TYPE: Record<string, string> = {
   // policy predicates and the deployment-status rollup can target this
   // edge by name. Layer A of deriving deployment state from PR refs.
   implemented_by: "implemented_by",
+  // Log → Action template. The Log's `template_id` points at the Action it
+  // instantiates; the edge reads "log templated_by action".
+  template_id: "templated_by",
+  // Decision → Principal attribution. `decided_by` already defaults to its
+  // field name, but list it so the managed-edge set is explicit.
+  decided_by: "decided_by",
 };
+
+/**
+ * The five promoted relationship columns retired by the "edges as the authored
+ * source of truth" refactor (option (i)) each project exactly one edge type.
+ * The capture path authors these as first-class edges; Stage 2 drops the
+ * columns. Every other relationship `deriveEdges` emits stays a node field for
+ * now — those columns are not being dropped.
+ */
+export const MANAGED_RELATION_EDGE_TYPES = [
+  "has_parent", // intent.parent_intent_id → intent
+  "performed_by", // action/log.actor_id    → principal
+  "superseded_by", // decision.superseded_by → decision
+  "decided_by", // decision.decided_by      → principal
+  "templated_by", // log.template_id         → action
+] as const;
+
+const MANAGED_EDGE_TYPE_SET: ReadonlySet<string> = new Set(MANAGED_RELATION_EDGE_TYPES);
+
+/**
+ * The subset of `deriveEdges` output the capture path persists as first-class
+ * edges: exactly the edges projected by the five promoted columns Stage 2
+ * drops. Because the managed types are all node→node, a non-node ref like
+ * `idea.proposer_id` (→ user) is naturally excluded.
+ */
+export function managedEdges(entity: Entity): Edge[] {
+  return deriveEdges(entity).filter((e) => MANAGED_EDGE_TYPE_SET.has(e.edge_type));
+}
