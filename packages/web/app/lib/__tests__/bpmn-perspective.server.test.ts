@@ -12,12 +12,36 @@ interface QueryClientLike {
 
 function makeQueryClient(rows: Record<string, unknown[]>) {
   const captured: CapturedQuery[] = [];
+  // The managed relationship edges (performed_by / decided_by / …) are derived
+  // from the node fixtures' `data` fields: capture authors them as first-class
+  // edges and the bpmn loader reconstructs the lane fields from those edges,
+  // since they no longer live in stored `data` (option (i)).
+  const managedEdges = (rows.nodes ?? []).flatMap((n) => {
+    const node = n as { id: string; data?: Record<string, unknown> };
+    const d = node.data ?? {};
+    const out: { from_id: string; edge_type: string; to_id: string }[] = [];
+    const push = (edge_type: string, to: unknown) => {
+      if (typeof to === "string") out.push({ from_id: node.id, edge_type, to_id: to });
+    };
+    push("performed_by", d.actor_id);
+    push("decided_by", d.decided_by);
+    push("has_parent", d.parent_intent_id);
+    push("superseded_by", d.superseded_by);
+    push("templated_by", d.template_id);
+    return out;
+  });
   const client: QueryClientLike = {
     async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
       captured.push({ sql, params });
-      if (/FROM edges/i.test(sql)) return { rows: (rows.edges ?? []) as T[] };
+      if (/FROM edges/i.test(sql)) {
+        // The managed-edge lookup (lane reconstruction) vs. the PageRank/link
+        // query are both `FROM edges`; route by the managed query's predicate.
+        if (/edge_type = ANY/i.test(sql)) return { rows: managedEdges as T[] };
+        return { rows: (rows.edges ?? []) as T[] };
+      }
       if (/FROM users/i.test(sql)) return { rows: (rows.users ?? []) as T[] };
-      if (/FROM principals/i.test(sql)) return { rows: (rows.principals ?? []) as T[] };
+      // Principals are loaded via `FROM nodes WHERE node_type = 'principal'`.
+      if (/node_type = 'principal'/i.test(sql)) return { rows: (rows.principals ?? []) as T[] };
       return { rows: (rows.nodes ?? []) as T[] };
     },
   };
@@ -61,7 +85,7 @@ describe("loadBpmnGraph", () => {
 
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
 
-    const principalQuery = captured.find((q) => /FROM principals/i.test(q.sql));
+    const principalQuery = captured.find((q) => /node_type = 'principal'/i.test(q.sql));
     expect(principalQuery?.sql).toMatch(/COALESCE\(lifecycle, 'asserted'\) <> 'retired'/);
     expect(principalQuery?.sql).not.toMatch(/COALESCE\(lifecycle, 'asserted'\) = 'asserted'/);
 
