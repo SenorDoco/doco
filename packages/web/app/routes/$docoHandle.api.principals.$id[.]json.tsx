@@ -10,13 +10,13 @@ import {
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
-// Principals keep a small positive patch allowlist. The only identity
-// field locked in place is `name` — it's the lookup slug other nodes
-// and prose mention by hand, so changing it would silently break
-// callers. Everything else (body_md, reports_to, lifecycle) is
-// editable. The `summary` one-liner column was dropped by migration
-// 037 — body_md carries the entire narrative now.
-const PATCHABLE_KEYS = new Set(["body_md", "reports_to", "lifecycle"]);
+// Principals keep a small positive patch allowlist: name, body_md,
+// reports_to, lifecycle. `name` is editable — renames are recorded in
+// the audit log, and other nodes reference principals by id (not name),
+// so a rename never breaks edges; only hand-written prose mentions go
+// stale. The `summary` one-liner column was dropped by migration 037 —
+// body_md carries the entire narrative now.
+const PATCHABLE_KEYS = new Set(["name", "body_md", "reports_to", "lifecycle"]);
 
 // Mirror principalLine in /api/principals.json.tsx — wrap the name
 // in a markdown link to the principal's perspective view so the chat
@@ -33,6 +33,8 @@ function principalLine(
 }
 
 interface PrincipalPatch {
+  /** Display name. Trimmed before storage; must be non-empty. Not required to be unique. */
+  name?: string;
   body_md?: string;
   /** `null` clears the edge (Principal becomes top-of-chain). */
   reports_to?: string | null;
@@ -148,9 +150,7 @@ export async function action({
     return Response.json({ error: "Body must be a JSON object." }, { status: 400 });
   }
 
-  // Reject unknown keys up-front so typos don't silently no-op. `name`
-  // is intentionally absent from PATCHABLE_KEYS — it's the slug other
-  // nodes reference, so it stays immutable.
+  // Reject unknown keys up-front so typos don't silently no-op.
   const unknown = Object.keys(rawPatch).filter((k) => !PATCHABLE_KEYS.has(k));
   if (unknown.length > 0) {
     return Response.json(
@@ -173,6 +173,9 @@ export async function action({
       { error: 'lifecycle must be "retired" — the only lifecycle transition supported on PATCH.' },
       { status: 400 },
     );
+  }
+  if (patch.name !== undefined && (typeof patch.name !== "string" || patch.name.trim() === "")) {
+    return Response.json({ error: "name must be a non-empty string." }, { status: 400 });
   }
   if (patch.reports_to !== undefined && patch.reports_to !== null) {
     if (typeof patch.reports_to !== "string" || !patch.reports_to.startsWith("principal_")) {
@@ -200,7 +203,8 @@ export async function action({
   if (!existing || existing.doco_id !== meta.docoId) {
     return Response.json({ error: `principal not found: ${params.id}` }, { status: 404 });
   }
-  const name = String(existing.data?.name ?? existing.id);
+  const name =
+    patch.name !== undefined ? patch.name.trim() : String(existing.data?.name ?? existing.id);
 
   // Retirement path: lifecycle="retired" goes through the active-refs
   // guard. Field edits in the same patch are applied alongside the
@@ -252,6 +256,9 @@ export async function action({
   }
   const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "asserted";
   merged.lifecycle = nextLifecycle;
+  if (patch.name !== undefined) {
+    merged.name = patch.name.trim();
+  }
 
   const nextBodyMd =
     patch.body_md !== undefined ? (patch.body_md ?? "") : (existing.body_md ?? undefined);
@@ -311,6 +318,10 @@ export async function action({
   if (patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle) {
     before.lifecycle = existing.lifecycle ?? "asserted";
     after.lifecycle = nextLifecycle;
+  }
+  if (patch.name !== undefined) {
+    before.name = oldData.name ?? null;
+    after.name = merged.name;
   }
   appendAuditEvent({
     docoDir: docoPath(params.docoHandle),

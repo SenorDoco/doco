@@ -557,9 +557,9 @@ UPDATE AN EXISTING STATE
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)
 
 Principals are the role-personas a Doco references via Action.actor_id,
-Intent.actors[], Decision.decided_by, etc. A Principal's descriptive fields
-(body_md, reports_to, lifecycle) stay editable across its lifecycle. \`name\` is a display label; other
-nodes reference Principals by id.
+Intent.actors[], Decision.decided_by, etc. A Principal's fields — \`name\`,
+body_md, reports_to, lifecycle — all stay editable across its lifecycle.
+Other nodes reference Principals by id, so a rename never breaks edges.
 
 CREATE
   POST ${baseUrl}/${handle}/api/principals.json
@@ -616,11 +616,13 @@ EDIT
   PATCH ${baseUrl}/${handle}/api/principals/<id>.json
   Content-Type: application/json
 
-  Update descriptive fields and rewire reporting in place. \`name\` is
-  the only field that can't be patched. Pass \`reports_to: null\` to
+  Update fields and rewire reporting in place — including \`name\`
+  (renames are tracked in the audit log). Pass \`reports_to: null\` to
   clear the manager (make this Principal top-of-chain).
 
 BODY (JSON) — at least one field required
+  name                optional   new display name. Trimmed; must be
+                                  non-empty. Not required to be unique.
   body_md             optional   markdown body. Replaces \`summary\`
                                   (dropped by migration 037) — the only
                                   narrative field on a Principal.
@@ -638,9 +640,9 @@ SUCCESS RESPONSE — edit (HTTP 200, application/json)
   }
 
 ERROR RESPONSES
-  HTTP 400  empty body, unknown/immutable field (e.g. \`name\`),
-            invalid \`type\`, invalid \`reports_to\` shape, self-
-            reference, or missing manager Principal in this Doco
+  HTTP 400  empty body, unknown field, blank \`name\`, invalid
+            \`reports_to\` shape, self-reference, or missing manager
+            Principal in this Doco
   HTTP 401  authentication required
   HTTP 403  write access required
   HTTP 404  principal not found in this Doco
