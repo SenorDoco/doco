@@ -293,7 +293,8 @@ export interface MintApiKeyInput {
   me: CurrentPrincipal;
   label: string;
   grants: Array<{
-    level: "org" | "doco";
+    level: "account" | "org" | "doco";
+    /** Empty for account-level grants (the minter's account is the scope). */
     target_id: string;
     role: DocoRole;
     /** Per-type write set (decision_per_type_write_grants); "*" = all. */
@@ -312,7 +313,37 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
   if (input.grants.length === 0) {
     throw new Error("Pick at least one org or doco to scope this key to.");
   }
+
+  // An account-level grant on a token expands, AT MINT TIME, to a grant on
+  // every org the minter owns. Unlike the live user→user account grant, a
+  // token is a snapshot credential: orgs created later are NOT auto-added
+  // (mint a fresh token to widen). Non-owned orgs are skipped — you can
+  // only delegate from orgs you own.
+  const expandedGrants: typeof input.grants = [];
   for (const grant of input.grants) {
+    if (grant.level === "account") {
+      const orgs = await listOrganizationsForUser(input.me.id);
+      for (const org of orgs) {
+        const myRole = await getOrgRole(org.id, input.me.id);
+        if (myRole === "owner") {
+          expandedGrants.push({
+            level: "org",
+            target_id: org.id,
+            role: grant.role,
+            write_types: grant.write_types,
+          });
+        }
+      }
+    } else {
+      expandedGrants.push(grant);
+    }
+  }
+  if (expandedGrants.length === 0) {
+    throw new Error("You don't own any organization to scope an account token to.");
+  }
+  const grants = expandedGrants;
+
+  for (const grant of grants) {
     if (!ALL_ROLES.includes(grant.role)) {
       throw new Error(`Invalid role: ${grant.role}`);
     }
@@ -344,10 +375,10 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
   const scopeGrants: ApiKeyScopeGrant[] = [];
 
   const docoLabels = await loadDocoLabels(
-    input.grants.filter((g) => g.level === "doco").map((g) => g.target_id),
+    grants.filter((g) => g.level === "doco").map((g) => g.target_id),
   );
   const orgHandles = await loadOrgHandles(
-    input.grants.filter((g) => g.level === "org").map((g) => g.target_id),
+    grants.filter((g) => g.level === "org").map((g) => g.target_id),
   );
 
   // Effective write-type scope for a grant: owner writes everything
@@ -362,7 +393,7 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     return grant.role === "writer" ? ["*"] : null;
   };
 
-  for (const grant of input.grants) {
+  for (const grant of grants) {
     const wt = writeTypesFor(grant);
     if (grant.level === "org") {
       granted_org_ids.push(grant.target_id);

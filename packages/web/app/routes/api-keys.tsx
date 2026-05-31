@@ -75,7 +75,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     // write_types? } — write_types narrows write to specific node/
     // edge types (decision_per_type_write_grants).
     let grants: Array<{
-      level: "org" | "doco";
+      level: "account" | "org" | "doco";
       target_id: string;
       role: DocoRole;
       write_types?: string[];
@@ -85,10 +85,14 @@ export async function action({ request }: { request: Request }): Promise<ActionR
       if (!Array.isArray(parsed)) throw new Error("grants must be an array");
       grants = parsed.map(
         (g: { level?: unknown; target_id?: unknown; role?: unknown; write_types?: unknown }) => {
-          const level = g.level === "org" || g.level === "doco" ? g.level : null;
+          const level =
+            g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
           const target_id = typeof g.target_id === "string" ? g.target_id : "";
           const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
-          if (!level || !target_id) throw new Error("invalid grant entry");
+          // Account grants carry no target_id (the minter's account is the scope).
+          if (!level || (level !== "account" && !target_id)) {
+            throw new Error("invalid grant entry");
+          }
           const write_types = Array.isArray(g.write_types)
             ? g.write_types.filter((t): t is string => typeof t === "string")
             : undefined;
