@@ -283,8 +283,8 @@ UPDATE AN EXISTING ACTION
   logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
 
 Logs record concrete happenings: a deploy that ran, a commit that
-pushed, or an eval that verified. They are frozen from creation, so
-capture the exact event shape up front.
+pushed, or an eval that verified. Capture the exact event shape up front —
+a Log is the historical record of what happened.
 
 ENDPOINT
   POST ${baseUrl}/${handle}/api/logs.json
@@ -332,9 +332,12 @@ UPDATE AN EXISTING LOG
   PATCH ${baseUrl}/${handle}/api/logs/<id>.json
   Content-Type: application/json
 
-  Logs are frozen from creation. In practice, patch lifecycle metadata,
-  superseded_by, or additive intent_ids via intent_ids_add. For a
-  corrected event body, capture a superseding Log.
+  Body fields are all optional; only the keys you include change. Every
+  field except system identity/audit columns is patchable — log, verb,
+  happened_at, outputs, inputs, lifecycle, deprecated, outcome,
+  superseded_by, intent_ids/add/remove, decision_ids, preceded_by, and
+  template_id. To preserve a clean record of what was first observed, you
+  can instead capture a superseding Log and link it via superseded_by.
 `,
 
   rules: (baseUrl, handle) => `# Doco — Capture a Rule (single call)
@@ -492,9 +495,12 @@ UPDATE AN EXISTING REFERENCE
   PATCH ${baseUrl}/${handle}/api/references/<id>.json
   Content-Type: application/json
 
-  References are frozen from creation. In practice, patch lifecycle
-  metadata, superseded_by, or additive intent_ids via intent_ids_add.
-  For a corrected locator/body, capture a superseding Reference.
+  Body fields are all optional; only the keys you include change. Every
+  field except system identity/audit columns is patchable — reference,
+  ref_type, locator, content_hash, lifecycle, deprecated, outcome,
+  superseded_by, and intent_ids/add/remove. To preserve a record of what
+  was originally cited, you can instead capture a superseding Reference and
+  link it via superseded_by.
 `,
 
   states: (baseUrl, handle) => `# Doco — Capture a State (single call)
@@ -551,9 +557,8 @@ UPDATE AN EXISTING STATE
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)
 
 Principals are the role-personas a Doco references via Action.actor_id,
-Intent.actors[], Decision.decided_by, etc. Principals are *records*
-per the "frozen claims, mutable records" Decision — descriptive fields
-stay editable across the lifecycle. \`name\` is a display label; other
+Intent.actors[], Decision.decided_by, etc. A Principal's descriptive fields
+(body_md, reports_to, lifecycle) stay editable across its lifecycle. \`name\` is a display label; other
 nodes reference Principals by id.
 
 CREATE

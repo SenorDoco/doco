@@ -72,14 +72,13 @@ that accrue links over their life) runs against the Reference contract of
 
 > † **On "frozen":** Doco's *"frozen claims, mutable records"* model
 > (`decision_01KRKEPRAMM9QSSEJ2X5FHPESJ`) originally hard-froze a claim's body
-> once it reached `accepted`/`retired`, and the Reference/Log specs still read
-> "frozen from creation." That built-in freeze has since been **lifted** —
-> `mutability.server.ts`'s `validatePatch` now always allows, so any writer can
-> edit any node at any lifecycle; integrity comes from the append-only audit
-> log + immutable version snapshots, not from freezing the current row. A
-> Reference is therefore *editable in code today*. The case for a dedicated PR
+> once it reached `accepted`/`retired`. That built-in freeze was already
+> permissive in code (`validatePatch` always allowed), and this change removes
+> the vestigial machinery outright — every node and edge is editable at any
+> lifecycle; integrity comes from the append-only audit log + immutable version
+> snapshots, not from freezing the current row. So the case for a dedicated PR
 > type rests on its rich structured fields, idempotent upsert ergonomics, and
-> first-class searchability — not on the freeze being enforced.
+> first-class searchability — not on any freeze.
 
 ---
 

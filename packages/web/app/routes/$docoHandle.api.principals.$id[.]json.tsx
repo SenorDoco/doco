@@ -10,13 +10,12 @@ import {
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
-// Principal is a Record per the "frozen claims, mutable records"
-// Decision (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ). The only identity
-// field locked in place is `name` — it's the lookup slug other
-// nodes and prose mention by hand, so changing it would silently
-// break callers. Everything else on the Record (body_md, reports_to,
-// lifecycle) is editable. The `summary` one-liner column was dropped
-// by migration 037 — body_md carries the entire narrative now.
+// Principals keep a small positive patch allowlist. The only identity
+// field locked in place is `name` — it's the lookup slug other nodes
+// and prose mention by hand, so changing it would silently break
+// callers. Everything else (body_md, reports_to, lifecycle) is
+// editable. The `summary` one-liner column was dropped by migration
+// 037 — body_md carries the entire narrative now.
 const PATCHABLE_KEYS = new Set(["body_md", "reports_to", "lifecycle"]);
 
 // Mirror principalLine in /api/principals.json.tsx — wrap the name

@@ -205,7 +205,7 @@ describe("updateEntity", () => {
     );
   });
 
-  it("replaces a frozen Decision's implemented_by — set after capture, editable past freeze", async () => {
+  it("replaces a Decision's implemented_by after capture", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: DECISION_ID,
       entity_type: "decision",
@@ -344,7 +344,7 @@ describe("updateEntity", () => {
   it("links an accepted Action to code-artifact References via implemented_by — BPMN code↔step linkage", async () => {
     // The BPMN code↔step probe case: an Action whose ID is referenced
     // from code comments cannot be superseded without breaking those
-    // URLs. implemented_by must be fully patchable on a frozen Action.
+    // URLs. implemented_by must be fully patchable on an Action.
     const ACTION_ID = "action_01TEST00000000000000000001";
     vi.mocked(getEntity).mockResolvedValue({
       id: ACTION_ID,
