@@ -189,26 +189,26 @@ export function availableScopes(catalog: GrantCatalog): ScopeChoice[] {
     out.push({
       scope: "account",
       title: "My entire account",
-      blurb: "Every organization you own, and every Doco under them — now and in the future.",
+      blurb: "Every organization you own, and every doco under them — now and in the future.",
     });
   }
   if (hasOrg) {
     out.push({
       scope: "org",
       title: "A specific organization",
-      blurb: "One organization and all of its Docos.",
+      blurb: "One organization and all of its docos.",
     });
   }
   if (hasDoco) {
     out.push({
       scope: "doco",
-      title: "A specific Doco",
-      blurb: "Read, write, or own a single Doco.",
+      title: "A specific doco",
+      blurb: "Read, write, or own a single doco.",
     });
     out.push({
       scope: "types",
       title: "Specific node or edge types",
-      blurb: "Write access to only certain node and edge types within one Doco.",
+      blurb: "Write access to only certain node and edge types within one doco.",
     });
   }
   return out;
