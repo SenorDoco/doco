@@ -140,3 +140,29 @@ export async function listRepoPullRequests(
   }
   return out;
 }
+
+/**
+ * List the repos an installation can access (as "owner/name" full names),
+ * following pagination. The setup callback uses this to auto-capture which
+ * repos a fresh install covers.
+ */
+export async function listInstallationRepos(
+  token: string,
+  opts?: { fetchImpl?: typeof fetch; maxPages?: number },
+): Promise<string[]> {
+  const maxPages = opts?.maxPages ?? 20;
+  const out: string[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const { data, linkHeader } = await githubGet<{ repositories?: { full_name?: string }[] }>(
+      token,
+      `/installation/repositories?per_page=100&page=${page}`,
+      opts?.fetchImpl,
+    );
+    const repos = data.repositories ?? [];
+    for (const r of repos) {
+      if (typeof r.full_name === "string") out.push(r.full_name);
+    }
+    if (repos.length === 0 || !linkHeader || !linkHeader.includes('rel="next"')) break;
+  }
+  return out;
+}
