@@ -401,6 +401,13 @@ const STRUCK_LIFECYCLES = new Set(["retired"]);
 const VALID_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
 const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
 
+/**
+ * Sentinel error returned by updateEntity when a PATCH would change nothing.
+ * Callers that re-apply idempotent updates (e.g. the GitHub PR sync) treat this
+ * as "already current", not a failure — so it's exported rather than inlined.
+ */
+export const NO_FIELDS_CHANGED = "No fields changed.";
+
 interface LifecycleAttrs {
   lifecycle?: string;
   deprecated?: boolean;
@@ -1233,7 +1240,7 @@ export async function updateDecision(
   }
 
   if (changed.length === 0) {
-    return { error: "No fields changed." };
+    return { error: NO_FIELDS_CHANGED };
   }
 
   const pred = await enforceAndPersist({ docoId, fm, entityType: "decision", id: decisionId });
@@ -1542,7 +1549,7 @@ export async function updateEntity(opts: {
   }
 
   if (changed.length === 0) {
-    return { error: "No fields changed." };
+    return { error: NO_FIELDS_CHANGED };
   }
 
   // Compute the new body for Postgres storage. Only policies/principal

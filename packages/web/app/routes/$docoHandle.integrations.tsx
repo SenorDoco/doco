@@ -20,7 +20,7 @@ import { AvailableIntegrations, ScopeNavLinks } from "~/components/integrations-
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { backfillRepoPullRequests } from "~/lib/github-backfill.server";
+import { type BackfillResult, backfillRepoPullRequests } from "~/lib/github-backfill.server";
 import {
   addConnection,
   buildInstallUrl,
@@ -28,6 +28,7 @@ import {
   parseRepoSlug,
   removeConnection,
 } from "~/lib/github-connection.server";
+import { lifecycleColor } from "~/lib/node-colors";
 
 export async function loader({
   request,
@@ -48,7 +49,11 @@ export async function loader({
   };
 }
 
-type ActionResult = { error: string } | { ok: true; message: string };
+type SyncSummary = { repo: string } & BackfillResult;
+type ActionResult =
+  | { error: string }
+  | { ok: true; message: string }
+  | { ok: true; sync: SyncSummary };
 
 export async function action({
   request,
@@ -102,15 +107,49 @@ export async function action({
       installationId: conn.installation_id,
       createdByUserId: me.id,
     });
-    return {
-      ok: true,
-      message: `Imported ${result.imported} of ${result.total} PRs from ${repo}${
-        result.failed ? ` (${result.failed} failed)` : ""
-      }.`,
-    };
+    return { ok: true, sync: { repo, ...result } };
   }
 
   return { error: `Unknown action: ${intent}` };
+}
+
+/**
+ * Import outcome as a styled numeric summary — the same `tabular-nums`
+ * treatment the overview cards use, with the failure count tinted by the
+ * retired lifecycle color. An idempotent re-sync reads "already current",
+ * never "failed".
+ */
+function SyncSummaryLine({ s }: { s: SyncSummary }) {
+  const parts: Array<{ n: number; label: string; color?: string }> = [
+    { n: s.created, label: "new" },
+    { n: s.updated, label: "updated" },
+    { n: s.unchanged, label: "already current" },
+    { n: s.failed, label: "failed", color: lifecycleColor("retired") },
+  ].filter((p) => p.n > 0);
+  return (
+    <span className="text-foreground">
+      Synced <span className="font-mono font-semibold tabular-nums">{s.total}</span>{" "}
+      {s.total === 1 ? "PR" : "PRs"} from <span className="font-mono">{s.repo}</span>
+      {parts.length > 0 ? (
+        <>
+          {" — "}
+          {parts.map((p, i) => (
+            <span key={p.label}>
+              {i > 0 ? <span className="text-muted-foreground">, </span> : null}
+              <span
+                className="font-mono font-semibold tabular-nums"
+                style={p.color ? { color: p.color } : undefined}
+              >
+                {p.n}
+              </span>{" "}
+              <span className="text-muted-foreground">{p.label}</span>
+            </span>
+          ))}
+        </>
+      ) : null}
+      .
+    </span>
+  );
 }
 
 export function meta({ params }: { params: { docoHandle: string } }) {
@@ -137,8 +176,15 @@ export default function DocoIntegrations() {
         </header>
 
         {flash === "connected" ? (
-          <p className="rounded-md border border-border bg-background p-3 text-sm text-green-600">
-            Connected — {searchParams.get("count") ?? 0} repo(s) imported.
+          <p className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
+            Connected —{" "}
+            <span
+              className="font-mono font-semibold tabular-nums"
+              style={{ color: lifecycleColor("asserted") }}
+            >
+              {searchParams.get("count") ?? 0}
+            </span>{" "}
+            repo(s) imported.
           </p>
         ) : null}
         {flash === "forbidden" ? (
@@ -162,9 +208,14 @@ export default function DocoIntegrations() {
             {actionData.error}
           </p>
         ) : null}
-        {actionData && "ok" in actionData ? (
+        {actionData && "ok" in actionData && "message" in actionData ? (
           <p className="rounded-md border border-border bg-background p-3 text-sm text-green-600">
             {actionData.message}
+          </p>
+        ) : null}
+        {actionData && "ok" in actionData && "sync" in actionData ? (
+          <p className="rounded-md border border-border bg-background p-3 text-sm">
+            <SyncSummaryLine s={actionData.sync} />
           </p>
         ) : null}
 

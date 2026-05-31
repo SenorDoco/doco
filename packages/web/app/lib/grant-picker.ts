@@ -289,6 +289,15 @@ export function availableScopes(catalog: GrantCatalog): ScopeChoice[] {
   return out;
 }
 
+/**
+ * Whether a scope choice surfaces the per-node/edge-type write grid. Only the
+ * dedicated "types" scope does; account / org / doco are role-only (read /
+ * write / own), with the per-type grid reachable solely through "types".
+ */
+export function scopeShowsPerTypeControls(scope: GrantScope): boolean {
+  return scope === "types";
+}
+
 /** A grant the grantee/token already holds, for the "current access" panel. */
 export interface ExistingGrant {
   level: "account" | "org" | "doco";
