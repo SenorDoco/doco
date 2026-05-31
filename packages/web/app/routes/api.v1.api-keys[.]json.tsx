@@ -78,7 +78,7 @@ export async function action({ request }: { request: Request }) {
     }
 
     const grants: Array<{
-      level: "org" | "doco";
+      level: "account" | "org" | "doco";
       target_id: string;
       role: DocoRole;
       write_types?: string[];
@@ -93,14 +93,16 @@ export async function action({ request }: { request: Request }) {
         role?: unknown;
         write_types?: unknown;
       };
-      const level = r.level === "org" || r.level === "doco" ? r.level : null;
+      const level =
+        r.level === "account" || r.level === "org" || r.level === "doco" ? r.level : null;
       const target_id = typeof r.target_id === "string" ? r.target_id : null;
       const role = typeof r.role === "string" ? (r.role as DocoRole) : null;
-      if (!level || !target_id || !role) {
+      // Account grants carry no target_id (the minter's whole account).
+      if (!level || !role || (level !== "account" && !target_id)) {
         return Response.json(
           {
             error: "invalid_grant_entry",
-            hint: "Each grant needs level, target_id, role.",
+            hint: "Each grant needs level + role; org/doco grants also need target_id.",
           },
           { status: 400 },
         );
@@ -110,7 +112,7 @@ export async function action({ request }: { request: Request }) {
       const write_types = Array.isArray(r.write_types)
         ? r.write_types.filter((t): t is string => typeof t === "string")
         : undefined;
-      grants.push({ level, target_id, role, write_types });
+      grants.push({ level, target_id: target_id ?? "", role, write_types });
     }
 
     const nonRotating = body.non_rotating === true;
