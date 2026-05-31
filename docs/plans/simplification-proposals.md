@@ -135,115 +135,168 @@ but the work is "build the aggregate queries + re-point the feeds," not
 
 ---
 
-## Proposal B (north-star) — Collapse the per-type node tables into one `nodes` table
+## Proposal B — Collapse the per-type node tables into one `nodes` table
+
+**Status: SCHEDULED / in implementation.** This section is the migration
+spec. Decisions locked with the project owner (this thread):
+
+- **Do it.** The per-type sharding is a false split; `edges` already proves
+  the single-table-with-discriminator pattern works in this codebase.
+- **Policies are NOT nodes.** `guidance_policies` / `node_authoring_policies`
+  stay their own tables. They share the `node_versions` spine (so the rebuild
+  must filter `entity_type`), but they are governance config, not graph
+  knowledge, and the index layer already partitions them
+  (`entity_fts_nodes` vs `entity_fts_policies`).
+- **No renaming.** Vocabulary stays `node` / `edge`.
 
 ### The problem
 
 The schema has **10 node tables** (`intents`, `decisions`, `rules`,
 `actions`, `logs`, `evals`, `reference_entities`, `states`, `ideas`,
-`principals`) + **2 policy tables**, all near-identical:
-`id, doco_id, lifecycle, <type-named prose column>, <promoted scalars>,
-data jsonb, created_at/by, updated_at/by`. Post-vnext these tables are
-**explicitly a rebuildable projection** of `node_versions` (see
-`schema.sql`: "the per-type node tables and `edges` are a rebuildable
-projection") — i.e. they are a cache, and the cache is sharded by type for
-no load-bearing reason.
+`principals`), all near-identical:
+`id, doco_id, lifecycle, <type-named prose column>, <promoted scalars/FKs>,
+data jsonb, created_at/by, updated_at/by`. The sharding cost is spread across
+the codebase (inventory taken this thread):
 
-The cost of that sharding is spread across the codebase:
-
-- **`packages/db/src/repo.ts`** — `upsertEntity()` is already table-driven
-  via `ALL_ENTITY_TABLES[type].table`, but bridges "one jsonb bag" ↔ "per-type
+- **`packages/db/src/repo.ts`** — `upsertEntity()` routes via
+  `ALL_ENTITY_TABLES[type].table` and bridges "one jsonb bag" ↔ "per-type
   physical columns" with three per-type machines: `fkColumnSources()` (a
-  `switch` over 8 types), `PROMOTED_DATA_KEYS_BY_TYPE`, and
-  `PROMOTED_COLUMNS_BY_TYPE`.
+  `switch`), `PROMOTED_DATA_KEYS_BY_TYPE`, and `stripPromotedKeys`. Principals
+  take a *separate* writer (`upsertIdentity`).
 - **`packages/db/src/types.ts`** — `NODE_TABLES`, `DOCO_NODE_TABLE_SPECS`,
-  `ALL_ENTITY_TABLES`: parallel registries that exist *only* to map type →
-  table.
-- **Read paths** — `full-graph.server.ts`, `approval-perspective.server.ts`,
-  `search.server.ts`, etc. build `UNION ALL` over the per-type tables
-  (`approvalRowsSql()` is a 9-leg UNION).
-- **`schema.sql`** — ~10 near-identical `CREATE TABLE` + index blocks, plus
-  the matching FTS plumbing.
+  `DOCO_NODE_TABLE_BY_TYPE`, `ALL_ENTITY_TABLES`: parallel registries whose
+  node entries exist *only* to map type → table.
+- **Read paths — 23 files.** The big ones build `UNION ALL` over the per-type
+  tables, mostly driven by the registries: `full-graph.server.ts`
+  (`overviewRowsSql`, `overviewRowsSqlMulti`), `approval-perspective.server.ts`
+  (`approvalRowsSql`, 10-leg), `node-detail.server.ts` (`relatedDetailsSql`),
+  `bpmn-perspective.server.ts`, `doco-stats.server.ts`, `slack.server.ts`,
+  plus hard-coded UNIONs in `routes/$docoHandle._index.tsx`, `orgs*.tsx`,
+  `dashboard.tsx`, the `edges` routes, and single-table reads in
+  `glossary-perspective`, `sla-perspective`, `repo.ts` (`getPrincipalById`,
+  `listPrincipals`), `search.server.ts`.
+- **`schema.sql`** — 10 near-identical `CREATE TABLE` + index blocks.
 
-`EntityRecord` (in `types.ts`) is **already** the single-table shape:
-`{ id, doco_id, entity_type, data, body_md?, lifecycle?, … }`. The storage
-layer round-trips everything through it. The per-type tables are an
-implementation detail underneath an abstraction that is already uniform.
+`EntityRecord` (in `types.ts`) is **already** the single-table shape. The
+per-type tables are an implementation detail under an abstraction that is
+already uniform.
 
-### Target design
+### Target schema (the "wide nodes" design)
 
-One table:
+The table keeps **every promoted column as a real column** — *preserving
+column names* — so the ~23 read sites change only their `FROM` clause
+(`FROM <type> t` → `FROM nodes t WHERE node_type = '<type>'`), not their
+SELECT lists. Intra-node FKs are **dropped** (app-enforced, exactly like
+`edges`); this is safe because **every inbound FK to a node table comes from
+another node table** — verified, zero external references — so dropping the
+per-type tables breaks no outside constraint. Narrowing the wide table
+(scalars → jsonb + expression indexes) is a *later, optional* pass; the merge
+itself stays a pure structural move.
 
 ```sql
-CREATE TABLE nodes (
-  id           text PRIMARY KEY,            -- <type>_<ulid> (prefix = type)
-  doco_id      text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  node_type    text NOT NULL,              -- decision | intent | …
-  lifecycle    text,
-  prose        text NOT NULL DEFAULT '',   -- the type-named column, unified
+CREATE TABLE IF NOT EXISTS nodes (
+  id             text PRIMARY KEY,            -- <type>_<ulid>
+  doco_id        text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
+  node_type      text NOT NULL,              -- intent|idea|rule|decision|action|log|eval|reference|state|principal
+  lifecycle      text,
+  prose          text NOT NULL DEFAULT '',   -- unified type-named column (the 9); '' for principals
+  name           text,                       -- principal label (NULL otherwise)
+  body_md        text,                       -- principal description (NULL otherwise)
+  role_principal boolean NOT NULL DEFAULT false,
+  -- promoted relationship columns (no FK; existence app-enforced, like edges)
+  parent_intent_id          text,            -- intent
+  proposer_id               text,            -- idea
+  decided_by                text,            -- decision
+  superseded_by_decision_id text,            -- decision
+  actor_id                  text,            -- action, log
+  template_id               text,            -- log
+  -- promoted scalar columns
+  verb         text,                          -- action, log
+  performed_at text,                          -- action
+  happened_at  text,                          -- log
+  kind         text,                          -- eval, rule, state
+  modality     text, severity text, phase text, on_violation text,  -- rule
+  ref_type     text, locator text, citation text, title text,        -- reference
   data         jsonb NOT NULL,
   created_at   timestamptz NOT NULL DEFAULT now(),
   created_by   text,
   updated_at   timestamptz NOT NULL DEFAULT now(),
   updated_by   text
 );
-CREATE INDEX nodes_doco_type    ON nodes (doco_id, node_type, created_at DESC);
-CREATE INDEX nodes_doco_life     ON nodes (doco_id, lifecycle);
+CREATE INDEX IF NOT EXISTS nodes_doco_type_idx ON nodes (doco_id, node_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS nodes_doco_life_idx ON nodes (doco_id, lifecycle);
+CREATE INDEX IF NOT EXISTS nodes_superseded_idx ON nodes (superseded_by_decision_id) WHERE superseded_by_decision_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS nodes_actor_idx ON nodes (actor_id) WHERE actor_id IS NOT NULL;
 ```
 
-This erases: the 10 `CREATE TABLE`s, the type→table registries, the per-type
-`UNION ALL` reads (now `WHERE node_type = ANY(...)`), and most of
-`upsertEntity`'s dispatch. `node_versions` already carries `entity_type`, so
-the projection rebuild is `INSERT INTO nodes SELECT … FROM (latest snapshot
-per entity)`.
+Per-type column map (source table column → `nodes` column), used by both the
+data-copy migration and the data-driven writer:
 
-### The real trade-off (why it is a north-star, not a now)
+| node_type | prose source | promoted columns (col ← data field) |
+|---|---|---|
+| intent | `intents.intent` | `parent_intent_id` |
+| idea | `ideas.idea` | `proposer_id` |
+| rule | `rules.rule` | `kind, modality, severity, phase, on_violation` |
+| decision | `decisions.decision` | `decided_by`, `superseded_by_decision_id` ← `superseded_by` (only when `decision_`-prefixed) |
+| action | `actions.action` | `actor_id, verb, performed_at` |
+| log | `logs.log` | `actor_id, template_id, verb, happened_at` |
+| eval | `evals.eval` | `kind` |
+| state | `states.state` | `kind` |
+| reference | `reference_entities.reference` | `ref_type, locator, citation, title` |
+| principal | — (`prose=''`) | `name, body_md, role_principal` |
 
-The per-type **promoted columns** are not pure duplication — they buy two
-things a single jsonb table loses:
+### Migration mechanics
 
-1. **Typed foreign keys.** `actions.actor_id → principals(id)`,
-   `decisions.superseded_by_decision_id → decisions(id)`,
-   `intents.parent_intent_id → intents(id)`, `logs.template_id → actions(id)`,
-   `ideas.proposer_id → users(id)`. A single table can't FK a column to ten
-   different target tables. Options: drop the FKs (rely on app-level
-   validation, exactly as `edges` already does for its endpoints — see
-   schema.sql "no FK; existence enforced in app code"), or keep a thin
-   side-table of typed references. The `edges`-style precedent argues this is
-   acceptable.
-2. **Filter/sort indexes on promoted scalars** — `rules.severity`,
-   `actions.performed_at`, `logs.happened_at`, `reference_entities.ref_type`.
-   In one table these become either expression indexes on `data->>'…'` or a
-   handful of generated columns. Postgres supports both; needs measurement.
+`ensureSchema()` runs `schema.sql` → numbered migrations → `schema.sql` again
+(idempotent bookend) on first DB access per container; each migration is
+transactional and recorded in `applied_migrations`. Production has live
+post-genesis-reset data, so the migration **copies real rows** (a direct
+`UNION ALL` from the 10 tables — *not* a `node_versions` rebuild, since the
+per-type tables are the live store written directly by `upsertEntity`).
 
-Other considerations: the FTS tables (`entity_fts_nodes` already unifies the
-node category — good), `principals` carries `name` + `body_md` + the
-`role_principal` promoted boolean (slightly different shape — fold its prose
-into `prose`, keep `role_principal` in `data` or as a generated column), and
-this is a **schema migration with a projection rebuild** — low data-loss risk
-because the source of truth is `node_versions`, but it touches every read
-path, so it wants its own milestone.
+### Staging — each stage its own tested PR, landed on `main`
 
-### Suggested staging (each independently shippable)
+**Stage 0 — data-driven node-column spec (no schema change).** Replace the
+`fkColumnSources` switch + `PROMOTED_DATA_KEYS_BY_TYPE` + the
+`NODE_TABLES`/`DOCO_NODE_TABLE_SPECS` node entries with one
+`NODE_COLUMN_SPECS` table (the map above). `upsertEntity` and the registries
+derive from it. Pure refactor; behavior-identical; shrinks `repo.ts`. Tested
+by `schema-consistency.test.ts` + db smoke. *De-risks Stage 1 and is the
+foundation for the writer.*
 
-1. **Collapse the registries first** (no schema change): make
-   `fkColumnSources` / `PROMOTED_*` data-driven from one per-type spec
-   instead of `switch`/hand-maintained sets. Pure refactor; shrinks repo.ts.
-2. **Introduce `nodes`** alongside the per-type tables; have the projection
-   write both; move reads over table-by-table behind the existing
-   `EntityRecord` API.
-3. **Drop the per-type tables** once all reads are off them; rebuild the
-   `nodes` projection from `node_versions` to prove the projection is
-   authoritative.
+**Stage 1 — introduce `nodes`, cut over writes + reads, copy data, keep the
+old tables.** Add `nodes` to `schema.sql`; add migration
+`064_collapse_node_tables.sql` that `INSERT … SELECT`s the 10 tables into
+`nodes` (`ON CONFLICT (id) DO NOTHING` for idempotency) but **does not drop**
+them. Route `upsertEntity` (incl. principals — fold `upsertIdentity`'s
+principal branch in) and all node reads at `nodes`. The old per-type tables
+remain as a stale rollback safety net (deeper net: `node_versions`). Verify
+exhaustively on local Postgres **and** production before Stage 2.
+
+**Stage 2 — drop the per-type tables.** Once Stage 1 is production-verified:
+remove the 10 `CREATE TABLE`s from `schema.sql` and add migration
+`065_drop_legacy_node_tables.sql` (`DROP TABLE … CASCADE`). Removing them from
+`schema.sql` is required so the bookend's second pass doesn't recreate them.
+
+### Risk & verification
+
+- **Blast radius** is the ~23 read files + the write path; the wide design
+  keeps each read edit mechanical (FROM-clause only).
+- **Data safety:** Stage 1 copies (doesn't move) and retains the originals;
+  `node_versions` is an independent backup.
+- **Verify:** `pnpm -r typecheck/test`, `biome`, real `@doco/web` build; db
+  integration against local Postgres (`vnext-smoke`, `vnext-verify-test`, plus
+  a new `nodes`-collapse test asserting row-count + field parity per type
+  before/after the copy); then production smoke via the dev-signin recipe
+  (create a Doco, capture one of each node type, read it back through every
+  migrated perspective).
 
 ### Payoff
 
-Removes ~10 table definitions, three per-type machines in `repo.ts`, the
-type→table registries, and every `UNION ALL`-over-node-tables read — while
-making "add a node type" a data change (one spec entry) rather than a schema
-+ registry + SQL change. The append-only spine already guarantees the
-per-type tables are reconstructable, so the safety argument is unusually
-strong for a change this size.
+Removes 10 table definitions, the three per-type write machines in `repo.ts`,
+the type→table registries, and every `UNION ALL`-over-node-tables read —
+making "add a node type" a data change (one `NODE_COLUMN_SPECS` row) rather
+than a schema + registry + SQL change.
 
 ---
 
