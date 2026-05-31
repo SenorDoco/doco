@@ -36,4 +36,5 @@ export const NODE_TYPE_META: Record<string, NodeTypeMeta> = {
   reference: { segment: "references", proseField: "reference" },
   state: { segment: "states", proseField: "state" },
   idea: { segment: "ideas", proseField: "idea" },
+  pull_request: { segment: "pull_requests", proseField: "pull_request" },
 };

@@ -554,6 +554,77 @@ UPDATE AN EXISTING STATE
   kind, invariants, preceded_by, and sequence_to.
 `,
 
+  pull_requests: (baseUrl, handle) => `# Doco — Capture a Pull Request (single call)
+
+A Pull Request links shipped code back to the intents, decisions, BPM events,
+and bugs it touches. PRs are mutable: capture on open (drafting) and PATCH (or
+re-import) as they progress. Idempotent on \`locator\` — re-capturing the same
+PR URL should upsert, not duplicate.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/pull_requests.json
+  Content-Type: application/json
+
+BODY (JSON)
+  pull_request    required   full prose: summary + the WHY the diff can't show
+  title           required   PR title (promoted to its own column)
+  locator         required   canonical PR URL — the idempotency key
+  state           optional   "open" | "merged" | "closed"; default "open".
+                             Derives lifecycle: open→drafting, merged→asserted
+                             (outcome succeeded), closed→retired.
+  draft           optional   boolean (GitHub draft flag)
+  repo            optional   "org/repo"
+  number          optional   PR number within the repo
+  change_type     optional   "feat"|"fix"|"refactor"|"docs"|"chore"|"perf"|...
+  breaking        optional   boolean
+  risk            optional   "low" | "medium" | "high"
+  base_ref        optional   target branch (e.g. "main")
+  head_ref        optional   source branch
+  merge_commit_sha optional  sha of the merge commit (when merged)
+  stats           optional   { additions, deletions, changed_files, commits }
+  labels          optional   ["area:auth", "needs-review", ...]
+  ci_status       optional   "passing" | "failing" | "pending"
+  opened_at       optional   ISO 8601
+  merged_at       optional   ISO 8601
+  closed_at       optional   ISO 8601
+  author_github_login optional  PR author's GitHub login
+  intent_ids      optional   ["intent_01...", ...]   (projects the serves edge)
+  decision_ids    optional   ["decision_01...", ...] (projects the enacts edge)
+  implements      optional   node ids this PR implements — recorded on the node
+                             (formal implemented_by edge lands in a follow-up)
+  fixes           optional   bug/incident node ids this PR fixes — recorded
+  lifecycle       optional   "drafting" | "asserted" | "retired"; usually derived from state
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "pull_request_<ULID>",
+    "path": "docos/<doco-handle>/pull_requests/pull_request_<ULID>.md",
+    "footer_lines": ["[🔮 Doco] ✍️ Pull Request added: [<title>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
+  }
+
+EXAMPLE
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/pull_requests.json \\
+    -d '{
+      "title": "fix(checkout): retry idempotency key on 409",
+      "pull_request": "The checkout event double-charged on retry. Makes the key idempotent.",
+      "locator": "https://github.com/acme/store/pull/482",
+      "repo": "acme/store", "number": 482, "state": "merged", "change_type": "fix",
+      "decision_ids": ["decision_01..."]
+    }'
+
+UPDATE AN EXISTING PULL REQUEST
+  PATCH ${baseUrl}/${handle}/api/pull_requests/<id>.json
+  Content-Type: application/json
+
+  Body fields are all optional; only the keys you include change. Typical
+  re-sync: state, merge_commit_sha, merged_at/closed_at, ci_status, stats,
+  labels, and additive intent_ids/add/remove.
+`,
+
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)
 
 Principals are the role-personas a Doco references via Action.actor_id,

@@ -6,6 +6,7 @@ import {
   type IdeaDraft,
   type IntentDraft,
   type LogDraft,
+  type PullRequestDraft,
   type ReferenceDraft,
   type RuleDraft,
   type StateDraft,
@@ -15,6 +16,7 @@ import {
   captureIdea,
   captureIntent,
   captureLog,
+  capturePullRequest,
   captureReference,
   captureRule,
   captureState,
@@ -152,6 +154,7 @@ export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   ),
   evals: entry<EvalDraft>("evals", "eval", captureEval, fillEvalAuthorFromAuth),
   states: entry<StateDraft>("states", "state", captureState),
+  pull_requests: entry<PullRequestDraft>("pull_requests", "pull_request", capturePullRequest),
 };
 
 export const CAPTURE_REGISTRY_BY_ENTITY_TYPE: Record<string, RegistryEntry> = Object.fromEntries(

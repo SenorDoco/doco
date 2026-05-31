@@ -33,6 +33,7 @@ export const NODE_TABLES: Record<
   eval: { table: "nodes", body: true, typeNamedColumn: "prose" },
   reference: { table: "nodes", body: true, typeNamedColumn: "prose" },
   state: { table: "nodes", body: true, typeNamedColumn: "prose" },
+  pull_request: { table: "nodes", body: true, typeNamedColumn: "prose" },
   // Principal = role/persona (referenced by actor_id/actors[]), NOT the OAuth
   // user layer (that lives in `users`).
   principal: { table: "nodes", body: true, typeNamedColumn: "prose" },
@@ -59,6 +60,7 @@ export const DOCO_NODE_TABLE_SPECS: readonly EntityTableSpec[] = [
   { table: "nodes", entityType: "reference", body: true },
   { table: "nodes", entityType: "idea", body: true },
   { table: "nodes", entityType: "state", body: true },
+  { table: "nodes", entityType: "pull_request", body: true },
 ] as const;
 
 export const DOCO_NODE_TABLE_BY_TYPE: Readonly<Record<string, EntityTableSpec>> =
@@ -122,6 +124,10 @@ export const NODE_PROMOTED_COLUMNS: Readonly<Record<string, readonly PromotedCol
     { column: "ref_type", field: "ref_type", stripFromData: true },
     { column: "locator", field: "locator", stripFromData: true },
     { column: "citation", field: "citation", stripFromData: true },
+    { column: "title", field: "title", stripFromData: true },
+  ],
+  pull_request: [
+    { column: "locator", field: "locator", stripFromData: true },
     { column: "title", field: "title", stripFromData: true },
   ],
   // principal: no graph promoted columns; name/body_md/role_principal handled

@@ -1278,7 +1278,8 @@ export type NodeTypeName =
   | "eval"
   | "idea"
   | "state"
-  | "reference";
+  | "reference"
+  | "pull_request";
 
 export interface EntityPatch {
   lifecycle?: string;
@@ -2764,6 +2765,142 @@ export async function captureReference(
     docoSlug,
     docoHost,
     entityType: "reference",
+    id,
+    label,
+    fm,
+    createdById,
+    startedAt,
+  });
+}
+
+const PR_STATES = new Set(["open", "merged", "closed"]);
+
+/**
+ * Map a GitHub PR state to Doco lifecycle (+ outcome for merged). Pure —
+ * unit-tested directly. open → drafting (in-flight), merged → asserted
+ * (settled fact) + outcome succeeded, closed-unmerged → retired.
+ */
+export function pullRequestLifecycleFromState(state?: string): {
+  lifecycle: "drafting" | "asserted" | "retired";
+  outcome?: "succeeded";
+} {
+  if (state === "merged") return { lifecycle: "asserted", outcome: "succeeded" };
+  if (state === "closed") return { lifecycle: "retired" };
+  return { lifecycle: "drafting" };
+}
+
+export interface PullRequestDraft {
+  /** Required: the full PR prose (first line = label; summary + why). */
+  pull_request: string;
+  /** Required: PR title (promoted to the `title` column). */
+  title: string;
+  /** Required: canonical PR URL (promoted to `locator`) — the idempotency key. */
+  locator: string;
+  state?: "open" | "merged" | "closed";
+  draft?: boolean;
+  repo?: string;
+  number?: number;
+  change_type?: string;
+  breaking?: boolean;
+  risk?: "low" | "medium" | "high";
+  base_ref?: string;
+  head_ref?: string;
+  merge_commit_sha?: string;
+  stats?: { additions?: number; deletions?: number; changed_files?: number; commits?: number };
+  labels?: string[];
+  ci_status?: "passing" | "failing" | "pending";
+  opened_at?: string;
+  merged_at?: string;
+  closed_at?: string;
+  /** GitHub login of the PR author (mapped to a user where possible upstream). */
+  author_github_login?: string;
+  intent_ids?: string[];
+  decision_ids?: string[];
+  /** Nodes this PR implements / bugs it fixes — recorded on the node now; the
+   *  formal implemented_by / fixes edge projection lands in a follow-up. */
+  implements?: string[];
+  fixes?: string[];
+  created_by_user_id?: string;
+  /** @deprecated Principals do not create nodes; use the authenticated user. */
+  created_by_principal_id?: string;
+  lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
+}
+
+export async function capturePullRequest(
+  docoDir: string,
+  docoId: string,
+  ownerSlug: string,
+  docoSlug: string,
+  draft: PullRequestDraft,
+  docoHost?: string,
+): Promise<CaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.pull_request?.trim()) return { error: "pull_request is required." };
+  if (!draft.title?.trim()) return { error: "title is required." };
+  if (!draft.locator?.trim()) return { error: "locator is required." };
+  if (draft.state !== undefined && !PR_STATES.has(draft.state)) {
+    return { error: `state must be one of: ${[...PR_STATES].join(", ")}.` };
+  }
+  const createdById = userCreatorId(draft);
+  if (typeof createdById !== "string" && createdById !== null) return createdById;
+
+  const state = draft.state ?? "open";
+  const derived = pullRequestLifecycleFromState(state);
+  const status = lifecycleAttrs(draft, derived.lifecycle);
+  if ("error" in status) return status;
+
+  const id = `pull_request_${generateUlid()}`;
+  const prose = draft.pull_request.trim();
+  const label = firstLine(prose);
+  const now = new Date().toISOString();
+  const intentIds = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
+  const decisionIds = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
+  const implementsIds = Array.isArray(draft.implements) ? draft.implements : [];
+  const fixesIds = Array.isArray(draft.fixes) ? draft.fixes : [];
+
+  const fm: Record<string, unknown> = {
+    id,
+    doco_id: docoId,
+    node_type: "pull_request",
+    pull_request: prose,
+    title: draft.title.trim(),
+    locator: draft.locator.trim(),
+    state,
+    ...(draft.draft ? { draft: true } : {}),
+    ...(draft.repo ? { repo: draft.repo } : {}),
+    ...(typeof draft.number === "number" ? { number: draft.number } : {}),
+    ...(draft.change_type ? { change_type: draft.change_type } : {}),
+    ...(draft.breaking ? { breaking: true } : {}),
+    ...(draft.risk ? { risk: draft.risk } : {}),
+    ...(draft.base_ref ? { base_ref: draft.base_ref } : {}),
+    ...(draft.head_ref ? { head_ref: draft.head_ref } : {}),
+    ...(draft.merge_commit_sha ? { merge_commit_sha: draft.merge_commit_sha } : {}),
+    ...(draft.stats ? { stats: draft.stats } : {}),
+    ...(draft.labels && draft.labels.length > 0 ? { labels: draft.labels } : {}),
+    ...(draft.ci_status ? { ci_status: draft.ci_status } : {}),
+    ...(draft.opened_at ? { opened_at: draft.opened_at } : {}),
+    ...(draft.merged_at ? { merged_at: draft.merged_at } : {}),
+    ...(draft.closed_at ? { closed_at: draft.closed_at } : {}),
+    ...(draft.author_github_login ? { author_github_login: draft.author_github_login } : {}),
+    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
+    ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
+    ...(implementsIds.length > 0 ? { implements: implementsIds } : {}),
+    ...(fixesIds.length > 0 ? { fixes: fixesIds } : {}),
+    created_at: now,
+    ...(createdById ? { created_by: createdById } : {}),
+    ...status,
+    ...(draft.outcome === undefined && derived.outcome ? { outcome: derived.outcome } : {}),
+  };
+
+  return finishNodeCapture({
+    docoDir,
+    docoId,
+    ownerSlug,
+    docoSlug,
+    docoHost,
+    entityType: "pull_request",
     id,
     label,
     fm,
