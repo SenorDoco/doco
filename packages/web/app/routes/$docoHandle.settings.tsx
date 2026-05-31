@@ -73,7 +73,6 @@ export async function loader({
     orgId: meta.orgId,
     visibility: meta.visibility,
     goal: meta.goal,
-    constitution: meta.constitution,
     perspectives,
     availableOwnerOrgs: me ? await listOrgsOwnedOrAdminedBy(me.id) : [],
     me,
@@ -150,17 +149,6 @@ export async function action({
     return redirect(`/${handle}/settings`);
   }
 
-  // ── Constitution ───────────────────────────────────────────────────
-  if (intent === "update-constitution") {
-    const constitution = String(form.get("constitution") ?? "");
-    try {
-      await updateDocoMeta({ handle, constitution });
-    } catch (e) {
-      return { error: (e as Error).message };
-    }
-    return redirect(`/${handle}/settings`);
-  }
-
   // ── Rename handle (danger zone) ──────────────────────────────────
   if (intent === "rename-handle") {
     const newHandle = String(form.get("doco_handle") ?? "")
@@ -220,7 +208,6 @@ export default function DocoSettings({
     handle,
     visibility,
     goal,
-    constitution,
     docoId,
     ownerId,
     orgId,
@@ -274,34 +261,6 @@ export default function DocoSettings({
                 className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
               >
                 Save goal
-              </button>
-            </Form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Constitution</CardTitle>
-            <CardDescription>
-              The project's governing charter. Agents read this when they bootstrap, alongside the
-              goal and the policy set.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form method="post" className="space-y-3">
-              <input type="hidden" name="intent" value="update-constitution" />
-              <textarea
-                name="constitution"
-                rows={10}
-                defaultValue={constitution}
-                placeholder="How is work done in this project? What must every collaborator — person or agent — know and follow?"
-                className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-              />
-              <button
-                type="submit"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Save constitution
               </button>
             </Form>
           </CardContent>

@@ -16,6 +16,12 @@ export interface OrgPublicRow {
   id: string;
   handle: string;
   name: string;
+  /**
+   * Org's governing charter — the standing "how work is done here" text
+   * shown on the org home page and shared with agents granted access to
+   * the org at bootstrap. Empty string only if explicitly cleared.
+   */
+  constitution: string;
 }
 
 /** List every Organization the signed-in user has any role on. */
@@ -48,8 +54,13 @@ export async function lookupOrgHandle(orgId: string): Promise<string | null> {
 
 export async function resolveOrgByHandle(orgHandle: string): Promise<OrgPublicRow | null> {
   return withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; name: string }>(
-      `SELECT id, handle, name FROM organizations
+    const r = await c.query<{
+      id: string;
+      handle: string;
+      name: string;
+      constitution: string;
+    }>(
+      `SELECT id, handle, name, constitution FROM organizations
         WHERE handle = $1
         LIMIT 1`,
       [orgHandle],
@@ -60,6 +71,8 @@ export async function resolveOrgByHandle(orgHandle: string): Promise<OrgPublicRo
       id: String(row.id),
       handle: String(row.handle),
       name: String(row.name),
+      constitution:
+        row.constitution === null || row.constitution === undefined ? "" : String(row.constitution),
     };
   });
 }
