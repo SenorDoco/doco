@@ -43,13 +43,29 @@ export interface GrantCatalog {
 }
 
 /**
+ * The four scope levels the grant wizard offers, in breadth order. The
+ * first wizard question picks one of these; the flow then adapts:
+ *   - account: grant on the grantor's whole account (every org they own).
+ *   - org:     grant on one organization (and its Docos).
+ *   - doco:    grant role on one Doco.
+ *   - types:   grant write on specific node/edge types within one Doco.
+ */
+export type GrantScope = "account" | "org" | "doco" | "types";
+
+/**
  * A grant the user is composing or has saved. `writeTypes` is meaningful
  * only when `role` permits write: owner writes everything (write_types
  * ignored); a reader with a non-empty write_types set is the per-type
  * "editor"; the wildcard means write-all (a classic writer).
+ *
+ * `level` is the persistence level: "account" writes account_grants;
+ * "org" writes org_users; "doco" writes doco_users. The wizard's "types"
+ * scope persists as a doco-level grant with a non-wildcard write set.
+ * `targetId` is empty for account-level grants (the grantor IS the
+ * scope).
  */
 export interface ComposedGrant {
-  level: "org" | "doco";
+  level: "account" | "org" | "doco";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
@@ -149,4 +165,65 @@ export function isOfferableType(t: string): t is WritableType {
   return (
     (NODE_TYPES as readonly string[]).includes(t) || (EDGE_TYPES as readonly string[]).includes(t)
   );
+}
+
+/** Display metadata for each wizard scope choice. */
+export interface ScopeChoice {
+  scope: GrantScope;
+  title: string;
+  blurb: string;
+}
+
+/**
+ * Which scope choices the wizard should offer, given what the granting
+ * user can reach. "My entire account" only makes sense if the user OWNS
+ * at least one org (an account grant cascades through owned orgs); org
+ * and doco/types require at least one grantable target of that kind.
+ */
+export function availableScopes(catalog: GrantCatalog): ScopeChoice[] {
+  const ownsAnOrg = catalog.targets.some((t) => t.level === "org" && t.maxRole === "owner");
+  const hasOrg = catalog.targets.some((t) => t.level === "org");
+  const hasDoco = catalog.targets.some((t) => t.level === "doco");
+  const out: ScopeChoice[] = [];
+  if (ownsAnOrg) {
+    out.push({
+      scope: "account",
+      title: "My entire account",
+      blurb: "Every organization you own, and every Doco under them — now and in the future.",
+    });
+  }
+  if (hasOrg) {
+    out.push({
+      scope: "org",
+      title: "A specific organization",
+      blurb: "One organization and all of its Docos.",
+    });
+  }
+  if (hasDoco) {
+    out.push({
+      scope: "doco",
+      title: "A specific Doco",
+      blurb: "Read, write, or own a single Doco.",
+    });
+    out.push({
+      scope: "types",
+      title: "Specific node or edge types",
+      blurb: "Write access to only certain node and edge types within one Doco.",
+    });
+  }
+  return out;
+}
+
+/** A grant the grantee/token already holds, for the "current access" panel. */
+export interface ExistingGrant {
+  level: "account" | "org" | "doco";
+  label: string;
+  role: DocoRole;
+  writeTypes: string[];
+}
+
+/** One-line summary of an existing grant for the current-access panel. */
+export function describeExistingGrant(g: ExistingGrant): string {
+  const scopeWord = g.level === "account" ? "Entire account" : g.level === "org" ? "Org" : "Doco";
+  return `${scopeWord}: ${g.label} — ${describeWriteScope(g.role, g.writeTypes)}`;
 }

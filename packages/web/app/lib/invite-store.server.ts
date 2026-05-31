@@ -30,11 +30,17 @@ export interface Invite {
    *
    * Pre-existing invites without this field are treated as "doco".
    */
-  level?: "org" | "doco";
+  level?: "account" | "org" | "doco";
   /** Doco this invite is anchored to. Org-only invites can omit it. */
   doco_id?: EntityId<"doco">;
   /** Org targeted by org-level invites. Required when level === "org". */
   org_id?: EntityId<"organization">;
+  /**
+   * Grantor whose whole account the redeemer joins (migration 075).
+   * Required when level === "account"; the redeemer gets an account_grant
+   * keyed to this user.
+   */
+  account_grantor_user_id?: EntityId<"principal">;
   /** Principal that minted this invite (null for anonymous-creation seed). */
   minted_by_user_id: EntityId<"principal"> | null;
   /**
@@ -132,8 +138,9 @@ export class InviteStore {
     ttlDays = 7,
     role: "owner" | "writer" | "reader" = "writer",
     opts: {
-      level?: "org" | "doco";
+      level?: "account" | "org" | "doco";
       org_id?: EntityId<"organization">;
+      account_grantor_user_id?: EntityId<"principal">;
       write_types?: string[];
     } = {},
   ): Promise<Invite> {
@@ -141,7 +148,7 @@ export class InviteStore {
     const now = new Date();
     const expires = new Date(now.getTime() + Math.max(1, Math.min(365, ttlDays)) * 86400 * 1000);
     const level = opts.level ?? "doco";
-    if (!docoId && level !== "org") {
+    if (!docoId && level === "doco") {
       throw new Error("docoId is required for doco-level invites.");
     }
     const invite: Invite = {
@@ -150,6 +157,9 @@ export class InviteStore {
       level,
       ...(docoId ? { doco_id: docoId } : {}),
       ...(opts.org_id ? { org_id: opts.org_id } : {}),
+      ...(opts.account_grantor_user_id
+        ? { account_grantor_user_id: opts.account_grantor_user_id }
+        : {}),
       ...(opts.write_types ? { write_types: opts.write_types } : {}),
       minted_by_user_id: mintedByUserId,
       role,

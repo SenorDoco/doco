@@ -18,6 +18,7 @@ import {
   type DocoRole,
   getDocoById,
   getUserById,
+  upsertAccountGrant,
   upsertDocoUser,
   upsertOrgUser,
   withClient,
@@ -44,7 +45,7 @@ type LoaderError =
 type LoaderOk = {
   ok: true;
   code: string;
-  target: { level: "doco" | "org"; label: string };
+  target: { level: "account" | "doco" | "org"; label: string };
   inviter: { username: string } | null;
   expires_at: string;
   signedIn: { id: string; username: string } | null;
@@ -74,7 +75,9 @@ export async function loader({ request, params }: { request: Request; params: { 
 
   const inviteLevel = invite.level ?? "doco";
   let target: LoaderOk["target"];
-  if (inviteLevel === "org" && invite.org_id) {
+  if (inviteLevel === "account") {
+    target = { level: "account", label: "an entire account" };
+  } else if (inviteLevel === "org" && invite.org_id) {
     const org = await getOrganizationById(invite.org_id);
     if (!org) return { error: "org_not_found" } satisfies LoaderError;
     target = { level: "org", label: org.handle };
@@ -131,7 +134,12 @@ export async function action({
   const inviteLevel = invite.level ?? "doco";
   let continueTo: string;
   let targetLabel: string;
-  if (inviteLevel === "org" && invite.org_id) {
+  if (inviteLevel === "account") {
+    // Account-level invite: redeemer lands on their dashboard; the grant
+    // spans the grantor's whole account, not a single org/doco.
+    continueTo = "/dashboard";
+    targetLabel = "the account you were invited to";
+  } else if (inviteLevel === "org" && invite.org_id) {
     const org = await getOrganizationById(invite.org_id);
     if (!org) return { error: "The organization this invite points at no longer exists." };
     continueTo = `/orgs/${org.handle}`;
@@ -158,7 +166,16 @@ export async function action({
   const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
   const grantedWriteTypes = consumed.write_types;
   const consumedLevel = consumed.level ?? "doco";
-  if (consumedLevel === "org" && consumed.org_id) {
+  if (consumedLevel === "account" && consumed.account_grantor_user_id) {
+    // Account-level invite (migration 075): the redeemer joins the
+    // grantor's whole account.
+    await upsertAccountGrant({
+      grantor_user_id: consumed.account_grantor_user_id,
+      grantee_user_id: principal.id,
+      role: grantedRole,
+      write_types: grantedWriteTypes,
+    });
+  } else if (consumedLevel === "org" && consumed.org_id) {
     await upsertOrgUser({
       org_id: consumed.org_id,
       user_id: principal.id,

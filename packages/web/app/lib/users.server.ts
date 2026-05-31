@@ -409,6 +409,34 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
             .filter(Boolean),
         );
 
+  // Account-level invite (migration 075): grants the redeemer access to
+  // the inviter's whole account. No target — the inviter IS the scope.
+  // Anyone may invite into their own account; the grant is capped at
+  // owner (the broadest delegation) and stored on the invite as an
+  // account grant keyed to the inviter.
+  if (level === "account") {
+    const role: DocoRole = parsedRole || "writer";
+    const store = InviteStore.forDoco(rootDir());
+    const invite = await store.issueInvite(null, me.id as EntityId<"principal">, 3, role, {
+      level: "account",
+      account_grantor_user_id: me.id as EntityId<"principal">,
+      ...(writeTypes ? { write_types: writeTypes } : {}),
+    });
+    const url = new URL(request.url);
+    const origin = `${url.protocol}//${url.host}`;
+    return {
+      intent: "invite",
+      ok: true,
+      invite_url: `${origin}/invite/${invite.code}`,
+      doco_url: "",
+      recipe_url: `${origin}/protocol/agent-oauth-recipe`,
+      device_url: `${origin}/device`,
+      invite_expires_at: invite.expires_at,
+      level,
+      role,
+    };
+  }
+
   let inviterRole: DocoRole | null = null;
   let docoId: string | null = null;
   let orgId: string | null = null;

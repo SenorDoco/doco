@@ -2,227 +2,378 @@ import { useMemo, useState } from "react";
 import {
   type ComposedGrant,
   type DocoRole,
+  type ExistingGrant,
   type GrantCatalog,
+  type GrantScope,
   type GrantTarget,
+  availableScopes,
+  describeExistingGrant,
   describeWriteScope,
   grantableRoles,
   targetsByOrg,
   writableTypeGroups,
 } from "~/lib/grant-picker";
 
-// Shared permission picker for the collaborators and API-tokens pages
-// (decision_per_type_write_grants). Drill-down, NOT a flat dropdown of
-// every org and doco at once:
+// Shared GRANT WIZARD for the collaborators and API-tokens pages
+// (decision_per_type_write_grants + account grants). A guided flow, not a
+// wall of checkboxes:
 //
-//   1. pick an organization
-//   2. see its Docos (and the org itself) listed below
-//   3. expand a target → choose read / write / owner
-//   4. for write → tick the node and edge TYPES to grant
+//   Step 1 — pick the scope: my entire account / an org / a Doco /
+//            specific node+edge types.
+//   Step 2 — pick the concrete target (an org, or a Doco), unless the
+//            scope is the whole account (no target — the grantor IS it).
+//   Step 3 — choose read / write / owner; for the "types" scope (or a
+//            write grant) tick the node and edge types.
 //
-// Emits a ComposedGrant via onChange; the host page renders the submit
-// affordance (invite button / token mint / save) so this component stays
-// purely about *which access*.
+// When EXPANDING an existing grantee/token, `existing` is shown on top so
+// the granter sees what they already have before widening it.
+//
+// Emits a ComposedGrant via onChange; the host page owns the submit
+// button so this component is purely about *which access*.
 
 export function GrantPicker({
   catalog,
   value,
   onChange,
+  existing,
 }: {
   catalog: GrantCatalog;
   value: ComposedGrant | null;
   onChange: (grant: ComposedGrant | null) => void;
+  /** Grants the grantee/token already holds (widen-existing flow). */
+  existing?: ExistingGrant[];
 }) {
-  const groups = useMemo(() => targetsByOrg(catalog), [catalog]);
-  const [orgId, setOrgId] = useState<string>(groups[0]?.org.id ?? "");
+  const scopes = useMemo(() => availableScopes(catalog), [catalog]);
+  const [scope, setScope] = useState<GrantScope | null>(null);
 
-  const active = groups.find((g) => g.org.id === orgId) ?? groups[0];
-  if (!active) {
+  if (scopes.length === 0) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="grant-picker-empty">
-        No organizations you can grant access into.
+        You don't have anything you can grant access to yet.
       </p>
     );
   }
 
-  const targetsHere: GrantTarget[] = [
-    ...(active.orgTarget ? [active.orgTarget] : []),
-    ...active.docos,
-  ];
-
   return (
-    <div className="space-y-3" data-testid="grant-picker">
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-xs uppercase tracking-wide text-muted-foreground">Organization</span>
-        <select
-          data-testid="grant-org"
-          value={active.org.id}
-          onChange={(e) => {
-            setOrgId(e.currentTarget.value);
-            onChange(null);
-          }}
-          className="rounded-md px-3 py-2"
+    <div className="space-y-4" data-testid="grant-picker">
+      {existing && existing.length > 0 ? (
+        <div
+          className="rounded-md border border-border bg-muted/40 px-3 py-2"
+          data-testid="grant-existing"
         >
-          {groups.map((g) => (
-            <option key={g.org.id} value={g.org.id}>
-              {g.org.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Already has access to
+          </div>
+          <ul className="mt-1 space-y-0.5 text-sm">
+            {existing.map((g) => (
+              <li key={`${g.level}:${g.label}`} data-testid="grant-existing-row">
+                {describeExistingGrant(g)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">
-        Docos in {active.org.label}
-      </div>
-      <ul className="space-y-1" data-testid="grant-targets">
-        {targetsHere.map((t) => (
-          <TargetRow
-            key={`${t.level}:${t.id}`}
-            target={t}
-            selected={value?.level === t.level && value?.targetId === t.id ? value : null}
-            onSelect={onChange}
-          />
-        ))}
-        {targetsHere.length === 0 ? (
-          <li className="text-sm text-muted-foreground">No grantable targets in this org.</li>
-        ) : null}
-      </ul>
+      {/* Step 1 — scope */}
+      <fieldset className="space-y-2" data-testid="grant-scope-step">
+        <legend className="text-xs uppercase tracking-wide text-muted-foreground">
+          What do you want to grant access to?
+        </legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {scopes.map((s) => (
+            <button
+              key={s.scope}
+              type="button"
+              data-testid={`grant-scope-${s.scope}`}
+              aria-pressed={scope === s.scope}
+              onClick={() => {
+                setScope(s.scope);
+                onChange(null);
+              }}
+              className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                scope === s.scope ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+              }`}
+            >
+              <div className="font-semibold">{s.title}</div>
+              <div className="text-xs text-muted-foreground">{s.blurb}</div>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      {/* Steps 2–3 — adapt to the chosen scope */}
+      {scope === "account" ? (
+        <AccountStep value={value} onChange={onChange} catalog={catalog} />
+      ) : scope === "org" ? (
+        <TargetStep
+          level="org"
+          catalog={catalog}
+          value={value}
+          onChange={onChange}
+          typesAllowed={false}
+        />
+      ) : scope === "doco" ? (
+        <TargetStep
+          level="doco"
+          catalog={catalog}
+          value={value}
+          onChange={onChange}
+          typesAllowed={true}
+        />
+      ) : scope === "types" ? (
+        <TargetStep
+          level="doco"
+          catalog={catalog}
+          value={value}
+          onChange={onChange}
+          typesAllowed={true}
+          forceTypes
+        />
+      ) : null}
     </div>
   );
 }
 
-function TargetRow({
-  target,
-  selected,
-  onSelect,
+// Account scope: no target to pick — choose the role (+ per-type) that
+// applies across every org the granter owns.
+function AccountStep({
+  value,
+  onChange,
+  catalog,
 }: {
-  target: GrantTarget;
-  selected: ComposedGrant | null;
-  onSelect: (grant: ComposedGrant | null) => void;
+  value: ComposedGrant | null;
+  onChange: (g: ComposedGrant | null) => void;
+  catalog: GrantCatalog;
 }) {
-  const open = selected !== null;
-  const role: DocoRole = selected?.role ?? "reader";
-  const writeTypes = selected?.writeTypes ?? [];
-  const roles = grantableRoles(target.maxRole);
-  const { nodes, edges } = writableTypeGroups();
+  // The cap for an account grant is owner (you can only grant your whole
+  // account if you own orgs, and you may delegate up to owner there).
+  const maxRole: DocoRole = catalog.targets.some((t) => t.level === "org" && t.maxRole === "owner")
+    ? "owner"
+    : "reader";
+  const current =
+    value?.level === "account"
+      ? value
+      : { level: "account" as const, targetId: "", role: "reader" as DocoRole, writeTypes: [] };
+  return (
+    <div className="rounded-md border border-border px-3 py-3" data-testid="grant-account-step">
+      <p className="mb-2 text-sm text-muted-foreground">
+        Grants this access on <strong>every organization you own</strong> and all their Docos —
+        including ones created later.
+      </p>
+      <AccessControls
+        idBase="account"
+        maxRole={maxRole}
+        role={current.role}
+        writeTypes={current.writeTypes}
+        typesAllowed={true}
+        onChange={(role, writeTypes) =>
+          onChange({ level: "account", targetId: "", role, writeTypes })
+        }
+      />
+    </div>
+  );
+}
 
-  const emit = (next: { role?: DocoRole; writeTypes?: string[] }) =>
-    onSelect({
-      level: target.level,
-      targetId: target.id,
-      role: next.role ?? role,
-      writeTypes: next.writeTypes ?? writeTypes,
-    });
+// Org / Doco scope: pick the concrete target (grouped by org), then set
+// access. `forceTypes` starts the access controls in per-type mode.
+function TargetStep({
+  level,
+  catalog,
+  value,
+  onChange,
+  typesAllowed,
+  forceTypes,
+}: {
+  level: "org" | "doco";
+  catalog: GrantCatalog;
+  value: ComposedGrant | null;
+  onChange: (g: ComposedGrant | null) => void;
+  typesAllowed: boolean;
+  forceTypes?: boolean;
+}) {
+  const groups = useMemo(() => targetsByOrg(catalog), [catalog]);
+  // Flatten the targets of this level, grouped under their org for display.
+  const orgsWithTargets = groups
+    .map((g) => ({
+      org: g.org,
+      targets: level === "org" ? (g.orgTarget ? [g.orgTarget] : []) : g.docos,
+    }))
+    .filter((g) => g.targets.length > 0);
+
+  const selected = value && value.level === level ? value : null;
+  const target = selected
+    ? (catalog.targets.find((t) => t.level === level && t.id === selected.targetId) ?? null)
+    : null;
+
+  return (
+    <div className="space-y-3" data-testid={`grant-target-step-${level}`}>
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">
+        Choose {level === "org" ? "an organization" : "a Doco"}
+      </div>
+      <div className="space-y-2">
+        {orgsWithTargets.map((g) => (
+          <div key={g.org.id}>
+            {level === "doco" ? (
+              <div className="text-[11px] font-semibold text-muted-foreground">{g.org.label}</div>
+            ) : null}
+            <ul className="space-y-1">
+              {g.targets.map((t) => (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    data-testid={`grant-target-${t.id}`}
+                    aria-pressed={target?.id === t.id}
+                    onClick={() =>
+                      onChange({
+                        level,
+                        targetId: t.id,
+                        role: forceTypes ? "reader" : "reader",
+                        writeTypes: [],
+                      })
+                    }
+                    className={`w-full rounded-md border px-3 py-1.5 text-left text-sm transition-colors ${
+                      target?.id === t.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:bg-muted"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {orgsWithTargets.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No grantable targets of this kind.</p>
+        ) : null}
+      </div>
+
+      {target ? (
+        <div className="rounded-md border border-border px-3 py-3" data-testid="grant-access-step">
+          <div className="mb-2 text-sm font-medium">{target.label}</div>
+          <AccessControls
+            idBase={target.id}
+            maxRole={target.maxRole}
+            role={selected?.role ?? "reader"}
+            writeTypes={selected?.writeTypes ?? []}
+            typesAllowed={typesAllowed}
+            forceTypes={forceTypes}
+            onChange={(role, writeTypes) =>
+              onChange({ level, targetId: target.id, role, writeTypes })
+            }
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// The role + per-type controls, shared by the account and target steps.
+function AccessControls({
+  idBase,
+  maxRole,
+  role,
+  writeTypes,
+  typesAllowed,
+  forceTypes,
+  onChange,
+}: {
+  idBase: string;
+  maxRole: DocoRole;
+  role: DocoRole;
+  writeTypes: string[];
+  typesAllowed: boolean;
+  forceTypes?: boolean;
+  onChange: (role: DocoRole, writeTypes: string[]) => void;
+}) {
+  const roles = grantableRoles(maxRole);
+  const { nodes, edges } = writableTypeGroups();
+  const wildcard = writeTypes.includes("*");
 
   const toggleType = (t: string, on: boolean) => {
     const set = new Set(writeTypes.filter((x) => x !== "*"));
     if (on) set.add(t);
     else set.delete(t);
-    emit({ writeTypes: [...set] });
+    onChange(role, [...set]);
   };
 
-  const allTypes = [...nodes, ...edges];
-  const wildcard = writeTypes.includes("*");
-  const writeMode = role !== "reader" || writeTypes.length > 0;
-
   return (
-    <li className="rounded-md border border-border">
-      <button
-        type="button"
-        data-testid={`grant-target-${target.id}`}
-        onClick={() => (open ? onSelect(null) : emit({ role: "reader" }))}
-        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-      >
-        <span>
-          <span className="rounded bg-input px-1.5 py-0.5 text-xs">[{target.level}]</span>{" "}
-          {target.label}
-        </span>
+    <div className="space-y-3">
+      <label className="flex items-center gap-2 text-sm">
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">Access</span>
+        <select
+          data-testid={`grant-role-${idBase}`}
+          value={role}
+          onChange={(e) => {
+            const r = e.currentTarget.value as DocoRole;
+            onChange(r, r === "owner" ? [] : writeTypes);
+          }}
+          className="rounded-md px-2 py-1"
+        >
+          {roles.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
         <span className="text-xs text-muted-foreground">
-          {open ? describeWriteScope(role, writeTypes) : "click to grant"}
+          {describeWriteScope(role, writeTypes)}
         </span>
-      </button>
+      </label>
 
-      {open ? (
-        <div className="space-y-3 border-t border-border px-3 py-3">
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">Access</span>
-            <select
-              data-testid={`grant-role-${target.id}`}
-              value={role}
-              onChange={(e) => {
-                const r = e.currentTarget.value as DocoRole;
-                // Switching to owner drops the per-type set (owner writes all);
-                // switching to reader clears write unless types are picked.
-                emit({ role: r, writeTypes: r === "owner" ? [] : writeTypes });
-              }}
-              className="rounded-md px-2 py-1"
-            >
-              {roles.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {role !== "owner" ? (
-            <div className="space-y-2" data-testid={`grant-types-${target.id}`}>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  data-testid={`grant-write-all-${target.id}`}
-                  checked={wildcard}
-                  onChange={(e) => emit({ writeTypes: e.currentTarget.checked ? ["*"] : [] })}
-                />
-                Write everything
-              </label>
-              {!wildcard ? (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
-                  <TypeGroup
-                    title="Nodes"
-                    types={nodes}
-                    targetId={target.id}
-                    writeTypes={writeTypes}
-                    onToggle={toggleType}
-                  />
-                  <TypeGroup
-                    title="Edges"
-                    types={edges}
-                    targetId={target.id}
-                    writeTypes={writeTypes}
-                    onToggle={toggleType}
-                  />
-                </div>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                {writeMode
-                  ? "Reads everything; writes only the ticked types."
-                  : "Read-only. Tick types (or “Write everything”) to grant write."}
-                {allTypes.length === writeTypes.filter((t) => t !== "*").length
-                  ? " (all types — same as Write everything)"
-                  : ""}
-              </p>
+      {role !== "owner" && typesAllowed ? (
+        <div className="space-y-2" data-testid={`grant-types-${idBase}`}>
+          {!forceTypes ? (
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                data-testid={`grant-write-all-${idBase}`}
+                checked={wildcard}
+                onChange={(e) => onChange(role, e.currentTarget.checked ? ["*"] : [])}
+              />
+              Write everything
+            </label>
+          ) : null}
+          {!wildcard ? (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+              <TypeGroup
+                title="Nodes"
+                types={nodes}
+                idBase={idBase}
+                writeTypes={writeTypes}
+                onToggle={toggleType}
+              />
+              <TypeGroup
+                title="Edges"
+                types={edges}
+                idBase={idBase}
+                writeTypes={writeTypes}
+                onToggle={toggleType}
+              />
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Owner administers the {target.level} and writes every type.
-            </p>
-          )}
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            Reads everything; writes only the ticked types.
+          </p>
         </div>
+      ) : role === "owner" ? (
+        <p className="text-xs text-muted-foreground">Owner administers and writes every type.</p>
       ) : null}
-    </li>
+    </div>
   );
 }
 
 function TypeGroup({
   title,
   types,
-  targetId,
+  idBase,
   writeTypes,
   onToggle,
 }: {
   title: string;
   types: readonly string[];
-  targetId: string;
+  idBase: string;
   writeTypes: string[];
   onToggle: (t: string, on: boolean) => void;
 }) {
@@ -233,7 +384,7 @@ function TypeGroup({
         <label key={t} className="flex items-center gap-1.5 text-sm">
           <input
             type="checkbox"
-            data-testid={`grant-type-${targetId}-${t}`}
+            data-testid={`grant-type-${idBase}-${t}`}
             checked={writeTypes.includes(t)}
             onChange={(e) => onToggle(t, e.currentTarget.checked)}
           />
