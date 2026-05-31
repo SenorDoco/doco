@@ -82,9 +82,6 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Integrations" })} />
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">Integrations</h1>
-          <p className="text-sm text-muted-foreground">
-            Connect Señor Doco to Slack, then set its default permissions.
-          </p>
         </header>
 
         {notice ? (
