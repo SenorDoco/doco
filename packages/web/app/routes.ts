@@ -223,6 +223,7 @@ export default [
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
   route(":docoHandle/settings", "routes/$docoHandle.settings.tsx"),
+  route(":docoHandle/settings/github", "routes/$docoHandle.settings.github.tsx"),
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
   route(":docoHandle/policies/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx"),
   route(
