@@ -6,11 +6,15 @@ import {
   type GrantCatalog,
   type GrantScope,
   type GrantTarget,
+  type TypeLevel,
   availableScopes,
   describeExistingGrant,
   describeWriteScope,
   grantableRoles,
+  inheritedTypeLevel,
+  setTypeLevel,
   targetsByOrg,
+  typeDropdownValue,
   writableTypeGroups,
 } from "~/lib/grant-picker";
 
@@ -127,7 +131,6 @@ export function GrantPicker({
           value={value}
           onChange={onChange}
           typesAllowed={true}
-          forceTypes
         />
       ) : null}
     </div>
@@ -174,22 +177,21 @@ function AccountStep({
   );
 }
 
-// Org / Doco scope: pick the concrete target (grouped by org), then set
-// access. `forceTypes` starts the access controls in per-type mode.
+// Org / doco scope: pick the concrete target (grouped by org), then set
+// access. When typesAllowed, the access step shows the per-type level
+// dropdowns (the "specific types" scope).
 function TargetStep({
   level,
   catalog,
   value,
   onChange,
   typesAllowed,
-  forceTypes,
 }: {
   level: "org" | "doco";
   catalog: GrantCatalog;
   value: ComposedGrant | null;
   onChange: (g: ComposedGrant | null) => void;
   typesAllowed: boolean;
-  forceTypes?: boolean;
 }) {
   const groups = useMemo(() => targetsByOrg(catalog), [catalog]);
   // Flatten the targets of this level, grouped under their org for display.
@@ -227,7 +229,7 @@ function TargetStep({
                       onChange({
                         level,
                         targetId: t.id,
-                        role: forceTypes ? "reader" : "reader",
+                        role: "reader",
                         writeTypes: [],
                       })
                     }
@@ -258,7 +260,6 @@ function TargetStep({
             role={selected?.role ?? "reader"}
             writeTypes={selected?.writeTypes ?? []}
             typesAllowed={typesAllowed}
-            forceTypes={forceTypes}
             onChange={(role, writeTypes) =>
               onChange({ level, targetId: target.id, role, writeTypes })
             }
@@ -276,7 +277,6 @@ function AccessControls({
   role,
   writeTypes,
   typesAllowed,
-  forceTypes,
   onChange,
 }: {
   idBase: string;
@@ -284,19 +284,15 @@ function AccessControls({
   role: DocoRole;
   writeTypes: string[];
   typesAllowed: boolean;
-  forceTypes?: boolean;
   onChange: (role: DocoRole, writeTypes: string[]) => void;
 }) {
   const roles = grantableRoles(maxRole);
   const { nodes, edges } = writableTypeGroups();
-  const wildcard = writeTypes.includes("*");
+  const allTypes = [...nodes, ...edges];
+  const inherited = inheritedTypeLevel(role, writeTypes);
 
-  const toggleType = (t: string, on: boolean) => {
-    const set = new Set(writeTypes.filter((x) => x !== "*"));
-    if (on) set.add(t);
-    else set.delete(t);
-    onChange(role, [...set]);
-  };
+  const changeTypeLevel = (t: string, next: TypeLevel) =>
+    onChange(role, setTypeLevel(role, writeTypes, t, next, allTypes));
 
   return (
     <div className="space-y-3">
@@ -307,18 +303,19 @@ function AccessControls({
           value={role}
           onChange={(e) => {
             const r = e.currentTarget.value as DocoRole;
-            // When the per-type grid isn't shown (org / whole-doco scope),
-            // the role alone decides write: a writer writes everything
-            // (wildcard), a reader writes nothing, an owner administers.
-            // Only the "specific types" scope (typesAllowed) keeps an
-            // explicit per-type set.
+            // When the per-type controls aren't shown (org / whole-doco
+            // scope), the role alone decides write: a writer writes
+            // everything (wildcard), a reader writes nothing, an owner
+            // administers. Only the "specific types" scope keeps an explicit
+            // per-type set; changing the base role there resets overrides so
+            // every type follows the new inherited level.
             const nextTypes = !typesAllowed
               ? r === "writer"
                 ? ["*"]
                 : []
-              : r === "owner"
-                ? []
-                : writeTypes;
+              : r === "writer"
+                ? ["*"]
+                : [];
             onChange(r, nextTypes);
           }}
           className="rounded-md px-2 py-1"
@@ -336,37 +333,28 @@ function AccessControls({
 
       {role !== "owner" && typesAllowed ? (
         <div className="space-y-2" data-testid={`grant-types-${idBase}`}>
-          {!forceTypes ? (
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <input
-                type="checkbox"
-                data-testid={`grant-write-all-${idBase}`}
-                checked={wildcard}
-                onChange={(e) => onChange(role, e.currentTarget.checked ? ["*"] : [])}
-              />
-              Write everything
-            </label>
-          ) : null}
-          {!wildcard ? (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
-              <TypeGroup
-                title="Nodes"
-                types={nodes}
-                idBase={idBase}
-                writeTypes={writeTypes}
-                onToggle={toggleType}
-              />
-              <TypeGroup
-                title="Edges"
-                types={edges}
-                idBase={idBase}
-                writeTypes={writeTypes}
-                onToggle={toggleType}
-              />
-            </div>
-          ) : null}
+          <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+            <TypeGroup
+              title="Node types"
+              types={nodes}
+              idBase={idBase}
+              role={role}
+              writeTypes={writeTypes}
+              inherited={inherited}
+              onChangeLevel={changeTypeLevel}
+            />
+            <TypeGroup
+              title="Edge types"
+              types={edges}
+              idBase={idBase}
+              role={role}
+              writeTypes={writeTypes}
+              inherited={inherited}
+              onChangeLevel={changeTypeLevel}
+            />
+          </div>
           <p className="text-xs text-muted-foreground">
-            Reads everything; writes only the ticked types.
+            Each type defaults to its inherited level; override any with the dropdown.
           </p>
         </div>
       ) : role === "owner" ? (
@@ -380,27 +368,36 @@ function TypeGroup({
   title,
   types,
   idBase,
+  role,
   writeTypes,
-  onToggle,
+  inherited,
+  onChangeLevel,
 }: {
   title: string;
   types: readonly string[];
   idBase: string;
+  role: DocoRole;
   writeTypes: string[];
-  onToggle: (t: string, on: boolean) => void;
+  inherited: "read" | "write";
+  onChangeLevel: (t: string, next: TypeLevel) => void;
 }) {
+  const defaultLabel = `Default — ${inherited === "write" ? "can write" : "read only"}`;
   return (
-    <fieldset className="col-span-1">
+    <fieldset className="col-span-1 space-y-1">
       <legend className="text-xs uppercase tracking-wide text-muted-foreground">{title}</legend>
       {types.map((t) => (
-        <label key={t} className="flex items-center gap-1.5 text-sm">
-          <input
-            type="checkbox"
+        <label key={t} className="flex items-center justify-between gap-2 text-sm">
+          <span className="font-mono">{t}</span>
+          <select
             data-testid={`grant-type-${idBase}-${t}`}
-            checked={writeTypes.includes(t)}
-            onChange={(e) => onToggle(t, e.currentTarget.checked)}
-          />
-          {t}
+            value={typeDropdownValue(role, writeTypes, t)}
+            onChange={(e) => onChangeLevel(t, e.currentTarget.value as TypeLevel)}
+            className="rounded-md px-2 py-0.5 text-xs"
+          >
+            <option value="default">{defaultLabel}</option>
+            <option value="read">Read only</option>
+            <option value="write">Can write</option>
+          </select>
         </label>
       ))}
     </fieldset>
