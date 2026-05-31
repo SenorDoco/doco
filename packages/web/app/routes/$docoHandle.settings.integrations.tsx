@@ -123,6 +123,15 @@ export default function Integrations() {
           {flash === "forbidden" ? (
             <p className="text-sm text-red-600">You need write access to connect this Doco.</p>
           ) : null}
+          {flash === "setup_failed" ? (
+            <p className="text-sm text-red-600">
+              GitHub setup didn&apos;t complete — check the App credentials (App ID and private key)
+              in the deployment environment, then try Connect again.
+            </p>
+          ) : null}
+          {flash === "signin_required" ? (
+            <p className="text-sm text-red-600">Sign in, then run Connect again.</p>
+          ) : null}
           {actionData && "error" in actionData ? (
             <p className="text-sm text-red-600">{actionData.error}</p>
           ) : null}

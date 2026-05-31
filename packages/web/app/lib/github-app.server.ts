@@ -31,9 +31,32 @@ function base64url(input: Buffer | string): string {
     .replace(/=+$/, "");
 }
 
-/** PEM keys pasted into single-line env vars often arrive with literal `\n`. */
-function normalizePem(pem: string): string {
-  return pem.includes("\\n") ? pem.replace(/\\n/g, "\n") : pem;
+/**
+ * Coerce a PEM private key into a form OpenSSL can decode. Env vars mangle PEMs
+ * in predictable ways — literal `\n` escapes (single-line values), surrounding
+ * quotes, CRLF, or newlines collapsed to spaces — any of which makes
+ * `createSign().sign()` throw `DECODER routines::unsupported`. Repair all of
+ * them. Pure.
+ */
+export function normalizePem(pem: string): string {
+  let key = pem.trim();
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1).trim();
+  }
+  if (key.includes("\\n")) key = key.replace(/\\n/g, "\n");
+  key = key.replace(/\r\n?/g, "\n");
+  // Newlines stripped entirely (e.g. collapsed to spaces): rebuild from the
+  // BEGIN/END markers + the base64 body wrapped at 64 chars.
+  if (!key.includes("\n")) {
+    const m = /-----BEGIN ([A-Z0-9 ]+?)-----(.+?)-----END \1-----/.exec(key);
+    if (m) {
+      const label = m[1].trim();
+      const body = m[2].replace(/\s+/g, "");
+      const wrapped = (body.match(/.{1,64}/g) ?? []).join("\n");
+      key = `-----BEGIN ${label}-----\n${wrapped}\n-----END ${label}-----`;
+    }
+  }
+  return key;
 }
 
 /**
