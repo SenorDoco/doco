@@ -18,12 +18,14 @@
     "format": "biome format --write .",
     "verify": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run lint",
     "doco": "pnpm --filter doco-cli doco",
-    "deploy": "pnpm dlx vercel pull --yes --environment=production && pnpm dlx vercel build --prod && pnpm dlx vercel deploy --prebuilt --prod"
+    "deploy": "pnpm dlx vercel pull --yes --environment=production && pnpm dlx vercel build --prod && pnpm dlx vercel deploy --prebuilt --prod",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@electric-sql/pglite": "^0.4.6",
     "@types/node": "^22.9.0",
+    "@vitest/coverage-v8": "2.1.9",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

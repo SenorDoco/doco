@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-push gate — runs the same contract as CI (.github/workflows/ci.yml) so red
+# work is caught before it leaves your machine. Agent-neutral: this fires for any
+# tool or human that pushes via git (Claude, Cursor, Codex, a human shell, …),
+# not just one agent's config. Auto-installed by the "prepare" script: `pnpm
+# install` points core.hooksPath here.
+#
+# Bypass in a genuine pinch with:  git push --no-verify
+# (CI still enforces it server-side, so a local bypass only delays the failure —
+# and commits made via the GitHub API skip this hook entirely; CI is the net.)
+echo "→ pre-push: running 'pnpm verify' (bypass with --no-verify)…"
+pnpm verify
