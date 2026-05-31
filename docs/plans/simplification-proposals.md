@@ -137,8 +137,28 @@ but the work is "build the aggregate queries + re-point the feeds," not
 
 ## Proposal B — Collapse the per-type node tables into one `nodes` table
 
-**Status: SCHEDULED / in implementation.** This section is the migration
-spec. Decisions locked with the project owner (this thread):
+**Status: ✅ DONE (shipped to production).** Implemented in four PRs:
+- **#659 Stage 1a** — add the unified `nodes` table + copy migration `064`
+  (additive; no behavior change).
+- **#660 Stage 1b** — read + write cutover (`upsertEntity` → `nodes` with the
+  data-driven `NODE_PROMOTED_COLUMNS`; ~24 web read sites; re-sync migration
+  `065`). Principal folded in.
+- **#661 Stage 2** — drop the 10 legacy per-type tables (migration `066`);
+  registries point at `nodes`.
+- **#662** — follow-up fix: consumers that read `spec.table` as a *public
+  plural name* (collapsed to "nodes" once `table` became uniform) now derive
+  it from `entityType`. Caught by the post-deploy production smoke.
+
+End state: one `nodes` table discriminated by `node_type` (like `edges`);
+policies kept their own tables; no renaming. "Add a node type" is now a
+one-row `NODE_PROMOTED_COLUMNS` change. `node_versions` remained the backup
+net throughout. The spec below is retained as the record of how it was done.
+
+---
+
+### Original spec
+
+Decisions locked with the project owner (this thread):
 
 - **Do it.** The per-type sharding is a false split; `edges` already proves
   the single-table-with-discriminator pattern works in this codebase.
