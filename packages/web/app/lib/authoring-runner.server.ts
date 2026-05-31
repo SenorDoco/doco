@@ -303,22 +303,20 @@ async function loadPopulation(
   excludeId: string,
 ): Promise<CandidateFields[]> {
   if (nodeTypes.size === 0) return [];
-  const tables = [...nodeTypes].map((nt) => NODE_TABLES[nt]?.table).filter(Boolean) as string[];
-  if (tables.length === 0) return [];
   const out: CandidateFields[] = [];
-  for (const table of tables) {
-    // Filter to active nodes so a retired covering node doesn't
-    // satisfy a `graph-completeness` check — retired = no longer trusted
-    // to back a relationship.
-    const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
-      `SELECT id, data FROM ${table}
-         WHERE doco_id = $1 AND id <> $2 AND COALESCE(lifecycle, 'asserted') = 'asserted'`,
-      [docoId, excludeId],
-    );
-    for (const row of r.rows) {
-      const fm = row.data as CandidateFields | null;
-      if (fm && typeof fm === "object") out.push(fm);
-    }
+  // Post-collapse: one query over the unified `nodes` table filtered by
+  // node_type. Filter to active nodes so a retired covering node doesn't
+  // satisfy a `graph-completeness` check — retired = no longer trusted to
+  // back a relationship.
+  const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
+    `SELECT id, data FROM nodes
+       WHERE doco_id = $1 AND node_type = ANY($2::text[]) AND id <> $3
+         AND COALESCE(lifecycle, 'asserted') = 'asserted'`,
+    [docoId, [...nodeTypes], excludeId],
+  );
+  for (const row of r.rows) {
+    const fm = row.data as CandidateFields | null;
+    if (fm && typeof fm === "object") out.push(fm);
   }
   return out;
 }

@@ -1310,7 +1310,10 @@ async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record
     ...DOCO_NODE_TABLE_SPECS.map((spec) => ({
       nodeType: spec.entityType,
       table: null as string | null,
-      plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
+      // Public plural key (decisions, …, references). Derived from the node
+      // type now that all nodes live in `nodes` (was `spec.table`, uniformly
+      // "nodes" post-collapse).
+      plural: `${spec.entityType}s`,
       group: "note" as const,
     })),
     {
@@ -1766,8 +1769,10 @@ async function readSlackDocoApiAuthoringContract(
     qualified_handle: doco.qualifiedHandle,
     entity_types: DOCO_NODE_TABLE_SPECS.map((spec) => ({
       entity_type: spec.entityType,
-      collection: spec.table,
-      capture_endpoint: `/${doco.handle}/api/${spec.table}.json`,
+      // Public plural collection name + endpoint (decisions, …, references).
+      // Derived from the node type now that `spec.table` is uniformly "nodes".
+      collection: `${spec.entityType}s`,
+      capture_endpoint: `/${doco.handle}/api/${spec.entityType}s.json`,
     })),
     relation_kinds: relationKindList(),
     perspective_contracts: contractForAttachedPerspectives(attached),
@@ -1795,7 +1800,7 @@ function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> 
 function slackApiEntityType(type: string): string | null {
   const normalized = type.toLowerCase();
   for (const spec of DOCO_NODE_TABLE_SPECS) {
-    const plural = spec.entityType === "reference" ? "references" : spec.table;
+    const plural = `${spec.entityType}s`;
     if (normalized === plural) return spec.entityType;
   }
   return null;
@@ -1803,9 +1808,7 @@ function slackApiEntityType(type: string): string | null {
 
 function slackSupportedApiTypes(): string[] {
   return [
-    ...DOCO_NODE_TABLE_SPECS.map((spec) =>
-      spec.entityType === "reference" ? "references" : spec.table,
-    ),
+    ...DOCO_NODE_TABLE_SPECS.map((spec) => `${spec.entityType}s`),
     "principals",
     "policies",
     "settings",
