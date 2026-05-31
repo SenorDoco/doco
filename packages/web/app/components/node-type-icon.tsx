@@ -118,13 +118,6 @@ function iconPath(entityType: string) {
           <path d="M16.5 12h3M18.2 9.8 20.5 12l-2.3 2.2" />
         </>
       );
-    case "tag":
-      return (
-        <>
-          <path d="M4.5 5.5h7.2L20 13.8 13.8 20 5.5 11.7V5.5Z" />
-          <circle cx="8.2" cy="8.2" r="1.1" />
-        </>
-      );
     default:
       return (
         <>
