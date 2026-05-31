@@ -1,0 +1,189 @@
+// Shared chrome for the three Integrations pages (account, org, Doco):
+//   - `ScopeNavLinks` renders the "View org-wide / account-wide" jump links
+//     above the panes; which ones appear depends on the current page scope.
+//   - `AvailableIntegrations` renders the right-pane catalog of every
+//     integration we offer, with a "Connect" / "Set up..." action that
+//     either runs the install directly or jumps to the picker for the
+//     correct org/Doco.
+//   - `ScopePickerBanner` shows the "pick a target" prompt that appears at
+//     the top of a scope page when the user clicked through from a higher
+//     scope (e.g. picked GitHub on the account page → shown a Doco prompt).
+import { ArrowDown, ArrowUpRight, Building2, Plug, User } from "lucide-react";
+import { Link } from "react-router";
+import { Card, CardContent } from "~/components/card";
+import { cn } from "~/lib/cn";
+import {
+  INTEGRATION_CATALOG,
+  type IntegrationDefinition,
+  type IntegrationScope,
+  connectHrefFor,
+  findIntegration,
+} from "~/lib/integrations-catalog";
+
+export function ScopeNavLinks({
+  scope,
+  orgHandle,
+}: {
+  scope: IntegrationScope;
+  orgHandle?: string;
+}) {
+  if (scope === "account") return null;
+  const linkClass =
+    "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary";
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {scope === "doco" && orgHandle ? (
+        <Link to={`/orgs/${orgHandle}/integrations`} className={linkClass}>
+          <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
+          View org-wide integrations
+        </Link>
+      ) : null}
+      <Link to="/integrations" className={linkClass}>
+        <User className="h-3.5 w-3.5" aria-hidden="true" />
+        View account-wide integrations
+      </Link>
+    </div>
+  );
+}
+
+export function AvailableIntegrations({
+  pageScope,
+  orgHandle,
+  docoHandle,
+  docoInstallUrl,
+}: {
+  pageScope: IntegrationScope;
+  orgHandle?: string;
+  docoHandle?: string;
+  docoInstallUrl?: string | null;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <ul className="divide-y divide-border">
+          {INTEGRATION_CATALOG.map((integration) => (
+            <AvailableIntegrationRow
+              key={integration.id}
+              integration={integration}
+              pageScope={pageScope}
+              orgHandle={orgHandle}
+              docoHandle={docoHandle}
+              docoInstallUrl={docoInstallUrl}
+            />
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AvailableIntegrationRow({
+  integration,
+  pageScope,
+  orgHandle,
+  docoHandle,
+  docoInstallUrl,
+}: {
+  integration: IntegrationDefinition;
+  pageScope: IntegrationScope;
+  orgHandle?: string;
+  docoHandle?: string;
+  docoInstallUrl?: string | null;
+}) {
+  const href = connectHrefFor({
+    integration,
+    pageScope,
+    ...(orgHandle ? { orgHandle } : {}),
+    ...(docoHandle ? { docoHandle } : {}),
+    ...(docoInstallUrl !== undefined ? { docoInstallUrl } : {}),
+  });
+  const external = href.startsWith("http");
+  const scopeLabel = scopeLabelFor(integration.scope);
+  const sameScope = integration.scope === pageScope;
+  return (
+    <li className="flex flex-wrap items-start justify-between gap-3 p-4">
+      <div className="min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <Plug className="h-4 w-4 text-primary" aria-hidden="true" />
+          <span className="text-sm font-semibold text-foreground">{integration.name}</span>
+          <span
+            className={cn(
+              "rounded-full border px-2 py-[1px] text-[10px] font-semibold uppercase tracking-wide",
+              sameScope ? "border-primary/40 text-primary" : "border-border text-muted-foreground",
+            )}
+          >
+            {scopeLabel}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">{integration.description}</p>
+      </div>
+      <a
+        href={href}
+        {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
+        className="neu-button inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+      >
+        {sameScope ? "Connect" : "Set up..."}
+        <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+      </a>
+    </li>
+  );
+}
+
+function scopeLabelFor(scope: IntegrationScope): string {
+  if (scope === "account") return "Account-wide";
+  if (scope === "org") return "Org-level";
+  return "Doco-level";
+}
+
+/**
+ * Shown at the top of the account or org integrations page when the URL
+ * carries an `?integration=<id>` hint — meaning the user got here from a
+ * higher-scope "Connect" click and still needs to point at the org/Doco
+ * to install into. The accompanying rollup card below is highlighted by
+ * scrolling to the `#pick-doco` or `#pick-org` anchor.
+ */
+export function ScopePickerBanner({
+  integrationId,
+  pageScope,
+  orgHandle,
+}: {
+  integrationId: string | null;
+  pageScope: IntegrationScope;
+  orgHandle?: string;
+}) {
+  if (!integrationId) return null;
+  const integration = findIntegration(integrationId);
+  if (!integration) return null;
+  if (integration.scope === pageScope) return null;
+
+  const targetWord = integration.scope === "doco" ? "Doco" : "org";
+  const anchorHref =
+    integration.scope === "doco"
+      ? pageScope === "org" && orgHandle
+        ? `/orgs/${orgHandle}/integrations#pick-doco`
+        : "/integrations#pick-doco"
+      : "/integrations#pick-org";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 p-4 text-sm">
+      <div className="flex items-center gap-3">
+        <Plug className="h-5 w-5 text-primary" aria-hidden="true" />
+        <div>
+          <p className="font-semibold text-foreground">
+            Pick a {targetWord} to set up {integration.name}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {integration.name} is configured at the {targetWord} level — choose which {targetWord}{" "}
+            from the list below to continue.
+          </p>
+        </div>
+      </div>
+      <a
+        href={anchorHref}
+        className="neu-button inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+      >
+        Jump to {targetWord} list
+        <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+      </a>
+    </div>
+  );
+}

@@ -299,6 +299,12 @@ export default function OrgHome({
           <div className="flex flex-wrap items-center gap-2">
             {canInviteUsers ? <UsersLink level="org" targetId={org.id} /> : null}
             {canInviteUsers ? <ApiKeysLink /> : null}
+            <Link
+              to={`/orgs/${org.handle}/integrations`}
+              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+            >
+              Integrations
+            </Link>
             {canInviteUsers ? (
               <Link
                 to={`/orgs/${org.handle}/settings`}
