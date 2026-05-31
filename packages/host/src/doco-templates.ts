@@ -648,6 +648,10 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     description:
       "Track a GitHub repository's pull requests as References — new PRs sync automatically, and merged PRs settle as asserted.",
     policies: [],
+    // Default the overview to the Pull requests perspective (seeded by
+    // migration 076). Resolved by slug at apply time; silently skipped if the
+    // builtin row isn't present.
+    perspectives: [{ slug: "pull-requests", isDefault: true }],
   },
   {
     // Organizational chart template. Principals are the org *seats*

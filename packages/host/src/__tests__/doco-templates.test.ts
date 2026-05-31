@@ -385,9 +385,9 @@ describe("github-pull-requests template", () => {
     expect(template?.policies).toEqual([]);
   });
 
-  it("does NOT set perspectives — that wiring is handled separately", () => {
+  it("defaults the Doco overview to the Pull requests perspective", () => {
     const template = findDocoTemplateByName("github-pull-requests");
-    expect(template?.perspectives).toBeUndefined();
+    expect(template?.perspectives).toEqual([{ slug: "pull-requests", isDefault: true }]);
   });
 
   it("does NOT set allowedNodeTypes — PRs are stored as reference nodes, allow all", () => {
