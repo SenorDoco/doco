@@ -75,7 +75,7 @@ export default function OnboardingAgent({
           <CardHeader>
             <CardTitle>Add an AI agent</CardTitle>
             <CardDescription>
-              Agents authenticate via OAuth or via a long-lived personal access token you mint for
+              Agents authenticate via OAuth or via a long-lived access token you mint for
               them. Tokens are scoped per org / doco and revocable any time.
             </CardDescription>
           </CardHeader>

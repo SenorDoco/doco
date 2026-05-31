@@ -33,8 +33,8 @@ export function UsersLink({
 }
 
 /**
- * Convenience link to the host-level /api-keys page. Personal access
- * tokens are owned per-user, not per-org or per-doco, so there's no
+ * Convenience link to the host-level /api-keys page. Access tokens
+ * are owned per-user, not per-org or per-doco, so there's no
  * scope filter to set — clicking just goes to the user's full list.
  */
 export function ApiKeysLink({

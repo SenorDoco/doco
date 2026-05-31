@@ -1,10 +1,10 @@
-// /api-keys — host-level page for managing personal access tokens.
+// /api-keys — host-level page for managing access tokens.
 //
 // Lists every active OAuth refresh token bound to the signed-in user
-// or one of their named agent users, plus personal access tokens
+// or one of their named agent users, plus access tokens
 // minted from this page. (URL kept as /api-keys to preserve existing
-// links and the navbar shortcut; the page is labelled "Personal access
-// tokens" everywhere user-facing.)
+// links and the navbar shortcut; the page is labelled "Access tokens"
+// everywhere user-facing.)
 //
 // Distinct from /users: that page lists who has access; this
 // page manages the credentials behind those agents/scripts.
@@ -52,7 +52,7 @@ type ActionResult =
 
 export async function action({ request }: { request: Request }): Promise<ActionResult> {
   const me = await getCurrentPrincipal(request);
-  if (!me) return { error: "Sign in to manage personal access tokens." };
+  if (!me) return { error: "Sign in to manage access tokens." };
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -113,7 +113,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
 }
 
 export function meta() {
-  return [{ title: "Personal access tokens · Doco" }];
+  return [{ title: "Access tokens · Doco" }];
 }
 
 export default function ApiKeysPage({
@@ -132,9 +132,9 @@ export default function ApiKeysPage({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Personal access tokens" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Access tokens" })} />
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Personal access tokens</h1>
+          <h1 className="text-2xl font-semibold">Access tokens</h1>
         </header>
 
         <AddAgentCard
@@ -146,7 +146,7 @@ export default function ApiKeysPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>All personal access tokens</CardTitle>
+            <CardTitle>All access tokens</CardTitle>
             <CardDescription>
               {keys.length === 0
                 ? "No active tokens yet."
@@ -481,7 +481,7 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
       className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2"
       data-testid="api-key-minted"
     >
-      <p className="text-sm font-semibold">Personal access token minted — copy it now</p>
+      <p className="text-sm font-semibold">Access token minted — copy it now</p>
       <p className="text-xs text-muted-foreground">
         This access token body is shown ONCE. Save it in your script's secret store; if you lose it,
         revoke the token and mint a new one. The access token expires in {expiresIn}; the refresh
