@@ -19,6 +19,7 @@ import { InviteStore } from "~/lib/invite-store.server";
 import { getCurrentPrincipal, userDisplayName } from "~/lib/session.server";
 import {
   ALL_ROLES,
+  type InviteGrantSpec,
   type InviteLevel,
   type UserInviteActionResult,
   type UserInviteData,
@@ -390,6 +391,14 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   if (intent !== "invite") return { error: `Unknown intent: ${intent}` };
+
+  // Multi-grant invite (one link, all grants): the wizard posts a `grants`
+  // JSON array. Validate each grant against the inviter's own role on that
+  // target, then issue ONE invite carrying them all.
+  const rawGrants = form.get("grants");
+  if (typeof rawGrants === "string" && rawGrants.trim()) {
+    return await handleMultiGrantInvite(request, me, rawGrants);
+  }
 
   const level = String(form.get("level") ?? "") as InviteLevel;
   const parsedRole = String(form.get("role") ?? "") as DocoRole;

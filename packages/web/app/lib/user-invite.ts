@@ -73,3 +73,16 @@ export function resolveInviteDefaultSelection(args: {
     : (options[0]?.id ?? "");
   return { level, targetId };
 }
+
+/**
+ * One grant carried by a multi-grant invite (one link, all grants). The
+ * redeemer receives every spec on consume. `account_grantor_user_id` is set
+ * only on account-level specs (whose account the redeemer joins).
+ */
+export interface InviteGrantSpec {
+  level: "account" | "org" | "doco";
+  target_id: string;
+  role: DocoRole;
+  write_types: string[];
+  account_grantor_user_id?: string;
+}

@@ -160,6 +160,37 @@ export async function action({
     };
   }
 
+  // Multi-grant invite (one link, all grants): apply every spec. This is the
+  // source of truth when present; the legacy single-grant fields below are the
+  // fallback for older invites.
+  if (consumed.grants && consumed.grants.length > 0) {
+    for (const g of consumed.grants) {
+      if (g.level === "account" && g.account_grantor_user_id) {
+        await upsertAccountGrant({
+          grantor_user_id: g.account_grantor_user_id,
+          grantee_user_id: principal.id,
+          role: g.role,
+          write_types: g.write_types,
+        });
+      } else if (g.level === "org") {
+        await upsertOrgUser({
+          org_id: g.target_id,
+          user_id: principal.id,
+          role: g.role,
+          write_types: g.write_types,
+        });
+      } else if (g.level === "doco") {
+        await upsertDocoUser({
+          doco_id: g.target_id,
+          user_id: principal.id,
+          role: g.role,
+          write_types: g.write_types,
+        });
+      }
+    }
+    return { ok: true, continue_to: continueTo, target_label: targetLabel };
+  }
+
   // Bind the human Principal into the role grant on the level the
   // invite targets. Pre-cutover invites (no role/level) default to
   // doco-level `owner` to preserve prior behavior.
