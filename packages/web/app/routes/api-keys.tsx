@@ -10,11 +10,12 @@
 // page manages the credentials behind those agents/scripts.
 
 import type { DocoRole } from "@doco/db";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { GrantPicker } from "~/components/grant-picker";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -28,8 +29,8 @@ import {
   mintApiKey,
   revokeApiKey,
 } from "~/lib/api-keys.server";
+import { type ComposedGrant, catalogFromOptions, resolveWriteTypes } from "~/lib/grant-picker";
 import { getCurrentPrincipal } from "~/lib/session.server";
-import { ALL_ROLES } from "~/lib/user-invite";
 
 export async function loader({ request }: { request: Request }): Promise<ApiKeysPageData> {
   const me = await getCurrentPrincipal(request);
@@ -272,49 +273,35 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const [label, setLabel] = useState("");
   const [cloudEnv, setCloudEnv] = useState(false);
 
-  // Single combined Org / Doco dropdown, matching the user
-  // invite UX (user-invite-cards.tsx). Each option carries the
-  // user's role on that target so the Role dropdown can constrain its
-  // choices to roles at or below the user's own.
-  const combinedOptions = useMemo(
+  // Same drill-down grant picker the collaborators page uses
+  // (decision_per_type_write_grants): org → docos → read/write + per-type.
+  const catalog = useMemo(
     () =>
-      scopeOptions
-        .map((opt) => ({
-          key: `${opt.level}:${opt.id}`,
-          level: opt.level,
-          id: opt.id,
-          label: opt.label,
-          myRole: opt.myRole,
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+      catalogFromOptions(
+        scopeOptions
+          .filter((o) => o.level === "org")
+          .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole })),
+        scopeOptions
+          .filter((o) => o.level === "doco")
+          .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole, orgId: o.orgId })),
+      ),
     [scopeOptions],
   );
-  const noScopes = combinedOptions.length === 0;
-  const [selectedKey, setSelectedKey] = useState<string>(combinedOptions[0]?.key ?? "");
-  useEffect(() => {
-    if (noScopes) {
-      if (selectedKey !== "") setSelectedKey("");
-      return;
-    }
-    if (!combinedOptions.some((opt) => opt.key === selectedKey)) {
-      setSelectedKey(combinedOptions[0]?.key ?? "");
-    }
-  }, [combinedOptions, noScopes, selectedKey]);
-  const selected = combinedOptions.find((o) => o.key === selectedKey) ?? null;
-  const maxRole = selected?.myRole ?? "reader";
-  const allowedRoles = useMemo(
-    () => ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(maxRole)),
-    [maxRole],
-  );
-  const [role, setRole] = useState<DocoRole>(maxRole);
-  useEffect(() => {
-    setRole((current) => (allowedRoles.includes(current) ? current : maxRole));
-  }, [allowedRoles, maxRole]);
+  const noScopes = catalog.targets.length === 0;
+  const [grant, setGrant] = useState<ComposedGrant | null>(null);
+  const writeTypes = grant ? resolveWriteTypes(grant.role, grant.writeTypes) : [];
 
   const grantsPayload = useMemo(() => {
-    if (!selected) return "[]";
-    return JSON.stringify([{ level: selected.level, target_id: selected.id, role }]);
-  }, [selected, role]);
+    if (!grant) return "[]";
+    return JSON.stringify([
+      {
+        level: grant.level,
+        target_id: grant.targetId,
+        role: grant.role,
+        write_types: writeTypes,
+      },
+    ]);
+  }, [grant, writeTypes]);
 
   return (
     <Form method="post" className="flex flex-col gap-3" data-testid="generate-api-key-form">
@@ -343,40 +330,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap items-end justify-start gap-3">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                Org / Doco
-              </span>
-              <select
-                value={selectedKey}
-                onChange={(e) => setSelectedKey(e.currentTarget.value)}
-                data-testid="api-key-target"
-                className="rounded-md px-3 py-2"
-              >
-                {combinedOptions.map((opt) => (
-                  <option key={opt.key} value={opt.key}>
-                    [{opt.level}] {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.currentTarget.value as DocoRole)}
-                data-testid="api-key-role"
-                className="rounded-md px-3 py-2"
-              >
-                {allowedRoles.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <GrantPicker catalog={catalog} value={grant} onChange={setGrant} />
           <label className="flex items-start gap-2 text-sm" data-testid="api-key-cloud-env-label">
             <input
               type="checkbox"
@@ -395,7 +349,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
             <button
               type="submit"
               data-testid="api-key-submit"
-              disabled={submitting || !label.trim() || !selected}
+              disabled={submitting || !label.trim() || !grant}
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {submitting ? "Generating…" : cloudEnv ? "Generate cloud token" : "Generate token"}
@@ -405,10 +359,6 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
       )}
     </Form>
   );
-}
-
-function rankOrZero(role: DocoRole): number {
-  return role === "owner" ? 2 : role === "writer" ? 1 : 0;
 }
 
 function MintedReveal({ minted }: { minted: MintedApiKey }) {

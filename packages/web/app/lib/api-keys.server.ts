@@ -33,6 +33,8 @@ export interface ScopeOption {
   id: string;
   label: string;
   myRole: DocoRole;
+  /** Owning org id (doco options only) — groups docos under their org. */
+  orgId?: string;
 }
 
 export interface ApiKeyScopeGrant {
@@ -279,6 +281,7 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
         handle: String(row.handle),
       }),
       myRole: role,
+      orgId: String(row.owner_id),
     });
   }
   // Sort by label across orgs + docos so the picker reads alphabetically.

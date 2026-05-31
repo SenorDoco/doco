@@ -45,6 +45,12 @@ export interface Invite {
    * paths after the cutover always set it explicitly.
    */
   role?: "owner" | "writer" | "reader";
+  /**
+   * Per-type write grant (decision_per_type_write_grants) the redeemer
+   * receives. Optional; absent → the upsert default (wildcard for a
+   * writer, empty otherwise), preserving pre-per-type behavior.
+   */
+  write_types?: string[];
   /** ISO timestamp this invite expires (default 7 days from issue). */
   expires_at: string;
   /** ISO timestamp this invite was issued. */
@@ -128,6 +134,7 @@ export class InviteStore {
     opts: {
       level?: "org" | "doco";
       org_id?: EntityId<"organization">;
+      write_types?: string[];
     } = {},
   ): Promise<Invite> {
     const file = await this.load();
@@ -143,6 +150,7 @@ export class InviteStore {
       level,
       ...(docoId ? { doco_id: docoId } : {}),
       ...(opts.org_id ? { org_id: opts.org_id } : {}),
+      ...(opts.write_types ? { write_types: opts.write_types } : {}),
       minted_by_user_id: mintedByUserId,
       role,
       expires_at: expires.toISOString(),

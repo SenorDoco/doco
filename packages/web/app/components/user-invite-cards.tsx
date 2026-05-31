@@ -1,46 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useFetcher } from "react-router";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
+import { GrantPicker } from "~/components/grant-picker";
 import {
-  ALL_ROLES,
-  type InviteDefaultSelection,
-  type InviteLevel,
-  type UserInviteActionResult,
-  type UserInviteData,
-  rankOf,
+  type ComposedGrant,
+  type DocoRole,
+  catalogFromOptions,
+  resolveWriteTypes,
+} from "~/lib/grant-picker";
+import type {
+  InviteDefaultSelection,
+  UserInviteActionResult,
+  UserInviteData,
 } from "~/lib/user-invite";
-
-interface CombinedTargetOption {
-  key: string; // "<level>:<id>"
-  level: InviteLevel;
-  id: string;
-  label: string;
-  maxRole: (typeof ALL_ROLES)[number];
-}
-
-function buildCombinedOptions(
-  orgs: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[],
-  docos: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[],
-): CombinedTargetOption[] {
-  const out: CombinedTargetOption[] = [
-    ...orgs.map<CombinedTargetOption>((o) => ({
-      key: `org:${o.id}`,
-      level: "org",
-      id: o.id,
-      label: o.label,
-      maxRole: o.maxRole,
-    })),
-    ...docos.map<CombinedTargetOption>((d) => ({
-      key: `doco:${d.id}`,
-      level: "doco",
-      id: d.id,
-      label: d.label,
-      maxRole: d.maxRole,
-    })),
-  ];
-  out.sort((a, b) => a.label.localeCompare(b.label));
-  return out;
-}
 
 export function UserInviteCards({
   invite,
@@ -79,8 +51,8 @@ function InviteHumanCard({
   docos,
   defaultSelection,
 }: {
-  orgs: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[];
-  docos: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[];
+  orgs: { id: string; label: string; maxRole: DocoRole }[];
+  docos: { id: string; label: string; maxRole: DocoRole; orgId?: string }[];
   defaultSelection: InviteDefaultSelection;
 }) {
   const fetcher = useFetcher<UserInviteActionResult>();
@@ -88,82 +60,34 @@ function InviteHumanCard({
   const inviteResult = result && "intent" in result && result.intent === "invite" ? result : null;
   const error = result && "error" in result ? result.error : undefined;
 
-  const combinedOptions = useMemo(() => buildCombinedOptions(orgs, docos), [orgs, docos]);
-  const defaultKey = `${defaultSelection.level}:${defaultSelection.targetId}`;
-  const initialSelected = combinedOptions.some((o) => o.key === defaultKey)
-    ? defaultKey
-    : (combinedOptions[0]?.key ?? "");
-  const [selectedKey, setSelectedKey] = useState(initialSelected);
-  const noTargets = combinedOptions.length === 0;
+  const catalog = useMemo(() => catalogFromOptions(orgs, docos), [orgs, docos]);
+  // Pre-select the target the page linked to (?scope=level:id), as a reader
+  // grant the user can then widen in the picker.
+  const initial = useMemo<ComposedGrant | null>(() => {
+    const t = catalog.targets.find(
+      (x) => x.level === defaultSelection.level && x.id === defaultSelection.targetId,
+    );
+    return t ? { level: t.level, targetId: t.id, role: "reader", writeTypes: [] } : null;
+  }, [catalog, defaultSelection]);
+  const [grant, setGrant] = useState<ComposedGrant | null>(initial);
 
-  useEffect(() => {
-    if (noTargets) {
-      if (selectedKey !== "") setSelectedKey("");
-      return;
-    }
-    if (!combinedOptions.some((opt) => opt.key === selectedKey)) {
-      setSelectedKey(combinedOptions[0]?.key ?? "");
-    }
-  }, [combinedOptions, noTargets, selectedKey]);
-
-  const selected = combinedOptions.find((o) => o.key === selectedKey);
-  const allowedRoles = selected
-    ? ALL_ROLES.filter((role) => rankOf(role) <= rankOf(selected.maxRole))
-    : [];
-  const defaultRole =
-    selected && rankOf(selected.maxRole) >= rankOf("writer") ? "writer" : selected?.maxRole;
+  const noTargets = catalog.targets.length === 0;
+  const writeTypes = grant ? resolveWriteTypes(grant.role, grant.writeTypes) : [];
 
   return (
     <div className="space-y-3">
       <fetcher.Form method="post" className="flex flex-col gap-3">
         <input type="hidden" name="intent" value="invite" />
-        <input type="hidden" name="level" value={selected?.level ?? ""} />
-        <input type="hidden" name="target_id" value={selected?.id ?? ""} />
-        <div className="flex flex-wrap items-end justify-start gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">
-              Org / Doco
-            </span>
-            <select
-              value={selectedKey}
-              onChange={(e) => setSelectedKey(e.currentTarget.value)}
-              disabled={noTargets}
-              data-testid="invite-target"
-              className="rounded-md px-3 py-2 disabled:opacity-50"
-            >
-              {noTargets ? (
-                <option value="">(no targets you can invite into)</option>
-              ) : (
-                combinedOptions.map((opt) => (
-                  <option key={opt.key} value={opt.key}>
-                    [{opt.level}] {opt.label}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
-            <select
-              name="role"
-              defaultValue={defaultRole ?? ""}
-              key={selectedKey}
-              data-testid="invite-role"
-              className="rounded-md px-3 py-2"
-            >
-              {allowedRoles.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <input type="hidden" name="level" value={grant?.level ?? ""} />
+        <input type="hidden" name="target_id" value={grant?.targetId ?? ""} />
+        <input type="hidden" name="role" value={grant?.role ?? ""} />
+        <input type="hidden" name="write_types" value={writeTypes.join(",")} />
+        <GrantPicker catalog={catalog} value={grant} onChange={setGrant} />
         <div className="flex justify-end">
           <button
             type="submit"
             data-testid="invite-submit"
-            disabled={fetcher.state !== "idle" || noTargets}
+            disabled={fetcher.state !== "idle" || noTargets || !grant}
             className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
             {fetcher.state !== "idle" ? "Generating..." : "Generate invite link"}

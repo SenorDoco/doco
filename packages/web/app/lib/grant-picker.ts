@@ -55,6 +55,36 @@ export interface ComposedGrant {
   writeTypes: string[];
 }
 
+/**
+ * Build a GrantCatalog from the invite/scope option lists both pages
+ * already load: org options ({id,label,maxRole}) and doco options
+ * (same plus `orgId` linking each doco to its org). Docos whose org
+ * isn't in the org list (e.g. personally-owned) are grouped under a
+ * synthetic "Other" bucket keyed by their ownerId so they remain
+ * grantable.
+ */
+export function catalogFromOptions(
+  orgs: { id: string; label: string; maxRole: DocoRole }[],
+  docos: { id: string; label: string; maxRole: DocoRole; orgId?: string }[],
+): GrantCatalog {
+  const orgEntries = orgs.map((o) => ({ id: o.id, label: o.label }));
+  const knownOrgIds = new Set(orgEntries.map((o) => o.id));
+  const targets: GrantTarget[] = [];
+
+  for (const o of orgs) {
+    targets.push({ level: "org", id: o.id, orgId: o.id, label: o.label, maxRole: o.maxRole });
+  }
+  for (const d of docos) {
+    const orgId = d.orgId ?? "__other__";
+    targets.push({ level: "doco", id: d.id, orgId, label: d.label, maxRole: d.maxRole });
+    if (orgId === "__other__" && !knownOrgIds.has("__other__")) {
+      orgEntries.push({ id: "__other__", label: "Personal / other" });
+      knownOrgIds.add("__other__");
+    }
+  }
+  return { orgs: orgEntries, targets };
+}
+
 /** Group the catalog's targets by organization for the drill-down UI. */
 export function targetsByOrg(catalog: GrantCatalog): {
   org: { id: string; label: string };
