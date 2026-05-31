@@ -2,7 +2,7 @@ import type { DocoRole } from "@doco/db";
 
 export const ALL_ROLES: DocoRole[] = ["owner", "writer", "reader"];
 
-export type InviteLevel = "org" | "doco";
+export type InviteLevel = "account" | "org" | "doco";
 export type InviteOption = {
   id: string;
   label: string;

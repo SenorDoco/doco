@@ -12,8 +12,10 @@ import {
   type DocoRole,
   getDocoById,
   getOrgRole,
+  removeAccountGrant,
   removeDocoUser,
   removeOrgUser,
+  upsertAccountGrant,
   upsertDocoUser,
   upsertOrgUser,
 } from "@doco/db";
@@ -90,6 +92,47 @@ export async function action({
     const name = String(form.get("name") ?? "");
     if (!agentId) return { error: "user_id missing." };
     return await renameAgentCollaborator({ meId: me.id, agentId, name });
+  }
+
+  // Account-level grants (migration 075): the grantor is the acting user,
+  // so there is no target to own-check — you may always grant or revoke
+  // access to your OWN account. The per-type set + role mirror the
+  // doco/org cases.
+  if ((intent === "update" || intent === "remove") && level === "account") {
+    const granteeId = String(form.get("user_id") ?? "").trim();
+    if (!granteeId) return { error: "user_id missing." };
+    if (granteeId === me.id) return { error: "You can't grant your account to yourself." };
+    if (intent === "remove") {
+      await removeAccountGrant(me.id, granteeId);
+      return { intent: "remove", ok: true, level, target_ids: [], user_id: granteeId };
+    }
+    const role = String(form.get("role") ?? "") as DocoRole;
+    if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
+    const rawWriteTypes = form.get("write_types");
+    const write_types =
+      rawWriteTypes === null
+        ? undefined
+        : normalizeWriteTypes(
+            String(rawWriteTypes)
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          );
+    await upsertAccountGrant({
+      grantor_user_id: me.id,
+      grantee_user_id: granteeId,
+      role,
+      write_types,
+    });
+    return {
+      intent: "update",
+      ok: true,
+      level,
+      target_ids: [],
+      user_id: granteeId,
+      role,
+      write_types: write_types ?? (role === "writer" ? ["*"] : []),
+    };
   }
 
   if (intent === "update" || intent === "remove") {

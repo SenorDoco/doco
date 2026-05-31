@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  type ExistingGrant,
   type GrantCatalog,
+  availableScopes,
+  describeExistingGrant,
   describeWriteScope,
   grantableRoles,
   rank,
@@ -89,5 +92,53 @@ describe("writableTypeGroups", () => {
     const g = writableTypeGroups();
     expect(g.nodes).toContain("decision");
     expect(g.edges).toContain("sequence_flow");
+  });
+});
+
+describe("availableScopes", () => {
+  it("offers account only when the user owns an org", () => {
+    const scopes = availableScopes(catalog).map((s) => s.scope);
+    // catalog: organization_A is owner → account offered; org + doco + types too.
+    expect(scopes).toEqual(["account", "org", "doco", "types"]);
+  });
+  it("omits account when the user owns no org", () => {
+    const noOwner: GrantCatalog = {
+      orgs: [{ id: "organization_X", label: "x" }],
+      targets: [
+        {
+          level: "org",
+          id: "organization_X",
+          orgId: "organization_X",
+          label: "x",
+          maxRole: "writer",
+        },
+        { level: "doco", id: "doco_9", orgId: "organization_X", label: "x/d", maxRole: "writer" },
+      ],
+    };
+    expect(availableScopes(noOwner).map((s) => s.scope)).toEqual(["org", "doco", "types"]);
+  });
+  it("offers nothing when there are no targets", () => {
+    expect(availableScopes({ orgs: [], targets: [] })).toEqual([]);
+  });
+});
+
+describe("describeExistingGrant", () => {
+  it("summarizes each level", () => {
+    const acct: ExistingGrant = {
+      level: "account",
+      label: "alice",
+      role: "writer",
+      writeTypes: ["*"],
+    };
+    const org: ExistingGrant = {
+      level: "org",
+      label: "acme",
+      role: "reader",
+      writeTypes: ["decision"],
+    };
+    const doco: ExistingGrant = { level: "doco", label: "acme/api", role: "owner", writeTypes: [] };
+    expect(describeExistingGrant(acct)).toBe("Entire account: alice — writes everything");
+    expect(describeExistingGrant(org)).toBe("Org: acme — writes 1 type");
+    expect(describeExistingGrant(doco)).toBe("Doco: acme/api — owns — writes everything");
   });
 });
