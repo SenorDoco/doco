@@ -40,7 +40,6 @@
 //
 // Not rendered: Log (instances, not designs).
 
-import { ALL_ENTITY_TABLES } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
@@ -194,26 +193,29 @@ export async function loadBpmnGraph(
   docoId: string,
   opts: { focusId?: string; handle?: string; nodeLimit?: number } = {},
 ): Promise<BpmnGraphData> {
-  const nodeSql = BPMN_TABLES.map((entry) => {
-    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
-    const summarySelect = tnCol ? `split_part(t.${tnCol}, E'\n', 1) AS summary` : "t.summary";
-    return `SELECT t.id,
-              '${entry.entityType}'::text AS entity_type,
-              ${summarySelect},
+  // Post-collapse: one `nodes` query over the eight BPMN node types
+  // (BPMN_TABLES deliberately excludes logs and principals — principals
+  // are loaded separately below as actor lanes). `summary` is the first
+  // line of `prose`.
+  const bpmnTypeList = BPMN_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
+  const nodeSql = `SELECT t.id,
+              t.node_type AS entity_type,
+              split_part(t.prose, E'\n', 1) AS summary,
               COALESCE(t.lifecycle, 'asserted') AS lifecycle,
               t.created_at::text AS created_at,
               t.data
-         FROM ${entry.table} t
+         FROM nodes t
         WHERE t.doco_id = $1
+          AND t.node_type IN (${bpmnTypeList})
           AND COALESCE(t.lifecycle, 'asserted') <> 'retired'`;
-  }).join(" UNION ALL ");
 
   const [nodeRows, principalRows, userRows] = await Promise.all([
     c.query<NodeRow>(nodeSql, [docoId]),
     c.query<PrincipalRow>(
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
-         FROM principals
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'principal'
+          AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),

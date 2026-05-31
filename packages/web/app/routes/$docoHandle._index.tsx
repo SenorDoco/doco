@@ -174,18 +174,18 @@ export async function loader({
         label: string | null;
         lifecycle: string | null;
       }>(
-        `SELECT id, split_part(decision, E'\n', 1) AS label, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
+        // Post-collapse: all 10 node types live in `nodes`. Labels are
+        // the first line of `prose`, except principals (prose='') label
+        // on `name`. Policies keep their own tables and their `policy`
+        // column.
+        `SELECT id,
+                CASE WHEN node_type = 'principal' THEN name ELSE split_part(prose, E'\n', 1) END AS label,
+                lifecycle
+           FROM nodes
+          WHERE doco_id = $1 AND id = ANY($2::text[])
+            AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'state', 'reference', 'principal')
          UNION ALL SELECT id, policy AS label, lifecycle FROM guidance_policies WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, policy AS label, lifecycle FROM node_authoring_policies WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(state, E'\n', 1) AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, split_part(reference, E'\n', 1) AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, name AS label, lifecycle FROM principals WHERE doco_id = $1 AND id = ANY($2::text[])`,
+         UNION ALL SELECT id, policy AS label, lifecycle FROM node_authoring_policies WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
       for (const row of entityLabelRows.rows) {
@@ -226,17 +226,13 @@ export async function loader({
     const sinceIso = since.toISOString();
     const activityRows = (
       await c.query<{ day: string; n: string }>(
+        // Post-collapse: one scan of `nodes` over the 10 node types
+        // (9 prose types + principals; no policies).
         `SELECT day, COUNT(*)::text AS n FROM (
-           SELECT to_char(created_at, 'YYYY-MM-DD') AS day FROM decisions WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM intents WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM ideas WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM rules WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM actions WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM logs WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reference_entities WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM states WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM principals WHERE doco_id = $1
+           SELECT to_char(created_at, 'YYYY-MM-DD') AS day
+             FROM nodes
+            WHERE doco_id = $1
+              AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'reference', 'state', 'principal')
          ) t WHERE day >= $2
          GROUP BY day`,
         [ctx.meta.docoId, sinceIso.slice(0, 10)],

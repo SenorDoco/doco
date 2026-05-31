@@ -6,13 +6,7 @@
 // filtering yet (a follow-up to the doco-level search, which carries
 // lifecycle / node-type filters).
 
-import {
-  ALL_ENTITY_TABLES,
-  DOCO_NODE_TABLE_SPECS,
-  bufferToEmbedding,
-  cosineSimilarity,
-  withClient,
-} from "@doco/db";
+import { DOCO_NODE_TABLE_SPECS, bufferToEmbedding, cosineSimilarity, withClient } from "@doco/db";
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
@@ -68,9 +62,9 @@ async function hydrateHits(
   if (ids.length === 0) return [];
   const hits: Hit[] = [];
   for (const spec of TYPE_SPECS) {
-    // Every entry in DOCO_NODE_TABLE_SPECS is one of the 9 migrated
-    // node types — they all carry prose in a type-named column.
-    const tnCol = ALL_ENTITY_TABLES[spec.entityType]?.typeNamedColumn ?? "summary";
+    // Post-collapse: every entry in DOCO_NODE_TABLE_SPECS is one of the
+    // 9 prose node types, all living in `nodes` with prose in the shared
+    // `prose` column. Scope by node_type.
     const rows = (
       await c.query<{
         id: string;
@@ -78,10 +72,10 @@ async function hydrateHits(
         lifecycle: string | null;
         created_at: string | Date | null;
       }>(
-        `SELECT id, split_part(${tnCol}, E'\n', 1) AS summary, lifecycle, created_at::text AS created_at
-           FROM ${spec.table}
-          WHERE id = ANY($1::text[])`,
-        [ids],
+        `SELECT id, split_part(prose, E'\n', 1) AS summary, lifecycle, created_at::text AS created_at
+           FROM nodes
+          WHERE id = ANY($1::text[]) AND node_type = $2`,
+        [ids, spec.entityType],
       )
     ).rows;
     for (const row of rows) {

@@ -258,37 +258,25 @@ export async function loadGlossaryPerspectiveData(
   // glossary headwords. Each table projects its type-named prose column
   // into `label` (first line) + `prose` (full text); only references
   // carry the promoted scalar columns.
+  // Post-collapse: one `nodes` query over the five glossary node types
+  // (decision, reference, rule, eval, intent). Each row's `prose` is the
+  // shared prose column; `label` is its first line, except a Reference
+  // with a non-empty `title` headwords on the title. The promoted
+  // reference scalars (ref_type/locator/citation/title) are NULL for the
+  // other four types, exactly as the per-table legs projected.
   const { rows } = await c.query<NodeRow>(
     `
-    SELECT id, 'decision'::text AS entity_type,
-           split_part(decision, E'\n', 1) AS label, decision AS prose,
-           COALESCE(lifecycle,'asserted') AS lifecycle, data,
-           NULL::text AS ref_type, NULL::text AS locator, NULL::text AS citation, NULL::text AS title
-      FROM decisions WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
-    UNION ALL
-    SELECT id, 'reference'::text,
-           split_part(COALESCE(NULLIF(title,''), reference), E'\n', 1), reference,
-           COALESCE(lifecycle,'asserted'), data,
+    SELECT id,
+           node_type AS entity_type,
+           split_part(COALESCE(NULLIF(title, ''), prose), E'\n', 1) AS label,
+           prose AS prose,
+           COALESCE(lifecycle, 'asserted') AS lifecycle,
+           data,
            ref_type, locator, citation, title
-      FROM reference_entities WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
-    UNION ALL
-    SELECT id, 'rule'::text,
-           split_part(rule, E'\n', 1), rule,
-           COALESCE(lifecycle,'asserted'), data,
-           NULL, NULL, NULL, NULL
-      FROM rules WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
-    UNION ALL
-    SELECT id, 'eval'::text,
-           split_part(eval, E'\n', 1), eval,
-           COALESCE(lifecycle,'asserted'), data,
-           NULL, NULL, NULL, NULL
-      FROM evals WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
-    UNION ALL
-    SELECT id, 'intent'::text,
-           split_part(intent, E'\n', 1), intent,
-           COALESCE(lifecycle,'asserted'), data,
-           NULL, NULL, NULL, NULL
-      FROM intents WHERE doco_id = $1 AND COALESCE(lifecycle,'asserted') <> 'retired'
+      FROM nodes
+     WHERE doco_id = $1
+       AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
+       AND COALESCE(lifecycle, 'asserted') <> 'retired'
     `,
     [docoId],
   );

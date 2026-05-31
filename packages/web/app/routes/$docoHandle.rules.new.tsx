@@ -29,8 +29,9 @@ export async function loader({
   const intents = await withClient(async (c) => {
     const rows = (
       await c.query<IntentOption>(
-        `SELECT id, split_part(intent, E'\n', 1) AS label FROM intents
-          WHERE doco_id = $1
+        `SELECT id, split_part(prose, E'\n', 1) AS label FROM nodes
+          WHERE node_type = 'intent'
+            AND doco_id = $1
             AND COALESCE(lifecycle, 'asserted') = 'asserted'
           ORDER BY created_at DESC`,
         [meta.docoId],

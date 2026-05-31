@@ -18,20 +18,29 @@ export interface DocoStats {
   lastUpdatedAt: string | null;
 }
 
-const STATS_ENTITY_TABLE_SPECS = [
-  { table: "decisions", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "intents", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "rules", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "actions", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "evals", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "ideas", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "reference_entities", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "logs", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "states", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  { table: "principals", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-];
+// Post-collapse: every node lives in the unified `nodes` table,
+// discriminated by `node_type`. Stats count domain nodes plus the
+// Doco's principals. Policies are deliberately excluded (their own
+// surface). This list is the set of `node_type` values that count as
+// "nodes" for the stats/aggregate queries.
+export const NODE_TYPES_FOR_STATS = [
+  "decision",
+  "intent",
+  "rule",
+  "action",
+  "eval",
+  "idea",
+  "reference",
+  "log",
+  "state",
+  "principal",
+] as const;
 
-export const ENTITY_TABLES = STATS_ENTITY_TABLE_SPECS.map((spec) => spec.table);
+// SQL fragment listing the stats node types, e.g. "'decision', 'intent', …".
+// Exported so the org-tree / org-index aggregate queries can build the
+// same `FROM nodes WHERE node_type IN (...)` union without duplicating
+// the list.
+export const NODE_TYPES_FOR_STATS_SQL = NODE_TYPES_FOR_STATS.map((t) => `'${t}'`).join(", ");
 
 const EMPTY: DocoStats = { nodes: 0, activeNodes: 0, edges: 0, lastUpdatedAt: null };
 
@@ -41,10 +50,10 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   const ids = [...docoIds];
 
   return withClient(async (c) => {
-    const nodesSql = STATS_ENTITY_TABLE_SPECS.map(
-      (spec) =>
-        `SELECT ${spec.docoIdSql} AS doco_id, lifecycle, updated_at FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
-    ).join(" UNION ALL ");
+    const nodesSql = `SELECT doco_id, lifecycle, updated_at
+         FROM nodes
+        WHERE doco_id = ANY($1)
+          AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
     const [nodesRows, edgesRows, updatedRows] = await Promise.all([
       c.query<{ doco_id: string; n: string; active_n: string; last_entity_at: string | null }>(
         `SELECT doco_id,

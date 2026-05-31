@@ -1,4 +1,4 @@
-import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_SPECS, withClient } from "@doco/db";
+import { DOCO_NODE_TABLE_SPECS, withClient } from "@doco/db";
 import { entityUrl, normalizeNodeType } from "@doco/shared";
 // Per-Doco entity list at the short URL `/<doco-handle>/<type>`.
 //
@@ -15,10 +15,9 @@ import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-const TABLE_BY_TYPE: Record<string, string> = Object.fromEntries(
-  DOCO_NODE_TABLE_SPECS.map((spec) => [spec.entityType, spec.table]),
-);
-const KNOWN = new Set<string>(Object.keys(TABLE_BY_TYPE));
+// The 9 prose node types this list route serves; each is a `node_type`
+// value on the unified `nodes` table.
+const KNOWN = new Set<string>(DOCO_NODE_TABLE_SPECS.map((spec) => spec.entityType));
 
 export async function loader({
   params,
@@ -34,17 +33,15 @@ export async function loader({
   const ctx = await loadDocoRouteForRead(request, params);
   const { ownerSlug, docoSlug, handle } = ctx;
   return withClient(async (c) => {
-    const table = TABLE_BY_TYPE[type] ?? type;
-    // Post-migration: all 9 node tables here carry prose in the
-    // type-named column (intent on intents, decision on decisions,
-    // ...). Project the first line for the list "summary" cell.
-    const tnCol = ALL_ENTITY_TABLES[type]?.typeNamedColumn ?? "summary";
+    // Post-collapse: all 9 node types live in `nodes` with prose in the
+    // shared `prose` column. Project its first line for the list
+    // "summary" cell, scoped by node_type.
     const rows = (
       await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
-        `SELECT id, split_part(${tnCol}, E'\n', 1) AS summary, data FROM ${table}
-          WHERE doco_id = $1
+        `SELECT id, split_part(prose, E'\n', 1) AS summary, data FROM nodes
+          WHERE node_type = $1 AND doco_id = $2
           ORDER BY id DESC LIMIT 200`,
-        [ctx.meta.docoId],
+        [type, ctx.meta.docoId],
       )
     ).rows;
     const items = rows.map((r) => {

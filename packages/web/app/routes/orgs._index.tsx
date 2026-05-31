@@ -22,7 +22,7 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import { ENTITY_TABLES } from "~/lib/doco-stats.server";
+import { NODE_TYPES_FOR_STATS_SQL } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -66,9 +66,9 @@ export async function loader({ request }: { request: Request }) {
   // fallback for imported/pre-audit content. Separate pooled queries avoid
   // serializing work through a single PoolClient.
   const orgIds = orgsRaw.map((o) => o.id);
-  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id, updated_at FROM ${t}`).join(
-    " UNION ALL ",
-  );
+  // Post-collapse: count rows in the unified `nodes` table (the stats
+  // node types). The outer query scopes by org via the docos join.
+  const nodesUnionSql = `SELECT doco_id, updated_at FROM nodes WHERE node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
   const [orgLastActivity, orgNodeStats] = await Promise.all([
     withClient(async (c) => {
       if (orgIds.length === 0) return new Map<string, string | null>();
@@ -182,14 +182,13 @@ export async function loader({ request }: { request: Request }) {
           label: string | null;
           lifecycle: string | null;
         }>(
-          `SELECT id, split_part(decision, E'\n', 1) AS label, lifecycle FROM decisions WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(reference, E'\n', 1) AS label, lifecycle FROM reference_entities WHERE id = ANY($1)`,
+          // Post-collapse: one `nodes` query. Labels = first line of
+          // `prose`. Deliberately covers the same eight prose types the
+          // feed shows (no policies, principals, or states).
+          `SELECT id, split_part(prose, E'\n', 1) AS label, lifecycle
+             FROM nodes
+            WHERE id = ANY($1)
+              AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'reference')`,
           [entityIds],
         );
         for (const r of entityLabelRows.rows) {

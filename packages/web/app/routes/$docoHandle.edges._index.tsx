@@ -45,17 +45,16 @@ export async function loader({
   return withClient(async (c) => {
     const rows = (
       await c.query<EdgeRow>(
+        // Post-collapse: the prose node types live in `nodes` (summary =
+        // first line of `prose`); policies keep their own tables and
+        // `policy` column. Matches the prior set (no states/principals).
         `WITH labels AS (
-           SELECT id, split_part(decision, E'\n', 1) AS summary FROM decisions          WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(intent, E'\n', 1)   FROM intents             WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(idea, E'\n', 1)     FROM ideas               WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(rule, E'\n', 1)     FROM rules               WHERE doco_id = $1
-           UNION ALL SELECT id, policy                         FROM guidance_policies   WHERE doco_id = $1
-           UNION ALL SELECT id, policy                         FROM node_authoring_policies WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(action, E'\n', 1)   FROM actions             WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(log, E'\n', 1)      FROM logs                WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(eval, E'\n', 1)     FROM evals               WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(reference, E'\n', 1) FROM reference_entities WHERE doco_id = $1
+           SELECT id, split_part(prose, E'\n', 1) AS summary
+             FROM nodes
+            WHERE doco_id = $1
+              AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'reference')
+           UNION ALL SELECT id, policy FROM guidance_policies        WHERE doco_id = $1
+           UNION ALL SELECT id, policy FROM node_authoring_policies  WHERE doco_id = $1
          )
          SELECT e.id, e.from_id, e.from_node_type, fl.summary AS from_summary,
                 e.to_id,   e.to_node_type,   tl.summary AS to_summary,
