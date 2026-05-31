@@ -6,7 +6,6 @@ import {
   type GitHubConnection,
   addConnection,
   buildInstallUrl,
-  buildRepoPickerChoices,
   importInstallationConnections,
   normalizeConnections,
   parseRepoSlug,
@@ -106,22 +105,6 @@ describe("addConnection — one repo ↔ one Doco", () => {
       { detachElsewhere: vi.fn(async () => {}), list, write: vi.fn(async () => {}) },
     );
     expect(result).toEqual([{ repo: "acme/store", installation_id: 2 }]);
-  });
-});
-
-describe("buildRepoPickerChoices", () => {
-  it("annotates each installation repo with its current Doco and whether it's already here", () => {
-    expect(
-      buildRepoPickerChoices(
-        ["acme/store", "acme/site", "acme/api"],
-        { "acme/store": "this-doco", "acme/site": "other-doco" },
-        "this-doco",
-      ),
-    ).toEqual([
-      { repo: "acme/store", attachedTo: "this-doco", here: true },
-      { repo: "acme/site", attachedTo: "other-doco", here: false },
-      { repo: "acme/api", attachedTo: null, here: false },
-    ]);
   });
 });
 

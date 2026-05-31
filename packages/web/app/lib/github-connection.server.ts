@@ -258,58 +258,6 @@ export async function getDocoConnectionsContext(
 }
 
 /**
- * Batch lookup: for each of `repos`, the handle of the Doco that currently
- * holds it (under the one-repo-one-Doco invariant, at most one). Repos not
- * attached anywhere are absent from the result. Covers the connections[] list
- * shape and the legacy single shape. Used by the connect-time repo picker to
- * warn "currently on ‹other Doco› — attaching moves it".
- */
-export async function findDocoHandlesForRepos(repos: string[]): Promise<Record<string, string>> {
-  if (repos.length === 0) return {};
-  return withClient(async (c) => {
-    const r = await c.query<{ repo: string; handle: string }>(
-      `SELECT elem->>'repo' AS repo, d.handle
-         FROM docos d,
-              jsonb_array_elements(d.data->'github_integration'->'connections') AS elem
-        WHERE elem->>'repo' = ANY($1)
-       UNION
-       SELECT d.data->'github_integration'->>'repo' AS repo, d.handle
-         FROM docos d
-        WHERE d.data->'github_integration'->>'repo' = ANY($1)`,
-      [repos],
-    );
-    const out: Record<string, string> = {};
-    for (const row of r.rows) if (row.repo) out[row.repo] = row.handle;
-    return out;
-  });
-}
-
-/** One row of the connect-time repo picker. Pure view-model. */
-export interface RepoPickerChoice {
-  repo: string;
-  /** Handle of the Doco currently holding this repo, or null if unattached. */
-  attachedTo: string | null;
-  /** True when the repo is already attached to the Doco being viewed. */
-  here: boolean;
-}
-
-/**
- * Build the picker rows for an installation's repos: annotate each with the
- * Doco it currently belongs to (if any) and whether that's the current Doco.
- * Pure.
- */
-export function buildRepoPickerChoices(
-  installationRepos: string[],
-  currentHandleByRepo: Record<string, string>,
-  thisHandle: string,
-): RepoPickerChoice[] {
-  return installationRepos.map((repo) => {
-    const attachedTo = currentHandleByRepo[repo] ?? null;
-    return { repo, attachedTo, here: attachedTo === thisHandle };
-  });
-}
-
-/**
  * Import every repo a fresh App installation covers as a connection on the
  * Doco — the click-through setup callback's core. Mints an installation token,
  * lists its repos, and addConnection's each. Returns the connected repos.
