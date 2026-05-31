@@ -103,3 +103,45 @@ describe("per-type write gate — token cap AND-ing", () => {
     expect(new Set(cap)).toEqual(new Set(["decision", "intent"]));
   });
 });
+
+// Account grants (migration 075) fold into the doco-level grant exactly
+// like every other source: the engine takes the MAX role and the UNION of
+// write-type sets across direct/org/account/doco grants (owner ⇒ wildcard).
+// This mirrors getDocoLevelGrant#fold without a live DB.
+type Grant = { role: "owner" | "writer" | "reader"; writeTypes: string[] };
+function foldGrants(sources: (Grant | null)[]): Grant | null {
+  let role: "owner" | "writer" | "reader" | null = null;
+  const wt = new Set<string>();
+  const rank = (r: "owner" | "writer" | "reader") => (r === "owner" ? 2 : r === "writer" ? 1 : 0);
+  for (const g of sources) {
+    if (!g) continue;
+    if (role === null || rank(g.role) > rank(role)) role = g.role;
+    if (g.role === "owner") wt.add("*");
+    for (const t of g.writeTypes) wt.add(t);
+  }
+  if (role === null) return null;
+  return { role, writeTypes: normalizeWriteTypes([...wt]) };
+}
+
+describe("account-grant fold into doco-level grant", () => {
+  it("an account grant alone provides the doco grant", () => {
+    const g = foldGrants([null, { role: "reader", writeTypes: ["decision"] }]);
+    expect(g).toEqual({ role: "reader", writeTypes: ["decision"] });
+  });
+  it("account write-types union with a per-doco grant", () => {
+    const g = foldGrants([
+      { role: "reader", writeTypes: ["decision"] }, // account
+      { role: "reader", writeTypes: ["intent"] }, // doco_users
+    ]);
+    expect(g?.role).toBe("reader");
+    expect(new Set(g?.writeTypes)).toEqual(new Set(["decision", "intent"]));
+  });
+  it("an owner account grant writes everything (wildcard)", () => {
+    const g = foldGrants([{ role: "owner", writeTypes: [] }]);
+    expect(g).toEqual({ role: "owner", writeTypes: ["*"] });
+    expect(canWriteType(g?.role, g?.writeTypes ?? [], "action")).toBe(true);
+  });
+  it("no sources → no grant", () => {
+    expect(foldGrants([null, null])).toBeNull();
+  });
+});
