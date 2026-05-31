@@ -19,15 +19,15 @@ import { waitUntil } from "@vercel/functions";
 // ULID; agents/users read the readable field (`summary` for most nodes).
 import { appendAuditEvent } from "./audit-log.server";
 import { type AuthoringResult, runAuthoringPolicies } from "./authoring-runner.server";
-import { validatePatch } from "./mutability.server";
 
 /**
  * System-managed identity / audit columns that PATCH must never
  * touch. Step B of the node shape sweep removed per-type field
- * whitelists; every field except these is patchable subject to the
- * frozen-claim gate. Inlined here (not imported from the factory)
- * because capture.server.ts is imported BY the factory — a forward
- * import would close a cycle.
+ * whitelists; every field except these is patchable. (The old
+ * frozen-claim gate that further restricted patches by lifecycle has
+ * been removed — any writer may edit any node or edge at any
+ * lifecycle; history lives in the append-only audit log + immutable
+ * version snapshots.)
  */
 const SYSTEM_MANAGED_FIELDS: ReadonlySet<string> = new Set([
   "id",
@@ -616,10 +616,6 @@ export interface CaptureError {
   error: string;
   /** HTTP status the route should return. Defaults to 400 when absent. */
   status?: number;
-  /** When the mutability gate rejects a frozen-claim PATCH, list of disallowed fields the request touched. */
-  rejected?: string[];
-  /** Human-readable hint pointing at the supersession affordance for frozen claims. */
-  hint?: string;
   /**
    * When the authoring-policies evaluator blocks the capture, the
    * id of the policy whose predicate produced the violation. Lets
@@ -1098,20 +1094,6 @@ export async function updateDecision(
   if (!existing) return { error: `Decision not found: ${decisionId}` };
   const fm = existing.fm;
 
-  const gate = validatePatch(
-    "decision",
-    fm.lifecycle as string | undefined,
-    patch as Record<string, unknown>,
-  );
-  if (!gate.allowed) {
-    return {
-      error: `Decision is frozen — patch touched disallowed field(s): ${gate.rejected.join(", ")}.`,
-      status: 409,
-      rejected: gate.rejected,
-      hint: gate.hint,
-    };
-  }
-
   // Snapshot pre-mutation values for the audit log; only the fields
   // that get mutated below are inspected later, so a shallow copy of
   // policies + reference grab for arrays is sufficient.
@@ -1363,9 +1345,9 @@ export async function updateEntity(opts: {
   /**
    * Legacy per-route whitelist. Now ignored — Step B of the node
    * shape sweep removed per-type field restrictions; every field
-   * except system-managed identity/audit columns is patchable subject
-   * to the frozen-claim gate. Kept as `undefined` in the type so the
-   * factory keeps compiling while we let stragglers fall away.
+   * except system-managed identity/audit columns is patchable. Kept
+   * as `undefined` in the type so the factory keeps compiling while we
+   * let stragglers fall away.
    */
   allowedFields?: undefined;
   docoHost?: string;
@@ -1389,20 +1371,6 @@ export async function updateEntity(opts: {
   // and ignores body operations. For migrated nodes body_md is gone
   // entirely; only policies/principal still carry it.
   const isMd = !typeNamedColumn && entityType !== "reference";
-
-  const gate = validatePatch(
-    entityType,
-    fm.lifecycle as string | undefined,
-    normalizedPatch as Record<string, unknown>,
-  );
-  if (!gate.allowed) {
-    return {
-      error: `${entityType} is frozen — patch touched disallowed field(s): ${gate.rejected.join(", ")}.`,
-      status: 409,
-      rejected: gate.rejected,
-      hint: gate.hint,
-    };
-  }
 
   // Snapshot pre-mutation values for the audit log.
   const beforeFm: Record<string, unknown> = { ...fm };
