@@ -4,6 +4,7 @@
 import {
   type DocoRole,
   isOrgUser as dbIsOrgMember,
+  getAccountGrant,
   getDocoByIdOrHandle,
   getDocoUserGrant,
   getDocoUserRole,
@@ -12,6 +13,7 @@ import {
   getPrincipalById,
   getUserById,
   listDocoIdsForUser,
+  listOrgOwnerUserIds,
   maxRole,
   roleAtLeast,
   withClient,
@@ -43,35 +45,12 @@ export async function getDocoLevelRole(
   meta: { ownerId: string; docoId?: string },
   principalId: string | null,
 ): Promise<DocoRole | null> {
-  if (!principalId) return null;
-
-  let role: DocoRole | null = null;
-  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
-
-  if (meta.ownerId === principalId) role = maxRole(role, "owner");
-  if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) {
-    role = maxRole(role, "owner");
-  }
-
-  if (meta.ownerId.startsWith("organization_")) {
-    const direct = await getOrgRole(meta.ownerId, principalId);
-    role = maxRole(role, direct);
-    if (ownerOfPrincipal) {
-      const viaOwner = await getOrgRole(meta.ownerId, ownerOfPrincipal);
-      role = maxRole(role, viaOwner);
-    }
-  }
-
-  if (meta.docoId) {
-    const dm = await getDocoUserRole(meta.docoId, principalId);
-    role = maxRole(role, dm);
-    if (ownerOfPrincipal) {
-      const ownerDm = await getDocoUserRole(meta.docoId, ownerOfPrincipal);
-      role = maxRole(role, ownerDm);
-    }
-  }
-
-  return role;
+  // Delegate to getDocoLevelGrant so the role and per-type-write paths
+  // resolve access from exactly the same sources (direct owner, agent
+  // owner chain, org membership, account grants, doco membership) — there
+  // is no second copy of the source list to drift out of sync.
+  const grant = await getDocoLevelGrant(meta, principalId);
+  return grant?.role ?? null;
 }
 
 /**
@@ -109,6 +88,16 @@ export async function getDocoLevelGrant(
   if (meta.ownerId.startsWith("organization_")) {
     fold(await getOrgGrant(meta.ownerId, principalId));
     if (ownerOfPrincipal) fold(await getOrgGrant(meta.ownerId, ownerOfPrincipal));
+
+    // Account-level grants (migration 075): if any OWNER of this org has
+    // granted their whole account to the principal (or to the agent's
+    // owner), the principal inherits that grant on every org/doco that
+    // owner owns — including this one.
+    const orgOwners = await listOrgOwnerUserIds(meta.ownerId);
+    for (const grantor of orgOwners) {
+      fold(await getAccountGrant(grantor, principalId));
+      if (ownerOfPrincipal) fold(await getAccountGrant(grantor, ownerOfPrincipal));
+    }
   }
 
   if (meta.docoId) {
