@@ -7,7 +7,13 @@
 // now. Edges authored directly via the edges API (origin='authored') are never
 // touched — reconciliation owns origin='field' edges only.
 
-import { type PoolClient, createChangeset, createEdge, retireEdge } from "@doco/db";
+import {
+  type PoolClient,
+  createChangeset,
+  createEdge,
+  retireEdge,
+  withTransaction,
+} from "@doco/db";
 import {
   type ExistingManagedEdge,
   MANAGED_RELATION_EDGE_TYPES,
@@ -84,4 +90,46 @@ export async function reconcileNodeEdges(
     await retireEdge(c, txId, { id, actor: args.actor });
   }
   return { created: plan.toCreate.length, retired: plan.toRetireIds.length };
+}
+
+/** Node types that own at least one of the five managed relationship fields. */
+const MANAGED_OWNER_NODE_TYPES: readonly string[] = ["intent", "decision", "action", "log"];
+
+/**
+ * One-time backfill: project the managed relationship edges for every existing
+ * node in a Doco (run per Doco by an operator after deploying the column drop).
+ * Reuses the capture-path reconciliation, so it is idempotent — safe to re-run
+ * and a no-op once every node's edges exist. Edge ids are ULIDs minted via
+ * createEdge, which is why this is an app step rather than a SQL migration
+ * (cf. #678's operator-run VALIDATE CONSTRAINT follow-up).
+ */
+export async function backfillManagedEdges(
+  docoId: string,
+): Promise<{ scanned: number; created: number; retired: number }> {
+  return withTransaction(async (c) => {
+    const { rows } = await c.query<{
+      id: string;
+      node_type: string;
+      data: Record<string, unknown> | null;
+    }>(
+      `SELECT id, node_type, data
+         FROM nodes
+        WHERE doco_id = $1 AND node_type = ANY($2::text[])
+        ORDER BY created_at`,
+      [docoId, [...MANAGED_OWNER_NODE_TYPES]],
+    );
+    let created = 0;
+    let retired = 0;
+    for (const row of rows) {
+      const res = await reconcileNodeEdges(c, {
+        docoId,
+        entityType: row.node_type,
+        entity: { ...(row.data ?? {}), id: row.id } as unknown as Entity,
+        actor: null,
+      });
+      created += res.created;
+      retired += res.retired;
+    }
+    return { scanned: rows.length, created, retired };
+  });
 }
