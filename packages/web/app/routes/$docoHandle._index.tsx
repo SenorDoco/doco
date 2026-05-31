@@ -36,6 +36,7 @@ import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { GlossaryPerspective } from "~/components/perspectives/glossary-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
+import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
@@ -65,6 +66,7 @@ import {
   listPerspectivesForDoco,
   resolveActivePerspective,
 } from "~/lib/perspectives.server";
+import { loadPullRequestsPerspective } from "~/lib/pull-requests-perspective.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { loadSlaPerspectiveData } from "~/lib/sla-perspective.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -342,6 +344,8 @@ export async function loader({
       activeKind === "glossary"
         ? await loadGlossaryPerspectiveData(c, ctx.meta.docoId, handle)
         : null;
+    const pullRequestsData =
+      activeKind === "pull-requests" ? await loadPullRequestsPerspective(c, ctx.meta.docoId) : null;
 
     // Policy count — guidance + node-authoring policies
     // attached to this Doco.
@@ -383,6 +387,7 @@ export async function loader({
       slaData,
       approvalData,
       glossaryData,
+      pullRequestsData,
       focusedNodeId: selectedNode?.id ?? null,
       selectedNode: dialogNode,
     };
@@ -495,6 +500,7 @@ export default function DocoHome({
     slaData,
     approvalData,
     glossaryData,
+    pullRequestsData,
     focusedNodeId,
     selectedNode,
   } = loaderData;
@@ -1024,6 +1030,12 @@ export default function DocoHome({
                   <GlossaryPerspective
                     data={glossaryData}
                     title={handle}
+                    visibleLifecycles={visibleLifecycles}
+                  />
+                ) : effectivePerspectiveKind === "pull-requests" && pullRequestsData ? (
+                  <PullRequestsPerspective
+                    data={pullRequestsData}
+                    handle={handle}
                     visibleLifecycles={visibleLifecycles}
                   />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (

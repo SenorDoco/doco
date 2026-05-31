@@ -39,3 +39,6 @@ build/
 /tmp/
 .vercel
 /.scratch/
+
+# Background-agent git worktrees (isolation: worktree) live here; never commit them.
+.claude/worktrees/
