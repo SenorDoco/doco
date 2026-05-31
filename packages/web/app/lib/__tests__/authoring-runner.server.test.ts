@@ -23,12 +23,16 @@ const POLICY_ID_PRINCIPAL = "node_authoring_policy_01TESTPRINCIPAL000000001";
 const POLICY_ID_FIELD = "node_authoring_policy_01TESTFIELD000000000001";
 const POLICY_ID_PROBABILISTIC = "node_authoring_policy_01TESTPROB0000000000001";
 const POLICY_ID_UNIQUE = "node_authoring_policy_01TESTUNIQUE00000000001";
+const POLICY_ID_ALLOWLIST = "node_authoring_policy_01TESTALLOWLIST000000001";
 
 interface SeedOpts {
   withPrincipalRule?: boolean;
   withRequiredFieldRule?: boolean;
   withProbabilisticRule?: boolean;
   withUniqueFieldRule?: boolean;
+  /** A requires_entity_type membership gate allowing only intent/decision/principal
+   *  (notably NOT action) — a lifecycle-independent invariant. */
+  withEntityTypeAllowlist?: boolean;
   firesOnActive?: boolean;
 }
 
@@ -122,6 +126,28 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
         [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action prose is atomic", yaml],
+      );
+    }
+
+    if (opts.withEntityTypeAllowlist) {
+      const yaml = JSON.stringify({
+        id: POLICY_ID_ALLOWLIST,
+        doco_id: DOCO_ID,
+        node_type: "node_authoring_policy",
+        policy_kind: "node_authoring",
+        policy: "Only intent/decision/principal belong here",
+        evaluation_kind: "deterministic",
+        predicate: {
+          kind: "requires_entity_type",
+          entity_types: ["intent", "decision", "principal"],
+        },
+        on_violation: "block",
+      });
+      await c.query(
+        `INSERT INTO node_authoring_policies
+           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
+           VALUES ($1, $2, $3, $4::jsonb, 'asserted', now(), now())`,
+        [POLICY_ID_ALLOWLIST, DOCO_ID, "Only intent/decision/principal belong here", yaml],
       );
     }
 
@@ -323,11 +349,12 @@ describe("authoring runner — integration", () => {
     expect(result.warnings[0]?.on_violation).toBe("warn");
   });
 
-  it("skips enforcement entirely when the candidate is transitioning to retired", async () => {
+  it("skips shape/completeness enforcement when the candidate is transitioning to retired", async () => {
     // Reported in chat: a probabilistic policy (no fires_when_node_lifecycle
     // filter) blocked a State's retirement because the current content didn't
     // satisfy a quality rule. Retiring is a winding-down operation — the runner
-    // should short-circuit and let the lifecycle transition through.
+    // should let shape/completeness rules pass on the way out. (Type/membership
+    // invariants are a different story — see the next test.)
     await seed({ withPrincipalRule: true, withRequiredFieldRule: true });
     const result = await runAuthoringPolicies({
       docoId: DOCO_ID,
@@ -339,7 +366,8 @@ describe("authoring runner — integration", () => {
         verb: "send",
         // Both rules above would fire on this candidate at active —
         // requires_field on missing actor_id, requires_field_resolves_to_principal
-        // would also fail. But the lifecycle is retired, so nothing fires.
+        // would also fail. But the lifecycle is retired, so these shape gates
+        // don't fire.
         lifecycle: "retired",
       },
     });
@@ -347,6 +375,58 @@ describe("authoring runner — integration", () => {
     expect(result.blocking).toBeNull();
     expect(result.violations).toEqual([]);
     expect(result.warnings).toEqual([]);
+  });
+
+  it("STILL enforces type/membership invariants on a retired candidate", async () => {
+    // Fix #1: a node that defaults to a terminal lifecycle (Actions/Logs
+    // default `retired`) must not slip past a template's entity-type
+    // allowlist. requires_entity_type is lifecycle-independent — it
+    // describes what may exist in the Doco at all, not what an *active*
+    // node must look like — so it fires even on a retired candidate.
+    await seed({ withEntityTypeAllowlist: true, withRequiredFieldRule: true });
+    const result = await runAuthoringPolicies({
+      docoId: DOCO_ID,
+      candidate: {
+        id: "action_01TESTRETIREDLEAK0000000001",
+        node_type: "action",
+        doco_id: DOCO_ID,
+        action: "send invoice",
+        verb: "send",
+        actor_id: PRINCIPAL_ALICE,
+        lifecycle: "retired",
+      },
+    });
+
+    // The allowlist (intent/decision/principal) blocks the action even
+    // though it's retired; the shape gate (requires_field) is skipped, so
+    // the only evaluated/blocking policy is the membership invariant.
+    expect(result.blocking).not.toBeNull();
+    expect(result.blocking?.predicate_kind).toBe("requires_entity_type");
+    expect(result.blocking?.policy_id).toBe(POLICY_ID_ALLOWLIST);
+    expect(result.evaluated).toBe(1);
+  });
+
+  it("passes a retired candidate of an ALLOWED type through the membership gate", async () => {
+    // The same allowlist admits a retired Decision (an allowed type), so
+    // closing out a stale-but-valid node isn't blocked.
+    await seed({ withEntityTypeAllowlist: true });
+    const result = await runAuthoringPolicies({
+      docoId: DOCO_ID,
+      candidate: {
+        id: "decision_01TESTRETIREDOK000000000001",
+        node_type: "decision",
+        doco_id: DOCO_ID,
+        decision: "old call",
+        question: "?",
+        chosen: "x",
+        decided_by: PRINCIPAL_ALICE,
+        lifecycle: "retired",
+      },
+    });
+
+    expect(result.blocking).toBeNull();
+    expect(result.evaluated).toBe(1);
+    expect(result.passed).toBe(1);
   });
 
   it("blocks a unique_field duplicate by loading the active population", async () => {
