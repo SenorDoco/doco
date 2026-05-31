@@ -17,24 +17,28 @@ HTTP API — there are no on-disk per-entity files to read here.
   database schema (single source of truth for storage).
 - [packages/shared/src/entities.ts](packages/shared/src/entities.ts) —
   TypeScript types for every entity (single source of truth for shape).
-- [SCHEMA.md](SCHEMA.md), [PLANNING.md](PLANNING.md),
-  [DECISIONS.md](DECISIONS.md) — historical prose design. Most of the
-  schema-level content is superseded; the design rationale (§1 of
-  SCHEMA.md) is still load-bearing.
+- [AGENTS.md](AGENTS.md) — the Doco protocol every agent follows in this
+  repo (indicators, search-before-answer, captures).
+
+Design rationale is recorded in the project's own Doco (see
+[.doco/connections.md](.doco/connections.md)). A v0.1 product narrative is
+kept in [PLANNING.md](PLANNING.md) for historical context.
 
 ## Repository layout
 
 ```
 .
-├── host.yaml                # Host root marker (Postgres `hosts` table is authoritative)
-├── docos/<owner>/<slug>/    # Historical scaffolding stubs; durable entities are in PG
 ├── packages/
-│   ├── db/                  # Postgres adapter + schema.sql
+│   ├── cli/                 # `doco` CLI (login, install-agent-bootstrap)
+│   ├── db/                  # Postgres adapter, schema.sql + numbered migrations
 │   ├── host/                # Host/Doco/Principal/Organization domain layer
 │   ├── index/               # Edge derivation + embedding index helpers
 │   ├── shared/              # TypeScript entity types + URL conventions
 │   └── web/                 # React Router web app (`doco.to`-shaped UI)
-└── SCHEMA.md / PLANNING.md / DECISIONS.md / NOTICE / LICENSE
+├── .agents/                 # Bundled Doco MCP server + agent HTTP client
+├── .claude/                 # Claude Code hooks (bootstrap, search, checks)
+├── .doco/connections.md     # The Doco URL this repo is tracked in
+└── AGENTS.md / CLAUDE.md / PLANNING.md / NOTICE / LICENSE
 ```
 
 ## Connecting an agent (zero install)
@@ -80,8 +84,11 @@ cookies, or other credentials.
 ## Reading order for a new person
 
 1. This README.
-2. [SCHEMA.md](SCHEMA.md) §1 — design philosophy → priority mapping
-   (the rest is historical).
-3. [PLANNING.md](PLANNING.md) — design narrative for product flows.
-4. [DECISIONS.md](DECISIONS.md) — early ADRs with rationale; later
-   decisions live in the Doco itself.
+2. [packages/db/src/schema.sql](packages/db/src/schema.sql) — the data
+   model as built (the single source of truth for storage).
+3. [packages/shared/src/entities.ts](packages/shared/src/entities.ts) —
+   entity shapes in TypeScript.
+4. [AGENTS.md](AGENTS.md) — how agents and people share context through
+   the Doco.
+5. [PLANNING.md](PLANNING.md) — historical v0.1 product narrative
+   (design rationale; superseded specifics are flagged inline).

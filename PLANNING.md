@@ -1,6 +1,14 @@
 # Doco Product Planning — v0.1
 
-Companion to [SCHEMA.md](SCHEMA.md). Where SCHEMA.md defines the data model, this document covers product flows, identity, collaboration, onboarding, and the API/Web surface.
+> **Historical (v0.1).** This narrative predates the shipped system and is
+> kept for design rationale only. The built system is the source of truth:
+> `packages/db/src/schema.sql` (storage), `packages/shared/src/entities.ts`
+> (shape), and the project's Doco (decisions). References below to
+> `SCHEMA.md` / `DECISIONS.md` point to documents that have since been
+> removed, and some specifics (on-disk entity files, scaffolded YAML) no
+> longer match the implementation.
+
+This document covers product flows, identity, collaboration, onboarding, and the API/Web surface.
 
 ## 1. Onboarding flows
 
@@ -120,7 +128,7 @@ A person invites an agent by sharing a URL with an embedded credential. The cred
 
 ```
 1. Person owner generates an invitation URL on the web UI:
-     https://doco.dev/invite/{doco_slug}#token={short_lived_token}
+     https://doco.to/invite/{doco_slug}#token={short_lived_token}
 
 2. URL shared out-of-band (Slack, email, paste).
 
