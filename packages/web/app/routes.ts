@@ -174,6 +174,8 @@ export default [
   // on users.data.preferences; auth-gated to the signed-in user.
   route("api/v1/me/preferences.json", "routes/api.v1.me.preferences[.]json.tsx"),
   route("api/v1/feedback-reports.json", "routes/api.v1.feedback-reports[.]json.tsx"),
+  // Inbound GitHub App webhook (pull_request events → Reference upserts).
+  route("api/github/webhook", "routes/api.github.webhook.tsx"),
   // Host-level human-invite + API-key endpoints. Splitting the two
   // makes the "is this a human or an agent?" choice show up in the URL
   // instead of being a body flag.
