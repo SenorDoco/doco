@@ -217,7 +217,7 @@ function AccountStep({
         Grants this access on <strong>every organization you own</strong> and all their docos —
         including ones created later.
       </p>
-      <label className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm">
         <span className="text-xs uppercase tracking-wide text-muted-foreground">Access</span>
         <AccessSelect
           testid="grant-role-account"
@@ -225,7 +225,7 @@ function AccountStep({
           value={value}
           onChange={apply}
         />
-      </label>
+      </div>
     </div>
   );
 }
