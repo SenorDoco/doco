@@ -184,7 +184,14 @@ export default function DocoIntegrations() {
             >
               {searchParams.get("count") ?? 0}
             </span>{" "}
-            repo(s) imported.
+            repo(s),{" "}
+            <span
+              className="font-mono font-semibold tabular-nums"
+              style={{ color: lifecycleColor("asserted") }}
+            >
+              {searchParams.get("imported") ?? 0}
+            </span>{" "}
+            PR(s) imported. New repos in the org sync automatically.
           </p>
         ) : null}
         {flash === "forbidden" ? (

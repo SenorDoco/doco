@@ -64,3 +64,60 @@ export async function backfillRepoPullRequests(
   }
   return { total: prs.length, ...tally };
 }
+
+export interface InstallationBackfillResult {
+  /** Number of repos backfilled (well-formed "owner/name"). */
+  repos: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+}
+
+/**
+ * Backfill every repo an org installation covers — the "connect once, import
+ * everything" path so no manual per-repo re-import is needed. Caller passes the
+ * repo full-names (the setup callback already lists them); each is backfilled
+ * and the per-repo tallies are summed. Idempotent (keyed on PR URL).
+ */
+export async function backfillInstallationRepos(
+  opts: {
+    docoDir: string;
+    docoId: string;
+    ownerSlug: string;
+    docoSlug: string;
+    repos: string[];
+    installationId: string | number;
+    createdByUserId?: string | null;
+  },
+  deps?: { backfillRepo?: typeof backfillRepoPullRequests },
+): Promise<InstallationBackfillResult> {
+  const backfillRepo = deps?.backfillRepo ?? backfillRepoPullRequests;
+  const tally: InstallationBackfillResult = {
+    repos: 0,
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    failed: 0,
+  };
+  for (const fullName of opts.repos) {
+    const [owner, repo] = fullName.split("/");
+    if (!owner || !repo) continue;
+    tally.repos++;
+    const r = await backfillRepo({
+      docoDir: opts.docoDir,
+      docoId: opts.docoId,
+      ownerSlug: opts.ownerSlug,
+      docoSlug: opts.docoSlug,
+      owner,
+      repo,
+      installationId: opts.installationId,
+      ...(opts.createdByUserId ? { createdByUserId: opts.createdByUserId } : {}),
+    });
+    tally.created += r.created;
+    tally.updated += r.updated;
+    tally.unchanged += r.unchanged;
+    tally.failed += r.failed;
+  }
+  return tally;
+}
