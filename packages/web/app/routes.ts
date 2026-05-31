@@ -262,6 +262,9 @@ export default [
   route(":docoHandle/api/ideas/:id.json", "routes/$docoHandle.api.ideas.$id[.]json.tsx"),
   route(":docoHandle/api/states/:id.json", "routes/$docoHandle.api.states.$id[.]json.tsx"),
   route(":docoHandle/api/references/:id.json", "routes/$docoHandle.api.references.$id[.]json.tsx"),
+  // GitHub integration: connect a repo + trigger backfill (writes/reads
+  // docos.data.github_integration, consumed by the webhook + backfill).
+  route(":docoHandle/api/github.json", "routes/$docoHandle.api.github[.]json.tsx"),
   // Special-cased capture routes that need custom logic — listed BEFORE
   // the generic `:type.json` dispatcher so the static segment wins.
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
