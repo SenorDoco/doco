@@ -1,15 +1,16 @@
 // Inbound GitHub App webhook. Verifies x-hub-signature-256 against
 // DOCO_GITHUB_WEBHOOK_SECRET, then for `pull_request` events upserts the PR as
-// a Reference into every Doco connected to that repo. Idempotent on the PR URL,
-// so GitHub re-deliveries are safe. Repo→Doco wiring comes from the settings
-// panel (increment 5); until a repo is connected this responds matched: 0.
+// a Reference into the Doco subscribed to that *installation*. Routing on the
+// installation id (not a repo list) means a brand-new repo in the org syncs
+// automatically — GitHub delivers its webhooks under the same installation.
+// Idempotent on the PR URL, so re-deliveries are safe.
 import { docoPath } from "~/lib/db.server";
 import {
   type PullRequestSyncStatus,
   upsertPullRequestReference,
 } from "~/lib/github-pr-import.server";
 import {
-  findDocoConnectionsByRepo,
+  findDocoByInstallation,
   parsePullRequestEvent,
   verifyGitHubSignature,
 } from "~/lib/github-webhook.server";
@@ -61,12 +62,15 @@ export async function action({ request }: { request: Request }) {
   if (!parsed || !SYNC_ACTIONS.has(parsed.action)) {
     return Response.json({ ok: true, ignored: true });
   }
-  const connections = await findDocoConnectionsByRepo(parsed.repoFullName);
+  if (parsed.installationId == null) {
+    return Response.json({ ok: true, ignored: "no installation id" });
+  }
+  const docos = await findDocoByInstallation(parsed.installationId);
   console.info(
-    `[github webhook] ${parsed.action} ${parsed.repoFullName}#${parsed.pr.number} → ${connections.length} connected doco(s)`,
+    `[github webhook] ${parsed.action} ${parsed.repoFullName}#${parsed.pr.number} (installation ${parsed.installationId}) → ${docos.length} subscribed doco(s)`,
   );
   const results: Array<{ doco: string; status: PullRequestSyncStatus }> = [];
-  for (const conn of connections) {
+  for (const conn of docos) {
     const res = await upsertPullRequestReference(parsed.pr, {
       docoDir: docoPath(conn.handle),
       docoId: conn.docoId,
@@ -83,7 +87,8 @@ export async function action({ request }: { request: Request }) {
   return Response.json({
     ok: true,
     repo: parsed.repoFullName,
-    matched: connections.length,
+    installation_id: parsed.installationId,
+    matched: docos.length,
     results,
   });
 }
