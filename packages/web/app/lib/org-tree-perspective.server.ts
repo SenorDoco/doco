@@ -114,8 +114,9 @@ export async function loadOrgTreeData(
       // description shown under the label is now the first non-blank
       // line of `body_md`.
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle, body_md, data
-         FROM principals
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'principal'
+          AND doco_id = $1
         ORDER BY created_at`,
       [docoId],
     )

@@ -203,51 +203,57 @@ export async function loadSlaPerspectiveData(
 ): Promise<SlaPerspectiveData> {
   const [rules, evals, references, actions, decisions, principals] = await Promise.all([
     c.query<RuleRow>(
-      `SELECT id, rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, created_by, data
-         FROM rules
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'rule'
+          AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'
         ORDER BY created_at DESC`,
       [docoId],
     ),
     c.query<EvalRow>(
-      `SELECT id, eval, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS eval, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
-         FROM evals
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'eval'
+          AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<ReferenceRow>(
-      `SELECT id, reference, ref_type, locator, title,
+      `SELECT id, prose AS reference, ref_type, locator, title,
               COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
-         FROM reference_entities
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'reference'
+          AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<ActionRow>(
-      `SELECT id, action, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS action, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
-         FROM actions
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'action'
+          AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<DecisionRow>(
-      `SELECT id, decision, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS decision, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, data
-         FROM decisions
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'decision'
+          AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),
     c.query<PrincipalRow>(
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
-         FROM principals
-        WHERE doco_id = $1
+         FROM nodes
+        WHERE node_type = 'principal'
+          AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
       [docoId],
     ),

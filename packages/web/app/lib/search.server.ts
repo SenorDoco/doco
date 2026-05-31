@@ -15,23 +15,28 @@ export interface SearchHit {
 }
 
 export interface SearchTypeSpec {
+  // The relation each spec reads from. Node types read from the unified
+  // `nodes` table filtered by `nodeType`; host-level types (organization)
+  // read from their own table named here.
   table: string;
+  // `node_type` discriminator on `nodes`, or null for host-level types
+  // that don't live in `nodes` (organization).
+  nodeType: string | null;
   entityType: string;
   selectExtra: string;
   hostLevel: boolean;
   toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<SearchHit, "gpr">;
 }
 
-function entitySpec(table: string, entityType: string): SearchTypeSpec {
-  // Migrated nodes carry prose in a type-named column; everything
-  // else still uses `summary`. Either way the projected alias here is
-  // `summary` so the rest of the search hit shape doesn't change.
-  const tnCol = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
-  const summarySelect = tnCol ? `split_part(${tnCol}, E'\n', 1) AS summary` : "summary";
+function entitySpec(entityType: string): SearchTypeSpec {
+  // Post-collapse: every node type lives in `nodes`, prose in the
+  // shared `prose` column. The projected alias stays `summary` so the
+  // rest of the search hit shape doesn't change.
   return {
-    table,
+    table: "nodes",
+    nodeType: entityType,
     entityType,
-    selectExtra: `${summarySelect}, lifecycle, created_at`,
+    selectExtra: `split_part(prose, E'\n', 1) AS summary, lifecycle, created_at`,
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
@@ -49,17 +54,18 @@ function entitySpec(table: string, entityType: string): SearchTypeSpec {
 // and do not participate in node search/ranking. To fetch policies,
 // hit /<handle>/api/policies.json or read the bootstrap payload.
 export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
-  entitySpec("decisions", "decision"),
-  entitySpec("intents", "intent"),
-  entitySpec("rules", "rule"),
-  entitySpec("actions", "action"),
-  entitySpec("logs", "log"),
-  entitySpec("reference_entities", "reference"),
-  entitySpec("evals", "eval"),
-  entitySpec("ideas", "idea"),
-  entitySpec("states", "state"),
+  entitySpec("decision"),
+  entitySpec("intent"),
+  entitySpec("rule"),
+  entitySpec("action"),
+  entitySpec("log"),
+  entitySpec("reference"),
+  entitySpec("eval"),
+  entitySpec("idea"),
+  entitySpec("state"),
   {
-    table: "principals",
+    table: "nodes",
+    nodeType: "principal",
     entityType: "principal",
     selectExtra: "name, created_at",
     hostLevel: false,
@@ -75,6 +81,7 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   },
   {
     table: "organizations",
+    nodeType: null,
     entityType: "organization",
     selectExtra: "handle, name, created_at",
     hostLevel: true,
@@ -122,13 +129,20 @@ export async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promi
   const ids: string[] = [];
   for (const spec of SEARCH_TYPE_SPECS) {
     if (spec.hostLevel) continue;
+    // Node types live in the unified `nodes` table, scoped by node_type.
     const rows = (
-      await c.query<{ id: string }>(`SELECT id FROM ${spec.table} WHERE doco_id = $1`, [docoId])
+      await c.query<{ id: string }>(
+        "SELECT id FROM nodes WHERE node_type = $1 AND doco_id = $2",
+        [spec.nodeType, docoId],
+      )
     ).rows;
     for (const row of rows) ids.push(row.id);
   }
   const principalRows = (
-    await c.query<{ id: string }>("SELECT id FROM principals WHERE doco_id = $1", [docoId])
+    await c.query<{ id: string }>(
+      "SELECT id FROM nodes WHERE node_type = 'principal' AND doco_id = $1",
+      [docoId],
+    )
   ).rows;
   for (const row of principalRows) ids.push(row.id);
   return ids;
@@ -143,10 +157,12 @@ export async function hydrateSearchHits(
   if (ids.length === 0) return [];
   const hits: SearchHit[] = [];
   for (const spec of SEARCH_TYPE_SPECS) {
+    // Host-level types (organization) keep their own table; node types
+    // read from the unified `nodes` table, scoped by node_type.
     const sql = spec.hostLevel
       ? `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[])`
-      : `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[]) AND doco_id = $2`;
-    const params = spec.hostLevel ? [ids] : [ids, docoId];
+      : `SELECT id, ${spec.selectExtra} FROM nodes WHERE id = ANY($1::text[]) AND doco_id = $2 AND node_type = $3`;
+    const params = spec.hostLevel ? [ids] : [ids, docoId, spec.nodeType];
     const rows = (await c.query(sql, params)).rows;
     for (const row of rows) {
       const rawScore = scoreById?.get(String(row.id));

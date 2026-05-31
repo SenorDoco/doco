@@ -1,4 +1,4 @@
-import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_SPECS } from "@doco/db";
+import { DOCO_NODE_TABLE_SPECS } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type {
   OverviewGraphData,
@@ -70,34 +70,25 @@ function overviewEntityHref(
 }
 
 function overviewRowsSql(includeLabel = false): string {
-  const nodeLegs = GRAPH_TABLES.map((entry) => {
-    // Migrated nodes project the first line of the type-named column
-    // as the graph node label (intent first line for intents, ...).
-    // Non-migrated tables fall back to the legacy summary.
-    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
-    const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
-    const nameExpr = entry.nameExpr ?? "NULL::text";
-    return `SELECT t.id,
-                   '${entry.entityType}'::text AS entity_type,
-                   ${nameExpr} AS name,
-                   COALESCE(t.lifecycle, 'asserted') AS lifecycle,
-                   t.created_at::text AS created_at
-                   ${includeLabel ? `, ${labelExpr} AS label` : ""}
-              FROM ${entry.table} t
-             WHERE t.doco_id = $1`;
-  });
-  // Principals are Doco-scoped (migration 020); filter by the typed
-  // column and drop retired role-personas.
-  const principalLeg = `SELECT id,
-                                'principal'::text AS entity_type,
-                                name,
-                                COALESCE(lifecycle, 'asserted') AS lifecycle,
-                                created_at::text AS created_at
-                                ${includeLabel ? ", name AS label" : ""}
-                           FROM principals
-                          WHERE doco_id = $1
-                            AND COALESCE(lifecycle, 'asserted') = 'asserted'`;
-  return [...nodeLegs, principalLeg].join(" UNION ALL ");
+  // Post-collapse: one `nodes` table discriminated by `node_type`. The
+  // graph renders every node type plus principals. For the 9 prose
+  // types the label is the first line of `prose`; principals carry
+  // prose='' and fall back to their `name`. Principals also drop
+  // retired role-personas (the other types don't filter lifecycle
+  // here), so the lifecycle filter is principal-scoped.
+  const types = [...GRAPH_TABLES.map((entry) => entry.entityType), "principal"];
+  const typeList = types.map((t) => `'${t}'`).join(", ");
+  const labelExpr = "COALESCE(NULLIF(split_part(t.prose, E'\n', 1), ''), t.name)";
+  return `SELECT t.id,
+                 t.node_type AS entity_type,
+                 t.name,
+                 COALESCE(t.lifecycle, 'asserted') AS lifecycle,
+                 t.created_at::text AS created_at
+                 ${includeLabel ? `, ${labelExpr} AS label` : ""}
+            FROM nodes t
+           WHERE t.doco_id = $1
+             AND t.node_type IN (${typeList})
+             AND (t.node_type <> 'principal' OR COALESCE(t.lifecycle, 'asserted') = 'asserted')`;
 }
 
 async function loadOverviewRows(
@@ -238,30 +229,25 @@ export async function loadOverviewNodeDetails(
 // the right per-Doco entity URL.
 
 function overviewRowsSqlMulti(): string {
-  const nodeLegs = GRAPH_TABLES.map((entry) => {
-    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
-    const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
-    return `SELECT t.id,
-                     '${entry.entityType}'::text AS entity_type,
-                     NULL::text AS name,
-                     ${labelExpr} AS label,
-                     COALESCE(t.lifecycle, 'asserted') AS lifecycle,
-                     t.created_at::text AS created_at,
-                     t.doco_id AS doco_id
-                FROM ${entry.table} t
-               WHERE t.doco_id = ANY($1::text[])`;
-  });
-  const principalLeg = `SELECT id,
-                              'principal'::text AS entity_type,
-                              name,
-                              name AS label,
-                              COALESCE(lifecycle, 'asserted') AS lifecycle,
-                              created_at::text AS created_at,
-                              doco_id AS doco_id
-                         FROM principals
-                        WHERE doco_id = ANY($1::text[])
-                          AND COALESCE(lifecycle, 'asserted') = 'asserted'`;
-  return [...nodeLegs, principalLeg].join(" UNION ALL ");
+  // Cross-Doco variant of overviewRowsSql: same single-`nodes` query,
+  // carrying doco_id and always projecting the label. Principals fall
+  // back to `name` (prose='') and skip retired role-personas; the other
+  // types don't filter lifecycle here. For the 9 prose types `name` is
+  // NULL (only principals populate it).
+  const types = [...GRAPH_TABLES.map((entry) => entry.entityType), "principal"];
+  const typeList = types.map((t) => `'${t}'`).join(", ");
+  const labelExpr = "COALESCE(NULLIF(split_part(t.prose, E'\n', 1), ''), t.name)";
+  return `SELECT t.id,
+                 t.node_type AS entity_type,
+                 t.name,
+                 ${labelExpr} AS label,
+                 COALESCE(t.lifecycle, 'asserted') AS lifecycle,
+                 t.created_at::text AS created_at,
+                 t.doco_id AS doco_id
+            FROM nodes t
+           WHERE t.doco_id = ANY($1::text[])
+             AND t.node_type IN (${typeList})
+             AND (t.node_type <> 'principal' OR COALESCE(t.lifecycle, 'asserted') = 'asserted')`;
 }
 
 export async function loadOrgOverviewGraph(

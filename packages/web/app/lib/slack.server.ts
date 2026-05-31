@@ -7,7 +7,6 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import type { EntityRecord } from "@doco/db";
 import {
-  ALL_ENTITY_TABLES,
   DOCO_NODE_TABLE_SPECS,
   getEntity,
   getUserById,
@@ -1304,14 +1303,24 @@ function isSlackDocoRouteStart(segment: string): boolean {
 }
 
 async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record<string, unknown>> {
+  // Note types now live in the unified `nodes` table (counted by
+  // `node_type`); policies keep their own tables. The plural keys are
+  // the public collection names and stay unchanged.
   const typeMap = [
     ...DOCO_NODE_TABLE_SPECS.map((spec) => ({
-      table: spec.table,
+      nodeType: spec.entityType,
+      table: null as string | null,
       plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
       group: "note" as const,
     })),
-    { table: "guidance_policies", plural: "guidance_policies", group: "policy" as const },
     {
+      nodeType: null,
+      table: "guidance_policies",
+      plural: "guidance_policies",
+      group: "policy" as const,
+    },
+    {
+      nodeType: null,
       table: "node_authoring_policies",
       plural: "node_authoring_policies",
       group: "policy" as const,
@@ -1327,10 +1336,16 @@ async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record
   let latest: string | null = null;
   await withClient(async (c) => {
     for (const spec of typeMap) {
-      const result = await c.query<{ n: string; c: string | null }>(
-        `SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM ${spec.table} WHERE doco_id = $1`,
-        [doco.id],
-      );
+      const result =
+        spec.group === "note"
+          ? await c.query<{ n: string; c: string | null }>(
+              "SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM nodes WHERE node_type = $1 AND doco_id = $2",
+              [spec.nodeType, doco.id],
+            )
+          : await c.query<{ n: string; c: string | null }>(
+              `SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM ${spec.table} WHERE doco_id = $1`,
+              [doco.id],
+            );
       const n = Number(result.rows[0]?.n ?? 0);
       if (spec.group === "note") {
         counts.notes[spec.plural] = n;
@@ -1343,7 +1358,7 @@ async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record
       if (ts && (latest === null || ts > latest)) latest = ts;
     }
     const principals = await c.query<{ n: string }>(
-      "SELECT COUNT(*)::text AS n FROM principals WHERE doco_id = $1",
+      "SELECT COUNT(*)::text AS n FROM nodes WHERE node_type = 'principal' AND doco_id = $1",
       [doco.id],
     );
     counts.principals = Number(principals.rows[0]?.n ?? 0);
@@ -1998,16 +2013,19 @@ function latestHumanSlackQuestion(recentMessages: SlackRecentMessage[]): string 
 }
 
 function slackOverviewUnionSql(): string {
-  return DOCO_NODE_TABLE_SPECS.map((spec) => {
-    const tnCol = ALL_ENTITY_TABLES[spec.entityType]?.typeNamedColumn ?? "summary";
-    return `SELECT id AS entity_id,
-                   doco_id,
-                   ${sqlString(spec.entityType)} AS node_type,
-                   split_part(${tnCol}, E'\\n', 1) AS summary,
-                   ${tnCol} AS body,
-                   created_at
-              FROM ${spec.table}`;
-  }).join("\nUNION ALL\n");
+  // Post-collapse: one `nodes` query over the 9 prose node types
+  // (DOCO_NODE_TABLE_SPECS excludes principals). `summary` is the first
+  // line of `prose`; `body` is the full `prose`. The outer query scopes
+  // by doco via the scoped_docos join, so no doco filter here.
+  const typeList = DOCO_NODE_TABLE_SPECS.map((spec) => sqlString(spec.entityType)).join(", ");
+  return `SELECT id AS entity_id,
+                 doco_id,
+                 node_type,
+                 split_part(prose, E'\\n', 1) AS summary,
+                 prose AS body,
+                 created_at
+            FROM nodes
+           WHERE node_type IN (${typeList})`;
 }
 
 function formatRecentSlackContext(recentMessages: SlackRecentMessage[]): string {

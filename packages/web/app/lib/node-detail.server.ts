@@ -84,9 +84,15 @@ const UPDATE_SEGMENTS: Record<string, string> = Object.fromEntries(
 );
 
 type GraphNodeConfig = {
-  table: string;
-  typeNamedColumn: string | null;
+  // node_type discriminator on the unified `nodes` table.
+  nodeType: string;
+  // Physical `nodes` column the primary text reads from: `prose` for
+  // the 9 prose types, `name` for principal.
   primaryColumn: string;
+  // Logical, client-facing field name. For the 9 prose types this is
+  // the old type-named field ("decision", "intent", …); "name" for
+  // principal. The `=== "name"` check downstream distinguishes them.
+  typeNamedColumn: string | null;
   primaryField: string;
   bodyColumn: string | null;
   bodyField: string | null;
@@ -95,28 +101,36 @@ type GraphNodeConfig = {
 
 const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
   ...(Object.fromEntries(
-    Object.entries(DOCO_NODE_TABLE_BY_TYPE).map(([entityType, spec]) => [
-      entityType,
-      {
-        table: spec.table,
-        typeNamedColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType,
-        primaryColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType,
-        primaryField: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType,
-        bodyColumn: null,
-        bodyField: null,
-        updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
-      },
-    ]),
+    Object.entries(DOCO_NODE_TABLE_BY_TYPE).map(([entityType, _spec]) => {
+      // Post-collapse: all 9 prose types live in `nodes` with their
+      // prose in the shared `prose` column. The logical field name
+      // (the old type-named column) is kept for the client-facing
+      // `primary_field`.
+      const typeNamedField = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType;
+      return [
+        entityType,
+        {
+          nodeType: entityType,
+          primaryColumn: "prose",
+          typeNamedColumn: typeNamedField,
+          primaryField: typeNamedField,
+          bodyColumn: null,
+          bodyField: null,
+          updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
+        },
+      ];
+    }),
   ) as Record<string, GraphNodeConfig>),
   // Principal lives outside DOCO_NODE_TABLE_SPECS (which is scoped to
   // the 9 migrated nodes) but the Graph perspective DOES render
   // Principal cards (full-graph.server.ts UNIONs a principal leg in).
   // The detail dialog must know about it too, otherwise clicking a
-  // Principal card 404s with "Unknown node type".
+  // Principal card 404s with "Unknown node type". On `nodes`, the
+  // principal's display label is `name` and its prose body is `body_md`.
   principal: {
-    table: "principals",
-    typeNamedColumn: null,
+    nodeType: "principal",
     primaryColumn: "name",
+    typeNamedColumn: null,
     primaryField: "name",
     bodyColumn: "body_md",
     bodyField: "body_md",
@@ -207,20 +221,23 @@ interface DialogRelatedNodeDetail {
 }
 
 function relatedDetailsSql(): string {
-  return Object.entries(GRAPH_NODE_TABLES)
-    .map(([entityType, cfg]) => {
-      const nameExpr =
-        cfg.primaryField === "name" ? `${cfg.primaryColumn}::text AS name` : "NULL::text AS name";
-      return `SELECT id,
-                     '${entityType}'::text AS entity_type,
-                     NULLIF(split_part(${cfg.primaryColumn}::text, E'\n', 1), '') AS summary,
-                     ${nameExpr},
-                     COALESCE(lifecycle, 'asserted') AS lifecycle
-                FROM ${cfg.table}
-               WHERE doco_id = $1
-                 AND id = ANY($2::text[])`;
-    })
-    .join(" UNION ALL ");
+  // Post-collapse: one `nodes` table. `summary` is the first line of
+  // `prose` for the 9 prose types and of `name` for principal (prose='');
+  // `name` is the principal's display label (NULL for the 9 types, which
+  // don't populate `nodes.name`). The type list mirrors GRAPH_NODE_TABLES
+  // so isGraphNodeType and this query stay in lockstep.
+  const typeList = Object.values(GRAPH_NODE_TABLES)
+    .map((cfg) => `'${cfg.nodeType}'`)
+    .join(", ");
+  return `SELECT id,
+                 node_type AS entity_type,
+                 NULLIF(split_part(COALESCE(NULLIF(prose, ''), name, '')::text, E'\n', 1), '') AS summary,
+                 name,
+                 COALESCE(lifecycle, 'asserted') AS lifecycle
+            FROM nodes
+           WHERE doco_id = $1
+             AND id = ANY($2::text[])
+             AND node_type IN (${typeList})`;
 }
 
 async function loadDialogRelatedDetails(
@@ -278,7 +295,7 @@ async function resolveUserLabelsForActorIds(
                   CASE WHEN left(p.data->>'created_by', 13) = 'user_' THEN p.data->>'created_by' END
                 ) AS user_id
            FROM input i
-           LEFT JOIN principals p ON p.doco_id = $1 AND p.id = i.actor_id
+           LEFT JOIN nodes p ON p.node_type = 'principal' AND p.doco_id = $1 AND p.id = i.actor_id
        )
        SELECT r.actor_id,
               r.user_id,
@@ -354,8 +371,8 @@ export async function loadNodeDialogDetail(
               data::text AS raw_json,
               created_at,
               updated_at
-         FROM ${cfg.table}
-        WHERE doco_id = $1 AND id = $2`,
+         FROM nodes
+        WHERE node_type = '${cfg.nodeType}' AND doco_id = $1 AND id = $2`,
       [meta.docoId, options.id],
     )
   ).rows[0];

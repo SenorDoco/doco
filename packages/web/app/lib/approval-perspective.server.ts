@@ -1,4 +1,4 @@
-import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_SPECS } from "@doco/db";
+import { DOCO_NODE_TABLE_SPECS } from "@doco/db";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -53,30 +53,23 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 function approvalRowsSql(): string {
-  const nodeLegs = DOCO_NODE_TABLE_SPECS.map((entry) => {
-    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
-    const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
-    const nameExpr = entry.nameExpr ?? "NULL::text";
-    return `SELECT t.id,
-                   '${entry.entityType}'::text AS entity_type,
-                   COALESCE(NULLIF(${labelExpr}, ''), ${nameExpr}, t.id) AS name,
-                   COALESCE(t.lifecycle, 'asserted') AS lifecycle,
-                   t.created_at,
-                   t.created_by,
-                   t.data->>'created_by_user_id' AS created_by_user_id
-              FROM ${entry.table} t
-             WHERE t.doco_id = $1`;
-  });
-  const principalLeg = `SELECT id,
-                               'principal'::text AS entity_type,
-                               name,
-                               COALESCE(lifecycle, 'asserted') AS lifecycle,
-                               created_at,
-                               created_by,
-                               data->>'created_by_user_id' AS created_by_user_id
-                          FROM principals
-                         WHERE doco_id = $1`;
-  return [...nodeLegs, principalLeg].join(" UNION ALL ");
+  // Post-collapse: one `nodes` table. The approval queue covers every
+  // node type plus principals (no lifecycle filter here — the outer CTE
+  // filters to drafting). The display name is the first line of `prose`
+  // for the 9 prose types; principals (prose='') fall back to `name`;
+  // `id` is the final fallback.
+  const types = [...DOCO_NODE_TABLE_SPECS.map((entry) => entry.entityType), "principal"];
+  const typeList = types.map((t) => `'${t}'`).join(", ");
+  return `SELECT t.id,
+                 t.node_type AS entity_type,
+                 COALESCE(NULLIF(split_part(t.prose, E'\n', 1), ''), t.name, t.id) AS name,
+                 COALESCE(t.lifecycle, 'asserted') AS lifecycle,
+                 t.created_at,
+                 t.created_by,
+                 t.data->>'created_by_user_id' AS created_by_user_id
+            FROM nodes t
+           WHERE t.doco_id = $1
+             AND t.node_type IN (${typeList})`;
 }
 
 export async function loadApprovalPerspectiveData(
@@ -120,10 +113,12 @@ export async function loadApprovalPerspectiveData(
            FROM proposed_nodes n
            LEFT JOIN proposed_events pe
              ON pe.entity_type = n.entity_type AND pe.entity_id = n.id
-           LEFT JOIN principals proposed_principal
-             ON proposed_principal.doco_id = $1 AND proposed_principal.id = pe.by_user
-           LEFT JOIN principals created_principal
-             ON created_principal.doco_id = $1 AND created_principal.id = n.created_by
+           LEFT JOIN nodes proposed_principal
+             ON proposed_principal.node_type = 'principal'
+            AND proposed_principal.doco_id = $1 AND proposed_principal.id = pe.by_user
+           LEFT JOIN nodes created_principal
+             ON created_principal.node_type = 'principal'
+            AND created_principal.doco_id = $1 AND created_principal.id = n.created_by
        )
        SELECT n.id,
               n.entity_type,
