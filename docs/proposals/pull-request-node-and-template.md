@@ -13,6 +13,19 @@
 > project token. So this proposal could not be cross-checked against prior
 > Doco decisions, and it cannot yet be captured back into the Doco. Fixing
 > that connection is a prerequisite to dogfooding anything below.
+>
+> _Update (2026-05-31):_ since this draft, the repo dropped the five promoted
+> node→node FK columns (`parent_intent_id`, `decided_by`,
+> `superseded_by_decision_id`, `actor_id`, `template_id`) in migration 074
+> (#694, #695). First-class edges — authored via a node field and reconciled by
+> the capture path into an `origin='field'` edge, with the value retained in
+> `data` — are now the **single source of truth for every node→node
+> relationship**; no relationship is a promoted FK column anymore. This
+> proposal already follows that model: every PR connection below (`implements`,
+> `fixes`, `intent_ids`, `decision_ids`, `gated_by`, `relates_to`, `born_from`,
+> `superseded_by`) is an authored field the engine projects into an edge, so the
+> PR node stores no FK pointer of its own — it just registers two more
+> `RELATION_KINDS`. The sections below are reconciled with that change.
 
 ## TL;DR
 
@@ -29,8 +42,11 @@
 - **Reuse the graph that already exists.** `implemented_by` was written *for
   this* ("Node is implemented by one or more code-artifact Reference nodes
   (PRs, commits, files, lines)"). PR connections map onto existing edges
-  (`serves`, `enacts`, `gated_by`, `relates_to`, `born_from`) plus two PR-side
-  authoring fields (`implements`, `fixes`).
+  (`serves`, `enacts`, `gated_by`, `relates_to`, `born_from`, `superseded_by`)
+  plus two PR-side authoring fields (`implements`, `fixes`) — all of them
+  authored as node fields and projected to first-class edges, the same
+  mechanism that now backs every node→node relationship since the FK columns
+  were dropped (#694).
 - **GitHub auto-import is the forcing function for the design.** Idempotent
   upsert keyed by the PR URL, a field-mapping table, and a machine-readable
   trailer convention (`Doco-Implements:`, `Doco-Fixes:`) in a recommended
@@ -177,7 +193,12 @@ Design intent for the two PR-side fields:
   implemented by the PRs that ship them." Rather than make importers PATCH
   every target node, the PR sends `implements: [<target ids>]` and the engine
   writes the canonical target-owned `implemented_by` edge (one stored edge, two
-  views). A "BPM event" is just whichever node models it in this Doco — an
+  views). This is the same authoring-field → `origin='field'` edge projection the
+  capture path now uses for the five formerly-promoted node→node columns
+  (`has_parent`, `decided_by`, `superseded_by`, `performed_by`, `templated_by`,
+  dropped in migration 074) — the PR registers two more relation kinds, it
+  stores no FK pointer of its own. A "BPM event" is just whichever node models
+  it in this Doco — an
   `action` or `state` in the BPMN perspective, or the `decision` that defines
   it.
 - **`fixes`** is a new edge (inverse `fixed_by`), kept distinct from
@@ -191,7 +212,9 @@ Design intent for the two PR-side fields:
 Both new fields are `cardinality: "many"`, owner `pull_request`, and should be
 registered in `RELATION_KINDS` with `owners: ["pull_request"]` so setting them
 on the wrong node type is rejected (not silently dropped) by
-`unsupportedRelationFieldError`.
+`unsupportedRelationFieldError`. Like every managed relation, they author a node
+field that the capture path reconciles into an `origin='field'` edge — there is
+no node→node FK column to add (those were all dropped in #694).
 
 ---
 
@@ -251,17 +274,20 @@ BODY (JSON)
   author_principal_id optional   principal who opened it; auth/import fills
   reviewers_principal_ids optional ["principal_01...", ...]
   merged_by_principal_id  optional principal who merged it
-  -- connections (see graph-authoring-contract) --
+  -- connections — each is an authored field the capture path projects into a
+  -- first-class edge (origin='field'); none is stored as an FK column on the
+  -- node. See graph-authoring-contract. --
   implements          optional   ["action_01...","state_01...","decision_01..."]
-                                 nodes this PR implements (writes implemented_by)
-  fixes               optional   ["log_01...","reference_01...", ...] bugs/incidents fixed
-  intent_ids          optional   ["intent_01...", ...]   (serves)
-  decision_ids        optional   ["decision_01...", ...] (enacts)
-  gated_by            optional   ["rule_01...", ...]      (rules that gated it)
-  relates_to          optional   ["pull_request_01...","reference_01...", ...]
-  born_from           optional   id this PR was born from (e.g. an incident log)
+                                 nodes this PR implements (writes implemented_by edge)
+  fixes               optional   ["log_01...","reference_01...", ...] bugs/incidents fixed (writes fixed_by edge)
+  intent_ids          optional   ["intent_01...", ...]   (writes serves edge)
+  decision_ids        optional   ["decision_01...", ...] (writes enacts edge)
+  gated_by            optional   ["rule_01...", ...]      (writes gated_by edge — rules that gated it)
+  relates_to          optional   ["pull_request_01...","reference_01...", ...] (writes relates_to edge)
+  born_from           optional   id this PR was born from, e.g. an incident log (writes born_from edge)
   lifecycle           optional   "drafting" | "asserted" | "retired"; usually derived from state
   superseded_by       optional   id of the PR/decision that replaces this one
+                                 (writes superseded_by edge; cardinality one)
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
