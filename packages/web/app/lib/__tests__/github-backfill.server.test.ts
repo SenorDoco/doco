@@ -27,7 +27,7 @@ describe("backfillRepoPullRequests", () => {
   it("mints a token, lists the repo's PRs, and upserts each", async () => {
     const mintToken = vi.fn(async () => ({ token: "ghs_x", expires_at: "" }));
     const listPrs = vi.fn(async () => [pr(1), pr(2), pr(3)]);
-    const upsert = vi.fn(async () => ({ id: "reference_x" }));
+    const upsert = vi.fn(async () => ({ status: "created", id: "reference_x" }));
 
     const res = await backfillRepoPullRequests(opts, {
       mintToken: mintToken as never,
@@ -35,7 +35,7 @@ describe("backfillRepoPullRequests", () => {
       upsert: upsert as never,
     });
 
-    expect(res).toEqual({ total: 3, imported: 3, failed: 0 });
+    expect(res).toEqual({ total: 3, created: 3, updated: 0, unchanged: 0, failed: 0 });
     expect(mintToken).toHaveBeenCalledWith(42);
     expect(listPrs).toHaveBeenCalledWith("ghs_x", "acme", "store");
     expect(upsert).toHaveBeenCalledTimes(3);
@@ -45,13 +45,15 @@ describe("backfillRepoPullRequests", () => {
     );
   });
 
-  it("counts upsert failures without aborting the run", async () => {
+  it("classifies created / updated / unchanged / failed without aborting", async () => {
     const mintToken = vi.fn(async () => ({ token: "t", expires_at: "" }));
-    const listPrs = vi.fn(async () => [pr(1), pr(2)]);
+    const listPrs = vi.fn(async () => [pr(1), pr(2), pr(3), pr(4)]);
     const upsert = vi
       .fn()
-      .mockResolvedValueOnce({ error: "boom" })
-      .mockResolvedValueOnce({ id: "reference_ok" });
+      .mockResolvedValueOnce({ status: "error", error: "boom" })
+      .mockResolvedValueOnce({ status: "created", id: "r1" })
+      .mockResolvedValueOnce({ status: "unchanged", id: "r2" })
+      .mockResolvedValueOnce({ status: "updated", id: "r3" });
 
     const res = await backfillRepoPullRequests(opts, {
       mintToken: mintToken as never,
@@ -59,6 +61,6 @@ describe("backfillRepoPullRequests", () => {
       upsert: upsert as never,
     });
 
-    expect(res).toEqual({ total: 2, imported: 1, failed: 1 });
+    expect(res).toEqual({ total: 4, created: 1, updated: 1, unchanged: 1, failed: 1 });
   });
 });

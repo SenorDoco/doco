@@ -13,8 +13,7 @@
 // resolved by the caller and passed as createdByUserId.
 import { withClient } from "@doco/db";
 import {
-  type CaptureError,
-  type CaptureResult,
+  NO_FIELDS_CHANGED,
   type ReferenceDraft,
   captureReference,
   updateEntity,
@@ -117,19 +116,36 @@ export interface UpsertPullRequestOpts {
 }
 
 /**
+ * Outcome of a single PR → Reference sync.
+ *   created   — a new Reference was captured.
+ *   updated   — an existing Reference changed (lifecycle/prose moved).
+ *   unchanged — the Reference already matched; nothing to do (NOT a failure —
+ *               this is the common case on a repeat backfill or webhook re-delivery).
+ *   error     — the write failed; `error` carries the reason.
+ */
+export type PullRequestSyncStatus = "created" | "updated" | "unchanged" | "error";
+export interface PullRequestSyncResult {
+  status: PullRequestSyncStatus;
+  id?: string;
+  error?: string;
+}
+
+/**
  * Idempotently import a PR as a Reference: PATCH the existing Reference that
  * shares the PR URL, or capture a new one. Keyed on `locator`, so a webhook
- * re-delivery or a backfill overlap never duplicates.
+ * re-delivery or a backfill overlap never duplicates. A no-op PATCH (the PR is
+ * already current) surfaces as `unchanged`, never `error`, so repeat syncs
+ * don't masquerade as failures.
  */
 export async function upsertPullRequestReference(
   pr: GitHubPullRequest,
   opts: UpsertPullRequestOpts,
-): Promise<CaptureResult | CaptureError> {
+): Promise<PullRequestSyncResult> {
   const draft = pullRequestToReferenceDraft(pr);
   const existingId = await findReferenceIdByLocator(opts.docoId, draft.locator);
 
   if (existingId) {
-    return updateEntity({
+    const res = await updateEntity({
       docoDir: opts.docoDir,
       docoId: opts.docoId,
       ownerSlug: opts.ownerSlug,
@@ -145,9 +161,16 @@ export async function upsertPullRequestReference(
       ...(opts.docoHost ? { docoHost: opts.docoHost } : {}),
       actorId: opts.actorId ?? null,
     });
+    if ("error" in res) {
+      // An idempotent re-sync that finds the Reference already current isn't a
+      // failure — it's the steady state.
+      if (res.error === NO_FIELDS_CHANGED) return { status: "unchanged", id: existingId };
+      return { status: "error", error: res.error };
+    }
+    return { status: "updated", id: existingId };
   }
 
-  return captureReference(
+  const res = await captureReference(
     opts.docoDir,
     opts.docoId,
     opts.ownerSlug,
@@ -155,4 +178,6 @@ export async function upsertPullRequestReference(
     { ...draft, ...(opts.createdByUserId ? { created_by_user_id: opts.createdByUserId } : {}) },
     opts.docoHost,
   );
+  if ("error" in res) return { status: "error", error: res.error };
+  return { status: "created", id: res.id };
 }

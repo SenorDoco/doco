@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@doco/db", () => ({ withClient: mocks.withClient }));
 vi.mock("../capture.server", () => ({
+  NO_FIELDS_CHANGED: "No fields changed.",
   captureReference: mocks.captureReference,
   updateEntity: mocks.updateEntity,
 }));
@@ -82,27 +83,62 @@ describe("pullRequestToReferenceDraft", () => {
 
 describe("upsertPullRequestReference", () => {
   const opts = { docoDir: "/tmp/d", docoId: "doco_1", ownerSlug: "o", docoSlug: "d" };
+  const existing = (id: string) =>
+    mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
+      fn({ query: vi.fn().mockResolvedValue({ rows: [{ id }] }) }),
+    );
   beforeEach(() => vi.clearAllMocks());
 
-  it("captures a new Reference when no existing one matches the PR URL", async () => {
+  it("creates a new Reference when no existing one matches the PR URL", async () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
     mocks.captureReference.mockResolvedValue({ id: "reference_new" });
-    await upsertPullRequestReference(basePr, opts);
-    expect(mocks.captureReference).toHaveBeenCalledTimes(1);
+    const res = await upsertPullRequestReference(basePr, opts);
+    expect(res).toEqual({ status: "created", id: "reference_new" });
     expect(mocks.updateEntity).not.toHaveBeenCalled();
   });
 
-  it("updates the existing Reference when the PR URL is already present", async () => {
-    mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
-      fn({ query: vi.fn().mockResolvedValue({ rows: [{ id: "reference_existing" }] }) }),
+  it("updates the existing Reference when the PR changed", async () => {
+    existing("reference_existing");
+    mocks.updateEntity.mockResolvedValue({ id: "reference_existing", changed: ["lifecycle"] });
+    const res = await upsertPullRequestReference(
+      { ...basePr, state: "closed", merged: true },
+      opts,
     );
-    mocks.updateEntity.mockResolvedValue({ id: "reference_existing", changed: ["reference"] });
-    await upsertPullRequestReference({ ...basePr, state: "closed", merged: true }, opts);
-    expect(mocks.updateEntity).toHaveBeenCalledWith(
-      expect.objectContaining({ entityType: "reference", id: "reference_existing" }),
-    );
+    expect(res).toEqual({ status: "updated", id: "reference_existing" });
     expect(mocks.captureReference).not.toHaveBeenCalled();
+  });
+
+  it("reports a no-op re-import as unchanged — NOT a failure", async () => {
+    // updateEntity returns {error: "No fields changed."} when the PR is already
+    // current; that must not be counted as a failed import (the bug behind the
+    // "Imported 0 of 4 PRs (4 failed)" message on a repeat sync).
+    existing("reference_existing");
+    mocks.updateEntity.mockResolvedValue({ error: "No fields changed." });
+    const res = await upsertPullRequestReference(
+      { ...basePr, state: "closed", merged: true },
+      opts,
+    );
+    expect(res).toEqual({ status: "unchanged", id: "reference_existing" });
+  });
+
+  it("surfaces a genuine update error", async () => {
+    existing("reference_existing");
+    mocks.updateEntity.mockResolvedValue({ error: "Authoring policy violation: nope" });
+    const res = await upsertPullRequestReference(
+      { ...basePr, state: "closed", merged: true },
+      opts,
+    );
+    expect(res).toEqual({ status: "error", error: "Authoring policy violation: nope" });
+  });
+
+  it("surfaces a capture error for a new Reference", async () => {
+    mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
+      fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
+    );
+    mocks.captureReference.mockResolvedValue({ error: "locator is required." });
+    const res = await upsertPullRequestReference(basePr, opts);
+    expect(res).toEqual({ status: "error", error: "locator is required." });
   });
 });

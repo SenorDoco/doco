@@ -4,7 +4,10 @@
 // so GitHub re-deliveries are safe. Repo→Doco wiring comes from the settings
 // panel (increment 5); until a repo is connected this responds matched: 0.
 import { docoPath } from "~/lib/db.server";
-import { upsertPullRequestReference } from "~/lib/github-pr-import.server";
+import {
+  type PullRequestSyncStatus,
+  upsertPullRequestReference,
+} from "~/lib/github-pr-import.server";
 import {
   findDocoConnectionsByRepo,
   parsePullRequestEvent,
@@ -38,6 +41,11 @@ export async function action({ request }: { request: Request }) {
       secret,
     })
   ) {
+    // Surface the most common misconfiguration (no secret set on the server, or
+    // a mismatch with the App's webhook secret) instead of failing silently.
+    console.warn(
+      `[github webhook] signature rejected (DOCO_GITHUB_WEBHOOK_SECRET configured: ${Boolean(secret)})`,
+    );
     return Response.json({ error: "invalid signature" }, { status: 401 });
   }
   if (request.headers.get("x-github-event") !== "pull_request") {
@@ -54,7 +62,10 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ ok: true, ignored: true });
   }
   const connections = await findDocoConnectionsByRepo(parsed.repoFullName);
-  const results: Array<{ doco: string; ok: boolean }> = [];
+  console.info(
+    `[github webhook] ${parsed.action} ${parsed.repoFullName}#${parsed.pr.number} → ${connections.length} connected doco(s)`,
+  );
+  const results: Array<{ doco: string; status: PullRequestSyncStatus }> = [];
   for (const conn of connections) {
     const res = await upsertPullRequestReference(parsed.pr, {
       docoDir: docoPath(conn.handle),
@@ -62,7 +73,12 @@ export async function action({ request }: { request: Request }) {
       ownerSlug: conn.orgHandle,
       docoSlug: conn.handle,
     });
-    results.push({ doco: conn.handle, ok: !("error" in res) });
+    if (res.status === "error") {
+      console.error(
+        `[github webhook] upsert failed for ${parsed.pr.html_url} in ${conn.handle}: ${res.error}`,
+      );
+    }
+    results.push({ doco: conn.handle, status: res.status });
   }
   return Response.json({
     ok: true,

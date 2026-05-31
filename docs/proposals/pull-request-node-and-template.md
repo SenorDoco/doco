@@ -1,18 +1,26 @@
 # Proposal: A Pull Request node type + capture template for Doco
 
-> **Status: Proposed (draft for review).** This document proposes a design;
-> merging it records the proposal, not its acceptance. The built system stays
-> the source of truth (`packages/shared/src/entities.ts`,
-> `packages/web/app/lib/node-types.ts`,
-> `packages/web/app/lib/graph-authoring-contract.server.ts`,
-> `packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx`).
+> **Status: NOT adopted — superseded by the References model (decided
+> 2026-05-31).** This document proposed giving pull requests a dedicated
+> `pull_request` node type. That recommendation was **declined.** The project
+> owner chose to model a PR as an ordinary `reference` node — *no new node
+> type* — and the GitHub integration that shipped follows that decision. This
+> file is kept as the design record *behind* the decision, not as a description
+> of what exists.
 >
-> _Note:_ the Doco this repo points at (`https://doco.to/doco-bpms/`, per
-> `.doco/connections.md`) currently returns **404 — "Doco not found"** on
-> `doco.to`, bare and qualified, with and without the committed read-only
-> project token. So this proposal could not be cross-checked against prior
-> Doco decisions, and it cannot yet be captured back into the Doco. Fixing
-> that connection is a prerequisite to dogfooding anything below.
+> **What actually shipped (the source of truth):** a PR becomes a `reference`
+> node — `ref_type: "url"`, `locator` = the PR URL (the idempotency key),
+> prose = title + body — with lifecycle `open → drafting`,
+> `merged → asserted/succeeded`, `closed-unmerged → retired`, linked to the work
+> it implements via the existing `implemented_by` edge. The importer is
+> idempotent on the PR URL (re-sync upserts, never duplicates). See
+> `packages/web/app/lib/github-pr-import.server.ts`, `github-app.server.ts`,
+> `github-webhook.server.ts`, `github-backfill.server.ts`, and the Integrations
+> panel (`app/routes/$docoHandle.settings.integrations.tsx`).
+>
+> The `Doco-Implements:` / `Doco-Fixes:` trailer auto-wiring described below is
+> **not implemented** — it remains a proposal. Everything past this banner is
+> the original (un-adopted) node-type design, retained for the record.
 >
 > _Update (2026-05-31):_ since this draft, the repo dropped the five promoted
 > node→node FK columns (`parent_intent_id`, `decided_by`,
@@ -35,10 +43,13 @@
   superseding." That's the wrong abstraction for an object that changes
   `open → merged → closed`, accrues links over its life, and needs idempotent
   re-sync.
-- **Recommendation: add a dedicated `pull_request` node type** with a small,
-  structured field set, a clear lifecycle mapping, and PR-owned link fields so
-  one PR node can "point to" the BPM event it implements, the bug it fixes, the
-  decision it enacts, and the intent it serves.
+- **Original recommendation — _not adopted_: add a dedicated `pull_request`
+  node type** with a small, structured field set, a clear lifecycle mapping, and
+  PR-owned link fields so one PR node can "point to" the BPM event it
+  implements, the bug it fixes, the decision it enacts, and the intent it
+  serves. _(The project chose the `reference` model instead — see the banner
+  above. The rest of this section explains the design that was weighed and
+  declined.)_
 - **Reuse the graph that already exists.** `implemented_by` was written *for
   this* ("Node is implemented by one or more code-artifact Reference nodes
   (PRs, commits, files, lines)"). PR connections map onto existing edges
