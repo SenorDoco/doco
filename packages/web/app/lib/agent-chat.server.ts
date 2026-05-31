@@ -1242,7 +1242,7 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
   GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy user alias...], users: [{ id, username, role, type, github_login, email }], principal_nodes: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_node_count }. Read \`users\` for the doco's OAuth members; read \`principal_nodes\` for the Principal NODES visible as BPMN swim lanes / referenced by Action.actor_id.
-  PATCH /<handle>/api/principals/<id>.json       — update a Principal NODE (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is immutable — to rename, create a new Principal and retire the old one.
+  PATCH /<handle>/api/principals/<id>.json       — update a Principal NODE (name, body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is editable — a rename updates in place and is tracked in the audit log.
   GET   /<handle>/api/policies.json            — list policies (guidance + node-authoring) for this doco
   POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "node_authoring"
   GET   /<handle>/api/invites.json               — pending user invites

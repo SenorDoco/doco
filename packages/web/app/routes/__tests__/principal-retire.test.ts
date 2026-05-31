@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@doco/db", () => {
-  const rank = { reader: 1, author: 2, approver: 3, owner: 4 } as const;
+  const rank = { reader: 1, writer: 2, owner: 3 } as const;
   return {
     getEntity: mocks.getEntity,
     upsertEntity: mocks.upsertEntity,
@@ -188,16 +188,63 @@ describe("principal retire API", () => {
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("rejects an attempt to patch the immutable name field", async () => {
+  it("renames a Principal — name is editable", async () => {
     const response = await action({
       request: retireRequest({ name: "renamed" }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: PRINCIPAL_ID,
+        entity_type: "principal",
+        lifecycle: "asserted",
+        data: expect.objectContaining({ name: "renamed" }),
+        updated_by: "user_author",
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      id: PRINCIPAL_ID,
+      lifecycle: "asserted",
+      footer_lines: [expect.stringContaining("Principal updated: [renamed]")],
+    });
+    expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_type: "principal",
+        entity_id: PRINCIPAL_ID,
+        op: "entity.update",
+        before: expect.objectContaining({ name: "visitor" }),
+        after: expect.objectContaining({ name: "renamed" }),
+      }),
+    );
+  });
+
+  it("trims surrounding whitespace on a rename", async () => {
+    const response = await action({
+      request: retireRequest({ name: "  Renamed Seat  " }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ name: "Renamed Seat" }),
+      }),
+    );
+  });
+
+  it("rejects a blank name", async () => {
+    const response = await action({
+      request: retireRequest({ name: "   " }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 
     expect(response.status).toBe(400);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("Unknown or immutable field(s)"),
+      error: expect.stringContaining("name must be a non-empty string"),
     });
   });
 
