@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  type ComposedGrant,
   type ExistingGrant,
   type GrantCatalog,
   applyDocoTypeLevel,

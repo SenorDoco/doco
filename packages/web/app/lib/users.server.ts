@@ -510,3 +510,92 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
     role,
   };
 }
+
+/** The inviter's own role on a grant target, for the role-cap check. */
+async function inviterRoleOnTarget(
+  meId: string,
+  level: "account" | "org" | "doco",
+  targetId: string,
+): Promise<DocoRole | null> {
+  if (level === "account") {
+    // You can mint an account invite only if you own at least one org.
+    const orgs = await listOrganizationsForUser(meId);
+    for (const o of orgs) {
+      if ((await getOrgRole(o.id, meId)) === "owner") return "owner";
+    }
+    return null;
+  }
+  if (level === "org") return getOrgRole(targetId, meId);
+  const doco = await getDocoById(targetId);
+  if (!doco) return null;
+  return getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, meId);
+}
+
+/**
+ * Multi-grant person invite (one link, all grants). Validates each grant's
+ * role-cap against the inviter's own role, then issues ONE invite carrying a
+ * grants[] array that redemption applies in full.
+ */
+async function handleMultiGrantInvite(
+  request: Request,
+  me: CurrentPrincipal,
+  rawGrants: string,
+): Promise<UserInviteActionResult> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawGrants);
+  } catch {
+    return { error: "Malformed grants." };
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return { error: "Pick at least one thing to grant access to." };
+  }
+
+  const specs: InviteGrantSpec[] = [];
+  for (const raw of parsed) {
+    if (!raw || typeof raw !== "object") return { error: "Malformed grant entry." };
+    const g = raw as { level?: unknown; targetId?: unknown; role?: unknown; writeTypes?: unknown };
+    const level = g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
+    const role = typeof g.role === "string" ? (g.role as DocoRole) : null;
+    const targetId = typeof g.targetId === "string" ? g.targetId : "";
+    if (!level || !role || !ALL_ROLES.includes(role)) return { error: "Invalid grant." };
+    if (level !== "account" && !targetId) return { error: "Grant missing a target." };
+
+    const myRole = await inviterRoleOnTarget(me.id, level, targetId);
+    if (!myRole) return { error: `You don't have access to grant on a ${level}.` };
+    if (rankOf(role) > rankOf(myRole)) {
+      return { error: `Can't grant '${role}' where you only hold '${myRole}'.` };
+    }
+    const write_types = normalizeWriteTypes(Array.isArray(g.writeTypes) ? g.writeTypes : []);
+    specs.push({
+      level,
+      target_id: targetId,
+      role,
+      write_types,
+      ...(level === "account" ? { account_grantor_user_id: me.id } : {}),
+    });
+  }
+
+  const store = InviteStore.forDoco(rootDir());
+  const firstDoco = specs.find((s) => s.level === "doco");
+  const invite = await store.issueInvite(
+    firstDoco ? (firstDoco.target_id as EntityId<"doco">) : null,
+    me.id as EntityId<"principal">,
+    3,
+    specs[0].role,
+    { level: specs[0].level, grants: specs },
+  );
+  const url = new URL(request.url);
+  const origin = `${url.protocol}//${url.host}`;
+  return {
+    intent: "invite",
+    ok: true,
+    invite_url: `${origin}/invite/${invite.code}`,
+    doco_url: "",
+    recipe_url: `${origin}/protocol/agent-oauth-recipe`,
+    device_url: `${origin}/device`,
+    invite_expires_at: invite.expires_at,
+    level: specs[0].level,
+    role: specs[0].role,
+  };
+}
