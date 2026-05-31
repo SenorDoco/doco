@@ -82,6 +82,46 @@ export function parsePullRequestEvent(payload: unknown): ParsedPullRequestEvent 
   };
 }
 
+export interface ParsedInstallationReposEvent {
+  /** "added" | "removed" (GitHub also sends this on install with all repos). */
+  action: string;
+  installationId: number | null;
+  /** Full names ("owner/name") of repos newly granted to the installation. */
+  addedRepos: string[];
+}
+
+/**
+ * Parse an `installation_repositories` webhook — GitHub sends it when repos are
+ * added to (or removed from) an org installation. We use the "added" case to
+ * backfill a newly-covered repo's *pre-existing* PRs; brand-new PRs already
+ * arrive via the `pull_request` event under the same installation id. Pure;
+ * defensive about the untrusted shape.
+ */
+export function parseInstallationRepositoriesEvent(
+  payload: unknown,
+): ParsedInstallationReposEvent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as {
+    action?: unknown;
+    installation?: { id?: unknown };
+    repositories_added?: unknown;
+  };
+  const addedRepos = Array.isArray(p.repositories_added)
+    ? p.repositories_added
+        .map((r) =>
+          r && typeof r === "object" && typeof (r as { full_name?: unknown }).full_name === "string"
+            ? (r as { full_name: string }).full_name
+            : null,
+        )
+        .filter((x): x is string => x !== null)
+    : [];
+  return {
+    action: typeof p.action === "string" ? p.action : "",
+    installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
+    addedRepos,
+  };
+}
+
 export interface DocoRepoConnection {
   docoId: string;
   handle: string;
