@@ -58,7 +58,7 @@ import {
   loadNodeDialogDetail,
 } from "~/lib/node-detail.server";
 import { loadOrgTreeData } from "~/lib/org-tree-perspective.server";
-import { computePageRank } from "~/lib/page-rank";
+import { pageRank } from "~/lib/pagerank";
 import {
   ensureDefaultsAttached,
   listAvailablePerspectives,
@@ -313,7 +313,7 @@ export async function loader({
     // PageRank over the loaded graph, for the List perspective's rank
     // sort options. Cheap (~ms even for thousands of nodes) so we
     // compute it on every load rather than caching.
-    const pageRankMap = graph ? computePageRank(graph.nodes, graph.links) : new Map();
+    const pageRankMap = graph ? pageRank(graph.nodes, graph.links) : new Map();
     const pageRanks: Record<string, number> = {};
     for (const [id, rank] of pageRankMap.entries()) pageRanks[id] = rank;
 
@@ -902,7 +902,7 @@ export default function DocoHome({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <main className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}

@@ -49,7 +49,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
   if (slackConfirmation) {
     return (
       <div className="flex min-h-screen flex-col bg-background text-foreground">
-        <SiteHeader mode="host" me={me} />
+        <SiteHeader me={me} />
         <SingleColumnPageMain className="space-y-8 py-8">
           <Breadcrumb items={hostBreadcrumb({ pageLabel: "Integrations" })} />
           <section className="max-w-2xl space-y-5">
@@ -77,7 +77,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="space-y-6 py-8">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Integrations" })} />
         <header className="space-y-1">

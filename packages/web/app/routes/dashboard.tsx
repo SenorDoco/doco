@@ -231,7 +231,7 @@ export default function Dashboard({
   const { me, greetingVerb, accessGroups, byDay, feed, templates } = loaderData;
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Dashboard" })} />
         <header className="flex flex-wrap items-center justify-between gap-3">

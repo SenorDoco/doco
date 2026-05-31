@@ -73,7 +73,7 @@ export default function ActivityPage({
   const { ownerSlug, docoSlug, handle, me, events, filters } = loaderData;
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
         <div>
           <Breadcrumb

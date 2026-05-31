@@ -64,7 +64,7 @@ export default function NewDocoStep4({
   const docoHomePath = withCreatedDocoChatId(docoHomePathBase, createdDocoChatId);
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Welcome" })} />
         <Card>

@@ -219,7 +219,7 @@ export default function EditPolicy({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
           <Breadcrumb

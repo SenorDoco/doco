@@ -130,7 +130,7 @@ export default function ApiKeysPage({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="py-8 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Access tokens" })} />
         <header className="space-y-1">

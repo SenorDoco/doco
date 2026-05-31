@@ -139,7 +139,7 @@ export default function Invites({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="py-6 space-y-5">
         <div className="space-y-1">
           <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })} />

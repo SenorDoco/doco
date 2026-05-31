@@ -127,7 +127,7 @@ export default function MentorFeedbackPage({ loaderData }: { loaderData: LoaderD
   const { reports, counts, me } = loaderData;
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="space-y-6 py-8">
         <header className="space-y-2">
           <h1 className="text-2xl font-semibold">Mentor feedback</h1>

@@ -290,9 +290,7 @@ async function resolveUserLabelsForActorIds(
          SELECT i.actor_id,
                 COALESCE(
                   CASE WHEN left(i.actor_id, 13) = 'user_' THEN i.actor_id END,
-                  CASE WHEN left(p.created_by, 13) = 'user_' THEN p.created_by END,
-                  CASE WHEN left(p.data->>'owner_id', 13) = 'user_' THEN p.data->>'owner_id' END,
-                  CASE WHEN left(p.data->>'created_by', 13) = 'user_' THEN p.data->>'created_by' END
+                  CASE WHEN left(p.created_by, 13) = 'user_' THEN p.created_by END
                 ) AS user_id
            FROM input i
            LEFT JOIN nodes p ON p.node_type = 'principal' AND p.doco_id = $1 AND p.id = i.actor_id

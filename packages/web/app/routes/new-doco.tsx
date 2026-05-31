@@ -270,7 +270,7 @@ export default function NewDocoStep1({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} />
+      <SiteHeader me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Breadcrumb
           items={hostBreadcrumb({

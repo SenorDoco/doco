@@ -58,7 +58,7 @@ export function meta() {
 export default function SlackLinkPage({ loaderData }: { loaderData: SlackLinkPageData }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader mode="host" />
+      <SiteHeader />
       <SingleColumnPageMain className="space-y-6 py-8">
         <Breadcrumb
           items={[...hostBreadcrumb({ pageLabel: "Integrations" }), { label: "Slack" }]}
