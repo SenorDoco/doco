@@ -128,6 +128,7 @@ export default [
   // every Doco the org owns (docos list, node-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
   route("orgs/:orgHandle/settings", "routes/orgs.$orgHandle.settings.tsx"),
+  route("orgs/:orgHandle/integrations", "routes/orgs.$orgHandle.integrations.tsx"),
   route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
   // Cross-Doco semantic search across every Doco the org owns.
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
@@ -227,6 +228,7 @@ export default [
   route(":docoHandle/settings", "routes/$docoHandle.settings.tsx"),
   route(":docoHandle/settings/github", "routes/$docoHandle.settings.github.tsx"),
   route(":docoHandle/settings/integrations", "routes/$docoHandle.settings.integrations.tsx"),
+  route(":docoHandle/integrations", "routes/$docoHandle.integrations.tsx"),
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
   route(":docoHandle/policies/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx"),
   route(

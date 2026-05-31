@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
   getSlackConfig: vi.fn(),
   listSlackInstallations: vi.fn(),
+  loadAccountIntegrationsRollup: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
@@ -15,6 +16,10 @@ vi.mock("~/lib/slack.server", () => ({
   listSlackInstallations: mocks.listSlackInstallations,
 }));
 
+vi.mock("~/lib/integrations-summary.server", () => ({
+  loadAccountIntegrationsRollup: mocks.loadAccountIntegrationsRollup,
+}));
+
 import { loader } from "../integrations";
 
 describe("/integrations", () => {
@@ -22,6 +27,11 @@ describe("/integrations", () => {
     vi.clearAllMocks();
     mocks.getSlackConfig.mockReturnValue({ configured: false });
     mocks.listSlackInstallations.mockResolvedValue([]);
+    mocks.loadAccountIntegrationsRollup.mockResolvedValue({
+      slack: [],
+      orgs: [],
+      docos: [],
+    });
   });
 
   it("redirects anonymous users to sign in", async () => {
@@ -35,40 +45,43 @@ describe("/integrations", () => {
     expect(response.headers.get("Location")).toBe("/sign-in?next=%2Fintegrations");
   });
 
-  it("loads a minimal Slack entry point for signed-in users", async () => {
+  it("loads slack workspaces and cross-scope rollup for signed-in users", async () => {
     mocks.getSlackConfig.mockReturnValue({ configured: true });
     mocks.getCurrentPrincipal.mockResolvedValue({
       id: "user_alice",
       username: "alice",
     });
-    mocks.listSlackInstallations.mockResolvedValue([
+    const slackInstallations = [
       {
         workspaceId: "T123",
         workspaceName: "Doco",
         botUserId: "U123",
         installedAt: "2026-05-26T20:00:00.000Z",
       },
-    ]);
-
-    await expect(
-      loader({ request: new Request("https://doco.test/integrations") }),
-    ).resolves.toEqual({
-      me: {
-        id: "user_alice",
-        username: "alice",
-      },
-      notice: null,
-      slackConfirmation: null,
-      slackInstallHref: "/integrations/slack/install",
-      slackInstallations: [
+    ];
+    mocks.listSlackInstallations.mockResolvedValue(slackInstallations);
+    mocks.loadAccountIntegrationsRollup.mockResolvedValue({
+      slack: [],
+      orgs: [{ orgId: "organization_acme", handle: "acme", installCount: 0 }],
+      docos: [
         {
-          workspaceId: "T123",
-          workspaceName: "Doco",
-          botUserId: "U123",
-          installedAt: "2026-05-26T20:00:00.000Z",
+          docoId: "doco_one",
+          handle: "acme-doco",
+          orgHandle: "acme",
+          githubRepoCount: 2,
         },
       ],
     });
+
+    const data = await loader({ request: new Request("https://doco.test/integrations") });
+
+    expect(data.me).toEqual({ id: "user_alice", username: "alice" });
+    expect(data.slackInstallHref).toBe("/integrations/slack/install");
+    expect(data.slackInstallations).toEqual(slackInstallations);
+    expect(data.rollup.slack).toEqual(slackInstallations);
+    expect(data.rollup.orgs).toHaveLength(1);
+    expect(data.rollup.docos).toHaveLength(1);
+    expect(mocks.loadAccountIntegrationsRollup).toHaveBeenCalledWith({ userId: "user_alice" });
   });
 
   it("does not expose deployment environment variable names to the browser", async () => {
