@@ -156,18 +156,21 @@ export async function action({
   // invite targets. Pre-cutover invites (no role/level) default to
   // doco-level `owner` to preserve prior behavior.
   const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
+  const grantedWriteTypes = consumed.write_types;
   const consumedLevel = consumed.level ?? "doco";
   if (consumedLevel === "org" && consumed.org_id) {
     await upsertOrgUser({
       org_id: consumed.org_id,
       user_id: principal.id,
       role: grantedRole,
+      write_types: grantedWriteTypes,
     });
   } else {
     if (!invite.doco_id) return { error: "The Doco this invite points at no longer exists." };
     await upsertDocoUser({
       doco_id: invite.doco_id,
       user_id: principal.id,
+      write_types: grantedWriteTypes,
       role: grantedRole,
     });
   }

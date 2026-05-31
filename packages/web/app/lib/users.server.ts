@@ -10,7 +10,7 @@ import {
   patchUserData,
   withClient,
 } from "@doco/db";
-import type { EntityId } from "@doco/shared";
+import { type EntityId, normalizeWriteTypes } from "@doco/shared";
 import { redirect } from "react-router";
 import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
@@ -319,6 +319,9 @@ function buildUserInviteData({
     id: s.doco.id,
     label: s.doco.label,
     maxRole: s.myRole,
+    // ownerId is the org id for org-owned docos; lets the grant picker
+    // group docos under the org the user selects first.
+    orgId: s.doco.ownerId,
   }));
 
   // Pre-select the invite target from the URL. The page (and the Doco's
@@ -393,6 +396,18 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
   if (parsedRole && !ALL_ROLES.includes(parsedRole)) return { error: "Invalid role." };
   const targetId = String(form.get("target_id") ?? "").trim();
   if (!targetId) return { error: "Pick a target to invite to." };
+  // Optional per-type write set (decision_per_type_write_grants),
+  // comma-separated type tokens or "*". Absent → upsert default on redeem.
+  const rawWriteTypes = form.get("write_types");
+  const writeTypes =
+    rawWriteTypes === null
+      ? undefined
+      : normalizeWriteTypes(
+          String(rawWriteTypes)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        );
 
   let inviterRole: DocoRole | null = null;
   let docoId: string | null = null;
@@ -439,6 +454,7 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
     {
       level,
       ...(orgId ? { org_id: orgId as EntityId<"organization"> } : {}),
+      ...(writeTypes ? { write_types: writeTypes } : {}),
     },
   );
   const url = new URL(request.url);
