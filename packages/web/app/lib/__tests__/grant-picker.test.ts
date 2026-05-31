@@ -10,6 +10,7 @@ import {
   inheritedTypeLevel,
   rank,
   resolveWriteTypes,
+  scopeShowsPerTypeControls,
   setTypeLevel,
   targetsByOrg,
   typeDropdownValue,
