@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // @doco/db; mock it so the import resolves without a real DB.
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
-import { backfillRepoPullRequests } from "../github-backfill.server";
+import { backfillInstallationRepos, backfillRepoPullRequests } from "../github-backfill.server";
 
 const opts = {
   docoDir: "/tmp/d",
@@ -62,5 +62,50 @@ describe("backfillRepoPullRequests", () => {
     });
 
     expect(res).toEqual({ total: 4, created: 1, updated: 1, unchanged: 1, failed: 1 });
+  });
+});
+
+describe("backfillInstallationRepos", () => {
+  it("backfills every repo the installation covers and aggregates the tally", async () => {
+    const backfillRepo = vi
+      .fn()
+      .mockResolvedValueOnce({ total: 2, created: 2, updated: 0, unchanged: 0, failed: 0 })
+      .mockResolvedValueOnce({ total: 3, created: 1, updated: 1, unchanged: 1, failed: 0 });
+    const res = await backfillInstallationRepos(
+      {
+        docoDir: "/tmp/d",
+        docoId: "doco_1",
+        ownerSlug: "o",
+        docoSlug: "d",
+        repos: ["acme/a", "acme/b"],
+        installationId: 42,
+        createdByUserId: "u",
+      },
+      { backfillRepo: backfillRepo as never },
+    );
+    expect(res).toEqual({ repos: 2, created: 3, updated: 1, unchanged: 1, failed: 0 });
+    expect(backfillRepo).toHaveBeenCalledTimes(2);
+    expect(backfillRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "acme", repo: "a", installationId: 42, docoId: "doco_1" }),
+    );
+  });
+
+  it("skips malformed repo full-names", async () => {
+    const backfillRepo = vi
+      .fn()
+      .mockResolvedValue({ total: 0, created: 0, updated: 0, unchanged: 0, failed: 0 });
+    const res = await backfillInstallationRepos(
+      {
+        docoDir: "/tmp/d",
+        docoId: "doco_1",
+        ownerSlug: "o",
+        docoSlug: "d",
+        repos: ["acme/a", "bogus"],
+        installationId: 1,
+      },
+      { backfillRepo: backfillRepo as never },
+    );
+    expect(res.repos).toBe(1);
+    expect(backfillRepo).toHaveBeenCalledTimes(1);
   });
 });
