@@ -17,9 +17,11 @@
 ## TL;DR
 
 - **Give pull requests a first-class home in Doco.** Today a PR can only be a
-  `reference` node (`ref_type: "url" | "ticket"`), and References are *frozen
-  from creation* — a bad fit for an object that changes `open → merged →
-  closed` and whose whole value is the links it carries.
+  `reference` node (`ref_type: "url" | "ticket"`) — a deliberately-minimal
+  *citation* whose modeled contract is "immutable snapshot; correct by
+  superseding." That's the wrong abstraction for an object that changes
+  `open → merged → closed`, accrues links over its life, and needs idempotent
+  re-sync.
 - **Recommendation: add a dedicated `pull_request` node type** with a small,
   structured field set, a clear lifecycle mapping, and PR-owned link fields so
   one PR node can "point to" the BPM event it implements, the bug it fixes, the
@@ -34,7 +36,8 @@
   trailer convention (`Doco-Implements:`, `Doco-Fixes:`) in a recommended
   `.github/PULL_REQUEST_TEMPLATE.md` let the importer wire PRs to BPM
   events/bugs/decisions with zero extra human steps. A mutable node type is
-  what makes idempotent re-sync possible; frozen References are not.
+  what makes idempotent re-sync clean; a Reference's snapshot/supersede contract
+  is not.
 
 ---
 
@@ -60,12 +63,23 @@ other nodes** (a BPM event a PR implements; a bug a PR fixed), with a path to
 |---|---|---|
 | Represent a PR | `reference` node, `ref_type: "url"`/`"ticket"`, `locator` = PR URL | No PR-specific fields (state, author, reviewers, merge SHA, branches, stats) |
 | Link a PR to a node it ships | `implemented_by` edge (owned by the **target** node) | Authoring is target-centric; a PR can't "point to" its own targets, and import would have to PATCH N target nodes per PR |
-| Mutability | References are **frozen from creation** | A PR changes `open → merged`; frozen storage forces supersede-churn on every state change — fatal for idempotent GitHub sync |
+| Mutability | References are **modeled as immutable snapshots** (supersede to correct)† | A PR changes `open → merged`; a supersede-don't-edit contract forces churn on every state change — fatal for idempotent GitHub sync |
 | Import from GitHub | OAuth sign-in only (`auth.github.*`) | No inbound webhook / PR backfill infrastructure exists |
 
-The frozen-Reference mismatch is the crux: the thing we most want (re-syncable
-PRs that accrue links over their life) is the thing References deliberately
-forbid.
+The abstraction mismatch is the crux: the thing we most want (re-syncable PRs
+that accrue links over their life) runs against the Reference contract of
+"snapshot, then supersede."
+
+> † **On "frozen":** Doco's *"frozen claims, mutable records"* model
+> (`decision_01KRKEPRAMM9QSSEJ2X5FHPESJ`) originally hard-froze a claim's body
+> once it reached `accepted`/`retired`, and the Reference/Log specs still read
+> "frozen from creation." That built-in freeze has since been **lifted** —
+> `mutability.server.ts`'s `validatePatch` now always allows, so any writer can
+> edit any node at any lifecycle; integrity comes from the append-only audit
+> log + immutable version snapshots, not from freezing the current row. A
+> Reference is therefore *editable in code today*. The case for a dedicated PR
+> type rests on its rich structured fields, idempotent upsert ergonomics, and
+> first-class searchability — not on the freeze being enforced.
 
 ---
 
@@ -110,15 +124,16 @@ discipline a `PULL_REQUEST_TEMPLATE.md` (§7) nudges.
 | | **A. Dedicated `pull_request` type (recommended)** | B. Enrich `reference` (`ref_type: "pull_request"`) |
 |---|---|---|
 | Structured fields (state, author, reviewers, SHA, branches, stats) | First-class, queryable | Would bloat the deliberately-minimal Reference shape |
-| Mutability for `open → merged` | Native (`PATCH` upsert) | References are frozen → supersede-churn |
+| Mutability for `open → merged` | Native (`PATCH` upsert) | Fights the snapshot/supersede contract → churn |
 | Idempotent GitHub re-sync | Natural (upsert by locator) | Painful (new node each change) |
 | Search/filter/perspectives | First-class segment `/api/pull_requests.json` | Mixed in with all references |
 | Implementation cost | Higher: registry + entity + capture fn + spec + UI icon | Lower: one enum value + edges |
 | Fits existing `implemented_by` intent | Yes (PR node is a valid target) | Yes (that edge already names PRs) |
 
 **Recommendation: A.** PRs have a distinct lifecycle and a rich, structured
-shape that the frozen, minimal Reference type actively fights, and idempotent
-import is a hard requirement that mutability alone satisfies. **B is the
+shape that the minimal, snapshot-modeled Reference type actively fights, and
+idempotent import is a hard requirement that a purpose-built mutable type
+satisfies cleanly. **B is the
 sensible on-ramp** (Phase 0, §8) if we want value this week without new
 machinery — and a PR node remains a valid `implemented_by` target either way,
 so B→A is a forward-compatible migration, not a rewrite.
@@ -318,9 +333,9 @@ itself shows the PR that implemented it.
 ### 6.1 Idempotency — why the node must be mutable
 Natural key = the canonical PR URL (`locator`), equivalently `(repo, number)`.
 Every import is an **upsert**: first sight POSTs, later sightings PATCH the same
-node. This is the entire reason for a dedicated mutable type over frozen
-References — re-syncing a PR's `open → merged` transition must not mint a new
-node each time.
+node. This is the core reason for a dedicated, upsert-friendly type over the
+Reference snapshot/supersede contract — re-syncing a PR's `open → merged`
+transition must not mint a new node each time.
 
 ### 6.2 Field mapping (GitHub → Doco)
 
