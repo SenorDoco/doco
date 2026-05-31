@@ -142,6 +142,7 @@ export class InviteStore {
       org_id?: EntityId<"organization">;
       account_grantor_user_id?: EntityId<"principal">;
       write_types?: string[];
+      grants?: Invite["grants"];
     } = {},
   ): Promise<Invite> {
     const file = await this.load();

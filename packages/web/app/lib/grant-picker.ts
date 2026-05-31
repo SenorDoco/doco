@@ -311,3 +311,108 @@ export function describeExistingGrant(g: ExistingGrant): string {
   const scopeWord = g.level === "account" ? "Entire account" : g.level === "org" ? "Org" : "Doco";
   return `${scopeWord}: ${g.label} — ${describeWriteScope(g.role, g.writeTypes)}`;
 }
+
+// ── Multi-grant selection ───────────────────────────────────────────────────
+//
+// The wizard accumulates a LIST of grants: a person/token can be granted
+// several orgs at once, several docos, or a per-type doco grant — all in one
+// pass. These pure helpers maintain that list keyed by (level, targetId) so a
+// thin component just renders rows and calls them.
+
+/** Stable key for a grant within the selection list. */
+export function grantKey(level: ComposedGrant["level"], targetId: string): string {
+  return `${level}:${targetId}`;
+}
+
+export function findGrant(
+  list: ComposedGrant[],
+  level: ComposedGrant["level"],
+  targetId: string,
+): ComposedGrant | undefined {
+  return list.find((g) => g.level === level && g.targetId === targetId);
+}
+
+/** Insert or replace a grant by its (level, targetId) key. */
+export function upsertGrant(list: ComposedGrant[], g: ComposedGrant): ComposedGrant[] {
+  const k = grantKey(g.level, g.targetId);
+  return [...list.filter((x) => grantKey(x.level, x.targetId) !== k), g];
+}
+
+/** Remove the grant with this (level, targetId), if any. */
+export function removeGrant(
+  list: ComposedGrant[],
+  level: ComposedGrant["level"],
+  targetId: string,
+): ComposedGrant[] {
+  const k = grantKey(level, targetId);
+  return list.filter((x) => grantKey(x.level, x.targetId) !== k);
+}
+
+/**
+ * The choices a per-target ACCESS dropdown offers: "none" (not granted)
+ * plus every role the granter may delegate, capped by their own role.
+ */
+export type TargetRoleChoice = "none" | DocoRole;
+
+export function targetRoleOptions(maxRole: DocoRole): TargetRoleChoice[] {
+  return ["none", ...grantableRoles(maxRole)];
+}
+
+/** The dropdown value for a target given the current selection. */
+export function targetRoleValue(
+  list: ComposedGrant[],
+  level: ComposedGrant["level"],
+  targetId: string,
+): TargetRoleChoice {
+  return findGrant(list, level, targetId)?.role ?? "none";
+}
+
+/**
+ * Apply a per-target ACCESS choice (org / doco multi-select rows). "none"
+ * removes the grant; a role adds/updates it. A writer persists the wildcard
+ * write set (writes everything); reader/owner carry no per-type set.
+ */
+export function applyTargetRole(
+  list: ComposedGrant[],
+  level: "org" | "doco",
+  targetId: string,
+  choice: TargetRoleChoice,
+): ComposedGrant[] {
+  if (choice === "none") return removeGrant(list, level, targetId);
+  return upsertGrant(list, {
+    level,
+    targetId,
+    role: choice,
+    writeTypes: choice === "writer" ? ["*"] : [],
+  });
+}
+
+/**
+ * Apply a per-TYPE level change to the doco grant for `docoId` (the "types"
+ * scope). The grant is reader-based with an explicit write set; setting a
+ * type to "write" adds it, "read"/"default" removes it. When the resulting
+ * write set is empty the doco grant is dropped entirely (nothing to grant).
+ */
+export function applyDocoTypeLevel(
+  list: ComposedGrant[],
+  docoId: string,
+  type: string,
+  next: TypeLevel,
+  allTypes: readonly string[],
+): ComposedGrant[] {
+  const current = findGrant(list, "doco", docoId);
+  const base = current?.writeTypes ?? [];
+  const nextTypes = setTypeLevel("reader", base, type, next, allTypes);
+  if (nextTypes.length === 0) return removeGrant(list, "doco", docoId);
+  return upsertGrant(list, {
+    level: "doco",
+    targetId: docoId,
+    role: "reader",
+    writeTypes: nextTypes,
+  });
+}
+
+/** Count of grants selected, for the submit button / summary. */
+export function selectionCount(list: ComposedGrant[]): number {
+  return list.length;
+}
