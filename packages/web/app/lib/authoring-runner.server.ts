@@ -282,7 +282,7 @@ async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalInd
   // doesn't accept a retired actor. COALESCE matches the rest of the
   // codebase's NULL-as-active convention.
   const r = await c.query<{ id: string }>(
-    "SELECT id FROM principals WHERE doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'",
+    "SELECT id FROM nodes WHERE node_type = 'principal' AND doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'",
     [docoId],
   );
   return new Set(r.rows.map((row) => row.id));

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ENTITY_TABLES } from "../doco-stats.server";
+import { NODE_TYPES_FOR_STATS } from "../doco-stats.server";
 
 const schemaSql = readFileSync(
   resolve(import.meta.dirname, "../../../../../packages/db/src/schema.sql"),
@@ -20,21 +20,20 @@ function tableBlock(table: string): string {
   return match?.[1] ?? "";
 }
 
-describe("dashboard doco stats entity tables", () => {
-  it("only queries entity tables that schema.sql leaves available", () => {
-    for (const table of ENTITY_TABLES) {
-      expect(tableRegex("CREATE TABLE IF NOT EXISTS", table).test(schemaSql)).toBe(true);
-      expect(tableRegex("DROP TABLE IF EXISTS", table).test(schemaSql)).toBe(false);
-    }
+describe("dashboard doco stats", () => {
+  // Post-collapse: stats read the unified `nodes` table (filtered by
+  // node_type) rather than the per-type tables. Validate the single
+  // table the queries hit is available and shaped as expected.
+  it("queries the unified nodes table, which schema.sql leaves available", () => {
+    expect(tableRegex("CREATE TABLE IF NOT EXISTS", "nodes").test(schemaSql)).toBe(true);
+    expect(tableRegex("DROP TABLE IF EXISTS", "nodes").test(schemaSql)).toBe(false);
   });
 
   it("counts Doco-authored role principals as node stats", () => {
-    expect(ENTITY_TABLES).toContain("principals");
+    expect(NODE_TYPES_FOR_STATS).toContain("principal");
   });
 
   it("can fall back to entity updated_at for pre-audit content", () => {
-    for (const table of ENTITY_TABLES) {
-      expect(tableBlock(table)).toMatch(/\bupdated_at\s+timestamptz\b/i);
-    }
+    expect(tableBlock("nodes")).toMatch(/\bupdated_at\s+timestamptz\b/i);
   });
 });

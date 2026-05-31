@@ -47,21 +47,34 @@ export async function loader({
  * otherwise misread as having captured work.
  */
 type StatusGroup = "note" | "policy";
-const TYPE_MAP: { entityType: string; table: string; plural: string; group: StatusGroup }[] = [
+// Note types now live in the unified `nodes` table (counted by
+// `node_type`); policies keep their own tables. `nodeType` is set for
+// notes, `table` for policies. The plural keys are the public collection
+// names and stay unchanged.
+const TYPE_MAP: {
+  entityType: string;
+  nodeType: string | null;
+  table: string | null;
+  plural: string;
+  group: StatusGroup;
+}[] = [
   ...DOCO_NODE_TABLE_SPECS.map((spec) => ({
     entityType: spec.entityType,
-    table: spec.table,
+    nodeType: spec.entityType,
+    table: null as string | null,
     plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
     group: "note" as const,
   })),
   {
     entityType: "guidance_policy",
+    nodeType: null,
     table: "guidance_policies",
     plural: "guidance_policies",
     group: "policy",
   },
   {
     entityType: "node_authoring_policy",
+    nodeType: null,
     table: "node_authoring_policies",
     plural: "node_authoring_policies",
     group: "policy",
@@ -93,11 +106,17 @@ async function readStatusFromPg(
   let latest: string | null = null;
   try {
     await withClient(async (c) => {
-      for (const { table, plural, group } of TYPE_MAP) {
-        const r = await c.query<{ n: string; c: string | null }>(
-          `SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM ${table} WHERE doco_id = $1`,
-          [docoId],
-        );
+      for (const { nodeType, table, plural, group } of TYPE_MAP) {
+        const r =
+          group === "note"
+            ? await c.query<{ n: string; c: string | null }>(
+                "SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM nodes WHERE node_type = $1 AND doco_id = $2",
+                [nodeType, docoId],
+              )
+            : await c.query<{ n: string; c: string | null }>(
+                `SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM ${table} WHERE doco_id = $1`,
+                [docoId],
+              );
         const n = Number(r.rows[0]?.n ?? 0);
         if (group === "note") {
           counts.notes[plural] = n;
@@ -110,7 +129,7 @@ async function readStatusFromPg(
         if (ts && (latest === null || ts > latest)) latest = ts;
       }
       const p = await c.query<{ n: string }>(
-        "SELECT COUNT(*)::text AS n FROM principals WHERE doco_id = $1",
+        "SELECT COUNT(*)::text AS n FROM nodes WHERE node_type = 'principal' AND doco_id = $1",
         [docoId],
       );
       counts.principals = Number(p.rows[0]?.n ?? 0);

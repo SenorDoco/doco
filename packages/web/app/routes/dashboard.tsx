@@ -166,14 +166,13 @@ export async function loader({ request }: { request: Request }) {
           label: string | null;
           lifecycle: string | null;
         }>(
-          `SELECT id, split_part(decision, E'\n', 1) AS label, lifecycle FROM decisions WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE id = ANY($1)
-           UNION ALL SELECT id, split_part(reference, E'\n', 1) AS label, lifecycle FROM reference_entities WHERE id = ANY($1)`,
+          // Post-collapse: one `nodes` query. Labels = first line of
+          // `prose`, over the same eight prose types this feed shows (no
+          // policies, states, or principals).
+          `SELECT id, split_part(prose, E'\n', 1) AS label, lifecycle
+             FROM nodes
+            WHERE id = ANY($1)
+              AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'reference')`,
           [entityIds],
         );
         for (const r of entityLabelRows.rows) {

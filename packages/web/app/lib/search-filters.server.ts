@@ -155,10 +155,10 @@ export async function resolveFilteredCandidates(
     // node search results, even when their lifecycle matches.
     for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
       const r = await c.query<{ id: string }>(
-        `SELECT id FROM ${spec.table}
-          WHERE ${spec.docoWhereSql}
+        `SELECT id FROM nodes
+          WHERE node_type = $3 AND ${spec.docoWhereSql}
             AND COALESCE(lifecycle, 'asserted') = ANY($2::text[])`,
-        [docoId, filters.lifecycle],
+        [docoId, filters.lifecycle, spec.entityType],
       );
       for (const row of r.rows) lifecycleIds.add(row.id);
     }
@@ -171,8 +171,8 @@ export async function resolveFilteredCandidates(
       const spec = NODE_TYPE_TO_TABLE[nt];
       if (!spec) continue;
       const r = await c.query<{ id: string }>(
-        `SELECT id FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
-        [docoId],
+        `SELECT id FROM nodes WHERE node_type = $2 AND ${spec.docoWhereSql}`,
+        [docoId, spec.entityType],
       );
       for (const row of r.rows) entityTypeIds.add(row.id);
     }
@@ -212,10 +212,10 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       `SELECT COALESCE(lifecycle, 'asserted') AS value,
               COUNT(*)::text AS n,
               MAX(updated_at) AS updated_at
-         FROM ${spec.table}
-        WHERE ${spec.docoWhereSql}
+         FROM nodes
+        WHERE node_type = $2 AND ${spec.docoWhereSql}
         GROUP BY value`,
-      [docoId],
+      [docoId, spec.entityType],
     );
     for (const row of r.rows) {
       const n = Number(row.n);
@@ -242,8 +242,8 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       `SELECT COUNT(*)::text AS n,
               (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted'))::text AS active_n,
               MAX(updated_at) AS updated_at
-         FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
-      [docoId],
+         FROM nodes WHERE node_type = $2 AND ${spec.docoWhereSql}`,
+      [docoId, spec.entityType],
     );
     const row = r.rows[0];
     const n = Number(row?.n ?? 0);

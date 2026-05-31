@@ -58,27 +58,30 @@ async function findActiveReferencesToPrincipal(
   principalId: string,
 ): Promise<ActiveReference[]> {
   return withClient(async (c) => {
+    // Post-collapse: Action / Log / Intent all live in `nodes`. Their
+    // prose lives in the shared `prose` column; the per-leg node_type
+    // discriminator replaces the per-table FROM.
     const sql = `
-      SELECT a.id AS id, 'action'::text AS node_type, split_part(a.action, E'\n', 1) AS summary, s.edge_type AS edge_type
-        FROM actions a
+      SELECT a.id AS id, 'action'::text AS node_type, split_part(a.prose, E'\n', 1) AS summary, s.edge_type AS edge_type
+        FROM nodes a
         JOIN edges s
           ON s.from_id = a.id
          AND s.from_node_type = 'action'
-       WHERE s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'asserted'
+       WHERE a.node_type = 'action' AND s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'asserted'
       UNION ALL
-      SELECT l.id, 'log'::text, split_part(l.log, E'\n', 1), s.edge_type
-        FROM logs l
+      SELECT l.id, 'log'::text, split_part(l.prose, E'\n', 1), s.edge_type
+        FROM nodes l
         JOIN edges s
           ON s.from_id = l.id
          AND s.from_node_type = 'log'
-       WHERE s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'asserted'
+       WHERE l.node_type = 'log' AND s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'asserted'
       UNION ALL
-      SELECT i.id, 'intent'::text, split_part(i.intent, E'\n', 1), s.edge_type
-        FROM intents i
+      SELECT i.id, 'intent'::text, split_part(i.prose, E'\n', 1), s.edge_type
+        FROM nodes i
         JOIN edges s
           ON s.from_id = i.id
          AND s.from_node_type = 'intent'
-       WHERE s.doco_id = $1 AND s.to_id = $2 AND i.lifecycle = 'asserted'
+       WHERE i.node_type = 'intent' AND s.doco_id = $1 AND s.to_id = $2 AND i.lifecycle = 'asserted'
       ORDER BY node_type, id`;
     const r = await c.query<ActiveReference>(sql, [docoId, principalId]);
     return r.rows;

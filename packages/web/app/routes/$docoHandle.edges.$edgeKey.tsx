@@ -62,17 +62,16 @@ export async function loader({
     }
     const labelRows = (
       await c.query<NodeLabel>(
+        // Post-collapse: the prose node types live in `nodes` (summary =
+        // first line of `prose`); policies keep their own tables and
+        // `policy` column. Matches the prior set (no states/principals).
         `WITH labels AS (
-           SELECT id, split_part(decision, E'\n', 1) AS summary, lifecycle, created_at FROM decisions             WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(intent, E'\n', 1), lifecycle, created_at FROM intents                  WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(idea, E'\n', 1), lifecycle, created_at FROM ideas                    WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(rule, E'\n', 1), lifecycle, created_at FROM rules                    WHERE doco_id = $1
+           SELECT id, split_part(prose, E'\n', 1) AS summary, lifecycle, created_at
+             FROM nodes
+            WHERE doco_id = $1
+              AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'reference')
            UNION ALL SELECT id, policy, lifecycle, created_at FROM guidance_policies        WHERE doco_id = $1
            UNION ALL SELECT id, policy, lifecycle, created_at FROM node_authoring_policies  WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(action, E'\n', 1), lifecycle, created_at FROM actions                  WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(log, E'\n', 1), lifecycle, created_at FROM logs                     WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(eval, E'\n', 1), lifecycle, created_at FROM evals                    WHERE doco_id = $1
-           UNION ALL SELECT id, split_part(reference, E'\n', 1), lifecycle, created_at FROM reference_entities       WHERE doco_id = $1
          )
          SELECT id, summary, lifecycle, created_at FROM labels WHERE id = ANY($2)`,
         [ctx.meta.docoId, [edge.from_id, edge.to_id]],

@@ -1,4 +1,4 @@
-import { ALL_ENTITY_TABLES, cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
+import { cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
 import { globalPageRank } from "@doco/index";
 import type { PoolClient } from "pg";
 import { type SearchFilters, resolveFilteredCandidates } from "~/lib/search-filters.server";
@@ -131,10 +131,10 @@ export async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promi
     if (spec.hostLevel) continue;
     // Node types live in the unified `nodes` table, scoped by node_type.
     const rows = (
-      await c.query<{ id: string }>(
-        "SELECT id FROM nodes WHERE node_type = $1 AND doco_id = $2",
-        [spec.nodeType, docoId],
-      )
+      await c.query<{ id: string }>("SELECT id FROM nodes WHERE node_type = $1 AND doco_id = $2", [
+        spec.nodeType,
+        docoId,
+      ])
     ).rows;
     for (const row of rows) ids.push(row.id);
   }
