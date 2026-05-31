@@ -52,6 +52,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-05-30",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "github-pull-requests",
+    label: "GitHub pull requests",
+    description:
+      "Track a GitHub repository's pull requests as References — new PRs sync automatically, and merged PRs settle as asserted.",
+    updatedAt: "2026-05-31",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc

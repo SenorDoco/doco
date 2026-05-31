@@ -38,6 +38,7 @@ import { getCurrentPrincipal } from "~/lib/session.server";
  */
 
 const DEFAULT_TEMPLATE_HANDLE = "generic";
+const GITHUB_PR_TEMPLATE_HANDLE = "github-pull-requests";
 
 interface CreationState {
   templateHandle: string;
@@ -184,6 +185,9 @@ export async function action({ request }: { request: Request }) {
       autoSuffix: accept,
       goal: state.goal,
     });
+    if (state.templateHandle === GITHUB_PR_TEMPLATE_HANDLE) {
+      throw redirect(`/${rec.handle}/integrations`);
+    }
     throw redirect(
       withCreatedDocoChatId(
         withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId),

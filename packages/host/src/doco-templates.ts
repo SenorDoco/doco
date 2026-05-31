@@ -638,6 +638,18 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     ],
   },
   {
+    // GitHub pull-requests template. PRs from a connected repository are
+    // synced as Reference nodes. No authoring constraints are imposed —
+    // the template is intentionally minimal; the GitHub integration
+    // (configured immediately after Doco creation) handles the sync logic.
+    name: "github-pull-requests",
+    label: "GitHub pull requests",
+    icon: "🐙",
+    description:
+      "Track a GitHub repository's pull requests as References — new PRs sync automatically, and merged PRs settle as asserted.",
+    policies: [],
+  },
+  {
     // Organizational chart template. Principals are the org *seats*
     // (a role plus its current occupant), `reports_to` edges form the
     // primary hierarchy, Intents represent teams/units, Decisions
