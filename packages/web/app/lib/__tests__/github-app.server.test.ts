@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildAppJwt,
   githubAppConfigured,
+  listInstallationRepos,
   listRepoPullRequests,
   mintInstallationToken,
 } from "../github-app.server";
@@ -93,6 +94,24 @@ describe("listRepoPullRequests", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(prs.map((p) => p.number)).toEqual([1, 2]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("listInstallationRepos", () => {
+  it("collects repo full names across pages", async () => {
+    const page1 = new Response(
+      JSON.stringify({ repositories: [{ full_name: "acme/a" }, { full_name: "acme/b" }] }),
+      { status: 200, headers: { Link: '<https://api.github.com/x?page=2>; rel="next"' } },
+    );
+    const page2 = new Response(JSON.stringify({ repositories: [{ full_name: "acme/c" }] }), {
+      status: 200,
+    });
+    const fetchImpl = vi.fn().mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
+    const repos = await listInstallationRepos("ghs_x", {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(repos).toEqual(["acme/a", "acme/b", "acme/c"]);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

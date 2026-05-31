@@ -89,8 +89,9 @@ export interface DocoRepoConnection {
 }
 
 /**
- * Docos whose `data.github_integration.repo` equals "owner/name". Empty until
- * a repo is connected to a Doco (the settings panel, increment 5).
+ * Docos connected to "owner/name". Matches both the list shape
+ * (`data.github_integration.connections[].repo`) and the legacy single shape
+ * (`data.github_integration.repo`).
  */
 export async function findDocoConnectionsByRepo(
   repoFullName: string,
@@ -100,7 +101,9 @@ export async function findDocoConnectionsByRepo(
       `SELECT d.id, d.handle, o.handle AS org_handle
          FROM docos d
          JOIN organizations o ON o.id = d.org_id
-        WHERE d.data->'github_integration'->>'repo' = $1`,
+        WHERE d.data->'github_integration'->>'repo' = $1
+           OR d.data->'github_integration'->'connections'
+                @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
       [repoFullName],
     );
     return r.rows.map((row) => ({
