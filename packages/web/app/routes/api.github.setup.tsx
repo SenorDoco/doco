@@ -29,6 +29,13 @@ export async function loader({ request }: { request: Request }) {
     return redirect(`/${doco.handle}/settings/integrations?github=forbidden`);
   }
 
-  const { repos } = await importInstallationConnections({ docoId: doco.id, installationId });
-  return redirect(`/${doco.handle}/settings/integrations?github=connected&count=${repos.length}`);
+  try {
+    const { repos } = await importInstallationConnections({ docoId: doco.id, installationId });
+    return redirect(`/${doco.handle}/settings/integrations?github=connected&count=${repos.length}`);
+  } catch (err) {
+    // Most likely a bad DOCO_GITHUB_APP_* credential (e.g. an unparseable
+    // private key). Don't 500 the user — log and bounce back with a message.
+    console.error("[github setup] installation import failed:", err);
+    return redirect(`/${doco.handle}/settings/integrations?github=setup_failed`);
+  }
 }

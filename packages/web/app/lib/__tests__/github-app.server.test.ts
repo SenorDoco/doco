@@ -6,6 +6,7 @@ import {
   listInstallationRepos,
   listRepoPullRequests,
   mintInstallationToken,
+  normalizePem,
 } from "../github-app.server";
 
 // A throwaway RSA keypair for signing/verifying test JWTs (pkcs1, like GitHub's).
@@ -113,5 +114,32 @@ describe("listInstallationRepos", () => {
     });
     expect(repos).toEqual(["acme/a", "acme/b", "acme/c"]);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("buildAppJwt tolerates env-mangled private keys", () => {
+  const verifies = (jwt: string): boolean => {
+    const [h, p, s] = jwt.split(".");
+    return createVerify("RSA-SHA256").update(`${h}.${p}`).verify(PUB, b64urlToBuf(s));
+  };
+  it("newlines collapsed to spaces (single-line)", () => {
+    const mangled = PEM.replace(/\n/g, " ");
+    expect(verifies(buildAppJwt({ appId: "1", privateKey: mangled, nowSeconds: 1 }))).toBe(true);
+  });
+  it("backslash-n escaped", () => {
+    const mangled = PEM.replace(/\n/g, "\\n");
+    expect(verifies(buildAppJwt({ appId: "1", privateKey: mangled, nowSeconds: 1 }))).toBe(true);
+  });
+  it("wrapped in quotes", () => {
+    expect(verifies(buildAppJwt({ appId: "1", privateKey: `"${PEM}"`, nowSeconds: 1 }))).toBe(true);
+  });
+});
+
+describe("normalizePem", () => {
+  it("rebuilds a space-collapsed PEM into newline-delimited form", () => {
+    const out = normalizePem(PEM.replace(/\n/g, " "));
+    expect(out).toContain("\n");
+    expect(out.startsWith("-----BEGIN")).toBe(true);
+    expect(out.trimEnd().endsWith("KEY-----")).toBe(true);
   });
 });
