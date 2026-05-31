@@ -167,6 +167,81 @@ export function isOfferableType(t: string): t is WritableType {
   );
 }
 
+// ── Per-type access levels ──────────────────────────────────────────────────
+//
+// Each node/edge type carries an access LEVEL, not a checkbox. The level is
+// "read" or "write"; "default" means "inherit the grant's base role". The
+// inherited level is what the base ACCESS role gives a type when it isn't
+// overridden: a writer (or a wildcard write set) writes everything; a reader
+// reads everything. Owners administer and aren't per-type-narrowed.
+
+/** A per-type access level the dropdown can hold. */
+export type TypeLevel = "default" | "read" | "write";
+
+/**
+ * The level a type INHERITS from the grant's base role + wildcard, used as
+ * the "default" the dropdown shows. Writer or a wildcard write set ⇒ write;
+ * otherwise read.
+ */
+export function inheritedTypeLevel(role: DocoRole, writeTypes: string[]): "read" | "write" {
+  if (role === "owner" || role === "writer") return "write";
+  if (writeTypes.includes(WRITE_ALL)) return "write";
+  return "read";
+}
+
+/**
+ * The CURRENT effective level for a single type, given the grant's base role
+ * and explicit write set. A type named in write_types writes; the wildcard
+ * writes everything; otherwise it falls to the inherited level.
+ */
+export function effectiveTypeLevel(
+  role: DocoRole,
+  writeTypes: string[],
+  type: string,
+): "read" | "write" {
+  if (role === "owner" || role === "writer") return "write";
+  if (writeTypes.includes(WRITE_ALL)) return "write";
+  if (writeTypes.includes(type)) return "write";
+  return "read";
+}
+
+/**
+ * Compute the dropdown selection for a type: "default" when its effective
+ * level equals the inherited level (no override), else the explicit level.
+ */
+export function typeDropdownValue(role: DocoRole, writeTypes: string[], type: string): TypeLevel {
+  const eff = effectiveTypeLevel(role, writeTypes, type);
+  const inh = inheritedTypeLevel(role, writeTypes);
+  return eff === inh ? "default" : eff;
+}
+
+/**
+ * Apply a per-type level change, returning the next explicit write set.
+ * Selecting "default" drops any override; "write"/"read" set the type's
+ * level explicitly. Starts from the currently-effective per-type levels so
+ * a change to one type doesn't disturb the others (it expands a wildcard or
+ * the inherited baseline into an explicit set when needed).
+ */
+export function setTypeLevel(
+  role: DocoRole,
+  writeTypes: string[],
+  type: string,
+  next: TypeLevel,
+  allTypes: readonly string[],
+): string[] {
+  // Materialize the current effective level for every type, so we can edit
+  // one without losing the rest, then re-collapse.
+  const desired = new Map<string, "read" | "write">();
+  for (const t of allTypes) desired.set(t, effectiveTypeLevel(role, writeTypes, t));
+  const inh = inheritedTypeLevel(role, writeTypes);
+  desired.set(type, next === "default" ? inh : next);
+
+  // Re-collapse: the write set is every type whose desired level is "write".
+  const writes = allTypes.filter((t) => desired.get(t) === "write");
+  if (writes.length === allTypes.length) return [WRITE_ALL];
+  return writes;
+}
+
 /** Display metadata for each wizard scope choice. */
 export interface ScopeChoice {
   scope: GrantScope;
