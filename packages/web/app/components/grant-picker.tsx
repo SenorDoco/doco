@@ -118,7 +118,7 @@ export function GrantPicker({
           catalog={catalog}
           value={value}
           onChange={onChange}
-          typesAllowed={true}
+          typesAllowed={false}
         />
       ) : scope === "types" ? (
         <TargetStep
@@ -157,7 +157,7 @@ function AccountStep({
   return (
     <div className="rounded-md border border-border px-3 py-3" data-testid="grant-account-step">
       <p className="mb-2 text-sm text-muted-foreground">
-        Grants this access on <strong>every organization you own</strong> and all their Docos —
+        Grants this access on <strong>every organization you own</strong> and all their docos —
         including ones created later.
       </p>
       <AccessControls
@@ -208,7 +208,7 @@ function TargetStep({
   return (
     <div className="space-y-3" data-testid={`grant-target-step-${level}`}>
       <div className="text-xs uppercase tracking-wide text-muted-foreground">
-        Choose {level === "org" ? "an organization" : "a Doco"}
+        Choose {level === "org" ? "an organization" : "a doco"}
       </div>
       <div className="space-y-2">
         {orgsWithTargets.map((g) => (
@@ -307,7 +307,19 @@ function AccessControls({
           value={role}
           onChange={(e) => {
             const r = e.currentTarget.value as DocoRole;
-            onChange(r, r === "owner" ? [] : writeTypes);
+            // When the per-type grid isn't shown (org / whole-doco scope),
+            // the role alone decides write: a writer writes everything
+            // (wildcard), a reader writes nothing, an owner administers.
+            // Only the "specific types" scope (typesAllowed) keeps an
+            // explicit per-type set.
+            const nextTypes = !typesAllowed
+              ? r === "writer"
+                ? ["*"]
+                : []
+              : r === "owner"
+                ? []
+                : writeTypes;
+            onChange(r, nextTypes);
           }}
           className="rounded-md px-2 py-1"
         >
