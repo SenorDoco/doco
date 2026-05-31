@@ -40,7 +40,6 @@ describe("createDocoInOrg", () => {
       orgHandle: "acme",
       handle: "acme-onboarding",
       goal: "Onboard customers",
-      constitution: "Document everything.",
     });
     mocks.createConversation.mockResolvedValue({ id: "conv_01" });
     mocks.reindexBare.mockResolvedValue({ loadMs: 12, loadedEntityCount: 1 });

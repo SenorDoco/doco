@@ -13,13 +13,10 @@
 //     org_id: string,                  // ULID of the owning organization
 //     name: string,                    // requested globally-unique handle
 //     privacy?: "private"|"public",    // alias: visibility
-//     goal?: string,                   // free-form sentence about what
+//     goal?: string }                  // free-form sentence about what
 //                                      // the Doco is for; defaults to
 //                                      // the template's description
 //                                      // (or empty for no template)
-//     constitution?: string }          // project-level governing charter;
-//                                      // defaults to the standing
-//                                      // spec-driven default text
 //
 // Back-compat: `requested_suffix` and `visibility` are still accepted
 // as aliases for `name` and `privacy`.
@@ -27,7 +24,7 @@
 // Behavior: caller must hold owner on the target org. The requested
 // handle is silently auto-suffixed on collision. Returns 201 with
 // `{ id, handle, org_id, org_handle, qualified_handle, visibility, goal,
-// constitution, chat_conversation_id }`.
+// chat_conversation_id }`.
 
 import { getOrgRole, roleAtLeast, withClient } from "@doco/db";
 import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
@@ -87,7 +84,6 @@ export async function action({ request }: { request: Request }) {
     privacy?: unknown;
     visibility?: unknown;
     goal?: unknown;
-    constitution?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -109,9 +105,6 @@ export async function action({ request }: { request: Request }) {
   // caller supplies any string — including "" — the host treats that
   // as an explicit override.
   const goal = typeof body.goal === "string" ? body.goal : undefined;
-  // Constitution is optional, same contract as goal: omit to take the
-  // standing default, or pass any string (including "") to override.
-  const constitution = typeof body.constitution === "string" ? body.constitution : undefined;
 
   if (!orgId) return Response.json({ error: "`org_id` is required." }, { status: 400 });
   if (!handle) return Response.json({ error: "`name` is required." }, { status: 400 });
@@ -139,7 +132,6 @@ export async function action({ request }: { request: Request }) {
         ? { templateHandle }
         : { templateHandle: null }),
       ...(goal !== undefined ? { goal } : {}),
-      ...(constitution !== undefined ? { constitution } : {}),
     });
     return Response.json(
       {
@@ -150,7 +142,6 @@ export async function action({ request }: { request: Request }) {
         qualified_handle: qualifiedDocoLabel({ ownerSlug: rec.orgHandle, handle: rec.handle }),
         visibility,
         goal: rec.goal,
-        constitution: rec.constitution,
         chat_conversation_id: rec.companionChatId ?? null,
       },
       { status: 201 },

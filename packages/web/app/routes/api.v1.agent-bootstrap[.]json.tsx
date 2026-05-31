@@ -3,12 +3,13 @@
 // Returns the policies the caller has read-or-above access to:
 //   - doco_policies[]: every Doco the agent can read (direct owner,
 //     org-membership-inherited, doco_users grant, public visibility)
+//   - org_constitutions[]: the governing charter of every Org the agent
+//     can reach — orgs it owns Docos in, plus orgs granted directly
+//     (OAuth org grant) or via membership. Always shared with agents that
+//     have access to the org.
 //
 // Each policy set exposes two arrays: `guidance_policies` (prose, no automated check) and
-// `node_authoring_policies` (rules evaluated at capture time). It also
-// carries the Doco's `goal` (one-liner about what it's for) and its
-// `constitution` (the project-level governing charter) — both meant to be
-// read before the rules.
+// `node_authoring_policies` (rules evaluated at capture time).
 //
 // The project owner can add, edit, or remove policies at any time
 // from /<handle>/policies — re-fetch this endpoint if you suspect
@@ -30,7 +31,14 @@
 // accessible — no re-auth needed). Cookie callers see `oauth_grant:
 // null`.
 
-import { getDocoByIdOrHandle, listAllDocos, withClient } from "@doco/db";
+import {
+  type OrgConstitution,
+  getDocoByIdOrHandle,
+  getOrgConstitutionsByIds,
+  listAllDocos,
+  listOrganizationsForUser,
+  withClient,
+} from "@doco/db";
 import {
   canAccessDoco,
   getOauthTokenForRequest,
@@ -64,13 +72,6 @@ interface DocoPolicySet {
    * Empty string when unset.
    */
   goal: string;
-  /**
-   * Project-level governing charter — the standing "how work is done
-   * here" text. Read at bootstrap alongside the goal and the policy
-   * set; seeded with a default on creation. Empty string only when an
-   * owner has explicitly cleared it.
-   */
-  constitution: string;
   owner_id: string;
   guidance_policies: PolicyArticle[];
   node_authoring_policies: PolicyArticle[];
@@ -83,7 +84,7 @@ export async function loader({ request }: { request: Request }) {
   // committed-credential path — distinct from the per-user OAuth flow.
   const projectToken = await getProjectTokenFromRequest(request);
   if (projectToken) {
-    const docoPolicies = await loadDocoPoliciesForProjectToken(projectToken);
+    const { docoPolicies, orgConstitutions } = await loadBootstrapForProjectToken(projectToken);
     return Response.json({
       principal: null,
       canonical_instructions_url: new URL(
@@ -97,13 +98,17 @@ export async function loader({ request }: { request: Request }) {
         role: "reader",
       },
       doco_policies: docoPolicies,
+      org_constitutions: orgConstitutions,
     });
   }
 
   const me = await getCurrentPrincipalAsync(request);
   const oauthGrant = await getOauthTokenForRequest(request);
 
-  const docoPolicies = await loadDocoPoliciesForPrincipal(me?.id ?? null, oauthGrant);
+  const { docoPolicies, orgConstitutions } = await loadBootstrapForPrincipal(
+    me?.id ?? null,
+    oauthGrant,
+  );
 
   return Response.json({
     principal: me ? { id: me.id, username: me.username } : null,
@@ -125,6 +130,7 @@ export async function loader({ request }: { request: Request }) {
       : null,
     project_token_grant: null,
     doco_policies: docoPolicies,
+    org_constitutions: orgConstitutions,
   });
 }
 
@@ -134,9 +140,10 @@ async function getProjectTokenFromRequest(request: Request): Promise<ProjectToke
   return await validateProjectToken(bearer);
 }
 
-async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<DocoPolicySet[]> {
-  const d = await getDocoByIdOrHandle(token.doco_id);
-  if (!d) return [];
+async function loadPolicyArticles(docoId: string): Promise<{
+  guidance: PolicyArticle[];
+  nodeAuthoring: PolicyArticle[];
+}> {
   const [guidance, nodeAuthoring] = await withClient((c) =>
     Promise.all([
       c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
@@ -145,7 +152,7 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
           WHERE doco_id = $1
             AND COALESCE(lifecycle, 'asserted') = 'asserted'
           ORDER BY created_at DESC`,
-        [d.id],
+        [docoId],
       ),
       c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
         `SELECT id, policy, lifecycle, body_md
@@ -153,37 +160,50 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
           WHERE doco_id = $1
             AND COALESCE(lifecycle, 'asserted') = 'asserted'
           ORDER BY created_at DESC`,
-        [d.id],
+        [docoId],
       ),
     ]),
   );
-  if (
-    guidance.rows.length === 0 &&
-    nodeAuthoring.rows.length === 0 &&
-    d.goal.length === 0 &&
-    d.constitution.length === 0
-  ) {
-    return [];
-  }
-  return [
-    {
-      doco_id: d.id,
-      doco_handle: d.handle,
-      goal: d.goal,
-      constitution: d.constitution,
-      owner_id: d.owner_id,
-      guidance_policies: guidance.rows,
-      node_authoring_policies: nodeAuthoring.rows,
-    },
-  ];
+  return { guidance: guidance.rows, nodeAuthoring: nodeAuthoring.rows };
 }
 
-async function loadDocoPoliciesForPrincipal(
+async function loadBootstrapForProjectToken(
+  token: ProjectToken,
+): Promise<{ docoPolicies: DocoPolicySet[]; orgConstitutions: OrgConstitution[] }> {
+  const d = await getDocoByIdOrHandle(token.doco_id);
+  if (!d) return { docoPolicies: [], orgConstitutions: [] };
+  // The token is scoped to one Doco; surface that Doco's owning org's
+  // constitution alongside it.
+  const orgConstitutions = await getOrgConstitutionsByIds([d.org_id]);
+  const { guidance, nodeAuthoring } = await loadPolicyArticles(d.id);
+  if (guidance.length === 0 && nodeAuthoring.length === 0 && d.goal.length === 0) {
+    return { docoPolicies: [], orgConstitutions };
+  }
+  return {
+    docoPolicies: [
+      {
+        doco_id: d.id,
+        doco_handle: d.handle,
+        goal: d.goal,
+        owner_id: d.owner_id,
+        guidance_policies: guidance,
+        node_authoring_policies: nodeAuthoring,
+      },
+    ],
+    orgConstitutions,
+  };
+}
+
+async function loadBootstrapForPrincipal(
   principalId: string | null,
   oauthGrant: ValidAccessToken | null,
-): Promise<DocoPolicySet[]> {
+): Promise<{ docoPolicies: DocoPolicySet[]; orgConstitutions: OrgConstitution[] }> {
   const all = await listAllDocos();
-  const out: DocoPolicySet[] = [];
+  const docoPolicies: DocoPolicySet[] = [];
+  // Every org the caller can reach. Seeded from the orgs owning accessible
+  // Docos, then augmented with orgs granted directly (OAuth) or by
+  // membership (cookie) — so an org granted with no Docos yet still shows.
+  const orgIds = new Set<string>();
   for (const d of all) {
     const meta = { ownerId: d.owner_id, visibility: d.visibility, docoId: d.id };
     // OAuth-bearer callers: token's per-Doco or per-org grant must
@@ -191,47 +211,30 @@ async function loadDocoPoliciesForPrincipal(
     // level check below.
     if (oauthGrant && !oauthTokenGrantsDoco(oauthGrant, meta)) continue;
     if (!(await canAccessDoco(meta, principalId))) continue;
-    const [guidance, nodeAuthoring] = await withClient((c) =>
-      Promise.all([
-        c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
-          `SELECT id, policy, lifecycle, body_md
-             FROM guidance_policies
-            WHERE doco_id = $1
-              AND COALESCE(lifecycle, 'asserted') = 'asserted'
-            ORDER BY created_at DESC`,
-          [d.id],
-        ),
-        c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
-          `SELECT id, policy, lifecycle, body_md
-             FROM node_authoring_policies
-            WHERE doco_id = $1
-              AND COALESCE(lifecycle, 'asserted') = 'asserted'
-            ORDER BY created_at DESC`,
-          [d.id],
-        ),
-      ]),
-    );
-    // A Doco shows up in bootstrap when it has at least one policy OR a
-    // non-empty goal OR a non-empty constitution — the goal and the
-    // constitution are themselves bootstrap context, not just decoration
-    // on top of policies.
-    if (
-      guidance.rows.length === 0 &&
-      nodeAuthoring.rows.length === 0 &&
-      d.goal.length === 0 &&
-      d.constitution.length === 0
-    ) {
+    orgIds.add(d.org_id);
+    const { guidance, nodeAuthoring } = await loadPolicyArticles(d.id);
+    // A Doco shows up in bootstrap when it has at least one policy
+    // OR a non-empty goal — the goal is itself bootstrap context, not
+    // just decoration on top of policies.
+    if (guidance.length === 0 && nodeAuthoring.length === 0 && d.goal.length === 0) {
       continue;
     }
-    out.push({
+    docoPolicies.push({
       doco_id: d.id,
       doco_handle: d.handle,
       goal: d.goal,
-      constitution: d.constitution,
       owner_id: d.owner_id,
-      guidance_policies: guidance.rows,
-      node_authoring_policies: nodeAuthoring.rows,
+      guidance_policies: guidance,
+      node_authoring_policies: nodeAuthoring,
     });
   }
-  return out;
+
+  if (oauthGrant) {
+    for (const orgId of oauthGrant.granted_org_ids) orgIds.add(orgId);
+  } else if (principalId) {
+    for (const org of await listOrganizationsForUser(principalId)) orgIds.add(org.id);
+  }
+
+  const orgConstitutions = await getOrgConstitutionsByIds([...orgIds]);
+  return { docoPolicies, orgConstitutions };
 }

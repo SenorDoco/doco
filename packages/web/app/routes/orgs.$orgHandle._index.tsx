@@ -8,9 +8,10 @@
 //   - Activity heatmap (52w)
 //   - Latest activity feed (20 events, with per-row Doco context)
 
-import { getOrgRole, withClient } from "@doco/db";
+import { getOrgRole, updateOrgConstitution, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
-import { Form, Link } from "react-router";
+import { useEffect, useState } from "react";
+import { Form, Link, redirect, useFetcher } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -229,12 +230,40 @@ export async function loader({
       org,
       me,
       canInviteUsers,
+      canEditConstitution: canInviteUsers,
       docos,
       byDay,
       topContributors,
       items,
     };
   });
+}
+
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { orgHandle: string };
+}) {
+  const org = await resolveOrgByHandle(params.orgHandle);
+  if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
+  const me = await getCurrentPrincipal(request);
+  if (!me) {
+    throw redirect(`/sign-in?next=${encodeURIComponent(`/orgs/${params.orgHandle}`)}`);
+  }
+  const role = await getOrgRole(org.id, me.id);
+  if (role !== "owner") {
+    return { error: "Only organization owners can edit the constitution." };
+  }
+
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "update-constitution") {
+    await updateOrgConstitution(org.id, String(form.get("constitution") ?? ""));
+    return { ok: true };
+  }
+  return { error: `Unknown intent: ${intent}` };
 }
 
 export function meta({ params }: { params: { orgHandle: string } }) {
@@ -246,7 +275,8 @@ export default function OrgHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, canInviteUsers, docos, byDay, topContributors, items } = loaderData;
+  const { org, me, canInviteUsers, canEditConstitution, docos, byDay, topContributors, items } =
+    loaderData;
   const docoItems: DocoListEntry[] = docos.map((d) => ({
     id: d.docoId,
     href: `/${d.handle}`,
@@ -279,6 +309,12 @@ export default function OrgHome({
             ) : null}
           </div>
         </div>
+
+        <OrgConstitutionCard
+          orgHandle={org.handle}
+          constitution={org.constitution}
+          canEdit={canEditConstitution}
+        />
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="min-w-0 space-y-4">
@@ -440,5 +476,130 @@ function OrgFeedLine({ event }: { event: FeedItem }) {
         {timeAgo(event.at)}
       </time>
     </div>
+  );
+}
+
+/** Split a constitution body into paragraphs on blank lines. */
+function splitConstitutionParagraphs(text: string): string[] {
+  return text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+}
+
+const CONSTITUTION_SHARING_DISCLAIMER =
+  "This constitution is always shared with agents that have access to this organization.";
+
+// Org constitution, presented like a founding charter: a centered serif
+// title, a rule, and a justified body with a drop-cap opening. Owners get
+// inline editing — an Edit button swaps the charter for a textarea + Save;
+// the save posts via a fetcher so the page revalidates in place.
+function OrgConstitutionCard({
+  orgHandle,
+  constitution,
+  canEdit,
+}: {
+  orgHandle: string;
+  constitution: string;
+  canEdit: boolean;
+}) {
+  const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
+  const [editing, setEditing] = useState(false);
+  // Close the editor once a save lands; the loader revalidation has already
+  // refreshed the displayed text by then.
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok) setEditing(false);
+  }, [fetcher.state, fetcher.data]);
+
+  if (editing) {
+    return (
+      <Card>
+        <CardContent className="pt-4">
+          <fetcher.Form method="post" className="space-y-3">
+            <input type="hidden" name="intent" value="update-constitution" />
+            <textarea
+              name="constitution"
+              defaultValue={constitution}
+              rows={16}
+              className="w-full rounded-md border border-border bg-input px-3 py-2 font-serif text-sm leading-7 text-foreground outline-none focus:border-primary"
+            />
+            <p className="text-[11px] italic text-muted-foreground">
+              {CONSTITUTION_SHARING_DISCLAIMER}
+            </p>
+            {fetcher.data?.error ? (
+              <p className="text-xs text-destructive">{fetcher.data.error}</p>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={fetcher.state !== "idle"}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
+              >
+                {fetcher.state === "idle" ? "Save" : "Saving..."}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+            </div>
+          </fetcher.Form>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const paragraphs = splitConstitutionParagraphs(constitution);
+
+  return (
+    <Card>
+      <CardContent className="px-6 py-7 sm:px-10 sm:py-9">
+        <article className="mx-auto max-w-3xl">
+          <h2 className="text-center font-serif text-2xl font-semibold uppercase tracking-[0.25em] text-foreground">
+            Constitution
+          </h2>
+          <p className="mt-1 text-center font-serif text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+            of {orgHandle}
+          </p>
+          <div className="mx-auto mt-4 h-px w-24 bg-border" />
+          {paragraphs.length > 0 ? (
+            <div className="mt-6 space-y-4 text-justify font-serif text-sm leading-7 text-foreground">
+              {paragraphs.map((para, i) => (
+                <p
+                  key={para}
+                  className={
+                    i === 0
+                      ? "first-letter:float-left first-letter:mr-2 first-letter:mt-1 first-letter:font-serif first-letter:text-5xl first-letter:font-semibold first-letter:leading-none"
+                      : undefined
+                  }
+                >
+                  {para}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-6 text-center font-serif text-sm italic text-muted-foreground">
+              No constitution has been written yet.
+            </p>
+          )}
+          <p className="mt-7 border-t border-border pt-3 text-center text-[11px] italic text-muted-foreground">
+            {CONSTITUTION_SHARING_DISCLAIMER}
+          </p>
+          {canEdit ? (
+            <div className="mt-3 text-center">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="neu-button rounded-md px-4 py-1.5 text-xs font-semibold text-foreground"
+              >
+                Edit
+              </button>
+            </div>
+          ) : null}
+        </article>
+      </CardContent>
+    </Card>
   );
 }

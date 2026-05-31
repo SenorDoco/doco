@@ -48,7 +48,6 @@ describe("/<doco>/api/audit.json", () => {
       orgId: "organization_torre",
       visibility: "private",
       goal: "",
-      constitution: "",
     });
     mocks.getCurrentPrincipalAsync.mockResolvedValue({
       id: "user_alice",

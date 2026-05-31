@@ -50,7 +50,6 @@ export async function loader({
     doco_id: row.id,
     doco_handle: row.handle,
     goal: row.goal,
-    constitution: row.constitution,
     owner_username: row.owner_slug,
     canonical_path: `/${row.handle}`,
     visibility: row.visibility,
