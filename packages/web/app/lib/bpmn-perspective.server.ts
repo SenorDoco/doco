@@ -40,6 +40,7 @@
 //
 // Not rendered: Log (instances, not designs).
 
+import { MANAGED_EDGE_TO_FIELD } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
@@ -268,6 +269,30 @@ export async function loadBpmnGraph(
       edge_type: r.edge_type,
       label: r.edge_type === "sequence_flow" ? sequenceFlowLabel(r.edge_props_json) : null,
     }));
+
+    // Reconstruct the managed relationship fields (actor_id, decided_by, …)
+    // onto each node's `data` from first-class edges — they no longer live in
+    // stored `data` (option (i)). The PageRank query above keeps only edges
+    // whose endpoints are both flow nodes, so it omits performed_by / decided_by
+    // (which point at principals); fetch them explicitly so the actor lanes
+    // resolve.
+    const managedRows = await c.query<{ from_id: string; edge_type: string; to_id: string }>(
+      `SELECT from_id, edge_type, to_id
+         FROM edges
+        WHERE doco_id = $1
+          AND from_id = ANY($2::text[])
+          AND edge_type = ANY($3::text[])
+          AND lifecycle <> 'retired'`,
+      [docoId, Array.from(nodeIdSet), Object.keys(MANAGED_EDGE_TO_FIELD)],
+    );
+    const dataById = new Map<string, Record<string, unknown>>(
+      allRows.map((r) => [r.id, r.data as Record<string, unknown>]),
+    );
+    for (const e of managedRows.rows) {
+      const field = MANAGED_EDGE_TO_FIELD[e.edge_type as keyof typeof MANAGED_EDGE_TO_FIELD];
+      const data = dataById.get(e.from_id);
+      if (field && data) data[field] = e.to_id;
+    }
   }
 
   // ── Global PageRank over the edge graph ────────────────────────
