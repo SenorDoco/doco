@@ -62,7 +62,10 @@ const TYPE_MAP: {
     entityType: spec.entityType,
     nodeType: spec.entityType,
     table: null as string | null,
-    plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
+    // Public plural key (decisions, intents, …, references). Derived from the
+    // node type now that every node lives in the unified `nodes` table — was
+    // `spec.table`, which is uniformly "nodes" post-collapse.
+    plural: `${spec.entityType}s`,
     group: "note" as const,
   })),
   {
