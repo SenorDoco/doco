@@ -72,9 +72,10 @@ this a migration, not a deletion:
    contents/ordering could shift. This is the part that makes it
    user-facing and worth a dedicated review.
 
-Also stale today: the `audit_events` `op` CHECK still allows
-`entity.delete` (nothing hard-deletes post-vnext) and `edge.add` (edges are
-first-class now, not an event on a node). See "Safe slice" below.
+Also stale today: the `audit_events` `op` CHECK still allows `entity.delete`
+(nothing hard-deletes post-vnext — genuinely dead). Note `edge.add` is NOT
+dead: it is still emitted on edge-adding node updates (see "Safe slice"
+below). See "Safe slice" below.
 
 ### Target design
 
@@ -117,14 +118,22 @@ either retire `audit_events` or demote it to a thin compatibility view.
 
 ### Safe slice that can land independently (low risk)
 
-Drop the dead values from the `audit_events` `op` CHECK and the `AuditOp`
-union: **`entity.delete`** (no hard deletes post-vnext) and **`edge.add`**
-(edges are first-class; their history is `edge_versions`, not an audit
-event). Grep first to confirm nothing still writes them
-(`grep -rn "entity.delete\|edge.add" packages`), then tighten the union in
-`lib/audit-log.server.ts` and the CHECK in a forward migration. No
-read-surface change. This is the only part of Proposal A that is
-behavior-preserving.
+**Caution — narrower than first thought (verified 2026-05-31).** Of the two
+`op` values once assumed dead, only **`entity.delete`** is actually unwritten
+(no hard deletes post-vnext; the remaining references are display/filter
+lists). **`edge.add` is still LIVE** — `emitAuditForUpdate` in
+`capture.server.ts` (~line 665) sets `op = "edge.add"` when a node update's
+patch only adds `intent_ids` edges, and emits it via `appendAuditEvent`.
+Trimming `edge.add` from the CHECK would reject that write. So the only
+genuinely dead value is `entity.delete`.
+
+Trimming a *single* dead value (`entity.delete`) from the `op` CHECK + the
+`AuditOp` union is valid but marginal on its own — not worth a standalone
+forward migration. Fold it into the full Proposal A work (which reworks this
+write path anyway), or skip it. Always re-grep for writers
+(`grep -rn "entity.delete\|edge.add" packages` AND check `op =` assignments in
+`capture.server.ts`) before changing the CHECK — the first pass here missed
+that `edge.add` is emitted.
 
 ### Payoff
 
