@@ -1,4 +1,4 @@
--- 071_edges_origin.sql — mark how each edge came to exist, for the
+-- 073_edges_origin.sql — mark how each edge came to exist, for the
 -- "edges as the authored source of truth" refactor (option (i)).
 --
 -- 'authored' = created directly via the edges API (captureEdge), with its own
@@ -29,7 +29,7 @@ BEGIN
         CHECK (origin IN ('authored','field')) NOT VALID;
     END IF;
   ELSE
-    RAISE NOTICE '071: edges table absent (fresh genesis bootstrap) — schema.sql inline column applies instead';
+    RAISE NOTICE '073: edges table absent (fresh genesis bootstrap) — schema.sql inline column applies instead';
   END IF;
 END
 $do$;

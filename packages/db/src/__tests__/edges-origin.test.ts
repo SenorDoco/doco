@@ -34,10 +34,10 @@ function tableBlock(table: string): string {
   return stripSqlComments(m[1]);
 }
 
-function migration071(): string {
+function migration073(): string {
   const dir = join(dbRoot, "migrations");
-  const name = readdirSync(dir).find((f) => /^071_.*\.sql$/.test(f));
-  if (!name) throw new Error("migration 071_*.sql not found");
+  const name = readdirSync(dir).find((f) => /^073_.*\.sql$/.test(f));
+  if (!name) throw new Error("migration 073_*.sql not found");
   return stripSqlComments(readFileSync(join(dir, name), "utf8"));
 }
 
@@ -55,8 +55,8 @@ describe("edges.origin — schema.sql baseline", () => {
   });
 });
 
-describe("migration 071 — add edges.origin to existing DBs", () => {
-  const sql = migration071();
+describe("migration 073 — add edges.origin to existing DBs", () => {
+  const sql = migration073();
 
   it("adds the column idempotently with the 'authored' default", () => {
     expect(
