@@ -9,7 +9,7 @@ import {
   withTransaction,
 } from "@doco/db";
 import { FIELD_TO_EDGE_TYPE, SKIP_FIELDS } from "@doco/index";
-import { type AuthoringPredicate, generateUlid } from "@doco/shared";
+import { type AuthoringPredicate, type Entity, generateUlid } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
 // for agents/people to write a Decision (or other entity types) without
@@ -19,6 +19,7 @@ import { waitUntil } from "@vercel/functions";
 // ULID; agents/users read the readable field (`summary` for most nodes).
 import { appendAuditEvent } from "./audit-log.server";
 import { type AuthoringResult, runAuthoringPolicies } from "./authoring-runner.server";
+import { reconcileNodeEdges } from "./managed-edges.server";
 
 /**
  * System-managed identity / audit columns that PATCH must never
@@ -102,6 +103,20 @@ async function enforceAndPersist(args: {
       fm: args.fm,
       ...(args.body !== undefined ? { body: args.body } : {}),
       client: c,
+    });
+    // Project + reconcile the node's managed relationship edges in the same
+    // transaction (option (i): edges as the authored source of truth). No-op
+    // for non-node entities and for re-captures that leave the five managed
+    // fields unchanged. `fm` is the full entity here — create builds it whole,
+    // patch merges onto the loaded row — so reconciliation sees every managed
+    // field and never retires an edge a partial patch simply omitted.
+    await reconcileNodeEdges(c, {
+      docoId: args.docoId,
+      entityType: args.entityType,
+      entity: { ...args.fm, id: args.id } as unknown as Entity,
+      actor:
+        (typeof args.fm.updated_by === "string" && args.fm.updated_by) ||
+        (typeof args.fm.created_by === "string" ? args.fm.created_by : null),
     });
     return pred;
   });

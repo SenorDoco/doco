@@ -17,8 +17,16 @@ vi.mock("@doco/db", () => ({
   getDocoById: vi.fn(),
   getEntity: vi.fn(),
   upsertEntity: vi.fn(),
+  recordEntityVersion: vi.fn(async () => undefined),
   withClient: vi.fn(),
-  withTransaction: vi.fn(async (fn) => fn({})),
+  // The tx client must answer the managed-edge reconciliation SELECT; an empty
+  // result means "no live edges yet", so a node with a managed field projects
+  // one. (recordEntityVersion + the edge primitives were missing from this mock
+  // since #679 added the append-only version write to persistEntity.)
+  withTransaction: vi.fn(async (fn) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  createChangeset: vi.fn(async () => 1),
+  createEdge: vi.fn(async () => ({})),
+  retireEdge: vi.fn(async () => ({})),
 }));
 
 vi.mock("@vercel/functions", () => ({
