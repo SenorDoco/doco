@@ -3,6 +3,7 @@
 // it records which GitHub repo + App installation a Doco is wired to. Written
 // by the settings panel / connect endpoint.
 import { withClient } from "@doco/db";
+import { listInstallationRepos, mintInstallationToken } from "./github-app.server";
 
 export interface GitHubConnection {
   /** "owner/name". */
@@ -200,4 +201,30 @@ export async function getDocoConnectionsContext(
       ? { handle: row.handle, orgHandle: row.org_handle, connections: normalizeConnections(row.gh) }
       : null;
   });
+}
+
+/**
+ * Import every repo a fresh App installation covers as a connection on the
+ * Doco — the click-through setup callback's core. Mints an installation token,
+ * lists its repos, and addConnection's each. Returns the connected repos.
+ * Injectable deps for testing.
+ */
+export async function importInstallationConnections(
+  opts: { docoId: string; installationId: number },
+  deps?: {
+    mintToken?: typeof mintInstallationToken;
+    listRepos?: typeof listInstallationRepos;
+    add?: typeof addConnection;
+  },
+): Promise<{ repos: string[] }> {
+  const mintToken = deps?.mintToken ?? mintInstallationToken;
+  const listRepos = deps?.listRepos ?? listInstallationRepos;
+  const add = deps?.add ?? addConnection;
+  const { token } = await mintToken(opts.installationId);
+  const repos = await listRepos(token);
+  const now = new Date().toISOString();
+  for (const repo of repos) {
+    await add(opts.docoId, { repo, installation_id: opts.installationId, connected_at: now });
+  }
+  return { repos };
 }
