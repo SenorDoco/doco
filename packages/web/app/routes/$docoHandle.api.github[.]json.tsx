@@ -1,20 +1,20 @@
-// Per-Doco GitHub connection API. GET reports connection status; POST takes an
-// `intent`:
-//   connect    — wire a repo ("owner/name" or URL) + App installation id into
-//                docos.data.github_integration (the webhook + backfill read it).
-//   disconnect — clear it.
-//   backfill   — import the connected repo's existing PRs as References (the
-//                "Import previous PRs?" action).
-// Writer access required for mutations; the settings panel posts here.
+// Per-Doco GitHub connections API (list model). GET lists connections; POST
+// takes an `intent`:
+//   connect    — add a repo ("owner/name"/URL) + installation id (manual
+//                fallback; the click-through setup callback is the main path).
+//   disconnect — remove one repo's connection.
+//   backfill   — import a connected repo's existing PRs as References.
+// Writer access required for mutations; the Integrations panel posts here.
 import { roleAtLeast } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { backfillRepoPullRequests } from "~/lib/github-backfill.server";
 import {
-  clearGitHubConnection,
-  getDocoGitHubContext,
+  addConnection,
+  getDocoConnectionsContext,
+  listConnections,
   parseRepoSlug,
-  setGitHubConnection,
+  removeConnection,
 } from "~/lib/github-connection.server";
 
 export async function loader({
@@ -25,12 +25,7 @@ export async function loader({
   params: { docoHandle: string };
 }) {
   const { meta } = await loadDocoRouteForRead(request, params);
-  const ctx = await getDocoGitHubContext(meta.docoId);
-  return Response.json({
-    ok: true,
-    connected: Boolean(ctx?.connection),
-    connection: ctx?.connection ?? null,
-  });
+  return Response.json({ ok: true, connections: await listConnections(meta.docoId) });
 }
 
 export async function action({
@@ -64,8 +59,15 @@ export async function action({
   const intent = String(body.intent ?? "");
 
   if (intent === "disconnect") {
-    await clearGitHubConnection(meta.docoId);
-    return Response.json({ ok: true, connected: false });
+    const parsed = parseRepoSlug(String(body.repo ?? ""));
+    if (!parsed) {
+      return Response.json(
+        { error: 'repo must be "owner/name" or a GitHub URL.' },
+        { status: 400 },
+      );
+    }
+    const connections = await removeConnection(meta.docoId, `${parsed.owner}/${parsed.name}`);
+    return Response.json({ ok: true, connections });
   }
 
   if (intent === "connect") {
@@ -83,23 +85,24 @@ export async function action({
         { status: 400 },
       );
     }
-    const repo = `${parsed.owner}/${parsed.name}`;
-    await setGitHubConnection(meta.docoId, {
-      repo,
+    const connections = await addConnection(meta.docoId, {
+      repo: `${parsed.owner}/${parsed.name}`,
       installation_id: installationId,
       connected_at: new Date().toISOString(),
     });
-    return Response.json({ ok: true, connected: true, repo });
+    return Response.json({ ok: true, connections });
   }
 
   if (intent === "backfill") {
-    const ctx = await getDocoGitHubContext(meta.docoId);
-    if (!ctx?.connection) {
-      return Response.json({ error: "No GitHub repo connected." }, { status: 400 });
-    }
-    const parsed = parseRepoSlug(ctx.connection.repo);
+    const parsed = parseRepoSlug(String(body.repo ?? ""));
     if (!parsed) {
-      return Response.json({ error: "Stored repo is malformed." }, { status: 400 });
+      return Response.json({ error: 'repo must be "owner/name".' }, { status: 400 });
+    }
+    const repo = `${parsed.owner}/${parsed.name}`;
+    const ctx = await getDocoConnectionsContext(meta.docoId);
+    const conn = ctx?.connections.find((c) => c.repo === repo);
+    if (!ctx || !conn) {
+      return Response.json({ error: "That repo isn't connected to this Doco." }, { status: 400 });
     }
     const result = await backfillRepoPullRequests({
       docoDir: docoPath(ctx.handle),
@@ -108,10 +111,10 @@ export async function action({
       docoSlug: ctx.handle,
       owner: parsed.owner,
       repo: parsed.name,
-      installationId: ctx.connection.installation_id,
+      installationId: conn.installation_id,
       createdByUserId: me.id,
     });
-    return Response.json({ ok: true, ...result });
+    return Response.json({ ok: true, repo, ...result });
   }
 
   return Response.json({ error: `Unknown intent: ${intent}` }, { status: 400 });

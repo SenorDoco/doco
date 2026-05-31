@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   loadDocoRouteForRead: vi.fn(),
   getDocoLevelRole: vi.fn(),
-  setGitHubConnection: vi.fn(),
-  getDocoGitHubContext: vi.fn(),
-  clearGitHubConnection: vi.fn(),
+  addConnection: vi.fn(),
+  removeConnection: vi.fn(),
+  getDocoConnectionsContext: vi.fn(),
+  listConnections: vi.fn(),
   backfill: vi.fn(),
 }));
 
@@ -34,9 +35,10 @@ vi.mock("~/lib/github-connection.server", () => ({
     const m = /^([^/\s]+)\/([^/\s]+)$/.exec(t);
     return m ? { owner: m[1], name: m[2] } : null;
   },
-  setGitHubConnection: mocks.setGitHubConnection,
-  getDocoGitHubContext: mocks.getDocoGitHubContext,
-  clearGitHubConnection: mocks.clearGitHubConnection,
+  addConnection: mocks.addConnection,
+  removeConnection: mocks.removeConnection,
+  getDocoConnectionsContext: mocks.getDocoConnectionsContext,
+  listConnections: mocks.listConnections,
 }));
 
 import { action } from "../$docoHandle.api.github[.]json";
@@ -58,9 +60,11 @@ describe("github connection route", () => {
       meta: { docoId: "doco_1", ownerId: "organization_1", handle: "store-doco" },
     });
     mocks.getDocoLevelRole.mockResolvedValue("writer");
+    mocks.addConnection.mockResolvedValue([]);
+    mocks.removeConnection.mockResolvedValue([]);
   });
 
-  it("connects a repo (normalizes the slug, writes the config)", async () => {
+  it("connects a repo (normalizes the slug, adds the connection)", async () => {
     const res = await action({
       request: req({
         intent: "connect",
@@ -70,7 +74,7 @@ describe("github connection route", () => {
       params,
     });
     expect(res.status).toBe(200);
-    expect(mocks.setGitHubConnection).toHaveBeenCalledWith(
+    expect(mocks.addConnection).toHaveBeenCalledWith(
       "doco_1",
       expect.objectContaining({ repo: "acme/store", installation_id: 42 }),
     );
@@ -82,17 +86,26 @@ describe("github connection route", () => {
       params,
     });
     expect(res.status).toBe(400);
-    expect(mocks.setGitHubConnection).not.toHaveBeenCalled();
+    expect(mocks.addConnection).not.toHaveBeenCalled();
   });
 
-  it("runs a backfill against the stored connection", async () => {
-    mocks.getDocoGitHubContext.mockResolvedValue({
+  it("disconnects a specific repo", async () => {
+    const res = await action({
+      request: req({ intent: "disconnect", repo: "acme/store" }),
+      params,
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.removeConnection).toHaveBeenCalledWith("doco_1", "acme/store");
+  });
+
+  it("runs a backfill against a connected repo", async () => {
+    mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "store-doco",
       orgHandle: "acme-org",
-      connection: { repo: "acme/store", installation_id: 42 },
+      connections: [{ repo: "acme/store", installation_id: 42 }],
     });
     mocks.backfill.mockResolvedValue({ total: 5, imported: 5, failed: 0 });
-    const res = await action({ request: req({ intent: "backfill" }), params });
+    const res = await action({ request: req({ intent: "backfill", repo: "acme/store" }), params });
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true, total: 5, imported: 5 });
     expect(mocks.backfill).toHaveBeenCalledWith(
@@ -113,6 +126,6 @@ describe("github connection route", () => {
       params,
     });
     expect(res.status).toBe(403);
-    expect(mocks.setGitHubConnection).not.toHaveBeenCalled();
+    expect(mocks.addConnection).not.toHaveBeenCalled();
   });
 });
