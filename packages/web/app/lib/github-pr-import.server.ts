@@ -44,11 +44,18 @@ export interface PullRequestRefLifecycle {
  *   open            → drafting (in-flight, may still change)
  *   merged          → asserted + outcome succeeded (a settled fact: it shipped)
  *   closed-unmerged → retired (abandoned)
+ *
+ * "Merged" is detected from `merged === true` OR a non-null `merged_at`. The
+ * distinction matters because GitHub's "list pull requests" endpoint — which the
+ * backfill pages — omits the `merged` boolean and only sends `merged_at`. Keying
+ * off `merged` alone would mis-map every backfilled merged PR (state "closed",
+ * merged boolean absent) to retired. merged_at is present on both the list and
+ * webhook payloads, so it's the reliable signal.
  */
 export function pullRequestRefLifecycle(
-  pr: Pick<GitHubPullRequest, "state" | "merged">,
+  pr: Pick<GitHubPullRequest, "state" | "merged" | "merged_at">,
 ): PullRequestRefLifecycle {
-  if (pr.merged) return { lifecycle: "asserted", outcome: "succeeded" };
+  if (pr.merged || pr.merged_at) return { lifecycle: "asserted", outcome: "succeeded" };
   if (pr.state === "closed") return { lifecycle: "retired" };
   return { lifecycle: "drafting" };
 }

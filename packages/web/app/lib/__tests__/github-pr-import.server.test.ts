@@ -43,6 +43,19 @@ describe("pullRequestRefLifecycle", () => {
       lifecycle: "retired",
     });
   });
+  it("merged via merged_at when the `merged` boolean is absent (list endpoint) → asserted", () => {
+    // GitHub's "list pull requests" endpoint (what the backfill pages) omits the
+    // `merged` boolean and only sends `merged_at`. A merged PR there is
+    // state:"closed" with merged_at set — it must NOT be mistaken for abandoned.
+    expect(pullRequestRefLifecycle({ state: "closed", merged_at: "2026-05-31T18:12:54Z" })).toEqual(
+      { lifecycle: "asserted", outcome: "succeeded" },
+    );
+  });
+  it("closed with merged_at null (genuinely abandoned) → retired", () => {
+    expect(pullRequestRefLifecycle({ state: "closed", merged_at: null })).toEqual({
+      lifecycle: "retired",
+    });
+  });
 });
 
 describe("pullRequestReferenceProse", () => {
