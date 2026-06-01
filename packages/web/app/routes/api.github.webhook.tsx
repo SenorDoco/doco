@@ -1,16 +1,19 @@
 // Inbound GitHub App webhook. Verifies x-hub-signature-256 against
-// DOCO_GITHUB_WEBHOOK_SECRET, then for `pull_request` events upserts the PR as
-// a Reference into the Doco subscribed to that *installation*. Routing on the
-// installation id (not a repo list) means a brand-new repo in the org syncs
-// automatically — GitHub delivers its webhooks under the same installation.
+// DOCO_GITHUB_WEBHOOK_SECRET, then routes by App *installation* (not a repo
+// list), so a brand-new repo in the org syncs automatically. Two events:
+//   - pull_request          → upsert the PR as a Reference in the subscribed Doco.
+//   - installation_repositories (added) → backfill each newly-added repo's
+//     pre-existing PRs (brand-new PRs arrive via pull_request).
 // Idempotent on the PR URL, so re-deliveries are safe.
 import { docoPath } from "~/lib/db.server";
+import { backfillInstallationRepos } from "~/lib/github-backfill.server";
 import {
   type PullRequestSyncStatus,
   upsertPullRequestReference,
 } from "~/lib/github-pr-import.server";
 import {
   findDocoByInstallation,
+  parseInstallationRepositoriesEvent,
   parsePullRequestEvent,
   verifyGitHubSignature,
 } from "~/lib/github-webhook.server";
@@ -49,14 +52,52 @@ export async function action({ request }: { request: Request }) {
     );
     return Response.json({ error: "invalid signature" }, { status: 401 });
   }
-  if (request.headers.get("x-github-event") !== "pull_request") {
-    return Response.json({ ok: true, ignored: "non-pull_request event" });
-  }
+  const event = request.headers.get("x-github-event");
   let payload: unknown;
   try {
     payload = JSON.parse(rawBody);
   } catch {
     return Response.json({ error: "invalid JSON" }, { status: 400 });
+  }
+
+  // Repos added to an org installation → backfill their pre-existing PRs.
+  if (event === "installation_repositories") {
+    const evt = parseInstallationRepositoriesEvent(payload);
+    if (
+      !evt ||
+      evt.action !== "added" ||
+      evt.installationId == null ||
+      evt.addedRepos.length === 0
+    ) {
+      return Response.json({ ok: true, ignored: true });
+    }
+    const docos = await findDocoByInstallation(evt.installationId);
+    console.info(
+      `[github webhook] installation_repositories added [${evt.addedRepos.join(", ")}] (installation ${evt.installationId}) → ${docos.length} subscribed doco(s)`,
+    );
+    const added: Array<{ doco: string; repos: number; created: number; failed: number }> = [];
+    for (const conn of docos) {
+      const r = await backfillInstallationRepos({
+        docoDir: docoPath(conn.handle),
+        docoId: conn.docoId,
+        ownerSlug: conn.orgHandle,
+        docoSlug: conn.handle,
+        repos: evt.addedRepos,
+        installationId: evt.installationId,
+      });
+      added.push({ doco: conn.handle, repos: r.repos, created: r.created, failed: r.failed });
+    }
+    return Response.json({
+      ok: true,
+      event,
+      added: evt.addedRepos.length,
+      matched: docos.length,
+      results: added,
+    });
+  }
+
+  if (event !== "pull_request") {
+    return Response.json({ ok: true, ignored: "unhandled event" });
   }
   const parsed = parsePullRequestEvent(payload);
   if (!parsed || !SYNC_ACTIONS.has(parsed.action)) {

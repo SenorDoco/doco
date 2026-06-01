@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
-import { parsePullRequestEvent, verifyGitHubSignature } from "../github-webhook.server";
+import {
+  parseInstallationRepositoriesEvent,
+  parsePullRequestEvent,
+  verifyGitHubSignature,
+} from "../github-webhook.server";
 
 function sign(secret: string, body: string): string {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
@@ -63,5 +67,26 @@ describe("parsePullRequestEvent", () => {
       parsePullRequestEvent({ action: "created", repository: { full_name: "a/b" } }),
     ).toBeNull();
     expect(parsePullRequestEvent(null)).toBeNull();
+  });
+});
+
+describe("parseInstallationRepositoriesEvent", () => {
+  it("extracts action, installation id, and added repo full-names", () => {
+    expect(
+      parseInstallationRepositoriesEvent({
+        action: "added",
+        installation: { id: 42 },
+        repositories_added: [{ full_name: "acme/a" }, { full_name: "acme/b" }],
+        repositories_removed: [],
+      }),
+    ).toEqual({ action: "added", installationId: 42, addedRepos: ["acme/a", "acme/b"] });
+  });
+  it("tolerates missing / junk fields", () => {
+    expect(parseInstallationRepositoriesEvent({ action: "removed", installation: {} })).toEqual({
+      action: "removed",
+      installationId: null,
+      addedRepos: [],
+    });
+    expect(parseInstallationRepositoriesEvent(null)).toBeNull();
   });
 });
