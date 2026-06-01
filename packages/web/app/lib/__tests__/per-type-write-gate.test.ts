@@ -26,13 +26,17 @@ function tokenCap(
     matched = true;
     const wt = token.granted_doco_write_types[meta.docoId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (token.granted_doco_roles[meta.docoId] === "writer") caps.add("*");
+    else if (["owner", "writer"].includes(token.granted_doco_roles[meta.docoId] ?? "")) {
+      caps.add("*");
+    }
   }
   if (meta.ownerId.startsWith("organization_") && token.granted_org_ids.includes(meta.ownerId)) {
     matched = true;
     const wt = token.granted_org_write_types[meta.ownerId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (token.granted_org_roles[meta.ownerId] === "writer") caps.add("*");
+    else if (["owner", "writer"].includes(token.granted_org_roles[meta.ownerId] ?? "")) {
+      caps.add("*");
+    }
   }
   if (!matched) return [];
   return normalizeWriteTypes([...caps]);
@@ -78,6 +82,16 @@ describe("per-type write gate — token cap AND-ing", () => {
       granted_doco_roles: { doco_1: "writer" },
     });
     expect(cap).toEqual(["*"]);
+  });
+
+  it("owner-role token (no per-type map) → wildcard cap", () => {
+    const cap = tokenCap(orgDoco, {
+      ...emptyToken,
+      granted_doco_ids: ["doco_1"],
+      granted_doco_roles: { doco_1: "owner" },
+    });
+    expect(cap).toEqual(["*"]);
+    expect(canWriteType("reader", cap, "idea")).toBe(true);
   });
 
   it("per-type token caps to exactly its granted types", () => {
