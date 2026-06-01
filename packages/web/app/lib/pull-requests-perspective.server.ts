@@ -48,6 +48,10 @@ export interface PullRequestsPerspectiveData {
   connected: boolean;
   /** Non-empty lifecycle groups in display order (Merged → Open → Closed). */
   groups: PullRequestGroup[];
+  /** Number of PR rows serialized into this response. */
+  loadedCount: number;
+  /** True when the perspective intentionally returned a bounded slice. */
+  hasMore: boolean;
 }
 
 // Display order + human labels for the three PR lifecycle buckets. Merged
@@ -57,6 +61,7 @@ const LIFECYCLE_GROUPS: { lifecycle: string; label: string }[] = [
   { lifecycle: "drafting", label: "Open" },
   { lifecycle: "retired", label: "Closed" },
 ];
+const DEFAULT_PULL_REQUEST_LIMIT = 500;
 
 function firstLine(value: string | null | undefined): string {
   return String(value ?? "")
@@ -100,19 +105,33 @@ export function groupPullRequestReferences(rows: PullRequestRefRow[]): PullReque
 export async function loadPullRequestsPerspective(
   c: QueryClient,
   docoId: string,
+  opts: { limit?: number } = {},
 ): Promise<PullRequestsPerspectiveData> {
   const connectionCtx = await getDocoConnectionsContext(docoId);
   const connected = (connectionCtx?.connections.length ?? 0) > 0;
+  const limit = Math.max(1, Math.floor(opts.limit ?? DEFAULT_PULL_REQUEST_LIMIT));
+  const queryLimit = limit + 1;
 
   const { rows } = await c.query<PullRequestRefRow>(
-    `SELECT id, prose AS reference, locator, lifecycle
+    `SELECT id,
+            prose AS reference,
+            locator,
+            lifecycle
        FROM nodes
       WHERE doco_id = $1
         AND node_type = 'reference'
         AND locator LIKE '%/pull/%'
-      ORDER BY created_at DESC, id ASC`,
-    [docoId],
+      ORDER BY created_at DESC, id ASC
+      LIMIT $2`,
+    [docoId, queryLimit],
   );
+  const hasMore = rows.length > limit;
+  const visibleRows = hasMore ? rows.slice(0, limit) : rows;
 
-  return { connected, groups: groupPullRequestReferences(rows) };
+  return {
+    connected,
+    groups: groupPullRequestReferences(visibleRows),
+    loadedCount: visibleRows.length,
+    hasMore,
+  };
 }
