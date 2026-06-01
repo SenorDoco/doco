@@ -11,7 +11,6 @@ import {
   getOrgGrant,
   getOrgRole,
   getPrincipalById,
-  getUserById,
   listDocoIdsForUser,
   listOrgOwnerUserIds,
   maxRole,
@@ -36,8 +35,8 @@ import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "
 
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
- * agent-owner-chain match, org-membership role on the owning org,
- * explicit doco_users row).
+ * org-membership role on the owning org, account grants, explicit
+ * doco_users row).
  *
  * Returns null when the principal has no doco-level grant.
  */
@@ -46,9 +45,9 @@ export async function getDocoLevelRole(
   principalId: string | null,
 ): Promise<DocoRole | null> {
   // Delegate to getDocoLevelGrant so the role and per-type-write paths
-  // resolve access from exactly the same sources (direct owner, agent
-  // owner chain, org membership, account grants, doco membership) — there
-  // is no second copy of the source list to drift out of sync.
+  // resolve access from exactly the same sources (direct owner, org
+  // membership, account grants, doco membership) — there is no second
+  // copy of the source list to drift out of sync.
   const grant = await getDocoLevelGrant(meta, principalId);
   return grant?.role ?? null;
 }
@@ -87,22 +86,18 @@ export async function getDocoLevelGrant(
 
   if (meta.ownerId.startsWith("organization_")) {
     fold(await getOrgGrant(meta.ownerId, principalId));
-    if (ownerOfPrincipal) fold(await getOrgGrant(meta.ownerId, ownerOfPrincipal));
-
     // Account-level grants (migration 075): if any OWNER of this org has
-    // granted their whole account to the principal (or to the agent's
-    // owner), the principal inherits that grant on every org/doco that
+    // granted their whole account to the principal, the principal
+    // inherits that grant on every org/doco that
     // owner owns — including this one.
     const orgOwners = await listOrgOwnerUserIds(meta.ownerId);
     for (const grantor of orgOwners) {
       fold(await getAccountGrant(grantor, principalId));
-      if (ownerOfPrincipal) fold(await getAccountGrant(grantor, ownerOfPrincipal));
     }
   }
 
   if (meta.docoId) {
     fold(await getDocoUserGrant(meta.docoId, principalId));
-    if (ownerOfPrincipal) fold(await getDocoUserGrant(meta.docoId, ownerOfPrincipal));
   }
 
   if (!role) return null;
@@ -286,15 +281,6 @@ async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
 
 /** Read the owner_id field for either a user identity or Principal node. */
 async function getPrincipalOwnerId(principalId: string): Promise<string | null> {
-  if (principalId.startsWith("user_")) {
-    const c = await getUserById(principalId);
-    const ownerId = c?.data.owner_id;
-    if (typeof ownerId !== "string") return null;
-    if (!ownerId.startsWith("user_") && !ownerId.startsWith("organization_")) {
-      return null;
-    }
-    return ownerId;
-  }
   if (!principalId.startsWith("principal_")) return null;
   const p = await getPrincipalById(principalId);
   if (!p) return null;
@@ -314,9 +300,8 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
  * "Is this Doco mine?" — predicate for the signed-in user's personal
  * dashboard. Stricter than `canAccessDoco`: ignores `public` visibility
  * and the host-bootstrap exemption. True iff the principal has a
- * personal stake in the Doco: they own it, they're an agent of the
- * owner, or they're a member of the owning organization. Invite-
- * redeemed users are handled separately via
+ * personal stake in the Doco: they own it, or they're a member of the
+ * owning organization. Invite-redeemed users are handled separately via
  * `listInvitedDocoIdsForPrincipal` — that path needs the Doco id, not
  * the owner id, so callers union the two sets.
  */
@@ -332,7 +317,6 @@ export async function isMyDoco(
 
   if (meta.ownerId.startsWith("organization_")) {
     if (await dbIsOrgMember(meta.ownerId, principalId)) return true;
-    if (ownerOfPrincipal && (await dbIsOrgMember(meta.ownerId, ownerOfPrincipal))) return true;
   }
   return false;
 }

@@ -8,14 +8,10 @@
 // who minted it, never wider). Cookie sessions (browser, no token)
 // fall back to the principal's full membership set.
 
-import { type DocoRole, getUserById } from "@doco/db";
+import type { DocoRole } from "@doco/db";
 import { loadScopeOptions } from "~/lib/api-keys.server";
 import { getOauthTokenForRequest } from "~/lib/doco-access.server";
-import {
-  type CurrentPrincipal,
-  getCurrentPrincipalAsync,
-  userDisplayName,
-} from "~/lib/session.server";
+import { type CurrentPrincipal, getCurrentPrincipalAsync } from "~/lib/session.server";
 import { rankOf } from "~/lib/user-invite";
 import type { ValidAccessToken } from "./oauth-server.server";
 
@@ -107,7 +103,7 @@ async function loadCredentialIdentity(
   me: CurrentPrincipal,
   token: ValidAccessToken,
 ): Promise<AgentCredentialIdentity> {
-  const onBehalfOf = await resolveOnBehalfOfUsername(me);
+  const onBehalfOf = cleanUsername(me.username);
   const nickname = credentialNickname(me, token);
   return {
     nickname,
@@ -116,19 +112,10 @@ async function loadCredentialIdentity(
   };
 }
 
-async function resolveOnBehalfOfUsername(me: CurrentPrincipal): Promise<string> {
-  if (me.type !== "agent") return cleanUsername(me.username);
-  const agent = await getUserById(me.id);
-  const ownerId = agent?.owner_id;
-  if (!ownerId) return cleanUsername(me.username);
-  const owner = await getUserById(ownerId);
-  return owner ? cleanUsername(userDisplayName(owner)) : cleanUsername(me.username);
-}
-
 function credentialNickname(me: CurrentPrincipal, token: ValidAccessToken): string {
-  // Agent OAuth tokens are represented by a named agent user; personal API
-  // keys use the OAuth client label the human typed on /api-keys.
-  const preferred = me.type === "agent" ? me.username : token.client_name;
+  // Tokens carry their own human-visible credential label. The OAuth
+  // client name remains the software/app label.
+  const preferred = token.token_name || token.client_name || me.username;
   return cleanIndicatorSegment(preferred || token.client_name || token.client_id.slice(0, 20));
 }
 

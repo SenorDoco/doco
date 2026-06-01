@@ -1,13 +1,12 @@
 // /api-keys — host-level page for managing access tokens.
 //
-// Lists every active OAuth refresh token bound to the signed-in user
-// or one of their named agent users, plus access tokens
-// minted from this page. (URL kept as /api-keys to preserve existing
+// Lists every active OAuth refresh token bound to the signed-in user,
+// plus access tokens minted from this page. (URL kept as /api-keys to preserve existing
 // links and the navbar shortcut; the page is labelled "Access tokens"
 // everywhere user-facing.)
 //
 // Distinct from /users: that page lists who has access; this
-// page manages the credentials behind those agents/scripts.
+// page manages the named credentials used by clients/scripts.
 
 import type { DocoRole } from "@doco/db";
 import { useEffect, useMemo, useState } from "react";

@@ -18,11 +18,15 @@ function userAgentSurface(userAgent: string): AuthoringWriteContext | null {
   return null;
 }
 
-async function oauthTokenName(token: string): Promise<string | null> {
+async function oauthMetadata(token: string): Promise<Record<string, unknown>> {
   const { validateAccessToken } = await import("./oauth-server.server");
   const record = await validateAccessToken(token);
-  const name = record?.client_name?.trim();
-  return name || null;
+  const metadata: Record<string, unknown> = { auth: "oauth" };
+  const tokenName = record?.token_name?.trim();
+  const clientName = record?.client_name?.trim();
+  if (tokenName) metadata.token_name = tokenName;
+  if (clientName) metadata.client_name = clientName;
+  return metadata;
 }
 
 export async function authoringContextForRequest(request: Request): Promise<AuthoringWriteContext> {
@@ -42,11 +46,7 @@ export async function authoringContextForRequest(request: Request): Promise<Auth
 
   const bearer = extractBearer(request);
   if (bearer?.startsWith("doco_at_")) {
-    const tokenName = await oauthTokenName(bearer);
-    return {
-      source: "api",
-      metadata: tokenName ? { auth: "oauth", token_name: tokenName } : { auth: "oauth" },
-    };
+    return { source: "api", metadata: await oauthMetadata(bearer) };
   }
   if (bearer) {
     return { source: "api", metadata: { auth: "bearer" } };

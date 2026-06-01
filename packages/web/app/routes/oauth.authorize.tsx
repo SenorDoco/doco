@@ -36,7 +36,7 @@ interface AuthorizeParams {
   code_challenge_method: string;
   state: string | null;
   scope: string | null;
-  /** Optional. Doco handle the agent wants access to — focuses the picker. */
+  /** Optional. Doco handle the token wants access to — focuses the picker. */
   target_doco_handle: string | null;
   /** Optional. Pre-fills the per-Doco role dropdown(s). */
   requested_role: string | null;
@@ -81,7 +81,7 @@ export async function loader({ request }: { request: Request }) {
     throw redirect(`/auth/github?return=${encodeURIComponent(returnPath)}`);
   }
 
-  // Only owners can grant agent access. Approvers / authors / readers
+  // Only owners can grant token access. Approvers / authors / readers
   // can't extend access to others — that's a permissions delegation
   // only owners get to do. So we filter the candidate Doco list down
   // to ones where the principal holds owner role (direct, via org, or
@@ -113,13 +113,13 @@ export async function loader({ request }: { request: Request }) {
     if (matched.length > 0) {
       docos = matched;
     } else {
-      targetedMessage = `The agent requested access to "${params.target_doco_handle}" but you don't own that Doco — pick from the Docos you do own below, or have the agent target a different one.`;
+      targetedMessage = `The token requested access to "${params.target_doco_handle}" but you don't own that Doco — pick from the Docos you do own below, or have the client target a different one.`;
     }
   }
 
-  // Orgs the user owns. Approving an org grants the agent access to
+  // Orgs the user owns. Approving an org grants the token access to
   // every Doco the org owns (live — including Docos created under it
-  // after the token is minted). Hidden when the agent narrowed the
+  // after the token is minted). Hidden when the client narrowed the
   // picker to a single target Doco; org approval would defeat that
   // narrowing.
   type OrgRow = { id: string; handle: string; display_name: string; my_role: DocoRole };
@@ -169,8 +169,8 @@ export async function action({ request }: { request: Request }) {
     return redirect(redirectWith(params, { error: "access_denied" }));
   }
 
-  const agentName = String(form.get("agent_name") ?? "").trim();
-  if (!agentName) throw errorResponse("agent_name required", 400);
+  const tokenName = String(form.get("token_name") ?? "").trim();
+  if (!tokenName) throw errorResponse("token_name required", 400);
 
   const selected = form.getAll("doco_id").map((v) => String(v));
   const selectedOrgs = form.getAll("org_id").map((v) => String(v));
@@ -179,7 +179,7 @@ export async function action({ request }: { request: Request }) {
   }
   // Defense against form tampering. Two checks per selected id:
   //   1. Principal must hold OWNER on this Doco — only owners can
-  //      grant agent access (writers/readers cannot).
+  //      grant token access (writers/readers cannot).
   //   2. The per-Doco role on the form must be a valid DocoRole.
   //      Since owners hold all roles, the cap is always "owner";
   //      we still validate the value to reject garbage.
@@ -227,7 +227,7 @@ export async function action({ request }: { request: Request }) {
   const { code } = await issueAuthorizationCode({
     client_id: params.client_id,
     approver_user_id: principal.id,
-    agent_name: agentName,
+    token_name: tokenName,
     redirect_uri: params.redirect_uri,
     code_challenge: params.code_challenge,
     granted_doco_ids: selected,
@@ -265,14 +265,14 @@ export default function AuthorizePage() {
           <CardHeader>
             <CardTitle>Approve access</CardTitle>
             <CardDescription>
-              <strong>{data.client_name}</strong> wants access to your docos. Name the agent, then
+              <strong>{data.client_name}</strong> wants access to your docos. Name the token, then
               pick orgs and docos you own.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {data.docos.length === 0 && data.orgs.length === 0 ? (
               <p className="text-sm text-destructive">
-                You don't own any Docos or organizations yet. Only owners can grant agent access —
+                You don't own any Docos or organizations yet. Only owners can grant token access —
                 create one first, then return to this page.
               </p>
             ) : (
@@ -296,7 +296,7 @@ type PickerDoco = { id: string; handle: string; my_role: DocoRole; org_id: strin
 /**
  * Controlled form for the picker. Orgs render as collapsible groups
  * (chevron + org checkbox/role); expanding one reveals the Docos it
- * owns so the agent can be granted the whole org or just a few of its
+ * owns so the token can be granted the whole org or just a few of its
  * Docos. Docos owned directly by the user live in their own "Your
  * Docos" group. Submit serializes the controlled state through hidden
  * fields so the server-side parser sees doco_id[], role_<id>,
@@ -331,7 +331,7 @@ function DocoPickerForm({
   const [orgRoles, setOrgRoles] = useState<Record<string, DocoRole>>(() =>
     Object.fromEntries(orgs.map((o) => [o.id, defaultRole(o)])),
   );
-  const [agentName, setAgentName] = useState("");
+  const [tokenName, setTokenName] = useState("");
   // Groups default to expanded so the pre-selected Docos stay visible;
   // the chevron lets the user collapse an org to a one-line summary.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(orgs.map((o) => o.id)));
@@ -417,13 +417,13 @@ function DocoPickerForm({
     <Form method="post" reloadDocument className="space-y-4">
       <label className="block text-sm">
         <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-          Agent name
+          Token name
         </span>
         <input
           type="text"
-          name="agent_name"
-          value={agentName}
-          onChange={(e) => setAgentName(e.currentTarget.value)}
+          name="token_name"
+          value={tokenName}
+          onChange={(e) => setTokenName(e.currentTarget.value)}
           required
           maxLength={120}
           placeholder="e.g. Claude Code in repo"
@@ -437,7 +437,7 @@ function DocoPickerForm({
         </p>
       ) : null}
 
-      {/* Focused mode (agent targeted one Doco): just the single row,
+      {/* Focused mode (token targeted one Doco): just the single row,
           no grouping or bulk controls. */}
       {focused ? (
         <ul className="neu-surface divide-y divide-border rounded-md bg-card">

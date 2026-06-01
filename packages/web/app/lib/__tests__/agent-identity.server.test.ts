@@ -42,6 +42,7 @@ function accessToken(overrides: Record<string, unknown> = {}) {
     token: "doco_at_test",
     client_id: "doco_client_test",
     client_name: "Local Codex",
+    token_name: null,
     user_id: "user_alice",
     granted_doco_ids: [],
     granted_doco_roles: {},
@@ -82,37 +83,20 @@ describe("loadAgentIdentity", () => {
     expect(identity?.indicator_prefix).toBe("[🔮 Doco Nightly Doco Runner on behalf of @alice]");
   });
 
-  it("describes an OAuth agent by its agent name on behalf of its owner", async () => {
+  it("describes an OAuth token by token name on behalf of the approving user", async () => {
     mocks.getCurrentPrincipalAsync.mockResolvedValue({
-      id: "user_agent",
-      username: "Repo Codex",
-      type: "agent",
-      isHuman: false,
+      id: "user_owner",
+      username: "torrenegra",
+      type: "person",
+      isHuman: true,
     });
     mocks.getOauthTokenForRequest.mockResolvedValue(
-      accessToken({ client_name: "Doco MCP Server", user_id: "user_agent" }),
+      accessToken({
+        client_name: "Doco MCP Server",
+        token_name: "Repo Codex",
+        user_id: "user_owner",
+      }),
     );
-    mocks.getUserById.mockImplementation(async (id: string) => {
-      if (id === "user_agent") {
-        return {
-          id: "user_agent",
-          kind: "agent",
-          github_login: null,
-          owner_id: "user_owner",
-          data: { name: "Repo Codex" },
-        };
-      }
-      if (id === "user_owner") {
-        return {
-          id: "user_owner",
-          kind: "person",
-          github_login: "torrenegra",
-          owner_id: null,
-          data: {},
-        };
-      }
-      return null;
-    });
 
     const identity = await loadAgentIdentity(new Request("https://doco.test/api/v1/whoami.json"));
 

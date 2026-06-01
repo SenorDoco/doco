@@ -8,6 +8,7 @@ function token(overrides: Partial<ValidAccessToken>): ValidAccessToken {
     client_id: "doco_client_x",
     client_name: "Test client",
     user_id: "principal_X",
+    token_name: null,
     granted_doco_ids: [],
     granted_doco_roles: {},
     granted_doco_write_types: {},

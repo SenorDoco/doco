@@ -21,7 +21,7 @@ import {
   approveDeviceAuthorization,
   issueAuthorizationCode,
   mergeGrantSets,
-  normalizeAgentName,
+  normalizeTokenName,
 } from "../oauth-server.server";
 
 /** Calls whose SQL contains `fragment`, in invocation order. */
@@ -36,7 +36,7 @@ const emptyGrants: GrantSets = {
   granted_org_roles: {},
 };
 
-describe("OAuth agent user authorization", () => {
+describe("OAuth token authorization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.generateUlid.mockReturnValue("01AGENT0000000000000000000");
@@ -48,16 +48,16 @@ describe("OAuth agent user authorization", () => {
     );
   });
 
-  it("normalizes and requires an agent name", () => {
-    expect(normalizeAgentName("  Codex   in repo  ")).toBe("Codex in repo");
-    expect(() => normalizeAgentName("   ")).toThrow(/agent_name required/);
+  it("normalizes and requires a token name", () => {
+    expect(normalizeTokenName("  Codex   in repo  ")).toBe("Codex in repo");
+    expect(() => normalizeTokenName("   ")).toThrow(/token_name required/);
   });
 
-  it("issues browser OAuth codes for a named agent user (first authorization)", async () => {
+  it("issues browser OAuth codes for the approving user and stores the token name", async () => {
     await issueAuthorizationCode({
       client_id: "doco_client_browser",
       approver_user_id: "user_owner",
-      agent_name: "  Claude   Code  ",
+      token_name: "  Claude   Code  ",
       redirect_uri: "http://127.0.0.1:4321/callback",
       code_challenge: "challenge",
       granted_doco_ids: ["doco_bpms"],
@@ -67,29 +67,19 @@ describe("OAuth agent user authorization", () => {
       scope: "doco",
     });
 
-    const agentId = "user_01AGENT0000000000000000000";
-    // Looks for an existing agent first; default mock returns none.
-    expect(callsTo("kind = 'agent'")).toHaveLength(1);
-    // No existing agent → creates one.
-    const userInsert = callsTo("INSERT INTO users")[0];
-    expect(userInsert?.[1]).toEqual(expect.arrayContaining([agentId, "user_owner"]));
-    const agentData = JSON.parse((userInsert?.[1] as unknown[])[2] as string);
-    expect(agentData.name).toBe("Claude Code");
-    expect(agentData.oauth_client_id).toBe("doco_client_browser");
+    expect(callsTo("kind = 'agent'")).toHaveLength(0);
+    expect(callsTo("INSERT INTO users")).toHaveLength(0);
+    expect(callsTo("INSERT INTO doco_users")).toHaveLength(0);
+    expect(callsTo("INSERT INTO org_users")).toHaveLength(0);
 
-    expect(callsTo("INSERT INTO doco_users")[0]?.[1]).toEqual(["doco_bpms", agentId, "writer"]);
-    expect(callsTo("INSERT INTO org_users")[0]?.[1]).toEqual([
-      "organization_torre",
-      agentId,
-      "reader",
-    ]);
-    // The minted code carries the agent id + the approved grants.
+    // The minted code carries the approving human id, token name, and the approved grants.
     const codeInsert = callsTo("INSERT INTO oauth_authorization_codes")[0];
-    expect(codeInsert?.[1]).toEqual(expect.arrayContaining(["doco_client_browser", agentId]));
-    expect((codeInsert?.[1] as unknown[])[5]).toEqual(["doco_bpms"]);
+    expect(codeInsert?.[1]).toEqual(expect.arrayContaining(["doco_client_browser", "user_owner"]));
+    expect((codeInsert?.[1] as unknown[])[4]).toBe("Claude Code");
+    expect((codeInsert?.[1] as unknown[])[6]).toEqual(["doco_bpms"]);
   });
 
-  it("approves device codes by binding the pending grant to a fresh named agent", async () => {
+  it("approves device codes by binding the pending grant to the approving user and token name", async () => {
     mocks.query.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT client_id")) {
         return { rows: [{ client_id: "doco_client_device" }], rowCount: 1 };
@@ -100,38 +90,24 @@ describe("OAuth agent user authorization", () => {
     await approveDeviceAuthorization({
       device_code: "doco_dc_123",
       approver_user_id: "user_owner",
-      agent_name: "Codex sandbox",
+      token_name: "Codex sandbox",
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "writer" },
       granted_org_ids: [],
       granted_org_roles: {},
     });
 
-    const agentId = "user_01AGENT0000000000000000000";
-    const userInsert = callsTo("INSERT INTO users")[0];
-    expect(userInsert?.[1]).toEqual(expect.arrayContaining([agentId, "user_owner"]));
-    const agentData = JSON.parse((userInsert?.[1] as unknown[])[2] as string);
-    expect(agentData.name).toBe("Codex sandbox");
-    expect(callsTo("INSERT INTO doco_users")[0]?.[1]).toEqual(["doco_bpms", agentId, "writer"]);
+    expect(callsTo("INSERT INTO users")).toHaveLength(0);
+    expect(callsTo("INSERT INTO doco_users")).toHaveLength(0);
     const update = callsTo("UPDATE oauth_device_authorizations")[0];
-    expect(update?.[1]).toEqual(expect.arrayContaining(["doco_dc_123", agentId]));
+    expect(update?.[1]).toEqual(expect.arrayContaining(["doco_dc_123", "user_owner"]));
+    expect((update?.[1] as unknown[])[2]).toBe("Codex sandbox");
   });
 
-  it("re-authorizing an existing agent merges grants onto the same identity", async () => {
-    // Existing agent already holds reader on doco_old; approval adds
-    // author on doco_new.
+  it("re-authorizing a client records exactly the newly approved token grants", async () => {
     mocks.query.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT client_id")) {
         return { rows: [{ client_id: "doco_client_device" }], rowCount: 1 };
-      }
-      if (sql.includes("kind = 'agent'")) {
-        return { rows: [{ id: "user_existing" }], rowCount: 1 };
-      }
-      if (sql.includes("SELECT doco_id, role FROM doco_users")) {
-        return { rows: [{ doco_id: "doco_old", role: "reader" }], rowCount: 1 };
-      }
-      if (sql.includes("SELECT org_id, role FROM org_users")) {
-        return { rows: [], rowCount: 0 };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -139,26 +115,24 @@ describe("OAuth agent user authorization", () => {
     await approveDeviceAuthorization({
       device_code: "doco_dc_123",
       approver_user_id: "user_owner",
-      agent_name: "Codex sandbox",
+      token_name: "Codex sandbox",
       granted_doco_ids: ["doco_new"],
       granted_doco_roles: { doco_new: "writer" },
       granted_org_ids: [],
       granted_org_roles: {},
     });
 
-    // Reuse: NO new users row is minted.
+    // Tokens do not create or reuse agent users.
+    expect(callsTo("kind = 'agent'")).toHaveLength(0);
     expect(callsTo("INSERT INTO users")).toHaveLength(0);
+    expect(callsTo("INSERT INTO doco_users")).toHaveLength(0);
 
-    // Memberships upserted for BOTH the old and the newly approved Doco.
-    const upsertedDocoIds = callsTo("INSERT INTO doco_users").map((c) => (c[1] as unknown[])[0]);
-    expect(upsertedDocoIds).toEqual(expect.arrayContaining(["doco_old", "doco_new"]));
-
-    // The device row is bound to the existing agent and the merged set.
+    // The device row is bound to the approving user and the approved set only.
     const update = callsTo("UPDATE oauth_device_authorizations")[0];
-    expect((update?.[1] as unknown[])[1]).toBe("user_existing");
-    expect((update?.[1] as unknown[])[2]).toEqual(expect.arrayContaining(["doco_old", "doco_new"]));
-    const mergedRoles = JSON.parse((update?.[1] as unknown[])[3] as string);
-    expect(mergedRoles).toMatchObject({ doco_old: "reader", doco_new: "writer" });
+    expect((update?.[1] as unknown[])[1]).toBe("user_owner");
+    expect((update?.[1] as unknown[])[3]).toEqual(["doco_new"]);
+    const roles = JSON.parse((update?.[1] as unknown[])[4] as string);
+    expect(roles).toEqual({ doco_new: "writer" });
   });
 });
 

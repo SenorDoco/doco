@@ -1,7 +1,7 @@
 // OAuth 2.1 authorization server — the doco.to side of MCP-OAuth
 // (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
 //
-// OAuth-backed DOCO_ACCESS tokens for agents. An MCP runtime registers
+// OAuth-backed DOCO_ACCESS tokens for programmatic clients. An MCP runtime registers
 // itself (RFC 7591), opens the authorize URL in the user's browser, the
 // user signs in with GitHub + approves which Docos this runtime can
 // touch, the runtime exchanges the resulting code for an access +
@@ -22,7 +22,6 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { withClient, withTransaction } from "@doco/db";
-import { generateUlid } from "@doco/shared";
 
 // ---------------------------------------------------------------------------
 // Token formats & TTLs.
@@ -44,13 +43,6 @@ const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60; // 60d
 const DOCO_ROLES = ["reader", "writer", "owner"] as const;
 
-type QueryClient = {
-  query: (
-    sql: string,
-    values?: unknown[],
-  ) => Promise<{ rowCount?: number | null; rows: unknown[] }>;
-};
-
 // 32 random bytes → 43-char base64url. That's 256 bits of entropy —
 // over the OAuth 2.1 recommended floor of 128 bits.
 function mintOpaque(prefix: string): string {
@@ -61,13 +53,13 @@ export function isOauthAccessToken(value: string): boolean {
   return value.startsWith(ACCESS_TOKEN_PREFIX);
 }
 
-export function normalizeAgentName(value: string): string {
+export function normalizeTokenName(value: string): string {
   const name = value.trim().replace(/\s+/g, " ");
   if (!name) {
-    throw new OauthError("invalid_request", "agent_name required");
+    throw new OauthError("invalid_request", "token_name required");
   }
   if (name.length > 120) {
-    throw new OauthError("invalid_request", "agent_name must be 120 characters or less");
+    throw new OauthError("invalid_request", "token_name must be 120 characters or less");
   }
   return name;
 }
@@ -129,10 +121,10 @@ function mergeScope(
 /**
  * Union two grant sets for additive re-authorization. The merged set
  * covers every Doco/org in EITHER input; for an id in both it keeps the
- * STRONGER role. Re-authorizing an agent therefore only ever widens its
+ * STRONGER role. Re-authorizing a token therefore only ever widens its
  * access (more targets, or a higher role) — it never silently revokes a
  * grant the incoming approval happened to omit. Removing access is the
- * owner's explicit action on the agent's grants, not a side effect of
+ * owner's explicit action on the token's grants, not a side effect of
  * re-approval. Roles remain bounded by what the approver holds — that
  * cap is enforced by the caller before this runs.
  */
@@ -261,14 +253,14 @@ function isValidRedirectUri(uri: string): boolean {
 export interface IssueAuthCodeInput {
   client_id: string;
   approver_user_id: string;
-  agent_name: string;
+  token_name: string;
   redirect_uri: string;
   code_challenge: string;
   granted_doco_ids: string[];
   /**
    * Per-Doco role scope-down. Map of doco_id → DocoRole. The user
    * approving the OAuth grant can lower the role below what they
-   * themselves hold (give the agent "reader" on a Doco where they
+   * themselves hold (give the token "reader" on a Doco where they
    * are "owner") but never raise it. Missing entries on this map
    * mean "inherit the principal's actual role on that Doco" —
    * i.e. no scope-down for that Doco.
@@ -285,159 +277,32 @@ export interface IssueAuthCodeInput {
   scope?: string;
 }
 
-/** Read an agent user's CURRENT grants from its membership rows. These
- * are the source of truth for what the agent can already reach, and the
- * base we merge a fresh approval onto when re-authorizing. */
-async function readAgentGrantSets(c: QueryClient, agentId: string): Promise<GrantSets> {
-  const docoRows = await c.query("SELECT doco_id, role FROM doco_users WHERE user_id = $1", [
-    agentId,
-  ]);
-  const orgRows = await c.query("SELECT org_id, role FROM org_users WHERE user_id = $1", [agentId]);
-  const granted_doco_ids: string[] = [];
-  const granted_doco_roles: Record<string, string> = {};
-  for (const row of docoRows.rows as { doco_id: string; role: string }[]) {
-    granted_doco_ids.push(row.doco_id);
-    granted_doco_roles[row.doco_id] = row.role;
-  }
-  const granted_org_ids: string[] = [];
-  const granted_org_roles: Record<string, string> = {};
-  for (const row of orgRows.rows as { org_id: string; role: string }[]) {
-    granted_org_ids.push(row.org_id);
-    granted_org_roles[row.org_id] = row.role;
-  }
-  return { granted_doco_ids, granted_doco_roles, granted_org_ids, granted_org_roles };
-}
-
-/**
- * Find-or-create the agent user for this (approver, OAuth client, agent
- * name) triple, then upsert its memberships to the UNION of what it
- * already had and the newly approved grants.
- *
- * Reuse is the heart of additive re-authorization: approving the same
- * client again — e.g. to add another Doco or a whole org — lands on the
- * SAME agent identity and WIDENS it, instead of minting a fresh agent
- * user every time (which left orphan identities and a token that only
- * saw the latest selection). The returned `grants` is the merged set the
- * caller persists on the auth-code / device row, so the minted token
- * carries the combined scope. `reused` is false on first authorization.
- *
- * The match key is the triple the human controls and sees: who approved,
- * which client, and the agent's display name. Re-approving under a
- * different name deliberately forges a separate identity.
- */
-async function upsertAuthorizedAgentUser(
-  c: QueryClient,
-  input: {
-    owner_id: string;
-    client_id: string;
-    agent_name: string;
-    granted_doco_ids: string[];
-    granted_doco_roles?: Record<string, string>;
-    granted_org_ids?: string[];
-    granted_org_roles?: Record<string, string>;
-  },
-): Promise<{ agentId: string; grants: GrantSets; reused: boolean }> {
-  const agentName = normalizeAgentName(input.agent_name);
-  const incoming: GrantSets = {
-    granted_doco_ids: input.granted_doco_ids,
-    granted_doco_roles: input.granted_doco_roles ?? {},
-    granted_org_ids: input.granted_org_ids ?? [],
-    granted_org_roles: input.granted_org_roles ?? {},
-  };
-
-  const existing = await c.query(
-    `SELECT id FROM users
-      WHERE kind = 'agent'
-        AND owner_id = $1
-        AND data->>'oauth_client_id' = $2
-        AND data->>'name' = $3
-        AND deactivated_at IS NULL
-      ORDER BY created_at ASC
-      LIMIT 1`,
-    [input.owner_id, input.client_id, agentName],
-  );
-  const existingId = (existing.rows[0] as { id: string } | undefined)?.id;
-
-  let agentId: string;
-  let grants: GrantSets;
-  let reused: boolean;
-  if (existingId) {
-    agentId = existingId;
-    reused = true;
-    // Merge onto what the agent can already reach so the persisted token
-    // covers the union (existing memberships + newly approved grants).
-    grants = mergeGrantSets(await readAgentGrantSets(c, agentId), incoming);
-  } else {
-    agentId = `user_${generateUlid()}`;
-    reused = false;
-    grants = incoming;
-    const createdAt = new Date().toISOString();
-    await c.query(
-      `INSERT INTO users (id, kind, github_login, owner_id, data)
-       VALUES ($1, 'agent', NULL, $2, $3::jsonb)`,
-      [
-        agentId,
-        input.owner_id,
-        JSON.stringify({
-          id: agentId,
-          kind: "agent",
-          name: agentName,
-          owner_id: input.owner_id,
-          oauth_client_id: input.client_id,
-          created_at: createdAt,
-        }),
-      ],
-    );
-  }
-
-  for (const docoId of grants.granted_doco_ids) {
-    await c.query(
-      `INSERT INTO doco_users (doco_id, user_id, role)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (doco_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-      [docoId, agentId, roleForGrant(grants.granted_doco_roles, docoId)],
-    );
-  }
-
-  for (const orgId of grants.granted_org_ids) {
-    await c.query(
-      `INSERT INTO org_users (org_id, user_id, role)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-      [orgId, agentId, roleForGrant(grants.granted_org_roles, orgId)],
-    );
-  }
-
-  return { agentId, grants, reused };
-}
-
 export async function issueAuthorizationCode(
   input: IssueAuthCodeInput,
 ): Promise<{ code: string; expires_at: Date }> {
   const code = mintOpaque(CODE_PREFIX);
   const expires_at = new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000);
+  const tokenName = normalizeTokenName(input.token_name);
+  const grants: GrantSets = {
+    granted_doco_ids: input.granted_doco_ids,
+    granted_doco_roles: input.granted_doco_roles ?? {},
+    granted_org_ids: input.granted_org_ids ?? [],
+    granted_org_roles: input.granted_org_roles ?? {},
+  };
   await withTransaction(async (c) => {
-    const { agentId, grants } = await upsertAuthorizedAgentUser(c, {
-      owner_id: input.approver_user_id,
-      client_id: input.client_id,
-      agent_name: input.agent_name,
-      granted_doco_ids: input.granted_doco_ids,
-      granted_doco_roles: input.granted_doco_roles,
-      granted_org_ids: input.granted_org_ids,
-      granted_org_roles: input.granted_org_roles,
-    });
     await c.query(
       `INSERT INTO oauth_authorization_codes
-         (code, client_id, user_id, redirect_uri,
+         (code, client_id, user_id, redirect_uri, token_name,
           code_challenge, code_challenge_method, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, 'S256', $6, $7, $8, $9, $10, $11)`,
+       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12)`,
       [
         code,
         input.client_id,
-        agentId,
+        input.approver_user_id,
         input.redirect_uri,
+        tokenName,
         input.code_challenge,
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
@@ -453,6 +318,7 @@ export async function issueAuthorizationCode(
 
 export interface ConsumedAuthCode {
   user_id: string;
+  token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_org_ids: string[];
@@ -475,6 +341,7 @@ export async function consumeAuthorizationCode(args: {
     const r = await c.query<{
       client_id: string;
       user_id: string;
+      token_name: string | null;
       redirect_uri: string;
       code_challenge: string;
       granted_doco_ids: string[];
@@ -485,7 +352,7 @@ export async function consumeAuthorizationCode(args: {
       expires_at: Date;
       consumed_at: Date | null;
     }>(
-      `SELECT client_id, user_id, redirect_uri, code_challenge,
+      `SELECT client_id, user_id, token_name, redirect_uri, code_challenge,
               granted_doco_ids, granted_doco_roles,
               granted_org_ids, granted_org_roles,
               scope, expires_at, consumed_at
@@ -514,6 +381,7 @@ export async function consumeAuthorizationCode(args: {
     ]);
     return {
       user_id: row.user_id,
+      token_name: row.token_name,
       granted_doco_ids: row.granted_doco_ids,
       granted_doco_roles: row.granted_doco_roles ?? {},
       granted_org_ids: row.granted_org_ids ?? [],
@@ -576,6 +444,7 @@ export async function peekAuthorizationCode(code: string): Promise<PeekedAuthCod
 export interface IssueTokensInput {
   client_id: string;
   user_id: string;
+  token_name?: string | null;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
   /** Per-type write scope-down keyed by doco_id (decision_per_type_write_grants). */
@@ -612,15 +481,16 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
   await withTransaction(async (c) => {
     await c.query(
       `INSERT INTO oauth_access_tokens
-         (token, client_id, user_id, granted_doco_ids,
+         (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         access_token,
         input.client_id,
         input.user_id,
+        input.token_name ?? null,
         input.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
@@ -633,15 +503,16 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
     );
     await c.query(
       `INSERT INTO oauth_refresh_tokens
-         (token, client_id, user_id, granted_doco_ids,
+         (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at, non_rotating)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         refresh_token,
         input.client_id,
         input.user_id,
+        input.token_name ?? null,
         input.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
@@ -668,6 +539,7 @@ export interface ValidAccessToken {
   client_id: string;
   client_name: string | null;
   user_id: string;
+  token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   /** Per-type write scope-down keyed by doco_id (migration 062). */
@@ -689,7 +561,8 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
   if (!isOauthAccessToken(token)) return null;
   return await withClient(async (c) => {
     const r = await c.query<ValidAccessToken>(
-      `SELECT at.token, at.client_id, c.client_name, at.user_id, at.granted_doco_ids,
+      `SELECT at.token, at.client_id, c.client_name, at.user_id, at.token_name,
+              at.granted_doco_ids,
               at.granted_doco_roles, at.granted_doco_write_types,
               at.granted_org_ids, at.granted_org_roles, at.granted_org_write_types,
               at.scope, at.expires_at
@@ -719,6 +592,7 @@ export async function refreshTokens(args: {
     const r = await c.query<{
       client_id: string;
       user_id: string;
+      token_name: string | null;
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
       granted_doco_write_types: Record<string, string[]>;
@@ -730,7 +604,7 @@ export async function refreshTokens(args: {
       revoked: boolean;
       non_rotating: boolean;
     }>(
-      `SELECT client_id, user_id,
+      `SELECT client_id, user_id, token_name,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
               granted_org_ids, granted_org_roles, granted_org_write_types,
               scope, expires_at, revoked, non_rotating
@@ -761,15 +635,16 @@ export async function refreshTokens(args: {
     const orgWriteTypesJson = JSON.stringify(row.granted_org_write_types ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
-         (token, client_id, user_id, granted_doco_ids,
+         (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         access_token,
         row.client_id,
         row.user_id,
+        row.token_name,
         row.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
@@ -803,15 +678,16 @@ export async function refreshTokens(args: {
     const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
     await c.query(
       `INSERT INTO oauth_refresh_tokens
-         (token, client_id, user_id, granted_doco_ids,
+         (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at, non_rotating)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         refresh_token,
         row.client_id,
         row.user_id,
+        row.token_name,
         row.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
@@ -855,9 +731,9 @@ export async function revokeToken(
 // ---------------------------------------------------------------------------
 // Device Authorization Grant (RFC 8628).
 //
-// For agents that cannot drive a localhost-redirect OAuth flow — they
+// For clients that cannot drive a localhost-redirect OAuth flow — they
 // can't bind a port, or they're not running on the same machine as the
-// user's browser. The agent calls POST /oauth/device_authorization,
+// user's browser. The client calls POST /oauth/device_authorization,
 // gets back a short `user_code` (e.g. "WXYZ-1234") and a verification
 // URL. It shows both to the user and polls /oauth/token until the user
 // approves in their browser at GET /device.
@@ -891,6 +767,7 @@ export interface DeviceAuthorizationRow {
   scope: string | null;
   status: "pending" | "approved" | "denied";
   user_id: string | null;
+  token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_org_ids: string[];
@@ -906,14 +783,14 @@ export interface CreateDeviceAuthorizationInput {
   client_id: string;
   scope?: string | null;
   /**
-   * Optional. When the agent already knows which Doco it needs access
+   * Optional. When the client already knows which Doco it needs access
    * to (typically from the project's DOCO.md), it passes the Doco's
    * handle here. The /device approve screen then focuses on that one
    * Doco instead of showing the full picker.
    */
   target_doco_handle?: string | null;
   /**
-   * Optional. The role the agent is requesting on the target Doco.
+   * Optional. The role the token is requesting on the target Doco.
    * The /device approve screen pre-fills the dropdown to this value;
    * the human can still adjust before approving.
    */
@@ -931,7 +808,7 @@ export interface DeviceAuthorizationResponse {
 
 /**
  * Create a fresh device-authorization row and return the payload the
- * agent shows to the user. `baseUrl` is the host origin (e.g.
+ * client shows to the user. `baseUrl` is the host origin (e.g.
  * `https://doco.to`); we build verification URLs from it.
  */
 export async function createDeviceAuthorization(
@@ -997,7 +874,7 @@ export async function getDeviceAuthorizationByUserCode(
   return await withClient(async (c) => {
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              user_id, granted_doco_ids, granted_doco_roles,
+              user_id, token_name, granted_doco_ids, granted_doco_roles,
               granted_org_ids, granted_org_roles,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
@@ -1018,13 +895,13 @@ export async function getDeviceAuthorizationByUserCode(
 /**
  * Mark a device-authorization as approved by a signed-in human.
  * `granted_doco_ids` is the set of Docos the user explicitly approved
- * the agent to access (subset of the user's own grants). Tokens are
- * NOT minted here — the agent's next poll mints + receives them.
+ * the token to access (subset of the user's own grants). Tokens are
+ * NOT minted here — the client's next poll mints + receives them.
  */
 export async function approveDeviceAuthorization(args: {
   device_code: string;
   approver_user_id: string;
-  agent_name: string;
+  token_name: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
   granted_org_ids?: string[];
@@ -1048,30 +925,30 @@ export async function approveDeviceAuthorization(args: {
       );
     }
 
-    const { agentId, grants } = await upsertAuthorizedAgentUser(c, {
-      owner_id: args.approver_user_id,
-      client_id: row.client_id,
-      agent_name: args.agent_name,
+    const tokenName = normalizeTokenName(args.token_name);
+    const grants: GrantSets = {
       granted_doco_ids: args.granted_doco_ids,
-      granted_doco_roles: args.granted_doco_roles,
-      granted_org_ids: args.granted_org_ids,
-      granted_org_roles: args.granted_org_roles,
-    });
+      granted_doco_roles: args.granted_doco_roles ?? {},
+      granted_org_ids: args.granted_org_ids ?? [],
+      granted_org_roles: args.granted_org_roles ?? {},
+    };
 
     await c.query(
       `UPDATE oauth_device_authorizations
           SET status = 'approved',
               user_id = $2,
-              granted_doco_ids = $3,
-              granted_doco_roles = $4,
-              granted_org_ids = $5,
-              granted_org_roles = $6
+              token_name = $3,
+              granted_doco_ids = $4,
+              granted_doco_roles = $5,
+              granted_org_ids = $6,
+              granted_org_roles = $7
         WHERE device_code = $1
           AND status = 'pending'
           AND expires_at > now()`,
       [
         args.device_code,
-        agentId,
+        args.approver_user_id,
+        tokenName,
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
         grants.granted_org_ids,
@@ -1115,7 +992,7 @@ export async function pollDeviceAuthorization(args: {
     // for the same approved authorization.
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              user_id, granted_doco_ids, granted_doco_roles,
+              user_id, token_name, granted_doco_ids, granted_doco_roles,
               granted_org_ids, granted_org_roles,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
@@ -1173,14 +1050,15 @@ export async function pollDeviceAuthorization(args: {
     const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
-         (token, client_id, user_id, granted_doco_ids,
+         (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         access_token,
         row.client_id,
         row.user_id,
+        row.token_name,
         row.granted_doco_ids,
         rolesJson,
         orgIds,
@@ -1191,14 +1069,15 @@ export async function pollDeviceAuthorization(args: {
     );
     await c.query(
       `INSERT INTO oauth_refresh_tokens
-         (token, client_id, user_id, granted_doco_ids,
+         (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_org_ids, granted_org_roles,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         refresh_token,
         row.client_id,
         row.user_id,
+        row.token_name,
         row.granted_doco_ids,
         rolesJson,
         orgIds,

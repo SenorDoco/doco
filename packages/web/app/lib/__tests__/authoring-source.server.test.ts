@@ -40,7 +40,8 @@ describe("authoringContextForRequest", () => {
 
   it("records the OAuth client name for API authoring", async () => {
     validateAccessTokenMock.mockResolvedValue({
-      client_name: "Authoring Verification Token",
+      client_name: "Doco MCP Server",
+      token_name: "Authoring Verification Token",
     } as Awaited<ReturnType<typeof validateAccessToken>>);
     const request = new Request("https://doco.test/acme/api/decisions.json", {
       headers: { Authorization: "Bearer doco_at_test" },
@@ -48,7 +49,11 @@ describe("authoringContextForRequest", () => {
 
     await expect(authoringContextForRequest(request)).resolves.toEqual({
       source: "api",
-      metadata: { auth: "oauth", token_name: "Authoring Verification Token" },
+      metadata: {
+        auth: "oauth",
+        token_name: "Authoring Verification Token",
+        client_name: "Doco MCP Server",
+      },
     });
     expect(validateAccessTokenMock).toHaveBeenCalledWith("doco_at_test");
   });
