@@ -6,7 +6,7 @@
 
 import { withClient } from "@doco/db";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
-import { canWriteDocoTypeForRequest, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
 import { captureEdge } from "~/lib/edge-capture.server";
 
 interface Params {
@@ -60,18 +60,14 @@ export async function action({ request, params }: { request: Request; params: Pa
 
   // Per-type write enforcement — same engine as nodes; edge types are part
   // of the grantable universe (WRITABLE_TYPES).
-  const mayWrite = await canWriteDocoTypeForRequest(
+  const denied = await requireDocoTypeWriteForRequest(
     request,
     { ownerId: meta.ownerId, docoId: meta.docoId },
     me.id,
     edgeType,
+    "create this edge",
   );
-  if (!mayWrite) {
-    return Response.json(
-      { error: `Forbidden: write access on '${edgeType}' required to create this edge.` },
-      { status: 403 },
-    );
-  }
+  if (denied) return denied;
 
   const result = await captureEdge({
     docoId: meta.docoId,

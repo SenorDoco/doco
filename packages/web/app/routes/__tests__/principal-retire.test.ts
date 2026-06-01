@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDocoLevelRole: vi.fn(),
   loadDocoRouteForRead: vi.fn(),
+  requireDocoTypeWriteForRequest: vi.fn(),
   getEntity: vi.fn(),
   upsertEntity: vi.fn(),
   query: vi.fn(),
@@ -26,8 +26,8 @@ vi.mock("@doco/db", () => {
 });
 
 vi.mock("~/lib/doco-access.server", () => ({
-  getDocoLevelRole: mocks.getDocoLevelRole,
   loadDocoRouteForRead: mocks.loadDocoRouteForRead,
+  requireDocoTypeWriteForRequest: mocks.requireDocoTypeWriteForRequest,
 }));
 
 vi.mock("~/lib/authoring-runner.server", () => ({
@@ -76,7 +76,7 @@ describe("principal retire API", () => {
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
-    mocks.getDocoLevelRole.mockResolvedValue("writer");
+    mocks.requireDocoTypeWriteForRequest.mockResolvedValue(null);
     mocks.getEntity.mockResolvedValue({
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
@@ -264,8 +264,13 @@ describe("principal retire API", () => {
     });
   });
 
-  it("requires author role", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("reader");
+  it("requires principal write access", async () => {
+    mocks.requireDocoTypeWriteForRequest.mockResolvedValue(
+      Response.json(
+        { error: "Forbidden: write access on 'principal' required to edit a principal." },
+        { status: 403 },
+      ),
+    );
 
     const response = await action({
       request: retireRequest(),

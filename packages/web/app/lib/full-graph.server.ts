@@ -85,7 +85,7 @@ function overviewRowsSql(includeLabel = false): string {
   // prose='' and fall back to their `name`. Principals also drop
   // retired role-personas (the other types don't filter lifecycle
   // here), so the lifecycle filter is principal-scoped.
-  const types = [...GRAPH_TABLES.map((entry) => entry.entityType), "principal"];
+  const types = GRAPH_TABLES.map((entry) => entry.entityType);
   const typeList = types.map((t) => `'${t}'`).join(", ");
   const labelExpr = "COALESCE(NULLIF(split_part(t.prose, E'\n', 1), ''), t.name)";
   return `SELECT t.id,

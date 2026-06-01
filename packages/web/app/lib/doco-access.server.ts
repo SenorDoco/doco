@@ -194,6 +194,35 @@ export async function canWriteDocoTypeForRequest(
   return canWriteType("reader", cap, type as WritableType);
 }
 
+export async function requireDocoTypeWriteForRequest(
+  request: Request,
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+  type: string,
+  verb = "write",
+): Promise<Response | null> {
+  const mayWrite = await canWriteDocoTypeForRequest(request, meta, principalId, type);
+  if (mayWrite) return null;
+  return Response.json(
+    { error: `Forbidden: write access on '${type}' required to ${verb}.` },
+    { status: 403 },
+  );
+}
+
+export async function requireDocoTypeWritesForRequest(
+  request: Request,
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+  types: Iterable<string>,
+  verb = "write",
+): Promise<Response | null> {
+  for (const type of [...new Set(types)]) {
+    const denied = await requireDocoTypeWriteForRequest(request, meta, principalId, type, verb);
+    if (denied) return denied;
+  }
+  return null;
+}
+
 /**
  * Can `principalId` read this Doco?
  *

@@ -8,7 +8,7 @@
 
 import { entityAsOf, getVersions, verifyHistory, withClient } from "@doco/db";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
-import { canWriteDocoTypeForRequest, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
 import { getEdgeById, retireEdgeRequest } from "~/lib/edge-capture.server";
 
 interface Params {
@@ -67,18 +67,14 @@ export async function action({ request, params }: { request: Request; params: Pa
   }
 
   // Permission keys off the edge's own type — same per-type engine as nodes.
-  const mayWrite = await canWriteDocoTypeForRequest(
+  const denied = await requireDocoTypeWriteForRequest(
     request,
     { ownerId: meta.ownerId, docoId: meta.docoId },
     me.id,
     edge.edge_type,
+    "retire this edge",
   );
-  if (!mayWrite) {
-    return Response.json(
-      { error: `Forbidden: write access on '${edge.edge_type}' required to retire this edge.` },
-      { status: 403 },
-    );
-  }
+  if (denied) return denied;
 
   let reason: string | null = null;
   if (request.method === "POST") {

@@ -109,7 +109,7 @@ type GraphNodeConfig = {
 const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
   ...(Object.fromEntries(
     Object.entries(DOCO_NODE_TABLE_BY_TYPE).map(([entityType, _spec]) => {
-      // Post-collapse: all 9 prose types live in `nodes` with their
+      // Post-collapse: all generic prose types live in `nodes` with their
       // prose in the shared `prose` column. The logical field name
       // (the old type-named column) is kept for the client-facing
       // `primary_field`.
@@ -128,12 +128,8 @@ const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
       ];
     }),
   ) as Record<string, GraphNodeConfig>),
-  // Principal lives outside DOCO_NODE_TABLE_SPECS (which is scoped to
-  // the 9 migrated nodes) but the Graph perspective DOES render
-  // Principal cards (full-graph.server.ts UNIONs a principal leg in).
-  // The detail dialog must know about it too, otherwise clicking a
-  // Principal card 404s with "Unknown node type". On `nodes`, the
-  // principal's display label is `name` and its prose body is `body_md`.
+  // Principal shares the `nodes` table but reads its label/body from
+  // dedicated columns rather than the generic prose column.
   principal: {
     nodeType: "principal",
     primaryColumn: "name",
@@ -243,8 +239,8 @@ interface DialogIncomingEdgeRow {
 
 function relatedDetailsSql(): string {
   // Post-collapse: one `nodes` table. `summary` is the first line of
-  // `prose` for the 9 prose types and of `name` for principal (prose='');
-  // `name` is the principal's display label (NULL for the 9 types, which
+  // `prose` for generic prose types and `name` for principal (prose='');
+  // `name` is the principal's display label (NULL for prose types, which
   // don't populate `nodes.name`). The type list mirrors GRAPH_NODE_TABLES
   // so isGraphNodeType and this query stay in lockstep.
   const typeList = Object.values(GRAPH_NODE_TABLES)

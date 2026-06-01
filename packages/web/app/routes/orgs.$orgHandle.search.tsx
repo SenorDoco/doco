@@ -6,7 +6,12 @@
 // filtering yet (a follow-up to the doco-level search, which carries
 // lifecycle / node-type filters).
 
-import { DOCO_NODE_TABLE_SPECS, bufferToEmbedding, cosineSimilarity, withClient } from "@doco/db";
+import {
+  DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS,
+  bufferToEmbedding,
+  cosineSimilarity,
+  withClient,
+} from "@doco/db";
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
@@ -34,7 +39,7 @@ interface Hit {
   vector_score: number;
 }
 
-const TYPE_SPECS = DOCO_NODE_TABLE_SPECS;
+const TYPE_SPECS = DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS;
 
 async function getEmbeddingsForDocos(
   c: PoolClient,
@@ -62,8 +67,8 @@ async function hydrateHits(
   if (ids.length === 0) return [];
   const hits: Hit[] = [];
   for (const spec of TYPE_SPECS) {
-    // Post-collapse: every entry in DOCO_NODE_TABLE_SPECS is one of the
-    // 9 prose node types, all living in `nodes` with prose in the shared
+    // Post-collapse: every generic capture node type lives in `nodes` with
+    // prose in the shared
     // `prose` column. Scope by node_type.
     const rows = (
       await c.query<{

@@ -44,7 +44,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { dir: oldDir, handle, meta } = await loadDocoRouteForAdmin(request, params);
+  const { handle, meta } = await loadDocoRouteForAdmin(request, params);
 
   if (request.method !== "POST" && request.method !== "PATCH") {
     return Response.json({ error: "Use POST or PATCH." }, { status: 405 });
@@ -81,7 +81,7 @@ export async function action({
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
   }
-  await reindex(oldDir, meta.docoId);
+  await reindex(meta.docoId);
 
   const row = await getDocoByHandle(finalHandle);
   return Response.json(

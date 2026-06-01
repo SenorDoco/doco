@@ -7,6 +7,7 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import type { EntityRecord } from "@doco/db";
 import {
+  DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS,
   DOCO_NODE_TABLE_SPECS,
   getEntity,
   getUserById,
@@ -1852,7 +1853,7 @@ async function readSlackDocoApiAuthoringContract(
     ok: true,
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
-    entity_types: DOCO_NODE_TABLE_SPECS.map((spec) => ({
+    entity_types: DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => ({
       entity_type: spec.entityType,
       // Public plural collection name + endpoint (decisions, …, references).
       // Derived from the node type now that `spec.table` is uniformly "nodes".
@@ -1884,7 +1885,7 @@ function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> 
 
 function slackApiEntityType(type: string): string | null {
   const normalized = type.toLowerCase();
-  for (const spec of DOCO_NODE_TABLE_SPECS) {
+  for (const spec of DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS) {
     const plural = `${spec.entityType}s`;
     if (normalized === plural) return spec.entityType;
   }
@@ -1893,7 +1894,7 @@ function slackApiEntityType(type: string): string | null {
 
 function slackSupportedApiTypes(): string[] {
   return [
-    ...DOCO_NODE_TABLE_SPECS.map((spec) => `${spec.entityType}s`),
+    ...DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => `${spec.entityType}s`),
     "principals",
     "policies",
     "settings",
@@ -2101,11 +2102,13 @@ function latestHumanSlackQuestion(recentMessages: SlackRecentMessage[]): string 
 }
 
 function slackOverviewUnionSql(): string {
-  // Post-collapse: one `nodes` query over the 9 prose node types
-  // (DOCO_NODE_TABLE_SPECS excludes principals). `summary` is the first
+  // Post-collapse: one `nodes` query over the generic prose node types.
+  // `summary` is the first
   // line of `prose`; `body` is the full `prose`. The outer query scopes
   // by doco via the scoped_docos join, so no doco filter here.
-  const typeList = DOCO_NODE_TABLE_SPECS.map((spec) => sqlString(spec.entityType)).join(", ");
+  const typeList = DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) =>
+    sqlString(spec.entityType),
+  ).join(", ");
   return `SELECT id AS entity_id,
                  doco_id,
                  node_type,

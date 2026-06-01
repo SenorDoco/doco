@@ -1,6 +1,7 @@
 // Shared filter logic for /search.json and /search HTML page. Both
 // surfaces accept the same `lifecycle` / `entity_type` filters applied
 // BEFORE the cosine top-N slice.
+import { NODE_TYPES } from "@doco/shared";
 import type { PoolClient } from "pg";
 
 /**
@@ -73,64 +74,8 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
   return out;
 }
 
-/**
- * Doco-scoped node tables (PG plural names). Each carries a
- * `lifecycle` column directly and a typed `doco_id` column.
- *
- * Policies (`guidance_policies`, `node_authoring_policies`)
- * are not nodes — they are Doco-level metadata with their own
- * surface (/<handle>/policies and /<handle>/api/policies.json)
- * and are intentionally absent here. Anything iterating "nodes of
- * a Doco" must use this list, never a list that includes policy
- * tables.
- */
-interface DocoNodeTableFilterSpec {
-  table: string;
-  entityType: string;
-  docoWhereSql: string;
-}
-
-const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE: DocoNodeTableFilterSpec[] = [
-  { table: "intents", entityType: "intent", docoWhereSql: "doco_id = $1" },
-  { table: "ideas", entityType: "idea", docoWhereSql: "doco_id = $1" },
-  { table: "rules", entityType: "rule", docoWhereSql: "doco_id = $1" },
-  { table: "decisions", entityType: "decision", docoWhereSql: "doco_id = $1" },
-  { table: "actions", entityType: "action", docoWhereSql: "doco_id = $1" },
-  { table: "logs", entityType: "log", docoWhereSql: "doco_id = $1" },
-  { table: "evals", entityType: "eval", docoWhereSql: "doco_id = $1" },
-  { table: "reference_entities", entityType: "reference", docoWhereSql: "doco_id = $1" },
-  { table: "states", entityType: "state", docoWhereSql: "doco_id = $1" },
-  { table: "principals", entityType: "principal", docoWhereSql: "doco_id = $1" },
-];
-
-/**
- * Map from external entity_type (singular) → PG table (plural).
- * Policies (`guidance_policy`, `node_authoring_policy`) are
- * not nodes and are intentionally omitted — they are reachable
- * only via /<handle>/api/policies.json and the policies
- * surface.
- */
-const NODE_TYPE_TO_TABLE: Record<string, DocoNodeTableFilterSpec | null> = {
-  intent: { table: "intents", entityType: "intent", docoWhereSql: "doco_id = $1" },
-  idea: { table: "ideas", entityType: "idea", docoWhereSql: "doco_id = $1" },
-  rule: { table: "rules", entityType: "rule", docoWhereSql: "doco_id = $1" },
-  decision: { table: "decisions", entityType: "decision", docoWhereSql: "doco_id = $1" },
-  action: { table: "actions", entityType: "action", docoWhereSql: "doco_id = $1" },
-  log: { table: "logs", entityType: "log", docoWhereSql: "doco_id = $1" },
-  eval: { table: "evals", entityType: "eval", docoWhereSql: "doco_id = $1" },
-  reference: {
-    table: "reference_entities",
-    entityType: "reference",
-    docoWhereSql: "doco_id = $1",
-  },
-  state: { table: "states", entityType: "state", docoWhereSql: "doco_id = $1" },
-  principal: {
-    table: "principals",
-    entityType: "principal",
-    docoWhereSql: "doco_id = $1",
-  },
-  organization: null,
-};
+const SEARCHABLE_NODE_TYPES = [...NODE_TYPES];
+const SEARCHABLE_NODE_TYPE_SET = new Set<string>(SEARCHABLE_NODE_TYPES);
 
 export async function resolveFilteredCandidates(
   c: PoolClient,
@@ -144,14 +89,14 @@ export async function resolveFilteredCandidates(
   let lifecycleIds: Set<string> | null = null;
   if (filters.lifecycle !== null) {
     lifecycleIds = new Set();
-    // Notes only — policies are not nodes and never participate in
+    // Nodes only — policies are not nodes and never participate in
     // node search results, even when their lifecycle matches.
-    for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
+    for (const entityType of SEARCHABLE_NODE_TYPES) {
       const r = await c.query<{ id: string }>(
         `SELECT id FROM nodes
-          WHERE node_type = $3 AND ${spec.docoWhereSql}
+          WHERE node_type = $3 AND doco_id = $1
             AND COALESCE(lifecycle, 'asserted') = ANY($2::text[])`,
-        [docoId, filters.lifecycle, spec.entityType],
+        [docoId, filters.lifecycle, entityType],
       );
       for (const row of r.rows) lifecycleIds.add(row.id);
     }
@@ -161,11 +106,10 @@ export async function resolveFilteredCandidates(
   if (filters.entityType !== null) {
     entityTypeIds = new Set();
     for (const nt of filters.entityType) {
-      const spec = NODE_TYPE_TO_TABLE[nt];
-      if (!spec) continue;
+      if (!SEARCHABLE_NODE_TYPE_SET.has(nt)) continue;
       const r = await c.query<{ id: string }>(
-        `SELECT id FROM nodes WHERE node_type = $2 AND ${spec.docoWhereSql}`,
-        [docoId, spec.entityType],
+        "SELECT id FROM nodes WHERE node_type = $2 AND doco_id = $1",
+        [docoId, nt],
       );
       for (const row of r.rows) entityTypeIds.add(row.id);
     }
@@ -200,7 +144,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   // surface and counting them as nodes makes a Doco with only a
   // template policies misread as having captured work. Principals
   // are included because role-personas are first-class nodes.
-  const nodeTypes = PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE.map((spec) => spec.entityType);
+  const nodeTypes = SEARCHABLE_NODE_TYPES;
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
   const lifecycleRows = (
     await c.query<{

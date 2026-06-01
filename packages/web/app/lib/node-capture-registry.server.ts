@@ -1,3 +1,4 @@
+import { NODE_CATALOG } from "@doco/shared";
 import { makeCaptureRoute } from "~/lib/api-capture-factory.server";
 import {
   type ActionDraft,
@@ -47,11 +48,11 @@ export interface RegistryEntry {
 }
 
 function entry<TDraft>(
-  type: string,
   entityType: string,
   captureFn: Parameters<typeof makeCaptureRoute<TDraft>>[0]["captureFn"],
   fillFromAuth?: (draft: TDraft, me: MeLike, docoId: string) => Promise<void> | void,
 ): RegistryEntry {
+  const type = NODE_CATALOG[entityType as keyof typeof NODE_CATALOG]?.segment ?? `${entityType}s`;
   return {
     type,
     entityType,
@@ -76,15 +77,15 @@ function entry<TDraft>(
 // Nodes only — policies use /<handle>/api/policies.json so they
 // stay separate from domain captures.
 export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
-  decisions: entry<DecisionDraft>("decisions", "decision", captureDecision),
-  intents: entry<IntentDraft>("intents", "intent", captureIntent),
-  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea),
-  actions: entry<ActionDraft>("actions", "action", captureAction),
-  references: entry<ReferenceDraft>("references", "reference", captureReference),
-  rules: entry<RuleDraft>("rules", "rule", captureRule),
-  logs: entry<LogDraft>("logs", "log", captureLog),
-  evals: entry<EvalDraft>("evals", "eval", captureEval),
-  states: entry<StateDraft>("states", "state", captureState),
+  decisions: entry<DecisionDraft>("decision", captureDecision),
+  intents: entry<IntentDraft>("intent", captureIntent),
+  ideas: entry<IdeaDraft>("idea", captureIdea),
+  actions: entry<ActionDraft>("action", captureAction),
+  references: entry<ReferenceDraft>("reference", captureReference),
+  rules: entry<RuleDraft>("rule", captureRule),
+  logs: entry<LogDraft>("log", captureLog),
+  evals: entry<EvalDraft>("eval", captureEval),
+  states: entry<StateDraft>("state", captureState),
 };
 
 export const CAPTURE_REGISTRY_BY_ENTITY_TYPE: Record<string, RegistryEntry> = Object.fromEntries(

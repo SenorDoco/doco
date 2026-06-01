@@ -1,4 +1,4 @@
-import { getEntity, roleAtLeast, upsertEntity, withClient } from "@doco/db";
+import { getEntity, upsertEntity, withClient } from "@doco/db";
 import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
@@ -8,7 +8,7 @@ import {
   reindexAndScheduleAttach,
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
 
 // Principals keep a small positive patch allowlist: name, body_md, lifecycle.
 // `name` is editable — renames are recorded in the audit log, and other nodes
@@ -122,17 +122,18 @@ export async function action({
   if (!ct.includes("application/json")) {
     return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
   }
-  const { me, meta } = await loadDocoRouteForRead(request, params, "writer");
+  const { me, meta } = await loadDocoRouteForRead(request, params, "reader");
   if (!me) {
     return Response.json({ error: "Authentication required to edit." }, { status: 401 });
   }
-  const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!roleAtLeast(docoRole, "writer")) {
-    return Response.json(
-      { error: "Forbidden: write access required to edit a principal." },
-      { status: 403 },
-    );
-  }
+  const denied = await requireDocoTypeWriteForRequest(
+    request,
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me.id,
+    "principal",
+    "edit a principal",
+  );
+  if (denied) return denied;
 
   let rawPatch: Record<string, unknown>;
   try {

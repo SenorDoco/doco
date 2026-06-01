@@ -71,7 +71,7 @@ function approvalRowsSql(): string {
   // filters to drafting). The display name is the first line of `prose`
   // for the 9 prose types; principals (prose='') fall back to `name`;
   // `id` is the final fallback.
-  const types = [...DOCO_NODE_TABLE_SPECS.map((entry) => entry.entityType), "principal"];
+  const types = DOCO_NODE_TABLE_SPECS.map((entry) => entry.entityType);
   const typeList = types.map((t) => `'${t}'`).join(", ");
   return `SELECT t.id,
                  t.node_type AS entity_type,

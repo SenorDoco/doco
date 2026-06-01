@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDocoLevelRole: vi.fn(),
   loadDocoRouteForRead: vi.fn(),
+  requireDocoTypeWriteForRequest: vi.fn(),
   query: vi.fn(),
   upsertEntity: vi.fn(),
   withTransaction: vi.fn(),
@@ -29,8 +29,8 @@ vi.mock("@doco/db", () => {
 });
 
 vi.mock("~/lib/doco-access.server", () => ({
-  getDocoLevelRole: mocks.getDocoLevelRole,
   loadDocoRouteForRead: mocks.loadDocoRouteForRead,
+  requireDocoTypeWriteForRequest: mocks.requireDocoTypeWriteForRequest,
 }));
 
 vi.mock("~/lib/authoring-runner.server", () => ({
@@ -77,7 +77,7 @@ describe("principal API", () => {
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
-    mocks.getDocoLevelRole.mockResolvedValue("writer");
+    mocks.requireDocoTypeWriteForRequest.mockResolvedValue(null);
     mocks.runAuthoringPolicies.mockResolvedValue({
       evaluated: 0,
       passed: 0,
@@ -102,11 +102,14 @@ describe("principal API", () => {
     expect(mocks.loadDocoRouteForRead).toHaveBeenCalledWith(
       expect.any(Request),
       { docoHandle: "acme" },
-      "writer",
+      "reader",
     );
-    expect(mocks.getDocoLevelRole).toHaveBeenCalledWith(
+    expect(mocks.requireDocoTypeWriteForRequest).toHaveBeenCalledWith(
+      expect.any(Request),
       { ownerId: "organization_acme", docoId: "doco_acme" },
       "user_author",
+      "principal",
+      "create a principal",
     );
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -232,8 +235,13 @@ describe("principal API", () => {
     expect(persistedData).not.toHaveProperty("summary");
   });
 
-  it("rejects users below author even if they can read the Doco", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("reader");
+  it("rejects callers without principal write access even if they can read the Doco", async () => {
+    mocks.requireDocoTypeWriteForRequest.mockResolvedValue(
+      Response.json(
+        { error: "Forbidden: write access on 'principal' required to create a principal." },
+        { status: 403 },
+      ),
+    );
 
     const response = await action({
       request: principalRequest({ name: "visitor" }),
@@ -243,7 +251,7 @@ describe("principal API", () => {
     expect(response.status).toBe(403);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      error: "Forbidden: write access required to create a principal.",
+      error: "Forbidden: write access on 'principal' required to create a principal.",
     });
   });
 

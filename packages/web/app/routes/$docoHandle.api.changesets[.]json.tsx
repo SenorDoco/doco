@@ -4,11 +4,11 @@
 // nodes and add typed relations in one request; perspective-specific
 // contracts then interpret those relations for rendering.
 
-import { getEntity, roleAtLeast, withClient } from "@doco/db";
+import { getEntity, withClient } from "@doco/db";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import type { AuthoringWriteContext, CaptureError } from "~/lib/capture.server";
-import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead, requireDocoTypeWritesForRequest } from "~/lib/doco-access.server";
 import { captureEdge, edgeExists } from "~/lib/edge-capture.server";
 import {
   PERSPECTIVE_CONTRACTS,
@@ -128,16 +128,11 @@ export async function action({
   const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
     request,
     params,
-    "writer",
+    "reader",
   );
   if (!me) {
     return Response.json({ error: "Authentication required to write." }, { status: 401 });
   }
-  const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!docoRole || !roleAtLeast(docoRole, "writer")) {
-    return Response.json({ error: "Forbidden: write access required to write." }, { status: 403 });
-  }
-
   let body: ChangesetBody;
   try {
     body = (await request.json()) as ChangesetBody;
@@ -150,6 +145,19 @@ export async function action({
   if (body.operations.length > 50) {
     return Response.json({ error: "changesets accept at most 50 operations." }, { status: 400 });
   }
+
+  const writeTypes = collectChangesetWriteTypes(body.operations);
+  if ("error" in writeTypes) {
+    return Response.json({ error: writeTypes.error }, { status: 400 });
+  }
+  const denied = await requireDocoTypeWritesForRequest(
+    request,
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me.id,
+    writeTypes.types,
+    "apply this changeset",
+  );
+  if (denied) return denied;
 
   const aliases = new Map<string, string>();
   const results: OperationResult[] = [];
@@ -202,6 +210,48 @@ export async function action({
     footer_lines: footerLines,
     ...(integrity ? { integrity } : {}),
   });
+}
+
+function collectChangesetWriteTypes(
+  operations: unknown[],
+): { types: string[] } | { error: string } {
+  const types = new Set<string>();
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i] as Operation;
+    if (!op || typeof op !== "object" || !("op" in op)) continue;
+    if (op.op === "create") {
+      const entityType = normalizeEntityType(op.entity_type);
+      if (!entityType) return { error: `Unsupported create entity_type "${op.entity_type}".` };
+      types.add(entityType);
+      continue;
+    }
+    if (op.op === "append") {
+      const entityType = normalizeEntityType(op.entity_type);
+      if (!entityType) return { error: `Unsupported append entity_type "${op.entity_type}".` };
+      types.add(entityType);
+      const spec = relationKind(op.relation_kind);
+      if (!spec) return { error: `Unknown relation_kind "${op.relation_kind}".` };
+      types.add(spec.kind);
+      continue;
+    }
+    if (op.op === "relate") {
+      const kind = op.relation_kind ?? op.kind ?? "";
+      const spec = relationKind(kind);
+      if (!spec) return { error: `Unknown relation_kind "${kind}".` };
+      types.add(spec.kind);
+      continue;
+    }
+    if (op.op === "relate_many") {
+      if (!Array.isArray(op.relations)) continue;
+      for (const relation of op.relations) {
+        const kind = relation.relation_kind ?? relation.kind ?? "";
+        const spec = relationKind(kind);
+        if (!spec) return { error: `Unknown relation_kind "${kind}".` };
+        types.add(spec.kind);
+      }
+    }
+  }
+  return { types: [...types] };
 }
 
 async function applyOperation(

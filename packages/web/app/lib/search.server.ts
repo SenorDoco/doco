@@ -1,5 +1,6 @@
 import { cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
 import { globalPageRank } from "@doco/index";
+import { NODE_TYPES } from "@doco/shared";
 import type { PoolClient } from "pg";
 import { type SearchFilters, resolveFilteredCandidates } from "~/lib/search-filters.server";
 
@@ -54,15 +55,7 @@ function entitySpec(entityType: string): SearchTypeSpec {
 // and do not participate in node search/ranking. To fetch policies,
 // hit /<handle>/api/policies.json or read the bootstrap payload.
 export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
-  entitySpec("decision"),
-  entitySpec("intent"),
-  entitySpec("rule"),
-  entitySpec("action"),
-  entitySpec("log"),
-  entitySpec("reference"),
-  entitySpec("eval"),
-  entitySpec("idea"),
-  entitySpec("state"),
+  ...NODE_TYPES.filter((type) => type !== "principal").map((type) => entitySpec(type)),
   {
     table: "nodes",
     nodeType: "principal",
@@ -138,13 +131,6 @@ export async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promi
     ).rows;
     for (const row of rows) ids.push(row.id);
   }
-  const principalRows = (
-    await c.query<{ id: string }>(
-      "SELECT id FROM nodes WHERE node_type = 'principal' AND doco_id = $1",
-      [docoId],
-    )
-  ).rows;
-  for (const row of principalRows) ids.push(row.id);
   return ids;
 }
 

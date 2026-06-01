@@ -1,4 +1,4 @@
-import { getPublicBaseUrl } from "@doco/shared";
+import { getPublicBaseUrl, renderCaptureBodyFields, renderCapturePatchFields } from "@doco/shared";
 import { normalizeDocoParams } from "~/lib/doco-access.server";
 
 /**
@@ -53,19 +53,9 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  decision           required   full prose of the decision — narrative,
-                                  chosen path, why, multi-line ok.
-  question           required   the question the Decision answers
-  chosen             required   chosen resolution (multi-line ok)
-  alternatives       optional   [{ "name": "...", "rejected_because": "..." }, ...] — the
-                                  options weighed and rejected. Omit it when there are none
-                                  (e.g. a glossary term entry with no alternate names); do
-                                  not invent filler to satisfy a non-existent requirement.
+${renderCaptureBodyFields("decision")}
   relationships      use changesets/edges for supports, attributed_to,
                                   derived_from, replaces, and BPMN flows_to
-  lifecycle          optional   one of "drafting" | "asserted" | "retired"; default "asserted"
-  deprecated         optional   boolean warning label; lifecycle is unchanged
-  outcome            optional   "succeeded" | "failed"
 
   Note: Projects that want ADR-style identifiers can mention them in
   the decision text. The framework provides no native ADR field.
@@ -104,8 +94,7 @@ UPDATE AN EXISTING DECISION
   Content-Type: application/json
 
   Body fields are all optional (only the keys you include are touched):
-    decision / question / chosen / alternatives / lifecycle
-    deprecated / outcome
+${renderCapturePatchFields("decision")}
     Use changesets/edges for relationship changes.
 
   Response is the same shape as the capture endpoint (ok, id, path,
@@ -129,12 +118,7 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  idea                required   full prose: the idea, context, tradeoffs
-  promoted_to         optional   entity id once the idea is picked up
-  rejection_reason    optional   why the idea was rejected or parked
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "drafting"
-  deprecated          optional   boolean warning label; lifecycle is unchanged
-  outcome             optional   "succeeded" | "failed"
+${renderCaptureBodyFields("idea")}
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -149,8 +133,7 @@ UPDATE AN EXISTING IDEA
   Content-Type: application/json
 
   Body fields are all optional:
-    idea / lifecycle / deprecated / outcome
-    proposer_id / promoted_to / rejection_reason
+${renderCapturePatchFields("idea")}
 `,
 
   intents: (baseUrl, handle) => `# Doco — Capture an Intent (single call)
@@ -167,11 +150,8 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  intent              required   full prose: what someone wants, why, success criteria.
+${renderCaptureBodyFields("intent")}
   relationships      use changesets/edges for attributed_to and has_parent
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted".
-  deprecated          optional   boolean warning label; lifecycle is unchanged.
-  outcome             optional   "succeeded" | "failed".
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -219,15 +199,9 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  action              required   full prose: past-tense verb phrase describing what was done + context
-  verb                required   short verb such as "refactor", "migrate", "deploy"
+${renderCaptureBodyFields("action")}
   relationships      use changesets/edges for supports, flows_to,
                                   constrained_by, attributed_to, and derived_from
-  inputs              optional   verb-specific input object or value
-  outputs             optional   verb-specific output object or value
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "retired"
-  deprecated          optional   boolean warning label; lifecycle is unchanged
-  outcome             optional   "succeeded" | "failed"; default "succeeded"
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -252,9 +226,9 @@ UPDATE AN EXISTING ACTION
   PATCH ${baseUrl}/${handle}/api/actions/<id>.json
   Content-Type: application/json
 
-  Patchable fields include action, lifecycle, deprecated, outcome, verb,
-  outputs, inputs, and performed_at. Use changesets/edges for relationship
-  changes.
+  Body fields are all optional:
+${renderCapturePatchFields("action")}
+  Use changesets/edges for relationship changes.
 `,
 
   logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
@@ -270,16 +244,9 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  log                 required   full prose: what happened, when, in what state
-  verb                required   past-tense verb such as "pushed", "deployed", "verified"
-  happened_at         required   ISO 8601 timestamp
-  outputs             required   non-empty object with concrete results
+${renderCaptureBodyFields("log")}
   relationships      use changesets/edges for derived_from, supports,
                                   flows_to, and attributed_to
-  inputs              optional   event input object or value
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "retired"
-  deprecated          optional   boolean warning label; lifecycle is unchanged
-  outcome             optional   "succeeded" | "failed"; default "succeeded"
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -305,9 +272,8 @@ UPDATE AN EXISTING LOG
   PATCH ${baseUrl}/${handle}/api/logs/<id>.json
   Content-Type: application/json
 
-  Body fields are all optional; only the keys you include change. Every
-  field except system identity/audit columns is patchable — log, verb,
-  happened_at, outputs, inputs, lifecycle, deprecated, and outcome.
+  Body fields are all optional:
+${renderCapturePatchFields("log")}
   To preserve a clean record of what was first observed, capture a
   superseding Log and link it with a replaces edge.
 `,
@@ -323,15 +289,9 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  rule                required   full prose: the rule statement, rationale, scope, exceptions
-  predicate           required   machine-checkable or prose predicate
-  enforced_by         optional   "runtime" | "review" | "manual"
-  severity            optional   "hard" | "soft"
+${renderCaptureBodyFields("rule")}
   relationships      use changesets/edges for supports, derived_from,
                                   attributed_to, and constrained_by
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
-  deprecated          optional   boolean warning label; lifecycle is unchanged
-  outcome             optional   "succeeded" | "failed"
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -357,10 +317,9 @@ UPDATE AN EXISTING RULE
   PATCH ${baseUrl}/${handle}/api/rules/<id>.json
   Content-Type: application/json
 
-  Body fields are all optional. Patchable fields include rule,
-  lifecycle, deprecated, outcome, kind, predicate, modality, severity,
-  phase, expected, on_violation, and applies_to. Use changesets/edges for
-  relationship changes.
+  Body fields are all optional:
+${renderCapturePatchFields("rule")}
+  Use changesets/edges for relationship changes.
 `,
 
   evals: (baseUrl, handle) => `# Doco — Capture an Eval (single call)
@@ -375,17 +334,8 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  eval                required   full prose: what's being checked, plus rationale
-  criterion           required   { "kind": "exact" | "shape" | "llm-judge", "spec": "..." }
-  kind                optional   "unit" | "integration" | "eval" | "process" | "doc-consistency"
-  expected_status     optional   "pass" | "fail"; default "pass"
-  how_to_run          optional   reproduction steps
-  input               optional   input value, any JSON shape
-  expected            optional   expected outcome, any JSON shape
+${renderCaptureBodyFields("eval")}
   relationships      use changesets/edges for supports and attributed_to
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
-  deprecated          optional   boolean warning label; lifecycle is unchanged
-  outcome             optional   "succeeded" | "failed"
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -412,10 +362,9 @@ UPDATE AN EXISTING EVAL
   PATCH ${baseUrl}/${handle}/api/evals/<id>.json
   Content-Type: application/json
 
-  Body fields are all optional. Patchable fields include eval,
-  lifecycle, deprecated, outcome, criterion, kind, expected_status,
-  how_to_run, input, and expected. Use changesets/edges for relationship
-  changes.
+  Body fields are all optional:
+${renderCapturePatchFields("eval")}
+  Use changesets/edges for relationship changes.
 `,
 
   references: (baseUrl, handle) => `# Doco — Capture a Reference (single call)
@@ -430,14 +379,8 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  reference           required   full prose: human-readable label for the external thing
-  ref_type            required   "file" | "url" | "ticket" | "commit" | "document" | "other"
-  locator             required   path, URL, ticket id, commit sha, or other locator
-  content_hash        optional   content hash when available
+${renderCaptureBodyFields("reference")}
   relationships      use changesets/edges for supports and replaces
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
-  deprecated          optional   boolean warning label; lifecycle is unchanged
-  outcome             optional   "succeeded" | "failed"
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -462,9 +405,8 @@ UPDATE AN EXISTING REFERENCE
   PATCH ${baseUrl}/${handle}/api/references/<id>.json
   Content-Type: application/json
 
-  Body fields are all optional; only the keys you include change. Every
-  field except system identity/audit columns is patchable — reference,
-  ref_type, locator, content_hash, lifecycle, deprecated, and outcome.
+  Body fields are all optional:
+${renderCapturePatchFields("reference")}
   To preserve a record of what
   was originally cited, you can instead capture a superseding Reference and
   link it with a replaces edge.
@@ -482,13 +424,8 @@ ENDPOINT
 ${RELATION_API_NOTE}
 
 BODY (JSON)
-  state               required   full prose: state description, invariants explained
-  kind                required   "initial" | "intermediate" | "terminal"
-  invariants          optional   ["condition true while in this state", ...]
+${renderCaptureBodyFields("state")}
   relationships      use changesets/edges for supports, flows_to, and replaces
-  lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
-  deprecated          optional   boolean warning label; lifecycle is unchanged
-  outcome             optional   "succeeded" | "failed"
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -513,9 +450,9 @@ UPDATE AN EXISTING STATE
   PATCH ${baseUrl}/${handle}/api/states/<id>.json
   Content-Type: application/json
 
-  Body fields are all optional. Patchable fields include state,
-  lifecycle, deprecated, outcome, kind, and invariants. Use changesets/edges
-  for relationship changes.
+  Body fields are all optional:
+${renderCapturePatchFields("state")}
+  Use changesets/edges for relationship changes.
 `,
 
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)

@@ -1,4 +1,4 @@
-import { DOCO_NODE_TABLE_SPECS, withClient } from "@doco/db";
+import { DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS, withClient } from "@doco/db";
 import { entityUrl, normalizeNodeType } from "@doco/shared";
 // Per-Doco entity list at the short URL `/<doco-handle>/<type>`.
 //
@@ -15,9 +15,9 @@ import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-// The 9 prose node types this list route serves; each is a `node_type`
+// The generic prose node types this list route serves; each is a `node_type`
 // value on the unified `nodes` table.
-const KNOWN = new Set<string>(DOCO_NODE_TABLE_SPECS.map((spec) => spec.entityType));
+const KNOWN = new Set<string>(DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => spec.entityType));
 
 export async function loader({
   params,
