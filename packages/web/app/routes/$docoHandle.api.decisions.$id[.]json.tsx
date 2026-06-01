@@ -1,8 +1,8 @@
-import { getEntity, roleAtLeast } from "@doco/db";
+import { getEntity } from "@doco/db";
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { type DecisionPatch, updateDecision } from "~/lib/capture.server";
-import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
 
 /**
  * GET /<doco-handle>/api/decisions/<id>.json — read the Decision body.
@@ -32,7 +32,7 @@ export async function action({
   const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
     request,
     params,
-    "writer",
+    "reader",
   );
   if (!me) {
     return Response.json({ error: "Authentication required to edit." }, { status: 401 });
@@ -54,10 +54,14 @@ export async function action({
   if (!existing || existing.doco_id !== meta.docoId) {
     return Response.json({ error: `decision not found: ${id}` }, { status: 404 });
   }
-  const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!roleAtLeast(docoRole, "writer")) {
-    return Response.json({ error: "Forbidden: write access required to edit." }, { status: 403 });
-  }
+  const denied = await requireDocoTypeWriteForRequest(
+    request,
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me.id,
+    "decision",
+    "edit",
+  );
+  if (denied) return denied;
   const docoHost = new URL(request.url).origin;
   const result = await updateDecision(
     dir,

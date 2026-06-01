@@ -3,7 +3,6 @@ import {
   getUserById,
   listDocoUsers,
   listEntitiesByDoco,
-  roleAtLeast,
   upsertEntity,
 } from "@doco/db";
 import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, generateUlid, makeEntityId, nowIso } from "@doco/shared";
@@ -15,7 +14,7 @@ import {
   reindexAndScheduleAttach,
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
 
 // Footer-line helper: the Principal endpoints used to emit `name (id)`
 // as plain text, which the chat surface renders as an unclickable
@@ -52,7 +51,7 @@ export async function action({
   }
   const startedAt = performance.now();
 
-  const { me, meta } = await loadDocoRouteForRead(request, params, "writer");
+  const { me, meta } = await loadDocoRouteForRead(request, params, "reader");
   if (!me) {
     return Response.json(
       { error: "Authentication required to create a principal." },
@@ -60,13 +59,14 @@ export async function action({
     );
   }
 
-  const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (!docoRole || !roleAtLeast(docoRole, "writer")) {
-    return Response.json(
-      { error: "Forbidden: write access required to create a principal." },
-      { status: 403 },
-    );
-  }
+  const denied = await requireDocoTypeWriteForRequest(
+    request,
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me.id,
+    "principal",
+    "create a principal",
+  );
+  if (denied) return denied;
 
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;

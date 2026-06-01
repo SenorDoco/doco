@@ -1,14 +1,7 @@
 // Factories for the per-type capture (POST) and update (PATCH/POST) routes.
 // Collapses ~13 near-identical handler files into one parameter set per route.
 
-import {
-  entityAsOf,
-  getEntity,
-  getVersions,
-  roleAtLeast,
-  verifyHistory,
-  withClient,
-} from "@doco/db";
+import { entityAsOf, getEntity, getVersions, verifyHistory, withClient } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
@@ -23,8 +16,8 @@ import {
 } from "~/lib/capture.server";
 import {
   type DocoRouteParams,
-  canWriteDocoTypeForRequest,
   loadDocoRouteForRead,
+  requireDocoTypeWriteForRequest,
 } from "~/lib/doco-access.server";
 import { unsupportedNodeJsonEdgeKeyError } from "~/lib/graph-authoring-contract.server";
 import { withIdempotency } from "~/lib/idempotency.server";
@@ -162,18 +155,14 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
           // (owner writes everything; a writer's grant must cover the
           // type via the wildcard or by name), AND — for bearer auth —
           // the token's per-type scope-down must allow it too.
-          const mayWrite = await canWriteDocoTypeForRequest(
+          const denied = await requireDocoTypeWriteForRequest(
             request,
             { ownerId: meta.ownerId, docoId: meta.docoId },
             me.id,
             cfg.entityType,
+            "write",
           );
-          if (!mayWrite) {
-            return Response.json(
-              { error: `Forbidden: write access on '${cfg.entityType}' required to write.` },
-              { status: 403 },
-            );
-          }
+          if (denied) return denied;
 
           stampAuthenticatedCreator(draft as object, me.id);
           if (me && cfg.fillFromAuth) {
@@ -325,18 +314,14 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (!existing || existing.doco_id !== meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      const mayWrite = await canWriteDocoTypeForRequest(
+      const denied = await requireDocoTypeWriteForRequest(
         request,
         { ownerId: meta.ownerId, docoId: meta.docoId },
         me.id,
         cfg.entityType,
+        "edit",
       );
-      if (!mayWrite) {
-        return Response.json(
-          { error: `Forbidden: write access on '${cfg.entityType}' required to edit.` },
-          { status: 403 },
-        );
-      }
+      if (denied) return denied;
 
       const authoring = await authoringContextForRequest(request);
       const start = performance.now();

@@ -60,7 +60,6 @@ export interface ReindexExtraOptions {
  * capture flow runs structural inline and embeddings in `waitUntil`.
  */
 export async function reindex(
-  docoRoot: string,
   docoId: string,
   changedEntityIds?: string[],
   extra?: ReindexExtraOptions,
@@ -73,7 +72,7 @@ export async function reindex(
     ...(extra?.skipEmbeddings ? { skipEmbeddings: true } : {}),
     ...(extra?.skipStructural ? { skipStructural: true } : {}),
   };
-  const report = await reindexBare(docoRoot, opts);
+  const report = await reindexBare(opts);
   // Bubble the load cost into the active capture-telemetry context so the
   // per-capture row records how much time the reindex spent reading rows
   // vs. doing actual work. No-op outside capture (CLI reindex, etc.).
@@ -90,9 +89,8 @@ export async function reindex(
  * No-op when no embedding provider is configured.
  */
 export function reindexEmbeddingsOnly(
-  docoRoot: string,
   docoId: string,
   changedEntityIds?: string[],
 ): Promise<BuildReport> {
-  return reindex(docoRoot, docoId, changedEntityIds, { skipStructural: true });
+  return reindex(docoId, changedEntityIds, { skipStructural: true });
 }

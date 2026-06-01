@@ -40,7 +40,7 @@ import type {
   Usage,
 } from "@anthropic-ai/sdk/resources/messages";
 import { listOrganizationsForUser, withClient } from "@doco/db";
-import { generateUlid } from "@doco/shared";
+import { generateUlid, renderCaptureCheatsheet } from "@doco/shared";
 import {
   SENOR_DOCO_DEFAULT_MAX_TOKENS,
   getSenorDocoModel,
@@ -1263,15 +1263,7 @@ label shown in lists; the rest is the body. POSTs that send the old
 required prose key is now \`intent\` / \`decision\` / \`action\` /
 etc., not \`summary\`.
 
-- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], lifecycle?, deprecated?, outcome?("succeeded"|"failed") }
-- Intent:    { intent*, lifecycle?, deprecated?, outcome? }
-- Action:    { action*, verb*, inputs?, outputs?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), inputs?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Rule:      { rule*, predicate*, enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), lifecycle?, deprecated?, outcome? }
-- Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), lifecycle?, deprecated?, outcome? }
-- Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash? }
-- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[] }
-- Idea:      { idea*, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
+${renderCaptureCheatsheet()}
 - Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?.
 - Policy (Node-authoring, owner-only): same endpoint with policy_kind*("node_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 

@@ -1,4 +1,4 @@
-import { BLOCKED_NODE_JSON_EDGE_FIELD_SET } from "@doco/shared";
+import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, RELATION_CATALOG } from "@doco/shared";
 import type { AttachedPerspective } from "~/lib/perspectives.server";
 
 export type RelationOwner = "from" | "to";
@@ -15,79 +15,21 @@ export interface RelationKindSpec {
   description: string;
 }
 
-export const RELATION_KINDS: Record<string, RelationKindSpec> = {
-  flows_to: {
-    kind: "flows_to",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    acceptsProps: ["label", "condition", "kind"],
-    description: "Forward ordered flow between process nodes.",
-  },
-  supports: {
-    kind: "supports",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    role_examples: ["serves", "enacts", "tests", "implemented_by"],
-    description:
-      "Broad enabling relation, optionally role-tagged as serves, enacts, tests, or implemented_by.",
-  },
-  constrained_by: {
-    kind: "constrained_by",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    role_examples: ["gated_by", "consults"],
-    description: "Node is constrained by Rules, optionally role-tagged as gated_by or consults.",
-  },
-  attributed_to: {
-    kind: "attributed_to",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    role_examples: ["performed_by", "owned_by", "decided_by"],
-    description: "Principal attribution for performers, owners, stakeholders, and decision makers.",
-  },
-  has_parent: {
-    kind: "has_parent",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    role_examples: ["parent_intent", "reports_to", "dotted_reports_to"],
-    description: "Hierarchy relation for Intent nesting and Principal reporting lines.",
-  },
-  derived_from: {
-    kind: "derived_from",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    description: "Provenance relation for source material and templates.",
-  },
-  replaces: {
-    kind: "replaces",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Replacement or supersession relation.",
-  },
-  relates_to: {
-    kind: "relates_to",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    description:
-      "Associative 'see also' link between two peer nodes (the SKOS `related` analogue). No hierarchy or direction implied. Glossaries use it to connect related, confusable, parent/child, or homograph terms.",
-  },
-};
+export const RELATION_KINDS: Record<string, RelationKindSpec> = Object.fromEntries(
+  Object.values(RELATION_CATALOG).map((entry) => [
+    entry.kind,
+    {
+      kind: entry.kind,
+      storage: "edge",
+      owner: entry.owner,
+      value: entry.value,
+      cardinality: entry.cardinality,
+      ...(entry.acceptsProps ? { acceptsProps: [...entry.acceptsProps] } : {}),
+      ...(entry.roleExamples ? { role_examples: [...entry.roleExamples] } : {}),
+      description: entry.description,
+    },
+  ]),
+);
 
 export interface PerspectiveAuthoringContract {
   perspective: string;

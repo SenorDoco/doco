@@ -84,9 +84,9 @@ describe("reindex", () => {
   });
 
   it("passes changed entity ids through to structural reindex", async () => {
-    await reindex("/tmp/doco", "doco_01", ["decision_01"], { skipEmbeddings: true });
+    await reindex("doco_01", ["decision_01"], { skipEmbeddings: true });
 
-    expect(mocks.reindexBare).toHaveBeenCalledWith("/tmp/doco", {
+    expect(mocks.reindexBare).toHaveBeenCalledWith({
       docoId: "doco_01",
       changedEntityIds: ["decision_01"],
       skipEmbeddings: true,
@@ -94,9 +94,9 @@ describe("reindex", () => {
   });
 
   it("can run the embeddings-only phase", async () => {
-    await reindex("/tmp/doco", "doco_01", ["decision_01"], { skipStructural: true });
+    await reindex("doco_01", ["decision_01"], { skipStructural: true });
 
-    expect(mocks.reindexBare).toHaveBeenCalledWith("/tmp/doco", {
+    expect(mocks.reindexBare).toHaveBeenCalledWith({
       docoId: "doco_01",
       changedEntityIds: ["decision_01"],
       skipStructural: true,

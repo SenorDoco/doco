@@ -304,7 +304,7 @@ export async function reindexAndScheduleAttach(
 ): Promise<void> {
   const start = performance.now();
   try {
-    await reindex(docoDir, docoId, [changedEntityId], { skipEmbeddings: true });
+    await reindex(docoId, [changedEntityId], { skipEmbeddings: true });
   } catch (err) {
     console.error(`reindex failed for ${docoDir}:`, err);
   } finally {
@@ -313,7 +313,7 @@ export async function reindexAndScheduleAttach(
   waitUntil(
     (async () => {
       try {
-        await reindexEmbeddingsOnly(docoDir, docoId, [changedEntityId]);
+        await reindexEmbeddingsOnly(docoId, [changedEntityId]);
       } catch (err) {
         console.error(`reindex embeddings failed for ${docoDir}:`, err);
       }

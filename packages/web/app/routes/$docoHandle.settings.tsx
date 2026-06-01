@@ -86,7 +86,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { dir: oldDir, handle, me, meta } = await loadDocoRouteForAdmin(request, params);
+  const { handle, me, meta } = await loadDocoRouteForAdmin(request, params);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
@@ -131,7 +131,7 @@ export async function action({
     }
     try {
       await updateDocoMeta({ handle, visibility });
-      await reindex(oldDir, meta.docoId);
+      await reindex(meta.docoId);
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -164,7 +164,7 @@ export async function action({
 
     try {
       await renameDocoHandle({ oldHandle: handle, newHandle });
-      await reindex(oldDir, meta.docoId);
+      await reindex(meta.docoId);
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -182,7 +182,7 @@ export async function action({
     }
     try {
       await transferDocoToOrganization({ docoId: meta.docoId, targetOrgId });
-      await reindex(oldDir, meta.docoId);
+      await reindex(meta.docoId);
     } catch (e) {
       return { error: `Failed to change organization: ${(e as Error).message}` };
     }
