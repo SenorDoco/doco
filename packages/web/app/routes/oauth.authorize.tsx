@@ -22,6 +22,7 @@ import { SiteHeader } from "~/components/site-header";
 import {
   type ApprovalDocoOption,
   type ApprovalOrgOption,
+  approvalTargetNotOwnedMessage,
   resolveApprovalGrantView,
 } from "~/lib/approval-grants";
 import {
@@ -50,7 +51,9 @@ interface LoaderData {
   params: AuthorizeParams;
   docos: ApprovalDocoOption[];
   orgs: ApprovalOrgOption[];
-  targeted_message: string | null;
+  // When set, the client requested a Doco the user doesn't own — render
+  // only the terminal not-owned message instead of the picker.
+  blockedTargetHandle: string | null;
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
 
@@ -74,20 +77,29 @@ export async function loader({ request }: { request: Request }) {
 
   // The approve picker offers everything the signed-in user can grant —
   // owner-tier orgs and Docos (the action re-checks owner on submit as a
-  // tamper defense). `target_doco_handle` never narrows this matrix; it
-  // only drives the not-owned notice. Same builder + resolver as
-  // /device, so both screens show the identical matrix.
+  // tamper defense). Targeting a Doco the user owns (or targeting
+  // nothing) yields the identical matrix as /device; targeting a Doco
+  // they don't own blocks with a terminal message.
   const { docos, orgs } = await loadApprovalGrantOptions(principal.id);
   const view = resolveApprovalGrantView(docos, orgs, params.target_doco_handle);
 
-  const data: LoaderData = {
-    client_name: client.client_name ?? client.client_id.slice(0, 20),
-    params,
-    docos: view.docos,
-    orgs: view.orgs,
-    targeted_message: view.targetedMessage,
-    me: principal,
-  };
+  const data: LoaderData = view.blocked
+    ? {
+        client_name: client.client_name ?? client.client_id.slice(0, 20),
+        params,
+        docos: [],
+        orgs: [],
+        blockedTargetHandle: view.targetDocoHandle,
+        me: principal,
+      }
+    : {
+        client_name: client.client_name ?? client.client_id.slice(0, 20),
+        params,
+        docos: view.docos,
+        orgs: view.orgs,
+        blockedTargetHandle: null,
+        me: principal,
+      };
   return data;
 }
 
@@ -158,13 +170,19 @@ export default function AuthorizePage() {
         <Card>
           <CardHeader>
             <CardTitle>Approve access</CardTitle>
-            <CardDescription>
-              <strong>{data.client_name}</strong> wants access to your docos. Name the token, then
-              pick orgs and docos you own.
-            </CardDescription>
+            {data.blockedTargetHandle ? null : (
+              <CardDescription>
+                <strong>{data.client_name}</strong> wants access to your docos. Name the token, then
+                pick orgs and docos you own.
+              </CardDescription>
+            )}
           </CardHeader>
           <CardContent>
-            {data.docos.length === 0 && data.orgs.length === 0 ? (
+            {data.blockedTargetHandle ? (
+              <p className="text-sm text-destructive">
+                {approvalTargetNotOwnedMessage(data.blockedTargetHandle)}
+              </p>
+            ) : data.docos.length === 0 && data.orgs.length === 0 ? (
               <p className="text-sm text-destructive">
                 You don't own any Docos or organizations yet. Only owners can grant token access —
                 create one first, then return to this page.
@@ -175,7 +193,6 @@ export default function AuthorizePage() {
                 orgs={data.orgs}
                 tokenNamePlaceholder="e.g. Claude Code in repo"
                 requestedRole={(data.params.requested_role as DocoRole | null) ?? null}
-                targetedMessage={data.targeted_message}
                 approveLabel="Approve"
                 cancelLabel="Cancel"
                 cancelDecisionValue="cancel"

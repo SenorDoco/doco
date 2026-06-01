@@ -27,6 +27,7 @@ import { SiteHeader } from "~/components/site-header";
 import {
   type ApprovalDocoOption,
   type ApprovalOrgOption,
+  approvalTargetNotOwnedMessage,
   resolveApprovalGrantView,
 } from "~/lib/approval-grants";
 import {
@@ -43,13 +44,12 @@ import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface LoaderData {
   user_code: string;
-  stage: "enter-code" | "approve" | "done" | "expired" | "denied" | "unknown";
+  stage: "enter-code" | "approve" | "target-not-owned" | "done" | "expired" | "denied" | "unknown";
   client_name?: string;
   docos?: ApprovalDocoOption[];
   orgs?: ApprovalOrgOption[];
   target_doco_handle?: string | null;
   requested_role?: DocoRole | null;
-  targeted_message?: string | null;
   message?: string;
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
@@ -112,6 +112,18 @@ export async function loader({ request }: { request: Request }) {
   const { docos, orgs } = await loadApprovalGrantOptions(me.id);
   const view = resolveApprovalGrantView(docos, orgs, row.target_doco_handle);
 
+  // The client asked for a Doco the user doesn't own — nothing here can
+  // satisfy that (granting a different Doco wouldn't help), so show only
+  // the terminal not-owned message, no picker.
+  if (view.blocked) {
+    return {
+      user_code,
+      stage: "target-not-owned" as const,
+      target_doco_handle: view.targetDocoHandle,
+      me,
+    };
+  }
+
   const requestedRole: DocoRole | null =
     row.requested_role &&
     (["reader", "writer", "owner"] as const).includes(row.requested_role as DocoRole)
@@ -124,9 +136,7 @@ export async function loader({ request }: { request: Request }) {
     client_name: client?.client_name ?? row.client_id.slice(0, 20),
     docos: view.docos,
     orgs: view.orgs,
-    target_doco_handle: row.target_doco_handle,
     requested_role: requestedRole,
-    targeted_message: view.targetedMessage,
     me,
   };
 }
@@ -258,13 +268,28 @@ function renderStage(data: LoaderData) {
               orgs={orgs}
               tokenNamePlaceholder="e.g. Codex in Doco repo"
               requestedRole={data.requested_role ?? null}
-              targetedMessage={data.targeted_message ?? null}
               approveLabel="Approve"
               cancelLabel="Deny"
               cancelDecisionValue="deny"
               hiddenFields={{ user_code: data.user_code }}
             />
           )}
+        </CardContent>
+      </>
+    );
+  }
+  if (data.stage === "target-not-owned") {
+    // Terminal: the client asked for a Doco the user doesn't own. Show
+    // only the explanation + call to action — no token field, no picker.
+    return (
+      <>
+        <CardHeader>
+          <CardTitle>Authorize token access</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">
+            {approvalTargetNotOwnedMessage(data.target_doco_handle ?? "")}
+          </p>
         </CardContent>
       </>
     );

@@ -19,7 +19,6 @@ export function OAuthAccessApprovalForm({
   orgs,
   tokenNamePlaceholder,
   requestedRole,
-  targetedMessage,
   approveLabel,
   cancelLabel,
   cancelDecisionValue,
@@ -29,7 +28,6 @@ export function OAuthAccessApprovalForm({
   orgs: OAuthApprovalOrg[];
   tokenNamePlaceholder: string;
   requestedRole: DocoRole | null;
-  targetedMessage: string | null;
   approveLabel: string;
   cancelLabel: string;
   cancelDecisionValue: "cancel" | "deny";
@@ -65,12 +63,6 @@ export function OAuthAccessApprovalForm({
           className="block w-full max-w-md rounded-md px-3 py-2 text-sm"
         />
       </label>
-
-      {targetedMessage ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {targetedMessage}
-        </p>
-      ) : null}
 
       <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} />
 

@@ -25,7 +25,6 @@ describe("OAuthAccessApprovalForm", () => {
         ],
         tokenNamePlaceholder: "e.g. Codex in Doco repo",
         requestedRole: null,
-        targetedMessage: null,
         approveLabel: "Approve",
         cancelLabel: "Cancel",
         cancelDecisionValue: "cancel",
