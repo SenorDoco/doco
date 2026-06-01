@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
+import { withClient } from "@doco/db";
 import {
   type GitHubConnection,
   type GitHubInstallationSub,
@@ -241,6 +242,31 @@ describe("addConnection — one repo ↔ one Doco", () => {
       { detachElsewhere: vi.fn(async () => {}), list, write: vi.fn(async () => {}) },
     );
     expect(result).toEqual([{ repo: "acme/store", installation_id: 2 }]);
+  });
+
+  it("preserves sibling github_integration fields when writing connections", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            gh: {
+              installations: [{ installation_id: 42, account: "acme" }],
+              connections: [],
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    vi.mocked(withClient).mockImplementation(async (callback) => callback({ query } as never));
+
+    await addConnection("doco_1", { repo: "acme/app", installation_id: 42 });
+
+    const writeSql = String(query.mock.calls[2]?.[0]);
+    expect(writeSql).toContain("jsonb_build_object");
+    expect(writeSql).toContain("COALESCE(data->'github_integration'");
+    vi.mocked(withClient).mockReset();
   });
 });
 
