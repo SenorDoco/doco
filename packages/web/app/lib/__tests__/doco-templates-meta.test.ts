@@ -19,4 +19,9 @@ describe("doco template metadata", () => {
       expect(meta?.updatedAt).toBe("2026-05-31");
     }
   });
+
+  it("marks the Glossaries template metadata as updated when its guidance changes", () => {
+    const meta = findDocoTemplateMeta("glossaries");
+    expect(meta?.updatedAt).toBe("2026-06-01");
+  });
 });
