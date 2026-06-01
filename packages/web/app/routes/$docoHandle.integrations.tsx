@@ -189,9 +189,22 @@ export default function DocoIntegrations() {
               {backfill?.repos ? (
                 <>
                   {" "}
-                  from{" "}
+                  —{" "}
+                  <span className="font-mono font-semibold tabular-nums">
+                    {Math.min((backfill.repo_index ?? 0) + 1, backfill.repos)}
+                  </span>
+                  {" / "}
                   <span className="font-mono font-semibold tabular-nums">{backfill.repos}</span>{" "}
                   repo(s)
+                  {backfill.imported ? (
+                    <>
+                      ,{" "}
+                      <span className="font-mono font-semibold tabular-nums">
+                        {backfill.imported}
+                      </span>{" "}
+                      imported so far
+                    </>
+                  ) : null}
                 </>
               ) : null}{" "}
               — you can keep working; they'll appear here as they sync, and new repos in the org

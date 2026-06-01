@@ -4,19 +4,20 @@
 // access, connect every repo the installation covers, then kick the PR import
 // off the request path (waitUntil) so a huge org (tens of thousands of PRs)
 // doesn't block the redirect — the Integrations page shows an "importing in the
-// background" banner. New repos added later sync automatically via the webhook.
+// background" banner. The import itself is a chain of time-budgeted slices
+// (api.github.backfill-run) so even a tens-of-thousands-of-PRs org never hits
+// the function timeout. New repos added later sync automatically via the webhook.
 import { getDocoByIdOrHandle, roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { redirect } from "react-router";
-import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
-import { backfillInstallationRepos } from "~/lib/github-backfill.server";
 import {
   getDocoConnectionsContext,
   importInstallationConnections,
   setBackfillState,
 } from "~/lib/github-connection.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
+import { kickBackfillRun } from "./api.github.backfill-run";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -45,43 +46,25 @@ export async function loader({ request }: { request: Request }) {
       return redirect(`${panel}?github=connected&count=${repos.length}&imported=0`);
     }
 
-    // Import the PRs in the background. Mark "running" before redirecting; the
-    // background job flips it to "done". The user lands on the Doco immediately
-    // and sees the "importing…" banner until it finishes.
-    const startedAt = new Date().toISOString();
+    // Seed the resumable cursor and kick the first import slice off the request
+    // path. The user lands on the Doco immediately and sees the "importing…"
+    // banner; the worker chains slice-by-slice (api.github.backfill-run) until
+    // the whole queue drains, so tens of thousands of PRs never block or time
+    // out. The worker flips the marker to "done" when finished.
     await setBackfillState(doco.id, {
       status: "running",
-      started_at: startedAt,
+      started_at: new Date().toISOString(),
       repos: repos.length,
+      installation_id: installationId,
+      queue: repos,
+      repo_index: 0,
+      page: 1,
+      imported: 0,
+      updated: 0,
+      unchanged: 0,
+      failed: 0,
     });
-    waitUntil(
-      backfillInstallationRepos({
-        docoDir: docoPath(ctx.handle),
-        docoId: doco.id,
-        ownerSlug: ctx.orgHandle,
-        docoSlug: ctx.handle,
-        repos,
-        installationId,
-        createdByUserId: me.id,
-      })
-        .then((r) =>
-          setBackfillState(doco.id, {
-            status: "done",
-            started_at: startedAt,
-            finished_at: new Date().toISOString(),
-            repos: r.repos,
-            imported: r.created,
-          }),
-        )
-        .catch((err) => {
-          console.error("[github setup] background backfill failed:", err);
-          return setBackfillState(doco.id, {
-            status: "done",
-            started_at: startedAt,
-            finished_at: new Date().toISOString(),
-          });
-        }),
-    );
+    waitUntil(kickBackfillRun(url.origin, doco.id));
     return redirect(`${panel}?github=importing&count=${repos.length}`);
   } catch (err) {
     // Most likely a bad DOCO_GITHUB_APP_* credential (e.g. an unparseable
