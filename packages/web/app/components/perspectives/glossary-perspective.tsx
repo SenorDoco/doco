@@ -10,12 +10,14 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router";
 import type { GlossaryEntry, GlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
+import { handleNodeDialogLinkClick } from "~/lib/node-dialog-link";
 
 interface GlossaryPerspectiveProps {
   data: GlossaryPerspectiveData;
   /** Doco handle, styled as the dictionary's title in the masthead. */
   title: string;
   visibleLifecycles?: Set<string>;
+  onOpenNode?: (entry: GlossaryEntry) => void;
 }
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -27,7 +29,12 @@ const INK = "oklch(0.27 0.03 60)";
 const INK_SOFT = "oklch(0.46 0.035 60)";
 const RULE = "oklch(0.27 0.03 60 / 28%)";
 
-export function GlossaryPerspective({ data, title, visibleLifecycles }: GlossaryPerspectiveProps) {
+export function GlossaryPerspective({
+  data,
+  title,
+  visibleLifecycles,
+  onOpenNode,
+}: GlossaryPerspectiveProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
 
@@ -106,7 +113,7 @@ export function GlossaryPerspective({ data, title, visibleLifecycles }: Glossary
               >
                 <LetterDivider letter={group.letter} />
                 {group.entries.map((entry) => (
-                  <EntryView key={entry.id} entry={entry} />
+                  <EntryView key={entry.id} entry={entry} onOpenNode={onOpenNode} />
                 ))}
               </section>
             ))}
@@ -189,7 +196,13 @@ function LetterDivider({ letter }: { letter: string }) {
   );
 }
 
-function EntryView({ entry }: { entry: GlossaryEntry }) {
+function EntryView({
+  entry,
+  onOpenNode,
+}: {
+  entry: GlossaryEntry;
+  onOpenNode?: (entry: GlossaryEntry) => void;
+}) {
   return (
     <article
       className="mb-4 break-inside-avoid"
@@ -197,63 +210,70 @@ function EntryView({ entry }: { entry: GlossaryEntry }) {
       data-node-id={entry.id}
       data-glossary-headword={entry.headword}
     >
-      <p className="leading-snug" style={{ textIndent: "-1em", paddingLeft: "1em" }}>
-        <Link
-          to={entry.href}
-          className="font-bold no-underline hover:underline"
-          style={{ color: INK, fontSize: "1.05rem" }}
-        >
-          {entry.headword}
-        </Link>
-        {entry.pronunciation ? (
-          <span className="ml-1.5 text-[0.8rem]" style={{ color: INK_SOFT }}>
-            {entry.pronunciation}
+      <Link
+        to={entry.href}
+        onClick={
+          onOpenNode
+            ? (event) => handleNodeDialogLinkClick(event, () => onOpenNode(entry))
+            : undefined
+        }
+        className="group block no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        style={{ color: INK }}
+      >
+        <p className="leading-snug" style={{ textIndent: "-1em", paddingLeft: "1em" }}>
+          <span className="font-bold group-hover:underline" style={{ fontSize: "1.05rem" }}>
+            {entry.headword}
           </span>
-        ) : null}{" "}
-        <span className="text-[0.85rem] italic" style={{ color: INK_SOFT }}>
-          {entry.tag}
-        </span>
-        {entry.lifecycle !== "asserted" ? (
-          <span
-            className="ml-1.5 align-[0.1em] text-[9px] uppercase tracking-wider"
-            style={{ color: INK_SOFT }}
-          >
-            [{entry.lifecycle}]
-          </span>
-        ) : null}{" "}
-        {entry.question ? (
-          <span className="text-[0.9rem] italic" style={{ color: INK_SOFT }}>
-            {entry.question}
-            {/[.?!]$/.test(entry.question) ? "" : "."}{" "}
-          </span>
-        ) : null}
-        {renderSenses(entry.senses)}
-        {entry.source ? (
-          <span className="text-[0.82rem] italic" style={{ color: INK_SOFT }}>
-            {" "}
-            — {entry.source}
-          </span>
-        ) : null}
-      </p>
-      {entry.alternatives.length > 0 ? (
-        <p className="mt-0.5 pl-[1em] text-[0.85rem]" style={{ color: INK_SOFT }}>
-          <span className="italic">also</span>{" "}
-          {entry.alternatives.map((alt, i) => (
-            <span key={`${alt.name}-${i}`}>
-              {i > 0 ? ", " : ""}
-              <span
-                title={alt.note ?? undefined}
-                style={alt.deprecated ? { textDecoration: "line-through" } : undefined}
-              >
-                {alt.name}
-              </span>
-              {alt.deprecated ? (
-                <span className="ml-0.5 text-[9px] uppercase tracking-wider">dep.</span>
-              ) : null}
+          {entry.pronunciation ? (
+            <span className="ml-1.5 text-[0.8rem]" style={{ color: INK_SOFT }}>
+              {entry.pronunciation}
             </span>
-          ))}
+          ) : null}{" "}
+          <span className="text-[0.85rem] italic" style={{ color: INK_SOFT }}>
+            {entry.tag}
+          </span>
+          {entry.lifecycle !== "asserted" ? (
+            <span
+              className="ml-1.5 align-[0.1em] text-[9px] uppercase tracking-wider"
+              style={{ color: INK_SOFT }}
+            >
+              [{entry.lifecycle}]
+            </span>
+          ) : null}{" "}
+          {entry.question ? (
+            <span className="text-[0.9rem] italic" style={{ color: INK_SOFT }}>
+              {entry.question}
+              {/[.?!]$/.test(entry.question) ? "" : "."}{" "}
+            </span>
+          ) : null}
+          {renderSenses(entry.senses)}
+          {entry.source ? (
+            <span className="text-[0.82rem] italic" style={{ color: INK_SOFT }}>
+              {" "}
+              — {entry.source}
+            </span>
+          ) : null}
         </p>
-      ) : null}
+        {entry.alternatives.length > 0 ? (
+          <p className="mt-0.5 pl-[1em] text-[0.85rem]" style={{ color: INK_SOFT }}>
+            <span className="italic">also</span>{" "}
+            {entry.alternatives.map((alt, i) => (
+              <span key={`${alt.name}-${i}`}>
+                {i > 0 ? ", " : ""}
+                <span
+                  title={alt.note ?? undefined}
+                  style={alt.deprecated ? { textDecoration: "line-through" } : undefined}
+                >
+                  {alt.name}
+                </span>
+                {alt.deprecated ? (
+                  <span className="ml-0.5 text-[9px] uppercase tracking-wider">dep.</span>
+                ) : null}
+              </span>
+            ))}
+          </p>
+        ) : null}
+      </Link>
     </article>
   );
 }

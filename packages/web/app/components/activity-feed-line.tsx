@@ -11,6 +11,7 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { lifecycleColor } from "~/lib/node-colors";
+import { handleNodeDialogLinkClick } from "~/lib/node-dialog-link";
 
 export interface ActivityFeedLineItem {
   id: string;
@@ -30,9 +31,11 @@ export interface ActivityFeedLineItem {
 export function ActivityFeedLine({
   item,
   docoHandle,
+  onOpenNode,
 }: {
   item: ActivityFeedLineItem;
   docoHandle: string;
+  onOpenNode?: (item: ActivityFeedLineItem, href: string) => void;
 }) {
   const url = entityUrl({
     docoHandle,
@@ -44,20 +47,27 @@ export function ActivityFeedLine({
   const detail = lifecycleTransitionText(item);
   const strikeTarget = shouldStrikeActivityTarget(item);
   return (
-    <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
+    <Link
+      to={url}
+      onClick={
+        onOpenNode
+          ? (event) => handleNodeDialogLinkClick(event, () => onOpenNode(item, url))
+          : undefined
+      }
+      className="group flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground no-underline hover:bg-muted/35"
+    >
       <div className="min-w-0 flex-1">
         <span>{iconFromAuditOp(item.op)} </span>
         <span className="font-semibold">
           {Type} {verbFromAuditOp(item.op)}
         </span>
         <span className="text-muted-foreground">: </span>
-        <Link
-          to={url}
+        <span
           style={{ color: lifecycleColor(activityRowLifecycle(item)) }}
-          className={cn("hover:underline", strikeTarget && "line-through decoration-2")}
+          className={cn("group-hover:underline", strikeTarget && "line-through decoration-2")}
         >
           {summary}
-        </Link>
+        </span>
         {detail ? <span className="text-muted-foreground">{detail}</span> : null}
       </div>
       <time
@@ -68,7 +78,7 @@ export function ActivityFeedLine({
       >
         {relativeTimeIso(item.at)}
       </time>
-    </div>
+    </Link>
   );
 }
 
