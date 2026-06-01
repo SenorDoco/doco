@@ -12,43 +12,10 @@ interface QueryClientLike {
 
 function makeQueryClient(rows: Record<string, unknown[]>) {
   const captured: CapturedQuery[] = [];
-  // The managed relationship edges are derived
-  // from the node fixtures' `data` fields: capture authors them as first-class
-  // edges and the bpmn loader reconstructs the lane fields from those edges,
-  // since they no longer live in stored `data` (option (i)).
-  const managedEdges = (rows.nodes ?? []).flatMap((n) => {
-    const node = n as { id: string; data?: Record<string, unknown> };
-    const d = node.data ?? {};
-    const out: {
-      from_id: string;
-      edge_type: string;
-      to_id: string;
-      props: Record<string, unknown>;
-    }[] = [];
-    const push = (field: string, edge_type: string, role: string, to: unknown) => {
-      if (typeof to === "string") {
-        out.push({
-          from_id: node.id,
-          edge_type,
-          to_id: to,
-          props: { role, source_field: field },
-        });
-      }
-    };
-    push("actor_id", "attributed_to", "performed_by", d.actor_id);
-    push("decided_by", "attributed_to", "decided_by", d.decided_by);
-    push("parent_intent_id", "has_parent", "parent_intent", d.parent_intent_id);
-    push("superseded_by", "replaces", "superseded_by", d.superseded_by);
-    push("template_id", "derived_from", "templated_by", d.template_id);
-    return out;
-  });
   const client: QueryClientLike = {
     async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
       captured.push({ sql, params });
       if (/FROM edges/i.test(sql)) {
-        // The managed-edge lookup (lane reconstruction) vs. the PageRank/link
-        // query are both `FROM edges`; route by the managed query's predicate.
-        if (/edge_type = ANY/i.test(sql)) return { rows: managedEdges as T[] };
         return { rows: (rows.edges ?? []) as T[] };
       }
       if (/FROM users/i.test(sql)) return { rows: (rows.users ?? []) as T[] };
@@ -58,6 +25,39 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
     },
   };
   return { client, captured };
+}
+
+function edge(
+  id: string,
+  from_id: string,
+  to_id: string,
+  edge_type: string,
+  edge_props_json: Record<string, unknown> | null = null,
+) {
+  const roleEdgeTypes: Record<string, string> = {
+    serves: "supports",
+    enacts: "supports",
+    tests: "supports",
+    implemented_by: "supports",
+    gated_by: "constrained_by",
+    consults: "constrained_by",
+    performed_by: "attributed_to",
+    owned_by: "attributed_to",
+    decided_by: "attributed_to",
+    reports_to: "has_parent",
+    dotted_reports_to: "has_parent",
+  };
+  const canonical = roleEdgeTypes[edge_type];
+  if (canonical) {
+    return {
+      id,
+      from_id,
+      to_id,
+      edge_type: canonical,
+      edge_props_json: { ...(edge_props_json ?? {}), role: edge_type },
+    };
+  }
+  return { id, from_id, to_id, edge_type, edge_props_json };
 }
 
 describe("loadBpmnGraph", () => {
@@ -78,10 +78,7 @@ describe("loadBpmnGraph", () => {
           summary: "Review refund request",
           lifecycle: "drafting",
           created_at: "2026-05-26T00:01:00.000Z",
-          data: {
-            actor_id: "principal_support",
-            intent_ids: ["intent_01PROCESS"],
-          },
+          data: {},
         },
       ],
       principals: [
@@ -92,7 +89,10 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      edges: [],
+      edges: [
+        edge("edge_01SERVES", "action_01CHECK", "intent_01PROCESS", "serves"),
+        edge("edge_01ACTOR", "action_01CHECK", "principal_support", "performed_by"),
+      ],
     });
 
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
@@ -140,10 +140,7 @@ describe("loadBpmnGraph", () => {
           summary: "Does the user have Reach credits?",
           lifecycle: "drafting",
           created_at: "2026-05-26T00:01:00.000Z",
-          data: {
-            decided_by: "principal_sud",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
         {
           id: stateId,
@@ -151,11 +148,7 @@ describe("loadBpmnGraph", () => {
           summary: "Process started",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:02:00.000Z",
-          data: {
-            kind: "initial",
-            intent_ids: [intentId],
-            sequence_to: [requestId],
-          },
+          data: { kind: "initial" },
         },
         {
           id: requestId,
@@ -163,11 +156,7 @@ describe("loadBpmnGraph", () => {
           summary: "Requests to activate Torre Reach",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:03:00.000Z",
-          data: {
-            actor_id: "principal_talent",
-            intent_ids: [intentId],
-            sequence_to: [presentId],
-          },
+          data: {},
         },
         {
           id: presentId,
@@ -175,10 +164,7 @@ describe("loadBpmnGraph", () => {
           summary: "Presents payment options",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:04:00.000Z",
-          data: {
-            actor_id: "principal_sud",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
       ],
       principals: [
@@ -195,8 +181,15 @@ describe("loadBpmnGraph", () => {
       ],
       users: [],
       edges: [
-        { from_id: stateId, to_id: requestId, edge_type: "flows_to" },
-        { from_id: requestId, to_id: presentId, edge_type: "flows_to" },
+        edge("edge_01DECISION_INTENT", "decision_01CREDITS", intentId, "serves"),
+        edge("edge_01STATE_INTENT", stateId, intentId, "serves"),
+        edge("edge_01REQUEST_INTENT", requestId, intentId, "serves"),
+        edge("edge_01PRESENT_INTENT", presentId, intentId, "serves"),
+        edge("edge_01DECIDER", "decision_01CREDITS", "principal_sud", "decided_by"),
+        edge("edge_01REQUEST_ACTOR", requestId, "principal_talent", "performed_by"),
+        edge("edge_01PRESENT_ACTOR", presentId, "principal_sud", "performed_by"),
+        edge("edge_01STATE_TO_REQUEST", stateId, requestId, "flows_to"),
+        edge("edge_01REQUEST_TO_PRESENT", requestId, presentId, "flows_to"),
       ],
     });
 
@@ -231,10 +224,7 @@ describe("loadBpmnGraph", () => {
           summary: "Does the user qualify?",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:01:00.000Z",
-          data: {
-            decided_by: "principal_system",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
         {
           id: yesId,
@@ -242,10 +232,7 @@ describe("loadBpmnGraph", () => {
           summary: "Approve request",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:02:00.000Z",
-          data: {
-            actor_id: "principal_system",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
         {
           id: noId,
@@ -253,10 +240,7 @@ describe("loadBpmnGraph", () => {
           summary: "Reject request",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:03:00.000Z",
-          data: {
-            actor_id: "principal_system",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
       ],
       principals: [
@@ -268,18 +252,14 @@ describe("loadBpmnGraph", () => {
       ],
       users: [],
       edges: [
-        {
-          from_id: decisionId,
-          to_id: yesId,
-          edge_type: "flows_to",
-          edge_props_json: { label: "Yes" },
-        },
-        {
-          from_id: decisionId,
-          to_id: noId,
-          edge_type: "flows_to",
-          edge_props_json: { condition: "No" },
-        },
+        edge("edge_02DECISION_INTENT", decisionId, intentId, "serves"),
+        edge("edge_02YES_INTENT", yesId, intentId, "serves"),
+        edge("edge_02NO_INTENT", noId, intentId, "serves"),
+        edge("edge_02DECIDER", decisionId, "principal_system", "decided_by"),
+        edge("edge_02YES_ACTOR", yesId, "principal_system", "performed_by"),
+        edge("edge_02NO_ACTOR", noId, "principal_system", "performed_by"),
+        edge("edge_02YES", decisionId, yesId, "flows_to", { label: "Yes" }),
+        edge("edge_02NO", decisionId, noId, "flows_to", { condition: "No" }),
       ],
     });
 
@@ -305,7 +285,7 @@ describe("loadBpmnGraph", () => {
     );
   });
 
-  it("renders predecessor-role flows_to edges as forward BPMN sequence links", async () => {
+  it("renders flows_to edges as forward BPMN sequence links", async () => {
     const intentId = "intent_01PROCESS";
     const firstId = "action_01FIRST";
     const secondId = "action_01SECOND";
@@ -326,10 +306,7 @@ describe("loadBpmnGraph", () => {
           summary: "First step",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:01:00.000Z",
-          data: {
-            actor_id: "principal_system",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
         {
           id: secondId,
@@ -337,10 +314,7 @@ describe("loadBpmnGraph", () => {
           summary: "Second step",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:02:00.000Z",
-          data: {
-            actor_id: "principal_system",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
       ],
       principals: [
@@ -352,25 +326,23 @@ describe("loadBpmnGraph", () => {
       ],
       users: [],
       edges: [
-        {
-          id: "edge_legacy",
-          from_id: secondId,
-          to_id: firstId,
-          edge_type: "flows_to",
-          edge_props_json: { role: "predecessor", source_field: "preceded_by" },
-        },
+        edge("edge_03FIRST_INTENT", firstId, intentId, "serves"),
+        edge("edge_03SECOND_INTENT", secondId, intentId, "serves"),
+        edge("edge_03FIRST_ACTOR", firstId, "principal_system", "performed_by"),
+        edge("edge_03SECOND_ACTOR", secondId, "principal_system", "performed_by"),
+        edge("edge_flows_to", firstId, secondId, "flows_to"),
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "legacy" });
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "process" });
 
     expect(graph.links).toContainEqual(
       expect.objectContaining({
-        id: "edge_legacy",
+        id: "edge_flows_to",
         source: firstId,
         target: secondId,
         edge_type: "flows_to",
-        href: "/legacy/edges/edge_legacy",
+        href: "/process/edges/edge_flows_to",
       }),
     );
     expect(graph.nodes.find((node) => node.id === secondId)?.bfs_depth).toBeGreaterThan(
@@ -378,7 +350,7 @@ describe("loadBpmnGraph", () => {
     );
   });
 
-  it("does not render node-authored flow fields when sequence edges are absent", async () => {
+  it("does not render sequence links from node JSON", async () => {
     const intentId = "intent_01PROCESS";
     const firstId = "action_01FIRST";
     const secondId = "action_01SECOND";
@@ -389,7 +361,7 @@ describe("loadBpmnGraph", () => {
         {
           id: intentId,
           entity_type: "intent",
-          summary: "Field-authored process",
+          summary: "Reserved-key process",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:00:00.000Z",
           data: {},
@@ -401,9 +373,7 @@ describe("loadBpmnGraph", () => {
           lifecycle: "asserted",
           created_at: "2026-05-26T00:01:00.000Z",
           data: {
-            actor_id: "principal_system",
-            intent_ids: [intentId],
-            sequence_to: [{ target: secondId, label: "next" }],
+            graph_hint: { target: secondId, label: "next" },
           },
         },
         {
@@ -412,21 +382,16 @@ describe("loadBpmnGraph", () => {
           summary: "Second step",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:02:00.000Z",
-          data: {
-            actor_id: "principal_system",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
         {
           id: thirdId,
           entity_type: "action",
-          summary: "Third legacy step",
+          summary: "Third step",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:03:00.000Z",
           data: {
-            actor_id: "principal_system",
-            intent_ids: [intentId],
-            preceded_by: [secondId],
+            graph_hint: { source: secondId },
           },
         },
       ],
@@ -469,10 +434,7 @@ describe("loadBpmnGraph", () => {
           summary: "Are credits enough for the first day?",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:07:00.000Z",
-          data: {
-            decided_by: "principal_system",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
         {
           id: checkoutId,
@@ -480,10 +442,7 @@ describe("loadBpmnGraph", () => {
           summary: "Talent seeker completes Stripe checkout for credits",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:15:00.000Z",
-          data: {
-            actor_id: "principal_talent",
-            intent_ids: [intentId],
-          },
+          data: {},
         },
       ],
       principals: [
@@ -500,8 +459,12 @@ describe("loadBpmnGraph", () => {
       ],
       users: [],
       edges: [
-        { from_id: decisionId, to_id: checkoutId, edge_type: "flows_to" },
-        { from_id: checkoutId, to_id: decisionId, edge_type: "flows_to" },
+        edge("edge_05DECISION_INTENT", decisionId, intentId, "serves"),
+        edge("edge_05CHECKOUT_INTENT", checkoutId, intentId, "serves"),
+        edge("edge_05DECIDER", decisionId, "principal_system", "decided_by"),
+        edge("edge_05CHECKOUT_ACTOR", checkoutId, "principal_talent", "performed_by"),
+        edge("edge_05DECISION_TO_CHECKOUT", decisionId, checkoutId, "flows_to"),
+        edge("edge_05CHECKOUT_TO_DECISION", checkoutId, decisionId, "flows_to"),
       ],
     });
 
@@ -537,10 +500,7 @@ describe("loadBpmnGraph", () => {
           summary: "Active work",
           lifecycle: "asserted",
           created_at: "2026-05-26T00:10:00.000Z",
-          data: {
-            actor_id: "principal_owner",
-            intent_ids: ["intent_active"],
-          },
+          data: {},
         },
         {
           id: "action_drafting",
@@ -548,10 +508,7 @@ describe("loadBpmnGraph", () => {
           summary: "Drafting work",
           lifecycle: "drafting",
           created_at: "2026-05-26T00:20:00.000Z",
-          data: {
-            actor_id: "principal_owner",
-            intent_ids: ["intent_drafting"],
-          },
+          data: {},
         },
       ],
       principals: [
@@ -562,7 +519,12 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      edges: [],
+      edges: [
+        edge("edge_06ACTIVE_INTENT", "action_active", "intent_active", "serves"),
+        edge("edge_06DRAFTING_INTENT", "action_drafting", "intent_drafting", "serves"),
+        edge("edge_06ACTIVE_ACTOR", "action_active", "principal_owner", "performed_by"),
+        edge("edge_06DRAFTING_ACTOR", "action_drafting", "principal_owner", "performed_by"),
+      ],
     });
 
     const graph = await loadBpmnGraph(client, "doco_01", {
@@ -585,9 +547,9 @@ describe("computeNearestIntentByNode", () => {
     const nearest = computeNearestIntentByNode(
       ["intent_a", "intent_b"],
       [
-        { source: "intent_a", target: "action_a", edge_type: "supports" },
+        { source: "intent_a", target: "action_a", edge_type: "serves" },
         { source: "action_a", target: "decision_a", edge_type: "flows_to" },
-        { source: "intent_b", target: "action_b", edge_type: "supports" },
+        { source: "intent_b", target: "action_b", edge_type: "serves" },
       ],
       ranks,
     );
@@ -604,8 +566,8 @@ describe("computeNearestIntentByNode", () => {
     const nearest = computeNearestIntentByNode(
       ["intent_a", "intent_b"],
       [
-        { source: "intent_a", target: "shared", edge_type: "supports" },
-        { source: "intent_b", target: "shared", edge_type: "supports" },
+        { source: "intent_a", target: "shared", edge_type: "serves" },
+        { source: "intent_b", target: "shared", edge_type: "serves" },
       ],
       ranks,
     );

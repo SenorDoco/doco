@@ -90,11 +90,8 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
     };
   }
 
-  // Endpoint node-type enforcement: a `serves` edge must point at an Intent,
-  // `reports_to` must run Principal→Principal, etc. Keeps the graph free of
-  // nonsense edges that the node-authoring `requires_edge` rules would catch
-  // but the edge endpoint otherwise bypasses. Edge types absent from the map
-  // accept any endpoints.
+  // Endpoint node-type enforcement for canonical edge families whose shape is
+  // unambiguous. Broad families absent from the map accept any endpoints.
   const endpoints = EDGE_ENDPOINT_TYPES[input.edgeType];
   if (endpoints?.from && !endpoints.from.includes(from.type as never)) {
     return {
@@ -164,22 +161,24 @@ export async function getEdgeById(docoId: string, id: string): Promise<EdgeRow |
 
 /**
  * Whether a live (non-retired) edge of `edgeType` already connects from→to in
- * the Doco. Keeps repeated edge authoring idempotent — e.g. re-syncing a PR's
- * `Doco-Implements:` links must not duplicate the `implemented_by` edge.
+ * the Doco. Role metadata participates in identity for broad canonical edge
+ * families.
  */
 export async function edgeExists(
   docoId: string,
   edgeType: string,
   fromId: string,
   toId: string,
+  role?: string | null,
 ): Promise<boolean> {
   return withClient(async (c) => {
     const { rows } = await c.query<{ x: number }>(
       `SELECT 1 AS x FROM edges
         WHERE doco_id = $1 AND edge_type = $2 AND from_id = $3 AND to_id = $4
+          AND COALESCE(props->>'role', '') = COALESCE($5, '')
           AND lifecycle <> 'retired'
         LIMIT 1`,
-      [docoId, edgeType, fromId, toId],
+      [docoId, edgeType, fromId, toId, role ?? null],
     );
     return rows.length > 0;
   });

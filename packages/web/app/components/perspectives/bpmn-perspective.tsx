@@ -6,7 +6,7 @@
 //   • Lanes are React Flow parent nodes; nodes set parentId to nest
 //     visually inside their lane.
 //   • Within each lane, nodes are placed in a topological sweep over
-//     explicit `sequence_flow` edges. Stored source -> target direction
+//     explicit `flows_to` edges. Stored source -> target direction
 //     is rendered directly; association edges do not become arrows.
 //   • Lifecycle color renders as the shape's stroke; the type icon
 //     identifies the node type at a glance.
@@ -1550,12 +1550,12 @@ function layOutBpmn(
 
 /**
  * Edge types that express BPMN sequence flow for layout and arrows.
- * `sequence_flow` is stored as a first-class edge in the same direction
+ * `flows_to` is stored as a first-class edge in the same direction
  * it renders: source -> target. Association
- * edges (`serves`, `enacts`, `gated_by`, `tests`, …) remain visible
+ * edges (`supports`, `constrained_by`, `attributed_to`, …) remain visible
  * in detail panes, but they do not draw process arrows on this canvas.
  */
-const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["sequence_flow"]);
+const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["flows_to"]);
 
 function nodeTypeForShape(shape: BpmnShape): string {
   switch (shape) {

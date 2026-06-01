@@ -1,4 +1,4 @@
-import { MANAGED_RELATION_FIELD_SPECS } from "@doco/shared";
+import { BLOCKED_NODE_JSON_EDGE_FIELD_SET } from "@doco/shared";
 import type { AttachedPerspective } from "~/lib/perspectives.server";
 
 export type RelationOwner = "from" | "to";
@@ -6,55 +6,43 @@ export type RelationCardinality = "one" | "many";
 
 export interface RelationKindSpec {
   kind: string;
-  field: string;
-  storage?: "field" | "edge";
+  storage: "edge";
   owner: RelationOwner;
   value: RelationOwner;
   cardinality: RelationCardinality;
   acceptsProps?: string[];
   description: string;
-  /**
-   * Entity types allowed to own this relation's field on create. When set,
-   * supplying the field on any other entity type is rejected (rather than
-   * silently dropped). Leave unset to skip owner enforcement.
-   */
-  owners?: readonly string[];
 }
 
 export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   flows_to: {
     kind: "flows_to",
-    field: "sequence_to",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
     acceptsProps: ["label", "condition", "kind"],
-    description:
-      "Ordered or predecessor flow between process nodes. `sequence_to` and `preceded_by` remain authoring sugar.",
+    description: "Forward ordered flow between process nodes.",
   },
   supports: {
     kind: "supports",
-    field: "supports",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
     description:
-      "Broad enabling relation: serves an Intent, enacts a Decision, tests a target, or is implemented by code references.",
+      "Broad enabling relation, optionally role-tagged as serves, enacts, tests, or implemented_by.",
   },
   constrained_by: {
     kind: "constrained_by",
-    field: "constrained_by",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Node is constrained by Rules, including gated_by and rules_consulted inputs.",
+    description: "Node is constrained by Rules, optionally role-tagged as gated_by or consults.",
   },
   attributed_to: {
     kind: "attributed_to",
-    field: "attributed_to",
     storage: "edge",
     owner: "from",
     value: "to",
@@ -63,7 +51,6 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   },
   has_parent: {
     kind: "has_parent",
-    field: "has_parent",
     storage: "edge",
     owner: "from",
     value: "to",
@@ -72,25 +59,22 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   },
   derived_from: {
     kind: "derived_from",
-    field: "derived_from",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Provenance relation for born_from and templated_by inputs.",
+    description: "Provenance relation for source material and templates.",
   },
   replaces: {
     kind: "replaces",
-    field: "replaces",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
-    description: "Replacement/supersession relation, including superseded_by authoring input.",
+    description: "Replacement or supersession relation.",
   },
   relates_to: {
     kind: "relates_to",
-    field: "relates_to",
     storage: "edge",
     owner: "from",
     value: "to",
@@ -128,7 +112,8 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
     node_types: ["state", "action", "decision"],
     lane_relation: "attributed_to",
     constraints: [
-      "Use flows_to for ordered flow; do not use predecessor role edges as BPMN control flow.",
+      "Use flows_to for ordered flow.",
+      "Use attributed_to role metadata such as performed_by, decided_by, or owned_by for swimlanes.",
       "Create a flow node and its incoming/outgoing sequence relation in the same changeset whenever possible.",
       "Decision flows_to edges should carry label or condition metadata.",
       "Terminal flow nodes have no outgoing flows_to.",
@@ -140,7 +125,7 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
     primary_relation: "has_parent",
     node_types: ["principal"],
     constraints: [
-      "Every active non-root Principal should have exactly one reports_to relation.",
+      "Every active non-root Principal should have exactly one has_parent edge with role=reports_to.",
       "Root Principals must be intentional, not accidental missing managers.",
     ],
     preferred_operations: ["create", "relate"],
@@ -184,28 +169,14 @@ export function relationKind(kind: string): RelationKindSpec | null {
   return RELATION_KINDS[kind] ?? null;
 }
 
-/**
- * Reject a create body that sets an owner-gated relation field on an
- * entity type that may not own it. Returns an error string naming the
- * field, or null when the body is clean. Pure — safe to unit test and
- * to call before dispatching to a capture function. Closes the
- * silent-drop footgun where, e.g., `target_ref` on a decision was
- * accepted and quietly discarded.
- */
-export function unsupportedRelationFieldError(
-  entityType: string,
+export function unsupportedNodeJsonEdgeKeyError(
+  _entityType: string,
   body: Record<string, unknown>,
 ): string | null {
-  for (const [field, spec] of Object.entries(MANAGED_RELATION_FIELD_SPECS)) {
+  for (const field of BLOCKED_NODE_JSON_EDGE_FIELD_SET) {
     const value = body[field];
     if (value === undefined || value === null) continue;
-    const owners = "owners" in spec ? spec.owners : undefined;
-    if (!owners) continue;
-    if (!owners.includes(entityType as never)) {
-      return `${field} (the \`${spec.edgeType}\` relation) is only valid on ${owners.join(
-        " or ",
-      )}, not ${entityType}.`;
-    }
+    return `${field} is not a node JSON field. Create, update, or retire a first-class edge instead.`;
   }
   return null;
 }

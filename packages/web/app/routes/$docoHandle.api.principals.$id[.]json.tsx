@@ -1,5 +1,5 @@
-import { getEntity, roleAtLeast, upsertEntity, withClient, withTransaction } from "@doco/db";
-import { type Entity, type EntityId, nowIso } from "@doco/shared";
+import { getEntity, roleAtLeast, upsertEntity, withClient } from "@doco/db";
+import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import {
@@ -9,15 +9,13 @@ import {
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { reconcileNodeEdges } from "~/lib/managed-edges.server";
 
-// Principals keep a small positive patch allowlist: name, body_md,
-// reports_to, lifecycle. `name` is editable — renames are recorded in
-// the audit log, and other nodes reference principals by id (not name),
-// so a rename never breaks edges; only hand-written prose mentions go
-// stale. The `summary` one-liner column was dropped by migration 037 —
-// body_md carries the entire narrative now.
-const PATCHABLE_KEYS = new Set(["name", "body_md", "reports_to", "lifecycle"]);
+// Principals keep a small positive patch allowlist: name, body_md, lifecycle.
+// `name` is editable — renames are recorded in the audit log, and other nodes
+// reference principals by id (not name), so a rename never breaks edges; only
+// hand-written prose mentions go stale. The `summary` one-liner column was
+// dropped by migration 037 — body_md carries the entire narrative now.
+const PATCHABLE_KEYS = new Set(["name", "body_md", "lifecycle"]);
 
 // Mirror principalLine in /api/principals.json.tsx — wrap the name
 // in a markdown link to the principal's perspective view so the chat
@@ -37,8 +35,6 @@ interface PrincipalPatch {
   /** Display name. Trimmed before storage; must be non-empty. Not required to be unique. */
   name?: string;
   body_md?: string;
-  /** `null` clears the edge (Principal becomes top-of-chain). */
-  reports_to?: string | null;
   /** Only `"retired"` is accepted; the lifecycle path is one-way. */
   lifecycle?: "retired";
 }
@@ -50,11 +46,9 @@ interface ActiveReference {
   edge_type: string;
 }
 
-// Find every active node in this Doco that references the principal.
-// Targets the three currently-known principal-shaped reference fields:
-//   Action.actor_id, Log.actor_id, Intent.{stakeholders, actors}
-// Edges materialize all of these, so a single UNION across the
-// referencing tables is enough — no per-row N+1 lookup.
+// Find every active node in this Doco that references the principal through an
+// edge, so retirement can only proceed after dependent nodes are retired or
+// rewired.
 async function findActiveReferencesToPrincipal(
   docoId: string,
   principalId: string,
@@ -151,6 +145,17 @@ export async function action({
     return Response.json({ error: "Body must be a JSON object." }, { status: 400 });
   }
 
+  for (const field of Object.keys(rawPatch)) {
+    if (BLOCKED_NODE_JSON_EDGE_FIELD_SET.has(field)) {
+      return Response.json(
+        {
+          error: `${field} is not a node JSON field. Create, update, or retire a first-class edge instead.`,
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   // Reject unknown keys up-front so typos don't silently no-op.
   const unknown = Object.keys(rawPatch).filter((k) => !PATCHABLE_KEYS.has(k));
   if (unknown.length > 0) {
@@ -177,27 +182,6 @@ export async function action({
   }
   if (patch.name !== undefined && (typeof patch.name !== "string" || patch.name.trim() === "")) {
     return Response.json({ error: "name must be a non-empty string." }, { status: 400 });
-  }
-  if (patch.reports_to !== undefined && patch.reports_to !== null) {
-    if (typeof patch.reports_to !== "string" || !patch.reports_to.startsWith("principal_")) {
-      return Response.json(
-        { error: "reports_to must be a principal id (principal_<ULID>) or null to clear." },
-        { status: 400 },
-      );
-    }
-    if (patch.reports_to === params.id) {
-      return Response.json(
-        { error: "reports_to cannot point at the Principal itself." },
-        { status: 400 },
-      );
-    }
-    const manager = await getEntity("principal", patch.reports_to as EntityId<"principal">);
-    if (!manager || manager.doco_id !== meta.docoId) {
-      return Response.json(
-        { error: `reports_to principal not found in this Doco: ${patch.reports_to}` },
-        { status: 400 },
-      );
-    }
   }
 
   const existing = await getEntity("principal", params.id);
@@ -242,19 +226,10 @@ export async function action({
     }
   }
 
-  // Build the merged data object. `reports_to: null` clears the edge;
-  // `undefined` (key absent from patch) leaves the existing value alone.
+  // Build the merged data object. Relation changes are represented by edge
+  // creates/updates/retirements, not by patching Principal JSON.
   const oldData = (existing.data ?? {}) as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...oldData };
-  if (patch.reports_to === null) {
-    // Remove the key entirely so `deriveEdges` doesn't see it and
-    // doesn't emit a `reports_to` edge — promotes the Principal
-    // back to top-of-chain.
-    // biome-ignore lint/performance/noDelete: removing the key (not setting undefined) keeps the data JSONB clean and lets downstream `toHaveProperty` assertions stay honest.
-    delete merged.reports_to;
-  } else if (patch.reports_to !== undefined) {
-    merged.reports_to = patch.reports_to;
-  }
   const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "asserted";
   merged.lifecycle = nextLifecycle;
   if (patch.name !== undefined) {
@@ -292,29 +267,17 @@ export async function action({
   }
 
   const now = nowIso();
-  await withTransaction(async (c) => {
-    await upsertEntity(
-      {
-        id: existing.id,
-        doco_id: existing.doco_id,
-        entity_type: "principal",
-        data: merged,
-        body_md: nextBodyMd,
-        lifecycle: nextLifecycle,
-        created_at: existing.created_at ?? undefined,
-        created_by: existing.created_by ?? undefined,
-        updated_at: now,
-        updated_by: me.id,
-      },
-      c,
-    );
-    await reconcileNodeEdges(c, {
-      docoId: meta.docoId,
-      entityType: "principal",
-      entity: { ...merged, id: existing.id } as unknown as Entity,
-      actor: me.id,
-      source: "api",
-    });
+  await upsertEntity({
+    id: existing.id,
+    doco_id: existing.doco_id,
+    entity_type: "principal",
+    data: merged,
+    body_md: nextBodyMd,
+    lifecycle: nextLifecycle,
+    created_at: existing.created_at ?? undefined,
+    created_by: existing.created_by ?? undefined,
+    updated_at: now,
+    updated_by: me.id,
   });
 
   await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, existing.id);
@@ -323,10 +286,6 @@ export async function action({
   if (patch.body_md !== undefined) {
     before.body_md = existing.body_md ?? "";
     after.body_md = nextBodyMd ?? "";
-  }
-  if (patch.reports_to !== undefined) {
-    before.reports_to = oldData.reports_to ?? null;
-    after.reports_to = patch.reports_to ?? null;
   }
   if (patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle) {
     before.lifecycle = existing.lifecycle ?? "asserted";

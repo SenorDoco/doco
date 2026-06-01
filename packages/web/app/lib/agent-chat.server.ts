@@ -1241,8 +1241,8 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/<type>/<id>.json           — single node detail
   PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
-  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy user alias...], users: [{ id, username, role, type, github_login, email }], principal_nodes: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_node_count }. Read \`users\` for the doco's OAuth members; read \`principal_nodes\` for the Principal NODES visible as BPMN swim lanes / referenced by Action.actor_id.
-  PATCH /<handle>/api/principals/<id>.json       — update a Principal NODE (name, body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is editable — a rename updates in place and is tracked in the audit log.
+  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy user alias...], users: [{ id, username, role, type, github_login, email }], principal_nodes: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_node_count }. Read \`users\` for the doco's OAuth members; read \`principal_nodes\` for the Principal NODES visible as BPMN swim lanes / org-chart roles.
+  PATCH /<handle>/api/principals/<id>.json       — update a Principal NODE (name, body_md, lifecycle). Same retire-on-lifecycle convention. \`name\` is editable — a rename updates in place and is tracked in the audit log.
   GET   /<handle>/api/policies.json            — list policies (guidance + node-authoring) for this doco
   POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "node_authoring"
   GET   /<handle>/api/invites.json               — pending user invites
@@ -1277,30 +1277,18 @@ evals, references, states, ideas, policies, and settings. Principals,
 invites, and audit have dedicated route behavior; do not infer write
 bodies for them from the generic capture pattern.
 
-Principal references in request bodies use principal ids only:
-*_principal_id for one principal and *_principal_ids for arrays. Do
-not send principal names, *_name fields, or comma-separated strings;
-there are no aliases.
+Node request bodies contain prose and scalar metadata only. Do not put
+relationships in node JSON. Create relationships as first-class edges
+with POST /<handle>/api/changesets.json (relate / relate_many) or
+POST /<handle>/api/edges.json.
 
-Common API-facing fields:
-- wanted_by_principal_id: Intent owner; auth fills this from the signed-in principal when omitted.
-- actors_principal_ids: Intent actors, always an array like ["principal_01..."].
-- stakeholders_principal_ids: Intent stakeholders, always an array.
-- actor_principal_id: Action/Log actor; auth fills this when omitted.
-- decided_by_principal_id: Decision maker; auth fills this when omitted.
-- authored_by_principal_id: Rule/Eval/Policy author; auth fills this when omitted.
-
-Read responses may expose stored graph fields such as wanted_by,
-actors, stakeholders, actor_id, and decided_by. created_by is
-user/API-key provenance derived from the authenticated session
-or token. Never send created_by; when writing via doco_api, use the
-API-facing principal-id fields above only for domain actors.
+created_by / updated_by are user/API-key provenance derived from the
+authenticated session or token. Never send created_by.
 
 ### Inline body cheatsheet (post directly — no spec round trip needed)
 
 Required fields marked *; everything else is optional. lifecycle
-defaults to "asserted" except where noted. Auth fills the principal-id
-fields when you omit them.
+defaults to "asserted" except where noted.
 
 **Migration 022/023 prose-field rename.** Every node type now
 stores its full markdown body in a single TYPE-NAMED field — there
@@ -1311,13 +1299,13 @@ label shown in lists; the rest is the body. POSTs that send the old
 required prose key is now \`intent\` / \`decision\` / \`action\` /
 etc., not \`summary\`.
 
-- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
-- Intent:    { intent*, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
-- Action:    { action*, verb*, intent_ids?[], decision_ids?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Rule:      { rule*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
-- Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
-- Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[] }
+- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], lifecycle?, deprecated?, outcome?("succeeded"|"failed") }
+- Intent:    { intent*, lifecycle?, deprecated?, outcome? }
+- Action:    { action*, verb*, inputs?, outputs?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), inputs?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Rule:      { rule*, predicate*, enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), lifecycle?, deprecated?, outcome? }
+- Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), lifecycle?, deprecated?, outcome? }
+- Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash? }
 - State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[] }
 - Idea:      { idea*, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
 - Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
@@ -1327,11 +1315,10 @@ The TYPE-NAMED field carries multi-line markdown; the first line is
 the row label that shows up in lists and BPMN swim lanes. Example:
 
   POST /<handle>/api/intents.json
-  { "intent": "Talent seeker pays to activate Torre Reach\\n\\nThe buyer can complete the purchase without support intervention…",
-    "wanted_by_principal_id": "principal_01..." }
+  { "intent": "Talent seeker pays to activate Torre Reach\\n\\nThe buyer can complete the purchase without support intervention…" }
 
 More examples (minimal — first line of the type-named field is the label):
-{ "intent": "Checkout can be completed without support.\\n\\nBackground: support tickets averaged 3/week before this work.", "wanted_by_principal_id": "principal_01..." }   ← Intent
+{ "intent": "Checkout can be completed without support.\\n\\nBackground: support tickets averaged 3/week before this work." }   ← Intent
 { "action": "Implement principal-id capture fields.\\n\\nReplaced the username-based path…", "verb": "implement", "outputs": { "commit": "abc123" } }                          ← Action
 { "decision": "Use ULIDs for all entity ids.", "question": "What identifier scheme should every entity use?", "chosen": "ULID — time-sortable, URL-safe, no collisions in practice." } ← Decision
 
@@ -1357,7 +1344,7 @@ Never paste the URL on a separate line — the footer-line's link covers it, and
 
 ## Adding an edge
 
-Edges in Doco are first-class rows. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback. Relation fields in capture bodies are input sugar only; they are materialized as edges and stripped from stored node JSON.
+Edges in Doco are first-class rows. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback. Capture bodies reject relationship keys; write the edge explicitly.
 
 Changeset example for BPMN-style ordered flow:
 
@@ -1375,14 +1362,13 @@ Changeset example for BPMN-style ordered flow:
         "body": {
           "action": "SuD charges the authorized card",
           "verb": "charge",
-          "actor_principal_id": "principal_01...",
           "lifecycle": "drafting"
         }
       }
     ]
   }
 
-Common relation kinds: flows_to (source -> target, edge labels allowed) · supports (intent_ids, decision_ids, target_ref, implemented_by) · constrained_by (gated_by / rules_consulted) · attributed_to (actor_id, owner_id, stakeholders, decided_by) · has_parent (parent_intent_id, reports_to, dotted_reports_to) · derived_from (born_from, template_id) · replaces (superseded_by) · relates_to. You can also POST /<handle>/api/edges.json for direct edge creation.
+Common relation kinds: flows_to (source -> target, edge labels allowed) · supports · constrained_by · attributed_to · has_parent · derived_from · replaces · relates_to. Use edge props such as { "role": "serves" }, { "role": "performed_by" }, or { "role": "reports_to" } when a perspective needs a more specific relation role. You can also POST /<handle>/api/edges.json for direct edge creation.
 
 When sibling relations must become valid together, use \`op: "relate_many"\` in the same changeset. This is especially important for exhaustive gateways, tree siblings, and other structures where adding the first edge alone would be temporarily invalid.
 

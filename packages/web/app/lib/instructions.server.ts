@@ -192,45 +192,28 @@ payload — never on the generic \`/api/<type>.json\` route.
 ### Capture body structure
 
 Before POST/PATCH, read \`GET /<handle>/api/<type>.txt\` for the
-exact per-type body when that spec exists. Principal references in
-request bodies use principal ids only: use \`*_principal_id\` for one
-principal and \`*_principal_ids\` for arrays. Do not send principal
-names, \`*_name\` fields, or comma-separated strings; there are no
-compatibility aliases.
+exact per-type body when that spec exists. Node request bodies contain
+prose and scalar metadata only. Put relationships in first-class edges
+with \`POST /<handle>/api/changesets.json\` or
+\`POST /<handle>/api/edges.json\`.
 
-Common principal-id fields:
-
-    wanted_by_principal_id        # Intent owner; auth fills this
-    actors_principal_ids          # Intent actors, array of principal ids
-    stakeholders_principal_ids    # Intent stakeholders, array of principal ids
-    actor_principal_id            # Action/Log actor; auth fills this
-    decided_by_principal_id       # Decision maker; auth fills this
-    authored_by_principal_id      # Rule/Eval/Policy author; auth fills this
-
-Read responses may expose stored graph fields such as \`wanted_by\`,
-\`actors\`, \`stakeholders\`, \`actor_id\`, and \`decided_by\`.
-\`created_by\` is user/API-key provenance derived from the
-authenticated session or token. Never send \`created_by\` in request
-bodies; use the API-facing principal-id fields above only for domain
-actors.
+\`created_by\` / \`updated_by\` are user/API-key provenance derived from
+the authenticated session or token. Never send \`created_by\` in request
+bodies.
 
 Intent capture example:
 
     POST https://doco.to/<handle>/api/intents.json
     {
-      "intent": "Checkout can be completed without support.",
-      "wanted_by_principal_id": "principal_01...",
-      "actors_principal_ids": ["principal_01..."],
-      "stakeholders_principal_ids": ["principal_01..."]
+      "intent": "Checkout can be completed without support."
     }
 
 Action capture example:
 
     POST https://doco.to/<handle>/api/actions.json
     {
-      "action": "Implemented principal-id capture fields.",
+      "action": "Implemented edge-only relationship capture.",
       "verb": "implemented",
-      "actor_principal_id": "principal_01...",
       "outputs": { "commit": "abc123" }
     }
 
@@ -447,7 +430,7 @@ policies that govern how nodes are authored:
 
 - **Intent** — what someone wants. Source of every downstream Decision.
 - **Decision** — a chosen resolution to a question, with alternatives
-  weighed. Tied to one or more Intents via \`intent_ids\`.
+  weighed. Link it to Intents with \`serves\` edges.
 - **Action** — a designed step in a process (imperative/present verb).
 - **Log** — a recorded event that *did* happen (past-tense verb +
   \`happened_at\` + concrete outputs). Immutable once captured.
@@ -463,8 +446,9 @@ policies that govern how nodes are authored:
 - **State** — a node in a formal state machine.
 - **Idea** — exploratory capture; promote to Intent / Decision once
   it firms up.
-- **Principal** — a role-persona node referenced by actor_id /
-  actors[]. Distinct from a User (the OAuth identity layer).
+- **Principal** — a role-persona node linked through attributed_to and
+  has_parent edges with roles such as \`performed_by\`, \`owned_by\`, and
+  \`decided_by\`. Distinct from a User (the OAuth identity layer).
 
 ## Things only people can do
 

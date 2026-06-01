@@ -26,7 +26,7 @@ import {
   canWriteDocoTypeForRequest,
   loadDocoRouteForRead,
 } from "~/lib/doco-access.server";
-import { unsupportedRelationFieldError } from "~/lib/graph-authoring-contract.server";
+import { unsupportedNodeJsonEdgeKeyError } from "~/lib/graph-authoring-contract.server";
 import { withIdempotency } from "~/lib/idempotency.server";
 import { NODE_TYPE_META } from "~/lib/node-types";
 import { recordCaptureTiming, withCaptureTelemetry } from "~/lib/telemetry.server";
@@ -137,12 +137,12 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             );
           }
 
-          const relationError = unsupportedRelationFieldError(
+          const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(
             cfg.entityType,
             draft as Record<string, unknown>,
           );
-          if (relationError) {
-            return Response.json({ error: relationError }, { status: 400 });
+          if (nodeJsonEdgeKeyError) {
+            return Response.json({ error: nodeJsonEdgeKeyError }, { status: 400 });
           }
 
           // Reject non-string prose fields up front: the captureX functions

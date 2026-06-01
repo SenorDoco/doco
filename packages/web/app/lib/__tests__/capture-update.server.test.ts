@@ -19,10 +19,6 @@ vi.mock("@doco/db", () => ({
   upsertEntity: vi.fn(),
   recordEntityVersion: vi.fn(async () => undefined),
   withClient: vi.fn(),
-  // The tx client must answer the managed-edge reconciliation SELECT; an empty
-  // result means "no live edges yet", so a node with a managed field projects
-  // one. (recordEntityVersion + the edge primitives were missing from this mock
-  // since #679 added the append-only version write to persistEntity.)
   withTransaction: vi.fn(async (fn) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
   createChangeset: vi.fn(async () => 1),
   createEdge: vi.fn(async () => ({})),
@@ -200,12 +196,12 @@ describe("updateEntity", () => {
     );
 
     expect(result).toMatchObject({
-      error: expect.stringContaining("sequence_to is no longer stored on node JSON"),
+      error: expect.stringContaining("sequence_to is not a node JSON field"),
     });
     expect(upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("replaces a Decision's implemented_by after capture", async () => {
+  it("rejects patching a Decision's implemented_by relation", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: DECISION_ID,
       entity_type: "decision",
@@ -221,7 +217,6 @@ describe("updateEntity", () => {
         question: "Which payment path?",
         chosen: "Route to the selected path.",
         lifecycle: "asserted",
-        implemented_by: ["reference_01TEST000000000000000001"],
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -238,18 +233,13 @@ describe("updateEntity", () => {
       null,
     );
 
-    expect(result).toMatchObject({ ok: true, changed: ["implemented_by"] });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          implemented_by: ["reference_01TEST000000000000000003"],
-        }),
-      }),
-      expect.anything(),
-    );
+    expect(result).toMatchObject({
+      error: expect.stringContaining("implemented_by is not a node JSON field"),
+    });
+    expect(upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("stores Decision created_by from the user, not the decider Principal", async () => {
+  it("rejects created_by_principal_id on Decision capture because authorship is edge-only", async () => {
     const result = await captureDecision(
       "/tmp/doco",
       DOCO_ID,
@@ -259,28 +249,16 @@ describe("updateEntity", () => {
         decision: "Use user provenance",
         question: "Who created this node?",
         chosen: "The authenticated user.",
-        decided_by_principal_id: "principal_decider",
-        created_by_principal_id: "principal_legacy_creator",
+        created_by_principal_id: "principal_creator",
         created_by_user_id: "user_alice",
-      },
+      } as never,
       "https://doco.test",
     );
 
-    expect(result).toMatchObject({ ok: true });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entity_type: "decision",
-        created_by: "user_alice",
-        data: expect.objectContaining({
-          decided_by: "principal_decider",
-          created_by: "user_alice",
-        }),
-      }),
-      expect.anything(),
-    );
-    expect(vi.mocked(upsertEntity).mock.calls.at(-1)?.[0].data).not.toMatchObject({
-      created_by: "principal_legacy_creator",
+    expect(result).toMatchObject({
+      error: expect.stringContaining("created_by_principal_id is not a node JSON field"),
     });
+    expect(upsertEntity).not.toHaveBeenCalled();
   });
 
   it('rejects the retired lifecycle vocabulary ("active"/"proposed") on capture', async () => {
@@ -294,7 +272,6 @@ describe("updateEntity", () => {
         question: "What lifecycle is stored?",
         chosen: "asserted",
         lifecycle: "active",
-        decided_by_principal_id: "principal_decider",
         created_by_user_id: "user_alice",
       },
       "https://doco.test",
@@ -304,7 +281,7 @@ describe("updateEntity", () => {
     expect(upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("ignores legacy created_by_principal_id patches", async () => {
+  it("rejects created_by_principal_id patches", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: IDEA_ID,
       entity_type: "idea",
@@ -337,14 +314,13 @@ describe("updateEntity", () => {
       actorId: "user_alice",
     });
 
-    expect(result).toMatchObject({ error: "No fields changed." });
+    expect(result).toMatchObject({
+      error: expect.stringContaining("created_by_principal_id is not a node JSON field"),
+    });
     expect(upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("links an accepted Action to code-artifact References via implemented_by — BPMN code↔step linkage", async () => {
-    // The BPMN code↔step probe case: an Action whose ID is referenced
-    // from code comments cannot be superseded without breaking those
-    // URLs. implemented_by must be fully patchable on an Action.
+  it("rejects patching an Action's implemented_by relation", async () => {
     const ACTION_ID = "action_01TEST00000000000000000001";
     vi.mocked(getEntity).mockResolvedValue({
       id: ACTION_ID,
@@ -360,7 +336,6 @@ describe("updateEntity", () => {
         action: "Selects type of job",
         verb: "select",
         lifecycle: "asserted",
-        actor_id: "principal_clerk",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
@@ -383,21 +358,9 @@ describe("updateEntity", () => {
     });
 
     expect(result).toMatchObject({
-      ok: true,
-      changed: ["implemented_by"],
+      error: expect.stringContaining("implemented_by is not a node JSON field"),
     });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entity_type: "action",
-        data: expect.objectContaining({
-          implemented_by: [
-            "reference_01TEST000000000000000010",
-            "reference_01TEST000000000000000011",
-          ],
-        }),
-      }),
-      expect.anything(),
-    );
+    expect(upsertEntity).not.toHaveBeenCalled();
   });
 });
 

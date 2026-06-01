@@ -178,7 +178,7 @@ describe("loadNodeDialogDetail", () => {
     });
   });
 
-  it("does not include field-authored BPMN sequence links when edge rows are absent", async () => {
+  it("does not include BPMN sequence links unless edge rows exist", async () => {
     const decisionId = "decision_01ROUTE";
     const priorId = "action_01PRIOR";
     const flexibleId = "action_01FLEXIBLE";
@@ -252,7 +252,6 @@ describe("loadNodeDialogDetail", () => {
               body_text: null,
               lifecycle: "asserted",
               raw_json: JSON.stringify({
-                decided_by: principalId,
                 sequence_to: [
                   { target: flexibleId, label: "Flexible" },
                   { target: internshipId, label: "Internship" },

@@ -9,8 +9,11 @@ import {
   withClient,
   withTransaction,
 } from "@doco/db";
-import { FIELD_TO_EDGE_TYPE, SKIP_FIELDS } from "@doco/index";
-import { type AuthoringPredicate, type Entity, generateUlid } from "@doco/shared";
+import {
+  type AuthoringPredicate,
+  BLOCKED_NODE_JSON_EDGE_FIELD_SET,
+  generateUlid,
+} from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
 // for agents/people to write a Decision (or other entity types) without
@@ -20,7 +23,6 @@ import { waitUntil } from "@vercel/functions";
 // ULID; agents/users read the readable field (`summary` for most nodes).
 import { appendAuditEvent } from "./audit-log.server";
 import { type AuthoringResult, runAuthoringPolicies } from "./authoring-runner.server";
-import { reconcileNodeEdges } from "./managed-edges.server";
 
 /**
  * System-managed identity / audit columns that PATCH must never
@@ -111,22 +113,6 @@ async function enforceAndPersist(args: {
       ...(args.body !== undefined ? { body: args.body } : {}),
       ...(args.authoring ? { authoring: args.authoring } : {}),
       client: c,
-    });
-    // Project + reconcile the node's managed relationship edges in the same
-    // transaction (option (i): edges as the authored source of truth). No-op
-    // for non-node entities and for re-captures that leave the five managed
-    // fields unchanged. `fm` is the full entity here — create builds it whole,
-    // patch merges onto the loaded row — so reconciliation sees every managed
-    // field and never retires an edge a partial patch simply omitted.
-    await reconcileNodeEdges(c, {
-      docoId: args.docoId,
-      entityType: args.entityType,
-      entity: { ...args.fm, id: args.id } as unknown as Entity,
-      actor:
-        (typeof args.fm.updated_by === "string" && args.fm.updated_by) ||
-        (typeof args.fm.created_by === "string" ? args.fm.created_by : null),
-      source: args.authoring?.source,
-      metadata: args.authoring?.metadata,
     });
     return pred;
   });
@@ -286,18 +272,16 @@ function computeTypeNamedValue(entityType: string, fm: Record<string, unknown>):
 }
 
 /**
- * Reindex synchronously (so the caller's response reflects materialized
- * edges/FTS/embeddings). The caller must have already `await`-ed
+ * Reindex synchronously (so the caller's response reflects persisted
+ * rows/FTS/embeddings). The caller must have already `await`-ed
  * `persistEntity` so the new row is durably written before the reindex
  * reads it back.
  *
  * Why sync reindex: on Vercel-style serverless deploys the lambda is
  * frozen once the response is sent — a fire-and-forget background
- * promise may never run to completion, leaving the `edges` table empty
- * even though the entity row carries `intent_ids` / `born_from`. The
- * fix: await the reindex before responding. Adds a few hundred ms to
- * capture/PATCH latency; in return the graph is always consistent the
- * moment the agent sees the success line.
+ * promise may never run to completion. The fix: await the reindex before
+ * responding. Adds a few hundred ms to capture/PATCH latency; in return the
+ * graph is always consistent the moment the agent sees the success line.
  *
  * `changedEntityId` triggers the incremental reindex path: only that
  * entity's FTS row + outgoing edges are rebuilt, leaving the rest of
@@ -345,7 +329,7 @@ export interface DecisionDraft {
   question: string;
   /** Optional: chosen resolution (multi-line ok). Resolution-style
    *  Decisions (ADRs, glossary terms) carry a `chosen`; BPMN gateway
-   *  Decisions route flow through outgoing `sequence_flow` edges and have no
+   *  Decisions route flow through outgoing `flows_to` edges and have no
    *  single chosen answer. Templates that need it re-require it via a
    *  `requires_field` policy (e.g. glossaries). Matches the entity type,
    *  where `chosen` is `string | null` (null while drafting). */
@@ -353,18 +337,8 @@ export interface DecisionDraft {
 
   /** Optional: rejected alternatives. */
   alternatives?: { name: string; rejected_because: string }[];
-  /** Optional: intent ids to link via `intent_ids`. */
-  intent_ids?: string[];
-  /** Optional sequence-flow targets; persisted as first-class edges. */
-  sequence_to?: unknown;
-  /** Optional: principal id who made the decision. */
-  decided_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create nodes; use the authenticated user. */
-  created_by_principal_id?: string;
-  /** Optional: reference another entity as origin (e.g. born_from a bugfix). */
-  born_from?: string;
   /** Optional: defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -669,9 +643,8 @@ export interface CaptureError {
  * Decide which audit op type best describes a successful update, and
  * emit one event with before/after deltas for the changed fields.
  *
- * Rule: lifecycle change wins (op = lifecycle.transition). Otherwise,
- * if every changed field is an additive edge (`*_add` was used in the
- * patch) → edge.add. Otherwise → entity.update.
+ * Rule: lifecycle change wins (op = lifecycle.transition). Otherwise this is
+ * an entity.update; edge mutations are recorded by the edge capture path.
  */
 function emitAuditForUpdate(opts: {
   docoDir: string;
@@ -684,17 +657,12 @@ function emitAuditForUpdate(opts: {
   afterFm: Record<string, unknown>;
   patchKeys: string[];
 }): void {
-  const { changed, beforeFm, afterFm, patchKeys } = opts;
+  const { changed, beforeFm, afterFm } = opts;
   if (changed.length === 0) return;
 
-  let op: "lifecycle.transition" | "edge.add" | "entity.update";
-  if (changed.includes("lifecycle")) {
-    op = "lifecycle.transition";
-  } else {
-    const hasAddPatch = patchKeys.some((k) => k.endsWith("_add"));
-    const allChangesAreEdges = changed.every((f) => f === "intent_ids");
-    op = hasAddPatch && allChangesAreEdges ? "edge.add" : "entity.update";
-  }
+  const op: "lifecycle.transition" | "entity.update" = changed.includes("lifecycle")
+    ? "lifecycle.transition"
+    : "entity.update";
 
   const before: Record<string, unknown> = {};
   const after: Record<string, unknown> = {};
@@ -768,78 +736,6 @@ function emitAuditForCreate(opts: {
   }
 }
 
-/**
- * Apply the three list-op shapes (replace / add / remove) for a single
- * frontmatter field. Returns the ops emitted (for footer rendering) and
- * the list of changed-keys. Used by `updateDecision` + `updateEntity`
- * for the `intent_ids` list.
- *
- * `lookup` translates the input names to the ids Postgres stores;
- * `intent_ids` are already ids so the callback is a pass-through.
- */
-async function applyListOp(
-  fm: Record<string, unknown>,
-  fieldKey: string,
-  patch: {
-    replace?: string[];
-    add?: string[];
-    remove?: string[];
-  },
-  lookup: (
-    names: string[],
-  ) => Promise<{ ids: string[] } | CaptureError> | { ids: string[] } | CaptureError,
-): Promise<{ changed: boolean; ops: Op[]; error?: string }> {
-  const ops: Op[] = [];
-  let changedField = false;
-
-  if (patch.replace !== undefined) {
-    const r = await lookup(patch.replace);
-    if ("error" in r) return { changed: false, ops, error: r.error };
-    fm[fieldKey] = r.ids;
-    ops.push({ kind: "replaced_list", field: fieldKey, names: patch.replace });
-    changedField = true;
-  }
-  if (patch.add !== undefined) {
-    const r = await lookup(patch.add);
-    if ("error" in r) return { changed: false, ops, error: r.error };
-    const current = Array.isArray(fm[fieldKey]) ? (fm[fieldKey] as string[]) : [];
-    const merged = [...current];
-    const addedNames: string[] = [];
-    for (let i = 0; i < r.ids.length; i++) {
-      const id = r.ids[i];
-      const name = patch.add[i];
-      if (!id || !name) continue;
-      if (!merged.includes(id)) {
-        merged.push(id);
-        addedNames.push(name);
-      }
-    }
-    if (addedNames.length > 0) {
-      fm[fieldKey] = merged;
-      ops.push({ kind: "added_to", field: fieldKey, names: addedNames });
-      changedField = true;
-    }
-  }
-  if (patch.remove !== undefined) {
-    const r = await lookup(patch.remove);
-    if ("error" in r) return { changed: false, ops, error: r.error };
-    const current = Array.isArray(fm[fieldKey]) ? (fm[fieldKey] as string[]) : [];
-    const removedNames: string[] = [];
-    for (let i = 0; i < r.ids.length; i++) {
-      const id = r.ids[i];
-      const name = patch.remove[i];
-      if (id && name && current.includes(id)) removedNames.push(name);
-    }
-    const filtered = current.filter((s) => !r.ids.includes(s));
-    if (filtered.length !== current.length) {
-      fm[fieldKey] = filtered;
-      ops.push({ kind: "removed_from", field: fieldKey, names: removedNames });
-      changedField = true;
-    }
-  }
-  return { changed: changedField, ops };
-}
-
 function requiredPrincipalId(
   value: string | undefined,
   field: string,
@@ -857,51 +753,10 @@ function requiredPrincipalId(
 }
 
 /**
- * Like `requiredPrincipalId`, but absence is allowed — returns `null`
- * when no id is supplied. Used for attribution fields (e.g. a
- * Decision's `decided_by`) that the capture layer no longer mandates:
- * the field traces back to when the decision-maker was the always-present
- * signed-in collaborator, so "required" was free. Once it became a
- * Principal *node* (PR #66) — which may not exist for a user, and is
- * policy-blocked in some templates like glossaries — mandating it turned
- * into friction. Templates that genuinely need attribution (business-processes)
- * still enforce it through their own `requires_field` policies; the
- * capture layer just validates the shape when a value is present.
- */
-function optionalPrincipalId(
-  value: string | undefined,
-  field: string,
-): string | null | CaptureError {
-  const principalId = value?.trim();
-  if (!principalId) return null;
-  const bad = assertNotUserId(principalId, field);
-  if (bad) return bad;
-  return principalId;
-}
-
-function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureError {
-  if (!Array.isArray(value)) return [];
-  const ids: string[] = [];
-  for (const raw of value) {
-    if (typeof raw !== "string") continue;
-    const id = raw.trim();
-    if (!id) continue;
-    const bad = assertNotUserId(id, field);
-    if (bad) return bad;
-    if (!ids.includes(id)) ids.push(id);
-  }
-  return ids;
-}
-
-/**
  * Refuse `user_*` ids on capture paths that expect a Principal.
  * Users are the OAuth identity layer; Principals are the
- * role-personas Actions / Decisions / Intents reference. They share
- * humans but they aren't interchangeable — agents that grab a
- * user id from the principals endpoint and pass it into
- * `actor_id` ship a broken record (the BPMN renderer can't resolve
- * it; the `requires_field_resolves_to_principal` policy can't
- * either). Catch it at the door rather than tolerate it downstream.
+ * role-personas policies reference. They share humans but they aren't
+ * interchangeable.
  */
 function assertNotUserId(value: string, field: string): CaptureError | null {
   if (!value.startsWith("user_")) return null;
@@ -923,20 +778,15 @@ function userCreatorId(draft: UserCreatorDraft): string | null | CaptureError {
   return creatorId;
 }
 
-function rejectProcessRelationPatchFields(record: unknown): CaptureError | null {
+function rejectNodeJsonEdgeKeys(record: unknown): CaptureError | null {
   if (!record || typeof record !== "object") return null;
-  const fields = record as { sequence_to?: unknown; preceded_by?: unknown };
-  if (fields.sequence_to !== undefined) {
-    return {
-      error:
-        "sequence_to is no longer stored on node JSON. Create or retire first-class flows_to edges instead.",
-    };
-  }
-  if (fields.preceded_by !== undefined) {
-    return {
-      error:
-        "preceded_by is no longer stored on node JSON. Create or retire first-class flows_to predecessor edges instead.",
-    };
+  for (const [field, value] of Object.entries(record)) {
+    if (value === undefined || value === null) continue;
+    if (BLOCKED_NODE_JSON_EDGE_FIELD_SET.has(field)) {
+      return {
+        error: `${field} is not a node JSON field. Create, update, or retire a first-class edge instead.`,
+      };
+    }
   }
   return null;
 }
@@ -1039,17 +889,12 @@ export async function captureDecision(
   const startedAt = performance.now();
   if (!draft.decision?.trim()) return { error: "decision is required." };
   if (!draft.question?.trim()) return { error: "question is required." };
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   // `chosen` is optional: a BPMN gateway Decision routes flow through outgoing
-  // `sequence_flow` edges and has no single chosen answer. Resolution-style
+  // `flows_to` edges and has no single chosen answer. Resolution-style
   // Decisions still get `chosen` enforced by their template (glossaries' and
   // any ADR-style requires_field policy).
-
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const sequenceTo: unknown[] = Array.isArray(draft.sequence_to) ? draft.sequence_to : [];
-
-  const decidedBy = optionalPrincipalId(draft.decided_by_principal_id, "decided_by_principal_id");
-  if (decidedBy !== null && typeof decidedBy !== "string") return decidedBy;
-  const decidedById = decidedBy;
 
   const id = `decision_${generateUlid()}`;
 
@@ -1067,15 +912,11 @@ export async function captureDecision(
     doco_id: docoId,
     node_type: "decision",
     decision: decisionText,
-    ...(draft.born_from ? { born_from: draft.born_from } : {}),
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
-    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     question: draft.question.trim(),
     ...(draft.chosen?.trim() ? { chosen: draft.chosen.trim() } : {}),
     ...(Array.isArray(draft.alternatives) && draft.alternatives.length > 0
       ? { alternatives: draft.alternatives }
       : {}),
-    ...(decidedById ? { decided_by: decidedById } : {}),
     decided_at: now,
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
@@ -1103,18 +944,10 @@ export interface DecisionPatch {
   question?: string;
   chosen?: string;
   alternatives?: { name: string; rejected_because: string }[];
-  intent_ids?: string[];
-  intent_ids_add?: string[];
-  intent_ids_remove?: string[];
-  implemented_by?: string[];
-  /** Optional sequence-flow targets; persisted as first-class edges. */
-  sequence_to?: unknown;
-  decided_by_principal_id?: string;
-  born_from?: string | null;
-  superseded_by?: string | null;
   lifecycle?: string;
   deprecated?: boolean | null;
   outcome?: "succeeded" | "failed" | null;
+  [k: string]: unknown;
 }
 
 export interface UpdateResult extends CaptureResult {
@@ -1136,6 +969,8 @@ export async function updateDecision(
   const existing = await readEntityFromPostgres("decision", decisionId);
   if (!existing) return { error: `Decision not found: ${decisionId}` };
   const fm = existing.fm;
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(patch as Record<string, unknown>);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
 
   // Snapshot pre-mutation values for the audit log; only the fields
   // that get mutated below are inspected later, so a shallow copy of
@@ -1186,74 +1021,6 @@ export async function updateDecision(
     if (outcome && typeof outcome !== "string") return outcome;
     setScalar("outcome", outcome ?? null);
   }
-  if (patch.born_from !== undefined) {
-    if (patch.born_from === null || patch.born_from === "") {
-      if ("born_from" in fm) {
-        fm.born_from = undefined;
-        changed.push("born_from");
-        ops.push({ kind: "cleared", field: "born_from" });
-      }
-    } else {
-      fm.born_from = patch.born_from;
-      changed.push("born_from");
-      ops.push({ kind: "set", field: "born_from", value: patch.born_from });
-    }
-  }
-  if (patch.superseded_by !== undefined) {
-    if (patch.superseded_by === null || patch.superseded_by === "") {
-      if ("superseded_by" in fm) {
-        fm.superseded_by = undefined;
-        changed.push("superseded_by");
-        ops.push({ kind: "cleared", field: "superseded_by" });
-      }
-    } else {
-      fm.superseded_by = patch.superseded_by;
-      changed.push("superseded_by");
-      ops.push({ kind: "set", field: "superseded_by", value: patch.superseded_by });
-    }
-  }
-
-  // intent_ids (replace/add/remove) — input is already an id, pass-through.
-  const intentResult = await applyListOp(
-    fm,
-    "intent_ids",
-    {
-      ...(patch.intent_ids !== undefined ? { replace: patch.intent_ids } : {}),
-      ...(patch.intent_ids_add !== undefined ? { add: patch.intent_ids_add } : {}),
-      ...(patch.intent_ids_remove !== undefined ? { remove: patch.intent_ids_remove } : {}),
-    },
-    (ids) => ({ ids }),
-  );
-  if (intentResult.changed) {
-    if (!changed.includes("intent_ids")) changed.push("intent_ids");
-    ops.push(...intentResult.ops);
-  }
-
-  // implemented_by — code-artifact Reference links. Replace-only, like
-  // every other relationship list (decision_ids, gated_by);
-  // only the legacy intent_ids carries add/remove sugar.
-  if (patch.implemented_by !== undefined) {
-    const list = Array.isArray(patch.implemented_by) ? patch.implemented_by : [];
-    if (JSON.stringify(fm.implemented_by ?? []) !== JSON.stringify(list)) {
-      fm.implemented_by = list;
-      changed.push("implemented_by");
-      ops.push({ kind: "set", field: "implemented_by", value: JSON.stringify(list) });
-    }
-  }
-
-  const relationFieldError = rejectProcessRelationPatchFields(patch as Record<string, unknown>);
-  if (relationFieldError) return relationFieldError;
-
-  if (patch.decided_by_principal_id !== undefined) {
-    const pid = patch.decided_by_principal_id.trim();
-    if (!pid) return { error: "decided_by_principal_id cannot be empty." };
-    if (fm.decided_by !== pid) {
-      fm.decided_by = pid;
-      changed.push("decided_by");
-      ops.push({ kind: "set", field: "decided_by", value: pid });
-    }
-  }
-
   if (changed.length === 0) {
     return { error: NO_FIELDS_CHANGED };
   }
@@ -1327,53 +1094,7 @@ export interface EntityPatch {
   lifecycle?: string;
   deprecated?: boolean | null;
   outcome?: "succeeded" | "failed" | null;
-  intent_ids?: string[];
-  intent_ids_add?: string[];
-  intent_ids_remove?: string[];
-  born_from?: string | null;
-  superseded_by?: string | null;
   [k: string]: unknown;
-}
-
-function normalizePrincipalIdPatchFields(
-  entityType: NodeTypeName,
-  patch: EntityPatch,
-): EntityPatch {
-  const normalized: EntityPatch = { ...patch };
-  const copy = (inputField: string, target: string) => {
-    if (inputField in patch && patch[inputField] !== undefined) {
-      normalized[target] = patch[inputField];
-    }
-  };
-
-  switch (entityType) {
-    case "intent":
-      copy("wanted_by_principal_id", "wanted_by");
-      copy("actors_principal_ids", "actors");
-      copy("stakeholders_principal_ids", "stakeholders");
-      break;
-    case "action":
-    case "log":
-      copy("actor_principal_id", "actor_id");
-      break;
-    case "decision":
-      copy("decided_by_principal_id", "decided_by");
-      break;
-    case "eval":
-      copy("authored_by_principal_id", "authored_by");
-      break;
-    case "rule":
-    case "guidance_policy":
-    case "node_authoring_policy":
-      copy("authored_by_principal_id", "authored_by");
-      break;
-    case "reference":
-    case "state":
-    case "idea":
-      break;
-  }
-
-  return normalized;
 }
 
 export async function updateEntity(opts: {
@@ -1415,9 +1136,9 @@ export async function updateEntity(opts: {
   if (!existing) return { error: `${entityType} not found: ${id}` };
   const fm = existing.fm;
   const existingBody = existing.body;
-  const normalizedPatch = normalizePrincipalIdPatchFields(entityType, patch);
-  const relationFieldError = rejectProcessRelationPatchFields(normalizedPatch);
-  if (relationFieldError) return relationFieldError;
+  const normalizedPatch = patch;
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(patch);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   // Migration-022/023: 9 node types collapsed summary+body_md+extras
   // into a single type-named prose column. Policies use the `policy`
   // column (renamed from `summary` by 038) + body_md. Principals use
@@ -1477,53 +1198,19 @@ export async function updateEntity(opts: {
     if (outcome && typeof outcome !== "string") return outcome;
     setScalar("outcome", outcome ?? null);
   }
-  if (normalizedPatch.born_from !== undefined) {
-    if (normalizedPatch.born_from === null || normalizedPatch.born_from === "") {
-      if ("born_from" in fm) {
-        fm.born_from = undefined;
-        changed.push("born_from");
-        ops.push({ kind: "cleared", field: "born_from" });
-      }
-    } else {
-      fm.born_from = normalizedPatch.born_from;
-      changed.push("born_from");
-      ops.push({ kind: "set", field: "born_from", value: normalizedPatch.born_from });
-    }
-  }
-  if (normalizedPatch.superseded_by !== undefined) {
-    if (normalizedPatch.superseded_by === null || normalizedPatch.superseded_by === "") {
-      if ("superseded_by" in fm) {
-        fm.superseded_by = undefined;
-        changed.push("superseded_by");
-        ops.push({ kind: "cleared", field: "superseded_by" });
-      }
-    } else {
-      fm.superseded_by = normalizedPatch.superseded_by;
-      changed.push("superseded_by");
-      ops.push({ kind: "set", field: "superseded_by", value: normalizedPatch.superseded_by });
-    }
-  }
-
   // Apply every other field in the patch to the entity's data jsonb.
   // Step B of the node shape sweep dropped per-type whitelists: any
   // user-supplied field that isn't system-managed (id/audit columns),
   // isn't a special-cased scalar handled above (lifecycle, outcome,
-  // deprecated, born_from, superseded_by), isn't a list-op handled
-  // below (intent_ids and friends), and isn't a prose body operation
-  // (body_md / body_md_append) is written straight through.
+  // deprecated), and isn't a prose body operation (body_md /
+  // body_md_append) is written straight through.
   const SPECIAL_CASED_KEYS = new Set<string>([
     "lifecycle",
     "outcome",
     "deprecated",
-    "born_from",
-    "superseded_by",
-    "intent_ids",
-    "intent_ids_add",
-    "intent_ids_remove",
     "body_md",
     "body_md_append",
     "policy",
-    "created_by_principal_id",
     "created_by_user_id",
     // Per migration 034 (remove-slugs PR), nodes no longer carry a
     // `slug` field in their data jsonb. Silently drop the key on
@@ -1549,28 +1236,6 @@ export async function updateEntity(opts: {
       ops.push({ kind: "set", field: k, value: typeof v === "string" ? v : JSON.stringify(v) });
     }
   }
-
-  // intent_ids (replace/add/remove)
-  const eIntentResult = await applyListOp(
-    fm,
-    "intent_ids",
-    {
-      ...(patch.intent_ids !== undefined ? { replace: patch.intent_ids } : {}),
-      ...(patch.intent_ids_add !== undefined ? { add: patch.intent_ids_add } : {}),
-      ...(patch.intent_ids_remove !== undefined ? { remove: patch.intent_ids_remove } : {}),
-    },
-    (ids) => ({ ids }),
-  );
-  if (eIntentResult.changed) {
-    if (!changed.includes("intent_ids")) changed.push("intent_ids");
-    ops.push(...eIntentResult.ops);
-  }
-
-  // implemented_by — code-artifact Reference links. Not special-cased:
-  // the catch-all loop above already applies it as a whole-list replace,
-  // exactly like decision_ids / gated_by. Replace-only,
-  // no add/remove sugar (that's the legacy intent_ids exception, not the
-  // norm).
 
   let bodyOp: "replace" | "append" | "none" = "none";
   if (isMd) {
@@ -1662,16 +1327,6 @@ export interface IntentDraft {
   /** Required: the full Intent prose (first line = label). */
   intent: string;
 
-  /** Optional: principal id who wants this. */
-  wanted_by_principal_id?: string;
-  /**
-   * Optional: principal ids expected to act in this flow. Stored as
-   * `actors: [principal_id, ...]` and used by process graph-completeness
-   * rules to require an Action per actor before the Intent moves to active.
-   */
-  actors_principal_ids?: string[];
-  /** Optional: principal ids with a say in the outcome even if they do not act directly. */
-  stakeholders_principal_ids?: string[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
   /** Optional: defaults to "asserted". */
@@ -1691,24 +1346,8 @@ export async function captureIntent(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.intent?.trim()) return { error: "intent is required." };
-  const wantedBy = requiredPrincipalId(
-    draft.wanted_by_principal_id,
-    "wanted_by_principal_id",
-    "or pass an authenticated request; the route fills it from `me.id`",
-  );
-  if (typeof wantedBy !== "string") return wantedBy;
-  const wantedById = wantedBy;
-
-  const actorIdsResult = uniquePrincipalIds(draft.actors_principal_ids, "actors_principal_ids");
-  if (!Array.isArray(actorIdsResult)) return actorIdsResult;
-  const actorIds = actorIdsResult;
-  const stakeholderIdsResult = uniquePrincipalIds(
-    draft.stakeholders_principal_ids,
-    "stakeholders_principal_ids",
-  );
-  if (!Array.isArray(stakeholderIdsResult)) return stakeholderIdsResult;
-  const stakeholderIds = stakeholderIdsResult;
-
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   const id = `intent_${generateUlid()}`;
   const intentText = draft.intent.trim();
   const label = firstLine(intentText);
@@ -1723,9 +1362,6 @@ export async function captureIntent(
     doco_id: docoId,
     node_type: "intent",
     intent: intentText,
-    wanted_by: wantedById,
-    ...(actorIds.length > 0 ? { actors: actorIds } : {}),
-    ...(stakeholderIds.length > 0 ? { stakeholders: stakeholderIds } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
@@ -1752,8 +1388,6 @@ export interface IdeaDraft {
   idea: string;
   /** Internal route-filled user id that created/proposed this idea. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create nodes; use the authenticated user. */
-  created_by_principal_id?: string;
   /** Optional: entity this idea became once promoted. */
   promoted_to?: string | null;
   /** Optional: why the idea was rejected or parked. */
@@ -1774,6 +1408,8 @@ export async function captureIdea(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.idea?.trim()) return { error: "idea is required." };
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   if (!createdById) {
@@ -1830,12 +1466,6 @@ export interface EvalDraft {
   input?: unknown;
   /** Optional: expected outcome (any shape; prose for llm-judge). */
   expected?: unknown;
-  /** Optional: id of the entity this Eval tests. */
-  target_ref?: string;
-  /** Optional: intent ids to link via `intent_ids`. */
-  intent_ids?: string[];
-  /** Optional: principal id who authored the Eval. */
-  authored_by_principal_id?: string;
   /** Internal route-filled user id that created this Eval. */
   created_by_user_id?: string;
   /** Optional default: lifecycle = "asserted". */
@@ -1856,6 +1486,8 @@ export async function captureEval(
   const startedAt = performance.now();
   if (!draft.eval?.trim()) return { error: "eval is required." };
   if (!draft.criterion?.kind) return { error: "criterion.kind is required." };
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   if (!["exact", "shape", "llm-judge"].includes(draft.criterion.kind)) {
     return { error: `Unknown criterion.kind: ${draft.criterion.kind}` };
   }
@@ -1868,22 +1500,8 @@ export async function captureEval(
   if (draft.expected_status !== undefined && !["pass", "fail"].includes(draft.expected_status)) {
     return { error: `Unknown expected_status: ${draft.expected_status}` };
   }
-  const explicitAuthor = draft.authored_by_principal_id?.trim();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  let authoredById: string | null = null;
-  if (explicitAuthor) {
-    const bad = assertNotUserId(explicitAuthor, "authored_by_principal_id");
-    if (bad) return bad;
-    authoredById = explicitAuthor;
-  } else if (!createdById) {
-    return {
-      error:
-        "authored_by_principal_id is required (or pass an authenticated request; the route fills `created_by` from the session).",
-    };
-  }
-
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
   const id = `eval_${generateUlid()}`;
   const evalText = draft.eval.trim();
@@ -1898,16 +1516,13 @@ export async function captureEval(
     node_type: "eval",
     eval: evalText,
     ...(draft.kind ? { kind: draft.kind } : {}),
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(draft.expected_status ? { expected_status: draft.expected_status } : {}),
     ...(draft.how_to_run ? { how_to_run: draft.how_to_run } : {}),
     ...(draft.input !== undefined ? { input: draft.input } : {}),
     ...(draft.expected !== undefined ? { expected: draft.expected } : {}),
     criterion: draft.criterion,
-    ...(draft.target_ref ? { target_ref: draft.target_ref } : {}),
     last_status: "pending",
     created_at: now,
-    ...(authoredById ? { authored_by: authoredById } : {}),
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
   };
@@ -1936,26 +1551,12 @@ export interface ActionDraft {
   /** Required: short verb naming the action (`refactor`, `migrate`, …). */
   verb: string;
 
-  /** Optional: intent ids the action serves. */
-  intent_ids?: string[];
-  /** Optional: decision ids the action enacts. */
-  decision_ids?: string[];
-  /** Optional predecessor targets; persisted as first-class edges. */
-  preceded_by?: unknown;
-  /** Optional sequence-flow targets; persisted as first-class edges. */
-  sequence_to?: unknown;
-  /** Optional: rule ids that gate this action (BPMN-style policy guards). */
-  gated_by?: string[];
   /** Optional: verb-specific inputs (any shape). */
   inputs?: unknown;
   /** Optional: verb-specific outputs (any shape). */
   outputs?: unknown;
-  /** Optional: principal id who performs the action. */
-  actor_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create nodes; use the authenticated user. */
-  created_by_principal_id?: string;
   /** Optional: defaults to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1974,22 +1575,8 @@ export async function captureAction(
   const startedAt = performance.now();
   if (!draft.action?.trim()) return { error: "action is required." };
   if (!draft.verb?.trim()) return { error: "verb is required." };
-  const actor = requiredPrincipalId(
-    draft.actor_principal_id,
-    "actor_principal_id",
-    "or pass an authenticated request; the route fills it from `me.id`",
-  );
-  if (typeof actor !== "string") return actor;
-  const actorId = actor;
-
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
-  const precededBy: unknown[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
-  const sequenceTo: unknown[] = Array.isArray(draft.sequence_to) ? draft.sequence_to : [];
-  const gatedBy: string[] = Array.isArray(draft.gated_by)
-    ? draft.gated_by.filter((r): r is string => typeof r === "string" && r.startsWith("rule_"))
-    : [];
-
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   const id = `action_${generateUlid()}`;
   const actionText = draft.action.trim();
   const label = firstLine(actionText);
@@ -2008,13 +1595,7 @@ export async function captureAction(
     doco_id: docoId,
     node_type: "action",
     action: actionText,
-    actor_id: actorId,
     verb: draft.verb.trim(),
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
-    ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
-    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
-    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
-    ...(gatedBy.length > 0 ? { gated_by: gatedBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     ...(draft.outputs !== undefined ? { outputs: draft.outputs } : {}),
     performed_at: now,
@@ -2056,18 +1637,9 @@ export interface LogDraft {
    *  verification result. Non-empty in practice. */
   outputs: Record<string, unknown>;
 
-  /** Optional: the Action template this Log instances. */
-  template_id?: string;
-  intent_ids?: string[];
-  decision_ids?: string[];
-  /** Optional predecessor targets; persisted as first-class edges. */
-  preceded_by?: unknown;
   inputs?: unknown;
-  actor_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create nodes; use the authenticated user. */
-  created_by_principal_id?: string;
   /** Optional override. Logs default to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
   deprecated?: boolean;
@@ -2089,6 +1661,8 @@ export async function captureLog(
   if (!draft.happened_at?.trim()) {
     return { error: "happened_at is required (ISO 8601 UTC) — Logs record a moment in time." };
   }
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   if (
     !draft.outputs ||
     typeof draft.outputs !== "object" ||
@@ -2099,18 +1673,6 @@ export async function captureLog(
         "outputs is required and must be a non-empty object — Logs record concrete results (commit hash, deploy URL, etc.).",
     };
   }
-  const actor = requiredPrincipalId(
-    draft.actor_principal_id,
-    "actor_principal_id",
-    "or pass an authenticated request; the route fills it from `me.id`",
-  );
-  if (typeof actor !== "string") return actor;
-  const actorId = actor;
-
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
-  const precededBy: unknown[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
-
   const id = `log_${generateUlid()}`;
   const logText = draft.log.trim();
   const label = firstLine(logText);
@@ -2129,14 +1691,9 @@ export async function captureLog(
     doco_id: docoId,
     node_type: "log",
     log: logText,
-    actor_id: actorId,
     verb: draft.verb.trim(),
     happened_at: draft.happened_at,
     outputs: draft.outputs,
-    ...(draft.template_id ? { template_id: draft.template_id } : {}),
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
-    ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
-    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
@@ -2167,8 +1724,6 @@ export interface RuleDraft {
   /** Required: machine-checkable / prose predicate the Rule asserts. */
   predicate: string;
 
-  /** Optional: intent ids the Rule serves. */
-  intent_ids?: string[];
   /**
    * Optional: enforcement surface — `runtime | review | manual`.
    * Maps to the Rule's `phase` field in the stored row for compatibility
@@ -2179,14 +1734,8 @@ export interface RuleDraft {
   enforced_by?: "runtime" | "review" | "manual";
   /** Optional: severity — `hard` (blocker) or `soft` (warning). Maps to schema. */
   severity?: "hard" | "soft";
-  /** Optional: id of the Decision this Rule was born from. */
-  born_from?: string;
-  /** Optional: principal id who authored the Rule. */
-  authored_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create nodes; use the authenticated user. */
-  created_by_principal_id?: string;
   /** Optional: defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -2208,15 +1757,8 @@ export async function captureRule(
     return { error: "predicate must be a string (a prose or machine-checkable assertion)." };
   }
   if (!draft.predicate.trim()) return { error: "predicate is required." };
-  // Author attribution is optional — same vestige as a Decision's
-  // decided_by (see optionalPrincipalId). Templates that want it can
-  // enforce authored_by via their own requires_field policies.
-  const author = optionalPrincipalId(draft.authored_by_principal_id, "authored_by_principal_id");
-  if (author !== null && typeof author !== "string") return author;
-  const authorId = author;
-
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   // Map the CLI/spec-facing enforcement vocabulary to the schema's `phase`
   // field. The original verb is preserved verbatim under `enforced_by`
   // so the spec is round-trippable.
@@ -2246,8 +1788,6 @@ export async function captureRule(
     doco_id: docoId,
     node_type: "rule",
     rule: ruleText,
-    ...(draft.born_from ? { born_from: draft.born_from } : {}),
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     modality: "must",
     severity,
     phase,
@@ -2257,7 +1797,6 @@ export async function captureRule(
     expected: true,
     on_violation: severity === "blocker" ? "block" : "warn",
     created_at: now,
-    ...(authorId ? { authored_by: authorId } : {}),
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
   };
@@ -2289,8 +1828,6 @@ export interface GuidancePolicyDraft {
   authored_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create policies; use the authenticated user. */
-  created_by_principal_id?: string;
   /** Optional: defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -2317,8 +1854,6 @@ export interface NodeAuthoringPolicyDraft {
   body_md?: string;
   authored_by_principal_id?: string;
   created_by_user_id?: string;
-  /** @deprecated Principals do not create policies; use the authenticated user. */
-  created_by_principal_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -2326,7 +1861,6 @@ export interface NodeAuthoringPolicyDraft {
 
 async function resolvePolicyAuthor(draft: {
   authored_by_principal_id?: string;
-  created_by_principal_id?: string;
 }): Promise<string | CaptureError> {
   const author = requiredPrincipalId(
     draft.authored_by_principal_id,
@@ -2382,17 +1916,6 @@ function normalizeNodeAuthoringPredicate(
   return predicate;
 }
 
-/**
- * Reject predicates whose `edge_type` is a *field name* (a key in
- * `FIELD_TO_EDGE_TYPE`) rather than the canonical mapped edge type
- * — those would never match because `deriveEdges` rewrites the field
- * name to the canonical value before the engine sees it.
- *
- * Also reject predicates whose `edge_type` lives under a `SKIP_FIELDS`
- * field — `deriveEdges` doesn't walk those, so no edge with that
- * type can exist for a `requires_edge` to find (or `forbids_edge`
- * to flag), making the predicate dead-on-arrival.
- */
 function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError | null {
   if (predicate.kind !== "requires_edge" && predicate.kind !== "forbids_edge") {
     return null;
@@ -2401,15 +1924,9 @@ function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError 
   if (typeof edgeType !== "string" || edgeType.length === 0) {
     return { error: `predicate.edge_type is required for \`${predicate.kind}\`.` };
   }
-  const canonical = FIELD_TO_EDGE_TYPE[edgeType];
-  if (canonical && canonical !== edgeType) {
+  if (BLOCKED_NODE_JSON_EDGE_FIELD_SET.has(edgeType)) {
     return {
-      error: `predicate.edge_type \`${edgeType}\` is a field name; use the canonical edge type \`${canonical}\` (deriveEdges rewrites the field name to its canonical type).`,
-    };
-  }
-  if (SKIP_FIELDS.has(edgeType)) {
-    return {
-      error: `predicate.edge_type \`${edgeType}\` refers to a SKIP_FIELDS field that deriveEdges never walks; no edge with this type can exist.`,
+      error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type.`,
     };
   }
   return null;
@@ -2778,13 +2295,8 @@ export interface ReferenceDraft {
   ref_type: string;
   locator: string;
   content_hash?: string | null;
-  /** Optional: id of the node this Reference documents (the `tests` relation). */
-  target_ref?: string;
-  intent_ids?: string[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create nodes; use the authenticated user. */
-  created_by_principal_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -2805,10 +2317,10 @@ export async function captureReference(
     return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
   }
   if (!draft.locator?.trim()) return { error: "locator is required." };
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
   const id = `reference_${generateUlid()}`;
   const locator = draft.locator.trim();
@@ -2826,8 +2338,6 @@ export async function captureReference(
     ref_type: draft.ref_type,
     locator,
     ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
-    ...(draft.target_ref ? { target_ref: draft.target_ref } : {}),
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
@@ -2852,8 +2362,7 @@ export async function captureReference(
 // ─── State (v7 — state-machine node) ──────────────────────────────────────
 // Per decision_01KRRR5BQ16ASY8HQEE0V499YG. A State is a node in a formal
 // state machine: a position the modeled entity occupies for some span of
-// time. Holds invariants while occupied. State transitions are modeled with
-// first-class `sequence_flow` / `preceded_by` edges.
+// time. Holds invariants while occupied.
 
 export interface StateDraft {
   /** Required: the full State prose (first line = label / display name). */
@@ -2863,16 +2372,8 @@ export interface StateDraft {
 
   /** Optional: predicates true while in this State. Free-form prose. */
   invariants?: string[];
-  /** Optional: intent ids to link via `intent_ids`. */
-  intent_ids?: string[];
-  /** Optional predecessor targets; persisted as first-class edges. */
-  preceded_by?: unknown;
-  /** Optional sequence-flow targets; persisted as first-class edges. */
-  sequence_to?: unknown;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** @deprecated Principals do not create nodes; use the authenticated user. */
-  created_by_principal_id?: string;
   /** Optional: explicit lifecycle override. Defaults to "asserted". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -2896,6 +2397,8 @@ export async function captureState(
       error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".`,
     };
   }
+  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
+  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
 
@@ -2907,9 +2410,6 @@ export async function captureState(
   const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
   if ("error" in status) return status;
 
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const precededBy: unknown[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
-  const sequenceTo: unknown[] = Array.isArray(draft.sequence_to) ? draft.sequence_to : [];
   const invariants: string[] = Array.isArray(draft.invariants)
     ? draft.invariants.filter((s): s is string => typeof s === "string" && s.length > 0)
     : [];
@@ -2920,9 +2420,6 @@ export async function captureState(
     node_type: "state",
     state: stateText,
     kind: draft.kind,
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
-    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
-    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     ...(invariants.length > 0 ? { invariants } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),

@@ -187,7 +187,7 @@ function relativeTime(iso: string | null): string {
  * Dagre's left-to-right rank controls ordering inside each lane.
  *
  * Process-shaped data (Intent + Actions chained by first-class order edges
- * + Decisions via `decision_ids`) keeps the same left-to-right reading order,
+ * + Decisions connected by supports/flows_to edges) keeps the same left-to-right reading order,
  * but lanes make ownership / authorship scannable before the viewer reads card copy.
  *
  * Edges that don't carry process / reasoning value (`created_by`,

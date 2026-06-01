@@ -17,18 +17,18 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
 
 type SpecRenderer = (baseUrl: string, handle: string) => string;
 
-const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
-  API request bodies use principal ids only. Use *_principal_id for one
-  principal and *_principal_ids for arrays. Do not send principal names,
-  *_name fields, or comma-separated strings; there are no aliases.
+const RELATION_API_NOTE = `RELATIONSHIPS
+  Node capture bodies accept node prose and scalar metadata only. Create
+  relationships as first-class edges with POST /<handle>/api/changesets.json
+  (relate / relate_many) or POST /<handle>/api/edges.json.
 
-  Read responses may expose stored graph fields such as wanted_by,
-  actors, stakeholders, actor_id, and decided_by. created_by is
-  user/API-key provenance derived from the authenticated session
-  or token. Never send created_by; use the API-facing principal-id fields
-  documented here only for domain actors. For arrays, even one principal
-  is an array:
-    "actors_principal_ids": ["principal_01..."]
+  Common relationship edge types: flows_to, supports, constrained_by,
+  attributed_to, has_parent, derived_from, replaces, relates_to. When a
+  perspective needs a narrower meaning, put it in edge props as role
+  metadata (for example: serves, performed_by, reports_to).
+
+  created_by / updated_by are user/API-key provenance derived from the
+  authenticated session or token. Never send created_by.
 
   LIFECYCLE NOTE
   A node has three life stages: drafting -> asserted -> retired.
@@ -38,9 +38,6 @@ const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
     - asserted  — committed as fact, the settled state (the default).
   Removal is never a hard delete; transition lifecycle to "retired"
   instead — the full history is preserved in the audit trail.
-  Back-compat (one release): the old values are coerced on input —
-  "active"/"accepted" -> "asserted", "proposed" -> "drafting". Prefer
-  the new values in new clients.
 `;
 
 const SPECS: Record<string, SpecRenderer> = {
@@ -53,7 +50,7 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/decisions.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   decision           required   full prose of the decision — narrative,
@@ -64,14 +61,11 @@ BODY (JSON)
                                   options weighed and rejected. Omit it when there are none
                                   (e.g. a glossary term entry with no alternate names); do
                                   not invent filler to satisfy a non-existent requirement.
-  intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
-  BPMN flow         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="flows_to"
-  decided_by_principal_id optional  principal id who made the decision; auth fills this
-  born_from          optional   reference id (e.g. born_from a bugfix decision)
+  relationships      use changesets/edges for supports, attributed_to,
+                                  derived_from, replaces, and BPMN flows_to
   lifecycle          optional   one of "drafting" | "asserted" | "retired"; default "asserted"
   deprecated         optional   boolean warning label; lifecycle is unchanged
   outcome            optional   "succeeded" | "failed"
-  superseded_by      optional   id of the Decision that replaces this one; pair with lifecycle="retired"
 
   Note: Projects that want ADR-style identifiers can mention them in
   the decision text. The framework provides no native ADR field.
@@ -95,7 +89,6 @@ EXAMPLE
     -d '{
       "question": "Where should the Doco-created confirmation live?",
       "chosen": "Each creation entry point renders its own success card.",
-      "decided_by_principal_id": "principal_01...",
       "alternatives": [
         { "name": "Keep the banner on the next-step page", "rejected_because": "Content belongs to the creation flow." }
       ]
@@ -112,9 +105,8 @@ UPDATE AN EXISTING DECISION
 
   Body fields are all optional (only the keys you include are touched):
     decision / question / chosen / alternatives / lifecycle
-    deprecated / outcome / superseded_by
-    intent_ids / intent_ids_add / intent_ids_remove
-    decided_by_principal_id / born_from
+    deprecated / outcome
+    Use changesets/edges for relationship changes.
 
   Response is the same shape as the capture endpoint (ok, id, path,
   footer_lines) plus a \`changed: string[]\` listing the fields
@@ -134,7 +126,7 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/ideas.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   idea                required   full prose: the idea, context, tradeoffs
@@ -164,20 +156,19 @@ UPDATE AN EXISTING IDEA
   intents: (baseUrl, handle) => `# Doco — Capture an Intent (single call)
 
 Intents are the source of every downstream Decision/Action. Capture an
-Intent **before** writing the first Decision that depends on it — that
-way the Decision can reference it via \`intent_ids\`.
+Intent **before** writing the first Decision that depends on it, then
+link the Decision to the Intent with a \`supports\` edge carrying
+\`role: "serves"\`.
 
 ENDPOINT
   POST ${baseUrl}/${handle}/api/intents.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   intent              required   full prose: what someone wants, why, success criteria.
-  wanted_by_principal_id optional principal id who wants this; auth fills this.
-  actors_principal_ids optional  principal ids expected to act in the process.
-  stakeholders_principal_ids optional principal ids with a say in the outcome.
+  relationships      use changesets/edges for attributed_to and has_parent
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted".
   deprecated          optional   boolean warning label; lifecycle is unchanged.
   outcome             optional   "succeeded" | "failed".
@@ -201,10 +192,7 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/intents.json \\
     -d '{
-      "intent": "Agent capture friction is bounded to a few seconds end-to-end.\\n\\nBackground: writing two ADRs by hand took >5 minutes (70% plumbing). This Intent motivates the single-call capture endpoints.",
-      "wanted_by_principal_id": "principal_01...",
-      "actors_principal_ids": ["principal_01..."],
-      "stakeholders_principal_ids": ["principal_01..."]
+      "intent": "Agent capture friction is bounded to a few seconds end-to-end.\\n\\nBackground: writing two ADRs by hand took >5 minutes (70% plumbing). This Intent motivates the single-call capture endpoints."
     }'
 
 WHEN TO CALL THIS
@@ -228,18 +216,15 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/actions.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   action              required   full prose: past-tense verb phrase describing what was done + context
   verb                required   short verb such as "refactor", "migrate", "deploy"
-  intent_ids          optional   ["intent_01...", ...]
-  decision_ids        optional   ["decision_01...", ...]
-  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with flows_to relations
-  gated_by            optional   ["rule_01...", ...] rule ids that gate this action (BPMN-style policy guards)
+  relationships      use changesets/edges for supports, flows_to,
+                                  constrained_by, attributed_to, and derived_from
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
-  actor_principal_id  optional   principal id who performs the action; auth fills this
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "retired"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"; default "succeeded"
@@ -258,10 +243,8 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/actions.json \\
     -d '{
-      "action": "Use principal-id fields in the capture API.",
+      "action": "Use first-class edges in the capture API.",
       "verb": "update",
-      "actor_principal_id": "principal_01...",
-      "intent_ids": ["intent_01..."],
       "outputs": { "commit": "abc123" }
     }'
 
@@ -269,12 +252,9 @@ UPDATE AN EXISTING ACTION
   PATCH ${baseUrl}/${handle}/api/actions/<id>.json
   Content-Type: application/json
 
-  Body fields are all optional. API-facing principal input:
-    actor_principal_id -> stored actor_id
-
-  Other patchable fields include action, lifecycle, deprecated,
-  outcome, superseded_by, intent_ids/add/remove, verb,
-  outputs, decision_ids, and performed_at. Use changesets for flows_to edges.
+  Patchable fields include action, lifecycle, deprecated, outcome, verb,
+  outputs, inputs, and performed_at. Use changesets/edges for relationship
+  changes.
 `,
 
   logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
@@ -287,19 +267,16 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/logs.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   log                 required   full prose: what happened, when, in what state
   verb                required   past-tense verb such as "pushed", "deployed", "verified"
   happened_at         required   ISO 8601 timestamp
   outputs             required   non-empty object with concrete results
-  template_id         optional   Action id this Log instances
-  intent_ids          optional   ["intent_01...", ...]
-  decision_ids        optional   ["decision_01...", ...]
-  preceded_by         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="flows_to" and predecessor role props
+  relationships      use changesets/edges for derived_from, supports,
+                                  flows_to, and attributed_to
   inputs              optional   event input object or value
-  actor_principal_id  optional   principal id who performed it; auth fills this
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "retired"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"; default "succeeded"
@@ -318,10 +295,9 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/logs.json \\
     -d '{
-      "log": "Pushed principal-id capture docs.",
+      "log": "Pushed edge-only capture docs.",
       "verb": "pushed",
       "happened_at": "2026-05-23T12:00:00.000Z",
-      "actor_principal_id": "principal_01...",
       "outputs": { "branch": "main", "commit": "abc123" }
     }'
 
@@ -331,10 +307,9 @@ UPDATE AN EXISTING LOG
 
   Body fields are all optional; only the keys you include change. Every
   field except system identity/audit columns is patchable — log, verb,
-  happened_at, outputs, inputs, lifecycle, deprecated, outcome,
-  superseded_by, intent_ids/add/remove, decision_ids, and
-  template_id. To preserve a clean record of what was first observed, you
-  can instead capture a superseding Log and link it via superseded_by.
+  happened_at, outputs, inputs, lifecycle, deprecated, and outcome.
+  To preserve a clean record of what was first observed, capture a
+  superseding Log and link it with a replaces edge.
 `,
 
   rules: (baseUrl, handle) => `# Doco — Capture a Rule (single call)
@@ -345,16 +320,15 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/rules.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   rule                required   full prose: the rule statement, rationale, scope, exceptions
   predicate           required   machine-checkable or prose predicate
-  intent_ids          optional   ["intent_01...", ...]
   enforced_by         optional   "runtime" | "review" | "manual"
   severity            optional   "hard" | "soft"
-  born_from           optional   Decision id this Rule came from
-  authored_by_principal_id optional principal id who authored it; auth fills this
+  relationships      use changesets/edges for supports, derived_from,
+                                  attributed_to, and constrained_by
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -373,9 +347,8 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/rules.json \\
     -d '{
-      "rule": "Capture API requests identify principals by id.",
-      "predicate": "POST and PATCH request bodies use *_principal_id fields, never usernames.",
-      "authored_by_principal_id": "principal_01...",
+      "rule": "Capture API requests put relationships in edges.",
+      "predicate": "POST and PATCH request bodies use first-class edges for relationships.",
       "severity": "hard",
       "enforced_by": "review"
     }'
@@ -385,9 +358,9 @@ UPDATE AN EXISTING RULE
   Content-Type: application/json
 
   Body fields are all optional. Patchable fields include rule,
-  lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  kind, predicate, modality, severity, phase, expected,
-  on_violation, and applies_to.
+  lifecycle, deprecated, outcome, kind, predicate, modality, severity,
+  phase, expected, on_violation, and applies_to. Use changesets/edges for
+  relationship changes.
 `,
 
   evals: (baseUrl, handle) => `# Doco — Capture an Eval (single call)
@@ -399,7 +372,7 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/evals.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   eval                required   full prose: what's being checked, plus rationale
@@ -409,9 +382,7 @@ BODY (JSON)
   how_to_run          optional   reproduction steps
   input               optional   input value, any JSON shape
   expected            optional   expected outcome, any JSON shape
-  target_ref          optional   id of the entity this Eval tests
-  intent_ids          optional   ["intent_01...", ...]
-  authored_by_principal_id optional principal id who authored it; auth fills this
+  relationships      use changesets/edges for supports and attributed_to
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -430,12 +401,11 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/evals.json \\
     -d '{
-      "eval": "Intent capture body shape — verify intents accept the new fields.",
+      "eval": "Intent capture body shape — verify intents reject graph relationship keys.",
       "criterion": {
         "kind": "shape",
-        "spec": "Intents use wanted_by_principal_id and actors_principal_ids."
-      },
-      "authored_by_principal_id": "principal_01..."
+        "spec": "Intents put relationships in first-class edges."
+      }
     }'
 
 UPDATE AN EXISTING EVAL
@@ -443,9 +413,9 @@ UPDATE AN EXISTING EVAL
   Content-Type: application/json
 
   Body fields are all optional. Patchable fields include eval,
-  lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  criterion, kind, expected_status, how_to_run, input, expected, and
-  target_ref.
+  lifecycle, deprecated, outcome, criterion, kind, expected_status,
+  how_to_run, input, and expected. Use changesets/edges for relationship
+  changes.
 `,
 
   references: (baseUrl, handle) => `# Doco — Capture a Reference (single call)
@@ -457,14 +427,14 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/references.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   reference           required   full prose: human-readable label for the external thing
   ref_type            required   "file" | "url" | "ticket" | "commit" | "document" | "other"
   locator             required   path, URL, ticket id, commit sha, or other locator
   content_hash        optional   content hash when available
-  intent_ids          optional   ["intent_01...", ...]
+  relationships      use changesets/edges for supports and replaces
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -494,10 +464,10 @@ UPDATE AN EXISTING REFERENCE
 
   Body fields are all optional; only the keys you include change. Every
   field except system identity/audit columns is patchable — reference,
-  ref_type, locator, content_hash, lifecycle, deprecated, outcome,
-  superseded_by, and intent_ids/add/remove. To preserve a record of what
+  ref_type, locator, content_hash, lifecycle, deprecated, and outcome.
+  To preserve a record of what
   was originally cited, you can instead capture a superseding Reference and
-  link it via superseded_by.
+  link it with a replaces edge.
 `,
 
   states: (baseUrl, handle) => `# Doco — Capture a State (single call)
@@ -509,14 +479,13 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/states.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
 BODY (JSON)
   state               required   full prose: state description, invariants explained
   kind                required   "initial" | "intermediate" | "terminal"
-  intent_ids          optional   ["intent_01...", ...]
   invariants          optional   ["condition true while in this state", ...]
-  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with flows_to relations
+  relationships      use changesets/edges for supports, flows_to, and replaces
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -545,16 +514,17 @@ UPDATE AN EXISTING STATE
   Content-Type: application/json
 
   Body fields are all optional. Patchable fields include state,
-  lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  kind and invariants. Use changesets for flows_to edges.
+  lifecycle, deprecated, outcome, kind, and invariants. Use changesets/edges
+  for relationship changes.
 `,
 
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)
 
-Principals are the role-personas a Doco references via Action.actor_id,
-Intent.actors[], Decision.decided_by, etc. A Principal's fields — \`name\`,
-body_md, reports_to, lifecycle — all stay editable across its lifecycle.
-Other nodes reference Principals by id, so a rename never breaks edges.
+Principals are the role-personas a Doco links to through attributed_to
+and has_parent edges. A
+Principal's fields — \`name\`, body_md, lifecycle — stay editable across
+its lifecycle. Other nodes reference Principals by id, so a rename never
+breaks edges.
 
 CREATE
   POST ${baseUrl}/${handle}/api/principals.json
@@ -574,11 +544,6 @@ BODY (JSON)
                                   research agent", "Human director of …");
                                   the org-tree perspective infers the icon
                                   from these signals.
-  reports_to          optional   principal id (principal_<ULID>) of the
-                                  manager. Materializes a \`reports_to\`
-                                  edge — used by the \`org-chart\`
-                                  template to build the reporting tree.
-                                  Omit for top-of-chain Principals.
 
 SUCCESS RESPONSE — create (HTTP 201, application/json)
   {
@@ -590,7 +555,7 @@ SUCCESS RESPONSE — create (HTTP 201, application/json)
   }
 
 ERROR RESPONSES
-  HTTP 400  missing name or invalid reports_to
+  HTTP 400  missing name or graph-link JSON key
   HTTP 401  authentication required
   HTTP 403  write access required
   HTTP 422  authoring policy violation (e.g. org-chart template
@@ -603,17 +568,15 @@ EXAMPLE — create
     ${baseUrl}/${handle}/api/principals.json \\
     -d '{
       "name": "alice",
-      "body_md": "Human director of engineering. Owns roadmap planning and hiring for the engineering org.",
-      "reports_to": "principal_01HTOP..."
+      "body_md": "Human director of engineering. Owns roadmap planning and hiring for the engineering org."
     }'
 
 EDIT
   PATCH ${baseUrl}/${handle}/api/principals/<id>.json
   Content-Type: application/json
 
-  Update fields and rewire reporting in place — including \`name\`
-  (renames are tracked in the audit log). Pass \`reports_to: null\` to
-  clear the manager (make this Principal top-of-chain).
+  Update fields including \`name\` (renames are tracked in the audit log).
+  Use changesets/edges for reporting relationships.
 
 BODY (JSON) — at least one field required
   name                optional   new display name. Trimmed; must be
@@ -621,9 +584,6 @@ BODY (JSON) — at least one field required
   body_md             optional   markdown body. Replaces \`summary\`
                                   (dropped by migration 037) — the only
                                   narrative field on a Principal.
-  reports_to          optional   principal id, or \`null\` to clear.
-                                  Must reference a Principal in this
-                                  Doco; self-reference is rejected.
   lifecycle           optional   only "retired" accepted; see RETIRE.
 
 SUCCESS RESPONSE — edit (HTTP 200, application/json)
@@ -635,9 +595,8 @@ SUCCESS RESPONSE — edit (HTTP 200, application/json)
   }
 
 ERROR RESPONSES
-  HTTP 400  empty body, unknown field, blank \`name\`, invalid
-            \`reports_to\` shape, self-reference, or missing manager
-            Principal in this Doco
+  HTTP 400  empty body, unknown field, blank \`name\`, graph-link JSON key,
+            or invalid lifecycle
   HTTP 401  authentication required
   HTTP 403  write access required
   HTTP 404  principal not found in this Doco
@@ -648,7 +607,7 @@ EXAMPLE — edit
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/principals/principal_01...json \\
-    -d '{ "body_md": "Updated bio prose.", "reports_to": "principal_01HTOP..." }'
+    -d '{ "body_md": "Updated bio prose." }'
 
 RETIRE
   PATCH ${baseUrl}/${handle}/api/principals/<id>.json
@@ -715,8 +674,8 @@ LIST / READ
       via the create + edit + retire endpoints above.
 
 RELATED
-  POST ${baseUrl}/${handle}/api/intents.json   actors_principal_ids points at principal ids
-  POST ${baseUrl}/${handle}/api/actions.json   actor_principal_id points at a principal id
+  POST ${baseUrl}/${handle}/api/changesets.json   create relationship edges
+  POST ${baseUrl}/${handle}/api/edges.json        create one edge directly
 `,
 
   policies: (baseUrl, handle) => `# Doco — Policies
@@ -760,7 +719,7 @@ ENDPOINT (capture)
   POST ${baseUrl}/${handle}/api/policies.json
   Content-Type: application/json
 
-${PRINCIPAL_ID_CONVENTION}
+${RELATION_API_NOTE}
 
   Body MUST include \`policy_kind\` to disambiguate; remaining
   fields match the per-kind draft below.
@@ -821,7 +780,7 @@ EXAMPLE — node_authoring (deterministic)
       "evaluation_kind": "deterministic",
       "predicate": {
         "kind": "requires_edge",
-        "edge_type": "supports",
+      "edge_type": "supports",
         "target_node_type": "intent",
         "when_node_type": ["decision"]
       }

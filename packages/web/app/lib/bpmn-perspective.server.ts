@@ -6,28 +6,27 @@
 // artifacts band on the bottom). Pools stack vertically. An
 // "Unassigned" pool catches nodes that don't cite an Intent.
 //
-// Inside each pool, lane assignment follows the same three-category
-// model as before:
+// Inside each pool, lane assignment follows a three-category model:
 //   - Milestone band (top of the pool): States.
 //   - Actor lanes (middle): one per Principal who has work in this
-//     pool. Action.actor_id / Decision.decided_by / Intent.actors[0]
-//     drives the placement. Decisions whose decided_by is a
+//     pool. attributed_to edges with performed_by / decided_by / owned_by
+//     roles drive the
+//     placement. Decisions whose decided_by edge points at a
 //     `user_*` id walk through the user → github_login
 //     → matching Principal name path; rows that don't resolve land in
 //     Unassigned.
 //   - Artifacts band (bottom): References, Ideas, plus any Rule/Eval
-//     that didn't re-home onto an Action via `gated_by` / `target_ref`.
+//     that didn't re-home onto an Action via constrained_by/supports role edges.
 //
 // Intents themselves are *not* rendered as flow nodes — they're pool
 // headers. The Intent's prose labels its pool.
 //
-// Pool selection for multi-intent flow nodes (Action/Decision/State/Log can
-// list multiple `intent_ids`) uses **PageRank**: the candidate intent
-// with the highest score on the doco's edge graph wins. With no
-// focal node, this is plain global PageRank; the personalized variant
-// (teleport biased to a focal node) is computed client-side from
-// `centerId` so the same graph can re-pool around whichever node
-// the user clicked into.
+// Pool selection for flow nodes that serve multiple Intents uses
+// **PageRank**: the candidate Intent with the highest score on the doco's
+// edge graph wins. With no focal node, this is plain global PageRank; the
+// personalized variant (teleport biased to a focal node) is computed
+// client-side from `centerId` so the same graph can re-pool around
+// whichever node the user clicked into.
 //
 // Shape map:
 //   intent                  → (pool header, no shape)
@@ -40,13 +39,6 @@
 //
 // Not rendered: Log (instances, not designs).
 
-import {
-  MANAGED_EDGE_TYPES,
-  cardinalityForManagedField,
-  fieldForManagedEdge,
-  stripManagedEdgeProps,
-} from "@doco/shared";
-import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
 import { highestRanked, pageRank } from "./pagerank";
@@ -107,10 +99,9 @@ export interface BpmnNode {
   shape: BpmnShape;
   laneId: string;
   pool_id: string;
-  /** When this node has multi-valued `intent_ids`, the full list of
-   *  candidate intent ids (so the client can recompute the primary
-   *  intent under personalized PageRank without re-fetching). */
-  intent_ids?: string[];
+  /** Full list of served Intent ids so the client can recompute the primary
+   *  Intent under personalized PageRank without re-fetching. */
+  served_intent_ids?: string[];
   /**
    * Server-side sequence-flow depth. The renderer uses this as a floor
    * for horizontal sequence layout so incoming flow targets stay to
@@ -256,8 +247,11 @@ export async function loadBpmnGraph(
     if (row.entity_type === "intent") intentsById.set(row.id, row);
   }
 
-  // Load edges up front: we need them for PageRank below.
+  // Load outgoing edges up front: rendered links use the rows whose target is
+  // also a BPMN node, while pool/lane assignment reads the full outgoing map
+  // including Principal targets.
   const nodeIdSet = new Set(allRows.map((r) => r.id));
+  const outgoingByType = new Map<string, Map<string, EdgeRow[]>>();
   let links: OverviewGraphLink[] = [];
   if (nodeIdSet.size > 0) {
     const edgeRows = await c.query<EdgeRow>(
@@ -265,50 +259,14 @@ export async function loadBpmnGraph(
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
-          AND to_id   = ANY($2::text[])
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
         LIMIT 5000`,
       [docoId, Array.from(nodeIdSet)],
     );
-    links = edgeRows.rows.map((r) => bpmnLinkFromEdgeRow(r, opts.handle));
-
-    // Reconstruct the managed relationship fields (actor_id, decided_by, etc.)
-    // onto each node's `data` from first-class edges — they no longer live in
-    // stored `data` (option (i)). The PageRank query above keeps only edges
-    // whose endpoints are both flow nodes, so it omits attribution edges
-    // (which point at principals); fetch them explicitly so the actor lanes
-    // resolve.
-    const managedRows = await c.query<{
-      from_id: string;
-      edge_type: string;
-      to_id: string;
-      props: Record<string, unknown> | null;
-    }>(
-      `SELECT from_id, edge_type, to_id, props
-         FROM edges
-        WHERE doco_id = $1
-          AND from_id = ANY($2::text[])
-          AND edge_type = ANY($3::text[])
-          AND lifecycle <> 'retired'`,
-      [docoId, Array.from(nodeIdSet), MANAGED_EDGE_TYPES],
-    );
-    const dataById = new Map<string, Record<string, unknown>>(
-      allRows.map((r) => [r.id, r.data as Record<string, unknown>]),
-    );
-    for (const e of managedRows.rows) {
-      const field = fieldForManagedEdge(e.edge_type, e.props);
-      const data = dataById.get(e.from_id);
-      if (!field || !data) continue;
-      const cardinality = cardinalityForManagedField(field);
-      const props = stripManagedEdgeProps(e.props);
-      const value = field === "sequence_to" ? { target: e.to_id, ...props } : e.to_id;
-      if (cardinality === "many") {
-        const list = Array.isArray(data[field]) ? (data[field] as unknown[]) : [];
-        list.push(value);
-        data[field] = list;
-      } else {
-        data[field] = value;
-      }
-    }
+    for (const row of edgeRows.rows) addOutgoingEdge(outgoingByType, row);
+    links = edgeRows.rows
+      .filter((r) => nodeIdSet.has(r.to_id))
+      .map((r) => bpmnLinkFromEdgeRow(r, opts.handle));
   }
 
   // ── Global PageRank over the edge graph ────────────────────────
@@ -326,9 +284,9 @@ export async function loadBpmnGraph(
   // ── Pool assignment per node ────────────────────────────────────
   // 1. Intents themselves are pool headers, not nodes — they live in
   //    their own pool ("pool:<intent_id>").
-  // 2. Flow nodes (Action / Decision / State / Log) with an intent_ids
-  //    list go in their primary intent's pool (PR-picked).
-  // 3. Flow nodes with no intent_ids → Unassigned.
+  // 2. Flow nodes (Action / Decision / State / Log) with serving Intent edges
+  //    go in their primary Intent's pool (PR-picked).
+  // 3. Flow nodes with no serving Intent edges → Unassigned.
   // 4. Non-actor nodes (Reference / Idea / Rule / Eval) start
   //    in Unassigned; Rules and Evals get re-homed below if they have
   //    a host node whose pool is known.
@@ -340,14 +298,15 @@ export async function loadBpmnGraph(
       poolByNode.set(row.id, `pool:${row.id}`);
       continue;
     }
-    const data = row.data ?? {};
     if (
       row.entity_type === "action" ||
       row.entity_type === "decision" ||
       row.entity_type === "state" ||
       row.entity_type === "log"
     ) {
-      const intentIds = toStringArray(data.intent_ids).filter((id) => intentsById.has(id));
+      const intentIds = edgeTargets(outgoingByType, row.id, "serves").filter((id) =>
+        intentsById.has(id),
+      );
       if (intentIds.length > 0) intentIdsByNode.set(row.id, intentIds);
       const primary = intentIds.length > 0 ? highestRanked(intentIds, pr) : null;
       poolByNode.set(row.id, primary ? `pool:${primary}` : POOL_UNASSIGNED_ID);
@@ -356,12 +315,12 @@ export async function loadBpmnGraph(
     }
   }
 
-  // Re-home Rules into the pool of any Action whose `gated_by` cites
-  // them. First Action wins (cross-pool duplication is a later phase).
+  // Re-home Rules into the pool of any Action that points to them with
+  // constrained_by/role=gated_by. First Action wins (cross-pool duplication is
+  // a later phase).
   for (const row of allRows) {
     if (row.entity_type !== "action") continue;
-    const data = row.data ?? {};
-    const gatedBy = toStringArray(data.gated_by);
+    const gatedBy = edgeTargets(outgoingByType, row.id, "gated_by");
     if (gatedBy.length === 0) continue;
     const actionPool = poolByNode.get(row.id);
     if (!actionPool) continue;
@@ -373,11 +332,11 @@ export async function loadBpmnGraph(
     }
   }
 
-  // Re-home Evals to their `target_ref`'s pool when the target lives
+  // Re-home Evals to their tested target's pool when the target lives
   // in a real Intent pool (not Unassigned).
   for (const row of allRows) {
     if (row.entity_type !== "eval") continue;
-    const targetRef = typeof row.data?.target_ref === "string" ? row.data.target_ref : null;
+    const targetRef = firstEdgeTarget(outgoingByType, row.id, "tests");
     if (!targetRef) continue;
     const targetPool = poolByNode.get(targetRef);
     if (targetPool && targetPool !== POOL_UNASSIGNED_ID) {
@@ -420,8 +379,6 @@ export async function loadBpmnGraph(
   for (const row of allRows) {
     if (row.entity_type === "intent") continue; // pool header, not a node
     const poolId = poolByNode.get(row.id) ?? POOL_UNASSIGNED_ID;
-    const data = row.data ?? {};
-
     let baseId: string;
     let kind: BpmnLaneKind;
     let label: string;
@@ -432,11 +389,12 @@ export async function loadBpmnGraph(
       label = "Milestones";
     } else if (ARTIFACT_TYPES.has(row.entity_type)) {
       // A Rule or Eval that re-homed onto an actor-type host
-      // (Action.gated_by / Eval.target_ref) lands in the host's
+      // (constrained_by/supports role edge) lands in the host's
       // *actor* lane, not the artifacts band. Others stay in artifacts.
       const hostLane = resolveRehomeHostLane(
         row,
         allRows,
+        outgoingByType,
         principalById,
         principalByName,
         userById,
@@ -452,7 +410,7 @@ export async function loadBpmnGraph(
       }
     } else {
       // Action / Decision / Log: actor lane.
-      const ref = laneReferenceFor(row.entity_type, data, userById);
+      const ref = laneReferenceFor(row.entity_type, row.id, outgoingByType, userById);
       const resolved = resolveLane(ref, principalById, principalByName);
       baseId = resolved.id;
       kind = resolved.id.startsWith("principal_")
@@ -492,7 +450,7 @@ export async function loadBpmnGraph(
       pool_id: poolId,
     };
     const intentIds = intentIdsByNode.get(row.id);
-    if (intentIds && intentIds.length > 0) node.intent_ids = intentIds;
+    if (intentIds && intentIds.length > 0) node.served_intent_ids = intentIds;
     nodes.push(node);
   }
 
@@ -693,25 +651,12 @@ function sequenceFlowLabel(props: Record<string, unknown> | null): string | null
 
 function bpmnLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): OverviewGraphLink {
   const href = handle ? `/${handle}/edges/${row.id}` : null;
-  if (
-    row.edge_type === "flows_to" &&
-    (row.edge_props_json?.source_field === "preceded_by" ||
-      row.edge_props_json?.role === "predecessor")
-  ) {
-    return {
-      id: row.id,
-      source: row.to_id,
-      target: row.from_id,
-      edge_type: "flows_to",
-      label: sequenceFlowLabel(row.edge_props_json),
-      href,
-    };
-  }
+  const displayType = edgeRole(row);
   return {
     id: row.id,
     source: row.from_id,
     target: row.to_id,
-    edge_type: row.edge_type,
+    edge_type: displayType,
     label: row.edge_type === "flows_to" ? sequenceFlowLabel(row.edge_props_json) : null,
     href,
   };
@@ -762,30 +707,50 @@ export function computeNearestIntentByNode(
   return nearest;
 }
 
-function parseRawYaml(rawYaml: string | null): Record<string, unknown> {
-  if (!rawYaml) return {};
-  try {
-    const parsed = parseYaml(rawYaml);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // fallthrough
+type OutgoingEdgesByType = Map<string, Map<string, EdgeRow[]>>;
+
+function edgeRole(edge: EdgeRow): string {
+  return typeof edge.edge_props_json?.role === "string"
+    ? edge.edge_props_json.role
+    : edge.edge_type;
+}
+
+function addOutgoingEdge(outgoing: OutgoingEdgesByType, edge: EdgeRow) {
+  let byType = outgoing.get(edge.from_id);
+  if (!byType) {
+    byType = new Map();
+    outgoing.set(edge.from_id, byType);
   }
-  return {};
+  const key = edgeRole(edge);
+  const list = byType.get(key) ?? [];
+  list.push(edge);
+  byType.set(key, list);
+}
+
+function edgeTargets(outgoing: OutgoingEdgesByType, fromId: string, edgeType: string): string[] {
+  return (outgoing.get(fromId)?.get(edgeType) ?? []).map((edge) => edge.to_id);
+}
+
+function firstEdgeTarget(
+  outgoing: OutgoingEdgesByType,
+  fromId: string,
+  edgeType: string,
+): string | null {
+  return edgeTargets(outgoing, fromId, edgeType)[0] ?? null;
 }
 
 function laneReferenceFor(
   entityType: string,
-  data: Record<string, unknown>,
+  rowId: string,
+  outgoing: OutgoingEdgesByType,
   userById: Map<string, UserRow>,
 ): string | null {
   switch (entityType) {
     case "action":
     case "log":
-      return firstString(data.actor_id) ?? firstString(data.actor);
+      return firstEdgeTarget(outgoing, rowId, "performed_by");
     case "decision": {
-      const ref = firstString(data.decided_by);
+      const ref = firstEdgeTarget(outgoing, rowId, "decided_by");
       if (!ref) return null;
       if (ref.startsWith("user_")) {
         const collab = userById.get(ref);
@@ -794,28 +759,13 @@ function laneReferenceFor(
       return ref;
     }
     case "intent":
-      return firstString(data.actors) ?? firstString(data.wanted_by);
+      return (
+        firstEdgeTarget(outgoing, rowId, "performed_by") ??
+        firstEdgeTarget(outgoing, rowId, "owned_by")
+      );
     default:
       return null;
   }
-}
-
-function firstString(value: unknown): string | null {
-  if (typeof value === "string") return value || null;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (typeof item === "string" && item) return item;
-    }
-  }
-  return null;
-}
-
-function toStringArray(value: unknown): string[] {
-  if (typeof value === "string") return value ? [value] : [];
-  if (Array.isArray(value)) {
-    return value.filter((v): v is string => typeof v === "string" && v.length > 0);
-  }
-  return [];
 }
 
 function resolveLane(
@@ -833,14 +783,14 @@ function resolveLane(
 }
 
 /**
- * Find the actor lane base for a Rule (via any Action's `gated_by`)
- * or Eval (via `target_ref`) — used to relocate the artifact onto its
- * host's lane instead of the artifacts band. Returns null when no
- * host with a resolved actor lane exists.
+ * Find the actor lane base for a Rule (via any Action's gated_by role edge) or
+ * Eval (via its tests role edge) so artifacts can relocate onto the host lane.
+ * Returns null when no host with a resolved actor lane exists.
  */
 function resolveRehomeHostLane(
   row: NodeRow,
   allRows: NodeRow[],
+  outgoing: OutgoingEdgesByType,
   principalById: Map<string, PrincipalRow>,
   principalByName: Map<string, PrincipalRow>,
   userById: Map<string, UserRow>,
@@ -848,9 +798,9 @@ function resolveRehomeHostLane(
   if (row.entity_type === "rule") {
     for (const candidate of allRows) {
       if (candidate.entity_type !== "action") continue;
-      const gatedBy = toStringArray(candidate.data?.gated_by);
+      const gatedBy = edgeTargets(outgoing, candidate.id, "gated_by");
       if (!gatedBy.includes(row.id)) continue;
-      const ref = laneReferenceFor("action", candidate.data ?? {}, userById);
+      const ref = laneReferenceFor("action", candidate.id, outgoing, userById);
       const resolved = resolveLane(ref, principalById, principalByName);
       if (resolved.id.startsWith("principal_")) return resolved;
       return null;
@@ -858,11 +808,11 @@ function resolveRehomeHostLane(
     return null;
   }
   if (row.entity_type === "eval") {
-    const targetRef = typeof row.data?.target_ref === "string" ? row.data.target_ref : null;
+    const targetRef = firstEdgeTarget(outgoing, row.id, "tests");
     if (!targetRef) return null;
     const target = allRows.find((r) => r.id === targetRef);
     if (!target) return null;
-    const ref = laneReferenceFor(target.entity_type, target.data ?? {}, userById);
+    const ref = laneReferenceFor(target.entity_type, target.id, outgoing, userById);
     const resolved = resolveLane(ref, principalById, principalByName);
     if (resolved.id.startsWith("principal_")) return resolved;
     return null;

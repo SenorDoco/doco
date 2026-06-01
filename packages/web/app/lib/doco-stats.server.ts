@@ -5,7 +5,7 @@
 // actions, evals, ideas, reference_entities, logs, states, and the
 // Doco's principals. Policies are not nodes and are deliberately
 // excluded — they are surfaced via /<handle>/api/policies.json.
-// `edges` reads the materialized `edges` table.
+// `edges` reads the persisted `edges` table.
 // `lastUpdatedAt` prefers the max `at` from `audit_events`, and falls
 // back to entity `updated_at` for imported/pre-audit Docos.
 

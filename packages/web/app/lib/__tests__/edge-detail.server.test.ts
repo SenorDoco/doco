@@ -29,7 +29,7 @@ describe("loadEdgeDialogDetail", () => {
                 to_id: "intent_01TO",
                 to_node_type: "intent",
                 edge_type: "supports",
-                props: { note: "critical", role: "serves", source_field: "intent_ids" },
+                props: { note: "critical", role: "serves" },
                 lifecycle: "asserted",
                 created_at: "2026-05-30T10:00:00.000Z",
                 created_by: "user_alice",
@@ -121,7 +121,7 @@ describe("loadEdgeDialogDetail", () => {
         lifecycle: "drafting",
         href: "/test-doco/intent/intent_01TO",
       },
-      props: { note: "critical", role: "serves", source_field: "intent_ids" },
+      props: { note: "critical", role: "serves" },
       authoring: {
         created: {
           user_id: "user_alice",

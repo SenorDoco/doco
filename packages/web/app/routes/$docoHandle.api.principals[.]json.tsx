@@ -1,14 +1,12 @@
 import {
   getDocoById,
-  getEntity,
   getUserById,
   listDocoUsers,
   listEntitiesByDoco,
   roleAtLeast,
   upsertEntity,
-  withTransaction,
 } from "@doco/db";
-import { type Entity, type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
+import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import {
@@ -18,7 +16,6 @@ import {
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { reconcileNodeEdges } from "~/lib/managed-edges.server";
 
 // Footer-line helper: the Principal endpoints used to emit `name (id)`
 // as plain text, which the chat surface renders as an unclickable
@@ -74,11 +71,16 @@ export async function action({
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     body_md?: string;
-    reports_to?: string;
-    dotted_reports_to?: unknown;
-    same_occupant_as?: unknown;
     lifecycle?: string;
   };
+  for (const [field, value] of Object.entries(body)) {
+    if (value !== undefined && value !== null && BLOCKED_NODE_JSON_EDGE_FIELD_SET.has(field)) {
+      return Response.json(
+        { error: `${field} is not a node JSON field. Create a first-class edge instead.` },
+        { status: 400 },
+      );
+    }
+  }
   const name = String(body.name ?? "").trim();
   if (!name) {
     return Response.json({ error: "name is required." }, { status: 400 });
@@ -87,21 +89,15 @@ export async function action({
   // Resolve the new Principal's lifecycle. Honors an explicit
   // `lifecycle` (drafting | asserted | retired), then the Doco's
   // template default (`org-chart` ships `drafting`), then `asserted`.
-  // Lets a tentative seat be sketched as `drafting` — the person /
-  // agent / vacant gate still fires (it's lifecycle-independent), but
-  // the asserted-only reports_to warning holds off until the seat is
-  // committed.
+  // Lets a tentative seat be sketched as `drafting`.
   //
-  // EXCEPTION — business-processes. There, Principals are swim-lane
-  // actors that Actions reference via `actor_id`, and the actor-resolution
-  // policy only accepts non-retired/asserted Principals. Inheriting the
-  // template's `drafting` flow-node default would make a freshly-created
-  // lane actor fail `requires_field_resolves_to_principal` on the very
-  // next Action — breaking the create-principal → create-action happy
-  // path. Org-chart's draftable seats are about reporting lines, not
-  // actor resolution, so the inheritance only makes sense there. Default
-  // business-processes Principals to `asserted` unless the caller is
-  // explicit.
+  // EXCEPTION — business-processes. There, Principals are swim-lane actors
+  // linked from work with `performed_by` edges, and active flow policies only
+  // accept non-retired/asserted Principals. Inheriting the template's
+  // `drafting` flow-node default would make a freshly-created lane actor fail
+  // the next relationship check. Org-chart's draftable seats are about
+  // reporting lines, so the inheritance only makes sense there. Default
+  // business-processes Principals to `asserted` unless the caller is explicit.
   const VALID_PRINCIPAL_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
   let lifecycle = "asserted";
   if (body.lifecycle !== undefined) {
@@ -124,62 +120,7 @@ export async function action({
     }
   }
 
-  // Validate a single manager id (primary reporting line).
-  if (body.reports_to !== undefined) {
-    if (typeof body.reports_to !== "string" || !body.reports_to.startsWith("principal_")) {
-      return Response.json(
-        { error: "reports_to must be a principal id (principal_<ULID>)." },
-        { status: 400 },
-      );
-    }
-    const manager = await getEntity("principal", body.reports_to as EntityId<"principal">);
-    if (!manager || manager.doco_id !== meta.docoId) {
-      return Response.json(
-        { error: `reports_to principal not found in this Doco: ${body.reports_to}` },
-        { status: 400 },
-      );
-    }
-  }
-
-  // Validate a Principal-id list field (dotted_reports_to /
-  // same_occupant_as): every entry must be a Principal id that exists
-  // in this Doco. Returns the cleaned list or a JSON error Response.
-  async function validatePrincipalList(field: string, raw: unknown): Promise<string[] | Response> {
-    if (raw === undefined || raw === null) return [];
-    if (!Array.isArray(raw)) {
-      return Response.json(
-        { error: `${field} must be an array of principal ids.` },
-        {
-          status: 400,
-        },
-      );
-    }
-    const ids: string[] = [];
-    for (const v of raw) {
-      if (typeof v !== "string" || !v.startsWith("principal_")) {
-        return Response.json(
-          { error: `${field} entries must be principal ids (principal_<ULID>).` },
-          { status: 400 },
-        );
-      }
-      const ent = await getEntity("principal", v as EntityId<"principal">);
-      if (!ent || ent.doco_id !== meta.docoId) {
-        return Response.json(
-          { error: `${field} principal not found in this Doco: ${v}` },
-          { status: 400 },
-        );
-      }
-      if (!ids.includes(v)) ids.push(v);
-    }
-    return ids;
-  }
-
-  const dottedReportsTo = await validatePrincipalList("dotted_reports_to", body.dotted_reports_to);
-  if (dottedReportsTo instanceof Response) return dottedReportsTo;
-  const sameOccupantAs = await validatePrincipalList("same_occupant_as", body.same_occupant_as);
-  if (sameOccupantAs instanceof Response) return sameOccupantAs;
-
-  const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
+  const id = makeEntityId("principal", generateUlid());
   const now = nowIso();
   // Migration 037 dropped `summary` from Principal — `body_md` is now
   // the only narrative field. When no body is supplied it stays empty.
@@ -194,9 +135,6 @@ export async function action({
     node_type: "principal",
     name,
     body_md: bodyMd,
-    ...(body.reports_to ? { reports_to: body.reports_to } : {}),
-    ...(dottedReportsTo.length > 0 ? { dotted_reports_to: dottedReportsTo } : {}),
-    ...(sameOccupantAs.length > 0 ? { same_occupant_as: sameOccupantAs } : {}),
     created_at: now,
     created_by: me.id,
     lifecycle,
@@ -221,35 +159,22 @@ export async function action({
     );
   }
 
-  await withTransaction(async (c) => {
-    await upsertEntity(
-      {
-        id,
-        doco_id: meta.docoId,
-        entity_type: "principal",
-        data: raw,
-        body_md: bodyMd,
-        lifecycle,
-        created_at: now,
-        created_by: me.id,
-        updated_at: now,
-        updated_by: me.id,
-      },
-      c,
-    );
-    await reconcileNodeEdges(c, {
-      docoId: meta.docoId,
-      entityType: "principal",
-      entity: raw as unknown as Entity,
-      actor: me.id,
-      source: "api",
-    });
+  await upsertEntity({
+    id,
+    doco_id: meta.docoId,
+    entity_type: "principal",
+    data: raw,
+    body_md: bodyMd,
+    lifecycle,
+    created_at: now,
+    created_by: me.id,
+    updated_at: now,
+    updated_by: me.id,
   });
 
-  // Reindex so derived rows (edges table for `reports_to`, FTS,
-  // embeddings) reflect the new Principal. Other capture routes do this
-  // via the generic capture factory; principals use a bespoke handler
-  // and need to call the helper directly.
+  // Reindex so FTS and embeddings reflect the new Principal. Other capture
+  // routes do this via the generic capture factory; principals use a bespoke
+  // handler and need to call the helper directly.
   await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, id);
   appendAuditEvent({
     docoDir: docoPath(params.docoHandle),
@@ -262,9 +187,6 @@ export async function action({
       name,
       body_md: bodyMd,
       lifecycle,
-      ...(body.reports_to ? { reports_to: body.reports_to } : {}),
-      ...(dottedReportsTo.length > 0 ? { dotted_reports_to: dottedReportsTo } : {}),
-      ...(sameOccupantAs.length > 0 ? { same_occupant_as: sameOccupantAs } : {}),
     },
   });
 
@@ -314,10 +236,9 @@ export async function loader({
   //     "users" but the field name stays for API back-compat.
   //
   //   * `principal_nodes` (new field) — actual Principal nodes in
-  //     this doco (role-personas referenced by Action.actor_id,
-  //     Intent.actors[], etc.). These are what the BPMN swim-lane view
-  //     renders. Agents that want to mutate / list the visible Principal
-  //     nodes read this field, not `principals`.
+  //     this doco (role-personas rendered by perspectives). Agents that
+  //     want to mutate / list the visible Principal nodes read this field,
+  //     not `principals`.
   //
   // `users` is exposed as a clearer alias for the legacy
   // `principals` field — pick whichever name a caller prefers.

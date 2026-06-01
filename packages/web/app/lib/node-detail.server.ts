@@ -412,6 +412,10 @@ function sequenceFlowLabel(props: Record<string, unknown> | null | undefined): s
   return compact.length > 32 ? `${compact.slice(0, 29)}...` : compact;
 }
 
+function displayEdgeType(edgeType: string, props: Record<string, unknown> | null | undefined) {
+  return typeof props?.role === "string" ? props.role : edgeType;
+}
+
 function compareOutgoingEdges(a: DialogOutgoingEdgeRow, b: DialogOutgoingEdgeRow): number {
   return a.edge_type.localeCompare(b.edge_type) || a.to_id.localeCompare(b.to_id);
 }
@@ -539,7 +543,7 @@ export async function loadNodeDialogDetail(
     const detail = relatedById.get(edge.to_id);
     const otherNodeType = detail?.entity_type ?? edge.to_node_type;
     return {
-      edge_type: edge.edge_type,
+      edge_type: displayEdgeType(edge.edge_type, edge.edge_props_json),
       edge_label: sequenceFlowLabel(edge.edge_props_json),
       other_id: edge.to_id,
       other_node_type: otherNodeType,
@@ -553,7 +557,7 @@ export async function loadNodeDialogDetail(
     const detail = relatedById.get(edge.from_id);
     const otherNodeType = detail?.entity_type ?? edge.from_node_type;
     return {
-      edge_type: edge.edge_type,
+      edge_type: displayEdgeType(edge.edge_type, edge.edge_props_json),
       edge_label: sequenceFlowLabel(edge.edge_props_json),
       other_id: edge.from_id,
       other_node_type: otherNodeType,
