@@ -132,13 +132,6 @@ const NODE_TYPE_TO_TABLE: Record<string, DocoNodeTableFilterSpec | null> = {
   organization: null,
 };
 
-/** Inverse: PG table → external entity_type used on the wire. */
-const TABLE_TO_ENTITY_TYPE: Record<string, string> = Object.fromEntries(
-  Object.entries(NODE_TYPE_TO_TABLE)
-    .filter((entry): entry is [string, DocoNodeTableFilterSpec] => entry[1] !== null)
-    .map(([nt, spec]) => [spec.table, nt]),
-);
-
 export async function resolveFilteredCandidates(
   c: PoolClient,
   docoId: string,
@@ -207,25 +200,33 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   // surface and counting them as nodes makes a Doco with only a
   // template policies misread as having captured work. Principals
   // are included because role-personas are first-class nodes.
+  const nodeTypes = PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE.map((spec) => spec.entityType);
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
-  for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
-    const r = await c.query<{ value: string; n: string; updated_at: Date | string | null }>(
-      `SELECT COALESCE(lifecycle, 'asserted') AS value,
+  const lifecycleRows = (
+    await c.query<{
+      node_type: string;
+      value: string;
+      n: string;
+      updated_at: Date | string | null;
+    }>(
+      `SELECT node_type,
+              COALESCE(lifecycle, 'asserted') AS value,
               COUNT(*)::text AS n,
               MAX(updated_at) AS updated_at
          FROM nodes
-        WHERE node_type = $2 AND ${spec.docoWhereSql}
-        GROUP BY value`,
-      [docoId, spec.entityType],
-    );
-    for (const row of r.rows) {
-      const n = Number(row.n);
-      const current = lifecycleFacets.get(row.value) ?? { count: 0, updatedAt: null };
-      lifecycleFacets.set(row.value, {
-        count: current.count + n,
-        updatedAt: latestIso(current.updatedAt, toIso(row.updated_at)),
-      });
-    }
+        WHERE doco_id = $1
+          AND node_type = ANY($2::text[])
+        GROUP BY node_type, value`,
+      [docoId, nodeTypes],
+    )
+  ).rows;
+  for (const row of lifecycleRows) {
+    const n = Number(row.n);
+    const current = lifecycleFacets.get(row.value) ?? { count: 0, updatedAt: null };
+    lifecycleFacets.set(row.value, {
+      count: current.count + n,
+      updatedAt: latestIso(current.updatedAt, toIso(row.updated_at)),
+    });
   }
 
   const entityTypeCounts: {
@@ -233,30 +234,30 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     count: number;
     activeCount: number;
     updatedAt: string | null;
-  }[] = [];
-  for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
-    const r = await c.query<{
+  }[] = (
+    await c.query<{
+      node_type: string;
       n: string;
       active_n: string;
       updated_at: Date | string | null;
     }>(
       `SELECT COUNT(*)::text AS n,
               (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted'))::text AS active_n,
-              MAX(updated_at) AS updated_at
-         FROM nodes WHERE node_type = $2 AND ${spec.docoWhereSql}`,
-      [docoId, spec.entityType],
-    );
-    const row = r.rows[0];
-    const n = Number(row?.n ?? 0);
-    if (n > 0) {
-      entityTypeCounts.push({
-        value: TABLE_TO_ENTITY_TYPE[spec.table] ?? spec.entityType,
-        count: n,
-        activeCount: Number(row?.active_n ?? 0),
-        updatedAt: toIso(row?.updated_at),
-      });
-    }
-  }
+              MAX(updated_at) AS updated_at,
+              node_type
+         FROM nodes
+        WHERE doco_id = $1
+          AND node_type = ANY($2::text[])
+        GROUP BY node_type
+        ORDER BY COUNT(*) DESC, node_type`,
+      [docoId, nodeTypes],
+    )
+  ).rows.map((row) => ({
+    value: row.node_type,
+    count: Number(row.n),
+    activeCount: Number(row.active_n),
+    updatedAt: toIso(row.updated_at),
+  }));
   entityTypeCounts.sort((a, b) => b.count - a.count);
 
   const edgeTypeCounts = (

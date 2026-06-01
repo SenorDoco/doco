@@ -79,6 +79,9 @@ import { useFullscreen } from "~/lib/use-fullscreen";
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
+const OVERVIEW_GRAPH_NODE_LIMIT = 750;
+const BPMN_GRAPH_NODE_LIMIT = 750;
+const PULL_REQUESTS_NODE_LIMIT = 500;
 // The side panel — the activity column, or the node dialog — sits to the
 // RIGHT of the perspective only when the two fit side by side: the
 // perspective and the panel together (excluding the gap between them) must
@@ -336,6 +339,7 @@ export async function loader({
       ? await loadOverviewGraph(c, ctx.meta.docoId, {
           handle,
           ...(focusNodeId ? { centerId: focusNodeId } : {}),
+          limit: OVERVIEW_GRAPH_NODE_LIMIT,
         })
       : null;
 
@@ -353,6 +357,7 @@ export async function loader({
         ? await loadBpmnGraph(c, ctx.meta.docoId, {
             focusId: focusNodeId,
             handle,
+            nodeLimit: BPMN_GRAPH_NODE_LIMIT,
           })
         : null;
 
@@ -372,7 +377,11 @@ export async function loader({
         ? await loadGlossaryPerspectiveData(c, ctx.meta.docoId, handle)
         : null;
     const pullRequestsData =
-      activeKind === "pull-requests" ? await loadPullRequestsPerspective(c, ctx.meta.docoId) : null;
+      activeKind === "pull-requests"
+        ? await loadPullRequestsPerspective(c, ctx.meta.docoId, {
+            limit: PULL_REQUESTS_NODE_LIMIT,
+          })
+        : null;
 
     // Policy count — guidance + node-authoring policies
     // attached to this Doco.

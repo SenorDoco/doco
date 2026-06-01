@@ -60,6 +60,11 @@ export function PullRequestsPerspective({
           <GitPullRequest aria-hidden className="h-3.5 w-3.5" />
           <span className="tabular-nums">{total}</span> pull request{total === 1 ? "" : "s"}
         </p>
+        {data.hasMore ? (
+          <p className="text-xs text-muted-foreground">
+            Showing latest <span className="tabular-nums">{data.loadedCount}</span>
+          </p>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {groups.length === 0 ? (
