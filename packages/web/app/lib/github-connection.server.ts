@@ -3,7 +3,11 @@
 // it records which GitHub repo + App installation a Doco is wired to. Written
 // by the settings panel / connect endpoint.
 import { withClient } from "@doco/db";
-import { listInstallationRepos, mintInstallationToken } from "./github-app.server";
+import {
+  getInstallationAccount,
+  listInstallationRepos,
+  mintInstallationToken,
+} from "./github-app.server";
 
 export interface GitHubConnection {
   /** "owner/name". */
@@ -397,6 +401,8 @@ export interface GitHubInstallationChoice {
   installation_id: number;
   /** GitHub org / owner login the installation belongs to. */
   account: string;
+  /** Whether the GitHub App installation is authorized for all repos or selected repos. */
+  repository_selection?: "all" | "selected";
   /** Repositories currently visible to the installation and selectable here. */
   repositories: string[];
   /** Repositories Doco already knows under this installation. */
@@ -422,13 +428,23 @@ export function groupKnownGitHubInstallations(
 ): KnownGitHubInstallationChoice[] {
   const byInstallation = new Map<
     number,
-    { accounts: Set<string>; repos: Set<string>; handles: Set<string> }
+    {
+      accounts: Set<string>;
+      repos: Set<string>;
+      handles: Set<string>;
+      selections: Set<"all" | "selected">;
+    }
   >();
 
   const entryFor = (installationId: number) => {
     let entry = byInstallation.get(installationId);
     if (!entry) {
-      entry = { accounts: new Set(), repos: new Set(), handles: new Set() };
+      entry = {
+        accounts: new Set(),
+        repos: new Set(),
+        handles: new Set(),
+        selections: new Set(),
+      };
       byInstallation.set(installationId, entry);
     }
     return entry;
@@ -439,6 +455,7 @@ export function groupKnownGitHubInstallations(
       const entry = entryFor(auth.installation_id);
       entry.accounts.add(auth.account);
       entry.handles.add(row.handle);
+      if (auth.repository_selection) entry.selections.add(auth.repository_selection);
     }
     for (const sub of normalizeInstallations(row.githubIntegration)) {
       const entry = entryFor(sub.installation_id);
@@ -458,9 +475,13 @@ export function groupKnownGitHubInstallations(
     .map(([installation_id, entry]) => {
       const connected = [...entry.repos].sort();
       const [firstAccount] = [...entry.accounts].sort();
+      const [repository_selection] = [...entry.selections].sort();
       return {
         installation_id,
         account: firstAccount ?? connected[0]?.split("/")[0] ?? `installation-${installation_id}`,
+        ...(repository_selection === "all" || repository_selection === "selected"
+          ? { repository_selection }
+          : {}),
         connected_repositories: connected,
         source_doco_handles: [...entry.handles].sort(),
       };
@@ -494,10 +515,12 @@ async function listKnownGitHubInstallationsForDocos(
 export async function listGitHubInstallationChoicesForDocos(
   docoIds: string[],
   deps?: {
+    getInstallation?: typeof getInstallationAccount;
     mintToken?: typeof mintInstallationToken;
     listRepos?: typeof listInstallationRepos;
   },
 ): Promise<GitHubInstallationChoice[]> {
+  const getInstallation = deps?.getInstallation ?? getInstallationAccount;
   const mintToken = deps?.mintToken ?? mintInstallationToken;
   const listRepos = deps?.listRepos ?? listInstallationRepos;
   const known = await listKnownGitHubInstallationsForDocos(docoIds);
@@ -505,10 +528,18 @@ export async function listGitHubInstallationChoicesForDocos(
 
   for (const choice of known) {
     try {
+      const installation = await getInstallation(choice.installation_id).catch(() => null);
+      const account = installation?.account ?? choice.account;
+      const repositorySelection = installation?.repository_selection ?? choice.repository_selection;
       const { token } = await mintToken(choice.installation_id);
-      const repositories = await listRepos(token);
+      const repositories = await listRepos(token, {
+        account,
+        repositorySelection,
+      });
       choices.push({
         ...choice,
+        account,
+        ...(repositorySelection ? { repository_selection: repositorySelection } : {}),
         repositories: [
           ...new Set(repositories.length > 0 ? repositories : choice.connected_repositories),
         ].sort(),
@@ -567,7 +598,9 @@ export interface GitHubInstallationSub {
   connected_at?: string;
 }
 
-export type GitHubInstallationAuthorization = GitHubInstallationSub;
+export interface GitHubInstallationAuthorization extends GitHubInstallationSub {
+  repository_selection?: "all" | "selected";
+}
 
 /** GitHub installations the user has authorized for repo selection. These are
  * not org-wide subscriptions; they only make repositories selectable in the
@@ -581,12 +614,20 @@ export function normalizeInstallationAuthorizations(
   const out: GitHubInstallationAuthorization[] = [];
   for (const x of list) {
     if (!x || typeof x !== "object") continue;
-    const e = x as { installation_id?: unknown; account?: unknown; connected_at?: unknown };
+    const e = x as {
+      installation_id?: unknown;
+      account?: unknown;
+      connected_at?: unknown;
+      repository_selection?: unknown;
+    };
     if (typeof e.installation_id !== "number" || typeof e.account !== "string") continue;
     out.push({
       installation_id: e.installation_id,
       account: e.account,
       ...(typeof e.connected_at === "string" ? { connected_at: e.connected_at } : {}),
+      ...(e.repository_selection === "all" || e.repository_selection === "selected"
+        ? { repository_selection: e.repository_selection }
+        : {}),
     });
   }
   return out;

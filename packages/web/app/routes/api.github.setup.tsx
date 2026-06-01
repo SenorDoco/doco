@@ -33,10 +33,11 @@ export async function loader({ request }: { request: Request }) {
   if (!roleAtLeast(role, "writer")) return redirect(`${panel}?github=forbidden`);
 
   try {
-    const { account } = await getInstallationAccount(installationId);
+    const { account, repository_selection } = await getInstallationAccount(installationId);
     await recordInstallationAuthorization(doco.id, {
       installation_id: installationId,
       account,
+      ...(repository_selection ? { repository_selection } : {}),
       connected_at: new Date().toISOString(),
     });
     return redirect(`${panel}?github=connected`);
