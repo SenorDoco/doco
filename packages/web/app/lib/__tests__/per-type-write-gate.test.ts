@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 // combination rules the gate relies on, including the token-cap AND-ing.
 
 // Mirror of doco-access.server.ts#tokenWriteTypeCap for unit coverage of
-// the back-compat + AND-ing rules without a live request/token.
+// the token-cap AND-ing rules without a live request/token.
 function tokenCap(
   meta: { ownerId: string; docoId?: string },
   token: {
@@ -26,7 +26,7 @@ function tokenCap(
     matched = true;
     const wt = token.granted_doco_write_types[meta.docoId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (["owner", "writer"].includes(token.granted_doco_roles[meta.docoId] ?? "")) {
+    else if (token.granted_doco_roles[meta.docoId] === "owner") {
       caps.add("*");
     }
   }
@@ -34,7 +34,7 @@ function tokenCap(
     matched = true;
     const wt = token.granted_org_write_types[meta.ownerId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (["owner", "writer"].includes(token.granted_org_roles[meta.ownerId] ?? "")) {
+    else if (token.granted_org_roles[meta.ownerId] === "owner") {
       caps.add("*");
     }
   }
@@ -59,7 +59,7 @@ describe("per-type write gate — membership semantics", () => {
     expect(canWriteType("reader", ["decision"], "decision")).toBe(true);
     expect(canWriteType("reader", ["decision"], "action")).toBe(false);
   });
-  it("wildcard membership (backfilled writer) writes everything", () => {
+  it("wildcard membership writes everything", () => {
     expect(canWriteType("reader", ["*"], "flows_to")).toBe(true);
   });
 });
@@ -75,13 +75,13 @@ describe("per-type write gate — token cap AND-ing", () => {
     expect(tokenCap(orgDoco, { ...emptyToken })).toEqual([]);
   });
 
-  it("legacy writer-role token (no per-type map) → wildcard cap", () => {
+  it("writer-role token without a per-type map writes nothing", () => {
     const cap = tokenCap(orgDoco, {
       ...emptyToken,
       granted_doco_ids: ["doco_1"],
       granted_doco_roles: { doco_1: "writer" },
     });
-    expect(cap).toEqual(["*"]);
+    expect(cap).toEqual([]);
   });
 
   it("owner-role token (no per-type map) → wildcard cap", () => {
@@ -118,9 +118,9 @@ describe("per-type write gate — token cap AND-ing", () => {
   });
 });
 
-// Account grants (migration 075) fold into the doco-level grant exactly
-// like every other source: the engine takes the MAX role and the UNION of
-// write-type sets across direct/org/account/doco grants (owner ⇒ wildcard).
+// Account grants fold into the doco-level grant exactly like every
+// other source: the engine takes the MAX role and the UNION of write-type
+// sets across direct/org/account/doco grants (owner ⇒ wildcard).
 // This mirrors getDocoLevelGrant#fold without a live DB.
 type Grant = { role: "owner" | "writer" | "reader"; writeTypes: string[] };
 function foldGrants(sources: (Grant | null)[]): Grant | null {

@@ -432,7 +432,7 @@ async function serializeApiKeyGrants(grants: ApiKeyGrantInput[]): Promise<{
 
   // Effective write-type scope for a grant: owner writes everything
   // (no per-type entry needed); an explicit set is normalized; absent →
-  // wildcard for a writer, nothing for a reader (back-compat).
+  // wildcard for a writer, nothing for a reader.
   const writeTypesFor = (grant: { role: DocoRole; write_types?: string[] }): string[] | null => {
     if (grant.role === "owner") return null;
     if (grant.write_types !== undefined) {

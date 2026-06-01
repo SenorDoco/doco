@@ -1,5 +1,4 @@
-// Privacy gate for docos. Postgres-backed
-// (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
+// Privacy gate for docos. Postgres-backed.
 
 import {
   type DocoRole,
@@ -86,10 +85,9 @@ export async function getDocoLevelGrant(
 
   if (meta.ownerId.startsWith("organization_")) {
     fold(await getOrgGrant(meta.ownerId, principalId));
-    // Account-level grants (migration 075): if any OWNER of this org has
-    // granted their whole account to the principal, the principal
-    // inherits that grant on every org/doco that
-    // owner owns — including this one.
+    // Account-level grants: if any OWNER of this org has granted their
+    // whole account to the principal, the principal inherits that grant
+    // on every org/doco that owner owns — including this one.
     const orgOwners = await listOrgOwnerUserIds(meta.ownerId);
     for (const grantor of orgOwners) {
       fold(await getAccountGrant(grantor, principalId));
@@ -139,9 +137,8 @@ export async function canWriteDocoType(
  *
  * A token that granted writer (wildcard) on the target returns ["*"]; a
  * token that granted only specific types returns those; a token scoped
- * to the Doco/org but with no write returns []. The wildcard is also
- * returned for a missing per-type entry on a role-only ('writer') grant,
- * preserving back-compat for tokens minted before per-type scope existed.
+ * to the Doco/org but with no write returns []. Owner grants without a
+ * per-type entry retain the owner wildcard.
  */
 function tokenWriteTypeCap(
   token: ValidAccessToken | null,
@@ -155,7 +152,7 @@ function tokenWriteTypeCap(
     matched = true;
     const wt = token.granted_doco_write_types?.[meta.docoId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (["owner", "writer"].includes(token.granted_doco_roles?.[meta.docoId] ?? "")) {
+    else if (token.granted_doco_roles?.[meta.docoId] === "owner") {
       caps.add(WRITE_ALL);
     }
   }
@@ -163,7 +160,7 @@ function tokenWriteTypeCap(
     matched = true;
     const wt = token.granted_org_write_types?.[meta.ownerId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (["owner", "writer"].includes(token.granted_org_roles?.[meta.ownerId] ?? "")) {
+    else if (token.granted_org_roles?.[meta.ownerId] === "owner") {
       caps.add(WRITE_ALL);
     }
   }
@@ -475,14 +472,12 @@ export function readDocoRouteParam(params: DocoRouteParams): string | null {
 }
 
 /**
- * Resolve a public Doco route param to the canonical record. Current
- * routes use `params.docoHandle`; `params.docoId` remains accepted for
- * legacy callers and id-based APIs. The returned `ownerSlug` and
- * `docoSlug` are back-compat fields synthesized by `mapDocoRow`:
- * `ownerSlug` comes from a JOIN to `users.github_login` /
- * `organizations.handle`, `docoSlug` mirrors `handle`. Handlers that
- * need the legacy slug pair for internal plumbing (docoPath, captures)
- * keep destructuring them; new code should read `handle` directly.
+ * Resolve a public Doco route param to the canonical record. Public
+ * routes use `params.docoHandle`; id-addressed API routes can pass
+ * `params.docoId`. The returned `ownerSlug` and `docoSlug` are
+ * synthesized by `mapDocoRow`: `ownerSlug` comes from a JOIN to
+ * `users.github_login` / `organizations.handle`, and `docoSlug`
+ * mirrors `handle`.
  */
 export async function normalizeDocoParams(params: DocoRouteParams): Promise<{
   ownerSlug: string;

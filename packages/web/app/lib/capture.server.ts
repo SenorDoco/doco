@@ -177,8 +177,6 @@ function syntheticPath(entityType: string, id: string): string {
 
 /**
  * Read an existing entity's parsed frontmatter + body from Postgres.
- * Replaces the prior filesystem read (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 —
- * alpha forbids back-compat).
  */
 async function readEntityFromPostgres(
   entityType: string,
@@ -192,9 +190,8 @@ async function readEntityFromPostgres(
 }
 
 /**
- * Persist an entity to Postgres. The sole writer for entity content
- * (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat;
- * filesystem dual-write is gone).
+ * Persist an entity to Postgres. This is the sole writer for entity
+ * content.
  *
  * Returns a promise that resolves once the row is durably written.
  * Callers MUST await this before scheduling reindex — otherwise the
@@ -231,7 +228,7 @@ async function persistEntity(args: {
       },
       args.client,
     );
-    // Append-only history (doco-vnext): record an immutable version snapshot +
+    // Append-only history: record an immutable version snapshot +
     // changeset for this write — atomic with the projection when a tx client is
     // provided. op (create/update/retire) is derived inside recordEntityVersion.
     const versionActor =
@@ -543,10 +540,10 @@ export async function renderOperationLines(opts: {
   /** Entity ULID id — used to build the markdown link URL. */
   id: string;
   /**
-   * Readable label used as the link text on every op line. For migrated
-   * nodes this is the first line of the type-named prose field
-   * (`firstLine(fm[entityType])`); for policies/principals it is the
-   * legacy `summary`.
+   * Readable label used as the link text on every op line. For nodes
+   * this is the first line of the type-named prose field
+   * (`firstLine(fm[entityType])`); policies/principals pass their
+   * display text directly.
    */
   label: string;
   /**
@@ -1172,8 +1169,8 @@ export async function updateEntity(opts: {
   };
 
   if (typeNamedColumn && typeNamedColumn in normalizedPatch) {
-    // Migrated node: the type-named prose field replaces summary +
-    // body_md (+ title on intent, name/description on eval).
+    // Node prose lives in the type-named field; body_md remains the
+    // long-form markdown body.
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
   } else if (!typeNamedColumn && "policy" in normalizedPatch) {
@@ -1212,10 +1209,7 @@ export async function updateEntity(opts: {
     "body_md_append",
     "policy",
     "created_by_user_id",
-    // Per migration 034 (remove-slugs PR), nodes no longer carry a
-    // `slug` field in their data jsonb. Silently drop the key on
-    // PATCH so callers that still send it (or stale clients holding
-    // old captures) don't repopulate it.
+    // Slug is not a node data field.
     "slug",
     ...(typeNamedColumn ? [typeNamedColumn] : []),
   ]);

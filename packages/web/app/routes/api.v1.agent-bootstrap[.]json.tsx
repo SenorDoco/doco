@@ -56,8 +56,7 @@ import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface PolicyArticle {
   id: string;
-  /** The one-line rule statement (column renamed from `summary` to
-   *  `policy` by migration 038). */
+  /** The one-line rule statement. */
   policy: string;
   lifecycle: string | null;
   body_md: string | null;

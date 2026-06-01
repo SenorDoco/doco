@@ -1,8 +1,4 @@
-// Host-level reads — Phase 3 Postgres-only
-// (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
-//
-// All filesystem walks of host/principal/organization/Doco YAML have
-// been replaced with Postgres queries via @doco/db.
+// Host-level reads from Postgres via @doco/db.
 
 import {
   listAllDocos as _dbListAllDocos,
@@ -55,10 +51,7 @@ export async function loadHostConfig(): Promise<HostConfig> {
 }
 
 export async function listUsers(): Promise<HostUser[]> {
-  // Post-rename: OAuth identities (humans + agent runtimes) live in
-  // the `users` table, not `principals`. Principals are
-  // role-personas referenced by actor_id, not users-of-the-system.
-  const rows = await listUserRows({ kind: "person" });
+  const rows = await listUserRows();
   return rows.map((r) => {
     const out: HostUser = {
       id: r.id,

@@ -1,4 +1,4 @@
-// Edge authoring (doco-vnext). The web entry point for creating and
+// Edge authoring. The web entry point for creating and
 // retiring FIRST-CLASS edges. Every mutation goes through the append-only
 // commit() boundary (changeset + immutable version snapshot), so edges get
 // their own id, lifecycle, provenance, and history — peers of nodes.
@@ -75,8 +75,8 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
   // Edges connect graph nodes only. Org/doco containment rides on the
   // doco_id / org_id columns, never on a graph edge; a policy is governance
   // config, not a node. The `edges.from_id` / `edges.to_id` → nodes(id) FKs
-  // (migration 070) enforce this in the DB — this check fails fast with a
-  // clear message instead of surfacing a raw FK violation.
+  // enforce this in the DB — this check fails fast with a clear message
+  // instead of surfacing a raw FK violation.
   if (!NODE_TYPE_SET.has(from.type)) {
     return {
       error: `from_id must be a node, not a ${from.type} (edges connect nodes only).`,

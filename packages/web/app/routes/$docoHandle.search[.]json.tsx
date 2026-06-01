@@ -24,7 +24,6 @@ interface JsonSearchHit {
   created_at: string | null;
   gpr: number;
   vector_score: number;
-  file_path: string | null;
   pinned?: boolean;
 }
 
@@ -32,9 +31,6 @@ function toJsonSearchHit(hit: SearchHit): JsonSearchHit {
   return {
     ...hit,
     vector_score: hit.vector_score ?? 0,
-    // Search is Postgres-backed now; the legacy file_path field stays
-    // present for older clients but no longer points at filesystem state.
-    file_path: null,
   };
 }
 

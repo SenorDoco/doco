@@ -320,7 +320,7 @@ export function OverviewGraph({
   // When the caller passes a `visibleLifecycles` set, the graph is
   // "controlled" — external state wins and we don't render the
   // internal filter UI below. Otherwise we manage state locally
-  // (legacy/uncontrolled).
+  // for embedded callers.
   const controlledMode = externalVisibleLifecycles !== undefined;
   const [internalVisibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(
     () =>

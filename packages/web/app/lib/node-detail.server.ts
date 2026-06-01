@@ -437,10 +437,10 @@ export async function loadNodeDialogDetail(
   const cfg = GRAPH_NODE_TABLES[options.entityType];
   if (!cfg) return null;
 
-  // Post-migration: the 9 migrated nodes store their primary text in
-  // a type-named column (intent/decision/...). Principal keeps a real
-  // `name` display label plus optional `body_md`; keep those channels
-  // distinct so the dialog does not promote the body over the label.
+  // The 9 prose nodes store their primary text in a type-named column
+  // (intent/decision/...). Principal keeps a real `name` display label
+  // plus optional `body_md`; keep those channels distinct so the dialog
+  // does not promote the body over the label.
   const bodySelect = cfg.bodyColumn ? `${cfg.bodyColumn} AS body_text` : "NULL::text AS body_text";
   const row = (
     await c.query<{

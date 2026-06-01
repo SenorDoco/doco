@@ -132,7 +132,7 @@ export async function action({
     invite_url: inviteUrl,
     invite_expires_at: invite.expires_at,
     code: invite.code,
-    role: invite.role ?? requestedRole,
+    role: requestedRole,
     doco_url: docoUrl,
     human_prompt: buildHumanInvitePrompt(inviteUrl),
     agent_prompt: buildAgentInvitePrompt({ docoUrl, recipeUrl, deviceUrl }),

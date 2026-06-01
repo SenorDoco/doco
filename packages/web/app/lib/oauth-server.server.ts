@@ -542,11 +542,11 @@ export interface ValidAccessToken {
   token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
-  /** Per-type write scope-down keyed by doco_id (migration 062). */
+  /** Per-type write scope-down keyed by doco_id. */
   granted_doco_write_types: Record<string, string[]>;
   granted_org_ids: string[];
   granted_org_roles: Record<string, string>;
-  /** Per-type write scope-down keyed by org_id (migration 062). */
+  /** Per-type write scope-down keyed by org_id. */
   granted_org_write_types: Record<string, string[]>;
   scope: string | null;
   expires_at: Date;

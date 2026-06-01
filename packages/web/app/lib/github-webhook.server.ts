@@ -198,21 +198,16 @@ export interface DocoRepoConnection {
   orgHandle: string;
 }
 
-/**
- * Docos connected to "owner/name". Matches both the list shape
- * (`data.github_integration.connections[].repo`) and the legacy single shape
- * (`data.github_integration.repo`).
- */
+/** Docos connected to "owner/name". */
 export async function findDocoConnectionsByRepo(
   repoFullName: string,
 ): Promise<DocoRepoConnection[]> {
   return withClient(async (c) => {
     const r = await c.query<{ id: string; handle: string; org_handle: string }>(
       `SELECT d.id, d.handle, o.handle AS org_handle
-         FROM docos d
+        FROM docos d
          JOIN organizations o ON o.id = d.org_id
-        WHERE d.data->'github_integration'->>'repo' = $1
-           OR d.data->'github_integration'->'connections'
+        WHERE d.data->'github_integration'->'connections'
                 @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
       [repoFullName],
     );
@@ -225,12 +220,10 @@ export async function findDocoConnectionsByRepo(
 }
 
 /**
- * The Doco subscribed to a GitHub App installation — the routing key. Matches
- * the org-subscription `installations[]` shape, any per-repo connection that
- * carries the installation id (back-compat with the earlier repo model), and
- * the legacy single shape. Routing on the installation (not a repo list) is
- * what makes a brand-new repo in the org sync automatically: GitHub delivers
- * its PR webhooks under the same installation id. One installation ↦ one Doco.
+ * The Doco subscribed to a GitHub App installation — the routing key. Routing
+ * on the installation (not a repo list) is what makes a brand-new repo in the
+ * org sync automatically: GitHub delivers its PR webhooks under the same
+ * installation id. One installation maps to one Doco.
  */
 export async function findDocoByInstallation(
   installationId: number,
@@ -243,8 +236,7 @@ export async function findDocoByInstallation(
         WHERE d.data->'github_integration'->'installations'
                 @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))
            OR d.data->'github_integration'->'connections'
-                @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))
-           OR (d.data->'github_integration'->>'installation_id')::int = $1`,
+                @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))`,
       [installationId],
     );
     return r.rows.map((row) => ({

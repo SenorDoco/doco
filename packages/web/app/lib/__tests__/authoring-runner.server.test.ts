@@ -472,8 +472,8 @@ describe("authoring runner — integration", () => {
   it("loads policies whose lifecycle column is NULL (treated as accepted)", async () => {
     // Defends fix #1: loadPolicies used WHERE lifecycle = 'asserted' (strict)
     // while the rest of the codebase uses COALESCE(lifecycle, 'asserted') =
-    // 'asserted'. A policy seeded by a migration / restored from backup
-    // with a NULL lifecycle column was silently invisible to the enforcer.
+    // 'asserted'. A policy with a NULL lifecycle column was silently
+    // invisible to the enforcer.
     await withClient(async (c) => {
       await c.query(
         `INSERT INTO organizations (id, handle, name, data, created_at, updated_at)

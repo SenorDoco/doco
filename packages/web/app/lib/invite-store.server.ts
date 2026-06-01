@@ -23,46 +23,12 @@ export interface Invite {
   kind: "invite";
   /** Opaque hex token. Path component of the invite URL. */
   code: string;
-  /**
-   * Level the grant lands at on redemption (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
-   * - "doco" (default for back-compat): inserts into doco_users.
-   * - "org": inserts into org_users for `org_id`.
-   *
-   * Pre-existing invites without this field are treated as "doco".
-   */
-  level?: "account" | "org" | "doco";
-  /** Doco this invite is anchored to. Org-only invites can omit it. */
+  /** Doco this invite is anchored to for management pages. */
   doco_id?: EntityId<"doco">;
-  /** Org targeted by org-level invites. Required when level === "org". */
-  org_id?: EntityId<"organization">;
-  /**
-   * Grantor whose whole account the redeemer joins (migration 075).
-   * Required when level === "account"; the redeemer gets an account_grant
-   * keyed to this user.
-   */
-  account_grantor_user_id?: EntityId<"principal">;
   /** Principal that minted this invite (null for anonymous-creation seed). */
   minted_by_user_id: EntityId<"principal"> | null;
-  /**
-   * Role the redeemer receives on the targeted level. Written into the
-   * level-appropriate users table on consume. Optional in storage for
-   * back-compat: pre-cutover Invites lack the field; their redeemer
-   * falls back to `owner` (matching the v8 backfill posture). Mint
-   * paths after the cutover always set it explicitly.
-   */
-  role?: "owner" | "writer" | "reader";
-  /**
-   * Per-type write grant (decision_per_type_write_grants) the redeemer
-   * receives. Optional; absent → the upsert default (wildcard for a
-   * writer, empty otherwise), preserving pre-per-type behavior.
-   */
-  write_types?: string[];
-  /**
-   * Multi-grant invite (one link, all grants): every grant the redeemer
-   * receives on consume. When present, this is the source of truth and the
-   * legacy single level/role/write_types fields are ignored on redemption.
-   */
-  grants?: Array<{
+  /** Every grant the redeemer receives on consume. */
+  grants: Array<{
     level: "account" | "org" | "doco";
     target_id: string;
     role: "owner" | "writer" | "reader";
@@ -167,15 +133,27 @@ export class InviteStore {
     const invite: Invite = {
       kind: "invite",
       code: randomBytes(INVITE_CODE_BYTES).toString("hex"),
-      level,
       ...(docoId ? { doco_id: docoId } : {}),
-      ...(opts.org_id ? { org_id: opts.org_id } : {}),
-      ...(opts.account_grantor_user_id
-        ? { account_grantor_user_id: opts.account_grantor_user_id }
-        : {}),
-      ...(opts.write_types ? { write_types: opts.write_types } : {}),
       minted_by_user_id: mintedByUserId,
-      role,
+      grants:
+        opts.grants && opts.grants.length > 0
+          ? opts.grants
+          : [
+              {
+                level,
+                target_id:
+                  level === "account"
+                    ? (opts.account_grantor_user_id ?? "")
+                    : level === "org"
+                      ? (opts.org_id ?? "")
+                      : (docoId ?? ""),
+                role,
+                write_types: opts.write_types ?? [],
+                ...(level === "account" && opts.account_grantor_user_id
+                  ? { account_grantor_user_id: opts.account_grantor_user_id }
+                  : {}),
+              },
+            ],
       expires_at: expires.toISOString(),
       issued_at: now.toISOString(),
       status: "pending",
@@ -257,7 +235,12 @@ export class InviteStore {
     const matches: Invite[] = [];
     for (const t of file.tokens) {
       if (t.kind !== "invite") continue;
-      if (t.doco_id !== docoId) continue;
+      if (
+        t.doco_id !== docoId &&
+        !t.grants.some((g) => g.level === "doco" && g.target_id === docoId)
+      ) {
+        continue;
+      }
       if (t.status === "pending" && Date.parse(t.expires_at) < now) {
         t.status = "expired";
         mutated = true;

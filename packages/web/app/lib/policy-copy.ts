@@ -32,10 +32,9 @@ export function derivePolicySummary(body: string): string {
 
 /**
  * Reconstruct the full article text from a row. The `policy` field
- * (renamed from `summary` in migration 038) is the one-line rule
- * statement; `body` is the optional long-form rationale. When body
- * is present the rendered text is `policy\n\nbody` unless body
- * already opens with the policy line.
+ * is the one-line rule statement; `body` is the optional long-form
+ * rationale. When body is present the rendered text is `policy\n\nbody`
+ * unless body already opens with the policy line.
  */
 export function policyFullText(
   row: { policy: string | null | undefined; body: string | null | undefined } | null,

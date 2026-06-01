@@ -79,8 +79,7 @@ const MAX_TOKENS = SENOR_DOCO_DEFAULT_MAX_TOKENS;
 const ANTHROPIC_429_MAX_RETRY_SLEEP_MS = 30_000;
 
 // Attachment policy — kept in one place so the UI notice, the system
-// prompt, and the migration's INTERVAL stay in sync. If you change
-// ATTACHMENT_RETENTION_DAYS, also update migration 004's INTERVAL.
+// prompt, and the chat_attachments default stay in sync.
 export const ATTACHMENT_RETENTION_DAYS = 30;
 export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const ATTACHMENT_ALLOWED_MIME = new Set<string>([
@@ -130,8 +129,6 @@ export interface ChatConversationRow {
   archived: boolean;
   title: string | null;
   attached_doco_ids: string[];
-  /** Legacy handle storage retained only as a fallback for old rows. */
-  attached_doco_handles: string[];
   attached_org_handles: string[];
   created_at: Date;
   updated_at: Date;
@@ -243,10 +240,9 @@ export type ChatStreamEvent =
 /**
  * One conversation per principal, forever. Returns the principal's
  * row if it exists, otherwise mints one. There is no archive / new-
- * chat affordance — the thread is the user's single rolling memory.
- * The `archived` column on the table is legacy from an earlier
- * design; left in place because dropping it would require a migration
- * and the dead column is harmless.
+ * chat affordance — the thread is the user's single rolling memory,
+ * while `archived` remains the soft-delete mechanism for the thread
+ * list API.
  */
 /**
  * Stale-turn cutoff. If `active_turn_started_at` is older than this,
@@ -260,7 +256,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, user_id, archived, title, attached_doco_ids, attached_doco_handles, attached_org_handles, created_at, updated_at, active_turn_started_at";
+  "id, user_id, archived, title, attached_doco_ids, attached_org_handles, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -376,11 +372,9 @@ export interface ConversationListItem {
    * Stable Doco ids so the client can decide what to do on row-click
    * without a second snapshot fetch:
    * exactly one attachment between docos + orgs → jump straight to
-   * that page; otherwise just open the chat. Handles are included for
-   * older clients only and are resolved from ids when possible.
+   * that page; otherwise just open the chat.
    */
   attached_doco_ids: string[];
-  attached_doco_handles: string[];
   attached_org_handles: string[];
 }
 
@@ -431,21 +425,10 @@ export async function listConversationsForPrincipal(
       last_message_content: unknown;
       last_message_role: "user" | "assistant" | null;
       attached_doco_ids: string[] | null;
-      attached_doco_handles: string[] | null;
       attached_org_handles: string[] | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
               c.attached_doco_ids,
-              CASE
-                WHEN array_length(c.attached_doco_ids, 1) IS NOT NULL THEN
-                  ARRAY(
-                    SELECT d.handle
-                      FROM unnest(c.attached_doco_ids) WITH ORDINALITY AS x(id, ord)
-                      JOIN docos d ON d.id = x.id
-                     ORDER BY x.ord
-                  )
-                ELSE c.attached_doco_handles
-              END AS attached_doco_handles,
               c.attached_org_handles,
               COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
               (SELECT m.content
@@ -475,7 +458,6 @@ export async function listConversationsForPrincipal(
       last_message_preview: extractMessagePreview(row.last_message_content),
       last_message_role: row.last_message_role,
       attached_doco_ids: row.attached_doco_ids ?? [],
-      attached_doco_handles: row.attached_doco_handles ?? [],
       attached_org_handles: row.attached_org_handles ?? [],
     }));
   });
@@ -609,36 +591,19 @@ export async function mutateConversationAttachments(
   ops: {
     attachDocoId?: string;
     detachDocoId?: string;
-    attachDocoHandle?: string;
-    detachDocoHandle?: string;
     attachOrg?: string;
     detachOrg?: string;
   },
 ): Promise<ChatConversationRow | null> {
   return await withClient(async (c) => {
-    let attachDocoId = ops.attachDocoId;
-    if (!attachDocoId && ops.attachDocoHandle) {
-      const r = await c.query<{ id: string }>("SELECT id FROM docos WHERE handle = $1", [
-        ops.attachDocoHandle,
-      ]);
-      attachDocoId = r.rows[0]?.id;
-    }
-    let detachDocoId = ops.detachDocoId;
-    if (!detachDocoId && ops.detachDocoHandle) {
-      const r = await c.query<{ id: string }>("SELECT id FROM docos WHERE handle = $1", [
-        ops.detachDocoHandle,
-      ]);
-      detachDocoId = r.rows[0]?.id;
-    }
-
     const updates: string[] = [];
     const values: unknown[] = [conversationId, principalId];
-    if (attachDocoId) {
-      values.push(attachDocoId);
+    if (ops.attachDocoId) {
+      values.push(ops.attachDocoId);
       updates.push(appendUniqueSql("attached_doco_ids", values.length));
     }
-    if (detachDocoId) {
-      values.push(detachDocoId);
+    if (ops.detachDocoId) {
+      values.push(ops.detachDocoId);
       updates.push(`attached_doco_ids = array_remove(attached_doco_ids, $${values.length})`);
     }
     if (ops.attachOrg) {
@@ -664,9 +629,8 @@ export async function mutateConversationAttachments(
 }
 
 /**
- * Legacy entry point — kept for back-compat with callers that still
- * pass just a principal id. Returns the most-recent thread or mints
- * a fresh one.
+ * Return the most-recent thread for the principal, minting a fresh
+ * one when the user has not chatted yet.
  */
 export async function loadOrCreateConversation(principalId: string): Promise<ChatConversationRow> {
   const active = await loadActiveConversation(principalId);
@@ -1241,7 +1205,7 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/<type>/<id>.json           — single node detail
   PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
-  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy user alias...], users: [{ id, username, role, type, github_login, email }], principal_nodes: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_node_count }. Read \`users\` for the doco's OAuth members; read \`principal_nodes\` for the Principal NODES visible as BPMN swim lanes / org-chart roles.
+  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, users: [{ id, username, role, type, github_login, email }], principal_nodes: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_node_count }. Read \`users\` for the doco's OAuth members; read \`principal_nodes\` for the Principal NODES visible as BPMN swim lanes / org-chart roles.
   PATCH /<handle>/api/principals/<id>.json       — update a Principal NODE (name, body_md, lifecycle). Same retire-on-lifecycle convention. \`name\` is editable — a rename updates in place and is tracked in the audit log.
   GET   /<handle>/api/policies.json            — list policies (guidance + node-authoring) for this doco
   POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "node_authoring"
@@ -1308,7 +1272,7 @@ etc., not \`summary\`.
 - Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash? }
 - State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[] }
 - Idea:      { idea*, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
-- Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
+- Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?.
 - Policy (Node-authoring, owner-only): same endpoint with policy_kind*("node_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 The TYPE-NAMED field carries multi-line markdown; the first line is
@@ -2421,55 +2385,28 @@ export interface ConversationSnapshot {
   active_turn_events: Array<Record<string, unknown>>;
 }
 
-async function resolveDocoAttachments(
-  ids: string[],
-  legacyHandles: string[] = [],
-): Promise<DocoAttachmentInfo[]> {
+async function resolveDocoAttachments(ids: string[]): Promise<DocoAttachmentInfo[]> {
   const docoIds = uniqueNonEmptyStrings(ids);
-  if (docoIds.length === 0 && legacyHandles.length === 0) return [];
+  if (docoIds.length === 0) return [];
   return await withClient(async (c) => {
-    if (docoIds.length > 0) {
-      const r = await c.query<{ id: string; handle: string; owner_slug: string }>(
-        `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
-           FROM docos d
-           LEFT JOIN organizations o ON o.id = d.owner_id
-           LEFT JOIN users co ON co.id = d.owner_id
-          WHERE d.id = ANY($1::text[])`,
-        [docoIds],
-      );
-      const byId = new Map(r.rows.map((row) => [row.id, row]));
-      return docoIds.map((id) => {
-        const row = byId.get(id);
-        return row
-          ? {
-              id: row.id,
-              handle: row.handle,
-              label: qualifiedDocoLabel({ ownerSlug: row.owner_slug, handle: row.handle }),
-            }
-          : { id, handle: id };
-      });
-    }
-    const handles = uniqueNonEmptyStrings(legacyHandles);
     const r = await c.query<{ id: string; handle: string; owner_slug: string }>(
       `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
          FROM docos d
          LEFT JOIN organizations o ON o.id = d.owner_id
          LEFT JOIN users co ON co.id = d.owner_id
-        WHERE d.handle = ANY($1::text[])`,
-      [handles],
+        WHERE d.id = ANY($1::text[])`,
+      [docoIds],
     );
-    const byHandle = new Map(r.rows.map((row) => [row.handle, row]));
-    return handles.flatMap((handle) => {
-      const row = byHandle.get(handle);
+    const byId = new Map(r.rows.map((row) => [row.id, row]));
+    return docoIds.map((id) => {
+      const row = byId.get(id);
       return row
-        ? [
-            {
-              id: row.id,
-              handle: row.handle,
-              label: qualifiedDocoLabel({ ownerSlug: row.owner_slug, handle: row.handle }),
-            },
-          ]
-        : [];
+        ? {
+            id: row.id,
+            handle: row.handle,
+            label: qualifiedDocoLabel({ ownerSlug: row.owner_slug, handle: row.handle }),
+          }
+        : { id, handle: id };
     });
   });
 }
@@ -2490,9 +2427,8 @@ async function resolveOrgAttachments(handles: string[]): Promise<OrgAttachmentIn
  * Load a snapshot for a specific thread or the user's active thread.
  *
  * - `conversationId` omitted: most-recent non-archived thread, or a
- *   fresh empty one when the user has never chatted. This matches the
- *   pre-multi-thread behavior and is what the sidebar uses on first
- *   open.
+ *   fresh empty one when the user has never chatted. This is what the
+ *   sidebar uses on first open.
  * - `conversationId` provided: that thread, scoped to the calling
  *   principal. Returns `null` when the id doesn't exist or belongs
  *   to a different user — callers should 404 in that case.
@@ -2514,7 +2450,7 @@ export async function loadSnapshotForPrincipal(
       limit: CHAT_MESSAGES_PAGE_SIZE,
     }),
     loadActiveTurnEvents(conv.id),
-    resolveDocoAttachments(conv.attached_doco_ids ?? [], conv.attached_doco_handles ?? []),
+    resolveDocoAttachments(conv.attached_doco_ids ?? []),
     resolveOrgAttachments(conv.attached_org_handles ?? []),
   ]);
   return {

@@ -3,7 +3,7 @@
 // DELETE /<doco>/api/edges/<id>.json            — retire the edge.
 // POST   /<doco>/api/edges/<id>.json {op:"retire"} — retire (DELETE-less clients).
 //
-// Time-travel reads are O(1) snapshot lookups (doco-vnext): "how it was"
+// Time-travel reads are O(1) snapshot lookups: "how it was"
 // never replays a log.
 
 import { entityAsOf, getVersions, verifyHistory, withClient } from "@doco/db";

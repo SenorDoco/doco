@@ -535,9 +535,7 @@ BODY (JSON)
                                   after trimming surrounding whitespace;
                                   not required to be slug-shaped or unique.
   body_md             optional   markdown body — the only narrative field
-                                  on a Principal post-migration 037
-                                  (\`summary\` was dropped). Defaults to
-                                  empty.
+                                  on a Principal. Defaults to empty.
                                   The org-chart template expects person-
                                   vs-agent to be declared here in prose
                                   ("Operates under: @alice", "Autonomous
@@ -581,9 +579,8 @@ EDIT
 BODY (JSON) — at least one field required
   name                optional   new display name. Trimmed; must be
                                   non-empty. Not required to be unique.
-  body_md             optional   markdown body. Replaces \`summary\`
-                                  (dropped by migration 037) — the only
-                                  narrative field on a Principal.
+  body_md             optional   markdown body — the only narrative
+                                  field on a Principal.
   lifecycle           optional   only "retired" accepted; see RETIRE.
 
 SUCCESS RESPONSE — edit (HTTP 200, application/json)
@@ -666,9 +663,8 @@ LIST / READ
   GET ${baseUrl}/${handle}/api/principals/<id>.json
 
   The list response returns two arrays:
-    - "principals" / "users" — OAuth users on this Doco
-      (humans + agents with a role grant). Legacy field name is
-      "principals"; "users" is the clearer alias.
+    - "users" — OAuth users on this Doco
+      (people with a role grant).
     - "principal_nodes" — actual Principal nodes in this Doco
       (what swim-lane / BPMN / org-tree views render). Mutate these
       via the create + edit + retire endpoints above.
@@ -726,8 +722,7 @@ ${RELATION_API_NOTE}
 
 BODY — policy_kind = "guidance"
   policy_kind          required   "guidance"
-  policy                required   one-line policy rule (renamed from
-                                    \`summary\` by migration 038)
+  policy                required   one-line policy rule
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
   lifecycle             optional   one of "drafting" | "asserted" | "retired"; default "asserted"
@@ -736,8 +731,7 @@ BODY — policy_kind = "guidance"
 
 BODY — policy_kind = "node_authoring"
   policy_kind          required   "node_authoring"
-  policy                required   one-line policy rule (renamed from
-                                    \`summary\` by migration 038)
+  policy                required   one-line policy rule
   evaluation_kind       required   "deterministic" | "probabilistic"
   predicate             required*  deterministic AuthoringPredicate object
                                   or JSON string. Must not have

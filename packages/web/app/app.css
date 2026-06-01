@@ -583,7 +583,7 @@ button[class*="bg-primary"]:active {
   max-height: 14px;
 }
 
-/* Append-only version-history pane in the node detail drawer (doco-vnext). */
+/* Append-only version-history pane in the node detail drawer. */
 .node-detail-drawer__history {
   list-style: none;
   margin: 0;

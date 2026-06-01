@@ -170,7 +170,7 @@ export interface AgentTurnRow {
   error: string | null;
   /**
    * Per-call detail: { anthropic_calls: [...], tool_calls: [...] }.
-   * Free-form so adding new measurements doesn't require a migration.
+   * Free-form so adding new measurements doesn't require a schema change.
    */
   phases: Record<string, unknown>;
 }
