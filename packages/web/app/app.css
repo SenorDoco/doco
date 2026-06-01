@@ -498,6 +498,35 @@ button[class*="bg-primary"]:active {
   }
 }
 
+/* One-shot focus pulse for list-style perspectives (glossary, approval,
+   list, pull requests). When a node is opened from a dialog edge — or
+   straight from its URL — the matching row scrolls into view and pulses
+   this ring so the eye lands on it: the list-view analogue of the canvas
+   perspectives panning their camera. usePerspectiveFocusScroll adds the
+   class, then strips it after the animation. */
+@keyframes doco-perspective-focus-flash {
+  from {
+    box-shadow: 0 0 0 3px var(--color-primary);
+    background-color: color-mix(in oklch, var(--color-primary) 16%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 3px transparent;
+    background-color: transparent;
+  }
+}
+.doco-perspective-focus-flash {
+  animation: doco-perspective-focus-flash 1.6s ease-out;
+  border-radius: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No pulse: hold a static ring for the same window instead. */
+  .doco-perspective-focus-flash {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--color-primary);
+    border-radius: 6px;
+  }
+}
+
 .body-md p {
   margin: 0.5em 0;
 }

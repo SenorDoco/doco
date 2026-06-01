@@ -11,6 +11,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router";
 import type { GlossaryEntry, GlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
 import { handleNodeDialogLinkClick } from "~/lib/node-dialog-link";
+import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
 interface GlossaryPerspectiveProps {
   data: GlossaryPerspectiveData;
@@ -18,6 +19,8 @@ interface GlossaryPerspectiveProps {
   title: string;
   visibleLifecycles?: Set<string>;
   onOpenNode?: (entry: GlossaryEntry) => void;
+  /** Node to scroll into view and pulse — the perspective's one-shot focus. */
+  focusId?: string | null;
 }
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -34,7 +37,9 @@ export function GlossaryPerspective({
   title,
   visibleLifecycles,
   onOpenNode,
+  focusId,
 }: GlossaryPerspectiveProps) {
+  usePerspectiveFocusScroll(focusId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
 
