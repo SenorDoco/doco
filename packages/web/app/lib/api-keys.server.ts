@@ -1,19 +1,19 @@
 // API keys are OAuth refresh tokens minted on behalf of a signed-in
-// user. Two paths into this table:
+// human user. Two paths into this table:
 //
-//   1. Agent OAuth flow. An MCP runtime registers a client, drives
-//      /oauth/authorize or /device, the user names the agent + approves
-//      scopes, and a refresh token gets minted for that agent user.
+//   1. OAuth flow. An MCP runtime registers a client, drives
+//      /oauth/authorize or /device, the user names the token + approves
+//      scopes, and a refresh token gets minted for the approving user.
 //
 //   2. Personal API keys (new). The user clicks "Generate API key" on
 //      /api-keys, picks a scope, and we register a synthetic OAuth
 //      client + mint tokens directly — no PKCE, no redirect dance.
 //
 // Both shapes land in the same `oauth_refresh_tokens` row format, so
-// this file lists / revokes them uniformly. Agent OAuth rows are shown
-// to the approving owner through users.owner_id.
+// this file lists / revokes them uniformly. OAuth rows use `token_name`
+// for the human-visible credential label.
 //
-// Distinguishing personal from agent: personal-API-key clients carry
+// Distinguishing personal from OAuth-flow tokens: personal-API-key clients carry
 // the OOB redirect URI sentinel (`urn:ietf:wg:oauth:2.0:oob`) — that
 // value never appears for an OAuth-flow client because the OAuth
 // /authorize endpoint rejects it as a callback target.
@@ -49,7 +49,7 @@ export interface ApiKeyScopeGrant {
 export interface ApiKeyRow {
   client_id: string;
   client_name: string;
-  source: "personal" | "agent";
+  source: "personal" | "oauth";
   granted_at: string;
   last_used_at: string | null;
   expires_at: string;
@@ -60,7 +60,7 @@ export interface ApiKeysPageData {
   me: CurrentPrincipal;
   keys: ApiKeyRow[];
   scopeOptions: ScopeOption[];
-  /** Origin (protocol://host) used to build agent OAuth invite URLs. */
+  /** Origin (protocol://host) used to build OAuth invite URLs. */
   host: string;
   justMinted: MintedApiKey | null;
 }
@@ -82,10 +82,8 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
     c.query<{
       client_id: string;
       client_name: string | null;
+      token_name: string | null;
       user_id: string;
-      user_kind: "person" | "agent";
-      user_login: string | null;
-      user_data: Record<string, unknown> | null;
       redirect_uris: string[];
       granted_doco_ids: string[] | null;
       granted_doco_roles: Record<string, string> | null;
@@ -100,10 +98,8 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
       `SELECT DISTINCT ON (rt.client_id)
               rt.client_id,
               c.client_name,
+              rt.token_name,
               rt.user_id,
-              subject.kind AS user_kind,
-              subject.github_login AS user_login,
-              subject.data AS user_data,
               c.redirect_uris,
               rt.granted_doco_ids,
               rt.granted_doco_roles,
@@ -119,8 +115,7 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
                   AND at.user_id = rt.user_id) AS last_seen_at
          FROM oauth_refresh_tokens rt
          JOIN oauth_clients c ON c.client_id = rt.client_id
-         JOIN users subject ON subject.id = rt.user_id
-        WHERE (rt.user_id = $1 OR subject.owner_id = $1)
+        WHERE rt.user_id = $1
           AND rt.revoked = false
           AND rt.expires_at > now()
         ORDER BY rt.client_id, rt.created_at DESC`,
@@ -180,16 +175,11 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
         : String(row.last_seen_at)
       : null;
 
-    const subjectName = userDisplayName({
-      id: row.user_id,
-      github_login: row.user_login,
-      data: row.user_data,
-    });
     const clientName = row.client_name ?? row.client_id;
     return {
       client_id: row.client_id,
-      client_name: !isPersonal && row.user_kind === "agent" ? subjectName : clientName,
-      source: isPersonal ? "personal" : "agent",
+      client_name: isPersonal ? clientName : row.token_name?.trim() || clientName,
+      source: isPersonal ? "personal" : "oauth",
       granted_at: grantedAt,
       last_used_at: lastSeenAt,
       expires_at: expiresAt,
@@ -207,17 +197,6 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
   });
 
   return rows;
-}
-
-function userDisplayName(row: {
-  id: string;
-  github_login: string | null;
-  data: Record<string, unknown> | null;
-}): string {
-  const data = row.data && typeof row.data === "object" ? row.data : {};
-  const named = data.name ?? data.display_name;
-  if (typeof named === "string" && named.trim()) return named.trim();
-  return row.github_login ?? row.id;
 }
 
 async function loadDocoLabels(
@@ -356,6 +335,7 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
   const tokens = await issueTokens({
     client_id: client.client_id,
     user_id: input.me.id,
+    token_name: trimmedLabel,
     granted_doco_ids,
     granted_doco_roles,
     granted_doco_write_types,
@@ -536,9 +516,8 @@ export async function addGrantsToApiKey(input: {
               rt.granted_doco_ids, rt.granted_doco_roles, rt.granted_doco_write_types,
               rt.granted_org_ids, rt.granted_org_roles, rt.granted_org_write_types
          FROM oauth_refresh_tokens rt
-         JOIN users subject ON subject.id = rt.user_id
         WHERE rt.client_id = $1
-          AND (rt.user_id = $2 OR subject.owner_id = $2)
+          AND rt.user_id = $2
           AND rt.revoked = false
           AND rt.expires_at > now()
         ORDER BY rt.created_at DESC
@@ -583,10 +562,8 @@ export async function addGrantsToApiKey(input: {
               granted_org_ids = $5,
               granted_org_roles = $6::jsonb,
               granted_org_write_types = $7::jsonb
-         FROM users subject
-        WHERE rt.user_id = subject.id
-          AND rt.client_id = $1
-          AND (rt.user_id = $8 OR subject.owner_id = $8)
+        WHERE rt.client_id = $1
+          AND rt.user_id = $8
           AND rt.revoked = false
           AND rt.expires_at > now()`,
       values,
@@ -599,10 +576,8 @@ export async function addGrantsToApiKey(input: {
               granted_org_ids = $5,
               granted_org_roles = $6::jsonb,
               granted_org_write_types = $7::jsonb
-         FROM users subject
-        WHERE at.user_id = subject.id
-          AND at.client_id = $1
-          AND (at.user_id = $8 OR subject.owner_id = $8)
+        WHERE at.client_id = $1
+          AND at.user_id = $8
           AND at.revoked = false
           AND at.expires_at > now()`,
       values,
@@ -680,20 +655,16 @@ export async function revokeApiKey(args: {
     const accessResult = await c.query(
       `UPDATE oauth_access_tokens
           SET revoked = true
-         FROM users subject
-        WHERE oauth_access_tokens.user_id = subject.id
-          AND oauth_access_tokens.client_id = $1
-          AND (oauth_access_tokens.user_id = $2 OR subject.owner_id = $2)
+        WHERE oauth_access_tokens.client_id = $1
+          AND oauth_access_tokens.user_id = $2
           AND oauth_access_tokens.revoked = false`,
       [args.client_id, args.user_id],
     );
     const refreshResult = await c.query(
       `UPDATE oauth_refresh_tokens
           SET revoked = true
-         FROM users subject
-        WHERE oauth_refresh_tokens.user_id = subject.id
-          AND oauth_refresh_tokens.client_id = $1
-          AND (oauth_refresh_tokens.user_id = $2 OR subject.owner_id = $2)
+        WHERE oauth_refresh_tokens.client_id = $1
+          AND oauth_refresh_tokens.user_id = $2
           AND oauth_refresh_tokens.revoked = false`,
       [args.client_id, args.user_id],
     );

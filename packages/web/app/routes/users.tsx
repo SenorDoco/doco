@@ -43,7 +43,6 @@ import {
   type UsersPageData,
   handleUserInviteAction,
   loadUsersPageData,
-  renameAgentCollaborator,
 } from "~/lib/users.server";
 
 export async function loader({ request }: { request: Request }) {
@@ -66,12 +65,6 @@ type ActionResult =
       level: InviteLevel;
       target_ids: string[];
       user_id: string;
-    }
-  | {
-      intent: "rename";
-      ok: true;
-      user_id: string;
-      username: string;
     }
   | {
       intent: "add_grants";
@@ -99,13 +92,6 @@ export async function action({
     // calls. The InviteHumanCard's useFetcher narrows on `intent === "invite"`
     // so the role-edit cases below don't interfere with it.
     return await handleUserInviteAction(request);
-  }
-
-  if (intent === "rename") {
-    const agentId = String(form.get("user_id") ?? "").trim();
-    const name = String(form.get("name") ?? "");
-    if (!agentId) return { error: "user_id missing." };
-    return await renameAgentCollaborator({ meId: me.id, agentId, name });
   }
 
   if (intent === "add_grants") {
@@ -608,10 +594,6 @@ function UserRow({
   metaParts.push(`Active ${lastActive}`);
   const metaTooltip = `Granted ${grantedAbs}${row.principal.last_activity_at ? ` · Last active ${row.principal.last_activity_at}` : ""}`;
 
-  // Owners of the org an agent's token belongs to can give it a
-  // human-readable name (agents otherwise show their raw user id).
-  const canRename = row.level === "org" && row.principal.kind === "agent" && row.canEditAny;
-
   // Master-detail: the row lists the collaborator and a summary; the
   // per-grant access controls are hidden behind a "View access" toggle so
   // the list isn't a wall of inline permissions.
@@ -627,13 +609,9 @@ function UserRow({
       <tr data-testid={`row-${row.level}-${username}`}>
         <td className="py-3 pr-3 align-top">
           <div className="flex items-center gap-1.5">
-            {canRename ? (
-              <RenameAgentName principalId={row.principal.user_id} username={username} />
-            ) : (
-              <span className="truncate font-medium" title={username}>
-                {username}
-              </span>
-            )}
+            <span className="truncate font-medium" title={username}>
+              {username}
+            </span>
             {isMe ? (
               <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 you
@@ -810,100 +788,6 @@ function describeRole(role: DocoRole | undefined): string {
   if (role === "owner") return "Owner";
   if (role === "writer") return "Writer";
   return "Reader";
-}
-
-function RenameAgentName({
-  principalId,
-  username,
-}: {
-  principalId: string;
-  username: string;
-}) {
-  const fetcher = useFetcher<ActionResult>();
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(username);
-  const saving = fetcher.state !== "idle";
-  const error = fetcher.data && "error" in fetcher.data ? fetcher.data.error : undefined;
-  const justRenamed =
-    fetcher.state === "idle" &&
-    fetcher.data &&
-    "intent" in fetcher.data &&
-    fetcher.data.intent === "rename";
-
-  // Close the editor once the rename lands; the loader revalidation
-  // repaints the row with the new name.
-  useEffect(() => {
-    if (justRenamed) setEditing(false);
-  }, [justRenamed]);
-
-  const submit = () => {
-    if (!value.trim()) return;
-    fetcher.submit({ intent: "rename", user_id: principalId, name: value }, { method: "post" });
-  };
-
-  if (!editing) {
-    return (
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="truncate font-medium" title={username}>
-          {username}
-        </span>
-        <button
-          type="button"
-          data-testid={`rename-${principalId}`}
-          onClick={() => {
-            setValue(username);
-            setEditing(true);
-          }}
-          title="Rename this agent"
-          className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground underline hover:text-foreground"
-        >
-          rename
-        </button>
-      </span>
-    );
-  }
-
-  return (
-    <span className="flex min-w-0 items-center gap-1">
-      <input
-        type="text"
-        value={value}
-        // biome-ignore lint/a11y/noAutofocus: focus the field the user just opened
-        autoFocus
-        maxLength={120}
-        disabled={saving}
-        data-testid={`rename-input-${principalId}`}
-        onChange={(e) => setValue(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-          } else if (e.key === "Escape") {
-            setEditing(false);
-          }
-        }}
-        className="min-w-0 flex-1 rounded-md px-1.5 py-0.5 text-xs font-medium disabled:opacity-50"
-      />
-      <button
-        type="button"
-        disabled={saving || !value.trim()}
-        data-testid={`rename-save-${principalId}`}
-        onClick={submit}
-        className="neu-button shrink-0 rounded-md px-1.5 py-0.5 text-[10px] disabled:opacity-50"
-      >
-        {saving ? "…" : "Save"}
-      </button>
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => setEditing(false)}
-        className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground"
-      >
-        Cancel
-      </button>
-      {error ? <span className="text-[10px] text-destructive">{error}</span> : null}
-    </span>
-  );
 }
 
 function AccessLine({

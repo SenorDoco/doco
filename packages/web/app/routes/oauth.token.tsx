@@ -64,6 +64,7 @@ async function handleAuthorizationCode(form: URLSearchParams): Promise<Response>
   const tokens = await issueTokens({
     client_id,
     user_id: claim.user_id,
+    token_name: claim.token_name,
     granted_doco_ids: claim.granted_doco_ids,
     granted_doco_roles: claim.granted_doco_roles,
     granted_org_ids: claim.granted_org_ids,

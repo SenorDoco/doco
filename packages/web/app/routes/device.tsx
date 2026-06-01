@@ -2,19 +2,19 @@
 // Authorization Grant (RFC 8628).
 //
 // The flow the user walks through:
-//   1. Their agent shows them a short code (e.g. "WXYZ-1234") and tells
+//   1. Their client shows them a short code (e.g. "WXYZ-1234") and tells
 //      them to open https://doco.to/device.
-//   2. They land here, prefilled if the agent passed
+//   2. They land here, prefilled if the client passed
 //      verification_uri_complete (?user_code=...), otherwise they type
 //      the code into the form.
 //   3. If they're not signed in, we redirect through GitHub OAuth and
 //      come back with the user_code preserved as a query param.
-//   4. The post-sign-in screen shows the agent's name + a list of
+//   4. The post-sign-in screen shows the token name + a list of
 //      Docos they own/admin/are granted access to; they pick which to
 //      grant, click Approve, and we mark the device-authorization row
-//      approved. The agent's next poll at /oauth/token mints + receives
+//      approved. The client's next poll at /oauth/token mints + receives
 //      the access token.
-//   5. Cancel marks the row denied; the agent's next poll gets
+//   5. Cancel marks the row denied; the client's next poll gets
 //      access_denied and stops.
 
 import type { DocoRole } from "@doco/db";
@@ -77,7 +77,7 @@ export async function loader({ request }: { request: Request }) {
     return {
       user_code,
       stage: "unknown" as const,
-      message: "We don't recognize this code. Double-check what your agent showed you.",
+      message: "We don't recognize this code. Double-check what your client showed you.",
       me,
     };
   }
@@ -85,7 +85,7 @@ export async function loader({ request }: { request: Request }) {
     return {
       user_code,
       stage: "expired" as const,
-      message: "This code has expired. Ask your agent to start a new device authorization.",
+      message: "This code has expired. Ask your client to start a new device authorization.",
       me,
     };
   }
@@ -113,7 +113,7 @@ export async function loader({ request }: { request: Request }) {
   }
 
   const client = await getClient(row.client_id);
-  // Only owners can grant agent access (writers/readers
+  // Only owners can grant token access (writers/readers
   // can't extend access). Filter the candidate Doco list to
   // owner-role only; the action re-checks on submit as a tamper
   // defense.
@@ -133,7 +133,7 @@ export async function loader({ request }: { request: Request }) {
     .filter((d): d is DocoRow => d !== null)
     .sort((a, b) => a.handle.localeCompare(b.handle));
 
-  // Targeted-grant focus: if the agent passed `target_doco_handle`
+  // Targeted-grant focus: if the client passed `target_doco_handle`
   // on the device-authorization request, narrow the picker to JUST
   // that Doco. Falls back to the full owned-Docos list when the
   // user doesn't own the requested target (we surface a notice in
@@ -144,7 +144,7 @@ export async function loader({ request }: { request: Request }) {
     if (matched.length > 0) {
       docos = matched;
     } else {
-      targetedMessage = `The agent requested access to "${row.target_doco_handle}" but you don't own that Doco — pick from the Docos you do own below, or ask the agent to target a different one.`;
+      targetedMessage = `The token requested access to "${row.target_doco_handle}" but you don't own that Doco — pick from the Docos you do own below, or ask the client to target a different one.`;
     }
   }
 
@@ -156,7 +156,7 @@ export async function loader({ request }: { request: Request }) {
 
   // Orgs the user owns. Approving an org grants access to every Doco
   // it owns now AND any Doco created under it later. Hidden when the
-  // agent narrowed the picker to a single target Doco — org-wide
+  // client narrowed the picker to a single target Doco — org-wide
   // approval would defeat that narrowing.
   type OrgRow = { id: string; handle: string; display_name: string; my_role: DocoRole };
   let orgs: OrgRow[] = [];
@@ -218,9 +218,9 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (decision === "approve") {
-    const agentName = String(form.get("agent_name") ?? "").trim();
-    if (!agentName) {
-      throw new Response("agent_name required", { status: 400 });
+    const tokenName = String(form.get("token_name") ?? "").trim();
+    if (!tokenName) {
+      throw new Response("token_name required", { status: 400 });
     }
     const selected = form.getAll("doco_id").map((v) => String(v));
     const selectedOrgs = form.getAll("org_id").map((v) => String(v));
@@ -229,7 +229,7 @@ export async function action({ request }: { request: Request }) {
     }
     // Defense against form tampering. Two checks per id:
     //   1. Principal must hold OWNER on this Doco — only owners can
-    //      grant agent access.
+    //      grant token access.
     //   2. The per-Doco role from the form must be a valid DocoRole.
     const granted_doco_roles: Record<string, DocoRole> = {};
     const allowed = new Set(await listAccessibleDocoIdsForPrincipal(principal.id));
@@ -274,7 +274,7 @@ export async function action({ request }: { request: Request }) {
     await approveDeviceAuthorization({
       device_code: row.device_code,
       approver_user_id: principal.id,
-      agent_name: agentName,
+      token_name: tokenName,
       granted_doco_ids: selected,
       granted_doco_roles,
       granted_org_ids: selectedOrgs,
@@ -287,7 +287,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Authorize agent access · Doco" }];
+  return [{ title: "Authorize token access · Doco" }];
 }
 
 export default function DevicePage() {
@@ -308,9 +308,9 @@ function renderStage(data: LoaderData) {
     return (
       <>
         <CardHeader>
-          <CardTitle>Authorize agent access</CardTitle>
+          <CardTitle>Authorize token access</CardTitle>
           <CardDescription>
-            Enter the short code your agent showed you. It looks like{" "}
+            Enter the short code your client showed you. It looks like{" "}
             <code className="rounded bg-input px-1 py-0.5 text-xs">WXYZ-1234</code>.
           </CardDescription>
         </CardHeader>
@@ -341,9 +341,9 @@ function renderStage(data: LoaderData) {
     return (
       <>
         <CardHeader>
-          <CardTitle>Authorize agent access</CardTitle>
+          <CardTitle>Authorize token access</CardTitle>
           <CardDescription>
-            <strong>{data.client_name}</strong> wants access to your Docos. Name the agent, then
+            <strong>{data.client_name}</strong> wants access to your Docos. Name the token, then
             pick individual Docos or grant access to an entire organization — code{" "}
             <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
           </CardDescription>
@@ -351,7 +351,7 @@ function renderStage(data: LoaderData) {
         <CardContent>
           {docos.length === 0 && orgs.length === 0 ? (
             <p className="text-sm text-destructive">
-              You don't own any Docos or organizations. Only owners can grant agent access — create
+              You don't own any Docos or organizations. Only owners can grant token access — create
               one first, then re-enter this code.
             </p>
           ) : (
@@ -372,7 +372,7 @@ function renderStage(data: LoaderData) {
   return (
     <>
       <CardHeader>
-        <CardTitle>Authorize agent access</CardTitle>
+        <CardTitle>Authorize token access</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p
@@ -392,7 +392,7 @@ function renderStage(data: LoaderData) {
 type PickerDoco = { id: string; handle: string; my_role: DocoRole; org_id: string | null };
 
 /**
- * After a device approval, agents that run in ephemeral cloud sandboxes
+ * After a device approval, clients that run in ephemeral cloud sandboxes
  * (Claude Code on the web, Codespaces, …) would re-prompt on every fresh
  * container. Point the user at a non-rotating cloud token they can pin in
  * the environment's variable config so new instances inherit access.
@@ -403,7 +403,7 @@ function CloudEnvNote() {
       className="rounded-md border border-border bg-muted/40 p-3 text-sm space-y-1.5"
       data-testid="device-cloud-env-note"
     >
-      <p className="font-semibold">Is this agent running in a cloud environment?</p>
+      <p className="font-semibold">Is this client running in a cloud environment?</p>
       <p className="text-muted-foreground">
         If it runs in an ephemeral cloud sandbox (Claude Code on the web, Codespaces, Replit…), each
         fresh instance would otherwise ask you to approve it again. To grant access once and have
@@ -422,7 +422,7 @@ function CloudEnvNote() {
 /**
  * Controlled approve form for /device. Orgs render as collapsible
  * groups (chevron + org checkbox/role); expanding one reveals the
- * Docos it owns so the agent can be granted the whole org or just a
+ * Docos it owns so the token can be granted the whole org or just a
  * few of its Docos. Docos owned directly by the user live in their
  * own "Your Docos" group. Mirrors the same shape on /oauth/authorize.
  */
@@ -441,7 +441,7 @@ function DevicePickerForm({
   targetedMessage: string | null;
   focused: boolean;
 }) {
-  // When the agent requested a specific role, prefill the per-Doco
+  // When the token requested a specific role, prefill the per-Doco
   // role dropdowns to that — otherwise default to the user's actual
   // role on each Doco (always "owner" here, since the loader
   // filtered to owner-only).
@@ -456,7 +456,7 @@ function DevicePickerForm({
   const [orgRoles, setOrgRoles] = useState<Record<string, DocoRole>>(() =>
     Object.fromEntries(orgs.map((o) => [o.id, defaultRole(o)])),
   );
-  const [agentName, setAgentName] = useState("");
+  const [tokenName, setTokenName] = useState("");
   // Groups default to expanded so the pre-selected Docos stay visible;
   // the chevron lets the user collapse an org to a one-line summary.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(orgs.map((o) => o.id)));
@@ -540,13 +540,13 @@ function DevicePickerForm({
 
       <label className="block text-sm">
         <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-          Agent name
+          Token name
         </span>
         <input
           type="text"
-          name="agent_name"
-          value={agentName}
-          onChange={(e) => setAgentName(e.currentTarget.value)}
+          name="token_name"
+          value={tokenName}
+          onChange={(e) => setTokenName(e.currentTarget.value)}
           required
           maxLength={120}
           placeholder="e.g. Codex in Doco repo"
@@ -560,7 +560,7 @@ function DevicePickerForm({
         </p>
       ) : null}
 
-      {/* Focused mode (agent targeted one Doco): just the single row,
+      {/* Focused mode (token targeted one Doco): just the single row,
           no grouping or bulk controls. */}
       {focused ? (
         <ul className="neu-surface divide-y divide-border rounded-md bg-card">
@@ -788,7 +788,7 @@ function DevicePickerForm({
       ))}
 
       <p className="text-[11px] text-muted-foreground">
-        Lower a Doco's or org's role to scope the agent down (e.g. give a research agent{" "}
+        Lower a Doco's or org's role to scope the token down (e.g. give a research token{" "}
         <code>reader</code> only). Owners can grant any role up to and including their own.
       </p>
 

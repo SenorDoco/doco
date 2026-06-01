@@ -94,7 +94,7 @@ export interface AgentMetadata {
 }
 
 /**
- * User — host-scoped OAuth identity. Person or agent runtime.
+ * User — host-scoped human OAuth identity.
  * Authored nodes via `created_by` / `updated_by`. Member of orgs/docos
  * via `member_of` edges.
  *
@@ -109,7 +109,7 @@ export interface User {
   github_login: string;
   email?: string;
   avatar_url?: string;
-  /** For agents: the person who spawned this agent. */
+  /** Legacy owner pointer; OAuth tokens are named on token rows, not user rows. */
   owner_id?: EntityId<"user">;
   agent_metadata?: AgentMetadata;
   created_at: string;

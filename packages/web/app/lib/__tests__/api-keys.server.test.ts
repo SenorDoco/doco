@@ -44,7 +44,7 @@ describe("listApiKeysForUser", () => {
     vi.clearAllMocks();
   });
 
-  it("labels owned-agent OAuth keys with the user-provided agent name", async () => {
+  it("labels OAuth tokens with the stored token name", async () => {
     mocks.withClient.mockImplementation(async (callback) =>
       callback({
         query: vi.fn().mockResolvedValue({
@@ -52,10 +52,11 @@ describe("listApiKeysForUser", () => {
             {
               client_id: "doco_client_agent",
               client_name: "Claude Code",
-              user_id: "user_agent",
-              user_kind: "agent",
-              user_login: null,
-              user_data: { name: "Repo Codex" },
+              token_name: "Repo Codex",
+              user_id: "user_owner",
+              user_kind: "person",
+              user_login: "torrenegra",
+              user_data: {},
               redirect_uris: ["http://127.0.0.1:4321/callback"],
               granted_doco_ids: [],
               granted_doco_roles: {},
@@ -76,7 +77,7 @@ describe("listApiKeysForUser", () => {
       expect.objectContaining({
         client_id: "doco_client_agent",
         client_name: "Repo Codex",
-        source: "agent",
+        source: "oauth",
       }),
     ]);
   });

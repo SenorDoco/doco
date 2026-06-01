@@ -41,10 +41,9 @@ export interface CurrentPrincipal {
 }
 
 /**
- * Human-facing display name for a user/agent. Agents carry a free-text
- * `data.name` set at authorization time (and editable later by an owner
- * of the org the agent belongs to); people fall back to their GitHub
- * login. The raw id is the last resort so a row never renders blank.
+ * Human-facing display name for a user row. People fall back to their
+ * GitHub login. Legacy non-person rows may still carry `data.name`.
+ * The raw id is the last resort so a row never renders blank.
  */
 export function userDisplayName(row: {
   id: string;
