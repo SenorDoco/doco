@@ -90,7 +90,7 @@ describe("addGrantsToApiKey", () => {
     mocks.getOrgRole.mockResolvedValue("owner");
   });
 
-  it("widens an existing token without dropping current grants or per-type writes", async () => {
+  it("preserves untouched grants while replacing the target being modified", async () => {
     const queries = vi.fn(async (sql: string, _values?: unknown[]) => {
       if (sql.includes("SELECT owner_id FROM docos")) {
         return { rows: [{ owner_id: "organization_torre" }] };
@@ -101,9 +101,12 @@ describe("addGrantsToApiKey", () => {
             {
               client_id: "doco_client_existing",
               user_id: "user_agent",
-              granted_doco_ids: ["doco_existing"],
-              granted_doco_roles: { doco_existing: "reader" },
-              granted_doco_write_types: { doco_existing: ["decision"] },
+              granted_doco_ids: ["doco_existing", "doco_untouched"],
+              granted_doco_roles: { doco_existing: "reader", doco_untouched: "reader" },
+              granted_doco_write_types: {
+                doco_existing: ["decision"],
+                doco_untouched: ["rule"],
+              },
               granted_org_ids: [],
               granted_org_roles: {},
               granted_org_write_types: {},
@@ -144,14 +147,16 @@ describe("addGrantsToApiKey", () => {
     expect(accessUpdate).toBeTruthy();
 
     const values = (refreshUpdate?.[1] ?? []) as unknown[];
-    expect(values[1]).toEqual(["doco_existing", "doco_new"]);
+    expect(values[1]).toEqual(["doco_existing", "doco_new", "doco_untouched"]);
     expect(JSON.parse(String(values[2]))).toEqual({
       doco_existing: "reader",
       doco_new: "writer",
+      doco_untouched: "reader",
     });
     expect(JSON.parse(String(values[3]))).toEqual({
-      doco_existing: ["decision", "intent"],
+      doco_existing: ["intent"],
       doco_new: ["*"],
+      doco_untouched: ["rule"],
     });
   });
 });

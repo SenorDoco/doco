@@ -13,6 +13,8 @@ import {
   applyTargetRole,
   availableScopes,
   describeExistingGrant,
+  findExistingGrant,
+  findGrant,
   inheritedTypeLevel,
   targetRoleOptions,
   targetRoleValue,
@@ -109,11 +111,11 @@ export function GrantPicker({
       {scope === "account" ? (
         <AccountStep catalog={catalog} grants={grants} onChange={onChange} />
       ) : scope === "org" ? (
-        <OrgMultiStep catalog={catalog} grants={grants} onChange={onChange} />
+        <OrgMultiStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
       ) : scope === "doco" ? (
-        <DocoMultiStep catalog={catalog} grants={grants} onChange={onChange} />
+        <DocoMultiStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
       ) : scope === "types" ? (
-        <TypesStep catalog={catalog} grants={grants} onChange={onChange} />
+        <TypesStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
       ) : null}
     </div>
   );
@@ -124,14 +126,16 @@ function AccessSelect({
   testid,
   maxRole,
   value,
+  includeNoAccess = true,
   onChange,
 }: {
   testid: string;
   maxRole: DocoRole;
   value: TargetRoleChoice;
+  includeNoAccess?: boolean;
   onChange: (v: TargetRoleChoice) => void;
 }) {
-  const opts = targetRoleOptions(maxRole);
+  const opts = targetRoleOptions(maxRole).filter((o) => includeNoAccess || o !== "none");
   const label = (o: TargetRoleChoice) =>
     o === "none"
       ? "No access"
@@ -161,14 +165,17 @@ function TargetRow({
   target,
   level,
   grants,
+  existing,
   onChange,
 }: {
   target: GrantTarget;
   level: "org" | "doco";
   grants: ComposedGrant[];
+  existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
-  const value = targetRoleValue(grants, level, target.id);
+  const existingGrant = findExistingGrant(existing, level, target.id);
+  const value = targetRoleValue(grants, level, target.id, existing);
   const selected = value !== "none";
   return (
     <li
@@ -181,6 +188,7 @@ function TargetRow({
         testid={`grant-row-${level}-${target.id}`}
         maxRole={target.maxRole}
         value={value}
+        includeNoAccess={!existingGrant}
         onChange={(v) => onChange(applyTargetRole(grants, level, target.id, v))}
       />
     </li>
@@ -333,10 +341,12 @@ function AccountStep({
 function OrgMultiStep({
   catalog,
   grants,
+  existing,
   onChange,
 }: {
   catalog: GrantCatalog;
   grants: ComposedGrant[];
+  existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
   const orgs = catalog.targets.filter((t) => t.level === "org");
@@ -347,7 +357,14 @@ function OrgMultiStep({
       </div>
       <ul className="space-y-1">
         {orgs.map((t) => (
-          <TargetRow key={t.id} target={t} level="org" grants={grants} onChange={onChange} />
+          <TargetRow
+            key={t.id}
+            target={t}
+            level="org"
+            grants={grants}
+            existing={existing}
+            onChange={onChange}
+          />
         ))}
         {orgs.length === 0 ? (
           <li className="text-sm text-muted-foreground">No organizations you can grant.</li>
@@ -361,10 +378,12 @@ function OrgMultiStep({
 function DocoMultiStep({
   catalog,
   grants,
+  existing,
   onChange,
 }: {
   catalog: GrantCatalog;
   grants: ComposedGrant[];
+  existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
   const groups = useMemo(() => targetsByOrg(catalog), [catalog]);
@@ -397,7 +416,14 @@ function DocoMultiStep({
           </div>
           <ul className="space-y-1">
             {active.docos.map((t) => (
-              <TargetRow key={t.id} target={t} level="doco" grants={grants} onChange={onChange} />
+              <TargetRow
+                key={t.id}
+                target={t}
+                level="doco"
+                grants={grants}
+                existing={existing}
+                onChange={onChange}
+              />
             ))}
           </ul>
         </div>
@@ -410,10 +436,12 @@ function DocoMultiStep({
 function TypesStep({
   catalog,
   grants,
+  existing,
   onChange,
 }: {
   catalog: GrantCatalog;
   grants: ComposedGrant[];
+  existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
   const groups = useMemo(() => targetsByOrg(catalog), [catalog]);
@@ -464,7 +492,7 @@ function TypesStep({
           <div className="text-xs uppercase tracking-wide text-muted-foreground">
             Which node or edge types in {doco.label}?
           </div>
-          <DocoTypeGrid doco={doco} grants={grants} onChange={onChange} />
+          <DocoTypeGrid doco={doco} grants={grants} existing={existing} onChange={onChange} />
         </div>
       ) : null}
     </div>
@@ -475,21 +503,28 @@ function TypesStep({
 function DocoTypeGrid({
   doco,
   grants,
+  existing,
   onChange,
 }: {
   doco: GrantTarget;
   grants: ComposedGrant[];
+  existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
   const { nodes, edges } = writableTypeGroups();
   const allTypes = [...nodes, ...edges];
-  const current = grants.find((g) => g.level === "doco" && g.targetId === doco.id);
-  const writeTypes = current?.writeTypes ?? [];
-  // Base for the per-type display is always reader (types scope grants write
-  // selectively on top of read-everything).
-  const inherited = inheritedTypeLevel("reader", writeTypes);
+  const current = findGrant(grants, "doco", doco.id);
+  const existingGrant = findExistingGrant(existing, "doco", doco.id);
+  const role = current?.role ?? existingGrant?.role ?? "reader";
+  const writeTypes = current?.writeTypes ?? existingGrant?.writeTypes ?? [];
+  const inherited = inheritedTypeLevel(role, writeTypes);
   const change = (t: string, next: TypeLevel) =>
-    onChange(applyDocoTypeLevel(grants, doco.id, t, next, allTypes));
+    onChange(
+      applyDocoTypeLevel(grants, doco.id, t, next, allTypes, {
+        role,
+        writeTypes,
+      }),
+    );
 
   return (
     <div
@@ -501,6 +536,7 @@ function DocoTypeGrid({
           title="Node types"
           types={nodes}
           docoId={doco.id}
+          role={role}
           writeTypes={writeTypes}
           inherited={inherited}
           onChange={change}
@@ -509,6 +545,7 @@ function DocoTypeGrid({
           title="Edge types"
           types={edges}
           docoId={doco.id}
+          role={role}
           writeTypes={writeTypes}
           inherited={inherited}
           onChange={change}
@@ -525,6 +562,7 @@ function TypeColumn({
   title,
   types,
   docoId,
+  role,
   writeTypes,
   inherited,
   onChange,
@@ -532,6 +570,7 @@ function TypeColumn({
   title: string;
   types: readonly string[];
   docoId: string;
+  role: DocoRole;
   writeTypes: string[];
   inherited: "read" | "write";
   onChange: (t: string, next: TypeLevel) => void;
@@ -545,7 +584,7 @@ function TypeColumn({
           <span className="font-mono">{t}</span>
           <select
             data-testid={`grant-type-${docoId}-${t}`}
-            value={typeDropdownValue("reader", writeTypes, t)}
+            value={typeDropdownValue(role, writeTypes, t)}
             onChange={(e) => onChange(t, e.currentTarget.value as TypeLevel)}
             className="rounded-md px-2 py-0.5 text-xs"
           >

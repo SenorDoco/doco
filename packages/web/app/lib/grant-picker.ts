@@ -301,6 +301,7 @@ export function scopeShowsPerTypeControls(scope: GrantScope): boolean {
 /** A grant the grantee/token already holds, for the "current access" panel. */
 export interface ExistingGrant {
   level: "account" | "org" | "doco";
+  targetId: string;
   label: string;
   role: DocoRole;
   writeTypes: string[];
@@ -330,6 +331,14 @@ export function findGrant(
   targetId: string,
 ): ComposedGrant | undefined {
   return list.find((g) => g.level === level && g.targetId === targetId);
+}
+
+export function findExistingGrant(
+  list: ExistingGrant[] | undefined,
+  level: ComposedGrant["level"],
+  targetId: string,
+): ExistingGrant | undefined {
+  return list?.find((g) => g.level === level && g.targetId === targetId);
 }
 
 /** Insert or replace a grant by its (level, targetId) key. */
@@ -363,8 +372,13 @@ export function targetRoleValue(
   list: ComposedGrant[],
   level: ComposedGrant["level"],
   targetId: string,
+  existing?: ExistingGrant[],
 ): TargetRoleChoice {
-  return findGrant(list, level, targetId)?.role ?? "none";
+  return (
+    findGrant(list, level, targetId)?.role ??
+    findExistingGrant(existing, level, targetId)?.role ??
+    "none"
+  );
 }
 
 /**
@@ -399,10 +413,12 @@ export function applyDocoTypeLevel(
   type: string,
   next: TypeLevel,
   allTypes: readonly string[],
+  fallback?: { role: DocoRole; writeTypes: string[] },
 ): ComposedGrant[] {
   const current = findGrant(list, "doco", docoId);
-  const base = current?.writeTypes ?? [];
-  const nextTypes = setTypeLevel("reader", base, type, next, allTypes);
+  const role = current?.role ?? fallback?.role ?? "reader";
+  const base = current?.writeTypes ?? fallback?.writeTypes ?? [];
+  const nextTypes = setTypeLevel(role, base, type, next, allTypes);
   if (nextTypes.length === 0) return removeGrant(list, "doco", docoId);
   return upsertGrant(list, {
     level: "doco",

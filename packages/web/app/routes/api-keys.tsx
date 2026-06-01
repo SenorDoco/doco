@@ -114,7 +114,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
       await addGrantsToApiKey({ me, client_id: clientId, grants });
       return { intent: "add_grants", ok: true, client_id: clientId };
     } catch (err) {
-      return { error: err instanceof Error ? err.message : "Failed to add access." };
+      return { error: err instanceof Error ? err.message : "Failed to modify access." };
     }
   }
 
@@ -555,7 +555,7 @@ function KeyRow({ apiKey, catalog }: { apiKey: ApiKeyRow; catalog: GrantCatalog 
           onClick={() => setAdding((v) => !v)}
           className="neu-button rounded-md px-2 py-1 text-xs"
         >
-          {adding ? "Cancel add" : "Add access"}
+          {adding ? "Cancel changes" : "Modify access"}
         </button>
         <fetcher.Form method="post">
           <input type="hidden" name="intent" value="revoke" />
@@ -610,6 +610,7 @@ function TokenAddAccessForm({
     () =>
       apiKey.scope_grants.map((g) => ({
         level: g.level,
+        targetId: g.target_id,
         label: g.target_label,
         role: g.role,
         writeTypes: g.writeTypes,
@@ -633,7 +634,7 @@ function TokenAddAccessForm({
           disabled={fetcher.state !== "idle" || grants.length === 0}
           className="neu-button bg-primary text-primary-foreground rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
         >
-          {fetcher.state !== "idle" ? "Saving…" : "Save added access"}
+          {fetcher.state !== "idle" ? "Saving…" : "Save access changes"}
         </button>
       </div>
     </fetcher.Form>
