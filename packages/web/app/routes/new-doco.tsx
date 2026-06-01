@@ -186,7 +186,7 @@ export async function action({ request }: { request: Request }) {
       goal: state.goal,
     });
     if (state.templateHandle === GITHUB_PR_TEMPLATE_HANDLE) {
-      throw redirect(`/${rec.handle}/integrations`);
+      throw redirect(`/${rec.handle}/integrations/github`);
     }
     throw redirect(
       withCreatedDocoChatId(
