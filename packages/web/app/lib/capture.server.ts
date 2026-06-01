@@ -1,6 +1,5 @@
 import {
   ALL_ENTITY_TABLES,
-  type CommitSource,
   type PoolClient,
   getDocoById,
   getEntity,
@@ -48,11 +47,6 @@ function isSystemManagedField(key: string): boolean {
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { recordPhase } from "./telemetry.server";
 
-export interface AuthoringWriteContext {
-  source?: CommitSource;
-  metadata?: Record<string, unknown> | null;
-}
-
 /**
  * Run the doco's authoring policies against a candidate's full
  * frontmatter. Centralized here so every captureX / updateEntity path
@@ -98,7 +92,6 @@ async function enforceAndPersist(args: {
   entityType: string;
   id: string;
   body?: string;
-  authoring?: AuthoringWriteContext;
 }): Promise<AuthoringResult> {
   return withTransaction(async (c) => {
     const pred = await enforceAuthoringPolicies(args.docoId, args.fm, c);
@@ -109,7 +102,6 @@ async function enforceAndPersist(args: {
       docoId: args.docoId,
       fm: args.fm,
       ...(args.body !== undefined ? { body: args.body } : {}),
-      ...(args.authoring ? { authoring: args.authoring } : {}),
       client: c,
     });
     // Project + reconcile the node's managed relationship edges in the same
@@ -125,8 +117,6 @@ async function enforceAndPersist(args: {
       actor:
         (typeof args.fm.updated_by === "string" && args.fm.updated_by) ||
         (typeof args.fm.created_by === "string" ? args.fm.created_by : null),
-      source: args.authoring?.source,
-      metadata: args.authoring?.metadata,
     });
     return pred;
   });
@@ -223,7 +213,6 @@ async function persistEntity(args: {
   /** When provided, the upsert runs on this client (used to share a
    *  transaction with the authoring enforcer). */
   client?: PoolClient;
-  authoring?: AuthoringWriteContext;
 }): Promise<void> {
   const { fm } = args;
   const start = performance.now();
@@ -258,8 +247,6 @@ async function persistEntity(args: {
         entityId: args.id,
         payload: fm,
         actor: versionActor,
-        source: args.authoring?.source,
-        metadata: args.authoring?.metadata,
       });
     if (args.client) await recordVersion(args.client);
     else await withClient(recordVersion);
@@ -979,22 +966,10 @@ async function finishNodeCapture(args: {
   fm: Record<string, unknown>;
   createdById: string | null;
   startedAt: number;
-  authoring?: AuthoringWriteContext;
 }): Promise<CaptureResult | CaptureError> {
-  const {
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType,
-    id,
-    label,
-    fm,
-    createdById,
-    authoring,
-  } = args;
-  const pred = await enforceAndPersist({ docoId, fm, entityType, id, authoring });
+  const { docoDir, docoId, ownerSlug, docoSlug, docoHost, entityType, id, label, fm, createdById } =
+    args;
+  const pred = await enforceAndPersist({ docoId, fm, entityType, id });
   if (pred.blocking) {
     return {
       error: `Authoring policy violation: ${pred.blocking.reason}`,
@@ -1042,7 +1017,6 @@ export async function captureDecision(
   docoSlug: string,
   draft: DecisionDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.decision?.trim()) return { error: "decision is required." };
@@ -1102,7 +1076,6 @@ export async function captureDecision(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -1137,7 +1110,6 @@ export async function updateDecision(
   patch: DecisionPatch,
   docoHost?: string,
   actorId?: string | null,
-  authoring?: AuthoringWriteContext,
 ): Promise<UpdateResult | CaptureError> {
   const startedAt = performance.now();
   const existing = await readEntityFromPostgres("decision", decisionId);
@@ -1271,13 +1243,7 @@ export async function updateDecision(
     return { error: NO_FIELDS_CHANGED };
   }
 
-  const pred = await enforceAndPersist({
-    docoId,
-    fm,
-    entityType: "decision",
-    id: decisionId,
-    authoring,
-  });
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "decision", id: decisionId });
   if (pred.blocking) {
     return {
       error: `Authoring policy violation: ${pred.blocking.reason}`,
@@ -1408,21 +1374,9 @@ export async function updateEntity(opts: {
   allowedFields?: undefined;
   docoHost?: string;
   actorId?: string | null;
-  authoring?: AuthoringWriteContext;
 }): Promise<UpdateResult | CaptureError> {
   const startedAt = performance.now();
-  const {
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    entityType,
-    id,
-    patch,
-    docoHost,
-    actorId,
-    authoring,
-  } = opts;
+  const { docoDir, docoId, ownerSlug, docoSlug, entityType, id, patch, docoHost, actorId } = opts;
 
   const existing = await readEntityFromPostgres(entityType, id);
   if (!existing) return { error: `${entityType} not found: ${id}` };
@@ -1618,7 +1572,6 @@ export async function updateEntity(opts: {
     fm,
     entityType,
     id,
-    authoring,
     ...(nextBody !== undefined ? { body: nextBody } : {}),
   });
   if (pred.blocking) {
@@ -1698,7 +1651,6 @@ export async function captureIntent(
   docoSlug: string,
   draft: IntentDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.intent?.trim()) return { error: "intent is required." };
@@ -1754,7 +1706,6 @@ export async function captureIntent(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -1781,7 +1732,6 @@ export async function captureIdea(
   docoSlug: string,
   draft: IdeaDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.idea?.trim()) return { error: "idea is required." };
@@ -1822,7 +1772,6 @@ export async function captureIdea(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -1862,7 +1811,6 @@ export async function captureEval(
   docoSlug: string,
   draft: EvalDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.eval?.trim()) return { error: "eval is required." };
@@ -1935,7 +1883,6 @@ export async function captureEval(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -1980,7 +1927,6 @@ export async function captureAction(
   docoSlug: string,
   draft: ActionDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.action?.trim()) return { error: "action is required." };
@@ -2046,7 +1992,6 @@ export async function captureAction(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -2091,7 +2036,6 @@ export async function captureLog(
   docoSlug: string,
   draft: LogDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.log?.trim()) return { error: "log is required." };
@@ -2165,7 +2109,6 @@ export async function captureLog(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -2210,7 +2153,6 @@ export async function captureRule(
   docoSlug: string,
   draft: RuleDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.rule?.trim()) return { error: "rule is required." };
@@ -2284,7 +2226,6 @@ export async function captureRule(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -2425,9 +2366,7 @@ function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError 
   return null;
 }
 
-export interface PolicyCaptureExtras {
-  authoring?: AuthoringWriteContext;
-}
+export type PolicyCaptureExtras = Record<string, never>;
 
 type PolicyType = "guidance_policy" | "node_authoring_policy";
 
@@ -2556,7 +2495,6 @@ export async function captureGuidancePolicy(
     entityType: payload.entityType,
     id: payload.id,
     body: payload.body,
-    authoring: extras.authoring,
   });
   if (pred.blocking) {
     return {
@@ -2618,7 +2556,6 @@ export async function captureNodeAuthoringPolicy(
     entityType: payload.entityType,
     id: payload.id,
     body: payload.body,
-    authoring: extras.authoring,
   });
   if (pred.blocking) {
     return {
@@ -2807,7 +2744,6 @@ export async function captureReference(
   docoSlug: string,
   draft: ReferenceDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.reference?.trim()) return { error: "reference is required." };
@@ -2855,7 +2791,6 @@ export async function captureReference(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }
 
@@ -2896,7 +2831,6 @@ export async function captureState(
   docoSlug: string,
   draft: StateDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.state?.trim()) return { error: "state is required." };
@@ -2951,6 +2885,5 @@ export async function captureState(
     fm,
     createdById,
     startedAt,
-    authoring,
   });
 }

@@ -8,7 +8,6 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
-import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { type NodeAuthoringPolicyDraft, captureNodeAuthoringPolicy } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -81,7 +80,6 @@ export async function action({
     docoSlug,
     draft,
     docoHost,
-    { authoring: authoringContextForRequest(request) },
   );
   if ("error" in result) return Response.json(result, { status: result.status ?? 400 });
   return redirect(`/${handle}/policies`);

@@ -7,7 +7,6 @@
 // react-router runtime (see scripts/edge-capture-test.ts).
 
 import {
-  type CommitSource,
   type EdgeRow,
   createChangeset,
   createEdge,
@@ -36,8 +35,6 @@ export interface CaptureEdgeInput {
   props?: Record<string, unknown> | null;
   lifecycle?: "drafting" | "asserted";
   reason?: string | null;
-  source?: CommitSource;
-  metadata?: Record<string, unknown> | null;
 }
 
 export type EdgeCaptureResult =
@@ -114,8 +111,7 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
       const txId = await createChangeset(c, {
         docoId: input.docoId,
         actor: input.actorId,
-        source: input.source ?? "api",
-        metadata: input.metadata ?? null,
+        source: "api",
         reason: input.reason ?? null,
       });
       return createEdge(c, txId, {
@@ -195,8 +191,6 @@ export async function retireEdgeRequest(input: {
   actorId: string | null;
   id: string;
   reason?: string | null;
-  source?: CommitSource;
-  metadata?: Record<string, unknown> | null;
 }): Promise<EdgeRetireResult> {
   const existing = await getEdgeById(input.docoId, input.id);
   if (!existing) return { error: `edge not found: ${input.id}`, status: 404 };
@@ -212,8 +206,7 @@ export async function retireEdgeRequest(input: {
     const txId = await createChangeset(c, {
       docoId: input.docoId,
       actor: input.actorId,
-      source: input.source ?? "api",
-      metadata: input.metadata ?? null,
+      source: "api",
       reason: input.reason ?? "retire edge",
     });
     return retireEdge(c, txId, { id: input.id, actor: input.actorId });

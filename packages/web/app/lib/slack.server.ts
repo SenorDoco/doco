@@ -1285,7 +1285,6 @@ async function executeSlackDocoApiAsUser(
     cookieHeader: `doco_session=${encodeURIComponent(actor.userId)}`,
     body: request.body,
     userAgent: "Doco-Slack-Assistant/1",
-    authoringSurface: "slack",
   });
   if (!response) {
     return slackToolEnvelope(404, {

@@ -1,10 +1,5 @@
 import { ALL_ENTITY_TABLES, DOCO_NODE_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
 import { parse as parseYaml } from "yaml";
-import {
-  type AuthoringActorEntry,
-  type AuthoringPair,
-  authoringEntry,
-} from "~/lib/authoring-provenance";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { NODE_TYPE_META } from "~/lib/node-types";
 
@@ -66,7 +61,6 @@ export interface NodeDialogDetail {
   lifecycle: string;
   created_at: string | null;
   updated_at: string | null;
-  authoring: AuthoringPair;
   body_md: string | null;
   doco: NodeDialogDocoRef;
   frontmatter: Record<string, unknown>;
@@ -340,48 +334,6 @@ async function resolveUserMetadata(
   return next;
 }
 
-interface NodeAuthoringVersionRow {
-  kind: "created" | "updated";
-  actor: string | null;
-  source: string | null;
-  metadata: Record<string, unknown> | null;
-  recorded_at: Date | string | null;
-}
-
-function versionAt(value: Date | string | null): string | null {
-  return toIso(value) ?? (value ? String(value) : null);
-}
-
-async function loadNodeAuthoringRows(
-  c: QueryClient,
-  entityId: string,
-): Promise<NodeAuthoringVersionRow[]> {
-  return (
-    await c.query<NodeAuthoringVersionRow>(
-      `WITH ranked AS (
-         SELECT v.actor,
-                cs.source,
-                cs.metadata,
-                v.recorded_at,
-                row_number() OVER (ORDER BY v.version ASC) AS created_rank,
-                row_number() OVER (ORDER BY v.version DESC) AS updated_rank
-           FROM node_versions v
-           LEFT JOIN changesets cs ON cs.tx_id = v.tx_id
-          WHERE v.entity_id = $1
-       )
-       SELECT CASE WHEN created_rank = 1 THEN 'created' ELSE 'updated' END AS kind,
-              actor,
-              source,
-              metadata,
-              recorded_at
-         FROM ranked
-        WHERE created_rank = 1 OR updated_rank = 1
-        ORDER BY created_rank ASC`,
-      [entityId],
-    )
-  ).rows;
-}
-
 export async function loadNodeDialogDetail(
   c: QueryClient,
   meta: { docoId: string; ownerId: string },
@@ -409,8 +361,6 @@ export async function loadNodeDialogDetail(
       raw_json: string;
       created_at: Date | string | null;
       updated_at: Date | string | null;
-      created_by: string | null;
-      updated_by: string | null;
     }>(
       `SELECT id,
               ${cfg.primaryColumn} AS primary_text,
@@ -418,9 +368,7 @@ export async function loadNodeDialogDetail(
               COALESCE(lifecycle, 'asserted') AS lifecycle,
               data::text AS raw_json,
               created_at,
-              updated_at,
-              created_by,
-              updated_by
+              updated_at
          FROM nodes
         WHERE node_type = '${cfg.nodeType}' AND doco_id = $1 AND id = $2`,
       [meta.docoId, options.id],
@@ -429,29 +377,6 @@ export async function loadNodeDialogDetail(
   if (!row) return null;
 
   const frontmatter = await resolveUserMetadata(c, meta.docoId, parseFrontmatter(row.raw_json));
-  const authoringRows = await loadNodeAuthoringRows(c, row.id);
-  const authoringActorIds = [
-    row.created_by,
-    row.updated_by,
-    ...authoringRows.flatMap((entry) => (entry.actor ? [entry.actor] : [])),
-  ].filter((value): value is string => Boolean(value));
-  const authoringLabels = await resolveUserLabelsForActorIds(c, meta.docoId, authoringActorIds);
-  const createdVersion = authoringRows.find((entry) => entry.kind === "created");
-  const updatedVersion = authoringRows.find((entry) => entry.kind === "updated");
-  const createdAuthoring: AuthoringActorEntry | null = authoringEntry({
-    actor: createdVersion?.actor ?? row.created_by,
-    labels: authoringLabels,
-    source: createdVersion?.source ?? null,
-    metadata: createdVersion?.metadata ?? null,
-    at: versionAt(createdVersion?.recorded_at ?? null) ?? toIso(row.created_at),
-  });
-  const updatedAuthoring: AuthoringActorEntry | null = authoringEntry({
-    actor: updatedVersion?.actor ?? row.updated_by ?? row.created_by,
-    labels: authoringLabels,
-    source: updatedVersion?.source ?? null,
-    metadata: updatedVersion?.metadata ?? null,
-    at: versionAt(updatedVersion?.recorded_at ?? null) ?? toIso(row.updated_at),
-  });
   const name =
     (cfg.primaryField === "name" && row.primary_text ? row.primary_text : null) ??
     stringField(frontmatter, "name") ??
@@ -589,10 +514,6 @@ export async function loadNodeDialogDetail(
     lifecycle: row.lifecycle ?? "asserted",
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
-    authoring: {
-      created: createdAuthoring,
-      updated: updatedAuthoring,
-    },
     body_md: bodyMdCompat,
     doco: {
       handle: options.handle,

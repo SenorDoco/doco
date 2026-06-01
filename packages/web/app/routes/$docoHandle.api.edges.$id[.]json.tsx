@@ -7,7 +7,6 @@
 // never replays a log.
 
 import { entityAsOf, getVersions, verifyHistory, withClient } from "@doco/db";
-import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { canWriteDocoTypeForRequest, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getEdgeById, retireEdgeRequest } from "~/lib/edge-capture.server";
 
@@ -90,13 +89,7 @@ export async function action({ request, params }: { request: Request; params: Pa
     }
   }
 
-  const result = await retireEdgeRequest({
-    docoId: meta.docoId,
-    actorId: me.id,
-    id,
-    reason,
-    ...authoringContextForRequest(request),
-  });
+  const result = await retireEdgeRequest({ docoId: meta.docoId, actorId: me.id, id, reason });
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: result.status });
   }

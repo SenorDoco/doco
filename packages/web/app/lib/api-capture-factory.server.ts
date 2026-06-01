@@ -12,9 +12,7 @@ import {
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
-import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import {
-  type AuthoringWriteContext,
   type CaptureError,
   type CaptureResult,
   type EntityPatch,
@@ -57,7 +55,6 @@ type CaptureFn<TDraft> = (
   docoSlug: string,
   draft: TDraft,
   docoHost?: string,
-  authoring?: AuthoringWriteContext,
 ) => Promise<CaptureResult | CaptureError>;
 
 export interface CaptureRouteConfig<TDraft> {
@@ -180,10 +177,9 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             await cfg.fillFromAuth(draft, { id: me.id, username: me.username }, meta.docoId);
           }
           const docoHost = new URL(request.url).origin;
-          const authoring = authoringContextForRequest(request);
           const start = performance.now();
           const { result, bag } = await withCaptureTelemetry(() =>
-            cfg.captureFn(dir, meta.docoId, ownerSlug, docoSlug, draft, docoHost, authoring),
+            cfg.captureFn(dir, meta.docoId, ownerSlug, docoSlug, draft, docoHost),
           );
           const totalMs = Math.round(performance.now() - start);
           const isError = "error" in result;
@@ -352,7 +348,6 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
           allowedFields: undefined,
           docoHost: new URL(request.url).origin,
           actorId: me?.id ?? null,
-          authoring: authoringContextForRequest(request),
         }),
       );
       const totalMs = Math.round(performance.now() - start);
