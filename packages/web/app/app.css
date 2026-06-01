@@ -135,8 +135,36 @@ select {
   container-type: inline-size;
 }
 
+.doco-shell-body {
+  flex-direction: column;
+}
+
+.doco-shell-main {
+  min-height: 0;
+}
+
+.senor-doco-rail {
+  width: 100%;
+  height: var(--senor-doco-stack-height);
+  border-right-width: 0;
+  border-bottom-width: 1px;
+}
+
 .org-home-layout-grid {
   grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 840px) {
+  .doco-shell-body {
+    flex-direction: row;
+  }
+
+  .senor-doco-rail {
+    width: var(--senor-doco-current-width);
+    height: 100%;
+    border-right-width: 1px;
+    border-bottom-width: 0;
+  }
 }
 
 @container (min-width: 840px) {
