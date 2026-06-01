@@ -91,11 +91,40 @@ describe("listRepoPullRequests", () => {
       { status: 200 },
     );
     const fetchImpl = vi.fn().mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
-    const prs = await listRepoPullRequests("ghs_x", "acme", "store", {
+    const result = await listRepoPullRequests("ghs_x", "acme", "store", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    expect(prs.map((p) => p.number)).toEqual([1, 2]);
+    expect(result.prs.map((p) => p.number)).toEqual([1, 2]);
+    expect(result.hasMore).toBe(false);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("sets hasMore when maxPages is reached with a next link", async () => {
+    const page1 = new Response(
+      JSON.stringify([{ number: 1, title: "a", html_url: "u1", state: "open" }]),
+      { status: 200, headers: { Link: '<https://api.github.com/x?page=2>; rel="next"' } },
+    );
+    const fetchImpl = vi.fn().mockResolvedValueOnce(page1);
+    const result = await listRepoPullRequests("ghs_x", "acme", "store", {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      maxPages: 1,
+    });
+    expect(result.prs).toHaveLength(1);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it("respects startPage by passing it to the GitHub API", async () => {
+    const page3 = new Response(
+      JSON.stringify([{ number: 3, title: "c", html_url: "u3", state: "open" }]),
+      { status: 200 },
+    );
+    const fetchImpl = vi.fn().mockResolvedValueOnce(page3);
+    await listRepoPullRequests("ghs_x", "acme", "store", {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      startPage: 3,
+    });
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string];
+    expect(url).toContain("page=3");
   });
 });
 
