@@ -5,6 +5,7 @@
     "ignore": [
       "dist",
       ".doco",
+      ".codex-worktrees",
       "node_modules",
       "*.md",
       "*.yaml",

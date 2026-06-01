@@ -40,6 +40,11 @@ import {
 } from "./graph-authoring-contract.server";
 import { internalFetch } from "./internal-fetch.server";
 import { listAvailablePerspectives, listPerspectivesForDoco } from "./perspectives.server";
+import {
+  type SenorDocoIntegrationContextCacheInfo,
+  buildSenorDocoIntegrationContextKey,
+  createSenorDocoIntegrationContextCache,
+} from "./senor-doco-integration-context.server";
 import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
 
 export const SLACK_BOT_SCOPES = [
@@ -66,6 +71,7 @@ const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const SLACK_DOCO_ANSWER_LIMIT = 8;
 const SLACK_LLM_MAX_TOKENS = 600;
 const SLACK_LLM_MAX_TOOL_TURNS = 6;
+const SLACK_INTEGRATION_CONTEXT_CACHE_TTL_MS = 60_000;
 const SLACK_LLM_TOOL_LIMIT_PROMPT =
   "The Slack doco_api tool-turn limit has been reached. Do not request more tools. Answer the current Slack message using only the Doco API results already provided. If those results are insufficient for an exact answer, say what is known and explicitly say the exact answer needs a narrower retry.";
 const SLACK_LLM_TOOL_LIMIT_FALLBACK =
@@ -140,6 +146,7 @@ export interface SlackLlmAnswerInput {
   repairText?: string | null;
   recentMessages: SlackRecentMessage[];
   connections: SlackChannelConnectionSummary[];
+  integrationContextCache?: SenorDocoIntegrationContextCacheInfo;
   hits: SlackDocoAnswerHit[];
   overview: boolean;
   repair: boolean;
@@ -231,11 +238,43 @@ interface SlackAccessibleDoco {
   role: string;
 }
 
+interface SlackPersonalAccessSummary {
+  actors: SlackLinkedUser[];
+  connections: SlackChannelConnectionSummary[];
+}
+
+interface SlackIntegrationContext {
+  sharedConnections: SlackChannelConnectionSummary[];
+  personalAccess: SlackPersonalAccessSummary;
+  connections: SlackChannelConnectionSummary[];
+  fallbackConnections: SlackChannelConnectionSummary[];
+}
+
 const SLACK_ROLE_RANK: Record<string, number> = {
   reader: 1,
   writer: 2,
   owner: 3,
 };
+
+const slackIntegrationContextCache =
+  createSenorDocoIntegrationContextCache<SlackIntegrationContext>({
+    ttlMs: SLACK_INTEGRATION_CONTEXT_CACHE_TTL_MS,
+  });
+
+export function clearSlackIntegrationContextCache(): void {
+  slackIntegrationContextCache.clear();
+}
+
+function invalidateSlackIntegrationContextCache(_args?: {
+  workspaceId?: string;
+  channelId?: string;
+  chatUserId?: string;
+}): void {
+  // Slack default-access and personal-link mutations are rare; a full
+  // invalidation keeps cross-channel inherited defaults correct without
+  // making every message rebuild its access context.
+  slackIntegrationContextCache.clear();
+}
 
 export function getSlackConfig(): SlackConfig {
   ensureEnvLoaded();
@@ -489,6 +528,10 @@ export async function saveSlackChannelConnection(input: SlackConnectionInput): P
       ],
     ),
   );
+  invalidateSlackIntegrationContextCache({
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+  });
 }
 
 export async function replaceSlackChannelConnections(input: {
@@ -532,6 +575,10 @@ export async function replaceSlackChannelConnections(input: {
       throw error;
     }
   });
+  invalidateSlackIntegrationContextCache({
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+  });
 }
 
 export async function upsertSlackUserLink(input: {
@@ -549,6 +596,10 @@ export async function upsertSlackUserLink(input: {
       [`gcul_${generateUlid()}`, input.workspaceId, input.chatUserId, input.userId],
     ),
   );
+  invalidateSlackIntegrationContextCache({
+    workspaceId: input.workspaceId,
+    chatUserId: input.chatUserId,
+  });
 }
 
 async function listSlackLinkedUsers(args: {
@@ -589,10 +640,7 @@ async function listSlackLinkedUsers(args: {
 async function listSlackPersonalConnections(args: {
   workspaceId: string;
   chatUserId?: string | null;
-}): Promise<{
-  actors: SlackLinkedUser[];
-  connections: SlackChannelConnectionSummary[];
-}> {
+}): Promise<SlackPersonalAccessSummary> {
   const actors = await listSlackLinkedUsers(args);
   if (actors.length === 0) return { actors, connections: [] };
 
@@ -726,6 +774,45 @@ export async function listSlackChannelConnections(args: {
   }));
 }
 
+async function loadSlackIntegrationContext(args: {
+  workspaceId: string;
+  channelId: string;
+  chatUserId?: string | null;
+}): Promise<{
+  context: SlackIntegrationContext;
+  cache: SenorDocoIntegrationContextCacheInfo;
+}> {
+  const key = buildSenorDocoIntegrationContextKey({
+    provider: "slack",
+    workspaceId: args.workspaceId,
+    channelId: args.channelId,
+    actorId: args.chatUserId ?? null,
+  });
+  const result = await slackIntegrationContextCache.getOrLoad(key, async () => {
+    const [sharedConnections, personalAccess] = await Promise.all([
+      listSlackChannelConnections({
+        workspaceId: args.workspaceId,
+        channelId: args.channelId,
+      }),
+      listSlackPersonalConnections({
+        workspaceId: args.workspaceId,
+        chatUserId: args.chatUserId,
+      }),
+    ]);
+    const connections = mergeSlackConnections([
+      ...sharedConnections,
+      ...personalAccess.connections,
+    ]);
+    return {
+      sharedConnections,
+      personalAccess,
+      connections,
+      fallbackConnections: sharedConnections.length > 0 ? sharedConnections : connections,
+    };
+  });
+  return { context: result.value, cache: result.cache };
+}
+
 export async function buildSlackAppMentionResponse(args: {
   workspaceId: string;
   channelId: string;
@@ -736,21 +823,15 @@ export async function buildSlackAppMentionResponse(args: {
   origin?: string | null;
   answerGenerator?: (input: SlackLlmAnswerInput) => Promise<string | null>;
 }): Promise<string> {
-  const [sharedConnections, personalAccess] = await Promise.all([
-    listSlackChannelConnections({
-      workspaceId: args.workspaceId,
-      channelId: args.channelId,
-    }),
-    listSlackPersonalConnections({
-      workspaceId: args.workspaceId,
-      chatUserId: args.chatUserId,
-    }),
-  ]);
-  const connections = mergeSlackConnections([...sharedConnections, ...personalAccess.connections]);
+  const { context, cache } = await loadSlackIntegrationContext({
+    workspaceId: args.workspaceId,
+    channelId: args.channelId,
+    chatUserId: args.chatUserId,
+  });
+  const { connections, fallbackConnections, personalAccess } = context;
   if (connections.length === 0) {
     return "I’m installed here, but I don’t have default or personal Doco permissions yet. Open Doco Integrations to choose workspace defaults, or use `/doco connect`.";
   }
-  const fallbackConnections = sharedConnections.length > 0 ? sharedConnections : connections;
 
   const contextConnections = connections;
   const cleanText = cleanSlackMentionText(args.messageText);
@@ -774,6 +855,7 @@ export async function buildSlackAppMentionResponse(args: {
       hits,
       overview: answerQuery.overview,
       repair: answerQuery.repair,
+      integrationContextCache: cache,
       personalAuthorizationCommand: args.personalAuthorizationCommand ?? "/doco connect",
       personalActors: personalAccess.actors,
       origin: args.origin,
@@ -792,6 +874,7 @@ export async function buildSlackAppMentionResponse(args: {
     hits: [],
     overview: false,
     repair: false,
+    integrationContextCache: cache,
     personalAuthorizationCommand: args.personalAuthorizationCommand ?? "/doco connect",
     personalActors: personalAccess.actors,
     origin: args.origin,
@@ -1006,6 +1089,11 @@ export function buildSlackLlmUserPrompt(input: SlackLlmAnswerInput): string {
     "",
     "Doco access available in this Slack request:",
     ...input.connections.map((connection) => `- ${slackConnectionAccessLabelWithRole(connection)}`),
+    ...(input.integrationContextCache
+      ? [
+          `Integration context cache: ${input.integrationContextCache.status} (ttl=${input.integrationContextCache.ttlMs}ms). This is stable access/policy context; still use doco_api for request-specific facts.`,
+        ]
+      : []),
     "",
     "Personal Doco authorization for this Slack user:",
     ...formatSlackPersonalAuthorizationLines(input.personalActors),
