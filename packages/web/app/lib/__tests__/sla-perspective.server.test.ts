@@ -3,12 +3,12 @@ import { loadSlaPerspectiveData } from "../sla-perspective.server";
 
 function makeQueryClient(rows: Record<string, unknown[]>) {
   const query = vi.fn(async (sql: string): Promise<{ rows: unknown[] }> => {
-    if (/FROM rules/i.test(sql)) return { rows: rows.rules ?? [] };
-    if (/FROM evals/i.test(sql)) return { rows: rows.evals ?? [] };
-    if (/FROM reference_entities/i.test(sql)) return { rows: rows.references ?? [] };
-    if (/FROM actions/i.test(sql)) return { rows: rows.actions ?? [] };
-    if (/FROM decisions/i.test(sql)) return { rows: rows.decisions ?? [] };
-    if (/FROM principals/i.test(sql)) return { rows: rows.principals ?? [] };
+    if (/node_type = 'rule'/i.test(sql)) return { rows: rows.rules ?? [] };
+    if (/node_type = 'eval'/i.test(sql)) return { rows: rows.evals ?? [] };
+    if (/node_type = 'reference'/i.test(sql)) return { rows: rows.references ?? [] };
+    if (/node_type = 'action'/i.test(sql)) return { rows: rows.actions ?? [] };
+    if (/node_type = 'decision'/i.test(sql)) return { rows: rows.decisions ?? [] };
+    if (/node_type = 'principal'/i.test(sql)) return { rows: rows.principals ?? [] };
     if (/FROM edges/i.test(sql)) return { rows: rows.edges ?? [] };
     return { rows: [] };
   });
@@ -34,7 +34,6 @@ describe("loadSlaPerspectiveData", () => {
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: {
-            owner_id: "principal_platform",
             metric: "successful valid checkout requests",
             target: "99.9%",
             measurement_window: "monthly UTC",
@@ -85,6 +84,7 @@ describe("loadSlaPerspectiveData", () => {
       ],
       principals: [{ id: "principal_platform", name: "Platform Owner", lifecycle: "asserted" }],
       edges: [
+        { from_id: "rule_01SLA", to_id: "principal_platform", edge_type: "owned_by" },
         { from_id: "eval_availability", to_id: "rule_01SLA", edge_type: "tests" },
         { from_id: "rule_01SLA", to_id: "reference_contract", edge_type: "source_ref" },
         { from_id: "action_breach", to_id: "rule_01SLA", edge_type: "gated_by" },

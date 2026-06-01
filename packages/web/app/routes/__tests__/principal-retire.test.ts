@@ -7,19 +7,22 @@ const mocks = vi.hoisted(() => ({
   upsertEntity: vi.fn(),
   query: vi.fn(),
   withClient: vi.fn(),
+  withTransaction: vi.fn(),
   runAuthoringPolicies: vi.fn(),
   reindexAndScheduleAttach: vi.fn(),
   appendAuditEvent: vi.fn(),
+  reconcileNodeEdges: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
   const rank = { reader: 1, writer: 2, owner: 3 } as const;
   return {
     getEntity: mocks.getEntity,
-    upsertEntity: mocks.upsertEntity,
+    upsertEntity: (rec: unknown) => mocks.upsertEntity(rec),
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
     withClient: mocks.withClient,
+    withTransaction: mocks.withTransaction,
   };
 });
 
@@ -52,6 +55,10 @@ vi.mock("~/lib/db.server", () => ({
   docoPath: (handle: string) => `/tmp/docos/${handle}`,
 }));
 
+vi.mock("~/lib/managed-edges.server", () => ({
+  reconcileNodeEdges: mocks.reconcileNodeEdges,
+}));
+
 import { action } from "../$docoHandle.api.principals.$id[.]json";
 
 function retireRequest(body: Record<string, unknown> = { lifecycle: "retired" }): Request {
@@ -69,6 +76,7 @@ describe("principal retire API", () => {
     vi.clearAllMocks();
     mocks.query.mockResolvedValue({ rows: [] });
     mocks.withClient.mockImplementation((fn) => fn({ query: mocks.query }));
+    mocks.withTransaction.mockImplementation((fn) => fn({ query: mocks.query }));
     mocks.loadDocoRouteForRead.mockResolvedValue({
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
@@ -92,6 +100,7 @@ describe("principal retire API", () => {
       violations: [],
     });
     mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
+    mocks.reconcileNodeEdges.mockResolvedValue({ created: 0, retired: 0 });
   });
 
   it("retires an unreferenced principal", async () => {

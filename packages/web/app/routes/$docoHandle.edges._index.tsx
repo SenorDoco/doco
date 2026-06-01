@@ -1,9 +1,7 @@
 // Per-Doco edge list at /<handle>/edges.
 //
-// Doco's edges are derived from reference fields on nodes (D-017,
-// fields-as-edges). They have no surrogate id — composite PK is
-// (from_id, to_id, edge_type). This page surfaces the whole edge set
-// of the Doco so a human (or the in-page assistant) can scan how
+// Doco's relationships live as first-class edge rows. This page surfaces the
+// whole edge set of the Doco so a human (or the in-page assistant) can scan how
 // nodes connect, and click through to a single edge's detail view.
 //
 // Listing is ordered by edge_type, then from_id, then to_id — stable
@@ -124,8 +122,8 @@ export default function EdgesIndex({
           <CardContent className="p-0">
             {edges.length === 0 ? (
               <p className="px-5 py-6 text-xs text-muted-foreground">
-                No edges yet. Edges materialize automatically when a node references another node
-                (e.g. a Decision's intent_ids). Patch a node's reference field and the edge appears.
+                No edges yet. Create relationships with changesets or the edge API and they will
+                appear here.
               </p>
             ) : (
               <Table>

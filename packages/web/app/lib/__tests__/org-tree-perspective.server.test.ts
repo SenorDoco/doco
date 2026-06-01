@@ -16,13 +16,24 @@ describe("loadOrgTreeData", () => {
         name: "Research Agent",
         lifecycle: "asserted",
         body_md: "AI agent: research synthesis and brief generation.",
-        data: { reports_to: "principal_alex" },
+        data: {},
       },
     ];
     const client: Parameters<typeof loadOrgTreeData>[0] = {
-      query: async <T>() => ({
-        rows: rows as T[],
-      }),
+      query: async <T>(sql: string) => {
+        if (/FROM edges/i.test(sql)) {
+          return {
+            rows: [
+              {
+                from_id: "principal_research",
+                to_id: "principal_alex",
+                edge_type: "reports_to",
+              },
+            ] as T[],
+          };
+        }
+        return { rows: rows as T[] };
+      },
     };
 
     const data = await loadOrgTreeData(client, "doco_acme", "acme");

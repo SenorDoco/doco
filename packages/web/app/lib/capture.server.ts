@@ -355,7 +355,7 @@ export interface DecisionDraft {
   alternatives?: { name: string; rejected_because: string }[];
   /** Optional: intent ids to link via `intent_ids`. */
   intent_ids?: string[];
-  /** @deprecated Use first-class sequence_flow edges. This field is rejected. */
+  /** Optional sequence-flow targets; persisted as first-class edges. */
   sequence_to?: unknown;
   /** Optional: principal id who made the decision. */
   decided_by_principal_id?: string;
@@ -923,24 +923,22 @@ function userCreatorId(draft: UserCreatorDraft): string | null | CaptureError {
   return creatorId;
 }
 
-function rejectEdgeOnlyRelationField(
-  field: "preceded_by" | "sequence_to",
-  edgeType: "preceded_by" | "sequence_flow",
-  value: unknown,
-): CaptureError | null {
-  if (value === undefined) return null;
-  return {
-    error: `${field} is no longer stored on node JSON. Create or retire first-class ${edgeType} edges instead.`,
-  };
-}
-
-function rejectProcessRelationFields(record: unknown): CaptureError | null {
+function rejectProcessRelationPatchFields(record: unknown): CaptureError | null {
   if (!record || typeof record !== "object") return null;
   const fields = record as { sequence_to?: unknown; preceded_by?: unknown };
-  return (
-    rejectEdgeOnlyRelationField("sequence_to", "sequence_flow", fields.sequence_to) ??
-    rejectEdgeOnlyRelationField("preceded_by", "preceded_by", fields.preceded_by)
-  );
+  if (fields.sequence_to !== undefined) {
+    return {
+      error:
+        "sequence_to is no longer stored on node JSON. Create or retire first-class sequence_flow edges instead.",
+    };
+  }
+  if (fields.preceded_by !== undefined) {
+    return {
+      error:
+        "preceded_by is no longer stored on node JSON. Create or retire first-class preceded_by edges instead.",
+    };
+  }
+  return null;
 }
 
 /**
@@ -1047,8 +1045,7 @@ export async function captureDecision(
   // any ADR-style requires_field policy).
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const relationFieldError = rejectProcessRelationFields(draft);
-  if (relationFieldError) return relationFieldError;
+  const sequenceTo: unknown[] = Array.isArray(draft.sequence_to) ? draft.sequence_to : [];
 
   const decidedBy = optionalPrincipalId(draft.decided_by_principal_id, "decided_by_principal_id");
   if (decidedBy !== null && typeof decidedBy !== "string") return decidedBy;
@@ -1072,6 +1069,7 @@ export async function captureDecision(
     decision: decisionText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
+    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     question: draft.question.trim(),
     ...(draft.chosen?.trim() ? { chosen: draft.chosen.trim() } : {}),
     ...(Array.isArray(draft.alternatives) && draft.alternatives.length > 0
@@ -1109,7 +1107,7 @@ export interface DecisionPatch {
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
   implemented_by?: string[];
-  /** @deprecated Use first-class sequence_flow edges. This field is rejected. */
+  /** Optional sequence-flow targets; persisted as first-class edges. */
   sequence_to?: unknown;
   decided_by_principal_id?: string;
   born_from?: string | null;
@@ -1243,7 +1241,7 @@ export async function updateDecision(
     }
   }
 
-  const relationFieldError = rejectProcessRelationFields(patch as Record<string, unknown>);
+  const relationFieldError = rejectProcessRelationPatchFields(patch as Record<string, unknown>);
   if (relationFieldError) return relationFieldError;
 
   if (patch.decided_by_principal_id !== undefined) {
@@ -1418,7 +1416,7 @@ export async function updateEntity(opts: {
   const fm = existing.fm;
   const existingBody = existing.body;
   const normalizedPatch = normalizePrincipalIdPatchFields(entityType, patch);
-  const relationFieldError = rejectProcessRelationFields(normalizedPatch);
+  const relationFieldError = rejectProcessRelationPatchFields(normalizedPatch);
   if (relationFieldError) return relationFieldError;
   // Migration-022/023: 9 node types collapsed summary+body_md+extras
   // into a single type-named prose column. Policies use the `policy`
@@ -1942,9 +1940,9 @@ export interface ActionDraft {
   intent_ids?: string[];
   /** Optional: decision ids the action enacts. */
   decision_ids?: string[];
-  /** @deprecated Use first-class preceded_by edges. This field is rejected. */
+  /** Optional predecessor targets; persisted as first-class edges. */
   preceded_by?: unknown;
-  /** @deprecated Use first-class sequence_flow edges. This field is rejected. */
+  /** Optional sequence-flow targets; persisted as first-class edges. */
   sequence_to?: unknown;
   /** Optional: rule ids that gate this action (BPMN-style policy guards). */
   gated_by?: string[];
@@ -1986,8 +1984,8 @@ export async function captureAction(
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
-  const relationFieldError = rejectProcessRelationFields(draft);
-  if (relationFieldError) return relationFieldError;
+  const precededBy: unknown[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
+  const sequenceTo: unknown[] = Array.isArray(draft.sequence_to) ? draft.sequence_to : [];
   const gatedBy: string[] = Array.isArray(draft.gated_by)
     ? draft.gated_by.filter((r): r is string => typeof r === "string" && r.startsWith("rule_"))
     : [];
@@ -2014,6 +2012,8 @@ export async function captureAction(
     verb: draft.verb.trim(),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
+    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
+    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     ...(gatedBy.length > 0 ? { gated_by: gatedBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     ...(draft.outputs !== undefined ? { outputs: draft.outputs } : {}),
@@ -2060,7 +2060,7 @@ export interface LogDraft {
   template_id?: string;
   intent_ids?: string[];
   decision_ids?: string[];
-  /** @deprecated Use first-class preceded_by edges. This field is rejected. */
+  /** Optional predecessor targets; persisted as first-class edges. */
   preceded_by?: unknown;
   inputs?: unknown;
   actor_principal_id?: string;
@@ -2109,8 +2109,7 @@ export async function captureLog(
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
-  const relationFieldError = rejectProcessRelationFields(draft);
-  if (relationFieldError) return relationFieldError;
+  const precededBy: unknown[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
 
   const id = `log_${generateUlid()}`;
   const logText = draft.log.trim();
@@ -2137,6 +2136,7 @@ export async function captureLog(
     ...(draft.template_id ? { template_id: draft.template_id } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
+    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
@@ -2865,9 +2865,9 @@ export interface StateDraft {
   invariants?: string[];
   /** Optional: intent ids to link via `intent_ids`. */
   intent_ids?: string[];
-  /** @deprecated Use first-class preceded_by edges. This field is rejected. */
+  /** Optional predecessor targets; persisted as first-class edges. */
   preceded_by?: unknown;
-  /** @deprecated Use first-class sequence_flow edges. This field is rejected. */
+  /** Optional sequence-flow targets; persisted as first-class edges. */
   sequence_to?: unknown;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
@@ -2908,8 +2908,8 @@ export async function captureState(
   if ("error" in status) return status;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const relationFieldError = rejectProcessRelationFields(draft);
-  if (relationFieldError) return relationFieldError;
+  const precededBy: unknown[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
+  const sequenceTo: unknown[] = Array.isArray(draft.sequence_to) ? draft.sequence_to : [];
   const invariants: string[] = Array.isArray(draft.invariants)
     ? draft.invariants.filter((s): s is string => typeof s === "string" && s.length > 0)
     : [];
@@ -2921,6 +2921,8 @@ export async function captureState(
     state: stateText,
     kind: draft.kind,
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
+    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
+    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     ...(invariants.length > 0 ? { invariants } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),

@@ -1357,7 +1357,7 @@ Never paste the URL on a separate line — the footer-line's link covers it, and
 
 ## Adding an edge
 
-Edges in Doco are first-class rows. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback. BPMN/process ordering must be authored as sequence_flow / preceded_by edges, never as sequence_to / preceded_by fields on node JSON.
+Edges in Doco are first-class rows. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback. Relation fields in capture bodies are input sugar only; they are materialized as edges and stripped from stored node JSON.
 
 Changeset example for BPMN-style ordered flow:
 

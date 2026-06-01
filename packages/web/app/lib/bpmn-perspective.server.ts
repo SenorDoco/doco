@@ -40,7 +40,7 @@
 //
 // Not rendered: Log (instances, not designs).
 
-import { MANAGED_EDGE_TO_FIELD } from "@doco/shared";
+import { MANAGED_EDGE_CARDINALITY, MANAGED_EDGE_TO_FIELD } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
@@ -272,8 +272,13 @@ export async function loadBpmnGraph(
     // whose endpoints are both flow nodes, so it omits performed_by / decided_by
     // (which point at principals); fetch them explicitly so the actor lanes
     // resolve.
-    const managedRows = await c.query<{ from_id: string; edge_type: string; to_id: string }>(
-      `SELECT from_id, edge_type, to_id
+    const managedRows = await c.query<{
+      from_id: string;
+      edge_type: string;
+      to_id: string;
+      props: Record<string, unknown> | null;
+    }>(
+      `SELECT from_id, edge_type, to_id, props
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -287,7 +292,20 @@ export async function loadBpmnGraph(
     for (const e of managedRows.rows) {
       const field = MANAGED_EDGE_TO_FIELD[e.edge_type as keyof typeof MANAGED_EDGE_TO_FIELD];
       const data = dataById.get(e.from_id);
-      if (field && data) data[field] = e.to_id;
+      if (!field || !data) continue;
+      const cardinality =
+        MANAGED_EDGE_CARDINALITY[e.edge_type as keyof typeof MANAGED_EDGE_CARDINALITY];
+      const value =
+        e.edge_type === "sequence_flow"
+          ? ({ target: e.to_id, ...(e.props ?? {}) } as Record<string, unknown>)
+          : e.to_id;
+      if (cardinality === "many") {
+        const list = Array.isArray(data[field]) ? (data[field] as unknown[]) : [];
+        list.push(value);
+        data[field] = list;
+      } else {
+        data[field] = value;
+      }
     }
   }
 

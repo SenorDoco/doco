@@ -44,6 +44,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   serves: {
     kind: "serves",
     field: "intent_ids",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -52,6 +53,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   enacts: {
     kind: "enacts",
     field: "decision_ids",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -60,6 +62,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   gated_by: {
     kind: "gated_by",
     field: "gated_by",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -68,6 +71,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   consults: {
     kind: "consults",
     field: "rules_consulted",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -76,6 +80,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   tests: {
     kind: "tests",
     field: "target_ref",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -85,6 +90,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   born_from: {
     kind: "born_from",
     field: "born_from",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -93,6 +99,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   superseded_by: {
     kind: "superseded_by",
     field: "superseded_by",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -101,6 +108,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   implemented_by: {
     kind: "implemented_by",
     field: "implemented_by",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -115,6 +123,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   reports_to: {
     kind: "reports_to",
     field: "reports_to",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -124,6 +133,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   dotted_reports_to: {
     kind: "dotted_reports_to",
     field: "dotted_reports_to",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -134,6 +144,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   same_occupant_as: {
     kind: "same_occupant_as",
     field: "same_occupant_as",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -144,6 +155,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   performed_by: {
     kind: "performed_by",
     field: "actor_id",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -152,6 +164,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   owned_by: {
     kind: "owned_by",
     field: "owner_id",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -160,6 +173,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   has_parent: {
     kind: "has_parent",
     field: "parent_intent_id",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -168,6 +182,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   has_stakeholder: {
     kind: "has_stakeholder",
     field: "stakeholders",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -176,6 +191,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   decided_by: {
     kind: "decided_by",
     field: "decided_by",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -184,6 +200,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   templated_by: {
     kind: "templated_by",
     field: "template_id",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
@@ -195,6 +212,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     // first-class edge via /api/edges.json, so `field` is a stable label
     // that never appears on a node body (no owner enforcement fires).
     field: "relates_to",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
@@ -302,9 +320,6 @@ export function unsupportedRelationFieldError(
   for (const spec of Object.values(RELATION_KINDS)) {
     const value = body[spec.field];
     if (value === undefined || value === null) continue;
-    if (spec.storage === "edge") {
-      return `${spec.field} (the \`${spec.kind}\` relation) must be authored as an edge, not stored in node JSON. Use a changeset relate operation or the edges API.`;
-    }
     if (!spec.owners) continue;
     if (!spec.owners.includes(entityType)) {
       return `${spec.field} (the \`${spec.kind}\` relation) is only valid on ${spec.owners.join(
