@@ -178,6 +178,148 @@ describe("loadNodeDialogDetail", () => {
     });
   });
 
+  it("includes field-authored BPMN sequence links when edge rows are absent", async () => {
+    const decisionId = "decision_01ROUTE";
+    const priorId = "action_01PRIOR";
+    const flexibleId = "action_01FLEXIBLE";
+    const internshipId = "action_01INTERNSHIP";
+    const fullTimeId = "action_01FULLTIME";
+    const principalId = "principal_01USER";
+    const client = {
+      query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        if (sql.includes("jsonb_array_elements")) {
+          return {
+            rows: [
+              {
+                id: priorId,
+                entity_type: "action",
+                data: { sequence_to: [{ target: decisionId, label: "Start" }] },
+              },
+              {
+                id: fullTimeId,
+                entity_type: "action",
+                data: { preceded_by: [decisionId] },
+              },
+            ] as T[],
+          };
+        }
+        if (sql.includes("FROM edges") && sql.includes("from_id = $2")) {
+          return {
+            rows: [
+              {
+                to_id: principalId,
+                to_node_type: "principal",
+                edge_type: "decided_by",
+              },
+            ] as T[],
+          };
+        }
+        if (sql.includes("FROM edges") && sql.includes("to_id = $2")) return { rows: [] };
+        if (sql.includes("node_type IN")) {
+          return {
+            rows: [
+              {
+                id: priorId,
+                entity_type: "action",
+                summary: "Prior step",
+                name: null,
+                lifecycle: "asserted",
+              },
+              {
+                id: flexibleId,
+                entity_type: "action",
+                summary: "Flexible path",
+                name: null,
+                lifecycle: "asserted",
+              },
+              {
+                id: internshipId,
+                entity_type: "action",
+                summary: "Internship path",
+                name: null,
+                lifecycle: "asserted",
+              },
+              {
+                id: fullTimeId,
+                entity_type: "action",
+                summary: "Full-time path",
+                name: null,
+                lifecycle: "asserted",
+              },
+              {
+                id: principalId,
+                entity_type: "principal",
+                summary: "User",
+                name: "User",
+                lifecycle: "asserted",
+              },
+            ] as T[],
+          };
+        }
+        if (sql.includes("WITH input(actor_id)")) return { rows: [] };
+        if (sql.includes("FROM audit_events")) return { rows: [] };
+        if (sql.includes("FROM node_versions")) return { rows: [] };
+        return {
+          rows: [
+            {
+              id: decisionId,
+              primary_text: "BPMN gateway\nin lane User",
+              body_text: null,
+              lifecycle: "asserted",
+              raw_json: JSON.stringify({
+                decided_by: principalId,
+                sequence_to: [
+                  { target: flexibleId, label: "Flexible" },
+                  { target: internshipId, label: "Internship" },
+                ],
+              }),
+              created_at: "2026-05-31T17:38:00.000Z",
+              updated_at: "2026-05-31T17:45:00.000Z",
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const detail = await loadNodeDialogDetail(client, meta, {
+      handle: "test-doco",
+      entityType: "decision",
+      id: decisionId,
+      principalId: "principal_owner",
+    });
+
+    expect(detail?.incoming).toEqual([
+      expect.objectContaining({
+        edge_type: "sequence_flow",
+        other_id: priorId,
+        edge_label: "Start",
+      }),
+    ]);
+    expect(detail?.outgoing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          edge_type: "decided_by",
+          other_id: principalId,
+        }),
+        expect.objectContaining({
+          edge_type: "sequence_flow",
+          other_id: flexibleId,
+          edge_label: "Flexible",
+        }),
+        expect.objectContaining({
+          edge_type: "sequence_flow",
+          other_id: internshipId,
+          edge_label: "Internship",
+        }),
+        expect.objectContaining({
+          edge_type: "sequence_flow",
+          other_id: fullTimeId,
+        }),
+      ]),
+    );
+    expect(detail?.outgoing).toHaveLength(4);
+  });
+
   it("resolves user provenance metadata instead of exposing Principal creator ids", async () => {
     const client = {
       query: async <T>(sql: string): Promise<{ rows: T[] }> => {
