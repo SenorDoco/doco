@@ -2,11 +2,9 @@
 //
 // Renders a Doco's Principal nodes as a top-down reporting tree:
 // the unique top-of-chain Principal (no `reports_to`) at the root,
-// direct reports beneath, and so on. The reporting line is the
-// `reports_to` id-shaped pointer field in each Principal's `data`
-// (the same value `deriveEdges` projects into a `reports_to` graph
-// edge); this loader reads it straight from the node's `data`, so it
-// needs no edges-table join.
+// direct reports beneath, and so on. Reporting lines are first-class
+// `reports_to` / `dotted_reports_to` edge rows; node JSON stays free of
+// relationship fields.
 //
 // Only the `org-chart` template attaches this perspective by default,
 // but any Doco can opt in via the perspectives picker. The loader
@@ -52,6 +50,12 @@ interface OrgTreeRow {
   lifecycle: string | null;
   body_md: string | null;
   data: Record<string, unknown>;
+}
+
+interface OrgTreeEdgeRow {
+  from_id: string;
+  to_id: string;
+  edge_type: "reports_to" | "dotted_reports_to";
 }
 
 /**
@@ -124,14 +128,35 @@ export async function loadOrgTreeData(
     )
   ).rows;
 
+  const edgeRows = (
+    await c.query<OrgTreeEdgeRow>(
+      `SELECT from_id, to_id, edge_type
+         FROM edges
+        WHERE doco_id = $1
+          AND edge_type IN ('reports_to', 'dotted_reports_to')
+          AND lifecycle <> 'retired'
+        ORDER BY created_at, id`,
+      [docoId],
+    )
+  ).rows;
+  const reportsToByPrincipal = new Map<string, string>();
+  const dottedReportsToByPrincipal = new Map<string, string[]>();
+  for (const edge of edgeRows) {
+    if (edge.edge_type === "reports_to") {
+      if (!reportsToByPrincipal.has(edge.from_id))
+        reportsToByPrincipal.set(edge.from_id, edge.to_id);
+    } else {
+      const list = dottedReportsToByPrincipal.get(edge.from_id) ?? [];
+      if (!list.includes(edge.to_id)) list.push(edge.to_id);
+      dottedReportsToByPrincipal.set(edge.from_id, list);
+    }
+  }
+
   const nodes: OrgTreeNode[] = rows.map((r) => {
-    const data = r.data ?? {};
     const type = inferKindFromProse(r.body_md);
     const role = roleFromProse(r.body_md, r.name, type);
-    const reports_to = typeof data.reports_to === "string" ? data.reports_to : null;
-    const dotted_reports_to = Array.isArray(data.dotted_reports_to)
-      ? data.dotted_reports_to.filter((v): v is string => typeof v === "string")
-      : [];
+    const reports_to = reportsToByPrincipal.get(r.id) ?? null;
+    const dotted_reports_to = dottedReportsToByPrincipal.get(r.id) ?? [];
     return {
       id: r.id,
       name: r.name,

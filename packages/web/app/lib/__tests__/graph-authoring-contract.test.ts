@@ -2,16 +2,22 @@ import { describe, expect, it } from "vitest";
 import { RELATION_KINDS, unsupportedRelationFieldError } from "../graph-authoring-contract.server";
 
 describe("unsupportedRelationFieldError", () => {
+  it("marks every relation kind as edge-backed", () => {
+    for (const spec of Object.values(RELATION_KINDS)) {
+      expect(spec.storage, spec.kind).toBe("edge");
+    }
+  });
+
+  it("allows target_ref authoring input on the tests-relation owners", () => {
+    expect(unsupportedRelationFieldError("reference", { target_ref: "action_01" })).toBeNull();
+    expect(unsupportedRelationFieldError("eval", { target_ref: "action_01" })).toBeNull();
+  });
+
   it("rejects target_ref on an entity that does not own the tests relation", () => {
     const err = unsupportedRelationFieldError("decision", { target_ref: "action_01" });
     expect(err).toMatch(/target_ref/);
     expect(err).toMatch(/eval or reference/);
     expect(err).toMatch(/decision/);
-  });
-
-  it("allows target_ref on reference and eval", () => {
-    expect(unsupportedRelationFieldError("reference", { target_ref: "action_01" })).toBeNull();
-    expect(unsupportedRelationFieldError("eval", { target_ref: "action_01" })).toBeNull();
   });
 
   it("ignores absent or null relation fields", () => {
@@ -20,19 +26,14 @@ describe("unsupportedRelationFieldError", () => {
     expect(unsupportedRelationFieldError("decision", { target_ref: undefined })).toBeNull();
   });
 
-  it("rejects sequence_to in node JSON because BPMN flow must be an edge", () => {
+  it("allows sequence_to authoring input so capture can materialize sequence_flow edges", () => {
     expect(RELATION_KINDS.sequence_flow.storage).toBe("edge");
-    const err = unsupportedRelationFieldError("decision", { sequence_to: ["action_01"] });
-    expect(err).toMatch(/sequence_to/);
-    expect(err).toMatch(/sequence_flow/);
-    expect(err).toMatch(/edge/);
+    expect(unsupportedRelationFieldError("decision", { sequence_to: ["action_01"] })).toBeNull();
   });
 
-  it("rejects preceded_by in node JSON because ordering must be an edge", () => {
+  it("allows preceded_by authoring input so capture can materialize preceded_by edges", () => {
     expect(RELATION_KINDS.preceded_by.storage).toBe("edge");
-    const err = unsupportedRelationFieldError("action", { preceded_by: ["action_01"] });
-    expect(err).toMatch(/preceded_by/);
-    expect(err).toMatch(/edge/);
+    expect(unsupportedRelationFieldError("action", { preceded_by: ["action_01"] })).toBeNull();
   });
 
   it("declares eval and reference as the tests-relation owners", () => {
@@ -54,7 +55,7 @@ describe("unsupportedRelationFieldError", () => {
     expect(spec.owners).toBeUndefined();
   });
 
-  it("allows implemented_by on any owner type (decision, action, intent, eval)", () => {
+  it("allows implemented_by authoring input for any owner type", () => {
     for (const owner of ["decision", "action", "intent", "eval"]) {
       expect(unsupportedRelationFieldError(owner, { implemented_by: ["reference_01"] })).toBeNull();
     }

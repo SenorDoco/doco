@@ -292,7 +292,6 @@ export async function loadSlaPerspectiveData(
     const data = rule.data ?? {};
     const title = firstLine(rule.rule);
     const ownerId =
-      asString(data.owner_id) ??
       outgoing.get(rule.id)?.find((s) => s.edge_type === "owned_by" && principalsById.has(s.to_id))
         ?.to_id ??
       (rule.created_by && principalsById.has(rule.created_by) ? rule.created_by : null);
@@ -305,9 +304,6 @@ export async function loadSlaPerspectiveData(
       ...incomingToRule
         .filter((s) => s.edge_type === "tests" && evalsById.has(s.from_id))
         .map((s) => s.from_id),
-      ...evals.rows
-        .filter((row) => asString(row.data?.target_ref) === rule.id)
-        .map((row) => row.id),
     ]);
     const linkedReferenceIds = new Set([
       ...incomingToRule.filter((s) => referencesById.has(s.from_id)).map((s) => s.from_id),

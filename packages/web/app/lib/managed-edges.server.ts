@@ -2,10 +2,9 @@
 // (option (i): edges as the authored source of truth). Runs inside the capture
 // transaction so the node write and its projected edges commit atomically.
 //
-// Only the five promoted-column relations are managed here (see
-// MANAGED_RELATION_EDGE_TYPES); every other relationship stays a node field for
-// now. Edges authored directly via the edges API (origin='authored') are never
-// touched — reconciliation owns origin='field' edges only.
+// Every relation kind is managed here (see MANAGED_RELATION_EDGE_TYPES). Edges
+// authored directly via the edges API (origin='authored') are never touched —
+// reconciliation owns origin='field' edges only.
 
 import {
   type CommitSource,
@@ -32,8 +31,8 @@ export interface ReconcileNodeEdgesResult {
 
 /**
  * Project + reconcile a node's managed relationship edges within the caller's
- * open transaction. No-op for non-node entities (policies carry none of the
- * five fields). Idempotent — re-capturing identical data creates and retires
+ * open transaction. No-op for non-node entities. Idempotent — re-capturing
+ * identical data creates and retires
  * nothing, and skips opening a changeset, so a full backfill never churns
  * edge history.
  */
@@ -90,6 +89,7 @@ export async function reconcileNodeEdges(
       fromNodeType: e.from_node_type,
       toId: e.to_id,
       toNodeType: e.to_node_type,
+      props: e.edge_props ?? null,
       origin: "field",
       actor: args.actor,
     });

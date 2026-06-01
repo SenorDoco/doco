@@ -1,5 +1,5 @@
-import { getEntity, roleAtLeast, upsertEntity, withClient } from "@doco/db";
-import { type EntityId, nowIso } from "@doco/shared";
+import { getEntity, roleAtLeast, upsertEntity, withClient, withTransaction } from "@doco/db";
+import { type Entity, type EntityId, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import {
@@ -9,6 +9,7 @@ import {
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { reconcileNodeEdges } from "~/lib/managed-edges.server";
 
 // Principals keep a small positive patch allowlist: name, body_md,
 // reports_to, lifecycle. `name` is editable — renames are recorded in
@@ -291,17 +292,29 @@ export async function action({
   }
 
   const now = nowIso();
-  await upsertEntity({
-    id: existing.id,
-    doco_id: existing.doco_id,
-    entity_type: "principal",
-    data: merged,
-    body_md: nextBodyMd,
-    lifecycle: nextLifecycle,
-    created_at: existing.created_at ?? undefined,
-    created_by: existing.created_by ?? undefined,
-    updated_at: now,
-    updated_by: me.id,
+  await withTransaction(async (c) => {
+    await upsertEntity(
+      {
+        id: existing.id,
+        doco_id: existing.doco_id,
+        entity_type: "principal",
+        data: merged,
+        body_md: nextBodyMd,
+        lifecycle: nextLifecycle,
+        created_at: existing.created_at ?? undefined,
+        created_by: existing.created_by ?? undefined,
+        updated_at: now,
+        updated_by: me.id,
+      },
+      c,
+    );
+    await reconcileNodeEdges(c, {
+      docoId: meta.docoId,
+      entityType: "principal",
+      entity: { ...merged, id: existing.id } as unknown as Entity,
+      actor: me.id,
+      source: "api",
+    });
   });
 
   await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, existing.id);

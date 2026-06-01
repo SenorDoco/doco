@@ -6,8 +6,9 @@ import {
   listEntitiesByDoco,
   roleAtLeast,
   upsertEntity,
+  withTransaction,
 } from "@doco/db";
-import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
+import { type Entity, type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import {
@@ -17,6 +18,7 @@ import {
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { reconcileNodeEdges } from "~/lib/managed-edges.server";
 
 // Footer-line helper: the Principal endpoints used to emit `name (id)`
 // as plain text, which the chat surface renders as an unclickable
@@ -219,17 +221,29 @@ export async function action({
     );
   }
 
-  await upsertEntity({
-    id,
-    doco_id: meta.docoId,
-    entity_type: "principal",
-    data: raw,
-    body_md: bodyMd,
-    lifecycle,
-    created_at: now,
-    created_by: me.id,
-    updated_at: now,
-    updated_by: me.id,
+  await withTransaction(async (c) => {
+    await upsertEntity(
+      {
+        id,
+        doco_id: meta.docoId,
+        entity_type: "principal",
+        data: raw,
+        body_md: bodyMd,
+        lifecycle,
+        created_at: now,
+        created_by: me.id,
+        updated_at: now,
+        updated_by: me.id,
+      },
+      c,
+    );
+    await reconcileNodeEdges(c, {
+      docoId: meta.docoId,
+      entityType: "principal",
+      entity: raw as unknown as Entity,
+      actor: me.id,
+      source: "api",
+    });
   });
 
   // Reindex so derived rows (edges table for `reports_to`, FTS,

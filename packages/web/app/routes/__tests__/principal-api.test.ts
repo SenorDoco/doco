@@ -5,15 +5,17 @@ const mocks = vi.hoisted(() => ({
   loadDocoRouteForRead: vi.fn(),
   query: vi.fn(),
   upsertEntity: vi.fn(),
+  withTransaction: vi.fn(),
   withClient: vi.fn(),
   getEntity: vi.fn(),
   runAuthoringPolicies: vi.fn(),
   reindexAndScheduleAttach: vi.fn(),
   appendAuditEvent: vi.fn(),
+  reconcileNodeEdges: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
-  const rank = { reader: 1, author: 2, approver: 3, owner: 4 } as const;
+  const rank = { reader: 1, author: 2, writer: 2, approver: 3, owner: 4 } as const;
   return {
     getUserById: vi.fn(),
     getEntity: mocks.getEntity,
@@ -21,7 +23,8 @@ vi.mock("@doco/db", () => {
     listDocoUsers: vi.fn(),
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
-    upsertEntity: mocks.upsertEntity,
+    upsertEntity: (rec: unknown) => mocks.upsertEntity(rec),
+    withTransaction: mocks.withTransaction,
     withClient: mocks.withClient,
   };
 });
@@ -55,6 +58,10 @@ vi.mock("~/lib/db.server", () => ({
   docoPath: (handle: string) => `/tmp/docos/${handle}`,
 }));
 
+vi.mock("~/lib/managed-edges.server", () => ({
+  reconcileNodeEdges: mocks.reconcileNodeEdges,
+}));
+
 import { action } from "../$docoHandle.api.principals[.]json";
 
 function principalRequest(body: Record<string, unknown>): Request {
@@ -70,6 +77,7 @@ describe("principal API", () => {
     vi.clearAllMocks();
     mocks.query.mockResolvedValue({ rows: [] });
     mocks.withClient.mockImplementation((fn) => fn({ query: mocks.query }));
+    mocks.withTransaction.mockImplementation((fn) => fn({ query: mocks.query }));
     mocks.loadDocoRouteForRead.mockResolvedValue({
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
@@ -83,6 +91,7 @@ describe("principal API", () => {
       violations: [],
     });
     mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
+    mocks.reconcileNodeEdges.mockResolvedValue({ created: 0, retired: 0 });
     mocks.getEntity.mockResolvedValue(null);
   });
 
