@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   type ComposedGrant,
@@ -29,7 +30,7 @@ import {
 //     account — one ACCESS dropdown (read/write/own) over the whole account.
 //     org     — every organization listed, each with its own ACCESS dropdown
 //               on the right; grant several at once.
-//     doco    — first choose ONE organization (removable, to switch); then its
+//     doco    — first choose ONE organization (pressed/removable); then its
 //               docos, each with an ACCESS dropdown; grant several.
 //     types   — choose an organization, then a doco, then every node type and
 //               edge type listed, each with its own level dropdown.
@@ -186,6 +187,52 @@ function TargetRow({
   );
 }
 
+export function GrantOrgChoiceList({
+  orgs,
+  selectedOrgId,
+  testIdPrefix,
+  onSelect,
+  onClear,
+}: {
+  orgs: { id: string; label: string }[];
+  selectedOrgId: string | null;
+  testIdPrefix: string;
+  onSelect: (orgId: string) => void;
+  onClear: () => void;
+}) {
+  const selectedOrg = selectedOrgId ? orgs.find((org) => org.id === selectedOrgId) : null;
+  const visibleOrgs = selectedOrg ? [selectedOrg] : orgs;
+
+  return (
+    <ul className="flex flex-wrap gap-2">
+      {visibleOrgs.map((org) => {
+        const selected = org.id === selectedOrgId;
+        return (
+          <li key={org.id}>
+            <button
+              type="button"
+              data-testid={`${testIdPrefix}-${org.id}`}
+              aria-pressed={selected}
+              aria-label={selected ? `Remove ${org.label} organization selection` : undefined}
+              onClick={() => {
+                if (selected) {
+                  onClear();
+                } else {
+                  onSelect(org.id);
+                }
+              }}
+              className={`neu-button${selected ? " neu-pressed" : ""} inline-flex w-fit max-w-full min-w-36 items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-left text-sm`}
+            >
+              <span className="min-w-0 truncate">{org.label}</span>
+              {selected ? <X aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 // Account: one ACCESS dropdown over the whole account (no per-type, no target).
 function AccountStep({
   catalog,
@@ -273,56 +320,36 @@ function DocoMultiStep({
   const [orgId, setOrgId] = useState<string | null>(null);
   const active = orgsWithDocos.find((g) => g.org.id === orgId) ?? null;
 
-  if (!active) {
-    return (
+  return (
+    <div className="space-y-4" data-testid="grant-doco-step">
       <div className="space-y-2" data-testid="grant-doco-org-step">
         <div className="text-xs uppercase tracking-wide text-muted-foreground">
           Which organization is the doco in?
         </div>
-        <ul className="space-y-1">
-          {orgsWithDocos.map((g) => (
-            <li key={g.org.id}>
-              <button
-                type="button"
-                data-testid={`grant-doco-org-${g.org.id}`}
-                onClick={() => setOrgId(g.org.id)}
-                className="neu-button w-full rounded-md border border-border px-3 py-2 text-left text-sm"
-              >
-                {g.org.label}
-              </button>
-            </li>
-          ))}
-          {orgsWithDocos.length === 0 ? (
-            <li className="text-sm text-muted-foreground">No docos you can grant.</li>
-          ) : null}
-        </ul>
+        <GrantOrgChoiceList
+          orgs={orgsWithDocos.map((g) => g.org)}
+          selectedOrgId={active?.org.id ?? null}
+          testIdPrefix="grant-doco-org"
+          onSelect={setOrgId}
+          onClear={() => setOrgId(null)}
+        />
+        {orgsWithDocos.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No docos you can grant.</p>
+        ) : null}
       </div>
-    );
-  }
 
-  return (
-    <div className="space-y-2" data-testid="grant-doco-step">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Docos in {active.org.label}
+      {active ? (
+        <div className="space-y-2" data-testid="grant-doco-docos-step">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Which docos in {active.org.label}?
+          </div>
+          <ul className="space-y-1">
+            {active.docos.map((t) => (
+              <TargetRow key={t.id} target={t} level="doco" grants={grants} onChange={onChange} />
+            ))}
+          </ul>
         </div>
-        <button
-          type="button"
-          data-testid="grant-doco-change-org"
-          onClick={() => setOrgId(null)}
-          className="neu-button rounded-md border border-border px-2 py-1 text-xs"
-        >
-          ← Change organization
-        </button>
-      </div>
-      <ul className="space-y-1">
-        {active.docos.map((t) => (
-          <TargetRow key={t.id} target={t} level="doco" grants={grants} onChange={onChange} />
-        ))}
-      </ul>
-      <p className="text-xs text-muted-foreground">
-        Pick docos here, or change organization to grant docos in another — selections add up.
-      </p>
+      ) : null}
     </div>
   );
 }
@@ -344,60 +371,48 @@ function TypesStep({
   const active = orgsWithDocos.find((g) => g.org.id === orgId) ?? null;
   const doco = active?.docos.find((d) => d.id === docoId) ?? null;
 
-  if (!active) {
+  if (!active || !doco) {
     return (
-      <div className="space-y-2" data-testid="grant-types-org-step">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Which organization is the doco in?
-        </div>
-        <ul className="space-y-1">
-          {orgsWithDocos.map((g) => (
-            <li key={g.org.id}>
-              <button
-                type="button"
-                data-testid={`grant-types-org-${g.org.id}`}
-                onClick={() => setOrgId(g.org.id)}
-                className="neu-button w-full rounded-md border border-border px-3 py-2 text-left text-sm"
-              >
-                {g.org.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
-  if (!doco) {
-    return (
-      <div className="space-y-2" data-testid="grant-types-doco-step">
-        <div className="flex items-center justify-between gap-2">
+      <div className="space-y-4" data-testid="grant-types-step">
+        <div className="space-y-2" data-testid="grant-types-org-step">
           <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Which doco in {active.org.label}?
+            Which organization is the doco in?
           </div>
-          <button
-            type="button"
-            data-testid="grant-types-change-org"
-            onClick={() => setOrgId(null)}
-            className="neu-button rounded-md border border-border px-2 py-1 text-xs"
-          >
-            ← Change organization
-          </button>
+          <GrantOrgChoiceList
+            orgs={orgsWithDocos.map((g) => g.org)}
+            selectedOrgId={active?.org.id ?? null}
+            testIdPrefix="grant-types-org"
+            onSelect={(nextOrgId) => {
+              setOrgId(nextOrgId);
+              setDocoId(null);
+            }}
+            onClear={() => {
+              setOrgId(null);
+              setDocoId(null);
+            }}
+          />
         </div>
-        <ul className="space-y-1">
-          {active.docos.map((d) => (
-            <li key={d.id}>
-              <button
-                type="button"
-                data-testid={`grant-types-doco-${d.id}`}
-                onClick={() => setDocoId(d.id)}
-                className="neu-button w-full rounded-md border border-border px-3 py-2 text-left text-sm"
-              >
-                {d.label}
-              </button>
-            </li>
-          ))}
-        </ul>
+        {active ? (
+          <div className="space-y-2" data-testid="grant-types-doco-step">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Which doco in {active.org.label}?
+            </div>
+            <ul className="flex flex-wrap gap-2">
+              {active.docos.map((d) => (
+                <li key={d.id}>
+                  <button
+                    type="button"
+                    data-testid={`grant-types-doco-${d.id}`}
+                    onClick={() => setDocoId(d.id)}
+                    className="neu-button inline-flex w-fit max-w-full min-w-36 items-center rounded-md border border-border px-3 py-2 text-left text-sm"
+                  >
+                    <span className="min-w-0 truncate">{d.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     );
   }
