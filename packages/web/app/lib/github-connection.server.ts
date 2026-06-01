@@ -44,10 +44,15 @@ export async function setGitHubConnection(docoId: string, conn: GitHubConnection
   await withClient(async (c) => {
     await c.query(
       `UPDATE docos
-          SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{github_integration}', $2::jsonb, true),
+          SET data = jsonb_set(
+                COALESCE(data, '{}'::jsonb)
+                  || jsonb_build_object(
+                       'github_integration',
+                       COALESCE(data->'github_integration', '{}'::jsonb)),
+                '{github_integration,connections}', $2::jsonb, true),
               updated_at = now()
         WHERE id = $1`,
-      [docoId, JSON.stringify({ connections: [conn] })],
+      [docoId, JSON.stringify([conn])],
     );
   });
 }
@@ -138,10 +143,15 @@ async function writeConnections(docoId: string, conns: GitHubConnection[]): Prom
   await withClient(async (c) => {
     await c.query(
       `UPDATE docos
-          SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{github_integration}', $2::jsonb, true),
+          SET data = jsonb_set(
+                COALESCE(data, '{}'::jsonb)
+                  || jsonb_build_object(
+                       'github_integration',
+                       COALESCE(data->'github_integration', '{}'::jsonb)),
+                '{github_integration,connections}', $2::jsonb, true),
               updated_at = now()
         WHERE id = $1`,
-      [docoId, JSON.stringify({ connections: conns })],
+      [docoId, JSON.stringify(conns)],
     );
   });
 }

@@ -11,10 +11,12 @@ import { getDocoByIdOrHandle, roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { redirect } from "react-router";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
+import { getInstallationAccount } from "~/lib/github-app.server";
 import {
   getDocoConnectionsContext,
   importInstallationConnections,
   setBackfillState,
+  subscribeInstallation,
 } from "~/lib/github-connection.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 import { kickBackfillRun } from "./api.github.backfill-run";
@@ -41,6 +43,12 @@ export async function loader({ request }: { request: Request }) {
   if (!roleAtLeast(role, "writer")) return redirect(`${panel}?github=forbidden`);
 
   try {
+    const { account } = await getInstallationAccount(installationId);
+    await subscribeInstallation(doco.id, {
+      installation_id: installationId,
+      account,
+      connected_at: new Date().toISOString(),
+    });
     const ctx = await getDocoConnectionsContext(doco.id);
     const { repos } = await importInstallationConnections({ docoId: doco.id, installationId });
     if (!ctx || repos.length === 0) {

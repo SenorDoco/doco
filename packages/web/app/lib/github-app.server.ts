@@ -86,6 +86,45 @@ export interface InstallationToken {
   expires_at: string;
 }
 
+export interface InstallationAccount {
+  account: string;
+}
+
+/**
+ * Read the account login for a GitHub App installation. The setup callback
+ * stores this as the durable org/owner subscription label, even before any
+ * repositories have been imported.
+ */
+export async function getInstallationAccount(
+  installationId: string | number,
+  opts?: { appId?: string; privateKey?: string; fetchImpl?: typeof fetch },
+): Promise<InstallationAccount> {
+  const appId = opts?.appId ?? process.env.DOCO_GITHUB_APP_ID ?? "";
+  const privateKey = opts?.privateKey ?? process.env.DOCO_GITHUB_APP_PRIVATE_KEY ?? "";
+  if (!appId || !privateKey) {
+    throw new Error(
+      "GitHub App not configured (DOCO_GITHUB_APP_ID / DOCO_GITHUB_APP_PRIVATE_KEY).",
+    );
+  }
+  const jwt = buildAppJwt({ appId, privateKey });
+  const doFetch = opts?.fetchImpl ?? fetch;
+  const res = await doFetch(`${GITHUB_API}/app/installations/${installationId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": API_VERSION,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`installation fetch failed: ${res.status} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { account?: { login?: unknown } };
+  const account = typeof body.account?.login === "string" ? body.account.login : "";
+  if (!account) throw new Error("installation fetch returned no account login");
+  return { account };
+}
+
 /**
  * Mint an installation access token for a given installation id. Reads the App
  * credentials from the environment unless overridden (tests pass a fetchImpl +

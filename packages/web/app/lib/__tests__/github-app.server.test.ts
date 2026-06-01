@@ -2,6 +2,7 @@ import { createVerify, generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildAppJwt,
+  getInstallationAccount,
   githubAppConfigured,
   listInstallationRepos,
   listRepoPullRequests,
@@ -76,6 +77,25 @@ describe("mintInstallationToken", () => {
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.github.com/app/installations/42/access_tokens");
     expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>).Authorization).toMatch(/^Bearer .+\..+\..+$/);
+  });
+});
+
+describe("getInstallationAccount", () => {
+  it("fetches the installation account login with an app JWT", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ account: { login: "acme" } }), { status: 200 }),
+    );
+    const res = await getInstallationAccount("42", {
+      appId: "1",
+      privateKey: PEM,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(res.account).toBe("acme");
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.github.com/app/installations/42");
+    expect(init.method).toBe("GET");
     expect((init.headers as Record<string, string>).Authorization).toMatch(/^Bearer .+\..+\..+$/);
   });
 });
