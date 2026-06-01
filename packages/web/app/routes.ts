@@ -179,6 +179,8 @@ export default [
   route("api/github/webhook", "routes/api.github.webhook.tsx"),
   // GitHub App post-install Setup URL callback (click-through connect).
   route("api/github/setup", "routes/api.github.setup.tsx"),
+  // Self-chaining PR-import worker (one time-budgeted slice per invocation).
+  route("api/github/backfill-run", "routes/api.github.backfill-run.tsx"),
   // Host-level human-invite + API-key endpoints. Splitting the two
   // makes the "is this a human or an agent?" choice show up in the URL
   // instead of being a body flag.

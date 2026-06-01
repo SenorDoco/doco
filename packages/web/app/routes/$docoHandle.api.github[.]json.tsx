@@ -104,6 +104,7 @@ export async function action({
     if (!ctx || !conn) {
       return Response.json({ error: "That repo isn't connected to this Doco." }, { status: 400 });
     }
+    const startPage = Number(body.page ?? 1);
     const result = await backfillRepoPullRequests({
       docoDir: docoPath(ctx.handle),
       docoId: meta.docoId,
@@ -113,6 +114,7 @@ export async function action({
       repo: parsed.name,
       installationId: conn.installation_id,
       createdByUserId: me.id,
+      startPage: Number.isInteger(startPage) && startPage >= 1 ? startPage : 1,
     });
     return Response.json({ ok: true, repo, ...result });
   }

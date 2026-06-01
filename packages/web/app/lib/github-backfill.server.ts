@@ -1,9 +1,18 @@
 // Backfill: import a connected repo's existing PRs as References. Mints an
 // installation token, pages the repo's PRs (github-app), and upserts each
 // (github-pr-import). Idempotent — safe to re-run, and safe to overlap with
-// live webhook deliveries, because the upsert is keyed on the PR URL. The
-// "Import previous PRs?" button (settings, increment 5) triggers this.
-import { listRepoPullRequests, mintInstallationToken } from "./github-app.server";
+// live webhook deliveries, because the upsert is keyed on the PR URL.
+//
+// Cursor-based: each call processes one window of pages (default: 5 × 100 =
+// 500 PRs) and returns `nextPage` when more remain. The caller should invoke
+// again with `startPage = nextPage` until `nextPage` is null. This keeps each
+// serverless function invocation well within Vercel's 60-second timeout even
+// for repos with thousands of PRs.
+import {
+  type RepoPullRequestsPage,
+  listRepoPullRequests,
+  mintInstallationToken,
+} from "./github-app.server";
 import { upsertPullRequestReference } from "./github-pr-import.server";
 
 export interface BackfillOpts {
@@ -16,12 +25,21 @@ export interface BackfillOpts {
   repo: string;
   installationId: string | number;
   createdByUserId?: string | null;
+  /** GitHub page number to start from (1-based). Default: 1. */
+  startPage?: number;
+  /** Pages of PRs to fetch per call (100 PRs/page). Default: 5 (= 500 PRs). */
+  pagesPerBatch?: number;
 }
 
 /** Injectable seams so the orchestration is unit-testable without GitHub/DB. */
 export interface BackfillDeps {
   mintToken: typeof mintInstallationToken;
-  listPrs: typeof listRepoPullRequests;
+  listPrs: (
+    token: string,
+    owner: string,
+    repo: string,
+    opts?: { startPage?: number; maxPages?: number },
+  ) => Promise<RepoPullRequestsPage>;
   upsert: typeof upsertPullRequestReference;
 }
 
@@ -35,6 +53,11 @@ export interface BackfillResult {
   unchanged: number;
   /** Writes that genuinely errored. */
   failed: number;
+  /**
+   * When non-null, more PRs remain. Call again with `startPage = nextPage`
+   * to continue the import. Null means the backfill is complete.
+   */
+  nextPage: number | null;
 }
 
 export async function backfillRepoPullRequests(
@@ -45,8 +68,14 @@ export async function backfillRepoPullRequests(
   const listPrs = deps?.listPrs ?? listRepoPullRequests;
   const upsert = deps?.upsert ?? upsertPullRequestReference;
 
+  const startPage = opts.startPage ?? 1;
+  const pagesPerBatch = opts.pagesPerBatch ?? 5;
+
   const { token } = await mintToken(opts.installationId);
-  const prs = await listPrs(token, opts.owner, opts.repo);
+  const { prs, hasMore } = await listPrs(token, opts.owner, opts.repo, {
+    startPage,
+    maxPages: pagesPerBatch,
+  });
 
   const tally = { created: 0, updated: 0, unchanged: 0, failed: 0 };
   for (const pr of prs) {
@@ -62,7 +91,11 @@ export async function backfillRepoPullRequests(
     else if (res.status === "unchanged") tally.unchanged++;
     else tally.failed++;
   }
-  return { total: prs.length, ...tally };
+  return {
+    total: prs.length,
+    ...tally,
+    nextPage: hasMore ? startPage + pagesPerBatch : null,
+  };
 }
 
 export interface InstallationBackfillResult {

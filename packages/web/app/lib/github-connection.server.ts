@@ -242,10 +242,26 @@ export interface GitHubBackfillState {
   status: "running" | "done";
   started_at?: string;
   finished_at?: string;
-  /** Repos covered by the backfill. */
+  /** Total repos covered by the backfill (for display). */
   repos?: number;
-  /** PR References created (new) this run. */
+  /** PR References created so far (== `created`; kept for display/back-compat). */
   imported?: number;
+  // ── Resumable cursor (driven by the self-chaining backfill worker) ──
+  // The worker processes a time-budgeted slice per invocation, persists this
+  // cursor, and re-triggers itself until the queue is exhausted — so an org
+  // with tens of thousands of PRs never hits the function timeout in one run.
+  /** App installation whose repos are being imported. */
+  installation_id?: number;
+  /** Repo full-names still to walk (the work queue). */
+  queue?: string[];
+  /** Index into `queue` of the repo currently importing. */
+  repo_index?: number;
+  /** GitHub page (1-based) to resume the current repo from. */
+  page?: number;
+  /** Running tallies across the whole backfill. */
+  updated?: number;
+  unchanged?: number;
+  failed?: number;
 }
 
 /** Read the backfill marker off a raw github_integration value. Pure. */
@@ -255,12 +271,22 @@ export function normalizeBackfillState(raw: unknown): GitHubBackfillState | null
   if (!b || typeof b !== "object") return null;
   const e = b as Record<string, unknown>;
   if (e.status !== "running" && e.status !== "done") return null;
+  const num = (k: string) => (typeof e[k] === "number" ? { [k]: e[k] as number } : {});
   return {
     status: e.status,
     ...(typeof e.started_at === "string" ? { started_at: e.started_at } : {}),
     ...(typeof e.finished_at === "string" ? { finished_at: e.finished_at } : {}),
-    ...(typeof e.repos === "number" ? { repos: e.repos } : {}),
-    ...(typeof e.imported === "number" ? { imported: e.imported } : {}),
+    ...num("repos"),
+    ...num("imported"),
+    ...num("installation_id"),
+    ...(Array.isArray(e.queue)
+      ? { queue: e.queue.filter((x): x is string => typeof x === "string") }
+      : {}),
+    ...num("repo_index"),
+    ...num("page"),
+    ...num("updated"),
+    ...num("unchanged"),
+    ...num("failed"),
   };
 }
 

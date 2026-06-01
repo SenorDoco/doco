@@ -1,0 +1,127 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
+vi.mock("@vercel/functions", () => ({ waitUntil: vi.fn() }));
+vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/repos/${h}` }));
+
+const { getDocoConnectionsContext, runBackfillSlice } = vi.hoisted(() => ({
+  getDocoConnectionsContext: vi.fn(),
+  runBackfillSlice: vi.fn(),
+}));
+vi.mock("~/lib/github-connection.server", () => ({ getDocoConnectionsContext }));
+vi.mock("~/lib/github-backfill-driver.server", () => ({ runBackfillSlice }));
+
+import { waitUntil } from "@vercel/functions";
+import { action } from "../api.github.backfill-run";
+
+const SECRET = "shhh";
+const post = (body: unknown, headers: Record<string, string> = {}) =>
+  new Request("https://doco.to/api/github/backfill-run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+
+beforeEach(() => {
+  process.env.CRON_SECRET = SECRET;
+  process.env.DOCO_GITHUB_WEBHOOK_SECRET = undefined;
+  getDocoConnectionsContext.mockReset();
+  runBackfillSlice.mockReset();
+  (waitUntil as unknown as ReturnType<typeof vi.fn>).mockReset();
+  global.fetch = vi.fn(async () => new Response("{}")) as never;
+});
+afterEach(() => {
+  process.env.CRON_SECRET = undefined;
+});
+
+describe("api.github.backfill-run action", () => {
+  it("403s without the bearer secret or cron header", async () => {
+    const res = await action({ request: post({ docoId: "doco_1" }) });
+    expect(res.status).toBe(403);
+    expect(getDocoConnectionsContext).not.toHaveBeenCalled();
+  });
+
+  it("400s when docoId is missing", async () => {
+    const res = await action({ request: post({}, { Authorization: `Bearer ${SECRET}` }) });
+    expect(res.status).toBe(400);
+  });
+
+  it("skips (no re-import) when the marker is already done", async () => {
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [],
+      backfill: { status: "done", queue: ["acme/a"] },
+    });
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+    expect(await res.json()).toEqual({ done: true, skipped: true });
+    expect(runBackfillSlice).not.toHaveBeenCalled();
+  });
+
+  it("runs a slice and does NOT re-kick when the slice finishes", async () => {
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [{ repo: "acme/a", installation_id: 42 }],
+      backfill: { status: "running", queue: ["acme/a"], installation_id: 42, page: 1 },
+    });
+    runBackfillSlice.mockResolvedValue({ done: true });
+
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+
+    expect(await res.json()).toEqual({ done: true });
+    expect(runBackfillSlice).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "running" }),
+      expect.objectContaining({
+        docoId: "doco_1",
+        docoDir: "/repos/d",
+        ownerSlug: "o",
+        docoSlug: "d",
+        installationId: 42,
+      }),
+    );
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  it("re-kicks itself when the slice is not done", async () => {
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [],
+      backfill: { status: "running", queue: ["acme/a", "acme/b"], installation_id: 7, page: 1 },
+    });
+    runBackfillSlice.mockResolvedValue({ done: false });
+
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+
+    expect(await res.json()).toEqual({ done: false });
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    // The self-kick targets the same origin's worker with the bearer secret.
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://doco.to/api/github/backfill-run",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: `Bearer ${SECRET}` }),
+      }),
+    );
+  });
+
+  it("accepts Vercel's cron header in lieu of the bearer secret", async () => {
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [],
+      backfill: { status: "done" },
+    });
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { "x-vercel-cron": "1" }),
+    });
+    expect(res.status).toBe(200);
+  });
+});

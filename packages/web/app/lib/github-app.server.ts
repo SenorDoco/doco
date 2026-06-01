@@ -138,30 +138,40 @@ async function githubGet<T>(
   return { data: (await res.json()) as T, linkHeader: res.headers.get("link") };
 }
 
+export interface RepoPullRequestsPage {
+  prs: GitHubPullRequest[];
+  /** True when there are additional pages beyond the fetched window. */
+  hasMore: boolean;
+}
+
 /**
- * List every pull request for a repo (state=all), following pagination until
- * there's no `rel="next"` link (or maxPages is hit). Used by the backfill.
+ * List pull requests for a repo (state=all), starting at `startPage` and
+ * fetching up to `maxPages` pages. Returns `{ prs, hasMore }` so callers can
+ * implement cursor-based pagination without hitting serverless timeouts.
  */
 export async function listRepoPullRequests(
   token: string,
   owner: string,
   repo: string,
-  opts?: { fetchImpl?: typeof fetch; perPage?: number; maxPages?: number },
-): Promise<GitHubPullRequest[]> {
+  opts?: { fetchImpl?: typeof fetch; perPage?: number; maxPages?: number; startPage?: number },
+): Promise<RepoPullRequestsPage> {
   const per = opts?.perPage ?? 100;
   const maxPages = opts?.maxPages ?? 50;
-  const out: GitHubPullRequest[] = [];
-  for (let page = 1; page <= maxPages; page++) {
+  const startPage = opts?.startPage ?? 1;
+  const prs: GitHubPullRequest[] = [];
+  let hasMore = false;
+  for (let page = startPage; page < startPage + maxPages; page++) {
     const { data, linkHeader } = await githubGet<GitHubPullRequest[]>(
       token,
       `/repos/${owner}/${repo}/pulls?state=all&per_page=${per}&page=${page}`,
       opts?.fetchImpl,
     );
     if (!Array.isArray(data) || data.length === 0) break;
-    out.push(...data);
+    prs.push(...data);
     if (!linkHeader || !linkHeader.includes('rel="next"')) break;
+    if (page === startPage + maxPages - 1) hasMore = true;
   }
-  return out;
+  return { prs, hasMore };
 }
 
 /**
