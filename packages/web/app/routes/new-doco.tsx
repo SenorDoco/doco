@@ -40,6 +40,14 @@ import { getCurrentPrincipal } from "~/lib/session.server";
 const DEFAULT_TEMPLATE_HANDLE = "generic";
 const GITHUB_PR_TEMPLATE_HANDLE = "github-pull-requests";
 
+/**
+ * Sentinel <option> value for "+ Create a new organization". Kept
+ * distinct from "" (the unselected placeholder) so a fresh form can
+ * start with no organization chosen without implying the create-new
+ * flow.
+ */
+export const CREATE_NEW_ORG_VALUE = "__new_org__";
+
 interface CreationState {
   templateHandle: string;
   orgId: string;
@@ -88,10 +96,28 @@ function defaultDocoNameForOrg(orgHandle: string): string {
   return orgHandle ? `${orgHandle}-` : "";
 }
 
+/**
+ * Initial value for the organization <select>. An empty string means
+ * "no organization selected yet" — we deliberately do NOT default to
+ * the user's first org, so picking one is a conscious choice. A
+ * preserved new-org handle (e.g. after a failed submit) restores the
+ * create-new flow.
+ */
+export function initialOrgSelection(
+  formState: Pick<CreationState, "orgId" | "newOrgHandle">,
+): string {
+  if (formState.orgId) return formState.orgId;
+  if (formState.newOrgHandle) return CREATE_NEW_ORG_VALUE;
+  return "";
+}
+
 function parseFormState(form: FormData): CreationState {
+  const rawOrgId = String(form.get("org_id") ?? "").trim();
   return {
     templateHandle: normalizeTemplateHandle(String(form.get("template_handle") ?? "").trim()),
-    orgId: String(form.get("org_id") ?? "").trim(),
+    // The create-new sentinel collapses to an empty orgId; the action
+    // then creates the org from new_org_handle.
+    orgId: rawOrgId === CREATE_NEW_ORG_VALUE ? "" : rawOrgId,
     newOrgHandle: String(form.get("new_org_handle") ?? "")
       .trim()
       .toLowerCase(),
@@ -221,10 +247,10 @@ export default function NewDocoStep1({
 }) {
   const { me, orgs, prefill } = loaderData;
   const formState = actionData?.state ?? prefill;
-  const initialOrgId = formState.orgId || orgs[0]?.id || "";
+  const initialOrgId = initialOrgSelection(formState);
   const initialTemplate = normalizeTemplateHandle(formState.templateHandle);
   const initialOrgHandle =
-    initialOrgId === ""
+    initialOrgId === CREATE_NEW_ORG_VALUE
       ? formState.newOrgHandle
       : (orgs.find((o) => o.id === initialOrgId)?.handle ?? "");
   const [templateHandle, setTemplateHandle] = useState(initialTemplate);
@@ -247,7 +273,7 @@ export default function NewDocoStep1({
       setGoal(defaultGoalForTemplate(next));
     }
   };
-  const isCreateNewOrg = orgId === "";
+  const isCreateNewOrg = orgId === CREATE_NEW_ORG_VALUE;
   const selectedOrgHandle = isCreateNewOrg
     ? newOrgHandle || "<org>"
     : (orgs.find((o) => o.id === orgId)?.handle ?? "<org>");
@@ -255,14 +281,16 @@ export default function NewDocoStep1({
     setOrgId(value);
     if (!nameEdited) {
       const nextOrgHandle =
-        value === "" ? newOrgHandle : (orgs.find((o) => o.id === value)?.handle ?? "");
+        value === CREATE_NEW_ORG_VALUE
+          ? newOrgHandle
+          : (orgs.find((o) => o.id === value)?.handle ?? "");
       setName(defaultDocoNameForOrg(nextOrgHandle));
     }
   };
   const updateNewOrgHandle = (value: string) => {
     const next = value.toLowerCase();
     setNewOrgHandle(next);
-    if (!nameEdited && orgId === "") {
+    if (!nameEdited && orgId === CREATE_NEW_ORG_VALUE) {
       setName(defaultDocoNameForOrg(next));
     }
   };
@@ -338,17 +366,21 @@ export default function NewDocoStep1({
                 </legend>
                 <select
                   name="org_id"
+                  required
                   value={orgId}
                   onChange={(e) => updateOrgId(e.target.value)}
                   className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
+                  <option value="" disabled>
+                    Select an organization…
+                  </option>
                   {orgs.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.handle}
                       {o.handle === me.username ? " (personal)" : ""}
                     </option>
                   ))}
-                  <option value="">+ Create a new organization</option>
+                  <option value={CREATE_NEW_ORG_VALUE}>+ Create a new organization</option>
                 </select>
                 {isCreateNewOrg ? (
                   <>
