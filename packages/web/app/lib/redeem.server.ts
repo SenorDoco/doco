@@ -1,7 +1,6 @@
 // Server-only re-exports. Keeps server-only dependencies (pg, etc.) out of
 // the client bundle.
 import { createDocoInOrg as createHostDocoInOrg } from "@doco/host";
-import { createConversation } from "./agent-chat.server";
 
 export {
   addOrganizationByHandle,
@@ -18,21 +17,10 @@ import { getDocoEmbeddingProvider } from "./embedding-provider.server";
 import { recordReindexLoad } from "./telemetry.server";
 
 type CreateDocoInOrgOptions = Parameters<typeof createHostDocoInOrg>[0];
-type CreatedDocoInOrg = Awaited<ReturnType<typeof createHostDocoInOrg>> & {
-  companionChatId?: string;
-};
-
-export function createdDocoChatTitle(docoHandle: string): string {
-  return `Chat for ${docoHandle}`;
-}
+type CreatedDocoInOrg = Awaited<ReturnType<typeof createHostDocoInOrg>>;
 
 export async function createDocoInOrg(opts: CreateDocoInOrgOptions): Promise<CreatedDocoInOrg> {
-  const rec = await createHostDocoInOrg(opts);
-  const conversation = await createConversation(opts.createdByUserId, {
-    title: createdDocoChatTitle(rec.handle),
-    attachedDocoIds: [rec.docoId],
-  });
-  return { ...rec, companionChatId: conversation.id };
+  return await createHostDocoInOrg(opts);
 }
 
 export interface ReindexExtraOptions {

@@ -29,7 +29,7 @@ vi.mock("../agent-chat.server", () => ({
   createConversation: mocks.createConversation,
 }));
 
-import { createDocoInOrg, createdDocoChatTitle, reindex } from "../redeem.server";
+import { createDocoInOrg, reindex } from "../redeem.server";
 
 describe("createDocoInOrg", () => {
   beforeEach(() => {
@@ -45,7 +45,7 @@ describe("createDocoInOrg", () => {
     mocks.reindexBare.mockResolvedValue({ loadMs: 12, loadedEntityCount: 1 });
   });
 
-  it("creates a companion chat attached to the new Doco", async () => {
+  it("creates a Doco without eagerly creating a companion chat", async () => {
     const rec = await createDocoInOrg({
       orgId: "org_01",
       requestedHandle: "acme-onboarding",
@@ -61,19 +61,12 @@ describe("createDocoInOrg", () => {
       visibility: "private",
       templateHandle: null,
     });
-    expect(mocks.createConversation).toHaveBeenCalledWith("user_01", {
-      title: "Chat for acme-onboarding",
-      attachedDocoIds: ["doco_01"],
-    });
+    expect(mocks.createConversation).not.toHaveBeenCalled();
     expect(rec).toMatchObject({
       docoId: "doco_01",
       handle: "acme-onboarding",
-      companionChatId: "conv_01",
     });
-  });
-
-  it("names companion chats from the Doco handle", () => {
-    expect(createdDocoChatTitle("acme-onboarding")).toBe("Chat for acme-onboarding");
+    expect(rec).not.toHaveProperty("companionChatId");
   });
 });
 

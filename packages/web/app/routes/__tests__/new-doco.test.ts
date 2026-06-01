@@ -62,7 +62,6 @@ describe("/new-doco", () => {
       orgId: "org_acme",
       orgHandle: "acme",
       goal: "Track pull requests.",
-      companionChatId: null,
     });
 
     const response = await expectRedirect(
@@ -79,5 +78,32 @@ describe("/new-doco", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe("/prs/integrations/github");
+  });
+
+  it("redirects regular docos without a created chat id", async () => {
+    mocks.createDocoInOrg.mockResolvedValue({
+      docoId: "doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
+      handle: "bpms",
+      orgId: "org_acme",
+      orgHandle: "acme",
+      goal: "Track process work.",
+    });
+
+    const response = await expectRedirect(
+      action({
+        request: formRequest({
+          template_handle: "generic",
+          org_id: "org_acme",
+          name: "bpms",
+          visibility: "private",
+          goal: "Track process work.",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      "/bpms/welcome?created_doco_id=doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
+    );
   });
 });
