@@ -27,7 +27,7 @@ describe("loadOrgTreeData", () => {
               {
                 from_id: "principal_research",
                 to_id: "principal_alex",
-                edge_type: "reports_to",
+                props: { role: "reports_to", source_field: "reports_to" },
               },
             ] as T[],
           };

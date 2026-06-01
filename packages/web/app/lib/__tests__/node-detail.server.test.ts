@@ -107,7 +107,7 @@ describe("loadNodeDialogDetail", () => {
               {
                 to_id: "action_01ACTIVE",
                 to_node_type: "action",
-                edge_type: "enacts",
+                edge_type: "supports",
               },
             ] as T[],
           };
@@ -118,7 +118,7 @@ describe("loadNodeDialogDetail", () => {
               {
                 from_id: "action_01RETIRED",
                 from_node_type: "action",
-                edge_type: "preceded_by",
+                edge_type: "flows_to",
               },
             ] as T[],
           };
@@ -194,7 +194,7 @@ describe("loadNodeDialogDetail", () => {
               {
                 to_id: principalId,
                 to_node_type: "principal",
-                edge_type: "decided_by",
+                edge_type: "attributed_to",
               },
             ] as T[],
           };
@@ -276,7 +276,7 @@ describe("loadNodeDialogDetail", () => {
     expect(detail?.incoming).toEqual([]);
     expect(detail?.outgoing).toEqual([
       expect.objectContaining({
-        edge_type: "decided_by",
+        edge_type: "attributed_to",
         other_id: principalId,
       }),
     ]);

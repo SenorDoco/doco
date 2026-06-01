@@ -65,7 +65,7 @@ BODY (JSON)
                                   (e.g. a glossary term entry with no alternate names); do
                                   not invent filler to satisfy a non-existent requirement.
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
-  BPMN flow         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="sequence_flow"
+  BPMN flow         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="flows_to"
   decided_by_principal_id optional  principal id who made the decision; auth fills this
   born_from          optional   reference id (e.g. born_from a bugfix decision)
   lifecycle          optional   one of "drafting" | "asserted" | "retired"; default "asserted"
@@ -235,7 +235,7 @@ BODY (JSON)
   verb                required   short verb such as "refactor", "migrate", "deploy"
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
-  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with sequence_flow / preceded_by relations
+  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with flows_to relations
   gated_by            optional   ["rule_01...", ...] rule ids that gate this action (BPMN-style policy guards)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
@@ -274,7 +274,7 @@ UPDATE AN EXISTING ACTION
 
   Other patchable fields include action, lifecycle, deprecated,
   outcome, superseded_by, intent_ids/add/remove, verb,
-  outputs, decision_ids, and performed_at. Use changesets for sequence_flow / preceded_by edges.
+  outputs, decision_ids, and performed_at. Use changesets for flows_to edges.
 `,
 
   logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
@@ -297,7 +297,7 @@ BODY (JSON)
   template_id         optional   Action id this Log instances
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
-  preceded_by         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="preceded_by"
+  preceded_by         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="flows_to" and predecessor role props
   inputs              optional   event input object or value
   actor_principal_id  optional   principal id who performed it; auth fills this
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "retired"
@@ -516,7 +516,7 @@ BODY (JSON)
   kind                required   "initial" | "intermediate" | "terminal"
   intent_ids          optional   ["intent_01...", ...]
   invariants          optional   ["condition true while in this state", ...]
-  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with sequence_flow / preceded_by relations
+  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with flows_to relations
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -546,7 +546,7 @@ UPDATE AN EXISTING STATE
 
   Body fields are all optional. Patchable fields include state,
   lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  kind and invariants. Use changesets for sequence_flow / preceded_by edges.
+  kind and invariants. Use changesets for flows_to edges.
 `,
 
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)
@@ -690,7 +690,7 @@ ERROR RESPONSES
               "error": "Cannot retire principal: active nodes still reference it. …",
               "active_references": [
                 { "id": "action_<ULID>", "node_type": "action",
-                  "summary": "…", "edge_type": "performed_by" },
+                  "summary": "…", "edge_type": "attributed_to" },
                 ...
               ]
             }
@@ -821,7 +821,7 @@ EXAMPLE — node_authoring (deterministic)
       "evaluation_kind": "deterministic",
       "predicate": {
         "kind": "requires_edge",
-        "edge_type": "serves",
+        "edge_type": "supports",
         "target_node_type": "intent",
         "when_node_type": ["decision"]
       }

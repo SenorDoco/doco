@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeForwardSequenceDepths } from "../bpmn-sequence-depth";
 
 describe("computeForwardSequenceDepths", () => {
-  it("places a sequence_flow target to the right of its incoming source", () => {
+  it("places a flows_to target to the right of its incoming source", () => {
     const depths = computeForwardSequenceDepths(
       [
         { id: "action_early_target", created_at: "2026-05-26T00:00:00.000Z" },
@@ -12,7 +12,7 @@ describe("computeForwardSequenceDepths", () => {
         {
           source: "decision_later_source",
           target: "action_early_target",
-          edge_type: "sequence_flow",
+          edge_type: "flows_to",
         },
       ],
     );
@@ -29,8 +29,8 @@ describe("computeForwardSequenceDepths", () => {
         { id: "action_checkout", created_at: "2026-05-26T00:15:00.000Z" },
       ],
       [
-        { source: "decision_route", target: "action_checkout", edge_type: "sequence_flow" },
-        { source: "action_checkout", target: "decision_route", edge_type: "sequence_flow" },
+        { source: "decision_route", target: "action_checkout", edge_type: "flows_to" },
+        { source: "action_checkout", target: "decision_route", edge_type: "flows_to" },
       ],
     );
 
@@ -50,11 +50,11 @@ describe("computeForwardSequenceDepths", () => {
         { id: "decision_gateway", created_at: "2026-05-26T00:09:00.000Z" },
       ],
       [
-        { source: "action_start", target: "action_mid", edge_type: "sequence_flow" },
-        { source: "action_mid", target: "decision_gateway", edge_type: "sequence_flow" },
-        { source: "action_loading", target: "decision_gateway", edge_type: "sequence_flow" },
+        { source: "action_start", target: "action_mid", edge_type: "flows_to" },
+        { source: "action_mid", target: "decision_gateway", edge_type: "flows_to" },
+        { source: "action_loading", target: "decision_gateway", edge_type: "flows_to" },
         // loopback (demoted): gateway routes back to the loading step
-        { source: "decision_gateway", target: "action_loading", edge_type: "sequence_flow" },
+        { source: "decision_gateway", target: "action_loading", edge_type: "flows_to" },
       ],
     );
 
@@ -71,7 +71,7 @@ describe("computeForwardSequenceDepths", () => {
         { id: "action_root", created_at: "2026-05-26T00:00:00.000Z" },
         { id: "action_next", created_at: "2026-05-26T00:05:00.000Z" },
       ],
-      [{ source: "action_root", target: "action_next", edge_type: "sequence_flow" }],
+      [{ source: "action_root", target: "action_next", edge_type: "flows_to" }],
     );
     expect(depths.get("action_root")).toBe(0);
     expect(depths.get("action_next")).toBe(1);
@@ -83,7 +83,7 @@ describe("computeForwardSequenceDepths", () => {
         { id: "rule_guard", created_at: "2026-05-26T00:00:00.000Z" },
         { id: "action_pay", created_at: "2026-05-26T00:01:00.000Z" },
       ],
-      [{ source: "action_pay", target: "rule_guard", edge_type: "gated_by" }],
+      [{ source: "action_pay", target: "rule_guard", edge_type: "constrained_by" }],
     );
 
     expect(depths.get("action_pay")).toBe(0);

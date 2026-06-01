@@ -3,8 +3,8 @@
 // Renders a Doco's Principal nodes as a top-down reporting tree:
 // the unique top-of-chain Principal (no `reports_to`) at the root,
 // direct reports beneath, and so on. Reporting lines are first-class
-// `reports_to` / `dotted_reports_to` edge rows; node JSON stays free of
-// relationship fields.
+// `has_parent` edge rows with reports_to / dotted_reports_to role props; node
+// JSON stays free of relationship fields.
 //
 // Only the `org-chart` template attaches this perspective by default,
 // but any Doco can opt in via the perspectives picker. The loader
@@ -55,7 +55,7 @@ interface OrgTreeRow {
 interface OrgTreeEdgeRow {
   from_id: string;
   to_id: string;
-  edge_type: "reports_to" | "dotted_reports_to";
+  props: Record<string, unknown> | null;
 }
 
 interface OrgTreeLoadOptions {
@@ -149,11 +149,11 @@ export async function loadOrgTreeData(
       ? []
       : (
           await c.query<OrgTreeEdgeRow>(
-            `SELECT from_id, to_id, edge_type
+            `SELECT from_id, to_id, props
                FROM edges
               WHERE doco_id = $1
                 AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))
-                AND edge_type IN ('reports_to', 'dotted_reports_to')
+                AND edge_type = 'has_parent'
                 AND lifecycle <> 'retired'
               ORDER BY created_at, id`,
             [docoId, principalIds],
@@ -162,10 +162,11 @@ export async function loadOrgTreeData(
   const reportsToByPrincipal = new Map<string, string>();
   const dottedReportsToByPrincipal = new Map<string, string[]>();
   for (const edge of edgeRows) {
-    if (edge.edge_type === "reports_to") {
+    const role = edge.props?.role ?? edge.props?.source_field;
+    if (role === "reports_to") {
       if (!reportsToByPrincipal.has(edge.from_id))
         reportsToByPrincipal.set(edge.from_id, edge.to_id);
-    } else {
+    } else if (role === "dotted_reports_to") {
       const list = dottedReportsToByPrincipal.get(edge.from_id) ?? [];
       if (!list.includes(edge.to_id)) list.push(edge.to_id);
       dottedReportsToByPrincipal.set(edge.from_id, list);

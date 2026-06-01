@@ -10,7 +10,7 @@ interface SequenceDepthLink {
   edge_type: string;
 }
 
-const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["sequence_flow"]);
+const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["flows_to"]);
 
 /**
  * Longest-path BPMN column depth for explicit forward sequence flow.

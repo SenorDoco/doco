@@ -146,7 +146,7 @@ describe("principal retire API", () => {
           id: "action_01ABC",
           node_type: "action",
           summary: "Greet customer",
-          edge_type: "performed_by",
+          edge_type: "attributed_to",
         },
       ],
     });

@@ -60,7 +60,7 @@ describe("per-type write gate — membership semantics", () => {
     expect(canWriteType("reader", ["decision"], "action")).toBe(false);
   });
   it("wildcard membership (backfilled writer) writes everything", () => {
-    expect(canWriteType("reader", ["*"], "sequence_flow")).toBe(true);
+    expect(canWriteType("reader", ["*"], "flows_to")).toBe(true);
   });
 });
 

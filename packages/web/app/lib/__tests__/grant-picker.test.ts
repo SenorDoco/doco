@@ -108,7 +108,7 @@ describe("writableTypeGroups", () => {
   it("exposes both node and edge lists", () => {
     const g = writableTypeGroups();
     expect(g.nodes).toContain("decision");
-    expect(g.edges).toContain("sequence_flow");
+    expect(g.edges).toContain("flows_to");
   });
 });
 

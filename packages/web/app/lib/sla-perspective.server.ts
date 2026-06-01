@@ -56,6 +56,7 @@ interface EdgeRow {
   from_id: string;
   to_id: string;
   edge_type: string;
+  props?: Record<string, unknown> | null;
 }
 
 interface SlaLoadOptions {
@@ -206,6 +207,10 @@ function hasText(value: string | null): boolean {
   return Boolean(value && value.trim().length > 0);
 }
 
+function edgeRole(edge: EdgeRow): string {
+  return typeof edge.props?.role === "string" ? edge.props.role : edge.edge_type;
+}
+
 export async function loadSlaPerspectiveData(
   c: QueryClient,
   docoId: string,
@@ -290,7 +295,7 @@ export async function loadSlaPerspectiveData(
       ? []
       : (
           await c.query<EdgeRow>(
-            `SELECT from_id, to_id, edge_type
+            `SELECT from_id, to_id, edge_type, props
                FROM edges
               WHERE doco_id = $1
                 AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))`,
@@ -317,7 +322,7 @@ export async function loadSlaPerspectiveData(
     const data = rule.data ?? {};
     const title = firstLine(rule.rule);
     const ownerId =
-      outgoing.get(rule.id)?.find((s) => s.edge_type === "owned_by" && principalsById.has(s.to_id))
+      outgoing.get(rule.id)?.find((s) => edgeRole(s) === "owned_by" && principalsById.has(s.to_id))
         ?.to_id ??
       (rule.created_by && principalsById.has(rule.created_by) ? rule.created_by : null);
     const ownerRow = ownerId ? principalsById.get(ownerId) : null;
@@ -327,7 +332,7 @@ export async function loadSlaPerspectiveData(
     const outgoingFromRule = outgoing.get(rule.id) ?? [];
     const linkedEvalIds = new Set([
       ...incomingToRule
-        .filter((s) => s.edge_type === "tests" && evalsById.has(s.from_id))
+        .filter((s) => edgeRole(s) === "tests" && evalsById.has(s.from_id))
         .map((s) => s.from_id),
     ]);
     const linkedReferenceIds = new Set([
@@ -341,13 +346,13 @@ export async function loadSlaPerspectiveData(
       incomingToRule
         .filter(
           (s) =>
-            (s.edge_type === "gated_by" || s.edge_type === "acts_on") && actionsById.has(s.from_id),
+            (edgeRole(s) === "gated_by" || edgeRole(s) === "acts_on") && actionsById.has(s.from_id),
         )
         .map((s) => s.from_id),
     );
     const linkedDecisionIds = new Set([
       ...incomingToRule
-        .filter((s) => s.edge_type === "consults" && decisionsById.has(s.from_id))
+        .filter((s) => edgeRole(s) === "consults" && decisionsById.has(s.from_id))
         .map((s) => s.from_id),
       ...outgoingFromRule.filter((s) => decisionsById.has(s.to_id)).map((s) => s.to_id),
     ]);

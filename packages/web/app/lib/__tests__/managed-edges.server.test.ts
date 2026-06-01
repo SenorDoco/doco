@@ -75,14 +75,26 @@ describe("reconcileNodeEdges", () => {
     expect(mocks.createEdge).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ edgeType: "decided_by", fromId: DEC, toId: P1, origin: "field" }),
+      expect.objectContaining({
+        edgeType: "attributed_to",
+        fromId: DEC,
+        toId: P1,
+        props: { role: "decided_by", source_field: "decided_by" },
+        origin: "field",
+      }),
     );
     expect(mocks.retireEdge).not.toHaveBeenCalled();
   });
 
   it("retires a stale field edge and creates the new target", async () => {
     const c = clientReturning([
-      { id: "edge_stale", edge_type: "decided_by", to_id: P2, origin: "field" },
+      {
+        id: "edge_stale",
+        edge_type: "attributed_to",
+        to_id: P2,
+        props: { role: "decided_by", source_field: "decided_by" },
+        origin: "field",
+      },
     ]);
     const res = await reconcileNodeEdges(c, {
       docoId: DOCO,
@@ -103,9 +115,15 @@ describe("reconcileNodeEdges", () => {
     );
   });
 
-  it("never retires an authored edge with the same target", async () => {
+  it("keeps an authored edge and creates the field edge when role props differ", async () => {
     const c = clientReturning([
-      { id: "edge_authored", edge_type: "decided_by", to_id: P1, origin: "authored" },
+      {
+        id: "edge_authored",
+        edge_type: "attributed_to",
+        to_id: P1,
+        props: null,
+        origin: "authored",
+      },
     ]);
     const res = await reconcileNodeEdges(c, {
       docoId: DOCO,
@@ -113,14 +131,20 @@ describe("reconcileNodeEdges", () => {
       entity: decision(P1),
       actor: ACTOR,
     });
-    expect(res).toEqual({ created: 0, retired: 0 });
-    expect(mocks.createEdge).not.toHaveBeenCalled();
+    expect(res).toEqual({ created: 1, retired: 0 });
+    expect(mocks.createEdge).toHaveBeenCalledTimes(1);
     expect(mocks.retireEdge).not.toHaveBeenCalled();
   });
 
   it("is idempotent: identical data skips the changeset entirely", async () => {
     const c = clientReturning([
-      { id: "edge_live", edge_type: "decided_by", to_id: P1, origin: "field" },
+      {
+        id: "edge_live",
+        edge_type: "attributed_to",
+        to_id: P1,
+        props: { role: "decided_by", source_field: "decided_by" },
+        origin: "field",
+      },
     ]);
     const res = await reconcileNodeEdges(c, {
       docoId: DOCO,

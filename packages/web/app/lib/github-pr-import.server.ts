@@ -2,10 +2,11 @@
 //
 // A pull request is stored as a `reference` node: ref_type "url", locator = the
 // canonical PR URL (the idempotency key), prose = title + body. Re-importing
-// the same PR upserts the existing Reference (open→drafting, merged→asserted,
-// closed→retired) rather than duplicating — possible because the node freeze
+// the same PR upserts the existing Reference (open->drafting, merged->asserted,
+// closed->retired) rather than duplicating - possible because the node freeze
 // was removed, so References are editable. Decisions/Actions link to the PR via
-// the existing `implemented_by` edge; no new edge or node type is introduced.
+// the canonical `supports` edge with an implemented_by role; no new edge or
+// node type is introduced.
 //
 // Pure mapping (the lifecycle / prose / draft helpers) is unit-tested directly;
 // the upsert orchestration delegates to the already-tested captureReference /
@@ -178,9 +179,9 @@ export interface PullRequestSyncResult {
 // body (the convention in .github/PULL_REQUEST_TEMPLATE.md):
 //   Doco-Implements: <node id or doco.to URL>[, …]
 //   Doco-Fixes:      <node id or doco.to URL>[, …]
-// Both map to an `implemented_by` edge — the work node is implemented_by the
-// PR's Reference node. Connecting a PR to the BPM event / bug / decision it
-// ships was the original ask for this integration.
+// Both map to a `supports` edge with role=implemented_by - the work node is
+// implemented_by the PR's Reference node. Connecting a PR to the BPM event /
+// bug / decision it ships was the original ask for this integration.
 
 const WORK_TRAILER_RE = /^(doco-implements|doco-fixes)\s*:\s*(.+)$/i;
 // <type>_<26-char ULID>; matched loosely here, then validated by isEntityId.
@@ -441,7 +442,7 @@ export interface LinkPrToBusinessProcessReferencesDeps {
 }
 
 /**
- * Ensure an `implemented_by` edge from each referenced work node → the PR's
+ * Ensure an implemented_by-flavored `supports` edge from each work node to the
  * Reference node. Idempotent (skips edges that already exist) and forgiving
  * (skips ids that aren't nodes in this Doco — captureEdge rejects them).
  * Injectable deps so it's unit-testable without a DB.
@@ -462,16 +463,17 @@ export async function linkPullRequestToWork(
   const result: PrWorkLinkResult = { linked: 0, existing: 0, skipped: 0 };
   for (const nodeId of nodeIds) {
     if (nodeId === opts.prRefId) continue; // no self-edge
-    if (await exists(opts.docoId, "implemented_by", nodeId, opts.prRefId)) {
+    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId)) {
       result.existing++;
       continue;
     }
     const res = await capture({
       docoId: opts.docoId,
       actorId: opts.actorId ?? null,
-      edgeType: "implemented_by",
+      edgeType: "supports",
       fromId: nodeId,
       toId: opts.prRefId,
+      props: { role: "implemented_by", source_field: "implemented_by" },
       reason: "Linked from a GitHub pull request trailer (Doco-Implements / Doco-Fixes).",
     });
     if ("ok" in res) result.linked++;

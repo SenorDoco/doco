@@ -46,14 +46,12 @@ const COMPACT_DISCONNECTED_COMPONENT_RADIUS = 280;
 const COMPACT_DISCONNECTED_COMPONENT_SIZE_SPACING = 8;
 
 const EDGE_LAYOUT_WEIGHT = new Map<string, number>([
-  ["sequence_flow", 2.4],
-  ["reports_to", 2.1],
-  ["serves", 1.8],
-  ["enacts", 1.7],
-  ["gated_by", 1.6],
-  ["tests", 1.5],
-  ["performed_by", 1.5],
-  ["owned_by", 1.4],
+  ["flows_to", 2.4],
+  ["has_parent", 2.1],
+  ["supports", 1.8],
+  ["constrained_by", 1.6],
+  ["attributed_to", 1.5],
+  ["derived_from", 1.4],
   ["acts_on", 1.4],
   ["source_ref", 1.25],
 ] as const);

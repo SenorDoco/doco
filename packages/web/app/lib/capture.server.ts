@@ -929,13 +929,13 @@ function rejectProcessRelationPatchFields(record: unknown): CaptureError | null 
   if (fields.sequence_to !== undefined) {
     return {
       error:
-        "sequence_to is no longer stored on node JSON. Create or retire first-class sequence_flow edges instead.",
+        "sequence_to is no longer stored on node JSON. Create or retire first-class flows_to edges instead.",
     };
   }
   if (fields.preceded_by !== undefined) {
     return {
       error:
-        "preceded_by is no longer stored on node JSON. Create or retire first-class preceded_by edges instead.",
+        "preceded_by is no longer stored on node JSON. Create or retire first-class flows_to predecessor edges instead.",
     };
   }
   return null;

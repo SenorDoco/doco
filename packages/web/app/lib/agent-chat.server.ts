@@ -1367,7 +1367,7 @@ Changeset example for BPMN-style ordered flow:
     "operations": [
       {
         "op": "append",
-        "relation_kind": "sequence_flow",
+        "relation_kind": "flows_to",
         "after": "decision_01...",
         "label": "Yes",
         "entity_type": "action",
@@ -1382,7 +1382,7 @@ Changeset example for BPMN-style ordered flow:
     ]
   }
 
-Common relation kinds: sequence_flow (source -> target, edge labels allowed) · preceded_by (later node -> predecessor edge; use sequence_flow for BPMN control flow) · serves → intent_ids · enacts → decision_ids · gated_by → gated_by · tests → target_ref · born_from → born_from · superseded_by → superseded_by · reports_to → reports_to · implemented_by → implemented_by (any node → code-artifact References; e.g. Decision/ADR shipped by these PRs, BPMN Action implemented at these code locations). You can also POST /<handle>/api/edges.json for direct edge creation.
+Common relation kinds: flows_to (source -> target, edge labels allowed) · supports (intent_ids, decision_ids, target_ref, implemented_by) · constrained_by (gated_by / rules_consulted) · attributed_to (actor_id, owner_id, stakeholders, decided_by) · has_parent (parent_intent_id, reports_to, dotted_reports_to) · derived_from (born_from, template_id) · replaces (superseded_by) · relates_to. You can also POST /<handle>/api/edges.json for direct edge creation.
 
 When sibling relations must become valid together, use \`op: "relate_many"\` in the same changeset. This is especially important for exhaustive gateways, tree siblings, and other structures where adding the first edge alone would be temporarily invalid.
 

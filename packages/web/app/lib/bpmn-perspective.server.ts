@@ -40,7 +40,12 @@
 //
 // Not rendered: Log (instances, not designs).
 
-import { MANAGED_EDGE_CARDINALITY, MANAGED_EDGE_TO_FIELD } from "@doco/shared";
+import {
+  MANAGED_EDGE_TYPES,
+  cardinalityForManagedField,
+  fieldForManagedEdge,
+  stripManagedEdgeProps,
+} from "@doco/shared";
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
@@ -266,10 +271,10 @@ export async function loadBpmnGraph(
     );
     links = edgeRows.rows.map((r) => bpmnLinkFromEdgeRow(r, opts.handle));
 
-    // Reconstruct the managed relationship fields (actor_id, decided_by, …)
+    // Reconstruct the managed relationship fields (actor_id, decided_by, etc.)
     // onto each node's `data` from first-class edges — they no longer live in
     // stored `data` (option (i)). The PageRank query above keeps only edges
-    // whose endpoints are both flow nodes, so it omits performed_by / decided_by
+    // whose endpoints are both flow nodes, so it omits attribution edges
     // (which point at principals); fetch them explicitly so the actor lanes
     // resolve.
     const managedRows = await c.query<{
@@ -284,21 +289,18 @@ export async function loadBpmnGraph(
           AND from_id = ANY($2::text[])
           AND edge_type = ANY($3::text[])
           AND lifecycle <> 'retired'`,
-      [docoId, Array.from(nodeIdSet), Object.keys(MANAGED_EDGE_TO_FIELD)],
+      [docoId, Array.from(nodeIdSet), MANAGED_EDGE_TYPES],
     );
     const dataById = new Map<string, Record<string, unknown>>(
       allRows.map((r) => [r.id, r.data as Record<string, unknown>]),
     );
     for (const e of managedRows.rows) {
-      const field = MANAGED_EDGE_TO_FIELD[e.edge_type as keyof typeof MANAGED_EDGE_TO_FIELD];
+      const field = fieldForManagedEdge(e.edge_type, e.props);
       const data = dataById.get(e.from_id);
       if (!field || !data) continue;
-      const cardinality =
-        MANAGED_EDGE_CARDINALITY[e.edge_type as keyof typeof MANAGED_EDGE_CARDINALITY];
-      const value =
-        e.edge_type === "sequence_flow"
-          ? ({ target: e.to_id, ...(e.props ?? {}) } as Record<string, unknown>)
-          : e.to_id;
+      const cardinality = cardinalityForManagedField(field);
+      const props = stripManagedEdgeProps(e.props);
+      const value = field === "sequence_to" ? { target: e.to_id, ...props } : e.to_id;
       if (cardinality === "many") {
         const list = Array.isArray(data[field]) ? (data[field] as unknown[]) : [];
         list.push(value);
@@ -496,7 +498,7 @@ export async function loadBpmnGraph(
 
   // ── Forward sequence depth ────────────────────────────────────────
   // BPMN ordering is based on explicit forward sequence flow only.
-  // Association edges such as `serves`, `enacts`, and `gated_by`
+  // Association edges such as `supports` and `constrained_by`
   // should not move nodes horizontally.
   const sequenceDepthById = computeForwardSequenceDepths(nodes, links);
   for (const node of nodes) {
@@ -691,12 +693,16 @@ function sequenceFlowLabel(props: Record<string, unknown> | null): string | null
 
 function bpmnLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): OverviewGraphLink {
   const href = handle ? `/${handle}/edges/${row.id}` : null;
-  if (row.edge_type === "preceded_by") {
+  if (
+    row.edge_type === "flows_to" &&
+    (row.edge_props_json?.source_field === "preceded_by" ||
+      row.edge_props_json?.role === "predecessor")
+  ) {
     return {
       id: row.id,
       source: row.to_id,
       target: row.from_id,
-      edge_type: "sequence_flow",
+      edge_type: "flows_to",
       label: sequenceFlowLabel(row.edge_props_json),
       href,
     };
@@ -706,7 +712,7 @@ function bpmnLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): Overview
     source: row.from_id,
     target: row.to_id,
     edge_type: row.edge_type,
-    label: row.edge_type === "sequence_flow" ? sequenceFlowLabel(row.edge_props_json) : null,
+    label: row.edge_type === "flows_to" ? sequenceFlowLabel(row.edge_props_json) : null,
     href,
   };
 }

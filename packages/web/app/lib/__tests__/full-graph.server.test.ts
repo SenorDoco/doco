@@ -162,7 +162,7 @@ describe("loadOverviewGraph", () => {
           id: "edge_01",
           from_id: "decision_01",
           to_id: "intent_01",
-          edge_type: "serves",
+          edge_type: "supports",
         },
       ],
     });
@@ -174,7 +174,7 @@ describe("loadOverviewGraph", () => {
         id: "edge_01",
         source: "decision_01",
         target: "intent_01",
-        edge_type: "serves",
+        edge_type: "supports",
         href: "/acme/edges/edge_01",
       },
     ]);

@@ -54,9 +54,10 @@ export async function reconcileNodeEdges(
     id: string;
     edge_type: string;
     to_id: string;
+    props: Record<string, unknown> | null;
     origin: string;
   }>(
-    `SELECT id, edge_type, to_id, origin
+    `SELECT id, edge_type, to_id, props, origin
        FROM edges
       WHERE doco_id = $1 AND from_id = $2 AND lifecycle <> 'retired'
         AND edge_type = ANY($3::text[])`,
@@ -66,6 +67,7 @@ export async function reconcileNodeEdges(
     id: r.id,
     edge_type: r.edge_type,
     to_id: r.to_id,
+    edge_props: r.props,
     origin: r.origin === "field" ? "field" : "authored",
   }));
 

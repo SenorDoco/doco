@@ -581,15 +581,15 @@ describe("authoring runner — integration", () => {
         [PRINCIPAL_ALICE, DOCO_ID],
       );
       // graph-completeness policy: every id in `actors` on an Intent
-      // must be covered by an incoming Action with edge_type=performed_by
-      // whose actor_id equals that id.
+      // must be covered by an incoming Action with a supports edge whose
+      // actor_id equals that id.
       const yaml = JSON.stringify({
         id: POLICY_ID_PRINCIPAL,
         summary: "Intent.actors are covered by Actions",
         predicate: {
           kind: "graph-completeness",
           list_field: "actors",
-          edge_type: "performed_by",
+          edge_type: "supports",
           incoming_node_type: "action",
           incoming_field_must_match: "actor_id",
           when_node_type: ["intent"],
@@ -626,9 +626,14 @@ describe("authoring runner — integration", () => {
     });
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type)
-           VALUES ($1, $2, $3, 'action', 'intent', 'performed_by')`,
-        [DOCO_ID, coveringActionId, intentId],
+        `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type, props)
+           VALUES ($1, $2, $3, 'action', 'intent', 'supports', $4::jsonb)`,
+        [
+          DOCO_ID,
+          coveringActionId,
+          intentId,
+          JSON.stringify({ role: "serves", source_field: "intent_ids" }),
+        ],
       );
     });
 
@@ -732,7 +737,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     expect("error" in result).toBe(true);
     if ("error" in result) {
       expect(result.error).toMatch(/intent_ids/);
-      expect(result.error).toMatch(/serves/);
+      expect(result.error).toMatch(/supports/);
     }
   });
 
@@ -761,25 +766,19 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
       DOCO_ID,
       "val-org",
       "val-test",
-      draft({ kind: "requires_edge", edge_type: "serves" }),
+      draft({ kind: "requires_edge", edge_type: "supports" }),
     );
     expect("error" in result).toBe(false);
   });
 
-  it("accepts a requires_edge predicate when the field name IS the canonical type", async () => {
-    // `preceded_by` (and a handful of others: `premise`, `born_from`,
-    // `superseded_by`) are identity-mapped in FIELD_TO_EDGE_TYPE:
-    // the field on the node and the canonical edge share the same
-    // name. The validator's field-name-vs-canonical check used to reject
-    // these outright, blocking BPMN templates from authoring a
-    // `requires_edge: preceded_by` policy via the API.
+  it("accepts a requires_edge predicate with a simplified canonical edge type", async () => {
     await seedDoco();
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
       "val-org",
       "val-test",
-      draft({ kind: "requires_edge", edge_type: "preceded_by" }),
+      draft({ kind: "requires_edge", edge_type: "flows_to" }),
     );
     expect("error" in result).toBe(false);
   });
