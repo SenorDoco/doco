@@ -63,6 +63,22 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/docos.json", load: () => import("~/routes/api.v1.docos[.]json") },
   { pattern: "/api/v1/orgs.json", load: () => import("~/routes/api.v1.orgs[.]json") },
   {
+    pattern: "/api/v1/me/preferences.json",
+    load: () => import("~/routes/api.v1.me.preferences[.]json"),
+  },
+  {
+    pattern: "/api/v1/feedback-reports.json",
+    load: () => import("~/routes/api.v1.feedback-reports[.]json"),
+  },
+  {
+    pattern: "/api/v1/users/invite.json",
+    load: () => import("~/routes/api.v1.users.invite[.]json"),
+  },
+  {
+    pattern: "/api/v1/api-keys.json",
+    load: () => import("~/routes/api.v1.api-keys[.]json"),
+  },
+  {
     pattern: "/api/v1/docos/:docoId.json",
     load: () => import("~/routes/api.v1.docos.$docoId[.]json"),
   },
@@ -73,12 +89,24 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/api.v1.agent-chat.conversation[.]json"),
   },
   {
+    pattern: "/api/v1/agent-chat/conversations.json",
+    load: () => import("~/routes/api.v1.agent-chat.conversations[.]json"),
+  },
+  {
+    pattern: "/api/v1/agent-chat/conversation/:id.json",
+    load: () => import("~/routes/api.v1.agent-chat.conversation.$id[.]json"),
+  },
+  {
     pattern: "/api/v1/agent-chat/messages.json",
     load: () => import("~/routes/api.v1.agent-chat.messages[.]json"),
   },
   {
     pattern: "/api/v1/agent-chat/attachments.json",
     load: () => import("~/routes/api.v1.agent-chat.attachments[.]json"),
+  },
+  {
+    pattern: "/api/v1/agent-chat/attachments/:attachmentId",
+    load: () => import("~/routes/api.v1.agent-chat.attachments.$attachmentId"),
   },
 
   // Per-doco endpoints. Specific patterns first; the generic
@@ -94,6 +122,18 @@ const ROUTES: RouteEntry[] = [
   {
     pattern: "/:docoHandle/graph-node-details.json",
     load: () => import("~/routes/$docoHandle.graph-node-details[.]json"),
+  },
+  {
+    pattern: "/:docoHandle/graph-edge-details.json",
+    load: () => import("~/routes/$docoHandle.graph-edge-details[.]json"),
+  },
+  {
+    pattern: "/:docoHandle/api/project-tokens.json",
+    load: () => import("~/routes/$docoHandle.api.project-tokens[.]json"),
+  },
+  {
+    pattern: "/:docoHandle/api/github.json",
+    load: () => import("~/routes/$docoHandle.api.github[.]json"),
   },
   {
     pattern: "/:docoHandle/api/principals.json",
@@ -130,6 +170,14 @@ const ROUTES: RouteEntry[] = [
   {
     pattern: "/:docoHandle/api/changesets.json",
     load: () => import("~/routes/$docoHandle.api.changesets[.]json"),
+  },
+  {
+    pattern: "/:docoHandle/api/edges.json",
+    load: () => import("~/routes/$docoHandle.api.edges[.]json"),
+  },
+  {
+    pattern: "/:docoHandle/api/edges/:id.json",
+    load: () => import("~/routes/$docoHandle.api.edges.$id[.]json"),
   },
   // Per-type-id routes — one entry per type because each lives in
   // its own file with its own custom loader/action.
@@ -188,6 +236,29 @@ const ROUTES: RouteEntry[] = [
   },
 ];
 
+export interface InternalFetchRouteMatch {
+  pattern: string;
+  params: Record<string, string>;
+}
+
+function matchInternalRoute(
+  pathname: string,
+): { entry: RouteEntry; params: Record<string, string> } | null {
+  for (const entry of ROUTES) {
+    const m = matchPath(entry.pattern, pathname);
+    if (!m) continue;
+    return { entry, params: m.params as Record<string, string> };
+  }
+  return null;
+}
+
+export function getInternalFetchRouteMatch(path: string): InternalFetchRouteMatch | null {
+  const [pathname] = path.split("?", 2);
+  const matched = matchInternalRoute(pathname);
+  if (!matched) return null;
+  return { pattern: matched.entry.pattern, params: matched.params };
+}
+
 interface InternalFetchInput {
   method: string;
   /** Path with leading "/". Query string is preserved. */
@@ -218,13 +289,7 @@ export async function internalFetch(input: InternalFetchInput): Promise<Response
   // pathname — query parameters are preserved on the Request's URL.
   const [pathname, search = ""] = input.path.split("?", 2);
 
-  let matched: { entry: RouteEntry; params: Record<string, string> } | null = null;
-  for (const entry of ROUTES) {
-    const m = matchPath(entry.pattern, pathname);
-    if (!m) continue;
-    matched = { entry, params: m.params as Record<string, string> };
-    break;
-  }
+  const matched = matchInternalRoute(pathname);
   if (!matched) return null;
 
   const module = await matched.entry.load();
