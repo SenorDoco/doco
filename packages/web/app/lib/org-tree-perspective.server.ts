@@ -58,6 +58,16 @@ interface OrgTreeEdgeRow {
   edge_type: "reports_to" | "dotted_reports_to";
 }
 
+interface OrgTreeLoadOptions {
+  limit?: number;
+}
+
+function normalizeLimit(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  const limit = Math.floor(value);
+  return Number.isFinite(limit) && limit > 0 ? limit : null;
+}
+
 /**
  * Infer person-vs-agent from the Principal's prose. Cheap regex scan —
  * the canonical phrases the org-chart guidance suggests ("AI agent",
@@ -113,7 +123,11 @@ export async function loadOrgTreeData(
   c: QueryClient,
   docoId: string,
   handle: string,
+  options: OrgTreeLoadOptions = {},
 ): Promise<OrgTreeData> {
+  const limit = normalizeLimit(options.limit);
+  const params: unknown[] = [docoId];
+  if (limit != null) params.push(limit);
   const rows = (
     await c.query<OrgTreeRow>(
       // Migration 037 dropped `summary` from principals; the
@@ -123,22 +137,28 @@ export async function loadOrgTreeData(
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
-        ORDER BY created_at`,
-      [docoId],
+        ORDER BY created_at
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     )
   ).rows;
 
-  const edgeRows = (
-    await c.query<OrgTreeEdgeRow>(
-      `SELECT from_id, to_id, edge_type
-         FROM edges
-        WHERE doco_id = $1
-          AND edge_type IN ('reports_to', 'dotted_reports_to')
-          AND lifecycle <> 'retired'
-        ORDER BY created_at, id`,
-      [docoId],
-    )
-  ).rows;
+  const principalIds = rows.map((row) => row.id);
+  const edgeRows =
+    principalIds.length === 0
+      ? []
+      : (
+          await c.query<OrgTreeEdgeRow>(
+            `SELECT from_id, to_id, edge_type
+               FROM edges
+              WHERE doco_id = $1
+                AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))
+                AND edge_type IN ('reports_to', 'dotted_reports_to')
+                AND lifecycle <> 'retired'
+              ORDER BY created_at, id`,
+            [docoId, principalIds],
+          )
+        ).rows;
   const reportsToByPrincipal = new Map<string, string>();
   const dottedReportsToByPrincipal = new Map<string, string[]>();
   for (const edge of edgeRows) {

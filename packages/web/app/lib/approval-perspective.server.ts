@@ -46,6 +46,16 @@ interface ApprovalRow {
   author_name: string | null;
 }
 
+interface ApprovalLoadOptions {
+  limit?: number;
+}
+
+function normalizeLimit(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  const limit = Math.floor(value);
+  return Number.isFinite(limit) && limit > 0 ? limit : null;
+}
+
 function toIso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(String(value));
@@ -76,7 +86,11 @@ export async function loadApprovalPerspectiveData(
   c: QueryClient,
   docoId: string,
   handle: string,
+  options: ApprovalLoadOptions = {},
 ): Promise<ApprovalPerspectiveData> {
+  const limit = normalizeLimit(options.limit);
+  const params: unknown[] = [docoId];
+  if (limit != null) params.push(limit);
   const rows = (
     await c.query<ApprovalRow>(
       `WITH proposed_events AS (
@@ -126,8 +140,9 @@ export async function loadApprovalPerspectiveData(
               COALESCE(author.github_login, author.email, author.id) AS author_name
          FROM resolved_actors n
          LEFT JOIN users author ON author.id = n.author_id
-        ORDER BY COALESCE(n.proposed_at, n.created_at) DESC NULLS LAST, n.id ASC`,
-      [docoId],
+        ORDER BY COALESCE(n.proposed_at, n.created_at) DESC NULLS LAST, n.id ASC
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     )
   ).rows;
 

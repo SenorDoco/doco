@@ -34,6 +34,10 @@ interface NodeRow {
   title: string | null;
 }
 
+interface GlossaryLoadOptions {
+  limit?: number;
+}
+
 export interface GlossaryAlternative {
   name: string;
   note: string | null;
@@ -85,6 +89,12 @@ function asString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function normalizeLimit(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  const limit = Math.floor(value);
+  return Number.isFinite(limit) && limit > 0 ? limit : null;
 }
 
 function firstLine(value: string | null | undefined): string {
@@ -252,7 +262,11 @@ export async function loadGlossaryPerspectiveData(
   c: QueryClient,
   docoId: string,
   handle: string,
+  options: GlossaryLoadOptions = {},
 ): Promise<GlossaryPerspectiveData> {
+  const limit = normalizeLimit(options.limit);
+  const params: unknown[] = [docoId];
+  if (limit != null) params.push(limit);
   // Union the content tables into one shape. Policies (guidance /
   // authoring) and structural Principals are excluded — they're not
   // glossary headwords. Each table projects its type-named prose column
@@ -277,8 +291,10 @@ export async function loadGlossaryPerspectiveData(
      WHERE doco_id = $1
        AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
        AND COALESCE(lifecycle, 'asserted') <> 'retired'
+     ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id ASC
+     ${limit != null ? "LIMIT $2" : ""}
     `,
-    [docoId],
+    params,
   );
 
   const entries: GlossaryEntry[] = rows.map((row) => toEntry(row, handle));

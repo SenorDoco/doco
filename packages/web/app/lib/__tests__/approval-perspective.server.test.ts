@@ -9,9 +9,10 @@ describe("loadApprovalPerspectiveData", () => {
         querySpy(sql, params);
         expect(sql).toMatch(/after_json->>'lifecycle'\s*=\s*'drafting'/);
         expect(sql).toMatch(/WHERE lifecycle = 'drafting'/);
-        expect(sql).toMatch(/FROM principals/);
+        expect(sql).toMatch(/FROM nodes t/);
         expect(sql).toMatch(/resolved_actors AS/);
         expect(sql).toMatch(/created_by_user_id/);
+        expect(sql).toMatch(/LEFT JOIN nodes proposed_principal/);
         expect(sql).toMatch(/LEFT JOIN users author ON author\.id = n\.author_id/);
         expect(sql).not.toMatch(/author\.id,\s*n\.created_by/);
         expect(params).toEqual(["doco_acme"]);
@@ -50,5 +51,19 @@ describe("loadApprovalPerspectiveData", () => {
         zoom_href: "/acme/decision/decision_01TEST?dialog=skip",
       },
     ]);
+  });
+
+  it("applies a query limit when the page loader supplies one", async () => {
+    const client = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        expect(sql).toMatch(/LIMIT \$2/);
+        expect(params).toEqual(["doco_acme", 25]);
+        return { rows: [] };
+      },
+    };
+
+    const data = await loadApprovalPerspectiveData(client, "doco_acme", "acme", { limit: 25 });
+
+    expect(data.nodes).toEqual([]);
   });
 });
