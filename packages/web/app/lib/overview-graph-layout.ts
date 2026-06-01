@@ -39,6 +39,11 @@ const NODE_WIDTH = 224;
 const NODE_HEIGHT = 91;
 const COLLISION_PADDING = 48;
 const TARGET_AVERAGE_RADIUS = 360;
+const SMALL_GRAPH_COMPACT_NODE_LIMIT = 8;
+const DISCONNECTED_COMPONENT_RADIUS = 620;
+const DISCONNECTED_COMPONENT_SIZE_SPACING = 24;
+const COMPACT_DISCONNECTED_COMPONENT_RADIUS = 280;
+const COMPACT_DISCONNECTED_COMPONENT_SIZE_SPACING = 8;
 
 const EDGE_LAYOUT_WEIGHT = new Map<string, number>([
   ["sequence_flow", 2.4],
@@ -314,7 +319,13 @@ function separateDisconnectedComponents(
         : (() => {
             const angle =
               -Math.PI / 2 + (Math.PI * 2 * (index - 1)) / Math.max(1, components.length - 1);
-            const radius = 620 + Math.min(component.length, 12) * 24;
+            const compact = nodes.length <= SMALL_GRAPH_COMPACT_NODE_LIMIT;
+            const radius =
+              (compact ? COMPACT_DISCONNECTED_COMPONENT_RADIUS : DISCONNECTED_COMPONENT_RADIUS) +
+              Math.min(component.length, 12) *
+                (compact
+                  ? COMPACT_DISCONNECTED_COMPONENT_SIZE_SPACING
+                  : DISCONNECTED_COMPONENT_SIZE_SPACING);
             return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
           })();
 
@@ -387,9 +398,11 @@ export function clusteredForceLayout(
   links: readonly OverviewLayoutLink[],
   centerId: string,
 ): Map<string, Point> {
-  if (nodes.length < 3 || graphLinkCount(nodes, links) === 0) {
+  const linkCount = graphLinkCount(nodes, links);
+  if (nodes.length < 3) {
     return depthRingLayout(nodes, links, centerId);
   }
+  if (linkCount === 0) return singleRingLayout(nodes, centerId);
 
   const graph = new Graph({ type: "undirected", multi: true, allowSelfLoops: false });
   const seed = depthRingLayout(nodes, links, centerId);

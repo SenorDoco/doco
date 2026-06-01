@@ -70,4 +70,22 @@ describe("overview graph layout", () => {
     expect(positions.get("focus")).toEqual({ x: 0, y: 0 });
     expect(Math.round(distance(positions, "focus", "a"))).toBe(220);
   });
+
+  it("keeps small disconnected render windows compact", () => {
+    const positions = layoutOverviewGraphNodes(nodes.slice(0, 5), [], "focus");
+
+    expect(positions.get("focus")).toEqual({ x: 0, y: 0 });
+    for (const node of nodes.slice(1, 5)) {
+      expect(Math.round(distance(positions, "focus", node.id))).toBeLessThanOrEqual(260);
+    }
+  });
+
+  it("keeps small disconnected components near the focal component", () => {
+    const positions = layoutOverviewGraphNodes(nodes.slice(0, 5), [link("focus", "a")], "focus");
+
+    expect(positions.get("focus")).toEqual({ x: 0, y: 0 });
+    for (const node of nodes.slice(1, 5)) {
+      expect(Math.round(distance(positions, "focus", node.id))).toBeLessThanOrEqual(360);
+    }
+  });
 });
