@@ -178,7 +178,7 @@ describe("loadNodeDialogDetail", () => {
     });
   });
 
-  it("includes field-authored BPMN sequence links when edge rows are absent", async () => {
+  it("does not include field-authored BPMN sequence links when edge rows are absent", async () => {
     const decisionId = "decision_01ROUTE";
     const priorId = "action_01PRIOR";
     const flexibleId = "action_01FLEXIBLE";
@@ -187,22 +187,7 @@ describe("loadNodeDialogDetail", () => {
     const principalId = "principal_01USER";
     const client = {
       query: async <T>(sql: string): Promise<{ rows: T[] }> => {
-        if (sql.includes("jsonb_array_elements")) {
-          return {
-            rows: [
-              {
-                id: priorId,
-                entity_type: "action",
-                data: { sequence_to: [{ target: decisionId, label: "Start" }] },
-              },
-              {
-                id: fullTimeId,
-                entity_type: "action",
-                data: { preceded_by: [decisionId] },
-              },
-            ] as T[],
-          };
-        }
+        if (sql.includes("jsonb_array_elements")) return { rows: [] };
         if (sql.includes("FROM edges") && sql.includes("from_id = $2")) {
           return {
             rows: [
@@ -288,36 +273,13 @@ describe("loadNodeDialogDetail", () => {
       principalId: "principal_owner",
     });
 
-    expect(detail?.incoming).toEqual([
+    expect(detail?.incoming).toEqual([]);
+    expect(detail?.outgoing).toEqual([
       expect.objectContaining({
-        edge_type: "sequence_flow",
-        other_id: priorId,
-        edge_label: "Start",
+        edge_type: "decided_by",
+        other_id: principalId,
       }),
     ]);
-    expect(detail?.outgoing).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          edge_type: "decided_by",
-          other_id: principalId,
-        }),
-        expect.objectContaining({
-          edge_type: "sequence_flow",
-          other_id: flexibleId,
-          edge_label: "Flexible",
-        }),
-        expect.objectContaining({
-          edge_type: "sequence_flow",
-          other_id: internshipId,
-          edge_label: "Internship",
-        }),
-        expect.objectContaining({
-          edge_type: "sequence_flow",
-          other_id: fullTimeId,
-        }),
-      ]),
-    );
-    expect(detail?.outgoing).toHaveLength(4);
   });
 
   it("resolves user provenance metadata instead of exposing Principal creator ids", async () => {

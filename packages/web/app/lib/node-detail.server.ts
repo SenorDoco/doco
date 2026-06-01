@@ -241,12 +241,6 @@ interface DialogIncomingEdgeRow {
   edge_props_json?: Record<string, unknown> | null;
 }
 
-interface DialogSequenceSourceRow {
-  id: string;
-  entity_type: string;
-  data: Record<string, unknown> | null;
-}
-
 function relatedDetailsSql(): string {
   // Post-collapse: one `nodes` table. `summary` is the first line of
   // `prose` for the 9 prose types and of `name` for principal (prose='');
@@ -409,78 +403,6 @@ async function loadNodeAuthoringRows(
   ).rows;
 }
 
-async function loadFieldSequenceSourceRows(
-  c: QueryClient,
-  docoId: string,
-  id: string,
-): Promise<DialogSequenceSourceRow[]> {
-  return (
-    await c.query<DialogSequenceSourceRow>(
-      `SELECT id, node_type AS entity_type, data
-         FROM nodes
-        WHERE doco_id = $1
-          AND id <> $2
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
-          AND (
-            EXISTS (
-              SELECT 1
-                FROM jsonb_array_elements(
-                  CASE
-                    WHEN jsonb_typeof(data->'sequence_to') = 'array' THEN data->'sequence_to'
-                    ELSE '[]'::jsonb
-                  END
-                ) AS sequence_entry(value)
-               WHERE (
-                 jsonb_typeof(sequence_entry.value) = 'string'
-                 AND sequence_entry.value #>> '{}' = $2
-               ) OR (
-                 jsonb_typeof(sequence_entry.value) = 'object'
-                 AND sequence_entry.value->>'target' = $2
-               )
-            )
-            OR EXISTS (
-              SELECT 1
-                FROM jsonb_array_elements_text(
-                  CASE
-                    WHEN jsonb_typeof(data->'preceded_by') = 'array' THEN data->'preceded_by'
-                    ELSE '[]'::jsonb
-                  END
-                ) AS predecessor(id)
-               WHERE predecessor.id = $2
-            )
-          )`,
-      [docoId, id],
-    )
-  ).rows;
-}
-
-function sequenceToEntries(
-  value: unknown,
-): { target: string; props: Record<string, unknown> | null }[] {
-  if (!Array.isArray(value)) return [];
-  const entries: { target: string; props: Record<string, unknown> | null }[] = [];
-  for (const item of value) {
-    if (typeof item === "string" && item.length > 0) {
-      entries.push({ target: item, props: null });
-      continue;
-    }
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const { target, ...props } = item as Record<string, unknown>;
-    if (typeof target !== "string" || target.length === 0) continue;
-    entries.push({
-      target,
-      props: Object.keys(props).length > 0 ? props : null,
-    });
-  }
-  return entries;
-}
-
-function toStringArray(value: unknown): string[] {
-  if (typeof value === "string") return value ? [value] : [];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
-}
-
 function sequenceFlowLabel(props: Record<string, unknown> | null | undefined): string | null {
   if (!props) return null;
   const raw = props.label ?? props.condition;
@@ -488,90 +410,6 @@ function sequenceFlowLabel(props: Record<string, unknown> | null | undefined): s
   const compact = raw.trim().replace(/\s+/g, " ");
   if (!compact) return null;
   return compact.length > 32 ? `${compact.slice(0, 29)}...` : compact;
-}
-
-function nodeTypeFromId(id: string): string {
-  const index = id.indexOf("_");
-  return index > 0 ? id.slice(0, index) : "node";
-}
-
-function sequencePairKey(source: string, target: string): string {
-  return `${source}\u0000${target}`;
-}
-
-function materializedSequencePairs(
-  selectedId: string,
-  outgoingRows: readonly DialogOutgoingEdgeRow[],
-  incomingRows: readonly DialogIncomingEdgeRow[],
-): Set<string> {
-  const pairs = new Set<string>();
-  for (const edge of outgoingRows) {
-    if (edge.edge_type === "sequence_flow") pairs.add(sequencePairKey(selectedId, edge.to_id));
-    else if (edge.edge_type === "preceded_by") pairs.add(sequencePairKey(edge.to_id, selectedId));
-  }
-  for (const edge of incomingRows) {
-    if (edge.edge_type === "sequence_flow") pairs.add(sequencePairKey(edge.from_id, selectedId));
-    else if (edge.edge_type === "preceded_by") pairs.add(sequencePairKey(selectedId, edge.from_id));
-  }
-  return pairs;
-}
-
-function synthesizeFieldSequenceRows(input: {
-  selectedId: string;
-  frontmatter: Record<string, unknown>;
-  sourceRows: readonly DialogSequenceSourceRow[];
-  materializedPairs: ReadonlySet<string>;
-}): { outgoing: DialogOutgoingEdgeRow[]; incoming: DialogIncomingEdgeRow[] } {
-  const syntheticKeys = new Set<string>();
-  const outgoing: DialogOutgoingEdgeRow[] = [];
-  const incoming: DialogIncomingEdgeRow[] = [];
-  const add = (
-    source: string,
-    target: string,
-    props: Record<string, unknown> | null,
-    keySuffix: string,
-  ) => {
-    if (source !== input.selectedId && target !== input.selectedId) return;
-    if (input.materializedPairs.has(sequencePairKey(source, target))) return;
-    const key = `${source}\u0000${target}\u0000${keySuffix}`;
-    if (syntheticKeys.has(key)) return;
-    syntheticKeys.add(key);
-    if (source === input.selectedId) {
-      outgoing.push({
-        to_id: target,
-        to_node_type: nodeTypeFromId(target),
-        edge_type: "sequence_flow",
-        edge_props_json: props,
-      });
-    } else {
-      incoming.push({
-        from_id: source,
-        from_node_type: nodeTypeFromId(source),
-        edge_type: "sequence_flow",
-        edge_props_json: props,
-      });
-    }
-  };
-
-  for (const [index, entry] of sequenceToEntries(input.frontmatter.sequence_to).entries()) {
-    add(input.selectedId, entry.target, entry.props, `selected-sequence_to:${index}`);
-  }
-  for (const [index, predecessorId] of toStringArray(input.frontmatter.preceded_by).entries()) {
-    add(predecessorId, input.selectedId, null, `selected-preceded_by:${index}`);
-  }
-  for (const row of input.sourceRows) {
-    const data = row.data ?? {};
-    for (const [index, entry] of sequenceToEntries(data.sequence_to).entries()) {
-      if (entry.target === input.selectedId)
-        add(row.id, input.selectedId, entry.props, `${row.id}:sequence_to:${index}`);
-    }
-    for (const [index, predecessorId] of toStringArray(data.preceded_by).entries()) {
-      if (predecessorId === input.selectedId)
-        add(input.selectedId, row.id, null, `${row.id}:preceded_by:${index}`);
-    }
-  }
-
-  return { outgoing, incoming };
 }
 
 function compareOutgoingEdges(a: DialogOutgoingEdgeRow, b: DialogOutgoingEdgeRow): number {
@@ -686,15 +524,8 @@ export async function loadNodeDialogDetail(
       [meta.docoId, row.id],
     )
   ).rows;
-  const fieldSequenceRows = await loadFieldSequenceSourceRows(c, meta.docoId, row.id);
-  const fieldSequence = synthesizeFieldSequenceRows({
-    selectedId: row.id,
-    frontmatter,
-    sourceRows: fieldSequenceRows,
-    materializedPairs: materializedSequencePairs(row.id, outgoingRows, incomingRows),
-  });
-  const allOutgoingRows = [...outgoingRows, ...fieldSequence.outgoing].sort(compareOutgoingEdges);
-  const allIncomingRows = [...incomingRows, ...fieldSequence.incoming].sort(compareIncomingEdges);
+  const allOutgoingRows = [...outgoingRows].sort(compareOutgoingEdges);
+  const allIncomingRows = [...incomingRows].sort(compareIncomingEdges);
 
   const relatedIds = Array.from(
     new Set([

@@ -358,7 +358,7 @@ describe("loadBpmnGraph", () => {
     );
   });
 
-  it("falls back to node-authored flow fields when sequence edges are not materialized", async () => {
+  it("does not render node-authored flow fields when sequence edges are absent", async () => {
     const intentId = "intent_01PROCESS";
     const firstId = "action_01FIRST";
     const secondId = "action_01SECOND";
@@ -423,29 +423,9 @@ describe("loadBpmnGraph", () => {
 
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "field-flow" });
 
-    expect(graph.links).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          source: firstId,
-          target: secondId,
-          edge_type: "sequence_flow",
-          label: "next",
-          href: null,
-        }),
-        expect.objectContaining({
-          source: secondId,
-          target: thirdId,
-          edge_type: "sequence_flow",
-          href: null,
-        }),
-      ]),
-    );
-    expect(graph.nodes.find((node) => node.id === secondId)?.bfs_depth).toBeGreaterThan(
-      graph.nodes.find((node) => node.id === firstId)?.bfs_depth ?? 0,
-    );
-    expect(graph.nodes.find((node) => node.id === thirdId)?.bfs_depth).toBeGreaterThan(
-      graph.nodes.find((node) => node.id === secondId)?.bfs_depth ?? 0,
-    );
+    expect(graph.links).toEqual([]);
+    expect(graph.nodes.find((node) => node.id === secondId)?.bfs_depth).toBeUndefined();
+    expect(graph.nodes.find((node) => node.id === thirdId)?.bfs_depth).toBeUndefined();
   });
 
   it("assigns later sequence targets a greater layout depth even when a loop points back", async () => {

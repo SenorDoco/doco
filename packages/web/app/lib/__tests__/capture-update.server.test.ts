@@ -167,7 +167,7 @@ describe("updateEntity", () => {
     );
   });
 
-  it("patches active Decision sequence_to so BPMN flow edges can be authored after capture", async () => {
+  it("rejects patching Decision sequence_to because BPMN flow is edge-only", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: DECISION_ID,
       entity_type: "decision",
@@ -200,17 +200,9 @@ describe("updateEntity", () => {
     );
 
     expect(result).toMatchObject({
-      ok: true,
-      changed: ["sequence_to"],
+      error: expect.stringContaining("sequence_to is no longer stored on node JSON"),
     });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          sequence_to: [{ target: "action_01TEST000000000000000001", label: "Card" }],
-        }),
-      }),
-      expect.anything(),
-    );
+    expect(upsertEntity).not.toHaveBeenCalled();
   });
 
   it("replaces a Decision's implemented_by after capture", async () => {

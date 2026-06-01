@@ -17,6 +17,7 @@ import {
   updateEntity,
 } from "~/lib/capture.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { captureEdge, edgeExists } from "~/lib/edge-capture.server";
 import {
   PERSPECTIVE_CONTRACTS,
   type RelationKindSpec,
@@ -94,6 +95,7 @@ interface OperationResult {
     to: string;
     stored_on: string;
     field: string;
+    edge_id?: string;
   };
   relations?: {
     kind: string;
@@ -101,6 +103,7 @@ interface OperationResult {
     to: string;
     stored_on: string;
     field: string;
+    edge_id?: string;
   }[];
   skipped?: boolean;
   error?: string;
@@ -290,7 +293,7 @@ async function createNode(
     return { op_index: index, op: "create", ok: false, error: "create.body must be an object." };
   }
   // Resolve `$alias` refs in the body so the node is created WITH its
-  // own-field relations (serves/reports_to/actor/gated_by/sequence_to),
+  // own-field relations (serves/reports_to/actor/gated_by),
   // letting an asserted node satisfy requires_edge atomically.
   const resolvedBody = resolveAliasesInBody(op.body as Record<string, unknown>, aliases);
   if ("error" in resolvedBody) {
@@ -366,6 +369,8 @@ async function relateMany(
       relations: NonNullable<OperationResult["relations"]>;
     }
   >();
+  const edgeFooterLines: string[] = [];
+  const edgeRelations: NonNullable<OperationResult["relations"]> = [];
 
   for (const relation of op.relations) {
     const kind = relation.relation_kind ?? relation.kind ?? "";
@@ -390,6 +395,27 @@ async function relateMany(
     }
 
     const props = relationProps(spec, relation);
+    if (spec.storage === "edge") {
+      const captured = await captureRelationEdge(ctx, spec, from, to, props);
+      if ("error" in captured) {
+        return {
+          op_index: index,
+          op: "relate_many",
+          ok: false,
+          error: captured.error,
+        };
+      }
+      edgeFooterLines.push(...captured.footer_lines);
+      edgeRelations.push({
+        kind: spec.kind,
+        from,
+        to,
+        stored_on: captured.id ?? "edge",
+        field: "edge",
+        ...(captured.id ? { edge_id: captured.id } : {}),
+      });
+      continue;
+    }
     const ownerId = spec.owner === "from" ? from : to;
     const valueId = spec.value === "from" ? from : to;
     const ownerType = entityTypeFromId(ownerId);
@@ -446,8 +472,8 @@ async function relateMany(
     });
   }
 
-  const footerLines: string[] = [];
-  const relations: NonNullable<OperationResult["relations"]> = [];
+  const footerLines: string[] = [...edgeFooterLines];
+  const relations: NonNullable<OperationResult["relations"]> = [...edgeRelations];
   for (const [ownerId, ownerDraft] of owners) {
     relations.push(...ownerDraft.relations);
     if (Object.keys(ownerDraft.patch).length === 0) continue;
@@ -500,6 +526,32 @@ async function relateNodes(
     };
   }
   const props = relationProps(spec, op);
+  if (spec.storage === "edge") {
+    const captured = await captureRelationEdge(ctx, spec, from, to, props);
+    if ("error" in captured) {
+      return {
+        op_index: index,
+        op: "relate",
+        ok: false,
+        error: captured.error,
+      };
+    }
+    return {
+      op_index: index,
+      op: "relate",
+      ok: true,
+      ...(captured.skipped ? { skipped: true } : {}),
+      relation: {
+        kind: spec.kind,
+        from,
+        to,
+        stored_on: captured.id ?? "edge",
+        field: "edge",
+        ...(captured.id ? { edge_id: captured.id } : {}),
+      },
+      footer_lines: captured.footer_lines,
+    };
+  }
   const ownerId = spec.owner === "from" ? from : to;
   const valueId = spec.value === "from" ? from : to;
   const ownerType = entityTypeFromId(ownerId);
@@ -560,20 +612,46 @@ async function relateNodes(
   };
 }
 
+async function captureRelationEdge(
+  ctx: ChangesetContext,
+  spec: RelationKindSpec,
+  from: string,
+  to: string,
+  props: Record<string, unknown>,
+): Promise<
+  { ok: true; id?: string; skipped?: boolean; footer_lines: string[] } | { error: string }
+> {
+  const edgeFrom = spec.owner === "from" ? from : to;
+  const edgeTo = spec.value === "from" ? from : to;
+  if (await edgeExists(ctx.docoId, spec.kind, edgeFrom, edgeTo)) {
+    return { ok: true, skipped: true, footer_lines: [] };
+  }
+  const result = await captureEdge({
+    docoId: ctx.docoId,
+    actorId: ctx.actorId,
+    edgeType: spec.kind,
+    fromId: edgeFrom,
+    toId: edgeTo,
+    props: Object.keys(props).length > 0 ? props : null,
+    reason: `create ${spec.kind} relation`,
+    ...(ctx.authoring.source ? { source: ctx.authoring.source } : {}),
+    ...(ctx.authoring.metadata ? { metadata: ctx.authoring.metadata } : {}),
+  });
+  if ("error" in result) return { error: result.error };
+  return { ok: true, id: result.id, footer_lines: result.footer_lines };
+}
+
 function buildRelationPatch(
   data: Record<string, unknown>,
   spec: RelationKindSpec,
   valueId: string,
-  props: Record<string, unknown>,
+  _props: Record<string, unknown>,
 ): EntityPatch | null {
   if (spec.cardinality === "one") {
     return data[spec.field] === valueId ? null : { [spec.field]: valueId };
   }
   const current = Array.isArray(data[spec.field]) ? [...(data[spec.field] as unknown[])] : [];
-  const nextEntry =
-    spec.field === "sequence_to" && Object.keys(props).length > 0
-      ? { target: valueId, ...props }
-      : valueId;
+  const nextEntry = valueId;
   const foundIndex = current.findIndex((entry) => relationTarget(entry) === valueId);
   if (foundIndex < 0) {
     return { [spec.field]: [...current, nextEntry] };
@@ -681,7 +759,7 @@ function resolveRef(value: unknown, aliases: Map<string, string>): string | null
 /**
  * Resolve `$alias` references inside a create body so a node can be born
  * WITH the relations stored on its own fields — `intent_ids` (serves),
- * `reports_to`, `actor_principal_id`, `gated_by`, `sequence_to`, etc.
+ * `reports_to`, `actor_principal_id`, `gated_by`, etc.
  *
  * Without this, the only way to satisfy a `requires_edge` policy was to
  * create the node `drafting`, add the edge in a later `relate` op, then
@@ -694,7 +772,7 @@ function resolveRef(value: unknown, aliases: Map<string, string>): string | null
  *
  * Only a string whose ENTIRE trimmed value is a `$`-prefixed token is
  * treated as a reference (so prose like "Charge $5" is untouched). Walks
- * arrays and nested objects (e.g. `sequence_to: [{ target: "$next" }]`).
+ * arrays and nested objects.
  * An unknown `$alias` is a hard error — it almost always means a typo or a
  * forward reference to an op that hasn't run yet.
  */
@@ -782,7 +860,7 @@ function entityTypeFromId(id: string): string | null {
 }
 
 /** Pull entity-id refs out of a relation field value — a bare id, an id
- *  list, or a list of `{ target, ... }` objects (e.g. sequence_to). */
+ *  list, or a list of `{ target, ... }` objects from legacy data. */
 function relationFieldTargets(value: unknown): string[] {
   const out: string[] = [];
   const push = (x: unknown) => {
@@ -809,14 +887,6 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
   }
   const nodeTypes = new Set(contract.node_types);
   const primary = contract.primary_relation;
-  // Edge-table counts catch incoming edges from PRE-EXISTING nodes (sources
-  // outside this changeset). They can miss edges added within this same
-  // changeset, because the relation lives on the owner node's JSON field
-  // (e.g. `sequence_to`) and only materializes into `edges` on reindex —
-  // which can lag the integrity check. So we ALSO read that JSON field
-  // (the synchronous source of truth) and union the two signals. Without
-  // this, a fully-wired process authored in one changeset reported every
-  // node as `created_without_incoming` / `open_frontiers`.
   const counts = await withClient(async (c) => {
     const { rows } = await c.query<{ id: string; incoming: string; outgoing: string }>(
       `SELECT ids.id,
@@ -832,10 +902,8 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
     );
     return new Map(rows.map((row) => [row.id, row]));
   });
-  // JSON source-of-truth pass. `primary` is a relation kind (e.g.
-  // "sequence_flow"); resolve it to the owner field ("sequence_to"), then
-  // read the just-written values straight off each created node.
-  const ownerField = relationKind(primary)?.field;
+  const primarySpec = relationKind(primary);
+  const ownerField = primarySpec?.storage === "edge" ? null : primarySpec?.field;
   const jsonOutgoing = new Map<string, number>();
   const jsonHasIncoming = new Set<string>();
   const entities = new Map<string, Awaited<ReturnType<typeof getEntity>>>();

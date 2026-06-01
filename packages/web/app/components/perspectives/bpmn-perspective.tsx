@@ -1550,8 +1550,8 @@ function layOutBpmn(
 
 /**
  * Edge types that express BPMN sequence flow for layout and arrows.
- * `sequence_flow` is derived from the `sequence_to` field and is stored
- * in the same direction it renders: source -> target. Association
+ * `sequence_flow` is stored as a first-class edge in the same direction
+ * it renders: source -> target. Association
  * edges (`serves`, `enacts`, `gated_by`, `tests`, …) remain visible
  * in detail panes, but they do not draw process arrows on this canvas.
  */

@@ -20,10 +20,19 @@ describe("unsupportedRelationFieldError", () => {
     expect(unsupportedRelationFieldError("decision", { target_ref: undefined })).toBeNull();
   });
 
-  it("does not gate relations without a declared owners set", () => {
-    // sequence_to has no `owners`, so it must not be rejected anywhere.
-    expect(RELATION_KINDS.sequence_flow.owners).toBeUndefined();
-    expect(unsupportedRelationFieldError("decision", { sequence_to: ["action_01"] })).toBeNull();
+  it("rejects sequence_to in node JSON because BPMN flow must be an edge", () => {
+    expect(RELATION_KINDS.sequence_flow.storage).toBe("edge");
+    const err = unsupportedRelationFieldError("decision", { sequence_to: ["action_01"] });
+    expect(err).toMatch(/sequence_to/);
+    expect(err).toMatch(/sequence_flow/);
+    expect(err).toMatch(/edge/);
+  });
+
+  it("rejects preceded_by in node JSON because ordering must be an edge", () => {
+    expect(RELATION_KINDS.preceded_by.storage).toBe("edge");
+    const err = unsupportedRelationFieldError("action", { preceded_by: ["action_01"] });
+    expect(err).toMatch(/preceded_by/);
+    expect(err).toMatch(/edge/);
   });
 
   it("declares eval and reference as the tests-relation owners", () => {
