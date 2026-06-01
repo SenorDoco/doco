@@ -158,6 +158,29 @@ export async function getEdgeById(docoId: string, id: string): Promise<EdgeRow |
   });
 }
 
+/**
+ * Whether a live (non-retired) edge of `edgeType` already connects from→to in
+ * the Doco. Keeps repeated edge authoring idempotent — e.g. re-syncing a PR's
+ * `Doco-Implements:` links must not duplicate the `implemented_by` edge.
+ */
+export async function edgeExists(
+  docoId: string,
+  edgeType: string,
+  fromId: string,
+  toId: string,
+): Promise<boolean> {
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ x: number }>(
+      `SELECT 1 AS x FROM edges
+        WHERE doco_id = $1 AND edge_type = $2 AND from_id = $3 AND to_id = $4
+          AND lifecycle <> 'retired'
+        LIMIT 1`,
+      [docoId, edgeType, fromId, toId],
+    );
+    return rows.length > 0;
+  });
+}
+
 export type EdgeRetireResult =
   | { ok: true; id: string; edge: EdgeRow; footer_lines: string[] }
   | { error: string; status: number };
