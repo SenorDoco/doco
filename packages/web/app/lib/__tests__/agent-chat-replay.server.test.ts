@@ -107,6 +107,49 @@ describe("operation memory", () => {
     expect(memory).toContain("template_handle=generic");
     expect(memory).toContain("not that it pre-existed");
   });
+
+  it("uses the response template handle when operation memory summarizes doco creation", () => {
+    const rows: ChatMessageRow[] = [
+      row(0, "user", [{ type: "text", text: "Create a glossary doco." }]),
+      row(1, "assistant", [
+        {
+          type: "tool_use",
+          id: "toolu_create",
+          name: "doco_api",
+          input: {
+            method: "POST",
+            path: "/api/v1/docos.json",
+            body: {
+              name: "glossary",
+              org_id: "org_01",
+              template: "glossaries",
+            },
+          },
+        },
+      ]),
+      row(2, "user", [
+        {
+          type: "tool_result",
+          tool_use_id: "toolu_create",
+          content: JSON.stringify({
+            status: 201,
+            ok: true,
+            body: {
+              id: "doco_01KT20KM0120ZXRVMX58K85YNF",
+              handle: "glossary",
+              org_handle: "meta-doco",
+              qualified_handle: "meta-doco/glossary",
+              template_handle: "glossaries",
+            },
+          }),
+        },
+      ]),
+    ];
+
+    const memory = buildOperationMemoryFromRows(rows);
+
+    expect(memory).toContain("template_handle=glossaries");
+  });
 });
 
 describe("doco creation contract prompt", () => {
@@ -117,5 +160,12 @@ describe("doco creation contract prompt", () => {
     expect(prompt).toContain("Glossary doco");
     expect(prompt).toContain("glossaries");
     expect(prompt).toContain("A 201 response is authoritative");
+  });
+
+  it("spells out the exact create-doco template field", () => {
+    const prompt = buildDocoCreationContractPrompt();
+
+    expect(prompt).toContain("template_handle");
+    expect(prompt).toContain("Do not send `template`");
   });
 });
