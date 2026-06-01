@@ -1,6 +1,7 @@
 import type { DocoRole } from "@doco/db";
 import { useMemo, useState } from "react";
 import { GrantPicker } from "~/components/grant-picker";
+import type { ApprovalDocoOption, ApprovalOrgOption } from "~/lib/approval-grants";
 import {
   type ComposedGrant,
   type GrantCatalog,
@@ -8,22 +9,10 @@ import {
   resolveWriteTypes,
 } from "~/lib/grant-picker";
 
-export type OAuthApprovalDoco = {
-  id: string;
-  handle: string;
-  my_role: DocoRole;
-  org_id: string | null;
-  // Owning org's handle, for grouping a Doco you own under an org you
-  // don't (so the picker labels its bucket instead of orphaning it).
-  org_label?: string | null;
-};
-
-export type OAuthApprovalOrg = {
-  id: string;
-  handle: string;
-  display_name: string;
-  my_role: DocoRole;
-};
+// The picker's data shapes live in ~/lib/approval-grants — the single
+// source shared with the device + OAuth approve loaders.
+export type OAuthApprovalDoco = ApprovalDocoOption;
+export type OAuthApprovalOrg = ApprovalOrgOption;
 
 export function OAuthAccessApprovalForm({
   docos,

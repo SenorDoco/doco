@@ -1,9 +1,58 @@
 import { type DocoRole, getOrgRole, listOrganizationsForUser } from "@doco/db";
 import { WRITE_ALL, normalizeWriteTypes } from "@doco/shared";
+import type { ApprovalDocoOption, ApprovalOrgOption } from "~/lib/approval-grants";
 import { getDocoById } from "~/lib/db.server";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import { listOrgsOwnedOrAdminedBy } from "~/lib/host.server";
 
 const DOCO_ROLES = ["reader", "writer", "owner"] as const;
+
+/**
+ * Everything `principalId` can grant to a token: the owner-tier orgs and
+ * Docos that feed the approve-screen picker. This is the OFFER side; the
+ * `assertOwns*` helpers below are the ACCEPT side — both gate on owner so
+ * the picker never shows a target the submit would reject. Shared by the
+ * Device-Flow and OAuth approve loaders so both present the same matrix.
+ */
+export async function loadApprovalGrantOptions(
+  principalId: string,
+): Promise<{ docos: ApprovalDocoOption[]; orgs: ApprovalOrgOption[] }> {
+  const docoIds = await listAccessibleDocoIdsForPrincipal(principalId);
+  const docoRows = await Promise.all(
+    docoIds.map(async (id): Promise<ApprovalDocoOption | null> => {
+      const d = await getDocoById(id);
+      if (!d) return null;
+      const my_role = await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, principalId);
+      if (my_role !== "owner") return null;
+      const org_id = d.owner_id.startsWith("organization_") ? d.owner_id : null;
+      // owner_slug is the owning org's handle for org-owned Docos — it
+      // labels the picker's org bucket so a Doco you own under an org you
+      // don't is grouped by name instead of orphaned.
+      const org_label = org_id ? d.owner_slug || null : null;
+      return { id: d.id, handle: d.handle, my_role, org_id, org_label };
+    }),
+  );
+  const docos = docoRows
+    .filter((d): d is ApprovalDocoOption => d !== null)
+    .sort((a, b) => a.handle.localeCompare(b.handle));
+
+  // Orgs the principal owns. Granting an org covers every Doco it owns
+  // now and any created under it later; the picker's account scope
+  // expands to all of these.
+  const owned = await listOrgsOwnedOrAdminedBy(principalId);
+  const orgRows = await Promise.all(
+    owned.map(async (o): Promise<ApprovalOrgOption | null> => {
+      const role = await getOrgRole(o.id, principalId);
+      if (role !== "owner") return null;
+      return { id: o.id, handle: o.handle, display_name: o.display_name, my_role: role };
+    }),
+  );
+  const orgs = orgRows
+    .filter((o): o is ApprovalOrgOption => o !== null)
+    .sort((a, b) => a.display_name.localeCompare(b.display_name));
+
+  return { docos, orgs };
+}
 
 export interface OAuthApprovalGrantSets {
   granted_doco_ids: string[];
