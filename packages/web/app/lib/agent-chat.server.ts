@@ -77,6 +77,8 @@ const MAX_TOKENS = SENOR_DOCO_DEFAULT_MAX_TOKENS;
 // to the user; cap the sleep at 30s so a long retry-after doesn't
 // freeze the sidebar.
 const ANTHROPIC_429_MAX_RETRY_SLEEP_MS = 30_000;
+const ACTIVE_TURN_STOP_CHECK_MS = 750;
+const STOPPED_BY_USER_MESSAGE = "Stopped by user.";
 
 // Attachment policy — kept in one place so the UI notice, the system
 // prompt, and the chat_attachments default stay in sync.
@@ -173,6 +175,7 @@ export interface ChatStreamContext {
   currentPath: string | null;
   attachmentIds: string[];
   graphReferences: VisibleGraphReferenceGroup[];
+  abortSignal?: AbortSignal;
   /**
    * Conversation id for the active turn. Lets `runTool` attribute
    * tool calls back to the thread — currently used to back-fill the
@@ -670,6 +673,49 @@ async function markActiveTurnEnded(conversationId: string): Promise<void> {
         WHERE id = $1`,
       [conversationId],
     );
+  });
+}
+
+async function isActiveTurnMarked(conversationId: string): Promise<boolean> {
+  return await withClient(async (c) => {
+    const r = await c.query<{ active: boolean }>(
+      "SELECT active_turn_started_at IS NOT NULL AS active FROM chat_conversations WHERE id = $1",
+      [conversationId],
+    );
+    return r.rows[0]?.active === true;
+  });
+}
+
+export async function stopActiveTurnForPrincipal(
+  conversationId: string,
+  principalId: string,
+): Promise<{ row: ChatConversationRow | null; stopped: boolean }> {
+  const stopEvent = JSON.stringify([{ at_ms: 0, kind: "error", message: STOPPED_BY_USER_MESSAGE }]);
+  return await withClient(async (c) => {
+    const r = await c.query<ChatConversationRow & { stopped: boolean }>(
+      `WITH target AS (
+         SELECT active_turn_started_at IS NOT NULL AS stopped
+           FROM chat_conversations
+          WHERE id = $1 AND user_id = $2
+       ),
+       updated AS (
+         UPDATE chat_conversations
+            SET active_turn_started_at = NULL,
+                active_turn_events = CASE
+                  WHEN (SELECT stopped FROM target)
+                  THEN active_turn_events || $3::jsonb
+                  ELSE active_turn_events
+                END,
+                updated_at = now()
+          WHERE id = $1 AND user_id = $2
+          RETURNING ${CONV_COLS}
+       )
+       SELECT updated.*, target.stopped
+         FROM updated, target`,
+      [conversationId, principalId, stopEvent],
+    );
+    const row = r.rows[0];
+    return row ? { row, stopped: row.stopped === true } : { row: null, stopped: false };
   });
 }
 
@@ -1895,6 +1941,22 @@ async function* streamAssistantTurn(args: {
   const flushMetrics = async () => {
     await upsertAgentTurn(turnId, buildMetricsRow());
   };
+  let lastStopCheckMs = 0;
+  const activeTurnWasStopped = async (force = false): Promise<boolean> => {
+    if (args.ctx.abortSignal?.aborted) {
+      stopReason = "user_stop";
+      return true;
+    }
+    const now = Date.now();
+    if (!force && now - lastStopCheckMs < ACTIVE_TURN_STOP_CHECK_MS) {
+      return false;
+    }
+    lastStopCheckMs = now;
+    const stillActive = await isActiveTurnMarked(args.conversation.id);
+    if (stillActive) return false;
+    stopReason = "user_stop";
+    return true;
+  };
 
   // PERSIST THE USER'S MESSAGE FIRST. Before purgeExpiredAttachments,
   // before markActiveTurnStarted, before history loading — any of which
@@ -1971,6 +2033,10 @@ async function* streamAssistantTurn(args: {
   turnError = "(in_flight)";
   await checkpointMetrics();
   turnError = null;
+  if (await activeTurnWasStopped(true)) {
+    yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+    return;
+  }
 
   // First user-facing event in the stream. Without this, the
   // sidebar's thinking column shows "0 events / waiting for first
@@ -1992,6 +2058,10 @@ async function* streamAssistantTurn(args: {
   historyMessageCount = history.length;
 
   try {
+    if (await activeTurnWasStopped()) {
+      yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+      return;
+    }
     messages.push({ role: "user", content: userContent });
 
     const bootstrapStart = performance.now();
@@ -1999,8 +2069,16 @@ async function* streamAssistantTurn(args: {
     const bootstrap = await buildBootstrapContext(args.ctx.principal.id);
     bootstrapMs = performance.now() - bootstrapStart;
     const systemBlocks = buildSystemBlocks(args.ctx.principal, bootstrap);
+    if (await activeTurnWasStopped(true)) {
+      yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+      return;
+    }
 
     for (let turn = 0; turn < MAX_TURNS_PER_REPLY; turn++) {
+      if (await activeTurnWasStopped()) {
+        yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+        return;
+      }
       const callStart = performance.now();
       let ttfbMs: number | null = null;
       let streamConstructedMs: number | null = null;
@@ -2074,6 +2152,10 @@ async function* streamAssistantTurn(args: {
 
       try {
         for await (const event of stream) {
+          if (await activeTurnWasStopped()) {
+            yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+            return;
+          }
           if (firstStreamEventMs === null) {
             firstStreamEventMs = performance.now() - callStart;
             firstStreamEventType = event.type;
@@ -2248,9 +2330,17 @@ async function* streamAssistantTurn(args: {
       const toolUseBlocks = collectedBlocks.filter((b): b is ToolUseBlock => b.type === "tool_use");
       const toolResults: ToolResultBlockParam[] = [];
       for (const block of toolUseBlocks) {
+        if (await activeTurnWasStopped(true)) {
+          yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+          return;
+        }
         yield { kind: "status", phase: "running_tool", detail: block.name };
         const toolStart = performance.now();
         const tr = await runTool(block, args.ctx);
+        if (await activeTurnWasStopped(true)) {
+          yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+          return;
+        }
         const toolElapsed = Math.round(performance.now() - toolStart);
         yield {
           kind: "status",

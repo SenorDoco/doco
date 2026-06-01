@@ -109,6 +109,9 @@ export async function action({ request }: { request: Request }) {
   if (!conversation) {
     return Response.json({ error: "conversation_not_found" }, { status: 404 });
   }
+  if (conversation.active_turn_started_at) {
+    return Response.json({ error: "turn_in_progress" }, { status: 409 });
+  }
   const cookieHeader = request.headers.get("cookie") ?? "";
   const origin = new URL(request.url).origin;
 
@@ -130,6 +133,7 @@ export async function action({ request }: { request: Request }) {
             attachmentIds,
             graphReferences,
             conversationId: conversation.id,
+            abortSignal: request.signal,
           },
         })) {
           send(event);

@@ -6,7 +6,8 @@
 //     attach_doco_id?: string,
 //     detach_doco_id?: string,
 //     attach_org?: string,
-//     detach_org?: string }
+//     detach_org?: string,
+//     stop_active_turn?: boolean }
 //
 // title / archived go through `patchConversation`; attach/detach go
 // through `mutateConversationAttachments`. Either or both may run in
@@ -17,7 +18,11 @@
 // around so the agent can still reference it. Hard delete is
 // admin-only.
 
-import { mutateConversationAttachments, patchConversation } from "~/lib/agent-chat.server";
+import {
+  mutateConversationAttachments,
+  patchConversation,
+  stopActiveTurnForPrincipal,
+} from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface PatchBody {
@@ -27,6 +32,7 @@ interface PatchBody {
   detach_doco_id?: unknown;
   attach_org?: unknown;
   detach_org?: unknown;
+  stop_active_turn?: unknown;
 }
 
 function cleanHandle(value: unknown): string | undefined {
@@ -72,6 +78,13 @@ export async function action({
   if (typeof body.archived === "boolean") {
     patch.archived = body.archived;
   }
+  if (
+    Object.prototype.hasOwnProperty.call(body, "stop_active_turn") &&
+    typeof body.stop_active_turn !== "boolean"
+  ) {
+    return Response.json({ error: "invalid_stop_active_turn" }, { status: 400 });
+  }
+  const shouldStopActiveTurn = body.stop_active_turn === true;
   const ops = {
     attachDocoId: cleanHandle(body.attach_doco_id),
     detachDocoId: cleanHandle(body.detach_doco_id),
@@ -80,10 +93,22 @@ export async function action({
   };
   const hasAttachmentOp = ops.attachDocoId || ops.detachDocoId || ops.attachOrg || ops.detachOrg;
   const hasPatch = Object.keys(patch).length > 0;
-  // Run patch first (title/archived), then attachments. Both return
-  // the updated row; we take the last non-null and bail with 404
-  // when either says the conversation isn't ours.
-  let row = hasPatch ? await patchConversation(id, me.id, patch) : null;
+  // Run stop first, then patch (title/archived), then attachments.
+  // All return the updated row; we take the last non-null and bail
+  // with 404 when any scoped mutation says the conversation isn't ours.
+  let stoppedActiveTurn = false;
+  let row = null;
+  if (shouldStopActiveTurn) {
+    const stopped = await stopActiveTurnForPrincipal(id, me.id);
+    row = stopped.row;
+    stoppedActiveTurn = stopped.stopped;
+    if (!row) {
+      return Response.json({ error: "not_found" }, { status: 404 });
+    }
+  }
+  if (hasPatch) {
+    row = await patchConversation(id, me.id, patch);
+  }
   if (hasPatch && !row) {
     return Response.json({ error: "not_found" }, { status: 404 });
   }
@@ -101,6 +126,7 @@ export async function action({
     }
   }
   return Response.json({
+    stopped_active_turn: stoppedActiveTurn,
     conversation: {
       id: row.id,
       title: row.title,

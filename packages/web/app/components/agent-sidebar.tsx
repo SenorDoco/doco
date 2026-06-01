@@ -1473,16 +1473,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       if (!text && attachmentIds.length === 0) return;
       // While Señor Doco is mid-reply, the Anthropic API can't accept
       // another user message in the same conversation (the wire
-      // protocol requires user→assistant→user alternation, and the
-      // server-side runAssistantTurn mutates the message list as it
-      // goes). Rather than dropping the user's submit on the floor,
-      // stash it; the queue-drain effect auto-fires it once the
-      // current turn settles. `override` is set by that drain — we
-      // skip the re-queue path so the auto-fire doesn't loop.
+      // protocol requires user→assistant→user alternation). The UI's
+      // primary action becomes Stop during that window; keep typed
+      // text in the composer until the current turn settles.
       if ((busy || remoteInflight) && !override) {
-        setQueuedSends((prev) => [...prev, { text, staged: sentAttachments }]);
-        setInputText("");
-        setStaged([]);
         return;
       }
       // Crash-safe pending-send. Write to localStorage SYNCHRONOUSLY
@@ -1599,6 +1593,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           // realistic user message + current_path + attachment_ids.
           keepalive: true,
         });
+        if (res.status === 409) {
+          localContent.push({
+            type: "text",
+            text: "[error] Señor Doco is already working in this chat. Stop the current reply before sending another ask.",
+          });
+          bumpInFlight();
+          setRemoteInflight(true);
+          return;
+        }
         if (!res.ok || !res.body) {
           const errBody = await res.text().catch(() => "");
           localContent.push({
@@ -1807,6 +1810,45 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       maybeFollowCreateResult,
     ],
   );
+
+  const stopActiveTurn = useCallback(async () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setBusy(false);
+    setInFlight(null);
+    setRemoteInflight(false);
+    setTurnUsage(null);
+    setQueuedSends([]);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(PENDING_SEND_KEY);
+      } catch {}
+    }
+    broadcastSync({ kind: "remote-inflight", busy: false });
+
+    if (!conversationId) return;
+    try {
+      const res = await fetch(
+        `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
+        {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stop_active_turn: true }),
+        },
+      );
+      if (!res.ok) {
+        setLoadError(`Couldn't stop Señor Doco (HTTP ${res.status})`);
+        return;
+      }
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      void reload();
+      void loadConversationsList();
+    }
+  }, [broadcastSync, conversationId, loadConversationsList, reload]);
 
   // Pending-send recovery. send() writes the user's text to
   // localStorage synchronously before its fetch; if the tab died
@@ -2251,6 +2293,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   value={inputText}
                   onChange={setInputText}
                   onSend={send}
+                  onStop={stopActiveTurn}
                   busy={busy || remoteInflight}
                   username={me.username}
                   staged={staged}
@@ -3564,6 +3607,7 @@ function Composer({
   value,
   onChange,
   onSend,
+  onStop,
   busy,
   username,
   staged,
@@ -3576,6 +3620,7 @@ function Composer({
   value: string;
   onChange: (s: string) => void;
   onSend: () => void;
+  onStop: () => void;
   busy: boolean;
   username: string;
   staged: StagedAttachment[];
@@ -3596,6 +3641,9 @@ function Composer({
   });
   const canSend = value.trim().length > 0 || staged.length > 0;
   const queuedLabel = queuedCount === 0 ? null : `${queuedCount} queued`;
+  const helperLabel = busy
+    ? "Stop the current reply before sending another ask"
+    : "⏎ to send · ⇧⏎ for newline";
   return (
     <div
       className={cn(
@@ -3652,7 +3700,7 @@ function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            onSend();
+            if (!busy) onSend();
           }
         }}
       />
@@ -3679,17 +3727,21 @@ function Composer({
           >
             {uploading ? "Uploading…" : "📎 Attach"}
           </button>
-          <div className="text-[10px] text-muted-foreground">
-            {queuedLabel ?? "⏎ to send · ⇧⏎ for newline"}
-          </div>
+          <div className="text-[10px] text-muted-foreground">{queuedLabel ?? helperLabel}</div>
         </div>
         <button
           type="button"
-          onClick={onSend}
-          disabled={!canSend}
-          className="neu-button rounded-md bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          onClick={busy ? onStop : onSend}
+          disabled={!busy && !canSend}
+          aria-label={busy ? "Stop Señor Doco" : "Send message"}
+          className={cn(
+            "neu-button rounded-md px-3 py-1 text-[11px] font-semibold hover:opacity-90 disabled:opacity-50",
+            busy
+              ? "border border-destructive/40 bg-destructive/10 text-destructive"
+              : "bg-primary text-primary-foreground",
+          )}
         >
-          {busy ? "Queue" : "Send"}
+          {busy ? "Stop" : "Send"}
         </button>
       </div>
     </div>
