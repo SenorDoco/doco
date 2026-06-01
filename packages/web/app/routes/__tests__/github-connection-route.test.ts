@@ -104,17 +104,10 @@ describe("github connection route", () => {
       orgHandle: "acme-org",
       connections: [{ repo: "acme/store", installation_id: 42 }],
     });
-    mocks.backfill.mockResolvedValue({
-      total: 5,
-      created: 5,
-      updated: 0,
-      unchanged: 0,
-      failed: 0,
-      nextPage: null,
-    });
+    mocks.backfill.mockResolvedValue({ total: 5, imported: 5, failed: 0 });
     const res = await action({ request: req({ intent: "backfill", repo: "acme/store" }), params });
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toMatchObject({ ok: true, total: 5, nextPage: null });
+    await expect(res.json()).resolves.toMatchObject({ ok: true, total: 5, imported: 5 });
     expect(mocks.backfill).toHaveBeenCalledWith(
       expect.objectContaining({
         docoId: "doco_1",
@@ -122,7 +115,6 @@ describe("github connection route", () => {
         repo: "store",
         ownerSlug: "acme-org",
         installationId: 42,
-        startPage: 1,
       }),
     );
   });
