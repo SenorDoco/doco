@@ -8,6 +8,7 @@
 
 import { normalizeNodeType } from "@doco/shared";
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -534,19 +535,24 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
-  // Publish the rail's current width as a CSS variable so floating
-  // overlays (the node-detail dialog, etc.) can avoid covering it on
-  // small screens. Three widths now: collapsed (32), default
-  // expanded (320), and Show-Thinking expanded (640). Thinking is a
-  // chat-only feature so the rail narrows back to 320 whenever the
-  // user is in the list view, even if the toggle is on; flipping
-  // back to a chat restores the wider rail without the user having
-  // to toggle anything.
+  // Publish the rail's current desktop width as a CSS variable so
+  // floating overlays (the node-detail dialog, etc.) can avoid
+  // covering it. Below the shared shell breakpoint the rail stacks
+  // above content, so there is no left rail to offset from.
   const thinkingActive = showThinking && view === "chat";
   const railWidth = collapsed ? RAIL_COLLAPSED : thinkingActive ? RAIL_THINKING : RAIL_DEFAULT;
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.documentElement.style.setProperty("--senor-doco-rail-width", railWidth);
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+    const desktopShell = window.matchMedia("(min-width: 840px)");
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        "--senor-doco-rail-width",
+        desktopShell.matches ? railWidth : "0px",
+      );
+    };
+    publish();
+    desktopShell.addEventListener("change", publish);
+    return () => desktopShell.removeEventListener("change", publish);
   }, [railWidth]);
 
   const toggleShowThinking = useCallback(() => {
@@ -2056,11 +2062,19 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // the width animates.
   const collapsedDisplay = collapsed || isAuthPage;
   const statusAnchorIndex = lastVisibleMessageIndex(allMessages);
+  const railStyle = {
+    "--senor-doco-current-width": railWidth,
+    "--senor-doco-stack-height": collapsedDisplay ? RAIL_COLLAPSED : "min(320px, 42svh)",
+    transition: "width 180ms ease-out, height 180ms ease-out",
+  } as CSSProperties & {
+    "--senor-doco-current-width": string;
+    "--senor-doco-stack-height": string;
+  };
 
   return (
     <aside
-      className="neu-panel flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-card"
-      style={{ width: railWidth, transition: "width 180ms ease-out" }}
+      className="senor-doco-rail neu-panel flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-card"
+      style={railStyle}
       aria-busy={agentActive}
       aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
     >

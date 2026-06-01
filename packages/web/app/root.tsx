@@ -83,18 +83,18 @@ export default function App() {
   if (!me) {
     return <Outlet />;
   }
-  // Signed-in chrome layout: top bar pinned, then a flex row with the
-  // assistant sidebar (320 px, always visible) and the scrolling main
-  // content. The outer div locks page height so the aside doesn't
-  // scroll away with the rest of the body. We render SiteHeader here
-  // once (shellOwner) and wrap the Outlet in SiteHeaderSuppressionProvider
+  // Signed-in chrome layout: top bar pinned, then a responsive shell
+  // body. Below the shared two-column breakpoint, Señor Doco stacks
+  // above the scrolling page content so the page never gets squeezed
+  // into a sliver next to the rail. We render SiteHeader here once
+  // (shellOwner) and wrap the Outlet in SiteHeaderSuppressionProvider
   // so per-route <SiteHeader> calls (default shellOwner=false) render null.
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <SiteHeader me={me} shellOwner />
-      <div className="flex min-h-0 flex-1">
+      <div className="doco-shell-body flex min-h-0 flex-1">
         <AgentSidebar me={me} />
-        <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
+        <main ref={mainRef} className="doco-shell-main min-w-0 flex-1 overflow-y-auto">
           <SiteHeaderSuppressionProvider>
             <Outlet />
           </SiteHeaderSuppressionProvider>
