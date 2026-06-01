@@ -76,6 +76,26 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(entry.alternatives).toEqual([{ name: "node", note: "too generic", deprecated: true }]);
   });
 
+  it("uses the stored node name as the glossary headword before decision metadata fallback", async () => {
+    const client = makeClient([
+      row({
+        id: "decision_01",
+        entity_type: "decision",
+        label: "Changeset",
+        prose: "Changeset\n\nA batch graph-authoring request.",
+        data: {
+          chosen: "A batch graph-authoring request.",
+          question: "What is a changeset in Doco?",
+        },
+      }),
+    ]);
+
+    const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+    const entry = groups[0].entries[0];
+    expect(entry.headword).toBe("Changeset");
+    expect(entry.senses).toEqual(["A batch graph-authoring request."]);
+  });
+
   it("alphabetizes mixed types into letter groups and tags non-term types honestly", async () => {
     const client = makeClient([
       row({

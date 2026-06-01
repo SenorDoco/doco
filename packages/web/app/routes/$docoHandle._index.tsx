@@ -407,6 +407,12 @@ function edgeTypeListPath(handle: string, edgeType: string): string {
   return `/${handle}/edges?${params.toString()}`;
 }
 
+function withPerspectiveParam(href: string, activeSlug: string): string {
+  if (activeSlug === "graph") return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}perspective=${encodeURIComponent(activeSlug)}`;
+}
+
 interface NodeDialogState {
   detail: NodeDialogDetail | null;
   loading: boolean;
@@ -852,9 +858,13 @@ export default function DocoHome({
     setNodeDialog(null);
     setLifecycleError(null);
     if (typeof window !== "undefined") {
-      window.history.replaceState(window.history.state, "", `/${handle}`);
+      const href =
+        activeSlug === "graph"
+          ? `/${handle}`
+          : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
+      window.history.replaceState(window.history.state, "", href);
     }
-  }, [handle]);
+  }, [activeSlug, handle]);
 
   const closeEdgeDialog = useCallback(() => {
     clientDialogOverrideRef.current = true;
@@ -1169,6 +1179,13 @@ export default function DocoHome({
                     data={glossaryData}
                     title={handle}
                     visibleLifecycles={visibleLifecycles}
+                    onOpenNode={(entry) => {
+                      void loadNodeDialog(
+                        entry.entityType,
+                        entry.id,
+                        withPerspectiveParam(entry.href, activeSlug),
+                      );
+                    }}
                   />
                 ) : effectivePerspectiveKind === "pull-requests" && pullRequestsData ? (
                   <PullRequestsPerspective
@@ -1326,7 +1343,18 @@ export default function DocoHome({
                   ) : (
                     <div className="divide-y divide-border">
                       {items.map((it) => (
-                        <ActivityFeedLine key={it.event_id} item={it} docoHandle={handle} />
+                        <ActivityFeedLine
+                          key={it.event_id}
+                          item={it}
+                          docoHandle={handle}
+                          onOpenNode={(item, href) => {
+                            void loadNodeDialog(
+                              item.entity_type,
+                              item.id,
+                              withPerspectiveParam(href, activeSlug),
+                            );
+                          }}
+                        />
                       ))}
                     </div>
                   )}

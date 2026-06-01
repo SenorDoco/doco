@@ -112,8 +112,10 @@ function stripHeadwordPrefix(prose: string, headword: string): string {
   const trimmed = prose.trim();
   const head = headword.trim();
   if (!head) return trimmed;
-  const re = new RegExp(`^${head.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[:—–-]\\s*`, "i");
-  return trimmed.replace(re, "");
+  const escaped = head.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return trimmed
+    .replace(new RegExp(`^${escaped}\\s*[:—–-]\\s*`, "i"), "")
+    .replace(new RegExp(`^${escaped}\\s*(?:\\r?\\n\\s*)+`, "i"), "");
 }
 
 const VOWELS = /[aeiouy]/i;
@@ -225,7 +227,13 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
   let tag: string;
 
   if (row.entity_type === "decision") {
-    headword = asString(data.chosen) ?? asString(data.term) ?? row.label ?? "(untitled term)";
+    headword =
+      asString(data.name) ??
+      asString(data.title) ??
+      row.label ??
+      asString(data.chosen) ??
+      asString(data.term) ??
+      "(untitled term)";
     question = asString(data.question);
     definitionProse = stripHeadwordPrefix(row.prose ?? "", headword);
     alternatives = parseAlternatives(data.alternatives);
