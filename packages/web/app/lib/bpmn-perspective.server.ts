@@ -264,14 +264,7 @@ export async function loadBpmnGraph(
         LIMIT 5000`,
       [docoId, Array.from(nodeIdSet)],
     );
-    links = edgeRows.rows.map((r) => ({
-      id: r.id,
-      source: r.from_id,
-      target: r.to_id,
-      edge_type: r.edge_type,
-      label: r.edge_type === "sequence_flow" ? sequenceFlowLabel(r.edge_props_json) : null,
-      href: opts.handle ? `/${opts.handle}/edges/${r.id}` : null,
-    }));
+    links = edgeRows.rows.map((r) => bpmnLinkFromEdgeRow(r, opts.handle));
 
     // Reconstruct the managed relationship fields (actor_id, decided_by, …)
     // onto each node's `data` from first-class edges — they no longer live in
@@ -676,6 +669,28 @@ function sequenceFlowLabel(props: Record<string, unknown> | null): string | null
   const compact = raw.trim().replace(/\s+/g, " ");
   if (!compact) return null;
   return compact.length > 32 ? `${compact.slice(0, 29)}...` : compact;
+}
+
+function bpmnLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): OverviewGraphLink {
+  const href = handle ? `/${handle}/edges/${row.id}` : null;
+  if (row.edge_type === "preceded_by") {
+    return {
+      id: row.id,
+      source: row.to_id,
+      target: row.from_id,
+      edge_type: "sequence_flow",
+      label: sequenceFlowLabel(row.edge_props_json),
+      href,
+    };
+  }
+  return {
+    id: row.id,
+    source: row.from_id,
+    target: row.to_id,
+    edge_type: row.edge_type,
+    label: row.edge_type === "sequence_flow" ? sequenceFlowLabel(row.edge_props_json) : null,
+    href,
+  };
 }
 
 export function computeNearestIntentByNode(

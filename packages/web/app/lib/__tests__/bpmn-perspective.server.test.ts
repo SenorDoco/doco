@@ -293,6 +293,71 @@ describe("loadBpmnGraph", () => {
     );
   });
 
+  it("renders legacy preceded_by edges as forward BPMN sequence links", async () => {
+    const intentId = "intent_01PROCESS";
+    const firstId = "action_01FIRST";
+    const secondId = "action_01SECOND";
+
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Legacy process",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: firstId,
+          entity_type: "action",
+          summary: "First step",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {
+            actor_id: "principal_system",
+            intent_ids: [intentId],
+          },
+        },
+        {
+          id: secondId,
+          entity_type: "action",
+          summary: "Second step",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {
+            actor_id: "principal_system",
+            intent_ids: [intentId],
+          },
+        },
+      ],
+      principals: [
+        {
+          id: "principal_system",
+          name: "System",
+          lifecycle: "asserted",
+        },
+      ],
+      users: [],
+      edges: [{ id: "edge_legacy", from_id: secondId, to_id: firstId, edge_type: "preceded_by" }],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "legacy" });
+
+    expect(graph.links).toContainEqual(
+      expect.objectContaining({
+        id: "edge_legacy",
+        source: firstId,
+        target: secondId,
+        edge_type: "sequence_flow",
+        href: "/legacy/edges/edge_legacy",
+      }),
+    );
+    expect(graph.nodes.find((node) => node.id === secondId)?.bfs_depth).toBeGreaterThan(
+      graph.nodes.find((node) => node.id === firstId)?.bfs_depth ?? 0,
+    );
+  });
+
   it("assigns later sequence targets a greater layout depth even when a loop points back", async () => {
     const intentId = "intent_01PROCESS";
     const decisionId = "decision_01ROUTE";
