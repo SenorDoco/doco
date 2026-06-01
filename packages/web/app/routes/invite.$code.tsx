@@ -15,7 +15,6 @@
 //     instructions for redeeming the same invite.
 
 import {
-  type DocoRole,
   getDocoById,
   getUserById,
   upsertAccountGrant,
@@ -30,7 +29,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 import { rootDir } from "~/lib/db.server";
-import { InviteStore } from "~/lib/invite-store.server";
+import { type Invite, InviteStore } from "~/lib/invite-store.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 type LoaderError =
@@ -62,6 +61,49 @@ async function getOrganizationById(id: string): Promise<{ id: string; handle: st
   return row ? { id: String(row.id), handle: String(row.handle) } : null;
 }
 
+type InviteGrant = Invite["grants"][number];
+
+function primaryGrant(invite: Invite): InviteGrant | null {
+  return invite.grants[0] ?? null;
+}
+
+async function inviteTargetForDisplay(invite: Invite): Promise<LoaderOk["target"] | null> {
+  const grant = primaryGrant(invite);
+  if (!grant) return null;
+  if (invite.grants.length > 1) {
+    return { level: grant.level, label: `${invite.grants.length} access grants` };
+  }
+  if (grant.level === "account") {
+    return { level: "account", label: "an entire account" };
+  }
+  if (grant.level === "org") {
+    const org = await getOrganizationById(grant.target_id);
+    return org ? { level: "org", label: org.handle } : null;
+  }
+  const doco = await getDocoById(grant.target_id);
+  return doco ? { level: "doco", label: doco.handle } : null;
+}
+
+async function inviteContinueTarget(invite: Invite): Promise<{ to: string; label: string } | null> {
+  const grant = primaryGrant(invite);
+  if (!grant) return null;
+  if (invite.grants.length > 1 || grant.level === "account") {
+    return {
+      to: "/dashboard",
+      label:
+        invite.grants.length > 1
+          ? `${invite.grants.length} access grants`
+          : "the account you were invited to",
+    };
+  }
+  if (grant.level === "org") {
+    const org = await getOrganizationById(grant.target_id);
+    return org ? { to: `/orgs/${org.handle}`, label: org.handle } : null;
+  }
+  const doco = await getDocoById(grant.target_id);
+  return doco ? { to: `/${doco.handle}`, label: doco.handle } : null;
+}
+
 export async function loader({ request, params }: { request: Request; params: { code: string } }) {
   const code = (params.code ?? "").trim();
   if (!code) return { error: "missing_code" } satisfies LoaderError;
@@ -73,20 +115,8 @@ export async function loader({ request, params }: { request: Request; params: { 
   if (invite.status === "consumed") return { error: "consumed" } satisfies LoaderError;
   if (invite.status === "revoked") return { error: "revoked" } satisfies LoaderError;
 
-  const inviteLevel = invite.level ?? "doco";
-  let target: LoaderOk["target"];
-  if (inviteLevel === "account") {
-    target = { level: "account", label: "an entire account" };
-  } else if (inviteLevel === "org" && invite.org_id) {
-    const org = await getOrganizationById(invite.org_id);
-    if (!org) return { error: "org_not_found" } satisfies LoaderError;
-    target = { level: "org", label: org.handle };
-  } else {
-    if (!invite.doco_id) return { error: "doco_not_found" } satisfies LoaderError;
-    const doco = await getDocoById(invite.doco_id);
-    if (!doco) return { error: "doco_not_found" } satisfies LoaderError;
-    target = { level: "doco", label: doco.handle };
-  }
+  const target = await inviteTargetForDisplay(invite);
+  if (!target) return { error: "doco_not_found" } satisfies LoaderError;
 
   const inviter = invite.minted_by_user_id ? await getUserById(invite.minted_by_user_id) : null;
   const principal = await getCurrentPrincipal(request);
@@ -131,26 +161,10 @@ export async function action({
   if (invite.status === "consumed") return { error: "This invite was already redeemed." };
   if (invite.status === "revoked") return { error: "This invite has been revoked." };
 
-  const inviteLevel = invite.level ?? "doco";
-  let continueTo: string;
-  let targetLabel: string;
-  if (inviteLevel === "account") {
-    // Account-level invite: redeemer lands on their dashboard; the grant
-    // spans the grantor's whole account, not a single org/doco.
-    continueTo = "/dashboard";
-    targetLabel = "the account you were invited to";
-  } else if (inviteLevel === "org" && invite.org_id) {
-    const org = await getOrganizationById(invite.org_id);
-    if (!org) return { error: "The organization this invite points at no longer exists." };
-    continueTo = `/orgs/${org.handle}`;
-    targetLabel = org.handle;
-  } else {
-    if (!invite.doco_id) return { error: "The Doco this invite points at no longer exists." };
-    const doco = await getDocoById(invite.doco_id);
-    if (!doco) return { error: "The Doco this invite points at no longer exists." };
-    continueTo = `/${doco.handle}`;
-    targetLabel = doco.handle;
-  }
+  const continueTarget = await inviteContinueTarget(invite);
+  if (!continueTarget) return { error: "The invite target no longer exists." };
+  const continueTo = continueTarget.to;
+  const targetLabel = continueTarget.label;
 
   const consumed = await store.consumeInvite(code, principal.id as EntityId<"principal">);
   if (!consumed) {
@@ -160,67 +174,31 @@ export async function action({
     };
   }
 
-  // Multi-grant invite (one link, all grants): apply every spec. This is the
-  // source of truth when present; the legacy single-grant fields below are the
-  // fallback for older invites.
-  if (consumed.grants && consumed.grants.length > 0) {
-    for (const g of consumed.grants) {
-      if (g.level === "account" && g.account_grantor_user_id) {
-        await upsertAccountGrant({
-          grantor_user_id: g.account_grantor_user_id,
-          grantee_user_id: principal.id,
-          role: g.role,
-          write_types: g.write_types,
-        });
-      } else if (g.level === "org") {
-        await upsertOrgUser({
-          org_id: g.target_id,
-          user_id: principal.id,
-          role: g.role,
-          write_types: g.write_types,
-        });
-      } else if (g.level === "doco") {
-        await upsertDocoUser({
-          doco_id: g.target_id,
-          user_id: principal.id,
-          role: g.role,
-          write_types: g.write_types,
-        });
-      }
+  for (const g of consumed.grants) {
+    if (g.level === "account") {
+      const grantor = g.account_grantor_user_id ?? g.target_id;
+      if (!grantor) continue;
+      await upsertAccountGrant({
+        grantor_user_id: grantor,
+        grantee_user_id: principal.id,
+        role: g.role,
+        write_types: g.write_types,
+      });
+    } else if (g.level === "org") {
+      await upsertOrgUser({
+        org_id: g.target_id,
+        user_id: principal.id,
+        role: g.role,
+        write_types: g.write_types,
+      });
+    } else if (g.level === "doco") {
+      await upsertDocoUser({
+        doco_id: g.target_id,
+        user_id: principal.id,
+        role: g.role,
+        write_types: g.write_types,
+      });
     }
-    return { ok: true, continue_to: continueTo, target_label: targetLabel };
-  }
-
-  // Bind the human Principal into the role grant on the level the
-  // invite targets. Pre-cutover invites (no role/level) default to
-  // doco-level `owner` to preserve prior behavior.
-  const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
-  const grantedWriteTypes = consumed.write_types;
-  const consumedLevel = consumed.level ?? "doco";
-  if (consumedLevel === "account" && consumed.account_grantor_user_id) {
-    // Account-level invite (migration 075): the redeemer joins the
-    // grantor's whole account.
-    await upsertAccountGrant({
-      grantor_user_id: consumed.account_grantor_user_id,
-      grantee_user_id: principal.id,
-      role: grantedRole,
-      write_types: grantedWriteTypes,
-    });
-  } else if (consumedLevel === "org" && consumed.org_id) {
-    await upsertOrgUser({
-      org_id: consumed.org_id,
-      user_id: principal.id,
-      role: grantedRole,
-      write_types: grantedWriteTypes,
-    });
-  } else {
-    if (!invite.doco_id) return { error: "The Doco this invite points at no longer exists." };
-    await upsertDocoUser({
-      doco_id: invite.doco_id,
-      user_id: principal.id,
-      write_types: grantedWriteTypes,
-      role: grantedRole,
-    });
   }
 
   return {
@@ -279,7 +257,12 @@ export default function InviteLanding({
       <Card>
         <CardHeader>
           <CardTitle>
-            You've been invited to {loaderData.target.level === "org" ? "organization" : "doco"}{" "}
+            You've been invited to{" "}
+            {loaderData.target.level === "org"
+              ? "organization"
+              : loaderData.target.level === "account"
+                ? "account"
+                : "doco"}{" "}
             <em>{loaderData.target.label}</em>
             {loaderData.inviter ? (
               <>

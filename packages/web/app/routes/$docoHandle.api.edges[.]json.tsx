@@ -1,7 +1,7 @@
 // POST /<doco>/api/edges.json  — create a first-class edge.
 // GET  /<doco>/api/edges.json  — list live edges.
 //
-// Edge authoring (doco-vnext). Writes go through the append-only commit()
+// Edge authoring. Writes go through the append-only commit()
 // boundary; per-edge-type write grants gate creation, exactly like nodes.
 
 import { withClient } from "@doco/db";

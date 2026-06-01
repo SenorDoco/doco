@@ -158,10 +158,9 @@ export async function action({
     return { intent: "add_grants", ok: true, user_id: granteeId, grants_count: grants.length };
   }
 
-  // Account-level grants (migration 075): the grantor is the acting user,
-  // so there is no target to own-check — you may always grant or revoke
-  // access to your OWN account. The per-type set + role mirror the
-  // doco/org cases.
+  // Account-level grants: the grantor is the acting user, so there is
+  // no target to own-check — you may always grant or revoke access to
+  // your OWN account. The per-type set + role mirror the doco/org cases.
   if ((intent === "update" || intent === "remove") && level === "account") {
     const granteeId = String(form.get("user_id") ?? "").trim();
     if (!granteeId) return { error: "user_id missing." };
@@ -200,9 +199,8 @@ export async function action({
   }
 
   if (intent === "update" || intent === "remove") {
-    // target_ids is the canonical field — comma-separated when a grouped
-    // row covers multiple grants. Falls back to legacy target_id.
-    const rawTargets = String(form.get("target_ids") ?? form.get("target_id") ?? "").trim();
+    // target_ids is comma-separated when a grouped row covers multiple grants.
+    const rawTargets = String(form.get("target_ids") ?? "").trim();
     const targetIds = rawTargets
       .split(",")
       .map((s) => s.trim())
@@ -326,20 +324,13 @@ export default function UsersPage({
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Scope filter: "all" | "org:<id>" | "doco:<id>". Legacy
-  // ?level=&target_id= URLs still arrive filtered to that scope.
-  const explicitScope = searchParams.get("scope");
-  const legacyLevel = searchParams.get("level");
-  const legacyTargetId = searchParams.get("target_id");
-  const scope =
-    explicitScope ?? (legacyLevel && legacyTargetId ? `${legacyLevel}:${legacyTargetId}` : "all");
+  // Scope filter: "all" | "org:<id>" | "doco:<id>".
+  const scope = searchParams.get("scope") ?? "all";
 
   function applyScope(value: string) {
     const next = new URLSearchParams(searchParams);
     if (value === "all") next.delete("scope");
     else next.set("scope", value);
-    next.delete("level");
-    next.delete("target_id");
     setSearchParams(next, { replace: true });
   }
 
@@ -615,11 +606,6 @@ function UserRow({
             {isMe ? (
               <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 you
-              </span>
-            ) : null}
-            {row.principal.kind === "agent" ? (
-              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                agent
               </span>
             ) : null}
           </div>

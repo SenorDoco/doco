@@ -26,7 +26,7 @@ export interface IdentityGrant {
 export interface AgentIdentity {
   user_id: string;
   username: string;
-  type: "person" | "agent";
+  type: "person";
   credential: AgentCredentialIdentity | null;
   indicator_prefix: string;
   grants: IdentityGrant[];
@@ -41,7 +41,7 @@ export interface AgentCredentialIdentity {
 export interface AgentDisplayIdentity {
   user_id: string;
   username: string;
-  type: "person" | "agent";
+  type: "person";
   credential: AgentCredentialIdentity | null;
   indicator_prefix: string;
 }

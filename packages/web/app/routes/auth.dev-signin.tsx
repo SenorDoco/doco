@@ -28,13 +28,10 @@ const TEST_USERNAME = TEST_USERNAMES[0];
 /**
  * Ensure a user row exists for the test name and return its id.
  *
- * Post-migration-005 the session cookie holds a `user_<ulid>`
- * (per session.server.ts) — sign-in is identity, not principal-node.
- * Earlier versions of this route inserted into `principals`, which
- * silently broke when migration 020 made principals Doco-scoped (the
- * NOT NULL doco_id FK rejects rows with no Doco). Inserting into
- * `users` is the right home for "the runtime that's holding
- * this session," matching the GitHub OAuth path.
+ * The session cookie holds a `user_<ulid>` (per session.server.ts):
+ * sign-in is identity, not principal-node. Inserting into `users` is
+ * the right home for "the runtime that's holding this session,"
+ * matching the GitHub OAuth path.
  */
 async function ensureTestUser(githubLogin: TestUsername): Promise<string> {
   const existing = await getUserByGithubLogin(githubLogin);
@@ -42,15 +39,14 @@ async function ensureTestUser(githubLogin: TestUsername): Promise<string> {
   const id = `user_${ulid()}`;
   await withClient(async (c) => {
     await c.query(
-      `INSERT INTO users (id, kind, github_login, data)
-       VALUES ($1, 'person', $2, $3::jsonb)
+      `INSERT INTO users (id, github_login, data)
+       VALUES ($1, $2, $3::jsonb)
        ON CONFLICT (id) DO NOTHING`,
       [
         id,
         githubLogin,
         JSON.stringify({
           id,
-          kind: "person",
           github_login: githubLogin,
           note: "Lazy-created by /auth/dev-signin for testing.",
         }),

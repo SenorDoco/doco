@@ -13,8 +13,7 @@ import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server
 // Principals keep a small positive patch allowlist: name, body_md, lifecycle.
 // `name` is editable — renames are recorded in the audit log, and other nodes
 // reference principals by id (not name), so a rename never breaks edges; only
-// hand-written prose mentions go stale. The `summary` one-liner column was
-// dropped by migration 037 — body_md carries the entire narrative now.
+// hand-written prose mentions go stale. body_md carries the narrative.
 const PATCHABLE_KEYS = new Set(["name", "body_md", "lifecycle"]);
 
 // Mirror principalLine in /api/principals.json.tsx — wrap the name

@@ -1,7 +1,5 @@
-// Session + User lookup — Phase 3 Postgres-only.
-// Post-rename: session cookie stores the user id (OAuth identity).
-// The `CurrentPrincipal` shape and `findPrincipalById` names are kept
-// for caller compatibility, but the underlying lookups read users.
+// Session + User lookup. The session cookie stores the user id (OAuth
+// identity).
 
 import { type UserRow, getUserByGithubLogin, getUserById } from "@doco/db";
 
@@ -35,16 +33,12 @@ export function clearSessionCookie(): string {
 export interface CurrentPrincipal {
   id: string;
   username: string;
-  type: "person" | "agent";
+  type: "person";
   isHuman: boolean;
   email?: string;
 }
 
-/**
- * Human-facing display name for a user row. People fall back to their
- * GitHub login. Legacy non-person rows may still carry `data.name`.
- * The raw id is the last resort so a row never renders blank.
- */
+/** Human-facing display name for a user row. */
 export function userDisplayName(row: {
   id: string;
   github_login: string | null;
@@ -56,13 +50,11 @@ export function userDisplayName(row: {
 }
 
 function rowToPrincipal(row: UserRow): CurrentPrincipal {
-  const type: "person" | "agent" = row.kind === "agent" ? "agent" : "person";
-  const isHuman = row.kind === "person" || Boolean(row.github_login);
   const out: CurrentPrincipal = {
     id: row.id,
     username: userDisplayName(row),
-    type,
-    isHuman,
+    type: "person",
+    isHuman: true,
   };
   if (row.email) out.email = row.email;
   return out;
@@ -79,7 +71,6 @@ export async function findPrincipalById(principalId: string): Promise<CurrentPri
 }
 
 export async function findPrincipalByUsername(username: string): Promise<CurrentPrincipal | null> {
-  // Post-rename: "username" → github_login on users.
   const row = await getUserByGithubLogin(username);
   if (!row) return null;
   return rowToPrincipal(row);
@@ -133,12 +124,4 @@ export function extractBearer(request: Request): string | null {
   const m = /^Bearer\s+(.+)$/i.exec(auth);
   const t = m ? (m[1] ?? "").trim() : "";
   return t || null;
-}
-
-/**
- * Back-compat alias kept while older callers still reference this
- * name. The wire format is now opaque OAuth tokens.
- */
-export function extractCredential(request: Request): string | null {
-  return extractBearer(request);
 }

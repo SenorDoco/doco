@@ -5,8 +5,6 @@
 //     archived?: boolean,
 //     attach_doco_id?: string,
 //     detach_doco_id?: string,
-//     attach_doco?: string,      // legacy handle fallback
-//     detach_doco?: string,      // legacy handle fallback
 //     attach_org?: string,
 //     detach_org?: string }
 //
@@ -27,8 +25,6 @@ interface PatchBody {
   archived?: unknown;
   attach_doco_id?: unknown;
   detach_doco_id?: unknown;
-  attach_doco?: unknown;
-  detach_doco?: unknown;
   attach_org?: unknown;
   detach_org?: unknown;
 }
@@ -79,18 +75,10 @@ export async function action({
   const ops = {
     attachDocoId: cleanHandle(body.attach_doco_id),
     detachDocoId: cleanHandle(body.detach_doco_id),
-    attachDocoHandle: cleanHandle(body.attach_doco),
-    detachDocoHandle: cleanHandle(body.detach_doco),
     attachOrg: cleanHandle(body.attach_org),
     detachOrg: cleanHandle(body.detach_org),
   };
-  const hasAttachmentOp =
-    ops.attachDocoId ||
-    ops.detachDocoId ||
-    ops.attachDocoHandle ||
-    ops.detachDocoHandle ||
-    ops.attachOrg ||
-    ops.detachOrg;
+  const hasAttachmentOp = ops.attachDocoId || ops.detachDocoId || ops.attachOrg || ops.detachOrg;
   const hasPatch = Object.keys(patch).length > 0;
   // Run patch first (title/archived), then attachments. Both return
   // the updated row; we take the last non-null and bail with 404
@@ -120,7 +108,6 @@ export async function action({
       updated_at: row.updated_at.toISOString(),
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
       attached_doco_ids: row.attached_doco_ids ?? [],
-      attached_doco_handles: row.attached_doco_handles ?? [],
       attached_org_handles: row.attached_org_handles ?? [],
     },
   });

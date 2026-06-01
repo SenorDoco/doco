@@ -1568,7 +1568,7 @@ async function readSlackDocoApiPrincipals(
           ? {
               id: identity.id,
               username: slackUserDisplayName(identity),
-              type: identity.kind,
+              type: "person",
               role: docoUser.role,
               github_login: identity.github_login,
               email: identity.email,
@@ -1581,7 +1581,6 @@ async function readSlackDocoApiPrincipals(
     ok: true,
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
-    principals: users,
     users,
     principal_nodes: nodeRows.map(slackEntityRecordToApiItem),
     user_count: users.length,

@@ -230,8 +230,6 @@ export default [
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
   route(":docoHandle/settings", "routes/$docoHandle.settings.tsx"),
-  route(":docoHandle/settings/github", "routes/$docoHandle.settings.github.tsx"),
-  route(":docoHandle/settings/integrations", "routes/$docoHandle.settings.integrations.tsx"),
   route(":docoHandle/integrations", "routes/$docoHandle.integrations.tsx"),
   // Standalone per-integration detail (GitHub: repos, import status, actions).
   route(":docoHandle/integrations/github", "routes/$docoHandle.integrations.github.tsx"),
@@ -289,7 +287,7 @@ export default [
   ),
   route(":docoHandle/api/changesets.json", "routes/$docoHandle.api.changesets[.]json.tsx"),
 
-  // First-class edge authoring (doco-vnext): create/list + read(+history,
+  // First-class edge authoring: create/list + read(+history,
   // ?as_of)/retire. Writes go through the append-only commit() boundary.
   // Registered before the generic :type dispatcher so the static segment wins.
   route(":docoHandle/api/edges.json", "routes/$docoHandle.api.edges[.]json.tsx"),

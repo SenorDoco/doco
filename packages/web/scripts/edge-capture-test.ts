@@ -36,7 +36,7 @@ async function main(): Promise<void> {
         `org-${generateUlid().slice(0, 10).toLowerCase()}`,
         "Edge Test Org",
       ]);
-      await c.query(`INSERT INTO users (id, kind, data) VALUES ($1,'person','{}')`, [userId]);
+      await c.query(`INSERT INTO users (id, data) VALUES ($1,'{}')`, [userId]);
       await c.query(
         `INSERT INTO docos (id, handle, owner_id, org_id, visibility, goal, data)
          VALUES ($1,$2,$3,$4,'private','edge test','{}')`,

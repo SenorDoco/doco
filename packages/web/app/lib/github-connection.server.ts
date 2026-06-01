@@ -31,11 +31,11 @@ export function parseRepoSlug(input: string): { owner: string; name: string } | 
 /** Read the Doco's GitHub connection, or null if it isn't connected. */
 export async function getGitHubConnection(docoId: string): Promise<GitHubConnection | null> {
   return withClient(async (c) => {
-    const r = await c.query<{ gh: GitHubConnection | null }>(
+    const r = await c.query<{ gh: unknown }>(
       `SELECT data->'github_integration' AS gh FROM docos WHERE id = $1`,
       [docoId],
     );
-    return r.rows[0]?.gh ?? null;
+    return normalizeConnections(r.rows[0]?.gh)[0] ?? null;
   });
 }
 
@@ -47,7 +47,7 @@ export async function setGitHubConnection(docoId: string, conn: GitHubConnection
           SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{github_integration}', $2::jsonb, true),
               updated_at = now()
         WHERE id = $1`,
-      [docoId, JSON.stringify(conn)],
+      [docoId, JSON.stringify({ connections: [conn] })],
     );
   });
 }
@@ -75,7 +75,7 @@ export interface DocoGitHubContext {
  */
 export async function getDocoGitHubContext(docoId: string): Promise<DocoGitHubContext | null> {
   return withClient(async (c) => {
-    const r = await c.query<{ handle: string; org_handle: string; gh: GitHubConnection | null }>(
+    const r = await c.query<{ handle: string; org_handle: string; gh: unknown }>(
       `SELECT d.handle, o.handle AS org_handle, d.data->'github_integration' AS gh
          FROM docos d
          JOIN organizations o ON o.id = d.org_id
@@ -84,7 +84,11 @@ export async function getDocoGitHubContext(docoId: string): Promise<DocoGitHubCo
     );
     const row = r.rows[0];
     return row
-      ? { handle: row.handle, orgHandle: row.org_handle, connection: row.gh ?? null }
+      ? {
+          handle: row.handle,
+          orgHandle: row.org_handle,
+          connection: normalizeConnections(row.gh)[0] ?? null,
+        }
       : null;
   });
 }
@@ -92,20 +96,12 @@ export async function getDocoGitHubContext(docoId: string): Promise<DocoGitHubCo
 // ─── Multi-connection model ──────────────────────────────────────────────
 // A Doco can track several repos. Stored as
 // docos.data.github_integration.connections = [{ repo, installation_id, ... }].
-// normalizeConnections reads both the new list shape and the legacy single
-// { repo, installation_id } shape, so old and new data interoperate.
 
-/** Normalize the raw `docos.data.github_integration` value to a connection
- *  list. Accepts the new `{ connections: [...] }` shape and the legacy single
- *  `{ repo, installation_id }` shape. Pure. */
+/** Normalize the raw `docos.data.github_integration` value to a connection list. */
 export function normalizeConnections(raw: unknown): GitHubConnection[] {
   if (!raw || typeof raw !== "object") return [];
-  const obj = raw as { connections?: unknown; repo?: unknown; installation_id?: unknown };
-  const list: unknown[] = Array.isArray(obj.connections)
-    ? obj.connections
-    : typeof obj.repo === "string"
-      ? [obj]
-      : [];
+  const obj = raw as { connections?: unknown };
+  const list: unknown[] = Array.isArray(obj.connections) ? obj.connections : [];
   const out: GitHubConnection[] = [];
   for (const c of list) {
     if (!c || typeof c !== "object") continue;
@@ -152,13 +148,11 @@ async function writeConnections(docoId: string, conns: GitHubConnection[]): Prom
 
 /**
  * Enforce one-repo-one-Doco: remove `repo` from every Doco's connections
- * EXCEPT `keepDocoId`. Covers both the connections[] list shape and the legacy
- * single { repo, installation_id } shape. Idempotent; the indexed `@>`/`->>'`
- * predicates touch only the Docos that actually hold the repo.
+ * EXCEPT `keepDocoId`. Idempotent; the indexed `@>` predicate touches only the
+ * Docos that actually hold the repo.
  */
 export async function detachRepoFromOtherDocos(repo: string, keepDocoId: string): Promise<void> {
   await withClient(async (c) => {
-    // List shape: filter the matching element out of connections[].
     await c.query(
       `UPDATE docos
           SET data = jsonb_set(
@@ -174,14 +168,6 @@ export async function detachRepoFromOtherDocos(repo: string, keepDocoId: string)
         WHERE id <> $2
           AND data->'github_integration'->'connections'
                 @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
-      [repo, keepDocoId],
-    );
-    // Legacy single shape: if the whole github_integration *is* this repo, drop it.
-    await c.query(
-      `UPDATE docos
-          SET data = data - 'github_integration', updated_at = now()
-        WHERE id <> $2
-          AND data->'github_integration'->>'repo' = $1`,
       [repo, keepDocoId],
     );
   });
@@ -236,7 +222,7 @@ export async function clearAllConnections(docoId: string): Promise<void> {
 // org with tens of thousands of PRs that runs long. We stamp a marker on the
 // Doco so the UI can say "importing in the background — keep working" and the
 // user isn't blocked. Stored at docos.data.github_integration.backfill; no
-// migration (plain JSONB, like connections/installations).
+// schema change needed (plain JSONB, like connections/installations).
 
 export interface GitHubBackfillState {
   status: "running" | "done";
@@ -244,7 +230,7 @@ export interface GitHubBackfillState {
   finished_at?: string;
   /** Total repos covered by the backfill (for display). */
   repos?: number;
-  /** PR References created so far (== `created`; kept for display/back-compat). */
+  /** PR References created so far. */
   imported?: number;
   // ── Resumable cursor (driven by the self-chaining backfill worker) ──
   // The worker processes a time-budgeted slice per invocation, persists this

@@ -177,10 +177,10 @@ describe("normalizeConnections", () => {
       { repo: "a/b", installation_id: 1 },
     ]);
   });
-  it("reads the legacy single { repo, installation_id } shape", () => {
-    expect(normalizeConnections({ repo: "a/b", installation_id: 2, connected_at: "t" })).toEqual([
-      { repo: "a/b", installation_id: 2, connected_at: "t" },
-    ]);
+  it("ignores a single repo object outside connections[]", () => {
+    expect(normalizeConnections({ repo: "a/b", installation_id: 2, connected_at: "t" })).toEqual(
+      [],
+    );
   });
   it("drops invalid entries and handles junk", () => {
     expect(normalizeConnections(null)).toEqual([]);

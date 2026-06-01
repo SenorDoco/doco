@@ -239,7 +239,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      // Time-travel reads (doco-vnext): ?history=1 returns the full append-only
+      // Time-travel reads: ?history=1 returns the full append-only
       // version timeline; ?as_of=<tx_id> reconstructs the snapshot at/​before
       // that commit. O(1) snapshot reads — never a replay.
       const tt = new URL(request.url).searchParams;

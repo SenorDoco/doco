@@ -215,7 +215,7 @@ export async function action({
 /**
  * GET — list principals with a direct grant on this Doco.
  *
- * Returns `{ ok: true, principals: [{ id, username, type, role,
+ * Returns `{ ok: true, users: [{ id, username, type, role,
  * github_login, email }] }`. Read access is enough to list — anyone
  * who can see the Doco (per loadDocoRouteForRead) can see the user list.
  *
@@ -229,19 +229,8 @@ export async function loader({
   params: { docoHandle: string };
 }) {
   const { meta } = await loadDocoRouteForRead(request, params);
-  // Two distinct concepts share the URL for historical reasons:
-  //
-  //   * `principals` (legacy field) — OAuth users of this doco.
-  //     Pre-v16 we called them "principals"; the new vocab calls them
-  //     "users" but the field name stays for API back-compat.
-  //
-  //   * `principal_nodes` (new field) — actual Principal nodes in
-  //     this doco (role-personas rendered by perspectives). Agents that
-  //     want to mutate / list the visible Principal nodes read this field,
-  //     not `principals`.
-  //
-  // `users` is exposed as a clearer alias for the legacy
-  // `principals` field — pick whichever name a caller prefers.
+  // This endpoint lists both OAuth users with grants and actual Principal
+  // nodes (role-personas rendered by perspectives).
   const [docoUsers, nodeRows] = await Promise.all([
     listDocoUsers(meta.docoId),
     listEntitiesByDoco("principal", meta.docoId),
@@ -254,7 +243,7 @@ export async function loader({
           ? {
               id: c.id,
               username: userDisplayName(c),
-              type: c.kind,
+              type: "person",
               role: u.role,
               github_login: c.github_login,
               email: c.email,
@@ -274,7 +263,6 @@ export async function loader({
   }));
   return Response.json({
     ok: true,
-    principals: users,
     users,
     principal_nodes,
     user_count: users.length,

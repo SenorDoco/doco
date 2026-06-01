@@ -28,7 +28,7 @@ import {
 
 export type CurrentPrincipal = NonNullable<Awaited<ReturnType<typeof getCurrentPrincipal>>>;
 
-export type PrincipalKind = "person" | "agent";
+export type PrincipalKind = "person";
 
 export interface UserCell {
   user_id: string;
@@ -63,16 +63,11 @@ export interface UsersPageData {
 }
 
 async function enrichPrincipal(id: string, lastActivity: Map<string, string>): Promise<UserCell> {
-  // Post-rename: per-user metadata lives in the users
-  // table; getUserById returns the kind/github_login + data directly.
   const c = await getUserById(id);
-  const kind: PrincipalKind = c?.kind === "agent" ? "agent" : "person";
   return {
     user_id: id,
-    // Display the human-facing name (GitHub login for people; legacy
-    // rows may carry data.name), not the raw user id.
     username: c ? userDisplayName(c) : id,
-    kind,
+    kind: "person",
     last_activity_at: lastActivity.get(id) ?? null,
   };
 }
@@ -199,38 +194,28 @@ export async function loadUserSections(principalId: string): Promise<{
 
   const lastActivity = await loadLastActivity([...allPrincipalIds]);
 
-  // The Collaborators page lists only accounts with a username — i.e.
-  // people. Legacy agent rows are not collaborators: clients authenticate
-  // through named API/OAuth tokens managed on /api-keys, so they are
-  // filtered out of every section here.
-  const personOnly = (users: GrantRow[]): GrantRow[] => users.filter((u) => u.kind !== "agent");
-
   const orgSections: OrgSection[] = [];
   for (const entry of orgRoleRows) {
-    const users: GrantRow[] = personOnly(
-      await Promise.all(
-        entry.rows.map(async (row) => ({
-          ...(await enrichPrincipal(row.user_id, lastActivity)),
-          role: row.role,
-          write_types: row.write_types,
-          joined_at: row.joined_at,
-        })),
-      ),
+    const users: GrantRow[] = await Promise.all(
+      entry.rows.map(async (row) => ({
+        ...(await enrichPrincipal(row.user_id, lastActivity)),
+        role: row.role,
+        write_types: row.write_types,
+        joined_at: row.joined_at,
+      })),
     );
     orgSections.push({ org: entry.org, myRole: entry.myRole, users });
   }
 
   const docoSections: DocoSection[] = [];
   for (const entry of docoRoleRows) {
-    const users: GrantRow[] = personOnly(
-      await Promise.all(
-        entry.rows.map(async (row) => ({
-          ...(await enrichPrincipal(row.user_id, lastActivity)),
-          role: row.role,
-          write_types: row.write_types,
-          joined_at: row.joined_at,
-        })),
-      ),
+    const users: GrantRow[] = await Promise.all(
+      entry.rows.map(async (row) => ({
+        ...(await enrichPrincipal(row.user_id, lastActivity)),
+        role: row.role,
+        write_types: row.write_types,
+        joined_at: row.joined_at,
+      })),
     );
     docoSections.push({
       doco: {
@@ -281,11 +266,9 @@ function buildUserInviteData({
   }));
 
   // Pre-select the invite target from the URL. The page (and the Doco's
-  // "Collaborators" tab) links here with the modern `?scope=<level>:<id>`
-  // param; older links used separate `?level=&target_id=`. Prefer scope,
-  // fall back to the legacy pair.
-  let requestedLevel = parseInviteLevel(url.searchParams.get("level"));
-  let requestedTargetId = url.searchParams.get("target_id")?.trim() ?? "";
+  // "Collaborators" tab) links here with `?scope=<level>:<id>`.
+  let requestedLevel: InviteLevel | null = null;
+  let requestedTargetId = "";
   const scope = url.searchParams.get("scope")?.trim() ?? "";
   if (scope && scope !== "all") {
     const sep = scope.indexOf(":");
@@ -373,8 +356,8 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
             .filter(Boolean),
         );
 
-  // Account-level invite (migration 075): grants the redeemer access to
-  // the inviter's whole account. No target — the inviter IS the scope.
+  // Account-level invite: grants the redeemer access to the inviter's
+  // whole account. No target — the inviter IS the scope.
   // Anyone may invite into their own account; the grant is capped at
   // owner (the broadest delegation) and stored on the invite as an
   // account grant keyed to the inviter.

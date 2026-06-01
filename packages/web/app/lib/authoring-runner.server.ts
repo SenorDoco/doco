@@ -227,9 +227,8 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
   // COALESCE so a NULL lifecycle column behaves as "asserted" — the rest of
   // the codebase treats NULL that way (search-filters, doco-stats,
   // full-graph, bpmn-perspective, agent-chat). Without it, a policy
-  // whose lifecycle column is NULL (e.g. seeded by a migration or
-  // restored from backup) is silently invisible to the enforcer while
-  // looking accepted everywhere else.
+  // whose lifecycle column is NULL is silently invisible to the enforcer
+  // while looking accepted everywhere else.
   const r = await c.query<{ id: string; policy: string; data: Record<string, unknown> | null }>(
     `SELECT id, policy, data
        FROM node_authoring_policies

@@ -133,8 +133,7 @@ describe("principal API", () => {
     expect(persistedData).not.toHaveProperty("description");
     expect(persistedData).not.toHaveProperty("type");
     expect(persistedData).not.toHaveProperty("summary");
-    // upsertEntity is called WITHOUT a `summary` parameter — migration
-    // 037 dropped the column.
+    // upsertEntity is called WITHOUT a `summary` parameter.
     const upsertCall = mocks.upsertEntity.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(upsertCall).not.toHaveProperty("summary");
     expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
@@ -225,8 +224,8 @@ describe("principal API", () => {
         }),
       }),
     );
-    // Slim-down: no `type` field anymore, and former reserved names no
-    // longer set the legacy role_principal flag.
+    // Slim-down: no `type` field anymore, and former reserved names do
+    // not set role_principal.
     const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
     expect(persistedData).not.toHaveProperty("role_principal");
     expect(persistedData).not.toHaveProperty("type");

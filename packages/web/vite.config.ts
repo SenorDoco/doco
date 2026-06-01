@@ -52,12 +52,12 @@ function findAssetDirs(dir: string): string[] {
 }
 
 function copyDbSchemaIntoServerBuild(): Plugin {
-  // Schema.sql + every migrations/*.sql are now bundled into the JS
-  // module via @doco/db/scripts/embed-schema.mjs (regenerated at the
-  // db package's build step into src/schema-embedded.ts). Nothing to
-  // copy into the server build anymore — the strings ship with the
-  // bundle. Vercel's serverless function packaging used to drop the
-  // sibling .sql files, which is why the embed-into-JS approach is now
+  // Schema.sql is bundled into the JS module via
+  // @doco/db/scripts/embed-schema.mjs (regenerated at the db package's
+  // build step into src/schema-embedded.ts). Nothing to copy into the
+  // server build anymore — the string ships with the bundle. Vercel's
+  // serverless function packaging used to drop sibling .sql files,
+  // which is why the embed-into-JS approach is now
   // the source of truth.
   //
   // Kept as a no-op shell so the plugins array signature doesn't change

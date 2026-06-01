@@ -92,7 +92,7 @@ interface ChatMessage {
 }
 
 interface DocoAttachmentInfo {
-  id?: string;
+  id: string;
   handle: string;
   label?: string;
 }
@@ -138,8 +138,6 @@ interface ConversationListItem {
   last_message_preview: string | null;
   last_message_role: "user" | "assistant" | null;
   attached_doco_ids: string[];
-  /** Legacy/display fallback; navigation uses attached_doco_ids. */
-  attached_doco_handles: string[];
   attached_org_handles: string[];
 }
 
@@ -990,9 +988,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       try {
         const body =
           kind === "doco"
-            ? "id" in attachment
-              ? { attach_doco_id: attachment.id }
-              : { attach_doco: attachment.handle }
+            ? { attach_doco_id: (attachment as AvailableDoco).id }
             : { attach_org: attachment.handle };
         const res = await fetch(
           `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
@@ -1032,9 +1028,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const body = (() => {
           if (kind === "doco") {
             const docoAttachment = attachment as DocoAttachmentInfo;
-            return docoAttachment.id
-              ? { detach_doco_id: docoAttachment.id }
-              : { detach_doco: docoAttachment.handle };
+            return { detach_doco_id: docoAttachment.id };
           }
           return { detach_org: attachment.handle };
         })();
@@ -3502,10 +3496,10 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
 }
 
 /**
- * Type-named prose field per node type (post-migration 023). The
- * server stores the prose under this field name; the agent's POST
- * bodies use the same key. Lets the chip label show the actual
- * intent of a capture instead of just the URL.
+ * Type-named prose field per node type. The server stores the prose
+ * under this field name; the agent's POST bodies use the same key.
+ * Lets the chip label show the actual intent of a capture instead
+ * of just the URL.
  */
 const NODE_PROSE_FIELD: Record<string, string> = {
   decisions: "decision",

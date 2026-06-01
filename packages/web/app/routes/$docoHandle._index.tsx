@@ -186,10 +186,9 @@ export async function loader({
         label: string | null;
         lifecycle: string | null;
       }>(
-        // Post-collapse: all 10 node types live in `nodes`. Labels are
-        // the first line of `prose`, except principals (prose='') label
-        // on `name`. Policies keep their own tables and their `policy`
-        // column.
+        // All node types live in `nodes`. Labels are the first line of
+        // `prose`, except principals (prose='') label on `name`.
+        // Policies keep their own tables and their `policy` column.
         `SELECT id,
                 CASE WHEN node_type = 'principal' THEN name ELSE split_part(prose, E'\n', 1) END AS label,
                 lifecycle
@@ -207,9 +206,8 @@ export async function loader({
 
     const items: FeedItem[] = rawItems.map((it) => {
       const entity = entityById.get(it.entity_id);
-      // Audit events may carry the prose under the type-named key for
-      // migrated nodes (intent/decision/...) or `summary` for legacy
-      // captures. Look both up; the first non-empty line wins.
+      // Audit events carry prose under the type-named key for nodes
+      // and `policy` for policies. The first non-empty line wins.
       const proseKey = it.entity_type;
       return {
         event_id: it.event_id,
@@ -219,8 +217,8 @@ export async function loader({
           entity?.label ??
           firstLine(stringField(it.after_json, proseKey)) ??
           firstLine(stringField(it.before_json, proseKey)) ??
-          stringField(it.after_json, "summary") ??
-          stringField(it.before_json, "summary"),
+          stringField(it.after_json, "policy") ??
+          stringField(it.before_json, "policy"),
         lifecycle: entity?.lifecycle ?? null,
         at: it.at instanceof Date ? it.at.toISOString() : new Date(String(it.at)).toISOString(),
         op: it.op,
@@ -308,10 +306,9 @@ export async function loader({
     const skipDialog = new URL(request.url).searchParams.get("dialog") === "skip";
     const dialogNode = skipDialog ? null : selectedNode;
     const dialogEdge = skipDialog ? null : selectedEdge;
-    // Visualization perspectives — tabs above the graph body. Existing
-    // Docos created before migration 007 may have no perspectives
-    // attached; ensureDefaultsAttached backfills built-ins on first
-    // load so the UI always has at least one tab.
+    // Visualization perspectives — tabs above the graph body.
+    // ensureDefaultsAttached keeps the built-ins present so the UI
+    // always has at least one tab.
     await ensureDefaultsAttached(ctx.meta.docoId);
     const [perspectives, availablePerspectives] = await Promise.all([
       listPerspectivesForDoco(ctx.meta.docoId),

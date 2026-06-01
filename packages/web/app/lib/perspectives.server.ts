@@ -8,8 +8,6 @@
 // route's loadDocoForRead). Mutating operations (attach, detach,
 // set-default) require writer-or-owner via canWriteDoco().
 //
-// Storage: see migrations/007_perspectives.sql.
-
 import { withClient } from "@doco/db";
 
 export type PerspectiveKind =
@@ -72,9 +70,8 @@ function rowToPerspective(row: PerspectiveRow): Perspective {
 
 /**
  * Perspectives attached to this Doco, in tab order. If nothing is
- * attached yet (e.g. a brand-new Doco that pre-dates the migration's
- * backfill), returns an empty list — the caller is expected to attach
- * the two ship-by-default perspectives via `ensureDefaultsAttached`.
+ * attached yet, returns an empty list — the caller is expected to
+ * attach the ship-by-default perspectives via `ensureDefaultsAttached`.
  */
 export async function listPerspectivesForDoco(docoId: string): Promise<AttachedPerspective[]> {
   return withClient(async (c) => {
@@ -98,8 +95,8 @@ export async function listPerspectivesForDoco(docoId: string): Promise<AttachedP
 
 /**
  * Idempotent: attach graph + list + approval defaults if this Doco has no
- * perspectives attached yet. Called from the index route loader so
- * Docos created before the migration ran still get tabs.
+ * perspectives attached yet. Called from the index route loader so every
+ * Doco has tabs.
  */
 export async function ensureDefaultsAttached(docoId: string): Promise<void> {
   await withClient(async (c) => {
