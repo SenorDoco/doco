@@ -1,12 +1,13 @@
-// /orgs/:orgHandle — per-Org home. Mirrors the host Docos/Orgs
-// two-column layout at org scope. Left column carries:
-//   - Header (org handle + ULID, +Agent/User on desktop)
+// /orgs/:orgHandle — per-Org home. A full-width two-column layout.
+// The header (org handle + ULID, +Agent/User on desktop) spans the top.
+// Left column (as wide as possible, mirroring how perspectives render):
+//   - Constitution (founding-charter presentation, fills the column)
+//   - Latest activity feed (20 events, with per-row Doco context)
+// Right column (narrow 320px sidebar):
 //   - Search box (submits to /orgs/:orgHandle/search)
 //   - Docos in this org (with a +Doco button)
-//   - Top contributors across the org's Docos
-// Right column carries:
 //   - Activity heatmap (52w)
-//   - Latest activity feed (20 events, with per-row Doco context)
+//   - Top contributors across the org's Docos
 
 import { getOrgRole, updateOrgConstitution, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
@@ -289,7 +290,7 @@ export default function OrgHome({
   return (
     <div>
       <SiteHeader me={me} />
-      <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+      <main className="space-y-6 px-6 py-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <Breadcrumb items={orgBreadcrumb({ orgSlug: org.handle })} />
@@ -316,15 +317,41 @@ export default function OrgHome({
           </div>
         </div>
 
-        <OrgConstitutionCard
-          orgHandle={org.handle}
-          constitution={org.constitution}
-          canEdit={canEditConstitution}
-        />
-
         <div className="org-home-layout-shell">
           <div className="org-home-layout-grid grid gap-6">
+            {/* Left column — the constitution gets the full available width
+                (mirroring how perspectives render on the Doco overview), with
+                the latest activity feed beneath it. */}
             <section className="min-w-0 space-y-4">
+              <OrgConstitutionCard
+                orgHandle={org.handle}
+                constitution={org.constitution}
+                canEdit={canEditConstitution}
+              />
+
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">Latest activity</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {items.length === 0 ? (
+                    <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                      No recorded activity yet across this org's Docos.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {items.map((it) => (
+                        <OrgFeedLine key={it.event_id} event={it} />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* Right column — search, the org's Docos, then the activity
+                matrix and top contributors. */}
+            <aside className="min-w-0 space-y-4">
               <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
                 <input
                   name="q"
@@ -360,6 +387,15 @@ export default function OrgHome({
 
               <Card>
                 <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="px-4 py-3">
                   <CardTitle className="text-sm">Top contributors</CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -391,36 +427,6 @@ export default function OrgHome({
                         </li>
                       ))}
                     </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-
-            <aside className="min-w-0 space-y-4">
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Latest activity</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {items.length === 0 ? (
-                    <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                      No recorded activity yet across this org's Docos.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-border">
-                      {items.map((it) => (
-                        <OrgFeedLine key={it.event_id} event={it} />
-                      ))}
-                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -564,7 +570,7 @@ function OrgConstitutionCard({
   return (
     <Card>
       <CardContent className="px-6 py-7 sm:px-10 sm:py-9">
-        <article className="mx-auto max-w-3xl">
+        <article>
           <h2 className="text-center font-serif text-2xl font-semibold uppercase tracking-[0.25em] text-foreground">
             Constitution
           </h2>
