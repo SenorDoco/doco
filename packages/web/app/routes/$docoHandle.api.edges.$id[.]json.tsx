@@ -95,7 +95,7 @@ export async function action({ request, params }: { request: Request; params: Pa
     actorId: me.id,
     id,
     reason,
-    ...authoringContextForRequest(request),
+    ...(await authoringContextForRequest(request)),
   });
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: result.status });

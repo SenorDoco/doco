@@ -36,7 +36,7 @@ function AuthoringValue({
 }) {
   const actor = entry.user_label ?? entry.user_id;
   const actorTitle =
-    entry.user_label && entry.user_id ? `${entry.user_label} (${entry.user_id})` : actor;
+    actor && entry.user_id && actor !== entry.user_id ? `${actor} (${entry.user_id})` : actor;
   return (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
       {actor ? (
@@ -44,8 +44,7 @@ function AuthoringValue({
           className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1 break-words"
           title={actorTitle ?? undefined}
         >
-          {entry.user_label ? <span>{entry.user_label}</span> : null}
-          {entry.user_id ? <code className="font-mono text-[11px]">{entry.user_id}</code> : null}
+          {actor}
         </span>
       ) : (
         <span className="text-muted-foreground">Unknown user</span>

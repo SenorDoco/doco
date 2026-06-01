@@ -68,7 +68,7 @@ export async function action({
     patch,
     docoHost,
     me?.id ?? null,
-    authoringContextForRequest(request),
+    await authoringContextForRequest(request),
   );
   if ("error" in result) {
     return Response.json(result, { status: result.status ?? 400 });

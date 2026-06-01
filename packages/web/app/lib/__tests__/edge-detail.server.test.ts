@@ -94,8 +94,10 @@ describe("loadEdgeDialogDetail", () => {
       handle: "test-doco",
       id: "edge_01TEST",
     });
+    const actorLabelQuery = capturedSql.find((sql) => sql.includes("WITH input(actor_id)"));
     const versionQuery = capturedSql.find((sql) => sql.includes("FROM edge_versions"));
 
+    expect(actorLabelQuery).toContain("data->>'name'");
     expect(versionQuery).toMatch(/LEFT JOIN changesets cs ON cs\.tx_id = v\.tx_id/);
     expect(versionQuery).toMatch(/cs\.source/);
     expect(versionQuery).toMatch(/cs\.metadata/);

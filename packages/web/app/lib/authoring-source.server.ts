@@ -18,7 +18,14 @@ function userAgentSurface(userAgent: string): AuthoringWriteContext | null {
   return null;
 }
 
-export function authoringContextForRequest(request: Request): AuthoringWriteContext {
+async function oauthTokenName(token: string): Promise<string | null> {
+  const { validateAccessToken } = await import("./oauth-server.server");
+  const record = await validateAccessToken(token);
+  const name = record?.client_name?.trim();
+  return name || null;
+}
+
+export async function authoringContextForRequest(request: Request): Promise<AuthoringWriteContext> {
   const explicitSurface = request.headers.get(AUTHORING_SURFACE_HEADER)?.trim().toLowerCase();
   if (explicitSurface === "senor-doco-web") {
     return { source: "ui", metadata: { surface: "senor_doco", client: "website" } };
@@ -35,7 +42,11 @@ export function authoringContextForRequest(request: Request): AuthoringWriteCont
 
   const bearer = extractBearer(request);
   if (bearer?.startsWith("doco_at_")) {
-    return { source: "api", metadata: { auth: "oauth" } };
+    const tokenName = await oauthTokenName(bearer);
+    return {
+      source: "api",
+      metadata: tokenName ? { auth: "oauth", token_name: tokenName } : { auth: "oauth" },
+    };
   }
   if (bearer) {
     return { source: "api", metadata: { auth: "bearer" } };

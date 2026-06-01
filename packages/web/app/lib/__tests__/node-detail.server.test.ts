@@ -226,8 +226,10 @@ describe("loadNodeDialogDetail", () => {
   });
 
   it("loads created/updated authoring provenance for the dialog", async () => {
+    const capturedSql: string[] = [];
     const client = {
       query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        capturedSql.push(sql);
         if (sql.includes("WITH input(actor_id)")) {
           return {
             rows: [
@@ -286,7 +288,9 @@ describe("loadNodeDialogDetail", () => {
       id: "decision_01TEST",
       principalId: "principal_owner",
     });
+    const actorLabelQuery = capturedSql.find((sql) => sql.includes("WITH input(actor_id)"));
 
+    expect(actorLabelQuery).toContain("data->>'name'");
     expect(detail?.authoring.created).toMatchObject({
       user_id: "user_alice",
       user_label: "alice",

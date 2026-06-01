@@ -303,7 +303,13 @@ async function resolveUserLabelsForActorIds(
        )
        SELECT r.actor_id,
               r.user_id,
-              COALESCE(c.github_login, c.email, c.id) AS label
+              COALESCE(
+                NULLIF(c.data->>'name', ''),
+                NULLIF(c.data->>'display_name', ''),
+                c.github_login,
+                c.email,
+                c.id
+              ) AS label
          FROM resolved r
          LEFT JOIN users c ON c.id = r.user_id`,
       [docoId, requested],

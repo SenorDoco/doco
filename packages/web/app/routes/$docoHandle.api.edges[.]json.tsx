@@ -82,7 +82,7 @@ export async function action({ request, params }: { request: Request; params: Pa
     props: (body.props as Record<string, unknown> | undefined) ?? null,
     lifecycle: body.lifecycle === "drafting" ? "drafting" : "asserted",
     reason: typeof body.reason === "string" ? body.reason : null,
-    ...authoringContextForRequest(request),
+    ...(await authoringContextForRequest(request)),
   });
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: result.status });
