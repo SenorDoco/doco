@@ -18,12 +18,19 @@ export function formatAuthoringMechanism(
   const surface = typeof metadata?.surface === "string" ? metadata.surface : null;
   const client = typeof metadata?.client === "string" ? metadata.client : null;
   const auth = typeof metadata?.auth === "string" ? metadata.auth : null;
+  const tokenName =
+    typeof metadata?.token_name === "string" && metadata.token_name.trim()
+      ? metadata.token_name.trim()
+      : typeof metadata?.client_name === "string" && metadata.client_name.trim()
+        ? metadata.client_name.trim()
+        : null;
 
   if (surface === "senor_doco" && client === "website") return "Señor Doco on website";
   if (surface === "website") return "Website";
   if (surface === "slack" || source === "slack") return "Slack";
   if (surface === "mcp" || source === "mcp") return "MCP";
   if (source === "ui") return "Website";
+  if (source === "api" && tokenName) return tokenName;
   if (source === "api" && auth === "oauth") return "API";
   if (source === "api") return "API";
   if (source === "import") return "Import";

@@ -129,7 +129,7 @@ export async function action({
         docoSlug,
         draft,
         docoHost,
-        { authoring: authoringContextForRequest(request) },
+        { authoring: await authoringContextForRequest(request) },
       );
     } else {
       const evaluationKind =
@@ -164,7 +164,7 @@ export async function action({
         docoSlug,
         draft,
         docoHost,
-        { authoring: authoringContextForRequest(request) },
+        { authoring: await authoringContextForRequest(request) },
       );
     }
     if ("error" in captured) {

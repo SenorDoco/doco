@@ -1,19 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTHORING_SURFACE_HEADER, authoringContextForRequest } from "../authoring-source.server";
+import { validateAccessToken } from "../oauth-server.server";
+
+vi.mock("../oauth-server.server", () => ({
+  validateAccessToken: vi.fn(),
+}));
+
+const validateAccessTokenMock = vi.mocked(validateAccessToken);
 
 describe("authoringContextForRequest", () => {
-  it("classifies normal browser writes as website authoring", () => {
+  beforeEach(() => {
+    validateAccessTokenMock.mockReset();
+  });
+
+  it("classifies normal browser writes as website authoring", async () => {
     const request = new Request("https://doco.test/acme/api/decisions.json", {
       headers: { Cookie: "doco_session=user_01TEST" },
     });
 
-    expect(authoringContextForRequest(request)).toEqual({
+    await expect(authoringContextForRequest(request)).resolves.toEqual({
       source: "ui",
       metadata: { surface: "website" },
     });
   });
 
-  it("classifies in-page Señor Doco writes separately from plain website writes", () => {
+  it("classifies in-page Señor Doco writes separately from plain website writes", async () => {
     const request = new Request("https://doco.test/acme/api/decisions.json", {
       headers: {
         Cookie: "doco_session=user_01TEST",
@@ -21,20 +32,24 @@ describe("authoringContextForRequest", () => {
       },
     });
 
-    expect(authoringContextForRequest(request)).toEqual({
+    await expect(authoringContextForRequest(request)).resolves.toEqual({
       source: "ui",
       metadata: { surface: "senor_doco", client: "website" },
     });
   });
 
-  it("classifies OAuth bearer writes as API authoring", () => {
+  it("records the OAuth client name for API authoring", async () => {
+    validateAccessTokenMock.mockResolvedValue({
+      client_name: "Authoring Verification Token",
+    } as Awaited<ReturnType<typeof validateAccessToken>>);
     const request = new Request("https://doco.test/acme/api/decisions.json", {
       headers: { Authorization: "Bearer doco_at_test" },
     });
 
-    expect(authoringContextForRequest(request)).toEqual({
+    await expect(authoringContextForRequest(request)).resolves.toEqual({
       source: "api",
-      metadata: { auth: "oauth" },
+      metadata: { auth: "oauth", token_name: "Authoring Verification Token" },
     });
+    expect(validateAccessTokenMock).toHaveBeenCalledWith("doco_at_test");
   });
 });

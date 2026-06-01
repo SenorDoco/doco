@@ -64,7 +64,7 @@ export async function action({
     docoSlug,
     draft,
     docoHost,
-    { authoring: authoringContextForRequest(request) },
+    { authoring: await authoringContextForRequest(request) },
   );
   if ("error" in result) return Response.json(result, { status: result.status ?? 400 });
   return redirect(`/${handle}/policies`);

@@ -171,7 +171,7 @@ export async function action({
     docoSlug,
     docoHost: new URL(request.url).origin,
     actorId: me.id,
-    authoring: authoringContextForRequest(request),
+    authoring: await authoringContextForRequest(request),
     me: { id: me.id, username: me.username },
     request,
   };

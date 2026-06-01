@@ -96,7 +96,13 @@ async function resolveActorLabels(
          SELECT unnest($1::text[])
        )
        SELECT i.actor_id,
-              COALESCE(u.github_login, u.email, u.id) AS label
+              COALESCE(
+                NULLIF(u.data->>'name', ''),
+                NULLIF(u.data->>'display_name', ''),
+                u.github_login,
+                u.email,
+                u.id
+              ) AS label
          FROM input i
          LEFT JOIN users u ON u.id = i.actor_id`,
       [requested],

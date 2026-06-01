@@ -180,7 +180,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             await cfg.fillFromAuth(draft, { id: me.id, username: me.username }, meta.docoId);
           }
           const docoHost = new URL(request.url).origin;
-          const authoring = authoringContextForRequest(request);
+          const authoring = await authoringContextForRequest(request);
           const start = performance.now();
           const { result, bag } = await withCaptureTelemetry(() =>
             cfg.captureFn(dir, meta.docoId, ownerSlug, docoSlug, draft, docoHost, authoring),
@@ -338,6 +338,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         );
       }
 
+      const authoring = await authoringContextForRequest(request);
       const start = performance.now();
       const { result, bag } = await withCaptureTelemetry(() =>
         updateEntity({
@@ -352,7 +353,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
           allowedFields: undefined,
           docoHost: new URL(request.url).origin,
           actorId: me?.id ?? null,
-          authoring: authoringContextForRequest(request),
+          authoring,
         }),
       );
       const totalMs = Math.round(performance.now() - start);

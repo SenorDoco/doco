@@ -161,7 +161,7 @@ export async function action({
         docoSlug,
         draft,
         docoHost,
-        { authoring: authoringContextForRequest(request) },
+        { authoring: await authoringContextForRequest(request) },
       );
       if ("error" in result) return Response.json(result, { status: 400 });
       return Response.json(result, { status: 201 });
@@ -179,7 +179,7 @@ export async function action({
       docoSlug,
       draft,
       docoHost,
-      { authoring: authoringContextForRequest(request) },
+      { authoring: await authoringContextForRequest(request) },
     );
     if ("error" in result) return Response.json(result, { status: 400 });
     return Response.json(result, { status: 201 });
