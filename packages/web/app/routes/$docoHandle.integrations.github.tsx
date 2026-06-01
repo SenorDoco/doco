@@ -412,7 +412,6 @@ export default function DocoGitHubIntegration() {
             </p>
             <Link to={`/${handle}`} className={`mt-2 ${PRIMARY_BTN}`}>
               Continue
-              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </div>
         </main>
