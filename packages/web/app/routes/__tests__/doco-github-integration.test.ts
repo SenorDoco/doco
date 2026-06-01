@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   removeConnection: vi.fn(),
   reconcileInstallationConnections: vi.fn(),
   setBackfillState: vi.fn(),
+  subscribeInstallation: vi.fn(),
   backfillRepoPullRequests: vi.fn(),
   kickBackfillRun: vi.fn(),
   waitUntil: vi.fn(),
@@ -74,6 +75,7 @@ vi.mock("~/lib/github-connection.server", () => ({
     installation_id: connections[0]?.installation_id,
   }),
   setBackfillState: mocks.setBackfillState,
+  subscribeInstallation: mocks.subscribeInstallation,
 }));
 
 vi.mock("../api.github.backfill-run", () => ({
@@ -126,6 +128,7 @@ describe("/:docoHandle/integrations/github", () => {
     );
     mocks.addConnection.mockResolvedValue([]);
     mocks.setBackfillState.mockResolvedValue(undefined);
+    mocks.subscribeInstallation.mockResolvedValue([]);
     mocks.kickBackfillRun.mockResolvedValue(undefined);
   });
 
@@ -208,12 +211,50 @@ describe("/:docoHandle/integrations/github", () => {
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
   });
 
+  it("connects an all-repositories installation when GitHub returns no repo names", async () => {
+    mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
+      {
+        installation_id: 42,
+        account: "Doco-to",
+        repository_selection: "all",
+        repositories: [],
+        connected_repositories: [],
+        source_doco_handles: ["meta-pull-requests"],
+      },
+    ]);
+
+    const result = await action({
+      request: postForm({
+        intent: "connect-installation",
+        installation_id: "42",
+      }),
+      ...routeArgs,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      message: "Connected Doco-to. New pull request activity will sync automatically.",
+    });
+    expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
+      "doco_1",
+      expect.objectContaining({
+        installation_id: 42,
+        account: "Doco-to",
+        connected_at: expect.any(String),
+      }),
+    );
+    expect(mocks.addConnection).not.toHaveBeenCalled();
+    expect(mocks.setBackfillState).not.toHaveBeenCalled();
+    expect(mocks.waitUntil).not.toHaveBeenCalled();
+  });
+
   it("marks an installed GitHub org with no repositories as not selectable", () => {
     const choices = buildInstallationPickerChoices(
       [
         {
           installation_id: 42,
           account: "Doco-to",
+          repository_selection: "all",
           repositories: [],
           connected_repositories: [],
           source_doco_handles: ["meta-pull-requests"],
@@ -228,6 +269,32 @@ describe("/:docoHandle/integrations/github", () => {
         selectableRepositories: [],
         connectedRepositories: [],
         hasSelectableRepositories: false,
+        canConnectInstallation: true,
+      }),
+    ]);
+  });
+
+  it("does not offer an all-repositories installation that is already connected here", () => {
+    const choices = buildInstallationPickerChoices(
+      [
+        {
+          installation_id: 42,
+          account: "Doco-to",
+          repository_selection: "all",
+          repositories: [],
+          connected_repositories: [],
+          source_doco_handles: ["meta-pull-requests"],
+        },
+      ],
+      new Set(),
+      new Set([42]),
+    );
+
+    expect(choices).toEqual([
+      expect.objectContaining({
+        account: "Doco-to",
+        isInstallationConnected: true,
+        canConnectInstallation: false,
       }),
     ]);
   });
