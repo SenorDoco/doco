@@ -35,12 +35,13 @@ export async function loader({
   request: Request;
   params: { docoHandle: string };
 }) {
-  const { me, meta } = await loadDocoRouteForRead(request, params);
+  const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const ctx = await getDocoConnectionsContext(meta.docoId);
   const docoInstallUrl = buildInstallUrl(meta.docoId);
   return {
     me,
     handle: meta.handle,
+    ownerSlug,
     orgHandle: ctx?.orgHandle ?? "",
     docoInstallUrl,
     connections: ctx?.connections ?? [],
@@ -181,7 +182,7 @@ const DESTRUCTIVE_BTN =
   "neu-button rounded-md border border-border px-2.5 py-1 text-xs font-medium text-destructive hover:bg-input";
 
 export default function DocoGitHubIntegration() {
-  const { me, handle, docoInstallUrl, connections, orgAccounts, backfill } =
+  const { me, handle, ownerSlug, docoInstallUrl, connections, orgAccounts, backfill } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
@@ -194,6 +195,7 @@ export default function DocoGitHubIntegration() {
       <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
         <Breadcrumb
           items={docoBreadcrumb({
+            ownerSlug,
             handle,
             parent: { label: "Integrations", to: `/${handle}/integrations` },
             pageLabel: "GitHub",

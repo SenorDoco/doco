@@ -49,16 +49,16 @@ export function Breadcrumb({
 
 /**
  * Build the breadcrumb trail for a doco-scoped page.
- * Trail: `[docoHandle] › [parent?] › [pageLabel?]`.
+ * Trail: `Home › [owner?] › [docoHandle] › [parent?] › [pageLabel?]`.
  *
- * Every non-current segment is a link. The handle is the Doco's only
- * public name, so breadcrumbs should not split off a leading org prefix
- * or synthesize a shorter display label.
+ * Every non-current segment is a link. The owner segment points to the
+ * owning organization home when the loader provides it.
  *
  * Pass `parent` for subpages like `.../policies/guidance/new`:
  * `parent: { label: "Policies", to: "/<handle>/policies" }`.
  */
 export function docoBreadcrumb({
+  ownerSlug,
   handle,
   parent,
   pageLabel,
@@ -68,7 +68,9 @@ export function docoBreadcrumb({
   parent?: BreadcrumbItem;
   pageLabel?: string;
 }): BreadcrumbItem[] {
-  const items: BreadcrumbItem[] = [{ label: handle, to: `/${handle}` }];
+  const items: BreadcrumbItem[] = [{ label: "Home", to: "/" }];
+  if (ownerSlug) items.push({ label: ownerSlug, to: `/orgs/${ownerSlug}` });
+  items.push({ label: handle, to: `/${handle}` });
   if (parent) items.push(parent);
   if (pageLabel) items.push({ label: pageLabel });
   return items;

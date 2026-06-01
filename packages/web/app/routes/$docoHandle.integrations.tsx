@@ -25,7 +25,7 @@ export async function loader({
   request: Request;
   params: { docoHandle: string };
 }) {
-  const { me, meta } = await loadDocoRouteForRead(request, params);
+  const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const ctx = await getDocoConnectionsContext(meta.docoId);
   const docoInstallUrl = buildInstallUrl(meta.docoId);
   const orgAccounts = ctx
@@ -34,6 +34,7 @@ export async function loader({
   return {
     me,
     handle: meta.handle,
+    ownerSlug,
     orgHandle: ctx?.orgHandle ?? "",
     docoInstallUrl,
     github: {
@@ -53,13 +54,14 @@ const MANAGE_BTN =
   "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
 
 export default function DocoIntegrations() {
-  const { me, handle, orgHandle, docoInstallUrl, github } = useLoaderData<typeof loader>();
+  const { me, handle, ownerSlug, orgHandle, docoInstallUrl, github } =
+    useLoaderData<typeof loader>();
 
   return (
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
-        <Breadcrumb items={docoBreadcrumb({ handle, pageLabel: "Integrations" })} />
+        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Integrations" })} />
         <header className="space-y-3">
           <h1 className="text-2xl font-semibold">Integrations</h1>
           <p className="text-sm text-muted-foreground">
