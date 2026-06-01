@@ -10,7 +10,7 @@
 // page manages the credentials behind those agents/scripts.
 
 import type { DocoRole } from "@doco/db";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
@@ -19,17 +19,25 @@ import { GrantPicker } from "~/components/grant-picker";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
+  type ApiKeyGrantInput,
   type ApiKeyRow,
   type ApiKeyScopeGrant,
   type ApiKeysPageData,
   type MintedApiKey,
   type ScopeOption,
+  addGrantsToApiKey,
   listApiKeysForUser,
   loadScopeOptions,
   mintApiKey,
   revokeApiKey,
 } from "~/lib/api-keys.server";
-import { type ComposedGrant, catalogFromOptions, resolveWriteTypes } from "~/lib/grant-picker";
+import {
+  type ComposedGrant,
+  type ExistingGrant,
+  type GrantCatalog,
+  catalogFromOptions,
+  resolveWriteTypes,
+} from "~/lib/grant-picker";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }): Promise<ApiKeysPageData> {
@@ -49,6 +57,7 @@ export async function loader({ request }: { request: Request }): Promise<ApiKeys
 type ActionResult =
   | { intent: "mint"; ok: true; minted: MintedApiKey }
   | { intent: "revoke"; ok: true; client_id: string }
+  | { intent: "add_grants"; ok: true; client_id: string }
   | { error: string };
 
 export async function action({ request }: { request: Request }): Promise<ActionResult> {
@@ -71,34 +80,9 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     const rawGrants = String(form.get("grants") ?? "").trim();
     if (!rawGrants) return { error: "Pick at least one org or doco to scope this key to." };
 
-    // grants is a JSON-encoded array of { level, target_id, role,
-    // write_types? } — write_types narrows write to specific node/
-    // edge types (decision_per_type_write_grants).
-    let grants: Array<{
-      level: "account" | "org" | "doco";
-      target_id: string;
-      role: DocoRole;
-      write_types?: string[];
-    }> = [];
+    let grants: ApiKeyGrantInput[] = [];
     try {
-      const parsed = JSON.parse(rawGrants);
-      if (!Array.isArray(parsed)) throw new Error("grants must be an array");
-      grants = parsed.map(
-        (g: { level?: unknown; target_id?: unknown; role?: unknown; write_types?: unknown }) => {
-          const level =
-            g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
-          const target_id = typeof g.target_id === "string" ? g.target_id : "";
-          const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
-          // Account grants carry no target_id (the minter's account is the scope).
-          if (!level || (level !== "account" && !target_id)) {
-            throw new Error("invalid grant entry");
-          }
-          const write_types = Array.isArray(g.write_types)
-            ? g.write_types.filter((t): t is string => typeof t === "string")
-            : undefined;
-          return { level, target_id, role, write_types };
-        },
-      );
+      grants = parseGrantPayload(rawGrants);
     } catch (err) {
       return {
         error: err instanceof Error ? err.message : "Malformed grants list.",
@@ -114,7 +98,52 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     }
   }
 
+  if (intent === "add_grants") {
+    const clientId = String(form.get("client_id") ?? "").trim();
+    const rawGrants = String(form.get("grants") ?? "").trim();
+    if (!clientId) return { error: "Missing client_id." };
+    if (!rawGrants) return { error: "Pick at least one thing to grant access to." };
+    let grants: ApiKeyGrantInput[] = [];
+    try {
+      grants = parseGrantPayload(rawGrants);
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : "Malformed grants list.",
+      };
+    }
+    try {
+      await addGrantsToApiKey({ me, client_id: clientId, grants });
+      return { intent: "add_grants", ok: true, client_id: clientId };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to add access." };
+    }
+  }
+
   return { error: `Unknown intent: ${intent}` };
+}
+
+function parseGrantPayload(rawGrants: string): ApiKeyGrantInput[] {
+  // grants is a JSON-encoded array of { level, target_id, role,
+  // write_types? } — write_types narrows write to specific node/
+  // edge types (decision_per_type_write_grants).
+  const parsed = JSON.parse(rawGrants);
+  if (!Array.isArray(parsed)) throw new Error("grants must be an array");
+  return parsed.map(
+    (g: { level?: unknown; target_id?: unknown; role?: unknown; write_types?: unknown }) => {
+      const level =
+        g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
+      const target_id = typeof g.target_id === "string" ? g.target_id : "";
+      const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
+      // Account grants carry no target_id (the minter's account is the scope).
+      if (!level || (level !== "account" && !target_id)) {
+        throw new Error("invalid grant entry");
+      }
+      const write_types = Array.isArray(g.write_types)
+        ? g.write_types.filter((t): t is string => typeof t === "string")
+        : undefined;
+      return { level, target_id, role, write_types };
+    },
+  );
 }
 
 export function meta() {
@@ -132,6 +161,7 @@ export default function ApiKeysPage({
   const minted =
     actionData && "intent" in actionData && actionData.intent === "mint" ? actionData.minted : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
+  const catalog = useMemo(() => scopeOptionsToCatalog(scopeOptions), [scopeOptions]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -160,7 +190,7 @@ export default function ApiKeysPage({
           </CardHeader>
           <CardContent className="space-y-2">
             {keys.map((key) => (
-              <KeyRow key={key.client_id} apiKey={key} />
+              <KeyRow key={key.client_id} apiKey={key} catalog={catalog} />
             ))}
           </CardContent>
         </Card>
@@ -279,18 +309,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
 
   // Same drill-down grant picker the collaborators page uses
   // (decision_per_type_write_grants): org → docos → read/write + per-type.
-  const catalog = useMemo(
-    () =>
-      catalogFromOptions(
-        scopeOptions
-          .filter((o) => o.level === "org")
-          .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole })),
-        scopeOptions
-          .filter((o) => o.level === "doco")
-          .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole, orgId: o.orgId })),
-      ),
-    [scopeOptions],
-  );
+  const catalog = useMemo(() => scopeOptionsToCatalog(scopeOptions), [scopeOptions]);
   const noScopes = catalog.targets.length === 0;
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
 
@@ -362,6 +381,17 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
         </>
       )}
     </Form>
+  );
+}
+
+function scopeOptionsToCatalog(scopeOptions: ScopeOption[]): GrantCatalog {
+  return catalogFromOptions(
+    scopeOptions
+      .filter((o) => o.level === "org")
+      .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole })),
+    scopeOptions
+      .filter((o) => o.level === "doco")
+      .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole, orgId: o.orgId })),
   );
 }
 
@@ -486,57 +516,138 @@ function formatExpiresIn(seconds: number): string {
   return `${days}d`;
 }
 
-function KeyRow({ apiKey }: { apiKey: ApiKeyRow }) {
+function KeyRow({ apiKey, catalog }: { apiKey: ApiKeyRow; catalog: GrantCatalog }) {
   const fetcher = useFetcher<ActionResult>();
   const revoking = fetcher.state !== "idle";
+  const [adding, setAdding] = useState(false);
   return (
     <div
       data-testid={`key-row-${apiKey.client_id}`}
-      className="neu-surface flex flex-wrap items-start justify-between gap-3 rounded-md bg-card px-3 py-2 text-xs"
+      className="neu-surface rounded-md bg-card px-3 py-2 text-xs"
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold">{apiKey.client_name}</span>
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {apiKey.source}
-          </span>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold">{apiKey.client_name}</span>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {apiKey.source}
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
+            <span>Granted {formatDate(apiKey.granted_at)}</span>
+            <span>·</span>
+            <span>
+              {apiKey.last_used_at ? `Last used ${formatDate(apiKey.last_used_at)}` : "Never used"}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {apiKey.scope_grants.length === 0 ? (
+              <span className="text-muted-foreground">No active scopes</span>
+            ) : (
+              apiKey.scope_grants.map((g) => (
+                <ScopeChip key={`${g.level}:${g.target_id}`} grant={g} />
+              ))
+            )}
+          </div>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
-          <span>Granted {formatDate(apiKey.granted_at)}</span>
-          <span>·</span>
-          <span>
-            {apiKey.last_used_at ? `Last used ${formatDate(apiKey.last_used_at)}` : "Never used"}
-          </span>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {apiKey.scope_grants.length === 0 ? (
-            <span className="text-muted-foreground">No active scopes</span>
-          ) : (
-            apiKey.scope_grants.map((g) => (
-              <ScopeChip key={`${g.level}:${g.target_id}`} grant={g} />
-            ))
-          )}
-        </div>
-      </div>
-      <fetcher.Form method="post">
-        <input type="hidden" name="intent" value="revoke" />
-        <input type="hidden" name="client_id" value={apiKey.client_id} />
         <button
-          type="submit"
-          disabled={revoking}
-          data-testid={`revoke-${apiKey.client_id}`}
-          onClick={(e) => {
-            if (!confirm(`Revoke "${apiKey.client_name}"? This cannot be undone.`)) {
-              e.preventDefault();
-            }
-          }}
-          className="neu-button rounded-md px-2 py-1 text-xs text-destructive disabled:opacity-50"
+          type="button"
+          data-testid={`add-access-${apiKey.client_id}`}
+          onClick={() => setAdding((v) => !v)}
+          className="neu-button rounded-md px-2 py-1 text-xs"
         >
-          {revoking ? "Revoking…" : "Revoke"}
+          {adding ? "Cancel add" : "Add access"}
         </button>
-      </fetcher.Form>
+        <fetcher.Form method="post">
+          <input type="hidden" name="intent" value="revoke" />
+          <input type="hidden" name="client_id" value={apiKey.client_id} />
+          <button
+            type="submit"
+            disabled={revoking}
+            data-testid={`revoke-${apiKey.client_id}`}
+            onClick={(e) => {
+              if (!confirm(`Revoke "${apiKey.client_name}"? This cannot be undone.`)) {
+                e.preventDefault();
+              }
+            }}
+            className="neu-button rounded-md px-2 py-1 text-xs text-destructive disabled:opacity-50"
+          >
+            {revoking ? "Revoking…" : "Revoke"}
+          </button>
+        </fetcher.Form>
+      </div>
+      {adding ? (
+        <TokenAddAccessForm apiKey={apiKey} catalog={catalog} onDone={() => setAdding(false)} />
+      ) : null}
     </div>
   );
+}
+
+function TokenAddAccessForm({
+  apiKey,
+  catalog,
+  onDone,
+}: {
+  apiKey: ApiKeyRow;
+  catalog: GrantCatalog;
+  onDone: () => void;
+}) {
+  const fetcher = useFetcher<ActionResult>();
+  const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  const done =
+    fetcher.state === "idle" &&
+    fetcher.data &&
+    "intent" in fetcher.data &&
+    fetcher.data.intent === "add_grants";
+  const error = fetcher.data && "error" in fetcher.data ? fetcher.data.error : undefined;
+  useEffect(() => {
+    if (done) {
+      setGrants([]);
+      onDone();
+    }
+  }, [done, onDone]);
+  const payload = useMemo(() => JSON.stringify(grantsToPayload(grants)), [grants]);
+  const existing = useMemo<ExistingGrant[]>(
+    () =>
+      apiKey.scope_grants.map((g) => ({
+        level: g.level,
+        label: g.target_label,
+        role: g.role,
+        writeTypes: g.writeTypes,
+      })),
+    [apiKey.scope_grants],
+  );
+  return (
+    <fetcher.Form
+      method="post"
+      className="mt-3 space-y-3"
+      data-testid={`token-add-${apiKey.client_id}`}
+    >
+      <input type="hidden" name="intent" value="add_grants" />
+      <input type="hidden" name="client_id" value={apiKey.client_id} />
+      <input type="hidden" name="grants" value={payload} />
+      <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} existing={existing} />
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={fetcher.state !== "idle" || grants.length === 0}
+          className="neu-button bg-primary text-primary-foreground rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+        >
+          {fetcher.state !== "idle" ? "Saving…" : "Save added access"}
+        </button>
+      </div>
+    </fetcher.Form>
+  );
+}
+
+function grantsToPayload(grants: ComposedGrant[]): ApiKeyGrantInput[] {
+  return grants.map((g) => ({
+    level: g.level,
+    target_id: g.targetId,
+    role: g.role,
+    write_types: resolveWriteTypes(g.role, g.writeTypes),
+  }));
 }
 
 function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {

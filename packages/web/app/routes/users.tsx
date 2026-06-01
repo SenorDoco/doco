@@ -24,10 +24,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { GrantPicker } from "~/components/grant-picker";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { UserInviteCards } from "~/components/user-invite-cards";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
+import {
+  type ComposedGrant,
+  type ExistingGrant,
+  type GrantCatalog,
+  catalogFromOptions,
+  resolveWriteTypes,
+} from "~/lib/grant-picker";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { ALL_ROLES, type InviteLevel, type UserInviteActionResult } from "~/lib/user-invite";
 import {
@@ -65,6 +73,12 @@ type ActionResult =
       user_id: string;
       username: string;
     }
+  | {
+      intent: "add_grants";
+      ok: true;
+      user_id: string;
+      grants_count: number;
+    }
   | UserInviteActionResult
   | { error: string };
 
@@ -92,6 +106,70 @@ export async function action({
     const name = String(form.get("name") ?? "");
     if (!agentId) return { error: "user_id missing." };
     return await renameAgentCollaborator({ meId: me.id, agentId, name });
+  }
+
+  if (intent === "add_grants") {
+    const granteeId = String(form.get("user_id") ?? "").trim();
+    if (!granteeId) return { error: "user_id missing." };
+    const rawGrants = String(form.get("grants") ?? "").trim();
+    if (!rawGrants) return { error: "Pick at least one thing to grant access to." };
+    let grants: ComposedGrant[] = [];
+    try {
+      const parsed = JSON.parse(rawGrants);
+      if (!Array.isArray(parsed)) throw new Error("grants must be an array");
+      grants = parsed.map(
+        (g: { level?: unknown; targetId?: unknown; role?: unknown; writeTypes?: unknown }) => {
+          const level =
+            g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
+          const targetId = typeof g.targetId === "string" ? g.targetId : "";
+          const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
+          if (!level || (level !== "account" && !targetId) || !ALL_ROLES.includes(role)) {
+            throw new Error("invalid grant entry");
+          }
+          const writeTypes = Array.isArray(g.writeTypes)
+            ? g.writeTypes.filter((t): t is string => typeof t === "string")
+            : [];
+          return { level, targetId, role, writeTypes };
+        },
+      );
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Malformed grants list." };
+    }
+
+    for (const grant of grants) {
+      const write_types = normalizeWriteTypes(resolveWriteTypes(grant.role, grant.writeTypes));
+      if (grant.level === "account") {
+        if (granteeId === me.id) return { error: "You can't grant your account to yourself." };
+        await upsertAccountGrant({
+          grantor_user_id: me.id,
+          grantee_user_id: granteeId,
+          role: grant.role,
+          write_types,
+        });
+      } else if (grant.level === "org") {
+        const role = await getOrgRole(grant.targetId, me.id);
+        if (role !== "owner") return { error: "Only org owners can change org users." };
+        await upsertOrgUser({
+          org_id: grant.targetId,
+          user_id: granteeId,
+          role: grant.role,
+          write_types,
+        });
+      } else {
+        const doco = await getDocoById(grant.targetId);
+        if (!doco) return { error: "Doco not found." };
+        const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
+        if (role !== "owner") return { error: "Only doco owners can change doco users." };
+        await upsertDocoUser({
+          doco_id: grant.targetId,
+          user_id: granteeId,
+          role: grant.role,
+          write_types,
+        });
+      }
+    }
+
+    return { intent: "add_grants", ok: true, user_id: granteeId, grants_count: grants.length };
   }
 
   // Account-level grants (migration 075): the grantor is the acting user,
@@ -219,6 +297,7 @@ interface AccessGrant {
   target_link: string;
   joined_at: string;
   role: DocoRole;
+  writeTypes: string[];
   canEdit: boolean;
 }
 
@@ -292,6 +371,7 @@ export default function UsersPage({
               target_link: `/orgs/${s.org.handle}`,
               joined_at: u.joined_at,
               role: u.role,
+              writeTypes: u.write_types,
               canEdit: s.myRole === "owner",
             },
           ],
@@ -323,6 +403,7 @@ export default function UsersPage({
               target_link: `/${s.doco.handle}`,
               joined_at: u.joined_at,
               role: u.role,
+              writeTypes: u.write_types,
               canEdit: s.myRole === "owner",
             },
           ],
@@ -341,6 +422,8 @@ export default function UsersPage({
   const docoSectionEmpty = scope.startsWith("org:")
     ? "No collaborators on docos in this org yet."
     : "You don't have any doco grants yet.";
+  const grantCatalog = useMemo(() => catalogFromInvite(loaderData.invite), [loaderData.invite]);
+  const existingByPrincipal = useMemo(() => existingGrantsByPrincipal(loaderData), [loaderData]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -395,6 +478,8 @@ export default function UsersPage({
             empty="You don't have any org grants yet."
             rows={orgRows}
             myPrincipalId={loaderData.me.id}
+            grantCatalog={grantCatalog}
+            existingByPrincipal={existingByPrincipal}
           />
         ) : null}
 
@@ -404,6 +489,8 @@ export default function UsersPage({
             empty={docoSectionEmpty}
             rows={docoRows}
             myPrincipalId={loaderData.me.id}
+            grantCatalog={grantCatalog}
+            existingByPrincipal={existingByPrincipal}
           />
         ) : null}
       </SingleColumnPageMain>
@@ -416,11 +503,15 @@ function Section({
   empty,
   rows,
   myPrincipalId,
+  grantCatalog,
+  existingByPrincipal,
 }: {
   title: string;
   empty: string;
   rows: GroupedRow[];
   myPrincipalId: string;
+  grantCatalog: GrantCatalog;
+  existingByPrincipal: Map<string, ExistingGrant[]>;
 }) {
   const sorted = [...rows].sort(activeFirst);
   return (
@@ -444,6 +535,8 @@ function Section({
                     key={`${r.level}-${r.principal.user_id}`}
                     row={r}
                     myPrincipalId={myPrincipalId}
+                    grantCatalog={grantCatalog}
+                    existing={existingByPrincipal.get(r.principal.user_id) ?? []}
                   />
                 ))}
               </tbody>
@@ -496,9 +589,13 @@ function formatDate(iso: string): string {
 function UserRow({
   row,
   myPrincipalId,
+  grantCatalog,
+  existing,
 }: {
   row: GroupedRow;
   myPrincipalId: string;
+  grantCatalog: GrantCatalog;
+  existing: ExistingGrant[];
 }) {
   const username = row.principal.username;
   const isMe = row.principal.user_id === myPrincipalId;
@@ -584,11 +681,128 @@ function UserRow({
                   isMe={isMe}
                 />
               ))}
+              {row.canEditAny ? (
+                <AddUserAccessForm
+                  principalId={row.principal.user_id}
+                  username={username}
+                  catalog={grantCatalog}
+                  existing={existing}
+                />
+              ) : null}
             </div>
           </td>
         </tr>
       ) : null}
     </>
+  );
+}
+
+function catalogFromInvite(invite: UsersPageData["invite"]): GrantCatalog {
+  return catalogFromOptions(invite.orgs, invite.docos);
+}
+
+function existingGrantsByPrincipal(data: UsersPageData): Map<string, ExistingGrant[]> {
+  const out = new Map<string, ExistingGrant[]>();
+  const push = (userId: string, grant: ExistingGrant) => {
+    const current = out.get(userId);
+    if (current) current.push(grant);
+    else out.set(userId, [grant]);
+  };
+  for (const section of data.orgSections) {
+    for (const user of section.users) {
+      push(user.user_id, {
+        level: "org",
+        label: section.org.handle,
+        role: user.role,
+        writeTypes: user.write_types,
+      });
+    }
+  }
+  for (const section of data.docoSections) {
+    for (const user of section.users) {
+      push(user.user_id, {
+        level: "doco",
+        label: section.doco.label,
+        role: user.role,
+        writeTypes: user.write_types,
+      });
+    }
+  }
+  return out;
+}
+
+function AddUserAccessForm({
+  principalId,
+  username,
+  catalog,
+  existing,
+}: {
+  principalId: string;
+  username: string;
+  catalog: GrantCatalog;
+  existing: ExistingGrant[];
+}) {
+  const fetcher = useFetcher<ActionResult>();
+  const [open, setOpen] = useState(false);
+  const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  const done =
+    fetcher.state === "idle" &&
+    fetcher.data &&
+    "intent" in fetcher.data &&
+    fetcher.data.intent === "add_grants";
+  const error = fetcher.data && "error" in fetcher.data ? fetcher.data.error : undefined;
+  useEffect(() => {
+    if (done) {
+      setGrants([]);
+      setOpen(false);
+    }
+  }, [done]);
+  const payload = useMemo(() => JSON.stringify(grants), [grants]);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        data-testid={`add-user-access-${principalId}`}
+        onClick={() => setOpen(true)}
+        className="neu-button mt-2 w-fit rounded-md px-2 py-1 text-xs"
+      >
+        Add access
+      </button>
+    );
+  }
+
+  return (
+    <fetcher.Form
+      method="post"
+      className="mt-2 space-y-3 rounded-md border border-border p-3"
+      data-testid={`add-user-access-form-${principalId}`}
+    >
+      <input type="hidden" name="intent" value="add_grants" />
+      <input type="hidden" name="user_id" value={principalId} />
+      <input type="hidden" name="grants" value={payload} />
+      <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} existing={existing} />
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setGrants([]);
+            setOpen(false);
+          }}
+          className="neu-button rounded-md px-2 py-1 text-xs"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={fetcher.state !== "idle" || grants.length === 0}
+          className="neu-button bg-primary text-primary-foreground rounded-md px-2 py-1 text-xs font-semibold disabled:opacity-50"
+        >
+          {fetcher.state !== "idle" ? "Saving…" : `Add access for ${username}`}
+        </button>
+      </div>
+    </fetcher.Form>
   );
 }
 
