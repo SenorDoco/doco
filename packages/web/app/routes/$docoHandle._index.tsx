@@ -1,7 +1,8 @@
 import { withClient } from "@doco/db";
 import { normalizeNodeType } from "@doco/shared";
-// Per-Doco home — bare title up top, then the search input, node overview,
-// activity heatmap, and latest activity feed in a single content column.
+import { ArrowRight } from "lucide-react";
+// Per-Doco home — bare title up top, then the search input, activity heatmap,
+// node overview, and latest activity feed in a single content column.
 //
 // The feed renders one line per recent audit event in the same family as
 // agent footer lines: `<op-icon> <Type> <verb>: <readable text>`. Lifecycle
@@ -120,6 +121,14 @@ function nodeTypeLabel(type: string): string {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ")}s`
   );
+}
+
+function edgeTypeLabel(type: string): string {
+  return type
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export async function loader({
@@ -431,12 +440,10 @@ function nodeTypeSearchPath(handle: string, entityType: string): string {
   return `/${handle}/search?${params.toString()}`;
 }
 
-function lifecycleSearchPath(handle: string, lifecycle: string): string {
+function edgeTypeListPath(handle: string, edgeType: string): string {
   const params = new URLSearchParams();
-  params.set("lifecycle", lifecycle);
-  params.set("entity_type", "*");
-  params.set("limit", "500");
-  return `/${handle}/search?${params.toString()}`;
+  params.set("edge_type", edgeType);
+  return `/${handle}/edges?${params.toString()}`;
 }
 
 interface NodeDialogState {
@@ -1030,15 +1037,17 @@ export default function DocoHome({
       })),
     },
     {
-      title: "Lifecycle",
-      items: facets.lifecycle.map((l) => ({
-        key: `lifecycle-${l.value}`,
-        href: lifecycleSearchPath(handle, l.value),
-        label: l.value,
-        count: l.count,
-        ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
-        color: lifecycleColor(l.value),
-        updatedAt: l.updatedAt,
+      title: "Edge types",
+      items: facets.edgeType.map((e) => ({
+        key: `edge-${e.value}`,
+        href: edgeTypeListPath(handle, e.value),
+        label: edgeTypeLabel(e.value),
+        icon: <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.7} />,
+        count: e.count,
+        ariaLabel: `View ${e.count} ${edgeTypeLabel(e.value).toLowerCase()} edge${
+          e.count === 1 ? "" : "s"
+        }`,
+        updatedAt: e.updatedAt,
       })),
     },
   ];
@@ -1324,16 +1333,6 @@ export default function DocoHome({
               the browser width before this page gets laid out. */}
           <div className={`relative min-h-0 min-w-0 ${showSidePanel ? "block" : "hidden"}`}>
             <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
-              <NodesOverviewCard
-                sections={sections}
-                empty={
-                  <p className="text-xs italic text-muted-foreground">
-                    This Doco has no nodes yet.
-                  </p>
-                }
-                aside={<TopContributorsList contributors={topContributors} />}
-              />
-
               <Card>
                 <CardHeader className="px-4 py-3">
                   <CardTitle className="text-sm">Activity</CardTitle>
@@ -1342,6 +1341,16 @@ export default function DocoHome({
                   <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
                 </CardContent>
               </Card>
+
+              <NodesOverviewCard
+                sections={sections}
+                empty={
+                  <p className="text-xs italic text-muted-foreground">
+                    This Doco has no nodes or edges yet.
+                  </p>
+                }
+                aside={<TopContributorsList contributors={topContributors} />}
+              />
 
               <Card>
                 <CardHeader className="px-4 py-3">

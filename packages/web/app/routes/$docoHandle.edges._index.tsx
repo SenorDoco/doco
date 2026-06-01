@@ -42,7 +42,15 @@ export async function loader({
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   const { ownerSlug, docoSlug, handle } = ctx;
+  const edgeTypeFilter = new URL(request.url).searchParams.get("edge_type")?.trim() || null;
   return withClient(async (c) => {
+    const queryParams: unknown[] = [ctx.meta.docoId];
+    const where = ["e.doco_id = $1", "e.lifecycle <> 'retired'"];
+    if (edgeTypeFilter) {
+      queryParams.push(edgeTypeFilter);
+      where.push(`e.edge_type = $${queryParams.length}`);
+    }
+
     const rows = (
       await c.query<EdgeRow>(
         // Post-collapse: the prose node types live in `nodes` (summary =
@@ -62,14 +70,15 @@ export async function loader({
            FROM edges e
            LEFT JOIN labels fl ON fl.id = e.from_id
            LEFT JOIN labels tl ON tl.id = e.to_id
-          WHERE e.doco_id = $1 AND e.lifecycle <> 'retired'
+          WHERE ${where.join(" AND ")}
           ORDER BY e.edge_type, e.from_id, e.to_id
           LIMIT 500`,
-        [ctx.meta.docoId],
+        queryParams,
       )
     ).rows;
     return {
       edges: rows,
+      edgeTypeFilter,
       handle,
       ownerSlug,
       docoSlug,
@@ -89,7 +98,7 @@ export default function EdgesIndex({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { edges, handle, ownerSlug, me } = loaderData;
+  const { edges, edgeTypeFilter, handle, ownerSlug, me } = loaderData;
   return (
     <div>
       <SiteHeader me={me} />
@@ -102,8 +111,15 @@ export default function EdgesIndex({
           </div>
         </header>
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Every edge in this Doco</CardTitle>
+          <CardHeader className="flex-row items-center justify-between gap-3">
+            <CardTitle className="text-sm">
+              {edgeTypeFilter ? `${edgeTypeFilter} edges` : "Every edge in this Doco"}
+            </CardTitle>
+            {edgeTypeFilter ? (
+              <Link to={`/${handle}/edges`} className="text-xs text-primary hover:underline">
+                All edge types
+              </Link>
+            ) : null}
           </CardHeader>
           <CardContent className="p-0">
             {edges.length === 0 ? (
