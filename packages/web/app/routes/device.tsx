@@ -19,23 +19,22 @@
 
 import type { DocoRole } from "@doco/db";
 import { getOrgRole } from "@doco/db";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { useState } from "react";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { OAuthAccessApprovalForm } from "~/components/oauth-access-approval-form";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoById } from "~/lib/db.server";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { listOrgsOwnedOrAdminedBy } from "~/lib/host.server";
+import { readOAuthApprovalGrants } from "~/lib/oauth-approval-grants.server";
 import {
   approveDeviceAuthorization,
   denyDeviceAuthorization,
   getClient,
   getDeviceAuthorizationByUserCode,
 } from "~/lib/oauth-server.server";
-import { DOCO_ROLES } from "~/lib/role-helpers";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface LoaderData {
@@ -222,63 +221,17 @@ export async function action({ request }: { request: Request }) {
     if (!tokenName) {
       throw new Response("token_name required", { status: 400 });
     }
-    const selected = form.getAll("doco_id").map((v) => String(v));
-    const selectedOrgs = form.getAll("org_id").map((v) => String(v));
-    if (selected.length === 0 && selectedOrgs.length === 0) {
-      throw new Response("at least one Doco or organization must be selected", { status: 400 });
-    }
-    // Defense against form tampering. Two checks per id:
-    //   1. Principal must hold OWNER on this Doco — only owners can
-    //      grant token access.
-    //   2. The per-Doco role from the form must be a valid DocoRole.
-    const granted_doco_roles: Record<string, DocoRole> = {};
-    const allowed = new Set(await listAccessibleDocoIdsForPrincipal(principal.id));
-    for (const id of selected) {
-      if (!allowed.has(id)) {
-        throw new Response(`not authorized for ${id}`, { status: 403 });
-      }
-      const doco = await getDocoById(id);
-      if (!doco) throw new Response(`unknown doco: ${id}`, { status: 400 });
-      const myRole = await getDocoLevelRole(
-        { ownerId: doco.owner_id, docoId: doco.id },
-        principal.id,
-      );
-      if (myRole !== "owner") {
-        throw new Response(
-          `Only owners can grant access; you hold '${myRole ?? "no role"}' on ${doco.handle}.`,
-          { status: 403 },
-        );
-      }
-      const raw = String(form.get(`role_${id}`) ?? "owner").toLowerCase();
-      const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : "owner";
-      granted_doco_roles[id] = requested;
-    }
-    // Org-level grants. Same defense-against-tampering shape: re-check
-    // OWNER on each org and validate the role is a real DocoRole.
-    const granted_org_roles: Record<string, DocoRole> = {};
-    for (const orgId of selectedOrgs) {
-      if (!orgId.startsWith("organization_")) {
-        throw new Response(`invalid org id: ${orgId}`, { status: 400 });
-      }
-      const myOrgRole = await getOrgRole(orgId, principal.id);
-      if (myOrgRole !== "owner") {
-        throw new Response(
-          `Only org owners can grant access; you hold '${myOrgRole ?? "no role"}' on ${orgId}.`,
-          { status: 403 },
-        );
-      }
-      const raw = String(form.get(`role_org_${orgId}`) ?? "owner").toLowerCase();
-      const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : "owner";
-      granted_org_roles[orgId] = requested;
-    }
+    const grants = await readOAuthApprovalGrants(form, principal.id);
     await approveDeviceAuthorization({
       device_code: row.device_code,
       approver_user_id: principal.id,
       token_name: tokenName,
-      granted_doco_ids: selected,
-      granted_doco_roles,
-      granted_org_ids: selectedOrgs,
-      granted_org_roles,
+      granted_doco_ids: grants.granted_doco_ids,
+      granted_doco_roles: grants.granted_doco_roles,
+      granted_doco_write_types: grants.granted_doco_write_types,
+      granted_org_ids: grants.granted_org_ids,
+      granted_org_roles: grants.granted_org_roles,
+      granted_org_write_types: grants.granted_org_write_types,
     });
     return redirect(`/device?user_code=${encodeURIComponent(user_code)}`);
   }
@@ -355,13 +308,16 @@ function renderStage(data: LoaderData) {
               one first, then re-enter this code.
             </p>
           ) : (
-            <DevicePickerForm
-              userCode={data.user_code}
+            <OAuthAccessApprovalForm
               docos={docos}
               orgs={orgs}
+              tokenNamePlaceholder="e.g. Codex in Doco repo"
               requestedRole={data.requested_role ?? null}
               targetedMessage={data.targeted_message ?? null}
-              focused={Boolean(data.target_doco_handle && docos.length === 1)}
+              approveLabel="Approve"
+              cancelLabel="Deny"
+              cancelDecisionValue="deny"
+              hiddenFields={{ user_code: data.user_code }}
             />
           )}
         </CardContent>
@@ -389,8 +345,6 @@ function renderStage(data: LoaderData) {
   );
 }
 
-type PickerDoco = { id: string; handle: string; my_role: DocoRole; org_id: string | null };
-
 /**
  * After a device approval, clients that run in ephemeral cloud sandboxes
  * (Claude Code on the web, Codespaces, …) would re-prompt on every fresh
@@ -416,408 +370,5 @@ function CloudEnvNote() {
         environment's variable configuration.
       </p>
     </div>
-  );
-}
-
-/**
- * Controlled approve form for /device. Orgs render as collapsible
- * groups (chevron + org checkbox/role); expanding one reveals the
- * Docos it owns so the token can be granted the whole org or just a
- * few of its Docos. Docos owned directly by the user live in their
- * own "Your Docos" group. Mirrors the same shape on /oauth/authorize.
- */
-function DevicePickerForm({
-  userCode,
-  docos,
-  orgs,
-  requestedRole,
-  targetedMessage,
-  focused,
-}: {
-  userCode: string;
-  docos: PickerDoco[];
-  orgs: { id: string; handle: string; display_name: string; my_role: DocoRole }[];
-  requestedRole: DocoRole | null;
-  targetedMessage: string | null;
-  focused: boolean;
-}) {
-  // When the token requested a specific role, prefill the per-Doco
-  // role dropdowns to that — otherwise default to the user's actual
-  // role on each Doco (always "owner" here, since the loader
-  // filtered to owner-only).
-  const defaultRole = (d: { my_role: DocoRole }): DocoRole => requestedRole ?? d.my_role;
-  // Default selection: Docos pre-selected (existing behavior), orgs
-  // un-selected (org-wide grants are broader → require explicit opt-in).
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(docos.map((d) => d.id)));
-  const [roles, setRoles] = useState<Record<string, DocoRole>>(() =>
-    Object.fromEntries(docos.map((d) => [d.id, defaultRole(d)])),
-  );
-  const [selectedOrgs, setSelectedOrgs] = useState<Set<string>>(() => new Set());
-  const [orgRoles, setOrgRoles] = useState<Record<string, DocoRole>>(() =>
-    Object.fromEntries(orgs.map((o) => [o.id, defaultRole(o)])),
-  );
-  const [tokenName, setTokenName] = useState("");
-  // Groups default to expanded so the pre-selected Docos stay visible;
-  // the chevron lets the user collapse an org to a one-line summary.
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(orgs.map((o) => o.id)));
-  const allOrgsSelected = orgs.length > 0 && selectedOrgs.size === orgs.length;
-  const noneOrgsSelected = selectedOrgs.size === 0;
-  const nothingSelected = selected.size === 0 && selectedOrgs.size === 0;
-
-  // Group the owned Docos under the org that owns them. Docos owned
-  // directly by the user (org_id === null, or owned by an org not in
-  // the picker) fall into the personal bucket.
-  const orgIdSet = new Set(orgs.map((o) => o.id));
-  const docosByOrg = new Map<string, PickerDoco[]>();
-  const personalDocos: PickerDoco[] = [];
-  for (const d of docos) {
-    if (d.org_id && orgIdSet.has(d.org_id)) {
-      const arr = docosByOrg.get(d.org_id);
-      if (arr) arr.push(d);
-      else docosByOrg.set(d.org_id, [d]);
-    } else {
-      personalDocos.push(d);
-    }
-  }
-  const personalSelectedCount = personalDocos.filter((d) => selected.has(d.id)).length;
-  const allPersonalSelected =
-    personalDocos.length > 0 && personalSelectedCount === personalDocos.length;
-  const nonePersonalSelected = personalSelectedCount === 0;
-
-  const toggleExpanded = (key: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  const toggleDoco = (id: string, checked: boolean) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  const toggleOrg = (id: string, checked: boolean) =>
-    setSelectedOrgs((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-
-  const renderDocoRow = (d: PickerDoco) => (
-    <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-      <label className="flex flex-1 cursor-pointer items-center gap-3">
-        <input
-          type="checkbox"
-          checked={selected.has(d.id)}
-          onChange={(e) => toggleDoco(d.id, e.currentTarget.checked)}
-          className="h-4 w-4 accent-primary"
-        />
-        <span className="text-sm">
-          <strong className="font-semibold">{d.handle}</strong>
-        </span>
-      </label>
-      <select
-        aria-label={`Role on ${d.handle}`}
-        value={roles[d.id] ?? d.my_role}
-        onChange={(e) => setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })}
-        disabled={!selected.has(d.id)}
-        className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
-      >
-        {DOCO_ROLES.map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-      </select>
-    </li>
-  );
-  return (
-    <Form method="post" className="space-y-4">
-      <input type="hidden" name="user_code" value={userCode} />
-
-      <label className="block text-sm">
-        <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-          Token name
-        </span>
-        <input
-          type="text"
-          name="token_name"
-          value={tokenName}
-          onChange={(e) => setTokenName(e.currentTarget.value)}
-          required
-          maxLength={120}
-          placeholder="e.g. Codex in Doco repo"
-          className="block w-full max-w-md rounded-md px-3 py-2 text-sm"
-        />
-      </label>
-
-      {targetedMessage ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {targetedMessage}
-        </p>
-      ) : null}
-
-      {/* Focused mode (token targeted one Doco): just the single row,
-          no grouping or bulk controls. */}
-      {focused ? (
-        <ul className="neu-surface divide-y divide-border rounded-md bg-card">
-          {docos.map(renderDocoRow)}
-        </ul>
-      ) : (
-        <section className="space-y-4">
-          {/* Organizations, each a collapsible group. Checking the org
-              grants access to every Doco it owns now AND any added
-              later. Expand it to grant only some of its Docos instead. */}
-          {orgs.length > 0 ? (
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">Organizations</h3>
-              <p className="text-xs text-muted-foreground">
-                Approving an organization grants access to every Doco it owns, including ones added
-                later. Expand one to grant only some of its Docos.
-              </p>
-              <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedOrgs(new Set(orgs.map((o) => o.id)))}
-                  disabled={allOrgsSelected}
-                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-                >
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedOrgs(new Set())}
-                  disabled={noneOrgsSelected}
-                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-                >
-                  Deselect all
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  {selectedOrgs.size} of {orgs.length} selected
-                </span>
-                <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                  Set all roles to:
-                  <select
-                    aria-label="Set all org roles"
-                    defaultValue=""
-                    onChange={(e) => {
-                      const r = e.currentTarget.value as DocoRole | "";
-                      if (!r) return;
-                      setOrgRoles(Object.fromEntries(orgs.map((o) => [o.id, r])));
-                      e.currentTarget.value = "";
-                    }}
-                    className="rounded-md px-2 py-1 text-xs text-foreground"
-                  >
-                    <option value="" disabled>
-                      choose…
-                    </option>
-                    {DOCO_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </span>
-              </div>
-              <ul className="neu-surface divide-y divide-border rounded-md bg-card">
-                {orgs.map((o) => {
-                  const groupDocos = docosByOrg.get(o.id) ?? [];
-                  const isOpen = expanded.has(o.id);
-                  return (
-                    <li key={o.id}>
-                      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(o.id)}
-                            aria-expanded={isOpen}
-                            aria-label={isOpen ? `Collapse ${o.handle}` : `Expand ${o.handle}`}
-                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                          >
-                            {isOpen ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </button>
-                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedOrgs.has(o.id)}
-                              onChange={(e) => toggleOrg(o.id, e.currentTarget.checked)}
-                              className="h-4 w-4 accent-primary"
-                            />
-                            <span className="truncate text-sm">
-                              <strong className="font-semibold">{o.handle}</strong>
-                              {o.display_name && o.display_name !== o.handle ? (
-                                <span className="text-muted-foreground"> · {o.display_name}</span>
-                              ) : null}
-                              <span className="ml-1 text-xs text-muted-foreground">
-                                ({groupDocos.length})
-                              </span>
-                            </span>
-                          </label>
-                        </div>
-                        <select
-                          aria-label={`Role on ${o.handle}`}
-                          value={orgRoles[o.id] ?? o.my_role}
-                          onChange={(e) =>
-                            setOrgRoles({ ...orgRoles, [o.id]: e.currentTarget.value as DocoRole })
-                          }
-                          disabled={!selectedOrgs.has(o.id)}
-                          className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
-                        >
-                          {DOCO_ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      {isOpen ? (
-                        <ul className="divide-y divide-border border-t border-border bg-background/40 pl-6">
-                          {groupDocos.length > 0 ? (
-                            groupDocos.map(renderDocoRow)
-                          ) : (
-                            <li className="px-3 py-2 text-xs text-muted-foreground">
-                              No Docos yet. Approving this org covers any added later.
-                            </li>
-                          )}
-                        </ul>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* Docos owned directly by the user, outside any org. */}
-          {personalDocos.length > 0 ? (
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">Your Docos</h3>
-              <p className="text-xs text-muted-foreground">
-                Docos you own directly, outside any organization.
-              </p>
-              <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      for (const d of personalDocos) next.add(d.id);
-                      return next;
-                    })
-                  }
-                  disabled={allPersonalSelected}
-                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-                >
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      for (const d of personalDocos) next.delete(d.id);
-                      return next;
-                    })
-                  }
-                  disabled={nonePersonalSelected}
-                  className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
-                >
-                  Deselect all
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  {personalSelectedCount} of {personalDocos.length} selected
-                </span>
-                <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                  Set all roles to:
-                  <select
-                    aria-label="Set all personal Doco roles"
-                    defaultValue=""
-                    onChange={(e) => {
-                      const r = e.currentTarget.value as DocoRole | "";
-                      if (!r) return;
-                      setRoles((prev) => ({
-                        ...prev,
-                        ...Object.fromEntries(personalDocos.map((d) => [d.id, r])),
-                      }));
-                      e.currentTarget.value = "";
-                    }}
-                    className="rounded-md px-2 py-1 text-xs text-foreground"
-                  >
-                    <option value="" disabled>
-                      choose…
-                    </option>
-                    {DOCO_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </span>
-              </div>
-              <ul className="neu-surface divide-y divide-border rounded-md bg-card">
-                {personalDocos.map(renderDocoRow)}
-              </ul>
-            </div>
-          ) : null}
-        </section>
-      )}
-
-      {Array.from(selected).map((id) => (
-        <input key={id} type="hidden" name="doco_id" value={id} />
-      ))}
-      {Array.from(selected).map((id) => (
-        <input key={`role_${id}`} type="hidden" name={`role_${id}`} value={roles[id] ?? "owner"} />
-      ))}
-      {Array.from(selectedOrgs).map((id) => (
-        <input key={`org_${id}`} type="hidden" name="org_id" value={id} />
-      ))}
-      {Array.from(selectedOrgs).map((id) => (
-        <input
-          key={`role_org_${id}`}
-          type="hidden"
-          name={`role_org_${id}`}
-          value={orgRoles[id] ?? "owner"}
-        />
-      ))}
-
-      <p className="text-[11px] text-muted-foreground">
-        Lower a Doco's or org's role to scope the token down (e.g. give a research token{" "}
-        <code>reader</code> only). Owners can grant any role up to and including their own.
-      </p>
-
-      {nothingSelected ? (
-        <p className="text-xs text-muted-foreground">
-          Select at least one Doco or organization to approve.
-        </p>
-      ) : null}
-
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          name="decision"
-          value="approve"
-          disabled={nothingSelected}
-          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
-        >
-          Approve
-        </button>
-        <button
-          type="submit"
-          name="decision"
-          value="deny"
-          formNoValidate
-          className="neu-button rounded-md px-4 py-2 text-sm font-semibold text-foreground"
-        >
-          Deny
-        </button>
-      </div>
-    </Form>
   );
 }
