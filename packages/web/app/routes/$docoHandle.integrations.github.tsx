@@ -332,6 +332,26 @@ export function repositoryPickerDescription({
   return "No GitHub repositories are selected for this Doco yet.";
 }
 
+/**
+ * Repositories an org-level ("all repositories") connection covers, for the
+ * connected-account view. When a Doco subscribes to an installation rather than
+ * picking repos, `connections` is empty — but the installation's live repo list
+ * still rides along on the matching `installationChoices` entry. Surface those
+ * so the connected account isn't a black box. Pure; de-duped + sorted.
+ */
+export function connectedOrgRepositories(
+  installationChoices: GitHubInstallationChoice[],
+  connectedInstallationIds: Set<number>,
+): string[] {
+  return [
+    ...new Set(
+      installationChoices
+        .filter((choice) => connectedInstallationIds.has(choice.installation_id))
+        .flatMap((choice) => choice.repositories),
+    ),
+  ].sort();
+}
+
 // Doco's raised "neu-button" affordance — primary (filled) and neutral variants.
 const PRIMARY_BTN =
   "neu-button inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-55";
@@ -370,6 +390,10 @@ export default function DocoGitHubIntegration() {
     (choice) => choice.hasSelectableRepositories,
   );
   const hasConnectableInstallations = pickerChoices.some((choice) => choice.canConnectInstallation);
+  const coveredOrgRepositories = connectedOrgRepositories(
+    installationChoices,
+    connectedInstallationIds,
+  );
 
   return (
     <div>
@@ -502,9 +526,43 @@ export default function DocoGitHubIntegration() {
                   </p>
                 ) : (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    All repositories from this GitHub account can sync to this Doco.
+                    {coveredOrgRepositories.length > 0 ? (
+                      <>
+                        All{" "}
+                        <span className="font-mono font-semibold tabular-nums">
+                          {coveredOrgRepositories.length}
+                        </span>{" "}
+                        {coveredOrgRepositories.length === 1 ? "repository" : "repositories"} from
+                        this GitHub account sync to this Doco, including any added later.
+                      </>
+                    ) : (
+                      "All repositories from this GitHub account can sync to this Doco, including any added later."
+                    )}
                   </p>
                 )}
+                {connections.length === 0 && coveredOrgRepositories.length > 0 ? (
+                  <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                    {coveredOrgRepositories.map((repo) => (
+                      <li
+                        key={repo}
+                        className="min-w-0 truncate rounded border border-border bg-card px-2 py-1 font-mono text-xs"
+                        title={repo}
+                      >
+                        {repo}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {canManage && docoInstallUrl ? (
+                  <a
+                    href={docoInstallUrl}
+                    className="neu-button mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    Add organizations or repositories in GitHub
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </a>
+                ) : null}
               </div>
             ) : null}
             {connections.length > 0 ? (
@@ -605,7 +663,7 @@ function ExistingGitHubPicker({
             className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            Add repositories in GitHub
+            Add organizations or repositories in GitHub
             <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
         ) : null}

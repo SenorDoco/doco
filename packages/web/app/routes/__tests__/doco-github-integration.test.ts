@@ -85,6 +85,7 @@ vi.mock("../api.github.backfill-run", () => ({
 import {
   action,
   buildInstallationPickerChoices,
+  connectedOrgRepositories,
   loader,
   repositoryPickerDescription,
 } from "../$docoHandle.integrations.github";
@@ -307,6 +308,84 @@ describe("/:docoHandle/integrations/github", () => {
   it("describes an account-level GitHub connection without implying repos are missing", () => {
     expect(repositoryPickerDescription({ orgAccountCount: 1, pickerChoiceCount: 0 })).toBe(
       "All repositories from the connected GitHub account can sync to this Doco.",
+    );
+  });
+
+  it("lists the repositories covered by a connected org installation", () => {
+    expect(
+      connectedOrgRepositories(
+        [
+          {
+            installation_id: 42,
+            account: "Doco-to",
+            repository_selection: "all",
+            repositories: ["Doco-to/web", "Doco-to/api"],
+            connected_repositories: [],
+            source_doco_handles: ["meta-pull-requests"],
+          },
+          {
+            installation_id: 99,
+            account: "other",
+            repositories: ["other/x"],
+            connected_repositories: [],
+            source_doco_handles: ["other-prs"],
+          },
+        ],
+        new Set([42]),
+      ),
+    ).toEqual(["Doco-to/api", "Doco-to/web"]);
+  });
+
+  it("returns no covered repositories when nothing is connected at the org level", () => {
+    expect(
+      connectedOrgRepositories(
+        [
+          {
+            installation_id: 42,
+            account: "Doco-to",
+            repositories: ["Doco-to/web"],
+            connected_repositories: [],
+            source_doco_handles: ["meta-pull-requests"],
+          },
+        ],
+        new Set(),
+      ),
+    ).toEqual([]);
+  });
+
+  it("surfaces the connected org's repositories through the loader", async () => {
+    mocks.getDocoConnectionsContext.mockResolvedValue({
+      handle: "meta-pull-requests",
+      orgHandle: "meta",
+      connections: [],
+      installations: [{ installation_id: 42, account: "Doco-to" }],
+      backfill: null,
+    });
+    mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
+      {
+        installation_id: 42,
+        account: "Doco-to",
+        repository_selection: "all",
+        repositories: ["Doco-to/api", "Doco-to/web"],
+        connected_repositories: [],
+        source_doco_handles: ["meta-pull-requests"],
+      },
+    ]);
+
+    const data = await loader({
+      request: new Request("https://doco.test/meta-pull-requests/integrations/github"),
+      ...routeArgs,
+    });
+
+    const connectedInstallationIds = new Set(
+      data.installations.map((installation) => installation.installation_id),
+    );
+    expect(connectedOrgRepositories(data.installationChoices, connectedInstallationIds)).toEqual([
+      "Doco-to/api",
+      "Doco-to/web",
+    ]);
+    expect(data.docoInstallUrl).toBe(
+      "https://github.com/apps/doco-pr-sync/installations/new?state=doco_1",
     );
   });
 });
