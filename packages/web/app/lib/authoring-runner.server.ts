@@ -124,6 +124,7 @@ export async function runAuthoringPolicies(opts: {
     const needsEdges = applicablePolicies.some(
       (p) =>
         p.predicate.kind === "requires_edge" ||
+        p.predicate.kind === "requires_edge_role" ||
         p.predicate.kind === "forbids_edge" ||
         p.predicate.kind === "graph-completeness",
     );
@@ -284,8 +285,13 @@ async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalInd
 }
 
 async function loadEdges(c: PgClient, docoId: string): Promise<EngineEdge[]> {
-  const r = await c.query<{ from_id: string; to_id: string; edge_type: string }>(
-    "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'",
+  const r = await c.query<{
+    from_id: string;
+    to_id: string;
+    edge_type: string;
+    edge_props_json: Record<string, unknown> | null;
+  }>(
+    "SELECT from_id, to_id, edge_type, props AS edge_props_json FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'",
     [docoId],
   );
   return r.rows;

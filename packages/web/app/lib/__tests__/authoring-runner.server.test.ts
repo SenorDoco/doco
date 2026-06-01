@@ -760,6 +760,53 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     expect("error" in result).toBe(false);
   });
 
+  it("accepts a requires_edge_role predicate with a canonical edge_type and role", async () => {
+    await seedDoco();
+    const result = await captureNodeAuthoringPolicy(
+      "",
+      DOCO_ID,
+      "val-org",
+      "val-test",
+      draft({ kind: "requires_edge_role", edge_type: "supports", edge_role: "serves" }),
+    );
+    expect("error" in result).toBe(false);
+  });
+
+  it("rejects a requires_edge_role predicate without role metadata", async () => {
+    await seedDoco();
+    const result = await captureNodeAuthoringPolicy(
+      "",
+      DOCO_ID,
+      "val-org",
+      "val-test",
+      draft({ kind: "requires_edge_role", edge_type: "supports" }),
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toMatch(/edge_role/);
+    }
+  });
+
+  it("rejects a requires_edge_role predicate whose edge_type is a blocked node JSON edge key", async () => {
+    await seedDoco();
+    const result = await captureNodeAuthoringPolicy(
+      "",
+      DOCO_ID,
+      "val-org",
+      "val-test",
+      draft({
+        kind: "requires_edge_role",
+        edge_type: "implemented_by",
+        edge_role: "implemented_by",
+      }),
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toMatch(/implemented_by/);
+      expect(result.error).toMatch(/first-class edge type/);
+    }
+  });
+
   it("rejects another blocked node JSON edge key", async () => {
     await seedDoco();
     const result = await captureNodeAuthoringPolicy(

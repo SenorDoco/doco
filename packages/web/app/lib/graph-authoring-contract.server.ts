@@ -11,6 +11,7 @@ export interface RelationKindSpec {
   value: RelationOwner;
   cardinality: RelationCardinality;
   acceptsProps?: string[];
+  role_examples?: string[];
   description: string;
 }
 
@@ -30,6 +31,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
+    role_examples: ["serves", "enacts", "tests", "implemented_by"],
     description:
       "Broad enabling relation, optionally role-tagged as serves, enacts, tests, or implemented_by.",
   },
@@ -39,6 +41,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
+    role_examples: ["gated_by", "consults"],
     description: "Node is constrained by Rules, optionally role-tagged as gated_by or consults.",
   },
   attributed_to: {
@@ -47,6 +50,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
+    role_examples: ["performed_by", "owned_by", "decided_by"],
     description: "Principal attribution for performers, owners, stakeholders, and decision makers.",
   },
   has_parent: {
@@ -55,6 +59,7 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
     owner: "from",
     value: "to",
     cardinality: "many",
+    role_examples: ["parent_intent", "reports_to", "dotted_reports_to"],
     description: "Hierarchy relation for Intent nesting and Principal reporting lines.",
   },
   derived_from: {
@@ -113,7 +118,9 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
     lane_relation: "attributed_to",
     constraints: [
       "Use flows_to for ordered flow.",
-      "Use attributed_to role metadata such as performed_by, decided_by, or owned_by for swimlanes.",
+      "Use supports role=serves for Intent pool membership.",
+      "Use attributed_to role=performed_by for actor lanes and role=owned_by for process ownership.",
+      "Use constrained_by role=gated_by for policy guards.",
       "Create a flow node and its incoming/outgoing sequence relation in the same changeset whenever possible.",
       "Decision flows_to edges should carry label or condition metadata.",
       "Terminal flow nodes have no outgoing flows_to.",

@@ -63,4 +63,16 @@ describe("graph authoring contract", () => {
     expect(glossary.constraints.join("\n")).toMatch(/deprecated terms at their replacement/i);
     expect(glossary.constraints.join("\n")).toMatch(/`replaces`/i);
   });
+
+  it("publishes role examples for the simplified edge families", () => {
+    expect(RELATION_KINDS.supports?.role_examples).toEqual(
+      expect.arrayContaining(["serves", "tests", "implemented_by"]),
+    );
+    expect(RELATION_KINDS.attributed_to?.role_examples).toEqual(
+      expect.arrayContaining(["performed_by", "owned_by"]),
+    );
+    expect(RELATION_KINDS.constrained_by?.role_examples).toEqual(
+      expect.arrayContaining(["gated_by"]),
+    );
+  });
 });
