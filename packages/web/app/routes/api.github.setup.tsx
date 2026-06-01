@@ -30,9 +30,10 @@ export async function loader({ request }: { request: Request }) {
   const doco = await getDocoByIdOrHandle(state);
   if (!doco) return redirect("/dashboard?github=setup_error");
 
-  // Redirect straight to /integrations (not the legacy /settings/integrations,
-  // which redirects and would drop the ?github=… flash).
-  const panel = `/${doco.handle}/integrations`;
+  // Land on the GitHub integration's detail page — that's where the import
+  // progress banner and connection details live now (the /integrations index
+  // only lists what's connected).
+  const panel = `/${doco.handle}/integrations/github`;
 
   const me = await getCurrentPrincipalAsync(request);
   if (!me) return redirect(`${panel}?github=signin_required`);
