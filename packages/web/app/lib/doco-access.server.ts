@@ -155,13 +155,17 @@ function tokenWriteTypeCap(
     matched = true;
     const wt = token.granted_doco_write_types?.[meta.docoId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (token.granted_doco_roles?.[meta.docoId] === "writer") caps.add(WRITE_ALL);
+    else if (["owner", "writer"].includes(token.granted_doco_roles?.[meta.docoId] ?? "")) {
+      caps.add(WRITE_ALL);
+    }
   }
   if (meta.ownerId.startsWith("organization_") && token.granted_org_ids.includes(meta.ownerId)) {
     matched = true;
     const wt = token.granted_org_write_types?.[meta.ownerId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (token.granted_org_roles?.[meta.ownerId] === "writer") caps.add(WRITE_ALL);
+    else if (["owner", "writer"].includes(token.granted_org_roles?.[meta.ownerId] ?? "")) {
+      caps.add(WRITE_ALL);
+    }
   }
 
   if (!matched) return [];
