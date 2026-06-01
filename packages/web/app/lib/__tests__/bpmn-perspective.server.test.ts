@@ -274,7 +274,7 @@ describe("loadBpmnGraph", () => {
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
     const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
 
-    expect(edgeQuery?.sql).toMatch(/edge_props_json/);
+    expect(edgeQuery?.sql).toMatch(/props AS edge_props_json/);
     expect(graph.links).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
