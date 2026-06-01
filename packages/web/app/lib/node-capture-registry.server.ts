@@ -1,6 +1,7 @@
 import { makeCaptureRoute } from "~/lib/api-capture-factory.server";
 import {
   type ActionDraft,
+  type AuthoringWriteContext,
   type DecisionDraft,
   type EvalDraft,
   type IdeaDraft,
@@ -33,6 +34,7 @@ type ErasedCaptureFn = (
   docoSlug: string,
   draft: unknown,
   docoHost?: string,
+  authoring?: AuthoringWriteContext,
 ) => ReturnType<Parameters<typeof makeCaptureRoute<unknown>>[0]["captureFn"]>;
 
 export interface RegistryEntry {
@@ -106,8 +108,8 @@ function entry<TDraft>(
   return {
     type,
     entityType,
-    captureFn: (docoDir, docoId, ownerSlug, docoSlug, draft, docoHost) =>
-      captureFn(docoDir, docoId, ownerSlug, docoSlug, draft as TDraft, docoHost),
+    captureFn: (docoDir, docoId, ownerSlug, docoSlug, draft, docoHost, authoring) =>
+      captureFn(docoDir, docoId, ownerSlug, docoSlug, draft as TDraft, docoHost, authoring),
     ...(fillFromAuth
       ? {
           fillFromAuth: (draft: unknown, me: MeLike, docoId: string) =>

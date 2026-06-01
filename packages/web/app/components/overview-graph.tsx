@@ -38,10 +38,12 @@ export interface OverviewGraphNode {
 }
 
 export interface OverviewGraphLink {
+  id?: string;
   source: string;
   target: string;
   edge_type: string;
   label?: string | null;
+  href?: string | null;
 }
 
 export interface OverviewGraphData {
@@ -89,6 +91,9 @@ interface OverviewGraphProps extends OverviewGraphData {
    */
   onCenterChange?: (id: string | null) => void;
   onPaneClick?: () => void;
+  focusedEdgeId?: string | null;
+  focusedNodeIds?: Iterable<string> | null;
+  onEdgeClick?: (edge: OverviewGraphLink) => void;
 }
 
 interface FlowViewport {
@@ -130,6 +135,10 @@ const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_PX = 252;
 const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_JITTER_PX = 24;
 const OVERVIEW_PLACEHOLDER_EDGE_FADE_PX = 200;
 const OVERVIEW_INCOMING_MARKER_CLEARANCE_PX = 2;
+
+function overviewFlowEdgeId(link: OverviewGraphLink, index: number): string {
+  return link.id ?? `${link.source}-${link.target}-${index}`;
+}
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -263,6 +272,9 @@ export function OverviewGraph({
   visibleLifecycles: externalVisibleLifecycles,
   onCenterChange,
   onPaneClick,
+  focusedEdgeId,
+  focusedNodeIds,
+  onEdgeClick,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -378,12 +390,16 @@ export function OverviewGraph({
   );
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
+  const focusedNodeIdSet = useMemo(() => new Set(focusedNodeIds ?? []), [focusedNodeIds]);
   const renderedNodes = useMemo(
     () =>
       visibleNodes
         .filter((node) => renderedNodeIds.has(node.id))
-        .map((node) => ({ ...node, is_center: node.id === focusCenterId })),
-    [visibleNodes, renderedNodeIds, focusCenterId],
+        .map((node) => ({
+          ...node,
+          is_center: node.id === focusCenterId || focusedNodeIdSet.has(node.id),
+        })),
+    [visibleNodes, renderedNodeIds, focusCenterId, focusedNodeIdSet],
   );
   const renderedLinks = useMemo(() => {
     const candidates = visibleLinks
@@ -693,6 +709,7 @@ export function OverviewGraph({
 
   const flowEdges = useMemo(() => {
     const nodeEdges = renderedLinks.map((link, index) => {
+      const id = overviewFlowEdgeId(link, index);
       const edgeOpacity = focalActive
         ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
         : 1;
@@ -704,20 +721,24 @@ export function OverviewGraph({
       // the baseline stroke alpha so coloured lines stay readable on
       // the pale canvas without competing with the node strokes.
       const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "asserted";
+      const isFocused = Boolean(focusedEdgeId && link.id === focusedEdgeId);
+      const clickable = Boolean(link.id && (link.href || onEdgeClick));
+      const baseStrokeWidth = focalEdgeWidth(link.source, link.target, focusCenterId, 1);
       return {
-        id: `${link.source}-${link.target}-${index}`,
+        id,
         source: link.source,
         target: link.target,
         type: "curvedBezier",
         selectable: false,
         focusable: false,
-        interactionWidth: 0,
+        interactionWidth: clickable ? 18 : 0,
+        zIndex: isFocused ? 3 : 0,
         style: {
           stroke: lifecycleColor(sourceLifecycle),
-          strokeWidth: focalEdgeWidth(link.source, link.target, focusCenterId, 1),
-          strokeOpacity: 0.5 * edgeOpacity * transitionOpacity,
-          transition: "stroke-opacity 500ms ease, opacity 500ms ease",
-          pointerEvents: "none" as const,
+          strokeWidth: isFocused ? Math.max(baseStrokeWidth, 4) : baseStrokeWidth,
+          strokeOpacity: isFocused ? 0.95 : 0.5 * edgeOpacity * transitionOpacity,
+          transition: "stroke-opacity 500ms ease, opacity 500ms ease, stroke-width 150ms ease",
+          cursor: clickable ? "pointer" : undefined,
         },
       };
     });
@@ -727,10 +748,16 @@ export function OverviewGraph({
     depthByNodeId,
     focalActive,
     focusCenterId,
+    focusedEdgeId,
     nodeById,
+    onEdgeClick,
     renderWindowOpacityById,
     externalEdgeStubs.edges,
   ]);
+  const renderedLinkByFlowId = useMemo(
+    () => new Map(renderedLinks.map((link, index) => [overviewFlowEdgeId(link, index), link])),
+    [renderedLinks],
+  );
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode, edgeStub: EdgeStubNode }), []);
   const edgeTypes = useMemo(
@@ -840,6 +867,24 @@ export function OverviewGraph({
                 return;
               }
               if (target?.href) navigate(target.href);
+            }}
+            onEdgeClick={(event: unknown, edge: Edge) => {
+              const link = renderedLinkByFlowId.get(edge.id);
+              if (!link?.id) return;
+              if (
+                event &&
+                typeof event === "object" &&
+                "stopPropagation" in event &&
+                typeof event.stopPropagation === "function"
+              ) {
+                event.stopPropagation();
+              }
+              if (onCenterChange) onCenterChange(link.source);
+              if (onEdgeClick) {
+                onEdgeClick(link);
+                return;
+              }
+              if (link.href) navigate(link.href);
             }}
             proOptions={{ hideAttribution: true }}
           >

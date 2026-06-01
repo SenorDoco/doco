@@ -16,7 +16,7 @@
 // sit on left/right edges so edges connect cleanly regardless of
 // lane vertical offset.
 
-import { Handle, MarkerType, Position } from "@xyflow/react";
+import { Handle, MarkerType, Position, type Edge as ReactFlowEdge } from "@xyflow/react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
@@ -113,6 +113,9 @@ interface BpmnPerspectiveProps {
    * matching BPMN node, pool header, or actor lane at 100% zoom.
    */
   initialFocusId?: string | null;
+  focusedEdgeId?: string | null;
+  focusedNodeIds?: Iterable<string> | null;
+  onEdgeClick?: (edge: OverviewGraphLink) => void;
 }
 
 const LANE_HEIGHT = 140;
@@ -208,6 +211,9 @@ export function BpmnPerspective({
   visibleLifecycles,
   centerId,
   initialFocusId,
+  focusedEdgeId,
+  focusedNodeIds,
+  onEdgeClick,
 }: BpmnPerspectiveProps) {
   const lanes = lanesRaw;
   const nodes = nodesRaw;
@@ -319,6 +325,7 @@ export function BpmnPerspective({
     if (!centerId || focusCenterId || !selectionCenterId || selectionCenterId === centerId) return;
     onCenterChange?.(selectionCenterId);
   }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
+  const focusedNodeIdSet = useMemo(() => new Set(focusedNodeIds ?? []), [focusedNodeIds]);
 
   const selectionPoolId = useMemo(() => {
     const poolFromIntent = pools.find((pool) => pool.intent_id === selectionCenterId)?.id;
@@ -385,8 +392,25 @@ export function BpmnPerspective({
   // buffered render window below, but coordinates for surviving nodes
   // remain anchored as focus changes.
   const layout = useMemo(
-    () => layOutBpmn(layoutPools, filteredLanes, filteredNodes, layoutLinks, focusCenterId),
-    [layoutPools, filteredLanes, filteredNodes, layoutLinks, focusCenterId],
+    () =>
+      layOutBpmn(
+        layoutPools,
+        filteredLanes,
+        filteredNodes,
+        layoutLinks,
+        focusCenterId,
+        focusedNodeIdSet,
+        focusedEdgeId ?? null,
+      ),
+    [
+      layoutPools,
+      filteredLanes,
+      filteredNodes,
+      layoutLinks,
+      focusCenterId,
+      focusedNodeIdSet,
+      focusedEdgeId,
+    ],
   );
   const nodeTypes = useMemo(
     () => ({
@@ -961,6 +985,17 @@ export function BpmnPerspective({
             }
             if (target.href) navigate(target.href);
           }}
+          onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
+            const link = (edge.data as { graphLink?: OverviewGraphLink } | undefined)?.graphLink;
+            if (!link?.id) return;
+            (event as { stopPropagation?: () => void } | null)?.stopPropagation?.();
+            if (onCenterChange) onCenterChange(link.source);
+            if (onEdgeClick) {
+              onEdgeClick(link);
+              return;
+            }
+            if (link.href) navigate(link.href);
+          }}
           proOptions={{ hideAttribution: true }}
         >
           <Flow.Background gap={24} size={1} />
@@ -1153,6 +1188,8 @@ function layOutBpmn(
   nodes: BpmnNode[],
   links: OverviewGraphLink[],
   centerId: string | null | undefined,
+  focusedNodeIds: ReadonlySet<string>,
+  focusedEdgeId: string | null,
 ): BpmnLayout {
   // Per-node BFS depth from the focal node — used to fade non-
   // neighbours. Separate from `computeDepths` below, which is the
@@ -1273,7 +1310,9 @@ function layOutBpmn(
         pool,
         width: laneWidth,
         height: POOL_HEADER_HEIGHT,
-        isCenter: pool.intent_id === centerId,
+        isCenter:
+          pool.intent_id === centerId ||
+          Boolean(pool.intent_id && focusedNodeIds.has(pool.intent_id)),
       },
       draggable: false,
       selectable: false,
@@ -1307,7 +1346,8 @@ function layOutBpmn(
           labelWidth: LANE_LABEL_WIDTH,
           isMilestoneBand: lane.kind === "milestone",
           isArtifactsBand: lane.kind === "artifacts",
-          isCenter: isActorLane(lane) && lane.base_id === centerId,
+          isCenter:
+            isActorLane(lane) && (lane.base_id === centerId || focusedNodeIds.has(lane.base_id)),
         },
         draggable: false,
         selectable: false,
@@ -1359,7 +1399,7 @@ function layOutBpmn(
         extent: "parent",
         data: {
           node,
-          isCenter: node.id === centerId,
+          isCenter: node.id === centerId || focusedNodeIds.has(node.id),
           isSubprocess: subprocessTargetsByNode.has(node.id),
         },
         draggable: false,
@@ -1467,23 +1507,28 @@ function layOutBpmn(
         edgeData.bowDir = bow.dir;
         edgeData.bowLift = bow.lift;
       }
+      if (link.id) edgeData.graphLink = link;
+      const isFocused = Boolean(focusedEdgeId && link.id === focusedEdgeId);
+      const clickable = Boolean(link.id && link.href);
+      const baseStrokeWidth = focalEdgeWidth(source, target, centerId, 1.75);
       return {
-        id: `${link.source}-${link.target}-${index}`,
+        id: link.id ?? `${link.source}-${link.target}-${index}`,
         source,
         target,
         // Bezier curves keep process arrows compact and soft; long edges
         // that would otherwise cut through intervening nodes are bowed
         // vertically by the renderer (see StableLabeledBezierEdge).
         type: "stableLabeledBezier",
-        zIndex: 0,
+        zIndex: isFocused ? 3 : 0,
         data: Object.keys(edgeData).length > 0 ? edgeData : undefined,
         selectable: false,
         focusable: false,
-        interactionWidth: 0,
+        interactionWidth: clickable ? 18 : 0,
         style: {
           stroke,
-          strokeWidth: focalEdgeWidth(source, target, centerId, 1.75),
-          opacity: edgeOpacity,
+          strokeWidth: isFocused ? Math.max(baseStrokeWidth, 5) : baseStrokeWidth,
+          opacity: isFocused ? 1 : edgeOpacity,
+          cursor: clickable ? "pointer" : undefined,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,

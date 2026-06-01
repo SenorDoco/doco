@@ -25,7 +25,7 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
 }
 
 describe("loadOverviewGraph", () => {
-  it("includes a principals leg scoped by the typed doco_id column", async () => {
+  it("includes principal nodes scoped by the typed doco_id column", async () => {
     const { client, captured } = makeQueryClient({
       entities: [
         {
@@ -41,11 +41,11 @@ describe("loadOverviewGraph", () => {
 
     const graph = await loadOverviewGraph(client, "doco_acme", { handle: "acme" });
 
-    const entityQuery = captured.find((c) => /FROM principals/i.test(c.sql));
-    expect(entityQuery, "principals leg should be present in the UNION").toBeDefined();
+    const entityQuery = captured.find((c) => /FROM nodes t/i.test(c.sql));
+    expect(entityQuery, "nodes query should include the principal discriminator").toBeDefined();
     expect(entityQuery?.sql).toMatch(/\bdoco_id\s*=\s*\$1/);
     expect(entityQuery?.sql).not.toMatch(/data->>'doco_id'/);
-    expect(entityQuery?.sql).toMatch(/lifecycle.*=\s*'asserted'/i);
+    expect(entityQuery?.sql).toMatch(/node_type\s*<>\s*'principal'/i);
     expect(entityQuery?.params).toEqual(["doco_acme"]);
 
     expect(graph.nodes).toHaveLength(1);
@@ -131,9 +131,52 @@ describe("loadOverviewGraph", () => {
       limit: 750,
     });
 
-    const entityQuery = captured.find((c) => /FROM principals/i.test(c.sql));
+    const entityQuery = captured.find((c) => /FROM nodes t/i.test(c.sql));
     expect(entityQuery?.sql).toMatch(/id = \$3 DESC/);
     expect(entityQuery?.sql).toMatch(/LIMIT \$2/);
     expect(entityQuery?.params).toEqual(["doco_large", 750, "decision_focus"]);
+  });
+
+  it("returns stable edge ids and hrefs for clickable perspective edges", async () => {
+    const { client } = makeQueryClient({
+      entities: [
+        {
+          id: "decision_01",
+          entity_type: "decision",
+          name: null,
+          label: "Pick the runtime",
+          lifecycle: "asserted",
+          created_at: "2026-04-01T00:00:00Z",
+        },
+        {
+          id: "intent_01",
+          entity_type: "intent",
+          name: null,
+          label: "Ship the flow",
+          lifecycle: "asserted",
+          created_at: "2026-04-01T00:00:00Z",
+        },
+      ],
+      edges: [
+        {
+          id: "edge_01",
+          from_id: "decision_01",
+          to_id: "intent_01",
+          edge_type: "serves",
+        },
+      ],
+    });
+
+    const graph = await loadOverviewGraph(client, "doco_acme", { handle: "acme" });
+
+    expect(graph.links).toEqual([
+      {
+        id: "edge_01",
+        source: "decision_01",
+        target: "intent_01",
+        edge_type: "serves",
+        href: "/acme/edges/edge_01",
+      },
+    ]);
   });
 });

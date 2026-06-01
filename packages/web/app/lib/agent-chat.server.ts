@@ -1653,6 +1653,7 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
           cookieHeader: ctx.cookieHeader,
           body,
           userAgent: "Doco-In-Page-Assistant/1",
+          authoringSurface: "senor-doco-web",
         });
         if (!res) {
           const init: RequestInit = {
@@ -1662,6 +1663,7 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
               Accept: "application/json",
               Cookie: ctx.cookieHeader,
               "User-Agent": "Doco-In-Page-Assistant/1",
+              "X-Doco-Authoring-Surface": "senor-doco-web",
             },
           };
           if (method !== "GET" && method !== "DELETE" && body !== undefined) {

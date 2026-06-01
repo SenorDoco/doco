@@ -12,9 +12,11 @@ type QueryClient = {
 };
 
 interface EdgeRow {
+  id: string;
   from_id: string;
   to_id: string;
   edge_type: string;
+  doco_id?: string;
 }
 
 interface OverviewGraphRow {
@@ -67,6 +69,11 @@ function overviewEntityHref(
 ): string | undefined {
   if (!handle) return undefined;
   return `/${handle}/${entityType}/${id}`;
+}
+
+function overviewEdgeHref(handle: string | undefined, id: string): string | undefined {
+  if (!handle) return undefined;
+  return `/${handle}/edges/${id}`;
 }
 
 function overviewRowsSql(includeLabel = false): string {
@@ -131,7 +138,7 @@ async function loadOverviewLinks(
   if (nodeIds.length === 0) return [];
   const rows = (
     await c.query<EdgeRow>(
-      `SELECT from_id, to_id, edge_type
+      `SELECT id, from_id, to_id, edge_type
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -142,9 +149,11 @@ async function loadOverviewLinks(
     )
   ).rows;
   return rows.map((s) => ({
+    id: s.id,
     source: s.from_id,
     target: s.to_id,
     edge_type: s.edge_type,
+    href: overviewEdgeHref(undefined, s.id),
   }));
 }
 
@@ -159,6 +168,10 @@ export async function loadOverviewGraph(
   });
   const nodeIds = rows.map((row) => row.id);
   const links = await loadOverviewLinks(c, docoId, nodeIds);
+  const linksWithHrefs = links.map((link) => ({
+    ...link,
+    href: link.id ? overviewEdgeHref(options.handle, link.id) : link.href,
+  }));
   const nodes: OverviewGraphNode[] = rows.map((row) => ({
     id: row.id,
     entity_type: row.entity_type,
@@ -179,7 +192,7 @@ export async function loadOverviewGraph(
   return {
     centerId,
     nodes,
-    links,
+    links: linksWithHrefs,
     detailUrl: options.handle ? `/${options.handle}/graph-node-details.json` : null,
   };
 }
@@ -273,7 +286,7 @@ export async function loadOrgOverviewGraph(
       ? []
       : (
           await c.query<EdgeRow>(
-            `SELECT from_id, to_id, edge_type
+            `SELECT id, doco_id, from_id, to_id, edge_type
                FROM edges
               WHERE doco_id = ANY($1::text[])
                 AND from_id = ANY($2::text[])
@@ -283,9 +296,11 @@ export async function loadOrgOverviewGraph(
             [docoIds, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
           )
         ).rows.map((s) => ({
+          id: s.id,
           source: s.from_id,
           target: s.to_id,
           edge_type: s.edge_type,
+          href: overviewEdgeHref(docoHandleByDocoId.get(String(s.doco_id)), s.id),
         }));
   const nodes: OverviewGraphNode[] = rows.map((row) => {
     const handle = docoHandleByDocoId.get(String(row.doco_id));

@@ -29,6 +29,7 @@ function clientWithRow(row: Record<string, unknown>) {
       if (sql.includes("FROM edges")) return { rows: [] };
       if (sql.includes("UNION ALL")) return { rows: [] };
       if (sql.includes("FROM audit_events")) return { rows: [] };
+      if (sql.includes("FROM node_versions")) return { rows: [] };
       return { rows: [row as T] };
     },
   };
@@ -122,7 +123,7 @@ describe("loadNodeDialogDetail", () => {
             ] as T[],
           };
         }
-        if (sql.includes("UNION ALL")) {
+        if (sql.includes("node_type IN")) {
           return {
             rows: [
               {
@@ -222,5 +223,81 @@ describe("loadNodeDialogDetail", () => {
 
     expect(detail?.frontmatter.created_by).toBe("alice");
     expect(detail?.frontmatter.decided_by).toBe("principal_01AUTHOR");
+  });
+
+  it("loads created/updated authoring provenance for the dialog", async () => {
+    const client = {
+      query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        if (sql.includes("WITH input(actor_id)")) {
+          return {
+            rows: [
+              { actor_id: "user_alice", user_id: "user_alice", label: "alice" },
+              { actor_id: "user_agent", user_id: "user_agent", label: "Señor Doco" },
+            ] as T[],
+          };
+        }
+        if (sql.includes("FROM edges")) return { rows: [] };
+        if (sql.includes("UNION ALL")) return { rows: [] };
+        if (sql.includes("FROM audit_events")) return { rows: [] };
+        if (sql.includes("FROM node_versions")) {
+          return {
+            rows: [
+              {
+                kind: "created",
+                actor: "user_alice",
+                source: "ui",
+                metadata: { surface: "website" },
+                recorded_at: "2026-05-26T17:01:00.000Z",
+              },
+              {
+                kind: "updated",
+                actor: "user_agent",
+                source: "ui",
+                metadata: { surface: "senor_doco", client: "website" },
+                recorded_at: "2026-05-26T17:04:00.000Z",
+              },
+            ] as T[],
+          };
+        }
+        return {
+          rows: [
+            {
+              id: "decision_01TEST",
+              primary_text: "Show provenance in dialogs",
+              body_text: null,
+              lifecycle: "asserted",
+              raw_json: JSON.stringify({
+                created_by: "user_alice",
+                updated_by: "user_agent",
+              }),
+              created_at: "2026-05-26T17:01:00.000Z",
+              updated_at: "2026-05-26T17:04:00.000Z",
+              created_by: "user_alice",
+              updated_by: "user_agent",
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const detail = await loadNodeDialogDetail(client, meta, {
+      handle: "test-doco",
+      entityType: "decision",
+      id: "decision_01TEST",
+      principalId: "principal_owner",
+    });
+
+    expect(detail?.authoring.created).toMatchObject({
+      user_id: "user_alice",
+      user_label: "alice",
+      mechanism: "Website",
+      at: "2026-05-26T17:01:00.000Z",
+    });
+    expect(detail?.authoring.updated).toMatchObject({
+      user_id: "user_agent",
+      user_label: "Señor Doco",
+      mechanism: "Señor Doco on website",
+      at: "2026-05-26T17:04:00.000Z",
+    });
   });
 });
