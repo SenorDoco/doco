@@ -322,108 +322,110 @@ export default function OrgHome({
           canEdit={canEditConstitution}
         />
 
-        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="min-w-0 space-y-4">
-            <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
-              <input
-                name="q"
-                type="search"
-                placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
-                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-              />
-              <button
-                type="submit"
-                className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
-              >
-                Search
-              </button>
-            </Form>
-
-            <DocoListCard
-              title="Docos in this org"
-              headerAction={
-                <Link
-                  to={`/new-doco?org_id=${encodeURIComponent(org.id)}`}
-                  className="neu-button rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
+        <div className="org-home-layout-shell">
+          <div className="org-home-layout-grid grid gap-6">
+            <section className="min-w-0 space-y-4">
+              <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
+                <input
+                  name="q"
+                  type="search"
+                  placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
+                  className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+                />
+                <button
+                  type="submit"
+                  className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
                 >
-                  + Doco
-                </Link>
-              }
-              docos={docoItems}
-              empty={
-                <p className="text-xs italic text-muted-foreground">
-                  This org doesn't own any Docos yet.
-                </p>
-              }
-            />
+                  Search
+                </button>
+              </Form>
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Top contributors</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {topContributors.length === 0 ? (
+              <DocoListCard
+                title="Docos in this org"
+                headerAction={
+                  <Link
+                    to={`/new-doco?org_id=${encodeURIComponent(org.id)}`}
+                    className="neu-button rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                  >
+                    + Doco
+                  </Link>
+                }
+                docos={docoItems}
+                empty={
                   <p className="text-xs italic text-muted-foreground">
-                    No recorded contributions yet.
+                    This org doesn't own any Docos yet.
                   </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {topContributors.map((c) => (
-                      <li
-                        key={c.userId}
-                        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
-                      >
-                        <span className="truncate" title={c.username}>
-                          {c.username}
-                        </span>
-                        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                          {c.eventCount}
-                        </span>
-                        <time
-                          dateTime={c.lastAt}
-                          title={c.lastAt}
-                          suppressHydrationWarning
-                          className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
+                }
+              />
+
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">Top contributors</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {topContributors.length === 0 ? (
+                    <p className="text-xs italic text-muted-foreground">
+                      No recorded contributions yet.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {topContributors.map((c) => (
+                        <li
+                          key={c.userId}
+                          className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
                         >
-                          {timeAgo(c.lastAt)}
-                        </time>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </section>
+                          <span className="truncate" title={c.username}>
+                            {c.username}
+                          </span>
+                          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                            {c.eventCount}
+                          </span>
+                          <time
+                            dateTime={c.lastAt}
+                            title={c.lastAt}
+                            suppressHydrationWarning
+                            className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
+                          >
+                            {timeAgo(c.lastAt)}
+                          </time>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
 
-          <aside className="space-y-4">
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-              </CardContent>
-            </Card>
+            <aside className="min-w-0 space-y-4">
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {items.length === 0 ? (
-                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet across this org's Docos.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {items.map((it) => (
-                      <OrgFeedLine key={it.event_id} event={it} />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </aside>
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">Latest activity</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {items.length === 0 ? (
+                    <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                      No recorded activity yet across this org's Docos.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {items.map((it) => (
+                        <OrgFeedLine key={it.event_id} event={it} />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </aside>
+          </div>
         </div>
       </main>
     </div>
