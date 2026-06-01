@@ -22,7 +22,7 @@ import {
   upsertOrgUser,
   withClient,
 } from "@doco/db";
-import type { EntityId } from "@doco/shared";
+import { type EntityId, WRITE_ALL } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -65,6 +65,11 @@ type InviteGrant = Invite["grants"][number];
 
 function primaryGrant(invite: Invite): InviteGrant | null {
   return invite.grants[0] ?? null;
+}
+
+function writeTypesForRedeemedGrant(grant: InviteGrant): string[] {
+  if (grant.role === "writer" && grant.write_types.length === 0) return [WRITE_ALL];
+  return grant.write_types;
 }
 
 async function inviteTargetForDisplay(invite: Invite): Promise<LoaderOk["target"] | null> {
@@ -182,21 +187,21 @@ export async function action({
         grantor_user_id: grantor,
         grantee_user_id: principal.id,
         role: g.role,
-        write_types: g.write_types,
+        write_types: writeTypesForRedeemedGrant(g),
       });
     } else if (g.level === "org") {
       await upsertOrgUser({
         org_id: g.target_id,
         user_id: principal.id,
         role: g.role,
-        write_types: g.write_types,
+        write_types: writeTypesForRedeemedGrant(g),
       });
     } else if (g.level === "doco") {
       await upsertDocoUser({
         doco_id: g.target_id,
         user_id: principal.id,
         role: g.role,
-        write_types: g.write_types,
+        write_types: writeTypesForRedeemedGrant(g),
       });
     }
   }
