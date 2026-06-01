@@ -12,12 +12,19 @@
 // updateEntity write paths. Author attribution (github_login → Doco user) is
 // resolved by the caller and passed as createdByUserId.
 import { withClient } from "@doco/db";
+import { isEntityId } from "@doco/shared";
 import {
   NO_FIELDS_CHANGED,
   type ReferenceDraft,
   captureReference,
   updateEntity,
 } from "./capture.server";
+import {
+  type CaptureEdgeInput,
+  type EdgeCaptureResult,
+  captureEdge,
+  edgeExists,
+} from "./edge-capture.server";
 
 /** The subset of the GitHub `pull_request` payload Doco maps to a Reference. */
 export interface GitHubPullRequest {
@@ -130,6 +137,92 @@ export interface PullRequestSyncResult {
   error?: string;
 }
 
+// ─── PR → work linking ───────────────────────────────────────────────────
+// A PR declares the Doco nodes it implements / fixes via trailer lines in its
+// body (the convention in .github/PULL_REQUEST_TEMPLATE.md):
+//   Doco-Implements: <node id or doco.to URL>[, …]
+//   Doco-Fixes:      <node id or doco.to URL>[, …]
+// Both map to an `implemented_by` edge — the work node is implemented_by the
+// PR's Reference node. Connecting a PR to the BPM event / bug / decision it
+// ships was the original ask for this integration.
+
+const WORK_TRAILER_RE = /^(doco-implements|doco-fixes)\s*:\s*(.+)$/i;
+// <type>_<26-char ULID>; matched loosely here, then validated by isEntityId.
+const ENTITY_ID_RE = /[a-z][a-z_]*_[0-9A-Za-z]{26}/g;
+
+/**
+ * Extract the work-node ids a PR claims to implement / fix from its body's
+ * trailer lines. Accepts bare entity ids or doco.to URLs embedding one. Pure.
+ */
+export function parsePrWorkLinks(body: string | null | undefined): {
+  implements: string[];
+  fixes: string[];
+} {
+  const out = { implements: [] as string[], fixes: [] as string[] };
+  for (const line of (body ?? "").split(/\r?\n/)) {
+    const m = WORK_TRAILER_RE.exec(line.trim());
+    if (!m) continue;
+    const bucket = m[1].toLowerCase() === "doco-fixes" ? out.fixes : out.implements;
+    for (const tok of m[2].match(ENTITY_ID_RE) ?? []) {
+      if (isEntityId(tok) && !bucket.includes(tok)) bucket.push(tok);
+    }
+  }
+  return out;
+}
+
+export interface LinkPrToWorkDeps {
+  exists: typeof edgeExists;
+  capture: (input: CaptureEdgeInput) => Promise<EdgeCaptureResult>;
+}
+export interface PrWorkLinkResult {
+  /** Edges newly created. */
+  linked: number;
+  /** Edges that already existed. */
+  existing: number;
+  /** Referenced ids that couldn't be linked (not a node in this Doco, etc.). */
+  skipped: number;
+}
+
+/**
+ * Ensure an `implemented_by` edge from each referenced work node → the PR's
+ * Reference node. Idempotent (skips edges that already exist) and forgiving
+ * (skips ids that aren't nodes in this Doco — captureEdge rejects them).
+ * Injectable deps so it's unit-testable without a DB.
+ */
+export async function linkPullRequestToWork(
+  opts: {
+    docoId: string;
+    prRefId: string;
+    body: string | null | undefined;
+    actorId?: string | null;
+  },
+  deps?: Partial<LinkPrToWorkDeps>,
+): Promise<PrWorkLinkResult> {
+  const exists = deps?.exists ?? edgeExists;
+  const capture = deps?.capture ?? captureEdge;
+  const { implements: imp, fixes } = parsePrWorkLinks(opts.body);
+  const nodeIds = [...new Set([...imp, ...fixes])];
+  const result: PrWorkLinkResult = { linked: 0, existing: 0, skipped: 0 };
+  for (const nodeId of nodeIds) {
+    if (nodeId === opts.prRefId) continue; // no self-edge
+    if (await exists(opts.docoId, "implemented_by", nodeId, opts.prRefId)) {
+      result.existing++;
+      continue;
+    }
+    const res = await capture({
+      docoId: opts.docoId,
+      actorId: opts.actorId ?? null,
+      edgeType: "implemented_by",
+      fromId: nodeId,
+      toId: opts.prRefId,
+      reason: "Linked from a GitHub pull request trailer (Doco-Implements / Doco-Fixes).",
+    });
+    if ("ok" in res) result.linked++;
+    else result.skipped++;
+  }
+  return result;
+}
+
 /**
  * Idempotently import a PR as a Reference: PATCH the existing Reference that
  * shares the PR URL, or capture a new one. Keyed on `locator`, so a webhook
@@ -167,6 +260,12 @@ export async function upsertPullRequestReference(
       if (res.error === NO_FIELDS_CHANGED) return { status: "unchanged", id: existingId };
       return { status: "error", error: res.error };
     }
+    await linkPullRequestToWork({
+      docoId: opts.docoId,
+      prRefId: existingId,
+      body: pr.body,
+      actorId: opts.actorId,
+    });
     return { status: "updated", id: existingId };
   }
 
@@ -179,5 +278,11 @@ export async function upsertPullRequestReference(
     opts.docoHost,
   );
   if ("error" in res) return { status: "error", error: res.error };
+  await linkPullRequestToWork({
+    docoId: opts.docoId,
+    prRefId: res.id,
+    body: pr.body,
+    actorId: opts.actorId,
+  });
   return { status: "created", id: res.id };
 }

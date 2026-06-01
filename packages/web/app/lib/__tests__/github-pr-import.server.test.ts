@@ -15,11 +15,79 @@ vi.mock("../capture.server", () => ({
 
 import {
   type GitHubPullRequest,
+  linkPullRequestToWork,
+  parsePrWorkLinks,
   pullRequestRefLifecycle,
   pullRequestReferenceProse,
   pullRequestToReferenceDraft,
   upsertPullRequestReference,
 } from "../github-pr-import.server";
+
+describe("parsePrWorkLinks", () => {
+  it("extracts implements/fixes ids from trailer lines (bare id + doco.to URL)", () => {
+    const body = [
+      "Fixes the retry bug.",
+      "Doco-Implements: decision_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      "Doco-Fixes: https://doco.to/acme/store/decision/decision_01BX5ZZKBKACTAV9WEVGEMMVRZ",
+      "not a trailer",
+    ].join("\n");
+    expect(parsePrWorkLinks(body)).toEqual({
+      implements: ["decision_01ARZ3NDEKTSV4RRFFQ69G5FAV"],
+      fixes: ["decision_01BX5ZZKBKACTAV9WEVGEMMVRZ"],
+    });
+  });
+  it("is empty when there are no trailers", () => {
+    expect(parsePrWorkLinks("just a description")).toEqual({ implements: [], fixes: [] });
+    expect(parsePrWorkLinks(null)).toEqual({ implements: [], fixes: [] });
+  });
+});
+
+describe("linkPullRequestToWork", () => {
+  const body =
+    "x\nDoco-Implements: decision_01ARZ3NDEKTSV4RRFFQ69G5FAV, intent_01BX5ZZKBKACTAV9WEVGEMMVRZ";
+  it("creates implemented_by edges for new links and skips existing ones", async () => {
+    const exists = vi.fn(
+      async (_d: string, _t: string, from: string) =>
+        from === "decision_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    );
+    const capture = vi.fn(async () => ({
+      ok: true as const,
+      id: "edge_x",
+      path: "",
+      edge: {} as never,
+      footer_lines: [],
+    }));
+    const res = await linkPullRequestToWork(
+      { docoId: "doco_1", prRefId: "reference_pr", body, actorId: null },
+      { exists: exists as never, capture: capture as never },
+    );
+    expect(res).toEqual({ linked: 1, existing: 1, skipped: 0 });
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        edgeType: "implemented_by",
+        fromId: "intent_01BX5ZZKBKACTAV9WEVGEMMVRZ",
+        toId: "reference_pr",
+      }),
+    );
+  });
+  it("counts a capture rejection (node not in this Doco) as skipped", async () => {
+    const res = await linkPullRequestToWork(
+      {
+        docoId: "doco_1",
+        prRefId: "reference_pr",
+        body: "Doco-Fixes: decision_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      },
+      {
+        exists: vi.fn(async () => false) as never,
+        capture: vi.fn(async () => ({
+          error: "from_id does not exist in this Doco.",
+          status: 400,
+        })) as never,
+      },
+    );
+    expect(res).toEqual({ linked: 0, existing: 0, skipped: 1 });
+  });
+});
 
 const basePr: GitHubPullRequest = {
   number: 482,
