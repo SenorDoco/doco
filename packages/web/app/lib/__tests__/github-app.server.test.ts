@@ -84,7 +84,10 @@ describe("mintInstallationToken", () => {
 describe("getInstallationAccount", () => {
   it("fetches the installation account login with an app JWT", async () => {
     const fetchImpl = vi.fn(
-      async () => new Response(JSON.stringify({ account: { login: "acme" } }), { status: 200 }),
+      async () =>
+        new Response(JSON.stringify({ account: { login: "acme" }, repository_selection: "all" }), {
+          status: 200,
+        }),
     );
     const res = await getInstallationAccount("42", {
       appId: "1",
@@ -92,7 +95,7 @@ describe("getInstallationAccount", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
 
-    expect(res.account).toBe("acme");
+    expect(res).toEqual({ account: "acme", repository_selection: "all" });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.github.com/app/installations/42");
     expect(init.method).toBe("GET");
@@ -163,6 +166,30 @@ describe("listInstallationRepos", () => {
     });
     expect(repos).toEqual(["acme/a", "acme/b", "acme/c"]);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the account repo list for all-repository installations", async () => {
+    const installationRepos = new Response(JSON.stringify({ repositories: [] }), { status: 200 });
+    const accountRepos = new Response(
+      JSON.stringify([{ full_name: "Doco-to/doco" }, { full_name: "Doco-to/agents" }]),
+      { status: 200 },
+    );
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(installationRepos)
+      .mockResolvedValueOnce(accountRepos);
+
+    const repos = await listInstallationRepos("ghs_x", {
+      account: "Doco-to",
+      repositorySelection: "all",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(repos).toEqual(["Doco-to/agents", "Doco-to/doco"]);
+    const [fallbackUrl] = fetchImpl.mock.calls[1] as unknown as [string];
+    expect(fallbackUrl).toBe(
+      "https://api.github.com/orgs/Doco-to/repos?type=all&per_page=100&page=1",
+    );
   });
 });
 

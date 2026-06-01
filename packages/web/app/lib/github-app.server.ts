@@ -88,6 +88,7 @@ export interface InstallationToken {
 
 export interface InstallationAccount {
   account: string;
+  repository_selection?: "all" | "selected";
 }
 
 /**
@@ -119,10 +120,18 @@ export async function getInstallationAccount(
   if (!res.ok) {
     throw new Error(`installation fetch failed: ${res.status} ${await res.text()}`);
   }
-  const body = (await res.json()) as { account?: { login?: unknown } };
+  const body = (await res.json()) as {
+    account?: { login?: unknown };
+    repository_selection?: unknown;
+  };
   const account = typeof body.account?.login === "string" ? body.account.login : "";
   if (!account) throw new Error("installation fetch returned no account login");
-  return { account };
+  return {
+    account,
+    ...(body.repository_selection === "all" || body.repository_selection === "selected"
+      ? { repository_selection: body.repository_selection }
+      : {}),
+  };
 }
 
 /**
@@ -252,7 +261,12 @@ export async function listPullRequestFiles(
  */
 export async function listInstallationRepos(
   token: string,
-  opts?: { fetchImpl?: typeof fetch; maxPages?: number },
+  opts?: {
+    account?: string;
+    fetchImpl?: typeof fetch;
+    maxPages?: number;
+    repositorySelection?: "all" | "selected";
+  },
 ): Promise<string[]> {
   const maxPages = opts?.maxPages ?? 20;
   const out: string[] = [];
@@ -268,5 +282,46 @@ export async function listInstallationRepos(
     }
     if (repos.length === 0 || !linkHeader || !linkHeader.includes('rel="next"')) break;
   }
+  if (out.length === 0 && opts?.account && opts.repositorySelection === "all") {
+    return listInstallationAccountRepos(token, opts.account, {
+      fetchImpl: opts.fetchImpl,
+      maxPages,
+    });
+  }
   return out;
+}
+
+async function listInstallationAccountRepos(
+  token: string,
+  account: string,
+  opts?: { fetchImpl?: typeof fetch; maxPages?: number },
+): Promise<string[]> {
+  const maxPages = opts?.maxPages ?? 20;
+  const doFetch = opts?.fetchImpl ?? fetch;
+  const out: string[] = [];
+  for (const ownerPath of [`/orgs/${account}/repos`, `/users/${account}/repos`]) {
+    out.length = 0;
+    for (let page = 1; page <= maxPages; page++) {
+      const res = await doFetch(`${GITHUB_API}${ownerPath}?type=all&per_page=100&page=${page}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": API_VERSION,
+        },
+      });
+      if (!res.ok) {
+        if (page === 1 && (res.status === 404 || res.status === 403)) break;
+        throw new Error(`GitHub GET ${ownerPath} failed: ${res.status}`);
+      }
+      const data = (await res.json()) as { full_name?: unknown }[];
+      const repos = Array.isArray(data) ? data : [];
+      for (const repo of repos) {
+        if (typeof repo.full_name === "string") out.push(repo.full_name);
+      }
+      const linkHeader = res.headers.get("link");
+      if (repos.length === 0 || !linkHeader || !linkHeader.includes('rel="next"')) break;
+    }
+    if (out.length > 0) return [...new Set(out)].sort();
+  }
+  return [];
 }

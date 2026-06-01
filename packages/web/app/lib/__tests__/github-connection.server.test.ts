@@ -12,6 +12,7 @@ import {
   githubOrgAccounts,
   groupKnownGitHubInstallations,
   importInstallationConnections,
+  listGitHubInstallationChoicesForDocos,
   normalizeBackfillState,
   normalizeConnections,
   normalizeInstallationAuthorizations,
@@ -177,9 +178,11 @@ describe("normalizeInstallationAuthorizations", () => {
   it("reads the repo-picker authorization shape", () => {
     expect(
       normalizeInstallationAuthorizations({
-        installation_authorizations: [{ installation_id: 5, account: "acme" }],
+        installation_authorizations: [
+          { installation_id: 5, account: "acme", repository_selection: "all" },
+        ],
       }),
-    ).toEqual([{ installation_id: 5, account: "acme" }]);
+    ).toEqual([{ installation_id: 5, account: "acme", repository_selection: "all" }]);
   });
 
   it("makes authorized installations reusable choices without subscribing every repo", () => {
@@ -199,6 +202,50 @@ describe("normalizeInstallationAuthorizations", () => {
         connected_repositories: [],
         source_doco_handles: ["new-prs"],
       },
+    ]);
+  });
+});
+
+describe("listGitHubInstallationChoicesForDocos", () => {
+  afterEach(() => {
+    vi.mocked(withClient).mockReset();
+  });
+
+  it("refreshes installation metadata and passes all-repo selection to the GitHub repo lister", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          handle: "meta-pull-requests",
+          gh: {
+            installation_authorizations: [{ installation_id: 42, account: "Doco-to" }],
+          },
+        },
+      ],
+    }));
+    vi.mocked(withClient).mockImplementation(async (callback) => callback({ query } as never));
+    const getInstallation = vi.fn(async () => ({
+      account: "Doco-to",
+      repository_selection: "all" as const,
+    }));
+    const mintToken = vi.fn(async () => ({ token: "ghs_x", expires_at: "" }));
+    const listRepos = vi.fn(async () => ["Doco-to/doco"]);
+
+    const choices = await listGitHubInstallationChoicesForDocos(["doco_1"], {
+      getInstallation: getInstallation as never,
+      mintToken: mintToken as never,
+      listRepos: listRepos as never,
+    });
+
+    expect(listRepos).toHaveBeenCalledWith("ghs_x", {
+      account: "Doco-to",
+      repositorySelection: "all",
+    });
+    expect(choices).toEqual([
+      expect.objectContaining({
+        account: "Doco-to",
+        repository_selection: "all",
+        repositories: ["Doco-to/doco"],
+      }),
     ]);
   });
 });
