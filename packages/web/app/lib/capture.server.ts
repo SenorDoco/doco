@@ -1923,12 +1923,19 @@ function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError 
       error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type. Valid edge types: ${EDGE_TYPES.join(", ")}.`,
     };
   }
+  if (predicate.kind === "requires_edge_role") {
+    const edgeRole = predicate.edge_role;
+    if (typeof edgeRole !== "string" || edgeRole.trim().length === 0) {
+      return { error: "predicate.edge_role is required for `requires_edge_role`." };
+    }
+  }
   return null;
 }
 
 function predicateEdgeType(predicate: AuthoringPredicate): string | null {
   if (
     predicate.kind !== "requires_edge" &&
+    predicate.kind !== "requires_edge_role" &&
     predicate.kind !== "forbids_edge" &&
     predicate.kind !== "graph-completeness"
   ) {
