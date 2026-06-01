@@ -1,20 +1,28 @@
 // Inbound GitHub App webhook. Verifies x-hub-signature-256 against
 // DOCO_GITHUB_WEBHOOK_SECRET, then routes by App *installation* (not a repo
-// list), so a brand-new repo in the org syncs automatically. Two events:
-//   - pull_request          → upsert the PR as a Reference in the subscribed Doco.
-//   - installation_repositories (added) → backfill each newly-added repo's
-//     pre-existing PRs (brand-new PRs arrive via pull_request).
-// Idempotent on the PR URL, so re-deliveries are safe.
+// list), so a brand-new repo in the org syncs automatically. Events handled:
+//   - pull_request           → upsert the PR as a Reference in the subscribed Doco.
+//   - pull_request_review     → an approving review lifts an open PR to asserted.
+//   - installation_repositories (added)   → backfill the new repos' existing PRs.
+//   - installation_repositories (removed) → detach those repos' connections.
+//   - installation (deleted)  → uninstall: detach the installation everywhere.
+// Idempotent on the PR URL / installation id, so re-deliveries are safe.
 import { docoPath } from "~/lib/db.server";
 import { backfillInstallationRepos } from "~/lib/github-backfill.server";
+import {
+  detachReposEverywhere,
+  unsubscribeInstallationEverywhere,
+} from "~/lib/github-connection.server";
 import {
   type PullRequestSyncStatus,
   upsertPullRequestReference,
 } from "~/lib/github-pr-import.server";
 import {
   findDocoByInstallation,
+  parseInstallationEvent,
   parseInstallationRepositoriesEvent,
   parsePullRequestEvent,
+  parsePullRequestReviewEvent,
   verifyGitHubSignature,
 } from "~/lib/github-webhook.server";
 
@@ -60,15 +68,36 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  // Repos added to an org installation → backfill their pre-existing PRs.
+  // App uninstalled from an account → detach that installation (and the repo
+  // connections it carried) from every Doco, so nothing keeps trying to sync a
+  // repo the App can no longer see.
+  if (event === "installation") {
+    const evt = parseInstallationEvent(payload);
+    if (!evt || evt.installationId == null || evt.action !== "deleted") {
+      return Response.json({ ok: true, ignored: true });
+    }
+    await unsubscribeInstallationEverywhere(evt.installationId);
+    console.info(`[github webhook] installation deleted (${evt.installationId}) → detached`);
+    return Response.json({ ok: true, event, action: evt.action, detached: evt.installationId });
+  }
+
+  // Repos added to / removed from an org installation.
   if (event === "installation_repositories") {
     const evt = parseInstallationRepositoriesEvent(payload);
-    if (
-      !evt ||
-      evt.action !== "added" ||
-      evt.installationId == null ||
-      evt.addedRepos.length === 0
-    ) {
+    if (!evt || evt.installationId == null) {
+      return Response.json({ ok: true, ignored: true });
+    }
+    // Removed → drop those repos' connections (access was revoked).
+    if (evt.action === "removed" && evt.removedRepos.length > 0) {
+      await detachReposEverywhere(evt.removedRepos);
+      console.info(
+        `[github webhook] installation_repositories removed [${evt.removedRepos.join(", ")}] (installation ${evt.installationId}) → detached`,
+      );
+      return Response.json({ ok: true, event, removed: evt.removedRepos.length });
+    }
+    // Added → backfill the new repos' pre-existing PRs (brand-new PRs arrive
+    // via pull_request under the same installation id).
+    if (evt.action !== "added" || evt.addedRepos.length === 0) {
       return Response.json({ ok: true, ignored: true });
     }
     const docos = await findDocoByInstallation(evt.installationId);
@@ -94,6 +123,37 @@ export async function action({ request }: { request: Request }) {
       matched: docos.length,
       results: added,
     });
+  }
+
+  // An approving review lifts an open PR to asserted (the team signed off). The
+  // payload embeds the full PR, so we re-sync the Reference with the approval
+  // hint. Other review states (commented / changes_requested) are no-ops.
+  if (event === "pull_request_review") {
+    const evt = parsePullRequestReviewEvent(payload);
+    if (
+      !evt ||
+      evt.action !== "submitted" ||
+      evt.reviewState !== "approved" ||
+      evt.installationId == null
+    ) {
+      return Response.json({ ok: true, ignored: true });
+    }
+    const docos = await findDocoByInstallation(evt.installationId);
+    console.info(
+      `[github webhook] review approved ${evt.repoFullName}#${evt.pr.number} (installation ${evt.installationId}) → ${docos.length} subscribed doco(s)`,
+    );
+    const results: Array<{ doco: string; status: PullRequestSyncStatus }> = [];
+    for (const conn of docos) {
+      const res = await upsertPullRequestReference(evt.pr, {
+        docoDir: docoPath(conn.handle),
+        docoId: conn.docoId,
+        ownerSlug: conn.orgHandle,
+        docoSlug: conn.handle,
+        approved: true,
+      });
+      results.push({ doco: conn.handle, status: res.status });
+    }
+    return Response.json({ ok: true, event, repo: evt.repoFullName, results });
   }
 
   if (event !== "pull_request") {

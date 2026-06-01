@@ -49,20 +49,15 @@ export interface ParsedPullRequestEvent {
   pr: GitHubPullRequest;
 }
 
-/**
- * Pull the PR, repo, installation, and action out of a `pull_request` webhook
- * payload, or null if it isn't a usable PR event. Pure; defensive about the
- * untrusted shape. `merged` is inferred from `merged_at` when GitHub omits the
- * boolean (the list/webhook payloads don't always include it).
- */
-export function parsePullRequestEvent(payload: unknown): ParsedPullRequestEvent | null {
-  if (!payload || typeof payload !== "object") return null;
-  const p = payload as RawPullRequestPayload;
-  const prRaw = p.pull_request;
-  const repoFullName = p.repository?.full_name;
-  if (!prRaw || typeof repoFullName !== "string") return null;
+/** Map a raw `pull_request` object → GitHubPullRequest, or null if unusable.
+ *  Pure; defensive about the untrusted shape. `merged` is inferred from
+ *  `merged_at` when GitHub omits the boolean (list/webhook payloads vary). */
+function extractPullRequest(
+  prRaw: RawPullRequestPayload["pull_request"],
+): GitHubPullRequest | null {
+  if (!prRaw) return null;
   if (typeof prRaw.number !== "number" || typeof prRaw.html_url !== "string") return null;
-  const pr: GitHubPullRequest = {
+  return {
     number: prRaw.number,
     title: typeof prRaw.title === "string" ? prRaw.title : "",
     body: typeof prRaw.body === "string" ? prRaw.body : null,
@@ -74,11 +69,78 @@ export function parsePullRequestEvent(payload: unknown): ParsedPullRequestEvent 
     closed_at: typeof prRaw.closed_at === "string" ? prRaw.closed_at : null,
     user: prRaw.user && typeof prRaw.user.login === "string" ? { login: prRaw.user.login } : null,
   };
+}
+
+/**
+ * Pull the PR, repo, installation, and action out of a `pull_request` webhook
+ * payload, or null if it isn't a usable PR event. Pure; defensive about the
+ * untrusted shape.
+ */
+export function parsePullRequestEvent(payload: unknown): ParsedPullRequestEvent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as RawPullRequestPayload;
+  const repoFullName = p.repository?.full_name;
+  if (typeof repoFullName !== "string") return null;
+  const pr = extractPullRequest(p.pull_request);
+  if (!pr) return null;
   return {
     action: typeof p.action === "string" ? p.action : "",
     repoFullName,
     installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
     pr,
+  };
+}
+
+export interface ParsedPullRequestReviewEvent {
+  /** "submitted" | "edited" | "dismissed". */
+  action: string;
+  /** "approved" | "changes_requested" | "commented" | "dismissed" | "". */
+  reviewState: string;
+  repoFullName: string;
+  installationId: number | null;
+  pr: GitHubPullRequest;
+}
+
+/**
+ * Parse a `pull_request_review` webhook — GitHub sends it when a review is
+ * submitted/edited/dismissed on a PR. The payload embeds the full
+ * `pull_request`, so we can re-sync the Reference and, on an approving review,
+ * lift an open PR to asserted. Pure; defensive about the untrusted shape.
+ */
+export function parsePullRequestReviewEvent(payload: unknown): ParsedPullRequestReviewEvent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as RawPullRequestPayload & { review?: { state?: unknown } };
+  const repoFullName = p.repository?.full_name;
+  if (typeof repoFullName !== "string") return null;
+  const pr = extractPullRequest(p.pull_request);
+  if (!pr) return null;
+  return {
+    action: typeof p.action === "string" ? p.action : "",
+    reviewState: typeof p.review?.state === "string" ? p.review.state.toLowerCase() : "",
+    repoFullName,
+    installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
+    pr,
+  };
+}
+
+export interface ParsedInstallationEvent {
+  /** "created" | "deleted" | "suspend" | "unsuspend" | "new_permissions_accepted". */
+  action: string;
+  installationId: number | null;
+}
+
+/**
+ * Parse an `installation` webhook — GitHub sends it when the App is installed
+ * or **uninstalled** on an account. The "deleted" action is the uninstall: the
+ * caller detaches that installation (and its repo connections) from every Doco.
+ * Pure; defensive about the untrusted shape.
+ */
+export function parseInstallationEvent(payload: unknown): ParsedInstallationEvent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as { action?: unknown; installation?: { id?: unknown } };
+  return {
+    action: typeof p.action === "string" ? p.action : "",
+    installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
   };
 }
 
@@ -88,14 +150,29 @@ export interface ParsedInstallationReposEvent {
   installationId: number | null;
   /** Full names ("owner/name") of repos newly granted to the installation. */
   addedRepos: string[];
+  /** Full names of repos whose access was revoked from the installation. */
+  removedRepos: string[];
+}
+
+/** Pull "owner/name" strings out of a raw repositories array. Pure. */
+function repoFullNames(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw
+        .map((r) =>
+          r && typeof r === "object" && typeof (r as { full_name?: unknown }).full_name === "string"
+            ? (r as { full_name: string }).full_name
+            : null,
+        )
+        .filter((x): x is string => x !== null)
+    : [];
 }
 
 /**
  * Parse an `installation_repositories` webhook — GitHub sends it when repos are
- * added to (or removed from) an org installation. We use the "added" case to
- * backfill a newly-covered repo's *pre-existing* PRs; brand-new PRs already
- * arrive via the `pull_request` event under the same installation id. Pure;
- * defensive about the untrusted shape.
+ * added to (or removed from) an org installation. The "added" case backfills a
+ * newly-covered repo's *pre-existing* PRs (brand-new PRs arrive via the
+ * `pull_request` event); the "removed" case detaches those repos' connections.
+ * Pure; defensive about the untrusted shape.
  */
 export function parseInstallationRepositoriesEvent(
   payload: unknown,
@@ -105,20 +182,13 @@ export function parseInstallationRepositoriesEvent(
     action?: unknown;
     installation?: { id?: unknown };
     repositories_added?: unknown;
+    repositories_removed?: unknown;
   };
-  const addedRepos = Array.isArray(p.repositories_added)
-    ? p.repositories_added
-        .map((r) =>
-          r && typeof r === "object" && typeof (r as { full_name?: unknown }).full_name === "string"
-            ? (r as { full_name: string }).full_name
-            : null,
-        )
-        .filter((x): x is string => x !== null)
-    : [];
   return {
     action: typeof p.action === "string" ? p.action : "",
     installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
-    addedRepos,
+    addedRepos: repoFullNames(p.repositories_added),
+    removedRepos: repoFullNames(p.repositories_removed),
   };
 }
 
