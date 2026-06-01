@@ -13,9 +13,50 @@ import {
   normalizeConnections,
   normalizeInstallations,
   parseRepoSlug,
+  reconcileInstallationConnections,
   resumeCursorFromConnections,
   subscribeInstallation,
 } from "../github-connection.server";
+
+describe("reconcileInstallationConnections", () => {
+  it("re-imports each DISTINCT installation id from subs + connections", async () => {
+    const importRepos = vi.fn(async () => ({ repos: [] }));
+    const ids = await reconcileInstallationConnections(
+      "doco_1",
+      {
+        installations: [{ installation_id: 7, account: "acme" }],
+        connections: [
+          { repo: "acme/a", installation_id: 7 },
+          { repo: "zeta/b", installation_id: 9 },
+        ],
+      },
+      { importRepos: importRepos as never },
+    );
+    expect(ids).toEqual([7, 9]);
+    expect(importRepos).toHaveBeenCalledTimes(2);
+    expect(importRepos).toHaveBeenCalledWith({ docoId: "doco_1", installationId: 7 });
+    expect(importRepos).toHaveBeenCalledWith({ docoId: "doco_1", installationId: 9 });
+  });
+  it("skips a failing installation instead of throwing", async () => {
+    const importRepos = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("bad token"))
+      .mockResolvedValueOnce({ repos: ["acme/a"] });
+    const ids = await reconcileInstallationConnections(
+      "doco_1",
+      {
+        installations: [],
+        connections: [
+          { repo: "acme/a", installation_id: 1 },
+          { repo: "acme/b", installation_id: 2 },
+        ],
+      },
+      { importRepos: importRepos as never },
+    );
+    expect(ids).toEqual([1, 2]);
+    expect(importRepos).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("resumeCursorFromConnections", () => {
   const conns: GitHubConnection[] = [

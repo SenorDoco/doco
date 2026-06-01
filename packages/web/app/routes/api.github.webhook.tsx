@@ -10,6 +10,7 @@
 import { docoPath } from "~/lib/db.server";
 import { backfillInstallationRepos } from "~/lib/github-backfill.server";
 import {
+  addConnection,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
 } from "~/lib/github-connection.server";
@@ -105,7 +106,17 @@ export async function action({ request }: { request: Request }) {
       `[github webhook] installation_repositories added [${evt.addedRepos.join(", ")}] (installation ${evt.installationId}) → ${docos.length} subscribed doco(s)`,
     );
     const added: Array<{ doco: string; repos: number; created: number; failed: number }> = [];
+    const connectedAt = new Date().toISOString();
     for (const conn of docos) {
+      // Record the new repos as connections so they show on the Integrations
+      // page (and feed re-import), not just import their PRs.
+      for (const repo of evt.addedRepos) {
+        await addConnection(conn.docoId, {
+          repo,
+          installation_id: evt.installationId,
+          connected_at: connectedAt,
+        });
+      }
       const r = await backfillInstallationRepos({
         docoDir: docoPath(conn.handle),
         docoId: conn.docoId,

@@ -646,3 +646,35 @@ export async function importInstallationConnections(
   }
   return { repos };
 }
+
+/**
+ * Re-discover the current repos for every installation a Doco is connected
+ * through and record any that are missing — so a repo added to the org *after*
+ * connect (or one whose `installation_repositories` webhook was missed) shows
+ * up. Re-lists each distinct installation (from explicit subscriptions and the
+ * installation ids carried by existing connections) via
+ * importInstallationConnections, which addConnection's each (idempotent).
+ * Returns the installation ids reconciled. A failing installation (bad token,
+ * revoked) is logged and skipped, not fatal.
+ */
+export async function reconcileInstallationConnections(
+  docoId: string,
+  input: { installations: GitHubInstallationSub[]; connections: GitHubConnection[] },
+  deps?: { importRepos?: typeof importInstallationConnections },
+): Promise<number[]> {
+  const importRepos = deps?.importRepos ?? importInstallationConnections;
+  const ids = [
+    ...new Set([
+      ...input.installations.map((i) => i.installation_id),
+      ...input.connections.map((c) => c.installation_id),
+    ]),
+  ].filter((id) => Number.isInteger(id) && id > 0);
+  for (const installationId of ids) {
+    try {
+      await importRepos({ docoId, installationId });
+    } catch (err) {
+      console.error(`[github reconcile] installation ${installationId} failed:`, err);
+    }
+  }
+  return ids;
+}

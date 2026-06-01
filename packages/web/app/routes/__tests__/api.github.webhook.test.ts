@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   upsertPullRequestReference,
   backfillInstallationRepos,
+  addConnection,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
   findDocoByInstallation,
@@ -16,6 +17,7 @@ const {
     unchanged: 0,
     failed: 0,
   })),
+  addConnection: vi.fn(async () => []),
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
@@ -28,6 +30,7 @@ vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/repos/${h}` }));
 vi.mock("~/lib/github-pr-import.server", () => ({ upsertPullRequestReference }));
 vi.mock("~/lib/github-backfill.server", () => ({ backfillInstallationRepos }));
 vi.mock("~/lib/github-connection.server", () => ({
+  addConnection,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
 }));
@@ -103,13 +106,19 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     expect(backfillInstallationRepos).not.toHaveBeenCalled();
   });
 
-  it("installation_repositories added → still backfills", async () => {
+  it("installation_repositories added → records the connection AND backfills", async () => {
     const res = await send("installation_repositories", {
       action: "added",
       installation: { id: 42 },
       repositories_added: [{ full_name: "acme/new" }],
     });
     expect(await res.json()).toMatchObject({ ok: true, added: 1 });
+    // The new repo is recorded as a connection (so it shows on the page)…
+    expect(addConnection).toHaveBeenCalledWith(
+      "doco_1",
+      expect.objectContaining({ repo: "acme/new", installation_id: 42 }),
+    );
+    // …and its pre-existing PRs are backfilled.
     expect(backfillInstallationRepos).toHaveBeenCalledTimes(1);
     expect(detachReposEverywhere).not.toHaveBeenCalled();
   });

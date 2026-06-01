@@ -28,6 +28,7 @@ import {
   getDocoConnectionsContext,
   githubOrgAccounts,
   parseRepoSlug,
+  reconcileInstallationConnections,
   removeConnection,
   resumeCursorFromConnections,
   setBackfillState,
@@ -120,14 +121,19 @@ export async function action({
   }
 
   if (intent === "resync-all") {
-    // Recover a stalled / incomplete org import: rebuild the resumable cursor
-    // from the current connections and kick the worker. Idempotent upserts mean
-    // re-walking already-imported PRs just no-ops; gaps from a dropped chain or
-    // an old timed-out backfill get filled. Kicked off the request path so the
-    // form returns immediately and the "importing…" banner takes over.
-    const ctx = await getDocoConnectionsContext(meta.docoId);
-    if (!ctx || ctx.connections.length === 0)
+    // Recover a stalled / incomplete org import AND pick up repos added after
+    // connect: first re-discover each installation's current repos (records any
+    // missing ones), then rebuild the resumable cursor from the now-complete
+    // connection list and kick the worker. Idempotent upserts mean re-walking
+    // already-imported PRs just no-ops; gaps get filled. Kicked off the request
+    // path so the form returns immediately and the "importing…" banner takes over.
+    const ctx0 = await getDocoConnectionsContext(meta.docoId);
+    if (!ctx0 || (ctx0.connections.length === 0 && ctx0.installations.length === 0)) {
       return { error: "Nothing is connected to re-import." };
+    }
+    await reconcileInstallationConnections(meta.docoId, ctx0);
+    const ctx = (await getDocoConnectionsContext(meta.docoId)) ?? ctx0;
+    if (ctx.connections.length === 0) return { error: "Nothing is connected to re-import." };
     await setBackfillState(meta.docoId, resumeCursorFromConnections(ctx.connections, ctx.backfill));
     waitUntil(kickBackfillRun(new URL(request.url).origin, meta.docoId));
     return { ok: true, message: "Re-importing pull requests in the background…" };
