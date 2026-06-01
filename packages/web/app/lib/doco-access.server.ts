@@ -150,23 +150,32 @@ function tokenWriteTypeCap(
 
   if (meta.docoId && token.granted_doco_ids.includes(meta.docoId)) {
     matched = true;
-    const wt = token.granted_doco_write_types?.[meta.docoId];
-    if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (token.granted_doco_roles?.[meta.docoId] === "owner") {
-      caps.add(WRITE_ALL);
-    }
+    addTokenWriteCap(
+      caps,
+      token.granted_doco_roles?.[meta.docoId],
+      token.granted_doco_write_types?.[meta.docoId],
+    );
   }
   if (meta.ownerId.startsWith("organization_") && token.granted_org_ids.includes(meta.ownerId)) {
     matched = true;
-    const wt = token.granted_org_write_types?.[meta.ownerId];
-    if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
-    else if (token.granted_org_roles?.[meta.ownerId] === "owner") {
-      caps.add(WRITE_ALL);
-    }
+    addTokenWriteCap(
+      caps,
+      token.granted_org_roles?.[meta.ownerId],
+      token.granted_org_write_types?.[meta.ownerId],
+    );
   }
 
   if (!matched) return [];
   return normalizeWriteTypes([...caps]);
+}
+
+function addTokenWriteCap(caps: Set<string>, role: string | undefined, rawWriteTypes: unknown) {
+  const writeTypes = normalizeWriteTypes(rawWriteTypes);
+  if (writeTypes.length > 0) {
+    for (const t of writeTypes) caps.add(t);
+    return;
+  }
+  if (role === "owner" || role === "writer") caps.add(WRITE_ALL);
 }
 
 /**

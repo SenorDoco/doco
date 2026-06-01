@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import type { EntityId } from "@doco/shared";
+import { type EntityId, WRITE_ALL } from "@doco/shared";
 
 /**
  * Invite store. Persisted in Postgres as a host-scoped JSON blob.
@@ -57,6 +57,10 @@ interface InviteStoreFile {
 }
 
 const INVITE_CODE_BYTES = 32; // 256 bits -> 64 hex chars
+
+function defaultWriteTypesForRole(role: Invite["grants"][number]["role"]): string[] {
+  return role === "writer" ? [WRITE_ALL] : [];
+}
 
 export class InviteStore {
   constructor(private readonly path: string) {}
@@ -148,7 +152,7 @@ export class InviteStore {
                       ? (opts.org_id ?? "")
                       : (docoId ?? ""),
                 role,
-                write_types: opts.write_types ?? [],
+                write_types: opts.write_types ?? defaultWriteTypesForRole(role),
                 ...(level === "account" && opts.account_grantor_user_id
                   ? { account_grantor_user_id: opts.account_grantor_user_id }
                   : {}),

@@ -44,6 +44,14 @@ const ORG_INVITE = {
   code: "invite_code",
   level: "org",
   org_id: "organization_torre",
+  grants: [
+    {
+      level: "org",
+      target_id: "organization_torre",
+      role: "writer",
+      write_types: ["*"],
+    },
+  ],
   minted_by_user_id: "user_owner",
   role: "writer",
   expires_at: "2026-06-01T00:00:00.000Z",
@@ -111,7 +119,41 @@ describe("/invite/:code", () => {
       org_id: "organization_torre",
       user_id: "user_alice",
       role: "writer",
+      write_types: ["*"],
     });
     expect(mocks.upsertDocoUser).not.toHaveBeenCalled();
+  });
+
+  it("upgrades legacy writer invites with empty write_types to write-all", async () => {
+    const legacyInvite = {
+      ...ORG_INVITE,
+      grants: [
+        {
+          level: "org",
+          target_id: "organization_torre",
+          role: "writer",
+          write_types: [],
+        },
+      ],
+    };
+    mocks.findInvite.mockResolvedValue(legacyInvite);
+    mocks.consumeInvite.mockResolvedValue({
+      ...legacyInvite,
+      status: "consumed",
+      redeemed_by_user_id: "user_alice",
+      redeemed_at: "2026-05-30T01:00:00.000Z",
+    });
+
+    await action({
+      request: request("POST"),
+      params: { code: "invite_code" },
+    });
+
+    expect(mocks.upsertOrgUser).toHaveBeenCalledWith({
+      org_id: "organization_torre",
+      user_id: "user_alice",
+      role: "writer",
+      write_types: ["*"],
+    });
   });
 });
