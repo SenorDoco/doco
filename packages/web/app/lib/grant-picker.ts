@@ -74,14 +74,16 @@ export interface ComposedGrant {
 /**
  * Build a GrantCatalog from the invite/scope option lists both pages
  * already load: org options ({id,label,maxRole}) and doco options
- * (same plus `orgId` linking each doco to its org). Docos whose org
- * isn't in the org list (e.g. personally-owned) are grouped under a
- * synthetic "Other" bucket keyed by their ownerId so they remain
- * grantable.
+ * (same plus `orgId` linking each doco to its org, and optional
+ * `orgLabel` naming that org). Every doco gets a grouping bucket so it
+ * stays grantable: personally-owned docos share a "Personal / other"
+ * bucket; a doco under an org that isn't in the org list — you own the
+ * Doco but not its org — gets its own bucket, labeled from `orgLabel`
+ * when the caller knows the name.
  */
 export function catalogFromOptions(
   orgs: { id: string; label: string; maxRole: DocoRole }[],
-  docos: { id: string; label: string; maxRole: DocoRole; orgId?: string }[],
+  docos: { id: string; label: string; maxRole: DocoRole; orgId?: string; orgLabel?: string }[],
 ): GrantCatalog {
   const orgEntries = orgs.map((o) => ({ id: o.id, label: o.label }));
   const knownOrgIds = new Set(orgEntries.map((o) => o.id));
@@ -93,9 +95,19 @@ export function catalogFromOptions(
   for (const d of docos) {
     const orgId = d.orgId ?? "__other__";
     targets.push({ level: "doco", id: d.id, orgId, label: d.label, maxRole: d.maxRole });
-    if (orgId === "__other__" && !knownOrgIds.has("__other__")) {
-      orgEntries.push({ id: "__other__", label: "Personal / other" });
-      knownOrgIds.add("__other__");
+    // Every doco needs a grouping bucket in `orgEntries`, or the org
+    // drill-down (targetsByOrg) silently drops it while the "Specific
+    // docos" scope still counts it — the orphaning that made an
+    // owner-grantable Doco under an org you don't own show up as "No
+    // docos you can grant". Mint the missing bucket: "Personal / other"
+    // for the personal sentinel, otherwise the org's own (from
+    // `orgLabel` when known).
+    if (!knownOrgIds.has(orgId)) {
+      orgEntries.push({
+        id: orgId,
+        label: orgId === "__other__" ? "Personal / other" : (d.orgLabel ?? "Other organization"),
+      });
+      knownOrgIds.add(orgId);
     }
   }
   return { orgs: orgEntries, targets };

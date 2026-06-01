@@ -6,6 +6,7 @@ import {
   applyDocoTypeLevel,
   applyTargetRole,
   availableScopes,
+  catalogFromOptions,
   describeExistingGrant,
   describeWriteScope,
   effectiveTypeLevel,
@@ -61,6 +62,76 @@ describe("targetsByOrg", () => {
     const beta = targetsByOrg(catalog)[1];
     expect(beta.orgTarget).toBeNull();
     expect(beta.docos.map((d) => d.id)).toEqual(["doco_3"]);
+  });
+});
+
+describe("catalogFromOptions", () => {
+  it("buckets personally-owned docos under 'Personal / other'", () => {
+    const catalog = catalogFromOptions([], [{ id: "doco_p", label: "p", maxRole: "owner" }]);
+    const groups = targetsByOrg(catalog).filter((g) => g.docos.length > 0);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].org.label).toBe("Personal / other");
+    expect(groups[0].docos.map((d) => d.id)).toEqual(["doco_p"]);
+  });
+
+  // Regression: a Doco you own (owner role) that lives under an org you do
+  // NOT own must still be grantable. The owner-only device/OAuth approve
+  // screens pass such Docos (direct doco_users owner grant) while leaving
+  // the org out of the orgs list (you're not the org's owner). Before the
+  // fix, catalogFromOptions only invented a bucket for the personal
+  // sentinel, so these Docos were orphaned: the "Specific docos" scope
+  // button appeared but the org drill-down showed "No docos you can grant".
+  it("keeps a doco grantable when its owning org is not in the orgs list", () => {
+    const catalog = catalogFromOptions(
+      [], // the granter owns no orgs
+      [
+        {
+          id: "doco_x",
+          label: "bpms",
+          maxRole: "owner",
+          orgId: "organization_unowned",
+          orgLabel: "acme",
+        },
+      ],
+    );
+    const groups = targetsByOrg(catalog).filter((g) => g.docos.length > 0);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].org.id).toBe("organization_unowned");
+    expect(groups[0].org.label).toBe("acme");
+    expect(groups[0].docos.map((d) => d.id)).toEqual(["doco_x"]);
+    // and the doco scope stays offered (it always was — that was the bug's tell)
+    expect(availableScopes(catalog).map((s) => s.scope)).toContain("doco");
+  });
+
+  it("falls back to a generic org-bucket label when the org name is unknown", () => {
+    const catalog = catalogFromOptions(
+      [],
+      [{ id: "doco_x", label: "bpms", maxRole: "owner", orgId: "organization_unowned" }],
+    );
+    const groups = targetsByOrg(catalog).filter((g) => g.docos.length > 0);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].org.label).toBe("Other organization");
+    expect(groups[0].docos.map((d) => d.id)).toEqual(["doco_x"]);
+  });
+
+  it("groups a doco under its org when the org IS in the list (no duplicate bucket)", () => {
+    const catalog = catalogFromOptions(
+      [{ id: "organization_A", label: "acme", maxRole: "owner" }],
+      [
+        {
+          id: "doco_1",
+          label: "spec",
+          maxRole: "owner",
+          orgId: "organization_A",
+          orgLabel: "acme",
+        },
+      ],
+    );
+    const withDocos = targetsByOrg(catalog).filter((g) => g.docos.length > 0);
+    expect(withDocos).toHaveLength(1);
+    expect(withDocos[0].org.id).toBe("organization_A");
+    // the org-level grant target is preserved (owner can grant the whole org)
+    expect(withDocos[0].orgTarget?.id).toBe("organization_A");
   });
 });
 
