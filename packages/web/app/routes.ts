@@ -233,6 +233,8 @@ export default [
   route(":docoHandle/settings/github", "routes/$docoHandle.settings.github.tsx"),
   route(":docoHandle/settings/integrations", "routes/$docoHandle.settings.integrations.tsx"),
   route(":docoHandle/integrations", "routes/$docoHandle.integrations.tsx"),
+  // Standalone per-integration detail (GitHub: repos, import status, actions).
+  route(":docoHandle/integrations/github", "routes/$docoHandle.integrations.github.tsx"),
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
   route(":docoHandle/policies/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx"),
   route(
