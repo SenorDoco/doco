@@ -1,9 +1,9 @@
 // /orgs/:orgHandle — per-Org home. A full-width two-column layout.
 // The header (org handle + ULID, +Agent/User on desktop) spans the top.
-// Left column (as wide as possible, mirroring how perspectives render):
+// Left column (half the shell once it widens past the breakpoint):
 //   - Constitution (founding-charter presentation, fills the column)
 //   - Latest activity feed (20 events, with per-row Doco context)
-// Right column (narrow 320px sidebar):
+// Right column (the other half — equal 50/50 split):
 //   - Search box (submits to /orgs/:orgHandle/search)
 //   - Docos in this org (with a +Doco button)
 //   - Activity heatmap (52w)

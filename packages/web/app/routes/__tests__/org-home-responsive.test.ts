@@ -13,10 +13,13 @@ describe("/orgs/:orgHandle responsive layout", () => {
 
     expect(appCss()).toContain("container-type: inline-size");
     expect(appCss()).toContain("@container (min-width: 840px)");
-    expect(appCss()).toContain("grid-template-columns: minmax(0, 1fr) 320px");
+    // The two columns split the shell evenly (50/50) once it widens, instead
+    // of a flexible left column beside a fixed 320px sidebar.
+    expect(appCss()).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)");
+    expect(appCss()).not.toContain("minmax(0, 1fr) 320px");
   });
 
-  it("puts the constitution + activity feed in the wide left column and the docos sidebar on the right", () => {
+  it("puts the constitution + activity feed in the left column and the docos sidebar in the right, split 50/50", () => {
     const src = routeSource();
     const grid = src.indexOf("org-home-layout-grid");
     const constitution = src.indexOf("<OrgConstitutionCard");
