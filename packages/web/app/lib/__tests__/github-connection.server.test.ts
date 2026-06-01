@@ -7,6 +7,7 @@ import {
   type GitHubInstallationSub,
   addConnection,
   buildInstallUrl,
+  githubOrgAccounts,
   importInstallationConnections,
   normalizeBackfillState,
   normalizeConnections,
@@ -14,6 +15,34 @@ import {
   parseRepoSlug,
   subscribeInstallation,
 } from "../github-connection.server";
+
+describe("githubOrgAccounts", () => {
+  it("derives owners from connected repos when there are no installation subs", () => {
+    expect(
+      githubOrgAccounts({
+        installations: [],
+        connections: [
+          { repo: "acme/store", installation_id: 1 },
+          { repo: "acme/web", installation_id: 1 },
+        ],
+      }),
+    ).toEqual(["acme"]);
+  });
+  it("prefers installation account logins and merges with repo owners, de-duped + sorted", () => {
+    expect(
+      githubOrgAccounts({
+        installations: [{ installation_id: 1, account: "acme" }],
+        connections: [
+          { repo: "acme/store", installation_id: 1 },
+          { repo: "zeta/api", installation_id: 2 },
+        ],
+      }),
+    ).toEqual(["acme", "zeta"]);
+  });
+  it("is empty when nothing is connected", () => {
+    expect(githubOrgAccounts({ installations: [], connections: [] })).toEqual([]);
+  });
+});
 
 describe("normalizeBackfillState", () => {
   it("reads a running / done marker", () => {
