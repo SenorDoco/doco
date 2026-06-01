@@ -13,6 +13,9 @@ export type OAuthApprovalDoco = {
   handle: string;
   my_role: DocoRole;
   org_id: string | null;
+  // Owning org's handle, for grouping a Doco you own under an org you
+  // don't (so the picker labels its bucket instead of orphaning it).
+  org_label?: string | null;
 };
 
 export type OAuthApprovalOrg = {
@@ -134,6 +137,7 @@ function approvalCatalog(docos: OAuthApprovalDoco[], orgs: OAuthApprovalOrg[]): 
       label: d.handle,
       maxRole: d.my_role,
       orgId: d.org_id ?? undefined,
+      orgLabel: d.org_label ?? undefined,
     })),
   );
 }

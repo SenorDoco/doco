@@ -51,6 +51,9 @@ interface LoaderData {
     // The org that owns this Doco (owner_id === organization_…), or
     // null when the user owns it directly. Drives the picker grouping.
     org_id: string | null;
+    // The owning org's handle, so the picker can label that org's
+    // bucket even when the user isn't a member of it.
+    org_label: string | null;
   }[];
   orgs: {
     id: string;
@@ -87,7 +90,13 @@ export async function loader({ request }: { request: Request }) {
   // via doco_users grant). The action below re-checks this on submit
   // (defense against form tampering).
   const candidateIds = await listAccessibleDocoIdsForPrincipal(principal.id);
-  type DocoRow = { id: string; handle: string; my_role: DocoRole; org_id: string | null };
+  type DocoRow = {
+    id: string;
+    handle: string;
+    my_role: DocoRole;
+    org_id: string | null;
+    org_label: string | null;
+  };
   const candidates = await Promise.all(
     candidateIds.map(async (id): Promise<DocoRow | null> => {
       const d = await getDocoById(id);
@@ -95,7 +104,11 @@ export async function loader({ request }: { request: Request }) {
       const my_role = await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, principal.id);
       if (my_role !== "owner") return null;
       const org_id = d.owner_id.startsWith("organization_") ? d.owner_id : null;
-      return { id: d.id, handle: d.handle, my_role, org_id };
+      // owner_slug resolves to the owning org's handle for org-owned
+      // Docos; it labels the picker bucket so a Doco you own under an
+      // org you don't is grouped by name instead of orphaned.
+      const org_label = org_id ? d.owner_slug || null : null;
+      return { id: d.id, handle: d.handle, my_role, org_id, org_label };
     }),
   );
   let docos = candidates
