@@ -15,4 +15,27 @@ describe("/orgs/:orgHandle responsive layout", () => {
     expect(appCss()).toContain("@container (min-width: 840px)");
     expect(appCss()).toContain("grid-template-columns: minmax(0, 1fr) 320px");
   });
+
+  it("puts the constitution + activity feed in the wide left column and the docos sidebar on the right", () => {
+    const src = routeSource();
+    const grid = src.indexOf("org-home-layout-grid");
+    const constitution = src.indexOf("<OrgConstitutionCard");
+    const aside = src.indexOf("<aside");
+    const search = src.indexOf("/orgs/${org.handle}/search");
+    const latestActivity = src.indexOf("Latest activity");
+
+    // The constitution now lives inside the grid's left column, not above it.
+    expect(grid).toBeGreaterThan(-1);
+    expect(constitution).toBeGreaterThan(grid);
+    // Left column (constitution + latest activity feed) precedes the right aside.
+    expect(constitution).toBeLessThan(aside);
+    expect(latestActivity).toBeLessThan(aside);
+    // Search (and the docos list) moved into the right-hand sidebar.
+    expect(search).toBeGreaterThan(aside);
+
+    // The constitution fills the column instead of being capped/centered, and
+    // the page spans the full viewport width like the perspective views do.
+    expect(src).not.toContain("max-w-3xl");
+    expect(src).not.toContain("max-w-6xl");
+  });
 });
