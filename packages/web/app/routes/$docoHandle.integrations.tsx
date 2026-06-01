@@ -97,6 +97,8 @@ export async function action({
     const ctx = await getDocoConnectionsContext(meta.docoId);
     const conn = ctx?.connections.find((c) => c.repo === repo);
     if (!ctx || !conn) return { error: "That repo isn't connected." };
+    const rawPage = Number(form.get("page") ?? 1);
+    const startPage = Number.isInteger(rawPage) && rawPage >= 1 ? rawPage : 1;
     const result = await backfillRepoPullRequests({
       docoDir: docoPath(ctx.handle),
       docoId: meta.docoId,
@@ -106,6 +108,7 @@ export async function action({
       repo: parsed.name,
       installationId: conn.installation_id,
       createdByUserId: me.id,
+      startPage,
     });
     return { ok: true, sync: { repo, ...result } };
   }
@@ -221,9 +224,22 @@ export default function DocoIntegrations() {
           </p>
         ) : null}
         {actionData && "ok" in actionData && "sync" in actionData ? (
-          <p className="rounded-md border border-border bg-background p-3 text-sm">
-            <SyncSummaryLine s={actionData.sync} />
-          </p>
+          <div className="rounded-md border border-border bg-background p-3 text-sm space-y-2">
+            <p>
+              <SyncSummaryLine s={actionData.sync} />
+            </p>
+            {actionData.sync.nextPage != null ? (
+              <Form method="post" className="flex items-center gap-2">
+                <input type="hidden" name="intent" value="backfill" />
+                <input type="hidden" name="repo" value={actionData.sync.repo} />
+                <input type="hidden" name="page" value={actionData.sync.nextPage} />
+                <button type="submit" className="rounded border px-2 py-1 text-xs">
+                  Continue importing (page {actionData.sync.nextPage}+)
+                </button>
+                <span className="text-xs text-muted-foreground">More PRs remain</span>
+              </Form>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
