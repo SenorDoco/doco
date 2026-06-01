@@ -175,7 +175,7 @@ export default function NewNodeAuthoringPolicy({
                     defaultValue={JSON.stringify(
                       {
                         kind: "requires_edge",
-                        edge_type: "serves",
+                        edge_type: "supports",
                         target_node_type: "intent",
                         when_node_type: ["decision"],
                       },

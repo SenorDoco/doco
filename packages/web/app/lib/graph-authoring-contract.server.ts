@@ -1,3 +1,4 @@
+import { MANAGED_RELATION_FIELD_SPECS } from "@doco/shared";
 import type { AttachedPerspective } from "~/lib/perspectives.server";
 
 export type RelationOwner = "from" | "to";
@@ -21,196 +22,74 @@ export interface RelationKindSpec {
 }
 
 export const RELATION_KINDS: Record<string, RelationKindSpec> = {
-  sequence_flow: {
-    kind: "sequence_flow",
+  flows_to: {
+    kind: "flows_to",
     field: "sequence_to",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
     acceptsProps: ["label", "condition", "kind"],
-    description: "Forward ordered flow. Authored as a first-class edge.",
+    description:
+      "Ordered or predecessor flow between process nodes. `sequence_to` and `preceded_by` remain authoring sugar.",
   },
-  preceded_by: {
-    kind: "preceded_by",
-    field: "preceded_by",
+  supports: {
+    kind: "supports",
+    field: "supports",
     storage: "edge",
-    owner: "to",
-    value: "from",
+    owner: "from",
+    value: "to",
     cardinality: "many",
     description:
-      "Causal/chronological predecessor. Authored as a first-class edge from the later node to the predecessor.",
+      "Broad enabling relation: serves an Intent, enacts a Decision, tests a target, or is implemented by code references.",
   },
-  serves: {
-    kind: "serves",
-    field: "intent_ids",
+  constrained_by: {
+    kind: "constrained_by",
+    field: "constrained_by",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Node serves an Intent.",
+    description: "Node is constrained by Rules, including gated_by and rules_consulted inputs.",
   },
-  enacts: {
-    kind: "enacts",
-    field: "decision_ids",
+  attributed_to: {
+    kind: "attributed_to",
+    field: "attributed_to",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Node enacts or cites a Decision.",
-  },
-  gated_by: {
-    kind: "gated_by",
-    field: "gated_by",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    description: "Node is guarded by a Rule.",
-  },
-  consults: {
-    kind: "consults",
-    field: "rules_consulted",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    description: "Node consulted a Rule.",
-  },
-  tests: {
-    kind: "tests",
-    field: "target_ref",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Eval or Reference targets another node.",
-    owners: ["eval", "reference"],
-  },
-  born_from: {
-    kind: "born_from",
-    field: "born_from",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Node was born from another node.",
-  },
-  superseded_by: {
-    kind: "superseded_by",
-    field: "superseded_by",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Node is superseded by another node.",
-  },
-  implemented_by: {
-    kind: "implemented_by",
-    field: "implemented_by",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    // No `owners` constraint: any node can be implemented by code
-    // references. Decisions/ADRs are implemented by the PRs that ship
-    // them; BPMN Actions are implemented by the code files/locations that
-    // run them; Evals can be implemented by test files. Same edge,
-    // different reading depending on owner type.
-    description:
-      "Node is implemented by one or more code-artifact Reference nodes (PRs, commits, files, lines).",
-  },
-  reports_to: {
-    kind: "reports_to",
-    field: "reports_to",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    owners: ["principal"],
-    description: "Principal reports to another Principal (primary, solid line).",
-  },
-  dotted_reports_to: {
-    kind: "dotted_reports_to",
-    field: "dotted_reports_to",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    owners: ["principal"],
-    description:
-      "Principal has a secondary / dotted-line (matrix) manager, layered on top of the single primary `reports_to`.",
-  },
-  same_occupant_as: {
-    kind: "same_occupant_as",
-    field: "same_occupant_as",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "many",
-    owners: ["principal"],
-    description:
-      "Seat is filled by the same occupant as another Principal (one person, many seats).",
-  },
-  performed_by: {
-    kind: "performed_by",
-    field: "actor_id",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Action or Log is performed by a Principal.",
-  },
-  owned_by: {
-    kind: "owned_by",
-    field: "owner_id",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Node is owned by a Principal.",
+    description: "Principal attribution for performers, owners, stakeholders, and decision makers.",
   },
   has_parent: {
     kind: "has_parent",
-    field: "parent_intent_id",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Intent is nested under another Intent.",
-  },
-  has_stakeholder: {
-    kind: "has_stakeholder",
-    field: "stakeholders",
+    field: "has_parent",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
-    description: "Intent has a stakeholder Principal.",
+    description: "Hierarchy relation for Intent nesting and Principal reporting lines.",
   },
-  decided_by: {
-    kind: "decided_by",
-    field: "decided_by",
+  derived_from: {
+    kind: "derived_from",
+    field: "derived_from",
+    storage: "edge",
+    owner: "from",
+    value: "to",
+    cardinality: "many",
+    description: "Provenance relation for born_from and templated_by inputs.",
+  },
+  replaces: {
+    kind: "replaces",
+    field: "replaces",
     storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "one",
-    description: "Decision was made by a Principal.",
-  },
-  templated_by: {
-    kind: "templated_by",
-    field: "template_id",
-    storage: "edge",
-    owner: "from",
-    value: "to",
-    cardinality: "one",
-    description: "Log instantiates an Action that serves as its template.",
+    description: "Replacement/supersession relation, including superseded_by authoring input.",
   },
   relates_to: {
     kind: "relates_to",
-    // No node scalar projects this edge — it is authored only as a
-    // first-class edge via /api/edges.json, so `field` is a stable label
-    // that never appears on a node body (no owner enforcement fires).
     field: "relates_to",
     storage: "edge",
     owner: "from",
@@ -245,20 +124,20 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
   },
   bpmn: {
     perspective: "bpmn",
-    primary_relation: "sequence_flow",
+    primary_relation: "flows_to",
     node_types: ["state", "action", "decision"],
-    lane_relation: "performed_by",
+    lane_relation: "attributed_to",
     constraints: [
-      "Use sequence_flow for ordered flow; do not use preceded_by as BPMN control flow.",
+      "Use flows_to for ordered flow; do not use predecessor role edges as BPMN control flow.",
       "Create a flow node and its incoming/outgoing sequence relation in the same changeset whenever possible.",
-      "Decision sequence_flow edges should carry label or condition metadata.",
-      "Terminal flow nodes have no outgoing sequence_flow.",
+      "Decision flows_to edges should carry label or condition metadata.",
+      "Terminal flow nodes have no outgoing flows_to.",
     ],
     preferred_operations: ["append", "relate"],
   },
   "org-tree": {
     perspective: "org-tree",
-    primary_relation: "reports_to",
+    primary_relation: "has_parent",
     node_types: ["principal"],
     constraints: [
       "Every active non-root Principal should have exactly one reports_to relation.",
@@ -283,7 +162,7 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
       "Each term entry is a Decision: `chosen` is the canonical headword, `question` the concept, and the prose the definition.",
       "Keep one concept per Decision; record aliases and deprecated wording in `alternatives`.",
       "Use Rules for terminology usage policies and References to cite authoritative sources.",
-      "Link related, confusable, or homograph terms with `relates_to`; point deprecated terms at their replacement with `superseded_by`.",
+      "Link related, confusable, or homograph terms with `relates_to`; point deprecated terms at their replacement with `replaces`.",
     ],
     preferred_operations: ["create", "relate"],
   },
@@ -317,12 +196,13 @@ export function unsupportedRelationFieldError(
   entityType: string,
   body: Record<string, unknown>,
 ): string | null {
-  for (const spec of Object.values(RELATION_KINDS)) {
-    const value = body[spec.field];
+  for (const [field, spec] of Object.entries(MANAGED_RELATION_FIELD_SPECS)) {
+    const value = body[field];
     if (value === undefined || value === null) continue;
-    if (!spec.owners) continue;
-    if (!spec.owners.includes(entityType)) {
-      return `${spec.field} (the \`${spec.kind}\` relation) is only valid on ${spec.owners.join(
+    const owners = "owners" in spec ? spec.owners : undefined;
+    if (!owners) continue;
+    if (!owners.includes(entityType as never)) {
+      return `${field} (the \`${spec.edgeType}\` relation) is only valid on ${owners.join(
         " or ",
       )}, not ${entityType}.`;
     }

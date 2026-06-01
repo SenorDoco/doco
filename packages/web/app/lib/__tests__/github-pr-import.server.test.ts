@@ -48,7 +48,7 @@ describe("parsePrWorkLinks", () => {
 describe("linkPullRequestToWork", () => {
   const body =
     "x\nDoco-Implements: decision_01ARZ3NDEKTSV4RRFFQ69G5FAV, intent_01BX5ZZKBKACTAV9WEVGEMMVRZ";
-  it("creates implemented_by edges for new links and skips existing ones", async () => {
+  it("creates implemented_by-flavored supports edges for new links and skips existing ones", async () => {
     const exists = vi.fn(
       async (_d: string, _t: string, from: string) =>
         from === "decision_01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -67,9 +67,10 @@ describe("linkPullRequestToWork", () => {
     expect(res).toEqual({ linked: 1, existing: 1, skipped: 0 });
     expect(capture).toHaveBeenCalledWith(
       expect.objectContaining({
-        edgeType: "implemented_by",
+        edgeType: "supports",
         fromId: "intent_01BX5ZZKBKACTAV9WEVGEMMVRZ",
         toId: "reference_pr",
+        props: { role: "implemented_by", source_field: "implemented_by" },
       }),
     );
   });

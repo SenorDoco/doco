@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { RELATION_KINDS, unsupportedRelationFieldError } from "../graph-authoring-contract.server";
 
+const CANONICAL_RELATION_KINDS = [
+  "flows_to",
+  "supports",
+  "constrained_by",
+  "attributed_to",
+  "has_parent",
+  "derived_from",
+  "replaces",
+  "relates_to",
+] as const;
+
 describe("unsupportedRelationFieldError", () => {
+  it("exposes only the canonical relation families", () => {
+    expect(Object.keys(RELATION_KINDS).sort()).toEqual([...CANONICAL_RELATION_KINDS].sort());
+  });
+
   it("marks every relation kind as edge-backed", () => {
     for (const spec of Object.values(RELATION_KINDS)) {
       expect(spec.storage, spec.kind).toBe("edge");
@@ -26,26 +41,27 @@ describe("unsupportedRelationFieldError", () => {
     expect(unsupportedRelationFieldError("decision", { target_ref: undefined })).toBeNull();
   });
 
-  it("allows sequence_to authoring input so capture can materialize sequence_flow edges", () => {
-    expect(RELATION_KINDS.sequence_flow.storage).toBe("edge");
+  it("allows sequence_to authoring input so capture can materialize flows_to edges", () => {
+    expect(RELATION_KINDS.flows_to.storage).toBe("edge");
     expect(unsupportedRelationFieldError("decision", { sequence_to: ["action_01"] })).toBeNull();
   });
 
-  it("allows preceded_by authoring input so capture can materialize preceded_by edges", () => {
-    expect(RELATION_KINDS.preceded_by.storage).toBe("edge");
+  it("allows preceded_by authoring input as flows_to role sugar", () => {
+    expect(RELATION_KINDS.flows_to.kind).toBe("flows_to");
     expect(unsupportedRelationFieldError("action", { preceded_by: ["action_01"] })).toBeNull();
   });
 
-  it("declares eval and reference as the tests-relation owners", () => {
-    expect(RELATION_KINDS.tests.owners).toEqual(["eval", "reference"]);
+  it("keeps eval and reference as the target_ref authoring owners", () => {
+    expect(unsupportedRelationFieldError("reference", { target_ref: "action_01" })).toBeNull();
+    expect(unsupportedRelationFieldError("eval", { target_ref: "action_01" })).toBeNull();
   });
 
-  it("exposes implemented_by so changesets and the authoring-contract know about it", () => {
-    const spec = RELATION_KINDS.implemented_by;
+  it("folds implemented_by into the broad supports relation family", () => {
+    const spec = RELATION_KINDS.supports;
     expect(spec).toBeDefined();
     expect(spec).toMatchObject({
-      kind: "implemented_by",
-      field: "implemented_by",
+      kind: "supports",
+      field: "supports",
       cardinality: "many",
     });
     // No `owners` clause: any node can be implemented by code refs.

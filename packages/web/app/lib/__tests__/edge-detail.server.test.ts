@@ -28,8 +28,8 @@ describe("loadEdgeDialogDetail", () => {
                 from_node_type: "decision",
                 to_id: "intent_01TO",
                 to_node_type: "intent",
-                edge_type: "serves",
-                props: { note: "critical" },
+                edge_type: "supports",
+                props: { note: "critical", role: "serves", source_field: "intent_ids" },
                 lifecycle: "asserted",
                 created_at: "2026-05-30T10:00:00.000Z",
                 created_by: "user_alice",
@@ -104,7 +104,7 @@ describe("loadEdgeDialogDetail", () => {
     expect(versionQuery).toMatch(/cs\.reason/);
     expect(detail).toMatchObject({
       id: "edge_01TEST",
-      edge_type: "serves",
+      edge_type: "supports",
       lifecycle: "asserted",
       href: "/test-doco/edges/edge_01TEST",
       from: {
@@ -121,7 +121,7 @@ describe("loadEdgeDialogDetail", () => {
         lifecycle: "drafting",
         href: "/test-doco/intent/intent_01TO",
       },
-      props: { note: "critical" },
+      props: { note: "critical", role: "serves", source_field: "intent_ids" },
       authoring: {
         created: {
           user_id: "user_alice",

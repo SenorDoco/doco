@@ -12,22 +12,34 @@ interface QueryClientLike {
 
 function makeQueryClient(rows: Record<string, unknown[]>) {
   const captured: CapturedQuery[] = [];
-  // The managed relationship edges (performed_by / decided_by / …) are derived
+  // The managed relationship edges are derived
   // from the node fixtures' `data` fields: capture authors them as first-class
   // edges and the bpmn loader reconstructs the lane fields from those edges,
   // since they no longer live in stored `data` (option (i)).
   const managedEdges = (rows.nodes ?? []).flatMap((n) => {
     const node = n as { id: string; data?: Record<string, unknown> };
     const d = node.data ?? {};
-    const out: { from_id: string; edge_type: string; to_id: string }[] = [];
-    const push = (edge_type: string, to: unknown) => {
-      if (typeof to === "string") out.push({ from_id: node.id, edge_type, to_id: to });
+    const out: {
+      from_id: string;
+      edge_type: string;
+      to_id: string;
+      props: Record<string, unknown>;
+    }[] = [];
+    const push = (field: string, edge_type: string, role: string, to: unknown) => {
+      if (typeof to === "string") {
+        out.push({
+          from_id: node.id,
+          edge_type,
+          to_id: to,
+          props: { role, source_field: field },
+        });
+      }
     };
-    push("performed_by", d.actor_id);
-    push("decided_by", d.decided_by);
-    push("has_parent", d.parent_intent_id);
-    push("superseded_by", d.superseded_by);
-    push("templated_by", d.template_id);
+    push("actor_id", "attributed_to", "performed_by", d.actor_id);
+    push("decided_by", "attributed_to", "decided_by", d.decided_by);
+    push("parent_intent_id", "has_parent", "parent_intent", d.parent_intent_id);
+    push("superseded_by", "replaces", "superseded_by", d.superseded_by);
+    push("template_id", "derived_from", "templated_by", d.template_id);
     return out;
   });
   const client: QueryClientLike = {
@@ -183,8 +195,8 @@ describe("loadBpmnGraph", () => {
       ],
       users: [],
       edges: [
-        { from_id: stateId, to_id: requestId, edge_type: "sequence_flow" },
-        { from_id: requestId, to_id: presentId, edge_type: "sequence_flow" },
+        { from_id: stateId, to_id: requestId, edge_type: "flows_to" },
+        { from_id: requestId, to_id: presentId, edge_type: "flows_to" },
       ],
     });
 
@@ -259,13 +271,13 @@ describe("loadBpmnGraph", () => {
         {
           from_id: decisionId,
           to_id: yesId,
-          edge_type: "sequence_flow",
+          edge_type: "flows_to",
           edge_props_json: { label: "Yes" },
         },
         {
           from_id: decisionId,
           to_id: noId,
-          edge_type: "sequence_flow",
+          edge_type: "flows_to",
           edge_props_json: { condition: "No" },
         },
       ],
@@ -280,20 +292,20 @@ describe("loadBpmnGraph", () => {
         expect.objectContaining({
           source: decisionId,
           target: yesId,
-          edge_type: "sequence_flow",
+          edge_type: "flows_to",
           label: "Yes",
         }),
         expect.objectContaining({
           source: decisionId,
           target: noId,
-          edge_type: "sequence_flow",
+          edge_type: "flows_to",
           label: "No",
         }),
       ]),
     );
   });
 
-  it("renders legacy preceded_by edges as forward BPMN sequence links", async () => {
+  it("renders predecessor-role flows_to edges as forward BPMN sequence links", async () => {
     const intentId = "intent_01PROCESS";
     const firstId = "action_01FIRST";
     const secondId = "action_01SECOND";
@@ -339,7 +351,15 @@ describe("loadBpmnGraph", () => {
         },
       ],
       users: [],
-      edges: [{ id: "edge_legacy", from_id: secondId, to_id: firstId, edge_type: "preceded_by" }],
+      edges: [
+        {
+          id: "edge_legacy",
+          from_id: secondId,
+          to_id: firstId,
+          edge_type: "flows_to",
+          edge_props_json: { role: "predecessor", source_field: "preceded_by" },
+        },
+      ],
     });
 
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "legacy" });
@@ -349,7 +369,7 @@ describe("loadBpmnGraph", () => {
         id: "edge_legacy",
         source: firstId,
         target: secondId,
-        edge_type: "sequence_flow",
+        edge_type: "flows_to",
         href: "/legacy/edges/edge_legacy",
       }),
     );
@@ -480,8 +500,8 @@ describe("loadBpmnGraph", () => {
       ],
       users: [],
       edges: [
-        { from_id: decisionId, to_id: checkoutId, edge_type: "sequence_flow" },
-        { from_id: checkoutId, to_id: decisionId, edge_type: "sequence_flow" },
+        { from_id: decisionId, to_id: checkoutId, edge_type: "flows_to" },
+        { from_id: checkoutId, to_id: decisionId, edge_type: "flows_to" },
       ],
     });
 
@@ -565,9 +585,9 @@ describe("computeNearestIntentByNode", () => {
     const nearest = computeNearestIntentByNode(
       ["intent_a", "intent_b"],
       [
-        { source: "intent_a", target: "action_a", edge_type: "serves" },
-        { source: "action_a", target: "decision_a", edge_type: "sequence_flow" },
-        { source: "intent_b", target: "action_b", edge_type: "serves" },
+        { source: "intent_a", target: "action_a", edge_type: "supports" },
+        { source: "action_a", target: "decision_a", edge_type: "flows_to" },
+        { source: "intent_b", target: "action_b", edge_type: "supports" },
       ],
       ranks,
     );
@@ -584,8 +604,8 @@ describe("computeNearestIntentByNode", () => {
     const nearest = computeNearestIntentByNode(
       ["intent_a", "intent_b"],
       [
-        { source: "intent_a", target: "shared", edge_type: "serves" },
-        { source: "intent_b", target: "shared", edge_type: "serves" },
+        { source: "intent_a", target: "shared", edge_type: "supports" },
+        { source: "intent_b", target: "shared", edge_type: "supports" },
       ],
       ranks,
     );

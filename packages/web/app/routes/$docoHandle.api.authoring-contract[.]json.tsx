@@ -35,7 +35,7 @@ export async function loader({
       relate: {
         shape: {
           op: "relate",
-          relation_kind: "sequence_flow",
+          relation_kind: "flows_to",
           from: "source_or_$alias",
           to: "target_or_$alias",
           label: "optional edge label",
@@ -47,7 +47,7 @@ export async function loader({
           op: "relate_many",
           relations: [
             {
-              relation_kind: "sequence_flow",
+              relation_kind: "flows_to",
               from: "source_or_$alias",
               to: "target_or_$alias",
               label: "optional edge label",
@@ -59,7 +59,7 @@ export async function loader({
       append: {
         shape: {
           op: "append",
-          relation_kind: "sequence_flow",
+          relation_kind: "flows_to",
           after: "existing_source_id",
           entity_type: "action",
           alias: "new_action",
@@ -77,7 +77,7 @@ export async function loader({
           operations: [
             {
               op: "append",
-              relation_kind: "sequence_flow",
+              relation_kind: "flows_to",
               after: "decision_01...",
               label: "Yes",
               entity_type: "action",
@@ -123,13 +123,13 @@ export async function loader({
               op: "relate_many",
               relations: [
                 {
-                  relation_kind: "sequence_flow",
+                  relation_kind: "flows_to",
                   from: "decision_01...",
                   to: "$charge_card",
                   label: "Yes",
                 },
                 {
-                  relation_kind: "sequence_flow",
+                  relation_kind: "flows_to",
                   from: "decision_01...",
                   to: "$manual_review",
                   label: "No",
@@ -154,7 +154,7 @@ export async function loader({
             },
             {
               op: "relate",
-              relation_kind: "gated_by",
+              relation_kind: "constrained_by",
               from: "action_01...",
               to: "$refund_rule",
             },

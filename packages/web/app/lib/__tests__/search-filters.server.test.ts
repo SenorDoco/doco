@@ -77,12 +77,12 @@ describe("computeFilterFacets", () => {
           return {
             rows: [
               {
-                value: "serves",
+                value: "supports",
                 n: "4",
                 updated_at: "2026-05-31T18:00:00.000Z",
               },
               {
-                value: "sequence_flow",
+                value: "flows_to",
                 n: "2",
                 updated_at: "2026-05-31T17:00:00.000Z",
               },
@@ -98,12 +98,12 @@ describe("computeFilterFacets", () => {
 
     expect(facets.edgeType).toEqual([
       {
-        value: "serves",
+        value: "supports",
         count: 4,
         updatedAt: "2026-05-31T18:00:00.000Z",
       },
       {
-        value: "sequence_flow",
+        value: "flows_to",
         count: 2,
         updatedAt: "2026-05-31T17:00:00.000Z",
       },

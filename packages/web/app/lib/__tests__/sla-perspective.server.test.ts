@@ -83,11 +83,31 @@ describe("loadSlaPerspectiveData", () => {
       ],
       principals: [{ id: "principal_platform", name: "Platform Owner", lifecycle: "asserted" }],
       edges: [
-        { from_id: "rule_01SLA", to_id: "principal_platform", edge_type: "owned_by" },
-        { from_id: "eval_availability", to_id: "rule_01SLA", edge_type: "tests" },
+        {
+          from_id: "rule_01SLA",
+          to_id: "principal_platform",
+          edge_type: "attributed_to",
+          props: { role: "owned_by", source_field: "owner_id" },
+        },
+        {
+          from_id: "eval_availability",
+          to_id: "rule_01SLA",
+          edge_type: "supports",
+          props: { role: "tests", source_field: "target_ref" },
+        },
         { from_id: "rule_01SLA", to_id: "reference_contract", edge_type: "source_ref" },
-        { from_id: "action_breach", to_id: "rule_01SLA", edge_type: "gated_by" },
-        { from_id: "decision_approval", to_id: "rule_01SLA", edge_type: "consults" },
+        {
+          from_id: "action_breach",
+          to_id: "rule_01SLA",
+          edge_type: "constrained_by",
+          props: { role: "gated_by", source_field: "gated_by" },
+        },
+        {
+          from_id: "decision_approval",
+          to_id: "rule_01SLA",
+          edge_type: "constrained_by",
+          props: { role: "consults", source_field: "rules_consulted" },
+        },
       ],
     });
 

@@ -6,7 +6,7 @@ const nodes = ["focus", "a", "b", "c", "d", "e", "f"].map((id) => ({
   entity_type: "idea",
 }));
 
-function link(source: string, target: string, edge_type = "serves") {
+function link(source: string, target: string, edge_type = "supports") {
   return { source, target, edge_type };
 }
 
