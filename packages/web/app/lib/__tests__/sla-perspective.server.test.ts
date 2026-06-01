@@ -95,7 +95,12 @@ describe("loadSlaPerspectiveData", () => {
           edge_type: "supports",
           props: { role: "tests" },
         },
-        { from_id: "rule_01SLA", to_id: "reference_contract", edge_type: "source_ref" },
+        {
+          from_id: "rule_01SLA",
+          to_id: "reference_contract",
+          edge_type: "derived_from",
+          props: { role: "source_ref" },
+        },
         {
           from_id: "action_breach",
           to_id: "rule_01SLA",

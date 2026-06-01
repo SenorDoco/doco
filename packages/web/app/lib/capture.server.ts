@@ -12,6 +12,7 @@ import {
 import {
   type AuthoringPredicate,
   BLOCKED_NODE_JSON_EDGE_FIELD_SET,
+  EDGE_TYPES,
   generateUlid,
 } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
@@ -43,6 +44,7 @@ const SYSTEM_MANAGED_FIELDS: ReadonlySet<string> = new Set([
   "updated_at",
   "updated_by",
 ]);
+const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
 
 function isSystemManagedField(key: string): boolean {
   return SYSTEM_MANAGED_FIELDS.has(key);
@@ -1911,19 +1913,29 @@ function normalizeNodeAuthoringPredicate(
 }
 
 function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError | null {
-  if (predicate.kind !== "requires_edge" && predicate.kind !== "forbids_edge") {
-    return null;
-  }
-  const edgeType = predicate.edge_type;
+  const edgeType = predicateEdgeType(predicate);
+  if (edgeType === null) return null;
   if (typeof edgeType !== "string" || edgeType.length === 0) {
     return { error: `predicate.edge_type is required for \`${predicate.kind}\`.` };
   }
-  if (BLOCKED_NODE_JSON_EDGE_FIELD_SET.has(edgeType)) {
+  if (!EDGE_TYPE_SET.has(edgeType)) {
     return {
-      error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type.`,
+      error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type. Valid edge types: ${EDGE_TYPES.join(", ")}.`,
     };
   }
   return null;
+}
+
+function predicateEdgeType(predicate: AuthoringPredicate): string | null {
+  if (
+    predicate.kind !== "requires_edge" &&
+    predicate.kind !== "forbids_edge" &&
+    predicate.kind !== "graph-completeness"
+  ) {
+    return null;
+  }
+  const edgeType = predicate.edge_type;
+  return typeof edgeType === "string" ? edgeType : "";
 }
 
 export interface PolicyCaptureExtras {

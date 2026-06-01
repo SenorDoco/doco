@@ -581,7 +581,7 @@ describe("authoring runner — integration", () => {
         [PRINCIPAL_ALICE, DOCO_ID],
       );
       // graph-completeness policy: every id in `actors` on an Intent
-      // must be covered by an incoming Action with edge_type=performed_by
+      // must be covered by an incoming Action with a canonical supports edge
       // whose actor_id equals that id.
       const yaml = JSON.stringify({
         id: POLICY_ID_PRINCIPAL,
@@ -589,7 +589,7 @@ describe("authoring runner — integration", () => {
         predicate: {
           kind: "graph-completeness",
           list_field: "actors",
-          edge_type: "performed_by",
+          edge_type: "supports",
           incoming_node_type: "action",
           incoming_field_must_match: "actor_id",
           when_node_type: ["intent"],
@@ -626,8 +626,8 @@ describe("authoring runner — integration", () => {
     });
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type)
-           VALUES ($1, $2, $3, 'action', 'intent', 'performed_by')`,
+        `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type, props)
+           VALUES ($1, $2, $3, 'action', 'intent', 'supports', '{"role":"serves"}'::jsonb)`,
         [DOCO_ID, coveringActionId, intentId],
       );
     });
@@ -732,7 +732,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     }
   });
 
-  it("allows a forbids_edge predicate with a non-reserved edge_type", async () => {
+  it("rejects a forbids_edge predicate with a non-canonical edge_type", async () => {
     await seedDoco();
     const result = await captureNodeAuthoringPolicy(
       "",
@@ -741,7 +741,11 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
       "val-test",
       draft({ kind: "forbids_edge", edge_type: "inputs" }),
     );
-    expect("error" in result).toBe(false);
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toMatch(/inputs/);
+      expect(result.error).toMatch(/Valid edge types:/);
+    }
   });
 
   it("accepts a requires_edge predicate with a canonical edge_type", async () => {
@@ -766,6 +770,28 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
       draft({ kind: "requires_edge", edge_type: "preceded_by" }),
     );
     expect("error" in result).toBe(true);
+  });
+
+  it("rejects a graph-completeness predicate with a role label edge_type", async () => {
+    await seedDoco();
+    const result = await captureNodeAuthoringPolicy(
+      "",
+      DOCO_ID,
+      "val-org",
+      "val-test",
+      draft({
+        kind: "graph-completeness",
+        list_field: "actors",
+        edge_type: "performed_by",
+        incoming_node_type: "action",
+        incoming_field_must_match: "actor_id",
+      }),
+    );
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toMatch(/performed_by/);
+      expect(result.error).toMatch(/Valid edge types:/);
+    }
   });
 });
 
