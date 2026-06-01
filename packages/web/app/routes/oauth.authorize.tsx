@@ -13,17 +13,21 @@
 //   5. Cancel → redirect with ?error=access_denied&state=...
 
 import type { DocoRole } from "@doco/db";
-import { getOrgRole } from "@doco/db";
 import { redirect, useLoaderData } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { OAuthAccessApprovalForm } from "~/components/oauth-access-approval-form";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { getDocoById } from "~/lib/db.server";
-import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import { listOrgsOwnedOrAdminedBy } from "~/lib/host.server";
-import { readOAuthApprovalGrants } from "~/lib/oauth-approval-grants.server";
+import {
+  type ApprovalDocoOption,
+  type ApprovalOrgOption,
+  resolveApprovalGrantView,
+} from "~/lib/approval-grants";
+import {
+  loadApprovalGrantOptions,
+  readOAuthApprovalGrants,
+} from "~/lib/oauth-approval-grants.server";
 import { getClient, issueAuthorizationCode } from "~/lib/oauth-server.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
@@ -44,23 +48,8 @@ interface AuthorizeParams {
 interface LoaderData {
   client_name: string;
   params: AuthorizeParams;
-  docos: {
-    id: string;
-    handle: string;
-    my_role: DocoRole;
-    // The org that owns this Doco (owner_id === organization_…), or
-    // null when the user owns it directly. Drives the picker grouping.
-    org_id: string | null;
-    // The owning org's handle, so the picker can label that org's
-    // bucket even when the user isn't a member of it.
-    org_label: string | null;
-  }[];
-  orgs: {
-    id: string;
-    handle: string;
-    display_name: string;
-    my_role: DocoRole;
-  }[];
+  docos: ApprovalDocoOption[];
+  orgs: ApprovalOrgOption[];
   targeted_message: string | null;
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
@@ -83,79 +72,20 @@ export async function loader({ request }: { request: Request }) {
     throw redirect(`/auth/github?return=${encodeURIComponent(returnPath)}`);
   }
 
-  // Only owners can grant token access. Approvers / authors / readers
-  // can't extend access to others — that's a permissions delegation
-  // only owners get to do. So we filter the candidate Doco list down
-  // to ones where the principal holds owner role (direct, via org, or
-  // via doco_users grant). The action below re-checks this on submit
-  // (defense against form tampering).
-  const candidateIds = await listAccessibleDocoIdsForPrincipal(principal.id);
-  type DocoRow = {
-    id: string;
-    handle: string;
-    my_role: DocoRole;
-    org_id: string | null;
-    org_label: string | null;
-  };
-  const candidates = await Promise.all(
-    candidateIds.map(async (id): Promise<DocoRow | null> => {
-      const d = await getDocoById(id);
-      if (!d) return null;
-      const my_role = await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, principal.id);
-      if (my_role !== "owner") return null;
-      const org_id = d.owner_id.startsWith("organization_") ? d.owner_id : null;
-      // owner_slug resolves to the owning org's handle for org-owned
-      // Docos; it labels the picker bucket so a Doco you own under an
-      // org you don't is grouped by name instead of orphaned.
-      const org_label = org_id ? d.owner_slug || null : null;
-      return { id: d.id, handle: d.handle, my_role, org_id, org_label };
-    }),
-  );
-  let docos = candidates
-    .filter((d): d is DocoRow => d !== null)
-    .sort((a, b) => a.handle.localeCompare(b.handle));
-
-  // Targeted-grant focus. If the runtime asked for a specific Doco
-  // (e.g. read from the project's DOCO.md), narrow the picker to
-  // just that Doco. If the user doesn't own the requested target,
-  // we fall back to the full owned list + surface a notice.
-  let targetedMessage: string | null = null;
-  if (params.target_doco_handle) {
-    const matched = docos.filter((d) => d.handle === params.target_doco_handle);
-    if (matched.length > 0) {
-      docos = matched;
-    } else {
-      targetedMessage = `The token requested access to "${params.target_doco_handle}" but you don't own that Doco — pick from the Docos you do own below, or have the client target a different one.`;
-    }
-  }
-
-  // Orgs the user owns. Approving an org grants the token access to
-  // every Doco the org owns (live — including Docos created under it
-  // after the token is minted). Hidden when the client narrowed the
-  // picker to a single target Doco; org approval would defeat that
-  // narrowing.
-  type OrgRow = { id: string; handle: string; display_name: string; my_role: DocoRole };
-  let orgs: OrgRow[] = [];
-  if (!params.target_doco_handle) {
-    const owned = await listOrgsOwnedOrAdminedBy(principal.id);
-    const enriched = await Promise.all(
-      owned.map(async (o): Promise<OrgRow | null> => {
-        const role = await getOrgRole(o.id, principal.id);
-        if (role !== "owner") return null;
-        return { id: o.id, handle: o.handle, display_name: o.display_name, my_role: role };
-      }),
-    );
-    orgs = enriched
-      .filter((o): o is OrgRow => o !== null)
-      .sort((a, b) => a.display_name.localeCompare(b.display_name));
-  }
+  // The approve picker offers everything the signed-in user can grant —
+  // owner-tier orgs and Docos (the action re-checks owner on submit as a
+  // tamper defense). `target_doco_handle` never narrows this matrix; it
+  // only drives the not-owned notice. Same builder + resolver as
+  // /device, so both screens show the identical matrix.
+  const { docos, orgs } = await loadApprovalGrantOptions(principal.id);
+  const view = resolveApprovalGrantView(docos, orgs, params.target_doco_handle);
 
   const data: LoaderData = {
     client_name: client.client_name ?? client.client_id.slice(0, 20),
     params,
-    docos,
-    orgs,
-    targeted_message: targetedMessage,
+    docos: view.docos,
+    orgs: view.orgs,
+    targeted_message: view.targetedMessage,
     me: principal,
   };
   return data;
