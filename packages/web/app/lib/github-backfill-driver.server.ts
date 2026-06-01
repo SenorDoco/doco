@@ -44,6 +44,9 @@ function markerFrom(
     updated: counts.updated,
     unchanged: counts.unchanged,
     failed: counts.failed,
+    // Heartbeat: every persisted slice advances this, so the sweep can tell a
+    // live chain (fresh) from a stranded one (stale) and re-kick only the latter.
+    cursor_at: new Date().toISOString(),
   };
 }
 

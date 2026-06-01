@@ -16,7 +16,10 @@
 import { waitUntil } from "@vercel/functions";
 import { docoPath } from "~/lib/db.server";
 import { runBackfillSlice } from "~/lib/github-backfill-driver.server";
-import { getDocoConnectionsContext } from "~/lib/github-connection.server";
+import {
+  getDocoConnectionsContext,
+  resumeCursorFromConnections,
+} from "~/lib/github-connection.server";
 
 /** Bearer secret the slices authenticate to each other with. */
 export function backfillRunSecret(): string {
@@ -65,15 +68,25 @@ export async function action({ request }: { request: Request }) {
   if (!ctx) return Response.json({ error: "doco not found" }, { status: 404 });
 
   const marker = ctx.backfill;
-  // No work queued, or the previous run already finished — nothing to do. This
-  // makes a stray re-kick a harmless no-op rather than a re-import.
-  if (!marker || marker.status === "done" || !marker.queue?.length) {
+  // Nothing to do once finished; a stray re-kick of a done marker is a no-op.
+  if (!marker || marker.status === "done") {
+    return Response.json({ done: true, skipped: true });
+  }
+  // A "running" marker with no queue is a stranded chain: either a marker
+  // written before the resumable driver shipped (no cursor at all), or one
+  // whose `queue` was lost. Rebuild the queue from the Doco's current
+  // connections so a re-kick (manual or from the sweep) actually resumes
+  // instead of skipping. With no connections there is genuinely nothing to do.
+  const working = marker.queue?.length
+    ? marker
+    : resumeCursorFromConnections(ctx.connections, marker);
+  if (!working.queue?.length) {
     return Response.json({ done: true, skipped: true });
   }
 
-  const installationId = marker.installation_id ?? ctx.connections[0]?.installation_id ?? 0;
+  const installationId = working.installation_id ?? ctx.connections[0]?.installation_id ?? 0;
 
-  const { done } = await runBackfillSlice(marker, {
+  const { done } = await runBackfillSlice(working, {
     docoId,
     docoDir: docoPath(ctx.handle),
     ownerSlug: ctx.orgHandle,

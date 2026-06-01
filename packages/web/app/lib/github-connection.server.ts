@@ -262,6 +262,10 @@ export interface GitHubBackfillState {
   updated?: number;
   unchanged?: number;
   failed?: number;
+  /** ISO time the cursor last advanced — a heartbeat. A "running" marker whose
+   *  cursor_at is stale means the self-chaining worker dropped its chain; the
+   *  sweep re-kicks it. Absent on pre-resumable markers (treated as stale). */
+  cursor_at?: string;
 }
 
 /** Read the backfill marker off a raw github_integration value. Pure. */
@@ -287,7 +291,63 @@ export function normalizeBackfillState(raw: unknown): GitHubBackfillState | null
     ...num("updated"),
     ...num("unchanged"),
     ...num("failed"),
+    ...(typeof e.cursor_at === "string" ? { cursor_at: e.cursor_at } : {}),
   };
+}
+
+/**
+ * Build a fresh resumable cursor from a Doco's current connections — the work
+ * queue is every connected repo's full-name. Used to (re)start or recover a
+ * backfill: a stranded "running" marker (chain dropped) or a pre-resumable
+ * marker with no `queue` becomes walkable again, and a "done"-but-incomplete
+ * import can be re-driven (idempotent upserts fill the gaps). Tallies and
+ * started_at carry forward from `prev` when present. Pure.
+ */
+export function resumeCursorFromConnections(
+  connections: GitHubConnection[],
+  prev?: GitHubBackfillState | null,
+): GitHubBackfillState {
+  const queue = connections.map((c) => c.repo);
+  return {
+    status: "running",
+    started_at: prev?.started_at ?? new Date().toISOString(),
+    repos: queue.length,
+    installation_id: prev?.installation_id ?? connections[0]?.installation_id,
+    queue,
+    repo_index: 0,
+    page: 1,
+    imported: prev?.imported ?? 0,
+    updated: prev?.updated ?? 0,
+    unchanged: prev?.unchanged ?? 0,
+    failed: prev?.failed ?? 0,
+    cursor_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Doco ids whose PR backfill is "running" but hasn't advanced since
+ * `staleBeforeIso` (its `cursor_at` heartbeat is older than the cutoff, or
+ * absent — a pre-resumable marker). These are stranded chains the sweep
+ * re-kicks. Indexed-ish: scans only Docos with a github_integration.
+ */
+export async function findStaleRunningBackfills(
+  staleBeforeIso: string,
+  limit = 50,
+): Promise<string[]> {
+  return withClient(async (c) => {
+    const r = await c.query<{ id: string }>(
+      `SELECT id FROM docos
+        WHERE data->'github_integration'->'backfill'->>'status' = 'running'
+          AND COALESCE(
+                (data->'github_integration'->'backfill'->>'cursor_at')::timestamptz,
+                'epoch'::timestamptz
+              ) < $1::timestamptz
+        ORDER BY updated_at ASC
+        LIMIT $2`,
+      [staleBeforeIso, limit],
+    );
+    return r.rows.map((row) => row.id);
+  });
 }
 
 /** Write the backfill marker, preserving sibling github_integration keys. */

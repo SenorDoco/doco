@@ -4,11 +4,24 @@ vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 vi.mock("@vercel/functions", () => ({ waitUntil: vi.fn() }));
 vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/repos/${h}` }));
 
-const { getDocoConnectionsContext, runBackfillSlice } = vi.hoisted(() => ({
-  getDocoConnectionsContext: vi.fn(),
-  runBackfillSlice: vi.fn(),
+const { getDocoConnectionsContext, runBackfillSlice, resumeCursorFromConnections } = vi.hoisted(
+  () => ({
+    getDocoConnectionsContext: vi.fn(),
+    runBackfillSlice: vi.fn(),
+    // Stand-in: turn connections into a queued running cursor.
+    resumeCursorFromConnections: vi.fn((conns: Array<{ repo: string }>) => ({
+      status: "running",
+      queue: conns.map((c) => c.repo),
+      repo_index: 0,
+      page: 1,
+      installation_id: 7,
+    })),
+  }),
+);
+vi.mock("~/lib/github-connection.server", () => ({
+  getDocoConnectionsContext,
+  resumeCursorFromConnections,
 }));
-vi.mock("~/lib/github-connection.server", () => ({ getDocoConnectionsContext }));
 vi.mock("~/lib/github-backfill-driver.server", () => ({ runBackfillSlice }));
 
 import { waitUntil } from "@vercel/functions";
@@ -52,6 +65,46 @@ describe("api.github.backfill-run action", () => {
       orgHandle: "o",
       connections: [],
       backfill: { status: "done", queue: ["acme/a"] },
+    });
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+    expect(await res.json()).toEqual({ done: true, skipped: true });
+    expect(runBackfillSlice).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds the queue from connections for a stranded running marker (no queue)", async () => {
+    // A marker written before the resumable driver shipped: running, no cursor.
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [
+        { repo: "acme/a", installation_id: 7 },
+        { repo: "acme/b", installation_id: 7 },
+      ],
+      backfill: { status: "running", repos: 2 },
+    });
+    runBackfillSlice.mockResolvedValue({ done: false });
+
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+
+    expect(await res.json()).toEqual({ done: false });
+    expect(resumeCursorFromConnections).toHaveBeenCalled();
+    // The reconstructed cursor (with a queue) is what the slice walks.
+    expect(runBackfillSlice).toHaveBeenCalledWith(
+      expect.objectContaining({ queue: ["acme/a", "acme/b"] }),
+      expect.objectContaining({ docoId: "doco_1" }),
+    );
+  });
+
+  it("skips a running marker with no queue AND no connections (nothing to do)", async () => {
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [],
+      backfill: { status: "running" },
     });
     const res = await action({
       request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
