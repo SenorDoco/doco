@@ -7,8 +7,10 @@ const meta = {
 
 describe("loadEdgeDialogDetail", () => {
   it("returns edge metadata with linked endpoint node labels", async () => {
+    const capturedSql: string[] = [];
     const client = {
       query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        capturedSql.push(sql);
         if (sql.includes("WITH input(actor_id)")) {
           return {
             rows: [
@@ -92,7 +94,12 @@ describe("loadEdgeDialogDetail", () => {
       handle: "test-doco",
       id: "edge_01TEST",
     });
+    const versionQuery = capturedSql.find((sql) => sql.includes("FROM edge_versions"));
 
+    expect(versionQuery).toMatch(/LEFT JOIN changesets cs ON cs\.tx_id = v\.tx_id/);
+    expect(versionQuery).toMatch(/cs\.source/);
+    expect(versionQuery).toMatch(/cs\.metadata/);
+    expect(versionQuery).toMatch(/cs\.reason/);
     expect(detail).toMatchObject({
       id: "edge_01TEST",
       edge_type: "serves",

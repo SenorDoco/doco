@@ -174,10 +174,12 @@ export async function loadEdgeDialogDetail(
   );
   const versions = (
     await c.query<EdgeVersionRow>(
-      `SELECT version, op, recorded_at, actor, source, metadata, reason
-         FROM edge_versions
-        WHERE entity_id = $1
-        ORDER BY version`,
+      `SELECT v.version, v.op, v.recorded_at, v.actor,
+              cs.source, cs.metadata, cs.reason
+         FROM edge_versions v
+         LEFT JOIN changesets cs ON cs.tx_id = v.tx_id
+        WHERE v.entity_id = $1
+        ORDER BY v.version`,
       [edge.id],
     )
   ).rows;

@@ -256,7 +256,7 @@ export async function loadBpmnGraph(
   let links: OverviewGraphLink[] = [];
   if (nodeIdSet.size > 0) {
     const edgeRows = await c.query<EdgeRow>(
-      `SELECT id, from_id, to_id, edge_type, edge_props_json
+      `SELECT id, from_id, to_id, edge_type, props AS edge_props_json
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
