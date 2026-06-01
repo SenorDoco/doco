@@ -39,6 +39,7 @@ import {
   listOrganizationsForUser,
   withClient,
 } from "@doco/db";
+import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
 import {
   canAccessDoco,
   getOauthTokenForRequest,
@@ -103,6 +104,7 @@ export async function loader({ request }: { request: Request }) {
   }
 
   const me = await getCurrentPrincipalAsync(request);
+  const principal = me ? await loadAgentDisplayIdentity(request) : null;
   const oauthGrant = await getOauthTokenForRequest(request);
 
   const { docoPolicies, orgConstitutions } = await loadBootstrapForPrincipal(
@@ -111,7 +113,7 @@ export async function loader({ request }: { request: Request }) {
   );
 
   return Response.json({
-    principal: me ? { id: me.id, username: me.username } : null,
+    principal,
     canonical_instructions_url: new URL(
       "/protocol/canonical-instructions",
       new URL(request.url).origin,

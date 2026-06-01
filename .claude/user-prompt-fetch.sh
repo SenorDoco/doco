@@ -51,11 +51,11 @@ Use Doco as a verb in client-facing prose: "Want me to doco it?", "Doco this dec
 
    If the pre-fetched block says "[🔮 Doco] Not connected yet: <reason>", paste that exact line instead of any connected indicator. Do not render query/count/tally/footer lines while disconnected. Start the Doco OAuth device flow before doing project work that depends on prior context.
 
-   If connected and queried, render the two-line query indicator:
-   [🔮 Doco] <querying-verb>
-   [🔮 Doco] <N> nodes found (<X.X>s)
-   If you didn't query (greeting, one-word ack), emit nothing at the top — no "Not querying" placeholder, no fallback line. Absence is the signal.
-   The pre-fetched connected block below has the verbs already picked at random plus real <N>/<X.Xs> — paste it verbatim.
+   If connected and queried, render the two-line query indicator with the exact prefix from the pre-fetched block:
+   [🔮 Doco <token nickname> on behalf of @username] <querying-verb>
+   [🔮 Doco <token nickname> on behalf of @username] <N> nodes found (<X.X>s)
+   If the search response did not include a credential-aware prefix, the block falls back to [🔮 Doco]. If you didn't query (greeting, one-word ack), emit nothing at the top — no "Not querying" placeholder, no fallback line. Absence is the signal.
+   The pre-fetched connected block below has the prefix, verb, and real <N>/<X.Xs> — paste it verbatim.
 
 2. AFTER EVERY WRITE (POST/PATCH/DELETE on Doco API endpoints), only when connected: render every returned footer_lines entry verbatim, one per line, before the closing tally. Curl returning JSON is not enough; the user-facing reply must contain the operation lines. Shape:
    [🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) (✅ <n> authoring policies passed in <X.Xs>)
@@ -64,7 +64,7 @@ Use Doco as a verb in client-facing prose: "Want me to doco it?", "Doco this dec
 3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and come from the live bootstrap/search context. User-flow changed → `user-flows` Decision when that scope is active. Bug fixed → Decision + born-from Rule in the active bug/project scope when one exists. Framework/templates/hooks/canonical touched → patch or supersede the existing governing node when search returns one; otherwise use the most specific active scope from the bootstrap. POST to /<doco-handle>/api/decisions.json etc. **If instinct says skip, name the existing node you're relying on. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
 
 4. CLOSING LINE OF THE TURN (once per turn, on the LAST text output only — NOT on intermediate progress updates between tool calls; even when 0 writes):
-   [🔮 Doco] <owner>/<doco>: **<N>** nodes added/updated
+   [🔮 Doco <token nickname> on behalf of @username] <owner>/<doco>: **<N>** nodes added/updated
    <N> = count of distinct entities you added/updated this turn (PATCH-3-fields-of-1-Decision = 1, not 3). The number MUST be wrapped in markdown bold (`**N**`). Singular when N == 1, plural otherwise (0 is plural). A "turn" is one user prompt → your complete answer, even when threaded through many tool calls; the tally bookends the turn, not each chunk.
 
 The full canonical_instructions was loaded at session start. Re-fetch via `node .agents/doco-agent-client.mjs bootstrap` if you've lost track and are connected; the helper reads DOCO_ACCESS from the shared repo-root .env internally so the credential stays out of shell command text.
@@ -105,8 +105,10 @@ elif [ -n "$PROMPT" ]; then
     ' 2>/dev/null | head -10)
     QUERYING_VERBS=("Querying..." "Looking it up..." "Asking around..." "Reading the room..." "Sniffing for hits..." "Flipping through notes..." "Scanning the graph..." "Searching the lore..." "Peering into the orb..." "Combing the archive..." "Hunting for prior art..." "Pinging the memory..." "Cross-referencing..." "Checking what's known..." "Tracing the trail..." "Diving in..." "Polling the Doco..." "Skimming the index..." "Asking the oracle..." "Searching...")
     QUERYING_VERB="${QUERYING_VERBS[$RANDOM % ${#QUERYING_VERBS[@]}]}"
-    QUERY_BLOCK=$(printf '\n\n## Pre-fetched query for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] %s\n[🔮 Doco] %s nodes found (%ss)\n\nTop hits:\n%s\n' \
-      "$QUERYING_VERB" "$COUNT" "$SECS" "$HITS")
+    INDICATOR_PREFIX=$(printf '%s' "$RESP" | jq -r '.viewer.indicator_prefix // empty' 2>/dev/null || true)
+    [ -n "$INDICATOR_PREFIX" ] || INDICATOR_PREFIX="[🔮 Doco]"
+    QUERY_BLOCK=$(printf '\n\n## Pre-fetched query for THIS prompt — paste as your top-of-reply indicator\n\n%s %s\n%s %s nodes found (%ss)\n\nTop hits:\n%s\n' \
+      "$INDICATOR_PREFIX" "$QUERYING_VERB" "$INDICATOR_PREFIX" "$COUNT" "$SECS" "$HITS")
     HITS_KEY=$(printf '%s' "$PWD" | shasum 2>/dev/null | awk '{print $1}' || printf 'default')
     HITS_FILE="${TMPDIR:-/tmp}/doco-last-hits-${HITS_KEY}.json"
     printf '%s' "$RESP" > "$HITS_FILE" 2>/dev/null || true

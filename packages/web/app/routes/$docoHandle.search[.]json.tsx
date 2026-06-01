@@ -4,6 +4,7 @@
 // Doco relevant to the user's request. Vector-only ranking (ADR-052).
 // Resource route — no default export.
 import { withClient } from "@doco/db";
+import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { etaggedJson } from "~/lib/etag.server";
@@ -48,9 +49,9 @@ export async function loader({
   const ctx = await loadDocoRouteForRead(request, params);
   const { handle } = ctx;
   const goal = ctx.meta.goal;
-  // Identity of the caller, so MCP clients can render `[🔮 Doco
-  // @username]` on every interaction without a separate whoami round-trip.
-  const viewer = ctx.me ? { username: ctx.me.username, type: ctx.me.type } : null;
+  // Identity of the caller, so MCP clients can render the right
+  // credential-aware Doco indicator without a separate whoami round-trip.
+  const viewer = ctx.me ? await loadAgentDisplayIdentity(request) : null;
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
 

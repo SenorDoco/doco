@@ -135,16 +135,17 @@ const SERVER_INSTRUCTIONS = [
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
   "- After doco_search succeeds, render `[🔮 Doco] N nodes found (X.Xs)`.",
   "",
-  "Your Doco username: every doco_search response carries a",
-  "`viewer.username`, and doco_complete_authentication returns an",
-  '"Authenticated as @username" block naming you and your access levels.',
-  "Once you know your username, prefix EVERY Doco indicator line with it —",
-  "`[🔮 Doco @username] Loading ...`, `[🔮 Doco @username] N nodes",
-  "found ...`, and the closing tally line. Before you know it (the very",
+  "Your Doco credential label: every doco_search response carries",
+  "`viewer.indicator_prefix` when the host can identify the token or",
+  "session. Use that exact prefix for EVERY Doco indicator line — for",
+  "OAuth/API-key agents it looks like `[🔮 Doco <token nickname> on behalf",
+  "of @username] Loading ...`, `[🔮 Doco <token nickname> on behalf of",
+  "@username] N nodes found ...`, and the closing tally line. If the",
+  "response lacks `viewer.indicator_prefix` but has `viewer.username`,",
+  "fall back to `[🔮 Doco @username]`. Before you know either (the very",
   "first line of a cold session, before any search returns), plain",
   "`[🔮 Doco]` is fine. When doco_complete_authentication succeeds, render",
-  "its \"Authenticated as @username. I've got the following levels of",
-  'access:" block verbatim at the top of that reply.',
+  'its "Authenticated as ..." block verbatim at the top of that reply.',
   "",
   "If doco_search returns 401/403 (after this server has checked the shared",
   "repo .env and tried DOCO_REFRESH when available):",
@@ -759,18 +760,21 @@ async function fetchIdentity(host, access) {
   }
 }
 
-// Build the "Authenticated as @username, with these levels of access"
+// Build the "Authenticated as <credential>, with these levels of access"
 // block the agent renders to the user, then the credential-persistence
 // guidance. `identity` is the /api/v1/whoami.json payload (or null).
 function formatIdentityBlock(identity) {
   const username = String(identity?.username || "").trim();
   if (!username) return "";
+  const indicatorPrefix =
+    String(identity?.indicator_prefix || "").trim() || `[🔮 Doco @${username}]`;
+  const subject = formatIdentitySubject(identity);
   const grants = Array.isArray(identity?.grants) ? identity.grants : [];
   const lines = [
     "RENDER THIS BLOCK VERBATIM AT THE TOP OF YOUR REPLY:",
     "",
     "---",
-    `[🔮 Doco] Authenticated as @${username}. I've got the following levels of access:`,
+    `[🔮 Doco] Authenticated as ${subject}. I've got the following levels of access:`,
     "",
   ];
   if (grants.length === 0) {
@@ -786,10 +790,20 @@ function formatIdentityBlock(identity) {
   lines.push("---");
   lines.push("");
   lines.push(
-    `From now on, prefix your Doco indicator lines with your handle: [🔮 Doco @${username}].`,
+    `From now on, prefix your Doco indicator lines with this credential label: ${indicatorPrefix}.`,
   );
   lines.push("");
   return lines.join("\n");
+}
+
+function formatIdentitySubject(identity) {
+  const credential =
+    identity?.credential && typeof identity.credential === "object" ? identity.credential : null;
+  const nickname = String(credential?.nickname || "").trim();
+  const onBehalfOf = String(credential?.on_behalf_of_username || "").trim();
+  if (nickname && onBehalfOf) return `${nickname} on behalf of @${onBehalfOf.replace(/^@+/, "")}`;
+  const username = String(identity?.username || "").trim();
+  return username ? `@${username.replace(/^@+/, "")}` : "this credential";
 }
 
 function formatAuthSuccessText({ handle, role, accessToken, host, identity }) {
@@ -833,12 +847,14 @@ function formatHits(body, handle) {
   // the agent sees what this Doco is for the moment it queries it.
   const goal = String(body.doco_goal || "").trim();
   const goalPrefix = goal ? `Doco goal: ${goal}\n\n` : "";
-  // The caller's Doco username rides along too, so the agent can prefix
-  // its indicator lines with `[🔮 Doco @username]` without a separate
-  // whoami call.
+  // The caller's Doco credential label rides along too, so the agent can
+  // prefix indicators without a separate whoami call.
+  const indicatorPrefix = String(body.viewer?.indicator_prefix || "").trim();
   const username = String(body.viewer?.username || "").trim();
-  const whoPrefix = username
-    ? `You are authenticated as @${username}. Prefix Doco indicator lines this turn with [🔮 Doco @${username}].\n\n`
+  const fallbackPrefix = username ? `[🔮 Doco @${username}]` : "";
+  const prefix = indicatorPrefix || fallbackPrefix;
+  const whoPrefix = prefix
+    ? `You are authenticated as ${formatIdentitySubject(body.viewer)}. Prefix Doco indicator lines this turn with ${prefix}.\n\n`
     : "";
 
   if (count === 0) {

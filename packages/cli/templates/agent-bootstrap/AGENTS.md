@@ -129,14 +129,18 @@ query is sent), then the N-found line AFTER the result returns:
 [🔮 Doco] <N> nodes found (<X>s)
 ```
 
-**Your Doco username.** Every `doco_search` response carries a
-`viewer.username`, and `doco_complete_authentication` returns an
-"Authenticated as @username" block. Once you know it, prefix every Doco
-indicator line with your handle — `[🔮 Doco @username] Loading ...`,
-`[🔮 Doco @username] <corky verb>...`, `[🔮 Doco @username] <N> nodes
-found ...`, and the closing tally. Before you know it (the very first
-line of a cold session, before any search returns), plain `[🔮 Doco]`
-is fine.
+**Your Doco credential label.** Every `doco_search` response may carry
+`viewer.indicator_prefix`, and `doco_complete_authentication` returns an
+"Authenticated as <credential>" block. Once you know the prefix, use it
+verbatim for every Doco indicator line. For OAuth/API-key agents this
+looks like `[🔮 Doco <token nickname> on behalf of @username]`, so the
+query/count/tally lines become `[🔮 Doco <token nickname> on behalf of
+@username] Loading ...`, `[🔮 Doco <token nickname> on behalf of
+@username] <corky verb>...`, `[🔮 Doco <token nickname> on behalf of
+@username] <N> nodes found ...`, and the closing tally. If the response
+lacks `viewer.indicator_prefix` but has `viewer.username`, fall back to
+`[🔮 Doco @username]`. Before you know either (the very first line of a
+cold session, before any search returns), plain `[🔮 Doco]` is fine.
 
 The verb is randomized — "Searching the lore...", "Polling the
 Doco...", "Peering into the orb..." etc. **Only render the verb if
@@ -167,7 +171,7 @@ refresh, or a `[🔮 Doco] Not connected yet:` block is in your context):
    to send another message saying they approved; the tool blocks while
    polling so the agent can learn when approval lands.
 4. **If it succeeds** (user approved): `doco_complete_authentication`
-   returns an "Authenticated as @username. I've got the following
+   returns an "Authenticated as <credential>. I've got the following
    levels of access:" block — render it verbatim at the top of your
    reply, then retry `doco_search` and continue with the substantive
    answer. Render the corky verb / N found lines as above.
@@ -204,10 +208,12 @@ end of the response.
 **Connected source** (you queried or wrote to it this turn — even if
 N == 0):
 ```
-[🔮 Doco @username] <doco-or-org-name>: **<N>** nodes added/updated
+[🔮 Doco <token nickname> on behalf of @username] <doco-or-org-name>: **<N>** nodes added/updated
 ```
-(Prefix with your `@username` once known — see "Your Doco username" in
-§1. Plain `[🔮 Doco]` only before your first search of a cold session.)
+(Use `viewer.indicator_prefix` once known — see "Your Doco credential
+label" in §1. Fall back to `[🔮 Doco @username]` only when no
+credential-aware prefix is provided. Plain `[🔮 Doco]` only before your
+first search of a cold session.)
 
 **Source whose access hasn't been granted yet**:
 ```

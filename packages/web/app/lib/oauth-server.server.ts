@@ -666,6 +666,7 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
 export interface ValidAccessToken {
   token: string;
   client_id: string;
+  client_name: string | null;
   user_id: string;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
@@ -688,12 +689,13 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
   if (!isOauthAccessToken(token)) return null;
   return await withClient(async (c) => {
     const r = await c.query<ValidAccessToken>(
-      `SELECT token, client_id, user_id, granted_doco_ids,
-              granted_doco_roles, granted_doco_write_types,
-              granted_org_ids, granted_org_roles, granted_org_write_types,
-              scope, expires_at
-         FROM oauth_access_tokens
-        WHERE token = $1 AND revoked = false AND expires_at > now()`,
+      `SELECT at.token, at.client_id, c.client_name, at.user_id, at.granted_doco_ids,
+              at.granted_doco_roles, at.granted_doco_write_types,
+              at.granted_org_ids, at.granted_org_roles, at.granted_org_write_types,
+              at.scope, at.expires_at
+         FROM oauth_access_tokens at
+         JOIN oauth_clients c ON c.client_id = at.client_id
+        WHERE at.token = $1 AND at.revoked = false AND at.expires_at > now()`,
       [token],
     );
     const row = r.rows[0];
