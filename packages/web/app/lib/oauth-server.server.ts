@@ -83,8 +83,10 @@ function roleForGrant(grants: Record<string, string> | undefined, id: string): s
 export interface GrantSets {
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  granted_doco_write_types: Record<string, string[]>;
   granted_org_ids: string[];
   granted_org_roles: Record<string, string>;
+  granted_org_write_types: Record<string, string[]>;
 }
 
 /** Power ordering of the three roles; the higher one wins when merging
@@ -118,6 +120,36 @@ function mergeScope(
   return { ids, roles };
 }
 
+function mergeWriteTypeScope(
+  ids: string[],
+  baseIds: string[],
+  baseWriteTypes: Record<string, string[]>,
+  incomingIds: string[],
+  incomingWriteTypes: Record<string, string[]>,
+): Record<string, string[]> {
+  const baseSet = new Set(baseIds);
+  const incomingSet = new Set(incomingIds);
+  const merged: Record<string, string[]> = {};
+
+  for (const id of ids) {
+    const baseHasGrant = baseSet.has(id);
+    const incomingHasGrant = incomingSet.has(id);
+    const baseTypes = baseWriteTypes[id];
+    const incomingTypes = incomingWriteTypes[id];
+
+    if ((baseHasGrant && !baseTypes) || (incomingHasGrant && !incomingTypes)) {
+      continue;
+    }
+
+    const types = new Set<string>();
+    if (baseTypes) for (const type of baseTypes) types.add(type);
+    if (incomingTypes) for (const type of incomingTypes) types.add(type);
+    if (types.size > 0) merged[id] = Array.from(types).sort();
+  }
+
+  return merged;
+}
+
 /**
  * Union two grant sets for additive re-authorization. The merged set
  * covers every Doco/org in EITHER input; for an id in both it keeps the
@@ -144,8 +176,22 @@ export function mergeGrantSets(base: GrantSets, incoming: GrantSets): GrantSets 
   return {
     granted_doco_ids: doco.ids,
     granted_doco_roles: doco.roles,
+    granted_doco_write_types: mergeWriteTypeScope(
+      doco.ids,
+      base.granted_doco_ids,
+      base.granted_doco_write_types,
+      incoming.granted_doco_ids,
+      incoming.granted_doco_write_types,
+    ),
     granted_org_ids: org.ids,
     granted_org_roles: org.roles,
+    granted_org_write_types: mergeWriteTypeScope(
+      org.ids,
+      base.granted_org_ids,
+      base.granted_org_write_types,
+      incoming.granted_org_ids,
+      incoming.granted_org_write_types,
+    ),
   };
 }
 
@@ -266,6 +312,8 @@ export interface IssueAuthCodeInput {
    * i.e. no scope-down for that Doco.
    */
   granted_doco_roles?: Record<string, string>;
+  /** Per-type write scope-down keyed by doco_id. Missing entry means all write types. */
+  granted_doco_write_types?: Record<string, string[]>;
   /**
    * Org-level grants. Listed org ids extend access to every Doco
    * the org owns (live — including Docos created under the org
@@ -274,6 +322,8 @@ export interface IssueAuthCodeInput {
    */
   granted_org_ids?: string[];
   granted_org_roles?: Record<string, string>;
+  /** Per-type write scope-down keyed by org_id. Missing entry means all write types. */
+  granted_org_write_types?: Record<string, string[]>;
   scope?: string;
 }
 
@@ -286,17 +336,20 @@ export async function issueAuthorizationCode(
   const grants: GrantSets = {
     granted_doco_ids: input.granted_doco_ids,
     granted_doco_roles: input.granted_doco_roles ?? {},
+    granted_doco_write_types: input.granted_doco_write_types ?? {},
     granted_org_ids: input.granted_org_ids ?? [],
     granted_org_roles: input.granted_org_roles ?? {},
+    granted_org_write_types: input.granted_org_write_types ?? {},
   };
   await withTransaction(async (c) => {
     await c.query(
       `INSERT INTO oauth_authorization_codes
          (code, client_id, user_id, redirect_uri, token_name,
           code_challenge, code_challenge_method, granted_doco_ids,
-          granted_doco_roles, granted_org_ids, granted_org_roles,
+          granted_doco_roles, granted_doco_write_types,
+          granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12)`,
+       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         code,
         input.client_id,
@@ -306,8 +359,10 @@ export async function issueAuthorizationCode(
         input.code_challenge,
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
+        JSON.stringify(grants.granted_doco_write_types),
         grants.granted_org_ids,
         JSON.stringify(grants.granted_org_roles),
+        JSON.stringify(grants.granted_org_write_types),
         input.scope ?? null,
         expires_at,
       ],
@@ -321,8 +376,10 @@ export interface ConsumedAuthCode {
   token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  granted_doco_write_types: Record<string, string[]>;
   granted_org_ids: string[];
   granted_org_roles: Record<string, string>;
+  granted_org_write_types: Record<string, string[]>;
   scope: string | null;
 }
 
@@ -346,15 +403,17 @@ export async function consumeAuthorizationCode(args: {
       code_challenge: string;
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
+      granted_doco_write_types: Record<string, string[]>;
       granted_org_ids: string[];
       granted_org_roles: Record<string, string>;
+      granted_org_write_types: Record<string, string[]>;
       scope: string | null;
       expires_at: Date;
       consumed_at: Date | null;
     }>(
       `SELECT client_id, user_id, token_name, redirect_uri, code_challenge,
-              granted_doco_ids, granted_doco_roles,
-              granted_org_ids, granted_org_roles,
+              granted_doco_ids, granted_doco_roles, granted_doco_write_types,
+              granted_org_ids, granted_org_roles, granted_org_write_types,
               scope, expires_at, consumed_at
          FROM oauth_authorization_codes
         WHERE code = $1
@@ -384,8 +443,10 @@ export async function consumeAuthorizationCode(args: {
       token_name: row.token_name,
       granted_doco_ids: row.granted_doco_ids,
       granted_doco_roles: row.granted_doco_roles ?? {},
+      granted_doco_write_types: row.granted_doco_write_types ?? {},
       granted_org_ids: row.granted_org_ids ?? [],
       granted_org_roles: row.granted_org_roles ?? {},
+      granted_org_write_types: row.granted_org_write_types ?? {},
       scope: row.scope,
     };
   });
@@ -770,8 +831,10 @@ export interface DeviceAuthorizationRow {
   token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  granted_doco_write_types: Record<string, string[]>;
   granted_org_ids: string[];
   granted_org_roles: Record<string, string>;
+  granted_org_write_types: Record<string, string[]>;
   target_doco_handle: string | null;
   requested_role: string | null;
   expires_at: Date;
@@ -875,7 +938,8 @@ export async function getDeviceAuthorizationByUserCode(
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
               user_id, token_name, granted_doco_ids, granted_doco_roles,
-              granted_org_ids, granted_org_roles,
+              granted_doco_write_types,
+              granted_org_ids, granted_org_roles, granted_org_write_types,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE user_code = $1`,
@@ -886,8 +950,10 @@ export async function getDeviceAuthorizationByUserCode(
     return {
       ...row,
       granted_doco_roles: row.granted_doco_roles ?? {},
+      granted_doco_write_types: row.granted_doco_write_types ?? {},
       granted_org_ids: row.granted_org_ids ?? [],
       granted_org_roles: row.granted_org_roles ?? {},
+      granted_org_write_types: row.granted_org_write_types ?? {},
     };
   });
 }
@@ -904,8 +970,10 @@ export async function approveDeviceAuthorization(args: {
   token_name: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
+  granted_doco_write_types?: Record<string, string[]>;
   granted_org_ids?: string[];
   granted_org_roles?: Record<string, string>;
+  granted_org_write_types?: Record<string, string[]>;
 }): Promise<void> {
   await withTransaction(async (c) => {
     const pending = await c.query<{ client_id: string }>(
@@ -929,8 +997,10 @@ export async function approveDeviceAuthorization(args: {
     const grants: GrantSets = {
       granted_doco_ids: args.granted_doco_ids,
       granted_doco_roles: args.granted_doco_roles ?? {},
+      granted_doco_write_types: args.granted_doco_write_types ?? {},
       granted_org_ids: args.granted_org_ids ?? [],
       granted_org_roles: args.granted_org_roles ?? {},
+      granted_org_write_types: args.granted_org_write_types ?? {},
     };
 
     await c.query(
@@ -940,8 +1010,10 @@ export async function approveDeviceAuthorization(args: {
               token_name = $3,
               granted_doco_ids = $4,
               granted_doco_roles = $5,
-              granted_org_ids = $6,
-              granted_org_roles = $7
+              granted_doco_write_types = $6,
+              granted_org_ids = $7,
+              granted_org_roles = $8,
+              granted_org_write_types = $9
         WHERE device_code = $1
           AND status = 'pending'
           AND expires_at > now()`,
@@ -951,8 +1023,10 @@ export async function approveDeviceAuthorization(args: {
         tokenName,
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
+        JSON.stringify(grants.granted_doco_write_types),
         grants.granted_org_ids,
         JSON.stringify(grants.granted_org_roles),
+        JSON.stringify(grants.granted_org_write_types),
       ],
     );
   });
@@ -993,7 +1067,8 @@ export async function pollDeviceAuthorization(args: {
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
               user_id, token_name, granted_doco_ids, granted_doco_roles,
-              granted_org_ids, granted_org_roles,
+              granted_doco_write_types,
+              granted_org_ids, granted_org_roles, granted_org_write_types,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE device_code = $1
@@ -1046,14 +1121,17 @@ export async function pollDeviceAuthorization(args: {
     const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
     const rolesJson = JSON.stringify(row.granted_doco_roles ?? {});
+    const docoWriteTypesJson = JSON.stringify(row.granted_doco_write_types ?? {});
     const orgIds = row.granted_org_ids ?? [];
     const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
+    const orgWriteTypesJson = JSON.stringify(row.granted_org_write_types ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
-          granted_doco_roles, granted_org_ids, granted_org_roles,
+          granted_doco_roles, granted_doco_write_types,
+          granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         access_token,
         row.client_id,
@@ -1061,8 +1139,10 @@ export async function pollDeviceAuthorization(args: {
         row.token_name,
         row.granted_doco_ids,
         rolesJson,
+        docoWriteTypesJson,
         orgIds,
         orgRolesJson,
+        orgWriteTypesJson,
         row.scope,
         access_expires,
       ],
@@ -1070,9 +1150,10 @@ export async function pollDeviceAuthorization(args: {
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
-          granted_doco_roles, granted_org_ids, granted_org_roles,
+          granted_doco_roles, granted_doco_write_types,
+          granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         refresh_token,
         row.client_id,
@@ -1080,8 +1161,10 @@ export async function pollDeviceAuthorization(args: {
         row.token_name,
         row.granted_doco_ids,
         rolesJson,
+        docoWriteTypesJson,
         orgIds,
         orgRolesJson,
+        orgWriteTypesJson,
         row.scope,
         refresh_expires,
       ],

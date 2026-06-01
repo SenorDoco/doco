@@ -67,8 +67,10 @@ async function handleAuthorizationCode(form: URLSearchParams): Promise<Response>
     token_name: claim.token_name,
     granted_doco_ids: claim.granted_doco_ids,
     granted_doco_roles: claim.granted_doco_roles,
+    granted_doco_write_types: claim.granted_doco_write_types,
     granted_org_ids: claim.granted_org_ids,
     granted_org_roles: claim.granted_org_roles,
+    granted_org_write_types: claim.granted_org_write_types,
     scope: claim.scope,
   });
   return Response.json(tokens);

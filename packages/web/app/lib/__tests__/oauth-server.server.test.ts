@@ -32,8 +32,10 @@ function callsTo(fragment: string): unknown[][] {
 const emptyGrants: GrantSets = {
   granted_doco_ids: [],
   granted_doco_roles: {},
+  granted_doco_write_types: {},
   granted_org_ids: [],
   granted_org_roles: {},
+  granted_org_write_types: {},
 };
 
 describe("OAuth token authorization", () => {
@@ -62,8 +64,10 @@ describe("OAuth token authorization", () => {
       code_challenge: "challenge",
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "writer" },
+      granted_doco_write_types: { doco_bpms: ["decision"] },
       granted_org_ids: ["organization_torre"],
       granted_org_roles: { organization_torre: "reader" },
+      granted_org_write_types: { organization_torre: ["intent"] },
       scope: "doco",
     });
 
@@ -77,6 +81,12 @@ describe("OAuth token authorization", () => {
     expect(codeInsert?.[1]).toEqual(expect.arrayContaining(["doco_client_browser", "user_owner"]));
     expect((codeInsert?.[1] as unknown[])[4]).toBe("Claude Code");
     expect((codeInsert?.[1] as unknown[])[6]).toEqual(["doco_bpms"]);
+    expect(JSON.parse((codeInsert?.[1] as unknown[])[8] as string)).toEqual({
+      doco_bpms: ["decision"],
+    });
+    expect(JSON.parse((codeInsert?.[1] as unknown[])[11] as string)).toEqual({
+      organization_torre: ["intent"],
+    });
   });
 
   it("approves device codes by binding the pending grant to the approving user and token name", async () => {
@@ -93,8 +103,10 @@ describe("OAuth token authorization", () => {
       token_name: "Codex sandbox",
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "writer" },
+      granted_doco_write_types: { doco_bpms: ["decision"] },
       granted_org_ids: [],
       granted_org_roles: {},
+      granted_org_write_types: {},
     });
 
     expect(callsTo("INSERT INTO users")).toHaveLength(0);
@@ -118,8 +130,10 @@ describe("OAuth token authorization", () => {
       token_name: "Codex sandbox",
       granted_doco_ids: ["doco_new"],
       granted_doco_roles: { doco_new: "writer" },
+      granted_doco_write_types: { doco_new: ["intent"] },
       granted_org_ids: [],
       granted_org_roles: {},
+      granted_org_write_types: {},
     });
 
     // Tokens do not create or reuse agent users.
@@ -133,6 +147,8 @@ describe("OAuth token authorization", () => {
     expect((update?.[1] as unknown[])[3]).toEqual(["doco_new"]);
     const roles = JSON.parse((update?.[1] as unknown[])[4] as string);
     expect(roles).toEqual({ doco_new: "writer" });
+    const writeTypes = JSON.parse((update?.[1] as unknown[])[5] as string);
+    expect(writeTypes).toEqual({ doco_new: ["intent"] });
   });
 });
 
@@ -144,12 +160,14 @@ describe("mergeGrantSets", () => {
         ...emptyGrants,
         granted_doco_ids: ["b"],
         granted_doco_roles: { b: "writer" },
+        granted_doco_write_types: { b: ["decision"] },
         granted_org_ids: ["organization_x"],
         granted_org_roles: { organization_x: "owner" },
       },
     );
     expect(merged.granted_doco_ids).toEqual(["a", "b"]);
     expect(merged.granted_doco_roles).toEqual({ a: "reader", b: "writer" });
+    expect(merged.granted_doco_write_types).toEqual({ b: ["decision"] });
     expect(merged.granted_org_ids).toEqual(["organization_x"]);
     expect(merged.granted_org_roles).toEqual({ organization_x: "owner" });
   });
