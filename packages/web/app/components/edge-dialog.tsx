@@ -37,6 +37,34 @@ function formatValue(value: unknown): string {
   }
 }
 
+function AuthoringValue({
+  entry,
+}: {
+  entry: NonNullable<EdgeDialogDetail["authoring"]["created"]>;
+}) {
+  const actor = entry.user_label ?? entry.user_id;
+  const actorTitle =
+    entry.user_label && entry.user_id ? `${entry.user_label} (${entry.user_id})` : actor;
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+      {actor ? (
+        <span
+          className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1 break-words"
+          title={actorTitle ?? undefined}
+        >
+          {entry.user_label ? <span>{entry.user_label}</span> : null}
+          {entry.user_id ? <code className="font-mono text-[11px]">{entry.user_id}</code> : null}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">Unknown user</span>
+      )}
+      {entry.mechanism ? (
+        <span className="text-muted-foreground">via {entry.mechanism}</span>
+      ) : null}
+    </span>
+  );
+}
+
 function DocoSourceLine({ doco }: { doco: EdgeDialogDetail["doco"] | null | undefined }) {
   if (!doco) return null;
   return (
@@ -161,10 +189,24 @@ export function EdgeDialog({ detail, loading, error, onClose, onOpenNode }: Edge
                 </dd>
                 <dt className="text-muted-foreground">Created</dt>
                 <dd>{displayDate(detail.created_at)}</dd>
-                <dt className="text-muted-foreground">Created by</dt>
-                <dd className="break-all font-mono">{detail.created_by ?? "-"}</dd>
+                {detail.authoring.created ? (
+                  <>
+                    <dt className="text-muted-foreground">Created by</dt>
+                    <dd>
+                      <AuthoringValue entry={detail.authoring.created} />
+                    </dd>
+                  </>
+                ) : null}
                 <dt className="text-muted-foreground">Updated</dt>
                 <dd>{displayDate(detail.updated_at)}</dd>
+                {detail.authoring.updated ? (
+                  <>
+                    <dt className="text-muted-foreground">Updated by</dt>
+                    <dd>
+                      <AuthoringValue entry={detail.authoring.updated} />
+                    </dd>
+                  </>
+                ) : null}
               </dl>
             </section>
 
@@ -200,7 +242,8 @@ export function EdgeDialog({ detail, loading, error, onClose, onOpenNode }: Edge
                     <li key={event.version} className="border-l-2 border-border pl-3">
                       <div className="font-mono text-[11px] text-muted-foreground">
                         v{event.version} · {displayDate(event.recorded_at)} ·{" "}
-                        {event.actor ?? "anonymous"} ·{" "}
+                        {event.actor ?? "anonymous"}
+                        {event.mechanism ? ` via ${event.mechanism}` : ""} ·{" "}
                         <span className="text-foreground">{event.op}</span>
                       </div>
                       {event.reason ? <p className="mt-1 leading-5">{event.reason}</p> : null}

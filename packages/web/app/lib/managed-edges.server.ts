@@ -7,7 +7,13 @@
 // now. Edges authored directly via the edges API (origin='authored') are never
 // touched — reconciliation owns origin='field' edges only.
 
-import { type PoolClient, createChangeset, createEdge, retireEdge } from "@doco/db";
+import {
+  type CommitSource,
+  type PoolClient,
+  createChangeset,
+  createEdge,
+  retireEdge,
+} from "@doco/db";
 import {
   type ExistingManagedEdge,
   MANAGED_RELATION_EDGE_TYPES,
@@ -33,7 +39,14 @@ export interface ReconcileNodeEdgesResult {
  */
 export async function reconcileNodeEdges(
   c: PoolClient,
-  args: { docoId: string; entityType: string; entity: Entity; actor: string | null },
+  args: {
+    docoId: string;
+    entityType: string;
+    entity: Entity;
+    actor: string | null;
+    source?: CommitSource;
+    metadata?: Record<string, unknown> | null;
+  },
 ): Promise<ReconcileNodeEdgesResult> {
   if (!NODE_TYPE_SET.has(args.entityType)) return { created: 0, retired: 0 };
 
@@ -65,7 +78,8 @@ export async function reconcileNodeEdges(
   const txId = await createChangeset(c, {
     docoId: args.docoId,
     actor: args.actor,
-    source: "api",
+    source: args.source ?? "api",
+    metadata: args.metadata ?? null,
     reason: "reconcile node relationship edges",
   });
   for (const e of plan.toCreate) {

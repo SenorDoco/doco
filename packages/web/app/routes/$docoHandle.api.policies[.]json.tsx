@@ -15,6 +15,7 @@
 
 import { withClient } from "@doco/db";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
+import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import {
   type GuidancePolicyDraft,
   type NodeAuthoringPolicyDraft,
@@ -160,6 +161,7 @@ export async function action({
         docoSlug,
         draft,
         docoHost,
+        { authoring: authoringContextForRequest(request) },
       );
       if ("error" in result) return Response.json(result, { status: 400 });
       return Response.json(result, { status: 201 });
@@ -177,6 +179,7 @@ export async function action({
       docoSlug,
       draft,
       docoHost,
+      { authoring: authoringContextForRequest(request) },
     );
     if ("error" in result) return Response.json(result, { status: 400 });
     return Response.json(result, { status: 201 });
