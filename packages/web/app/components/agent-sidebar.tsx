@@ -129,7 +129,7 @@ interface ConversationSnapshot {
 }
 
 /** Row in the thread-list. Matches the server's ConversationListItem. */
-interface ConversationListItem {
+export interface ConversationListItem {
   id: string;
   title: string | null;
   archived: boolean;
@@ -140,6 +140,13 @@ interface ConversationListItem {
   last_message_role: "user" | "assistant" | null;
   attached_doco_ids: string[];
   attached_org_handles: string[];
+}
+
+export function mergeCreatedConversationListItem(
+  conversations: ConversationListItem[],
+  created: ConversationListItem,
+): ConversationListItem[] {
+  return [created, ...conversations.filter((conversation) => conversation.id !== created.id)];
 }
 
 /** Per-request token totals streamed from the server. Reset to null
@@ -921,6 +928,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   const newThread = useCallback(async () => {
     try {
+      setConversationsError(null);
       const res = await fetch("/api/v1/agent-chat/conversations.json", {
         method: "POST",
         credentials: "same-origin",
@@ -932,13 +940,33 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         return;
       }
       const data = (await res.json()) as { conversation: ConversationListItem };
-      if (data.conversation?.id) {
-        switchThread(data.conversation.id);
-      }
+      const created = data.conversation;
+      if (!created?.id) return;
+
+      setConversations((prev) => mergeCreatedConversationListItem(prev, created));
+      abortRef.current?.abort();
+      setBusy(false);
+      setInFlight(null);
+      setQueuedSends([]);
+      setTurnUsage(null);
+      setRemoteInflight(false);
+      setThinkingEvents([]);
+      setMessages([]);
+      setAttachedDocos([]);
+      setAttachedOrgs([]);
+      setHasMore(false);
+      earliestRef.current = null;
+      setConversationId(created.id);
+      setConversationTitle(created.title);
+      writeStringFlag(ACTIVE_CONV_KEY, created.id);
+      setSearchQuery("");
+      setView("chat");
+      setRenamingId(null);
+      void loadConversationsList();
     } catch (err) {
       setConversationsError(err instanceof Error ? err.message : String(err));
     }
-  }, [switchThread]);
+  }, [loadConversationsList]);
 
   const renameThread = useCallback(
     async (id: string, nextTitle: string) => {
