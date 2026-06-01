@@ -57,6 +57,7 @@ import {
   isGraphNodeType,
   loadNodeDialogDetail,
 } from "~/lib/node-detail.server";
+import { effectivePerspectiveFocusId } from "~/lib/perspective-focus";
 import {
   ensureDefaultsAttached,
   listAvailablePerspectives,
@@ -559,6 +560,13 @@ export default function DocoHome({
   const [lifecycleUpdating, setLifecycleUpdating] = useState<LifecycleStage | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const clientDialogOverrideRef = useRef(false);
+  // One-shot camera focus the perspectives honor. Opening a node from a
+  // side panel — clicking an edge row inside an open node/edge dialog —
+  // records it here so the canvas re-centers on that node, exactly as if
+  // its URL had been opened from scratch, without re-running the loader.
+  // The route focus (a node/edge URL) governs until a panel open sets it.
+  const [clientFocusId, setClientFocusId] = useState<string | null>(null);
+  const perspectiveFocusId = effectivePerspectiveFocusId(clientFocusId, routeFocusId);
 
   // While a detail dialog is open it overlays the right column on
   // wide screens and the whole content area on narrow screens. The
@@ -742,7 +750,7 @@ export default function DocoHome({
       entityType: string,
       id: string,
       href: string,
-      options: { pushUrl?: boolean; keepDetail?: boolean } = {},
+      options: { pushUrl?: boolean; keepDetail?: boolean; focusPerspective?: boolean } = {},
     ) => {
       const pushUrl = options.pushUrl ?? true;
       if (pushUrl && typeof window !== "undefined") {
@@ -773,6 +781,9 @@ export default function DocoHome({
         if (!node) throw new Error(`Node not found: ${id}`);
         setNodeDialog({ detail: node, loading: false, error: null });
         setGraphState((prev) => graphWithCenter(prev, node.id));
+        // Panel opens (dialog edge rows) re-center the camera on the node,
+        // like opening its URL from scratch; canvas clicks leave it be.
+        if (options.focusPerspective) setClientFocusId(node.id);
         setVisibleLifecycles((prev) => new Set([...prev, node.lifecycle ?? "asserted"]));
       } catch (err) {
         setNodeDialog((prev) => ({
@@ -1039,7 +1050,7 @@ export default function DocoHome({
         onClose={closeNodeDialog}
         onLifecycleChange={handleLifecycleChange}
         onOpenNode={(entityType, id, href) => {
-          void loadNodeDialog(entityType, id, href);
+          void loadNodeDialog(entityType, id, href, { focusPerspective: true });
         }}
       />
     ) : edgeDialog && !isPerspectiveFullscreen ? (
@@ -1049,7 +1060,7 @@ export default function DocoHome({
         error={edgeDialog.error}
         onClose={closeEdgeDialog}
         onOpenNode={(entityType, id, href) => {
-          void loadNodeDialog(entityType, id, href);
+          void loadNodeDialog(entityType, id, href, { focusPerspective: true });
         }}
       />
     ) : null;
@@ -1200,7 +1211,7 @@ export default function DocoHome({
                     nodes={orgTreeData.nodes}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
-                    initialFocusId={routeFocusId}
+                    initialFocusId={perspectiveFocusId}
                     onCenterChange={(id) => {
                       setEdgeDialog(null);
                       setEdgeFocus(null);
@@ -1221,7 +1232,7 @@ export default function DocoHome({
                     globalPagerank={bpmnGraph.global_pagerank}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
-                    initialFocusId={routeFocusId}
+                    initialFocusId={perspectiveFocusId}
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
@@ -1261,7 +1272,7 @@ export default function DocoHome({
                     pageRanks={pageRanksMap}
                     fillHeight
                     visibleLifecycles={visibleLifecycles}
-                    initialFocusId={routeFocusId}
+                    initialFocusId={perspectiveFocusId}
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
@@ -1286,7 +1297,7 @@ export default function DocoHome({
                       onClose={closeNodeDialog}
                       onLifecycleChange={handleLifecycleChange}
                       onOpenNode={(entityType, id, href) => {
-                        void loadNodeDialog(entityType, id, href);
+                        void loadNodeDialog(entityType, id, href, { focusPerspective: true });
                       }}
                     />
                   ) : edgeDialog ? (
@@ -1296,7 +1307,7 @@ export default function DocoHome({
                       error={edgeDialog.error}
                       onClose={closeEdgeDialog}
                       onOpenNode={(entityType, id, href) => {
-                        void loadNodeDialog(entityType, id, href);
+                        void loadNodeDialog(entityType, id, href, { focusPerspective: true });
                       }}
                     />
                   ) : null}
