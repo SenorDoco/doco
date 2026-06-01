@@ -690,6 +690,7 @@ function existingGrantsByPrincipal(data: UsersPageData): Map<string, ExistingGra
     for (const user of section.users) {
       push(user.user_id, {
         level: "org",
+        targetId: section.org.id,
         label: section.org.handle,
         role: user.role,
         writeTypes: user.write_types,
@@ -700,6 +701,7 @@ function existingGrantsByPrincipal(data: UsersPageData): Map<string, ExistingGra
     for (const user of section.users) {
       push(user.user_id, {
         level: "doco",
+        targetId: section.doco.id,
         label: section.doco.label,
         role: user.role,
         writeTypes: user.write_types,
@@ -745,7 +747,7 @@ function AddUserAccessForm({
         onClick={() => setOpen(true)}
         className="neu-button mt-2 w-fit rounded-md px-2 py-1 text-xs"
       >
-        Add access
+        Modify access
       </button>
     );
   }
@@ -777,7 +779,7 @@ function AddUserAccessForm({
           disabled={fetcher.state !== "idle" || grants.length === 0}
           className="neu-button bg-primary text-primary-foreground rounded-md px-2 py-1 text-xs font-semibold disabled:opacity-50"
         >
-          {fetcher.state !== "idle" ? "Saving…" : `Add access for ${username}`}
+          {fetcher.state !== "idle" ? "Saving…" : `Save access changes for ${username}`}
         </button>
       </div>
     </fetcher.Form>

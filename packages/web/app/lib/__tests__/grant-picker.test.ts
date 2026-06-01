@@ -151,17 +151,25 @@ describe("describeExistingGrant", () => {
   it("summarizes each level", () => {
     const acct: ExistingGrant = {
       level: "account",
+      targetId: "",
       label: "alice",
       role: "writer",
       writeTypes: ["*"],
     };
     const org: ExistingGrant = {
       level: "org",
+      targetId: "organization_acme",
       label: "acme",
       role: "reader",
       writeTypes: ["decision"],
     };
-    const doco: ExistingGrant = { level: "doco", label: "acme/api", role: "owner", writeTypes: [] };
+    const doco: ExistingGrant = {
+      level: "doco",
+      targetId: "doco_api",
+      label: "acme/api",
+      role: "owner",
+      writeTypes: [],
+    };
     expect(describeExistingGrant(acct)).toBe("Entire account: alice — writes everything");
     expect(describeExistingGrant(org)).toBe("Org: acme — writes 1 type");
     expect(describeExistingGrant(doco)).toBe("Doco: acme/api — owns — writes everything");
@@ -278,6 +286,23 @@ describe("multi-grant selection", () => {
     const list = applyTargetRole([], "doco", "d1", "reader");
     expect(targetRoleValue(list, "doco", "d1")).toBe("reader");
     expect(targetRoleValue(list, "doco", "d9")).toBe("none");
+  });
+
+  it("targetRoleValue falls back to existing access until the user changes it", () => {
+    const existing: ExistingGrant[] = [
+      {
+        level: "doco",
+        targetId: "d1",
+        label: "acme/runbook",
+        role: "owner",
+        writeTypes: [],
+      },
+    ];
+
+    expect(targetRoleValue([], "doco", "d1", existing)).toBe("owner");
+
+    const changed = applyTargetRole([], "doco", "d1", "reader");
+    expect(targetRoleValue(changed, "doco", "d1", existing)).toBe("reader");
   });
 
   it("applyDocoTypeLevel builds a per-type doco grant and drops it when empty", () => {

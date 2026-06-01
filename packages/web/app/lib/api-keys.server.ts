@@ -603,19 +603,13 @@ function mergeTokenScope(
   for (const id of ids) {
     const baseRole = baseSet.has(id) ? ((baseRoles[id] ?? "reader") as DocoRole) : null;
     const incomingRole = incomingSet.has(id) ? ((incomingRoles[id] ?? "reader") as DocoRole) : null;
-    const role =
-      baseRole && incomingRole
-        ? rankOf(incomingRole) > rankOf(baseRole)
-          ? incomingRole
-          : baseRole
-        : (baseRole ?? incomingRole ?? "reader");
+    const role = incomingRole ?? baseRole ?? "reader";
     roles[id] = role;
     if (role !== "owner") {
-      const merged = mergeWriteTypes(
-        effectiveStoredWriteTypes(baseRole, baseWriteTypes[id]),
-        effectiveStoredWriteTypes(incomingRole, incomingWriteTypes[id]),
-      );
-      if (merged.length > 0) writeTypes[id] = merged;
+      const stored = incomingSet.has(id)
+        ? effectiveStoredWriteTypes(incomingRole, incomingWriteTypes[id])
+        : effectiveStoredWriteTypes(baseRole, baseWriteTypes[id]);
+      if (stored.length > 0) writeTypes[id] = stored;
     }
   }
   return { ids, roles, writeTypes };
@@ -626,13 +620,6 @@ function effectiveStoredWriteTypes(role: DocoRole | null, writeTypes: string[] |
   const normalized = normalizeWriteTypes(writeTypes);
   if (normalized.length > 0) return normalized;
   return role === "writer" ? [WRITE_ALL] : [];
-}
-
-function mergeWriteTypes(a: string[], b: string[]): string[] {
-  const left = normalizeWriteTypes(a);
-  const right = normalizeWriteTypes(b);
-  if (left.includes(WRITE_ALL) || right.includes(WRITE_ALL)) return [WRITE_ALL];
-  return normalizeWriteTypes([...left, ...right]);
 }
 
 async function getDocoLevelRoleForGrant(
