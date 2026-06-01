@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PERSPECTIVE_CONTRACTS,
   RELATION_KINDS,
   unsupportedNodeJsonEdgeKeyError,
 } from "../graph-authoring-contract.server";
@@ -45,5 +46,21 @@ describe("graph authoring contract", () => {
       kind: "supports",
       cardinality: "many",
     });
+  });
+
+  it("keeps the glossary contract focused on term entries and separates aliases from replacements", () => {
+    const glossary = PERSPECTIVE_CONTRACTS.glossary;
+    expect(glossary.node_types).toEqual(["decision", "rule", "reference", "eval"]);
+    expect(glossary.node_types).not.toContain("intent");
+
+    const alternativesConstraint = glossary.constraints.find((constraint) =>
+      /`alternatives`/i.test(constraint),
+    );
+    expect(alternativesConstraint).toMatch(/aliases/i);
+    expect(alternativesConstraint).toMatch(/rejected labels/i);
+    expect(alternativesConstraint).not.toMatch(/deprecated|historical/i);
+
+    expect(glossary.constraints.join("\n")).toMatch(/deprecated terms at their replacement/i);
+    expect(glossary.constraints.join("\n")).toMatch(/`replaces`/i);
   });
 });

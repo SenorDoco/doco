@@ -24,4 +24,11 @@ describe("doco template metadata", () => {
     const meta = findDocoTemplateMeta("glossaries");
     expect(meta?.updatedAt).toBe("2026-06-01");
   });
+
+  it("describes Glossaries with replacements separate from aliases", () => {
+    const meta = findDocoTemplateMeta("glossaries");
+    expect(meta?.description).toMatch(/aliases/i);
+    expect(meta?.description).toMatch(/replacement links/i);
+    expect(meta?.description).not.toMatch(/deprecated wording/i);
+  });
 });
