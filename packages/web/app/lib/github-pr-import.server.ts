@@ -368,7 +368,6 @@ function locatorOverlapsChangedLines(
 interface BusinessProcessReferenceRow {
   reference_id: string;
   locator: string | null;
-  target_ref: string | null;
   implemented_by_from_id: string | null;
 }
 
@@ -385,25 +384,25 @@ export async function findBusinessProcessReferenceTargetsForChangedLines(
     const r = await c.query<BusinessProcessReferenceRow>(
       `SELECT r.id AS reference_id,
               r.locator,
-              r.data->>'target_ref' AS target_ref,
               e.from_id AS implemented_by_from_id
          FROM nodes r
          LEFT JOIN edges e
            ON e.doco_id = r.doco_id
-          AND e.edge_type = 'implemented_by'
+          AND e.edge_type = 'supports'
+          AND e.props->>'role' = 'implemented_by'
           AND e.to_id = r.id
           AND e.lifecycle <> 'retired'
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
           AND COALESCE(r.lifecycle, 'asserted') <> 'retired'
           AND r.locator IS NOT NULL
-          AND (r.data->>'target_ref' IS NOT NULL OR e.from_id IS NOT NULL)`,
+          AND e.from_id IS NOT NULL`,
       [docoId],
     );
     const targetIds: string[] = [];
     for (const row of r.rows) {
       if (!locatorOverlapsChangedLines(row.locator, changedRanges)) continue;
-      for (const candidate of [row.target_ref, row.implemented_by_from_id]) {
+      for (const candidate of [row.implemented_by_from_id]) {
         if (!candidate || candidate === row.reference_id || !isEntityId(candidate)) continue;
         if (!targetIds.includes(candidate)) targetIds.push(candidate);
       }
@@ -420,14 +419,15 @@ export async function hasBusinessProcessCodeReferences(docoId: string): Promise<
          FROM nodes r
          LEFT JOIN edges e
            ON e.doco_id = r.doco_id
-          AND e.edge_type = 'implemented_by'
+          AND e.edge_type = 'supports'
+          AND e.props->>'role' = 'implemented_by'
           AND e.to_id = r.id
           AND e.lifecycle <> 'retired'
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
           AND COALESCE(r.lifecycle, 'asserted') <> 'retired'
           AND r.locator IS NOT NULL
-          AND (r.data->>'target_ref' IS NOT NULL OR e.from_id IS NOT NULL)
+          AND e.from_id IS NOT NULL
         LIMIT 1`,
       [docoId],
     );
@@ -463,7 +463,7 @@ export async function linkPullRequestToWork(
   const result: PrWorkLinkResult = { linked: 0, existing: 0, skipped: 0 };
   for (const nodeId of nodeIds) {
     if (nodeId === opts.prRefId) continue; // no self-edge
-    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId)) {
+    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId, "implemented_by")) {
       result.existing++;
       continue;
     }
@@ -473,7 +473,7 @@ export async function linkPullRequestToWork(
       edgeType: "supports",
       fromId: nodeId,
       toId: opts.prRefId,
-      props: { role: "implemented_by", source_field: "implemented_by" },
+      props: { role: "implemented_by" },
       reason: "Linked from a GitHub pull request trailer (Doco-Implements / Doco-Fixes).",
     });
     if ("ok" in res) result.linked++;
@@ -505,16 +505,17 @@ export async function linkPullRequestToBusinessProcessReferences(
   const nodeIds = [...new Set(await findTargets(opts.docoId, changedRanges))];
   for (const nodeId of nodeIds) {
     if (nodeId === opts.prRefId) continue;
-    if (await exists(opts.docoId, "implemented_by", nodeId, opts.prRefId)) {
+    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId, "implemented_by")) {
       result.existing++;
       continue;
     }
     const res = await capture({
       docoId: opts.docoId,
       actorId: opts.actorId ?? null,
-      edgeType: "implemented_by",
+      edgeType: "supports",
       fromId: nodeId,
       toId: opts.prRefId,
+      props: { role: "implemented_by" },
       reason:
         "Linked from a GitHub pull request touching an existing business-process code reference.",
     });

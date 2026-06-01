@@ -12,7 +12,6 @@
 
 import { type PoolClient, withClient } from "@doco/db";
 import { NODE_TABLES } from "@doco/db";
-import { deriveEdges } from "@doco/index";
 import {
   type AuthoringPredicate,
   type CandidateFields,
@@ -24,7 +23,6 @@ import {
   evaluatePolicies,
   policyFiresFor,
 } from "@doco/shared";
-import type { Entity } from "@doco/shared";
 import { judgeProbabilisticPredicate } from "./llm-judge.server";
 
 /**
@@ -65,9 +63,8 @@ export interface AuthoringResult {
  * frontmatter (as it would be persisted) AFTER any merge with an
  * existing row (for updates).
  *
- * The candidate's outgoing edges are derived from its frontmatter;
- * the doco's existing edges are loaded from the edges table for
- * `graph-completeness` checks against other nodes.
+ * The candidate's outgoing edges are read from the edges table; node JSON is
+ * never interpreted as relationship authoring input.
  */
 export async function runAuthoringPolicies(opts: {
   docoId: string;
@@ -101,14 +98,6 @@ export async function runAuthoringPolicies(opts: {
   // we keep only the LIFECYCLE_INDEPENDENT_KINDS gates and drop the rest.
   const terminal = opts.candidate.lifecycle === "retired";
 
-  const candidateEdges = deriveEdges(opts.candidate as unknown as Entity).map(
-    (s): EngineEdge => ({
-      from_id: s.from_id,
-      to_id: s.to_id,
-      edge_type: s.edge_type,
-    }),
-  );
-
   const run = async (c: PoolClient): Promise<AuthoringResult> => {
     const policies = await loadPolicies(c, opts.docoId);
     if (policies.length === 0) {
@@ -132,6 +121,12 @@ export async function runAuthoringPolicies(opts: {
     const needsGraphCompleteness = applicablePolicies.some(
       (p) => p.predicate.kind === "graph-completeness",
     );
+    const needsEdges = applicablePolicies.some(
+      (p) =>
+        p.predicate.kind === "requires_edge" ||
+        p.predicate.kind === "forbids_edge" ||
+        p.predicate.kind === "graph-completeness",
+    );
     const needsPopulation = populationNodeTypes.size > 0;
 
     // Sequential when sharing a transaction client (pg can't pipeline
@@ -139,7 +134,8 @@ export async function runAuthoringPolicies(opts: {
     const principals = needsPrincipals
       ? await loadPrincipals(c, opts.docoId)
       : (new Set() as PrincipalIndex);
-    const edges = needsGraphCompleteness ? await loadEdges(c, opts.docoId) : [];
+    const edges = needsEdges ? await loadEdges(c, opts.docoId) : [];
+    const candidateEdges = edges.filter((edge) => edge.from_id === opts.candidate.id);
     const population = needsPopulation
       ? await loadPopulation(c, opts.docoId, populationNodeTypes, opts.candidate.id)
       : [];
@@ -290,7 +286,7 @@ async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalInd
 
 async function loadEdges(c: PgClient, docoId: string): Promise<EngineEdge[]> {
   const r = await c.query<{ from_id: string; to_id: string; edge_type: string }>(
-    "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1",
+    "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'",
     [docoId],
   );
   return r.rows;

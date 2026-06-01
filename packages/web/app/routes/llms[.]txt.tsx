@@ -128,27 +128,23 @@ live on \`/api/policies.json\`. The generic \`/api/<type>.json\` route
 refuses policy types.
 
 Before POST/PATCH, read \`GET /<handle>/api/<type>.txt\` for the
-exact request body when that spec exists. Principal references in
-request bodies use principal ids only: \`*_principal_id\` for one
-principal and \`*_principal_ids\` for arrays. Do not send principal
-names, \`*_name\` fields, or comma-separated strings; there are no
-compatibility aliases.
+exact request body when that spec exists. Node capture bodies store
+prose and scalar attributes only. Relationships to principals and other
+nodes are first-class edges created with \`POST /<handle>/api/edges.json\`
+or \`POST /<handle>/api/changesets.json\` (\`relate\` /
+\`relate_many\`).
 
-Common API-facing principal fields:
+Common principal relationship roles on attributed_to/has_parent edges:
 
-    wanted_by_principal_id        # Intent owner; auth fills this
-    actors_principal_ids          # Intent actors, array of principal ids
-    stakeholders_principal_ids    # Intent stakeholders, array of principal ids
-    actor_principal_id            # Action/Log actor; auth fills this
-    decided_by_principal_id       # Decision maker; auth fills this
-    authored_by_principal_id      # Rule/Eval/Policy author; auth fills this
+    owned_by          # Intent/Rule/Eval owner or author Principal
+    performed_by      # Action/Log performer Principal
+    decided_by        # Decision maker Principal
+    has_stakeholder   # Intent stakeholder Principal
+    reports_to        # Principal manager Principal
 
-Read responses may expose stored graph fields such as \`wanted_by\`,
-\`actors\`, \`stakeholders\`, \`actor_id\`, and \`decided_by\`.
 \`created_by\` is user/API-key provenance derived from the
 authenticated session or token. Never send \`created_by\` in request
-bodies; use the API-facing principal-id fields above only for domain
-actors.
+bodies.
 
 Create a Doco with:
 

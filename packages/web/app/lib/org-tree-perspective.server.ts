@@ -1,10 +1,10 @@
 // Org-tree perspective data loader.
 //
 // Renders a Doco's Principal nodes as a top-down reporting tree:
-// the unique top-of-chain Principal (no `reports_to`) at the root,
+// the unique top-of-chain Principal (no reports_to role edge) at the root,
 // direct reports beneath, and so on. Reporting lines are first-class
-// `has_parent` edge rows with reports_to / dotted_reports_to role props; node
-// JSON stays free of relationship fields.
+// `has_parent` edge rows with reports_to / dotted_reports_to role props;
+// node JSON stays free of graph relationship keys.
 //
 // Only the `org-chart` template attaches this perspective by default,
 // but any Doco can opt in via the perspectives picker. The loader
@@ -162,7 +162,7 @@ export async function loadOrgTreeData(
   const reportsToByPrincipal = new Map<string, string>();
   const dottedReportsToByPrincipal = new Map<string, string[]>();
   for (const edge of edgeRows) {
-    const role = edge.props?.role ?? edge.props?.source_field;
+    const role = edge.props?.role;
     if (role === "reports_to") {
       if (!reportsToByPrincipal.has(edge.from_id))
         reportsToByPrincipal.set(edge.from_id, edge.to_id);

@@ -1,10 +1,8 @@
 const CLIENT_PROVENANCE_KEYS = [
   "created_by",
   "created_by_user_id",
-  "created_by_principal_id",
   "updated_by",
   "updated_by_user_id",
-  "updated_by_principal_id",
 ] as const;
 
 export function stampAuthenticatedCreator<TDraft extends object>(

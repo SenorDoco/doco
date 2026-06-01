@@ -85,7 +85,7 @@ describe("generic eval capture API", () => {
     mocks.withTransaction.mockImplementation((fn) => fn({}));
   });
 
-  it("uses the authenticated user as Eval creator and ignores client provenance", async () => {
+  it("rejects principal provenance fields on Eval capture", async () => {
     const response = await action({
       request: evalRequest({
         eval: "unit exact slug normalization returns canonical handle",
@@ -99,24 +99,10 @@ describe("generic eval capture API", () => {
       params: { docoHandle: "acme", type: "evals" } as never,
     });
 
-    expect(response.status).toBe(201);
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entity_type: "eval",
-        created_by: "user_author",
-        data: expect.objectContaining({
-          created_by: "user_author",
-          eval: "unit exact slug normalization returns canonical handle",
-          kind: "unit",
-        }),
-      }),
-      expect.anything(),
-    );
-    expect(mocks.upsertEntity.mock.calls[0][0].data).not.toHaveProperty("created_by_user_id");
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      ok: true,
-      id: expect.stringMatching(/^eval_/),
-      footer_lines: [expect.stringContaining("Eval added")],
+      error: expect.stringContaining("created_by_principal_id is not a node JSON field"),
     });
   });
 });

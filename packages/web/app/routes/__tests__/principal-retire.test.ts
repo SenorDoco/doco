@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   runAuthoringPolicies: vi.fn(),
   reindexAndScheduleAttach: vi.fn(),
   appendAuditEvent: vi.fn(),
-  reconcileNodeEdges: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
@@ -55,10 +54,6 @@ vi.mock("~/lib/db.server", () => ({
   docoPath: (handle: string) => `/tmp/docos/${handle}`,
 }));
 
-vi.mock("~/lib/managed-edges.server", () => ({
-  reconcileNodeEdges: mocks.reconcileNodeEdges,
-}));
-
 import { action } from "../$docoHandle.api.principals.$id[.]json";
 
 function retireRequest(body: Record<string, unknown> = { lifecycle: "retired" }): Request {
@@ -100,7 +95,6 @@ describe("principal retire API", () => {
       violations: [],
     });
     mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
-    mocks.reconcileNodeEdges.mockResolvedValue({ created: 0, retired: 0 });
   });
 
   it("retires an unreferenced principal", async () => {
@@ -348,63 +342,33 @@ describe("principal retire API", () => {
     );
   });
 
-  it("wires reports_to to an existing Principal in the same Doco", async () => {
-    mocks.getEntity
-      .mockResolvedValueOnce({
-        id: "principal_manager",
-        doco_id: "doco_acme",
-        data: { node_type: "principal", name: "boss" },
-      })
-      .mockResolvedValueOnce({
-        id: PRINCIPAL_ID,
-        doco_id: "doco_acme",
-        entity_type: "principal",
-        data: { node_type: "principal", name: "visitor" },
-        summary: "Visitor",
-        lifecycle: "asserted",
-      });
-
+  it("rejects reports_to because reporting lines are edge-only", async () => {
     const response = await action({
       request: retireRequest({ reports_to: "principal_manager" }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 
-    expect(response.status).toBe(200);
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          name: "visitor",
-          reports_to: "principal_manager",
-        }),
-      }),
-    );
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("reports_to is not a node JSON field"),
+    });
   });
 
-  it("clears reports_to when null is passed (promotes to top-of-chain)", async () => {
-    mocks.getEntity.mockResolvedValueOnce({
-      id: PRINCIPAL_ID,
-      doco_id: "doco_acme",
-      entity_type: "principal",
-      data: {
-        node_type: "principal",
-        name: "visitor",
-        reports_to: "principal_old_manager",
-      },
-      summary: "Visitor",
-      lifecycle: "asserted",
-    });
-
+  it("rejects clearing reports_to because edges are updated through the edge API", async () => {
     const response = await action({
       request: retireRequest({ reports_to: null }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 
-    expect(response.status).toBe(200);
-    const upsertCall = mocks.upsertEntity.mock.calls[0]?.[0];
-    expect(upsertCall.data).not.toHaveProperty("reports_to");
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("reports_to is not a node JSON field"),
+    });
   });
 
-  it("rejects a reports_to that points at the Principal itself", async () => {
+  it("rejects self reports_to through the same edge-only guard", async () => {
     const response = await action({
       request: retireRequest({ reports_to: PRINCIPAL_ID }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
@@ -413,7 +377,7 @@ describe("principal retire API", () => {
     expect(response.status).toBe(400);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("cannot point at the Principal itself"),
+      error: expect.stringContaining("reports_to is not a node JSON field"),
     });
   });
 
@@ -436,13 +400,13 @@ describe("principal retire API", () => {
       created_by: "user_admin",
     });
 
-    // Trigger the PATCH with a non-body field (clearing reports_to)
-    // so the patch doesn't supply body_md. The handler must still
+    // Trigger the PATCH with a name-only edit so the patch doesn't supply
+    // body_md. The handler must still
     // surface the EXISTING body_md to the policy evaluator from the
     // typed column, not silently drop it because it isn't in the
     // patch object.
     const response = await action({
-      request: retireRequest({ reports_to: null }),
+      request: retireRequest({ name: "visitor" }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 

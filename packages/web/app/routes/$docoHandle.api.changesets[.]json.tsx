@@ -7,22 +7,14 @@
 import { getEntity, roleAtLeast, withClient } from "@doco/db";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
-import {
-  type AuthoringWriteContext,
-  type CaptureError,
-  type EntityPatch,
-  type NodeTypeName,
-  type UpdateResult,
-  updateDecision,
-  updateEntity,
-} from "~/lib/capture.server";
+import type { AuthoringWriteContext, CaptureError } from "~/lib/capture.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { captureEdge, edgeExists } from "~/lib/edge-capture.server";
 import {
   PERSPECTIVE_CONTRACTS,
   type RelationKindSpec,
   relationKind,
-  unsupportedRelationFieldError,
+  unsupportedNodeJsonEdgeKeyError,
 } from "~/lib/graph-authoring-contract.server";
 import { CAPTURE_REGISTRY_BY_ENTITY_TYPE, type MeLike } from "~/lib/node-capture-registry.server";
 
@@ -93,16 +85,12 @@ interface OperationResult {
     kind: string;
     from: string;
     to: string;
-    stored_on: string;
-    field: string;
     edge_id?: string;
   };
   relations?: {
     kind: string;
     from: string;
     to: string;
-    stored_on: string;
-    field: string;
     edge_id?: string;
   }[];
   skipped?: boolean;
@@ -292,17 +280,17 @@ async function createNode(
   if (!op.body || typeof op.body !== "object" || Array.isArray(op.body)) {
     return { op_index: index, op: "create", ok: false, error: "create.body must be an object." };
   }
-  // Resolve `$alias` refs in the body so the node is created WITH its
-  // own-field relations (serves/reports_to/actor/gated_by),
-  // letting an asserted node satisfy requires_edge atomically.
+  // Resolve `$alias` refs in ordinary create body values. Relations are
+  // created by `relate` / `relate_many` ops, where aliases are resolved
+  // separately.
   const resolvedBody = resolveAliasesInBody(op.body as Record<string, unknown>, aliases);
   if ("error" in resolvedBody) {
     return { op_index: index, op: "create", ok: false, error: resolvedBody.error };
   }
   const body = resolvedBody.body;
-  const relationError = unsupportedRelationFieldError(entry.entityType, body);
-  if (relationError) {
-    return { op_index: index, op: "create", ok: false, error: relationError };
+  const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(entry.entityType, body);
+  if (nodeJsonEdgeKeyError) {
+    return { op_index: index, op: "create", ok: false, error: nodeJsonEdgeKeyError };
   }
   const draft = stampAuthenticatedCreator({ ...body }, ctx.actorId);
   if (entry.fillFromAuth) {
@@ -322,7 +310,7 @@ async function createNode(
     // required edge, point the author at the two ways to fix it.
     const hint =
       /missing required/i.test(result.error) && /edge|field/i.test(result.error)
-        ? ' (tip: pass the relationship inline on this create op — set the owning field, e.g. "intent_ids"/"reports_to"/"actor_principal_id", to "$alias" — or create the node as "drafting", add the edge, then assert.)'
+        ? " (tip: create the node with an alias, then add a `relate` or `relate_many` op in the same changeset before asserting it.)"
         : "";
     return { op_index: index, op: "create", ok: false, error: `${result.error}${hint}` };
   }
@@ -360,15 +348,6 @@ async function relateMany(
     };
   }
 
-  const owners = new Map<
-    string,
-    {
-      ownerType: string;
-      data: Record<string, unknown>;
-      patch: EntityPatch;
-      relations: NonNullable<OperationResult["relations"]>;
-    }
-  >();
   const edgeFooterLines: string[] = [];
   const edgeRelations: NonNullable<OperationResult["relations"]> = [];
 
@@ -395,99 +374,26 @@ async function relateMany(
     }
 
     const props = relationProps(spec, relation);
-    if (spec.storage === "edge") {
-      const captured = await captureRelationEdge(ctx, spec, from, to, props);
-      if ("error" in captured) {
-        return {
-          op_index: index,
-          op: "relate_many",
-          ok: false,
-          error: captured.error,
-        };
-      }
-      edgeFooterLines.push(...captured.footer_lines);
-      edgeRelations.push({
-        kind: spec.kind,
-        from,
-        to,
-        stored_on: captured.id ?? "edge",
-        field: "edge",
-        ...(captured.id ? { edge_id: captured.id } : {}),
-      });
-      continue;
-    }
-    const ownerId = spec.owner === "from" ? from : to;
-    const valueId = spec.value === "from" ? from : to;
-    const ownerType = entityTypeFromId(ownerId);
-    if (!ownerType) {
+    const captured = await captureRelationEdge(ctx, spec, from, to, props);
+    if ("error" in captured) {
       return {
         op_index: index,
         op: "relate_many",
         ok: false,
-        error: `Invalid relation owner id: ${ownerId}.`,
+        error: captured.error,
       };
     }
-
-    let ownerDraft = owners.get(ownerId);
-    if (!ownerDraft) {
-      const owner = await getEntity(ownerType, ownerId);
-      if (!owner || owner.doco_id !== ctx.docoId) {
-        return {
-          op_index: index,
-          op: "relate_many",
-          ok: false,
-          error: `Relation owner not found in this doco: ${ownerId}.`,
-        };
-      }
-      ownerDraft = {
-        ownerType,
-        data: { ...(owner.data ?? {}) },
-        patch: {},
-        relations: [],
-      };
-      owners.set(ownerId, ownerDraft);
-    }
-
-    const target = await getEntity(entityTypeFromId(valueId) ?? "", valueId);
-    if (!target || target.doco_id !== ctx.docoId) {
-      return {
-        op_index: index,
-        op: "relate_many",
-        ok: false,
-        error: `Relation target not found in this doco: ${valueId}.`,
-      };
-    }
-
-    const patch = buildRelationPatch(ownerDraft.data, spec, valueId, props);
-    if (patch) {
-      Object.assign(ownerDraft.data, patch);
-      Object.assign(ownerDraft.patch, patch);
-    }
-    ownerDraft.relations.push({
+    edgeFooterLines.push(...captured.footer_lines);
+    edgeRelations.push({
       kind: spec.kind,
       from,
       to,
-      stored_on: ownerId,
-      field: spec.field,
+      ...(captured.id ? { edge_id: captured.id } : {}),
     });
   }
 
   const footerLines: string[] = [...edgeFooterLines];
   const relations: NonNullable<OperationResult["relations"]> = [...edgeRelations];
-  for (const [ownerId, ownerDraft] of owners) {
-    relations.push(...ownerDraft.relations);
-    if (Object.keys(ownerDraft.patch).length === 0) continue;
-    const patched = await patchRelationOwner(ctx, ownerDraft.ownerType, ownerId, ownerDraft.patch);
-    if ("error" in patched) {
-      return {
-        op_index: index,
-        op: "relate_many",
-        ok: false,
-        error: patched.error,
-      };
-    }
-    footerLines.push(...patched.footer_lines);
-  }
 
   return {
     op_index: index,
@@ -526,89 +432,27 @@ async function relateNodes(
     };
   }
   const props = relationProps(spec, op);
-  if (spec.storage === "edge") {
-    const captured = await captureRelationEdge(ctx, spec, from, to, props);
-    if ("error" in captured) {
-      return {
-        op_index: index,
-        op: "relate",
-        ok: false,
-        error: captured.error,
-      };
-    }
-    return {
-      op_index: index,
-      op: "relate",
-      ok: true,
-      ...(captured.skipped ? { skipped: true } : {}),
-      relation: {
-        kind: spec.kind,
-        from,
-        to,
-        stored_on: captured.id ?? "edge",
-        field: "edge",
-        ...(captured.id ? { edge_id: captured.id } : {}),
-      },
-      footer_lines: captured.footer_lines,
-    };
-  }
-  const ownerId = spec.owner === "from" ? from : to;
-  const valueId = spec.value === "from" ? from : to;
-  const ownerType = entityTypeFromId(ownerId);
-  if (!ownerType) {
+  const captured = await captureRelationEdge(ctx, spec, from, to, props);
+  if ("error" in captured) {
     return {
       op_index: index,
       op: "relate",
       ok: false,
-      error: `Invalid relation owner id: ${ownerId}.`,
-    };
-  }
-  const owner = await getEntity(ownerType, ownerId);
-  if (!owner || owner.doco_id !== ctx.docoId) {
-    return {
-      op_index: index,
-      op: "relate",
-      ok: false,
-      error: `Relation owner not found in this doco: ${ownerId}.`,
-    };
-  }
-  const target = await getEntity(entityTypeFromId(valueId) ?? "", valueId);
-  if (!target || target.doco_id !== ctx.docoId) {
-    return {
-      op_index: index,
-      op: "relate",
-      ok: false,
-      error: `Relation target not found in this doco: ${valueId}.`,
-    };
-  }
-
-  const patch = buildRelationPatch(owner.data ?? {}, spec, valueId, props);
-  if (!patch) {
-    return {
-      op_index: index,
-      op: "relate",
-      ok: true,
-      skipped: true,
-      relation: { kind: spec.kind, from, to, stored_on: ownerId, field: spec.field },
-      footer_lines: [],
-    };
-  }
-
-  const patched = await patchRelationOwner(ctx, ownerType, ownerId, patch);
-  if ("error" in patched) {
-    return {
-      op_index: index,
-      op: "relate",
-      ok: false,
-      error: patched.error,
+      error: captured.error,
     };
   }
   return {
     op_index: index,
     op: "relate",
     ok: true,
-    relation: { kind: spec.kind, from, to, stored_on: ownerId, field: spec.field },
-    footer_lines: patched.footer_lines,
+    ...(captured.skipped ? { skipped: true } : {}),
+    relation: {
+      kind: spec.kind,
+      from,
+      to,
+      ...(captured.id ? { edge_id: captured.id } : {}),
+    },
+    footer_lines: captured.footer_lines,
   };
 }
 
@@ -623,7 +467,8 @@ async function captureRelationEdge(
 > {
   const edgeFrom = spec.owner === "from" ? from : to;
   const edgeTo = spec.value === "from" ? from : to;
-  if (await edgeExists(ctx.docoId, spec.kind, edgeFrom, edgeTo)) {
+  const role = typeof props.role === "string" ? props.role : null;
+  if (await edgeExists(ctx.docoId, spec.kind, edgeFrom, edgeTo, role)) {
     return { ok: true, skipped: true, footer_lines: [] };
   }
   const result = await captureEdge({
@@ -641,114 +486,6 @@ async function captureRelationEdge(
   return { ok: true, id: result.id, footer_lines: result.footer_lines };
 }
 
-function buildRelationPatch(
-  data: Record<string, unknown>,
-  spec: RelationKindSpec,
-  valueId: string,
-  _props: Record<string, unknown>,
-): EntityPatch | null {
-  if (spec.cardinality === "one") {
-    return data[spec.field] === valueId ? null : { [spec.field]: valueId };
-  }
-  const current = Array.isArray(data[spec.field]) ? [...(data[spec.field] as unknown[])] : [];
-  const nextEntry = valueId;
-  const foundIndex = current.findIndex((entry) => relationTarget(entry) === valueId);
-  if (foundIndex < 0) {
-    return { [spec.field]: [...current, nextEntry] };
-  }
-  if (JSON.stringify(current[foundIndex]) === JSON.stringify(nextEntry)) return null;
-  current[foundIndex] = nextEntry;
-  return { [spec.field]: current };
-}
-
-async function patchRelationOwner(
-  ctx: ChangesetContext,
-  ownerType: string,
-  ownerId: string,
-  patch: EntityPatch,
-): Promise<UpdateResult | CaptureError> {
-  if (ownerType === "decision") {
-    return updateDecision(
-      ctx.dir,
-      ctx.docoId,
-      ctx.ownerSlug,
-      ctx.docoSlug,
-      ownerId,
-      patch,
-      ctx.docoHost,
-      ctx.actorId,
-      ctx.authoring,
-    );
-  }
-  if (ownerType === "principal") {
-    if (!("reports_to" in patch) || Object.keys(patch).length !== 1) {
-      return { error: "Changesets can only patch Principal reports_to relations." };
-    }
-    return patchPrincipal(ctx, ownerId, patch);
-  }
-  if (!CAPTURE_REGISTRY_BY_ENTITY_TYPE[ownerType]) {
-    return {
-      error: `Changesets cannot patch ${ownerType} relations yet; use that type's dedicated endpoint.`,
-    };
-  }
-  return updateEntity({
-    docoDir: ctx.dir,
-    docoId: ctx.docoId,
-    ownerSlug: ctx.ownerSlug,
-    docoSlug: ctx.docoSlug,
-    entityType: ownerType as NodeTypeName,
-    pluralDir: `${ownerType}s`,
-    id: ownerId,
-    patch,
-    allowedFields: undefined,
-    docoHost: ctx.docoHost,
-    actorId: ctx.actorId,
-    authoring: ctx.authoring,
-  });
-}
-
-async function patchPrincipal(
-  ctx: ChangesetContext,
-  ownerId: string,
-  patch: EntityPatch,
-): Promise<UpdateResult | CaptureError> {
-  const { action } = await import("~/routes/$docoHandle.api.principals.$id[.]json");
-  const headers = new Headers();
-  headers.set("content-type", "application/json");
-  const cookie = ctx.request.headers.get("cookie");
-  const authorization = ctx.request.headers.get("authorization");
-  const authoringSurface = ctx.request.headers.get("x-doco-authoring-surface");
-  if (cookie) headers.set("cookie", cookie);
-  if (authorization) headers.set("authorization", authorization);
-  if (authoringSurface) headers.set("x-doco-authoring-surface", authoringSurface);
-  const response = await action({
-    request: new Request(`${ctx.docoHost}/${ctx.docoSlug}/api/principals/${ownerId}.json`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify(patch),
-    }),
-    params: { docoHandle: ctx.docoSlug, id: ownerId },
-  });
-  const body = (await response.json()) as {
-    ok?: boolean;
-    id?: string;
-    error?: string;
-    footer_lines?: string[];
-    duration_ms?: number;
-  };
-  if (!response.ok || body.error) {
-    return { error: body.error ?? `Principal patch failed with ${response.status}` };
-  }
-  return {
-    ok: true,
-    id: body.id ?? ownerId,
-    path: `<postgres>:principals/${ownerId}`,
-    footer_lines: body.footer_lines ?? [],
-    changed: Object.keys(patch),
-    duration_ms: body.duration_ms ?? 0,
-  };
-}
-
 function resolveRef(value: unknown, aliases: Map<string, string>): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const trimmed = value.trim();
@@ -757,18 +494,7 @@ function resolveRef(value: unknown, aliases: Map<string, string>): string | null
 }
 
 /**
- * Resolve `$alias` references inside a create body so a node can be born
- * WITH the relations stored on its own fields — `intent_ids` (serves),
- * `reports_to`, `actor_principal_id`, `gated_by`, etc.
- *
- * Without this, the only way to satisfy a `requires_edge` policy was to
- * create the node `drafting`, add the edge in a later `relate` op, then
- * assert — because a `create` is policy-checked the instant it runs, before
- * any later op. Setting `lifecycle:"asserted"` up front then failed with a
- * confusing "missing required edge". Resolving aliases here makes
- * "create an asserted node + its constitutive edges" a single atomic op,
- * which matters for every relational thing Doco documents (org charts,
- * OKRs, traceability, dependencies — not just BPMN flows).
+ * Resolve `$alias` references inside ordinary create-body values.
  *
  * Only a string whose ENTIRE trimmed value is a `$`-prefixed token is
  * treated as a reference (so prose like "Charge $5" is untouched). Walks
@@ -831,18 +557,6 @@ function relationProps(
   return props;
 }
 
-function relationTarget(entry: unknown): string | null {
-  if (typeof entry === "string") return entry;
-  if (
-    entry &&
-    typeof entry === "object" &&
-    typeof (entry as { target?: unknown }).target === "string"
-  ) {
-    return (entry as { target: string }).target;
-  }
-  return null;
-}
-
 function normalizeEntityType(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
@@ -857,22 +571,6 @@ function normalizeEntityType(value: unknown): string | null {
 function entityTypeFromId(id: string): string | null {
   const m = ENTITY_ID_RE.exec(id);
   return m?.[1] ?? null;
-}
-
-/** Pull entity-id refs out of a relation field value — a bare id, an id
- *  list, or a list of `{ target, ... }` objects from legacy data. */
-function relationFieldTargets(value: unknown): string[] {
-  const out: string[] = [];
-  const push = (x: unknown) => {
-    if (typeof x === "string" && ENTITY_ID_RE.test(x)) out.push(x);
-    else if (x && typeof x === "object" && typeof (x as { target?: unknown }).target === "string") {
-      const t = (x as { target: string }).target;
-      if (ENTITY_ID_RE.test(t)) out.push(t);
-    }
-  };
-  if (Array.isArray(value)) for (const v of value) push(v);
-  else push(value);
-  return out;
 }
 
 async function summarizeIntegrity(docoId: string, perspective: string, createdIds: string[]) {
@@ -902,10 +600,6 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
     );
     return new Map(rows.map((row) => [row.id, row]));
   });
-  const primarySpec = relationKind(primary);
-  const ownerField = primarySpec?.storage === "edge" ? null : primarySpec?.field;
-  const jsonOutgoing = new Map<string, number>();
-  const jsonHasIncoming = new Set<string>();
   const entities = new Map<string, Awaited<ReturnType<typeof getEntity>>>();
   for (const id of createdIds) {
     const entityType = entityTypeFromId(id);
@@ -913,11 +607,6 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
     const entity = await getEntity(entityType, id);
     if (!entity || entity.doco_id !== docoId) continue;
     entities.set(id, entity);
-    if (ownerField) {
-      const targets = relationFieldTargets((entity.data as Record<string, unknown>)?.[ownerField]);
-      if (targets.length > 0) jsonOutgoing.set(id, targets.length);
-      for (const t of targets) jsonHasIncoming.add(t);
-    }
   }
   const createdWithoutIncoming: string[] = [];
   const openFrontiers: string[] = [];
@@ -926,8 +615,8 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
     if (!entity) continue;
     if (nodeTypes.size > 0 && !nodeTypes.has(entity.entity_type)) continue;
     const count = counts.get(id);
-    const incoming = Number(count?.incoming ?? 0) + (jsonHasIncoming.has(id) ? 1 : 0);
-    const outgoing = Number(count?.outgoing ?? 0) + (jsonOutgoing.get(id) ?? 0);
+    const incoming = Number(count?.incoming ?? 0);
+    const outgoing = Number(count?.outgoing ?? 0);
     const isInitial = entity.entity_type === "state" && entity.data?.kind === "initial";
     const isTerminal = entity.entity_type === "state" && entity.data?.kind === "terminal";
     if (incoming === 0 && !isInitial) createdWithoutIncoming.push(id);

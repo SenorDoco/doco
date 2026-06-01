@@ -581,15 +581,15 @@ describe("authoring runner — integration", () => {
         [PRINCIPAL_ALICE, DOCO_ID],
       );
       // graph-completeness policy: every id in `actors` on an Intent
-      // must be covered by an incoming Action with a supports edge whose
-      // actor_id equals that id.
+      // must be covered by an incoming Action with edge_type=performed_by
+      // whose actor_id equals that id.
       const yaml = JSON.stringify({
         id: POLICY_ID_PRINCIPAL,
         summary: "Intent.actors are covered by Actions",
         predicate: {
           kind: "graph-completeness",
           list_field: "actors",
-          edge_type: "supports",
+          edge_type: "performed_by",
           incoming_node_type: "action",
           incoming_field_must_match: "actor_id",
           when_node_type: ["intent"],
@@ -626,14 +626,9 @@ describe("authoring runner — integration", () => {
     });
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type, props)
-           VALUES ($1, $2, $3, 'action', 'intent', 'supports', $4::jsonb)`,
-        [
-          DOCO_ID,
-          coveringActionId,
-          intentId,
-          JSON.stringify({ role: "serves", source_field: "intent_ids" }),
-        ],
+        `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type)
+           VALUES ($1, $2, $3, 'action', 'intent', 'performed_by')`,
+        [DOCO_ID, coveringActionId, intentId],
       );
     });
 
@@ -721,11 +716,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     };
   }
 
-  it("rejects a requires_edge predicate whose edge_type is a field name", async () => {
-    // Defends fix #11: a predicate that says edge_type = "intent_ids"
-    // (the field name) would never match because deriveEdges rewrites
-    // the field name to "serves". The validator now catches this at
-    // capture time and surfaces the canonical name.
+  it("rejects a requires_edge predicate whose edge_type is a blocked node JSON edge key", async () => {
     await seedDoco();
     const result = await captureNodeAuthoringPolicy(
       "",
@@ -737,14 +728,11 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     expect("error" in result).toBe(true);
     if ("error" in result) {
       expect(result.error).toMatch(/intent_ids/);
-      expect(result.error).toMatch(/supports/);
+      expect(result.error).toMatch(/first-class edge type/);
     }
   });
 
-  it("rejects a forbids_edge predicate whose edge_type is a SKIP_FIELDS field", async () => {
-    // Defends fix #10/#11: deriveEdges skips `inputs`, so a edge
-    // with that type can never exist. The validator surfaces this rather
-    // than letting the policy sit silently dead.
+  it("allows a forbids_edge predicate with a non-reserved edge_type", async () => {
     await seedDoco();
     const result = await captureNodeAuthoringPolicy(
       "",
@@ -753,10 +741,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
       "val-test",
       draft({ kind: "forbids_edge", edge_type: "inputs" }),
     );
-    expect("error" in result).toBe(true);
-    if ("error" in result) {
-      expect(result.error).toMatch(/SKIP_FIELDS/);
-    }
+    expect("error" in result).toBe(false);
   });
 
   it("accepts a requires_edge predicate with a canonical edge_type", async () => {
@@ -771,16 +756,16 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     expect("error" in result).toBe(false);
   });
 
-  it("accepts a requires_edge predicate with a simplified canonical edge type", async () => {
+  it("rejects another blocked node JSON edge key", async () => {
     await seedDoco();
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
       "val-org",
       "val-test",
-      draft({ kind: "requires_edge", edge_type: "flows_to" }),
+      draft({ kind: "requires_edge", edge_type: "preceded_by" }),
     );
-    expect("error" in result).toBe(false);
+    expect("error" in result).toBe(true);
   });
 });
 

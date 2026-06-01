@@ -312,8 +312,8 @@ export default [
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
   route(":docoHandle/rules/new", "routes/$docoHandle.rules.new.tsx"),
-  // Edges — Doco's relationships materialize as rows in the `edges`
-  // table (D-017, fields-as-edges). The list view is one row per
+  // Edges — Doco's relationships are rows in the `edges`
+  // table. The list view is one row per
   // edge; the detail view renders the two connected nodes via
   // EntityGraph plus the edge's metadata. Composite key
   // `(edge_type, from_id, to_id)` is url-encoded as

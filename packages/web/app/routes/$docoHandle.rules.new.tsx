@@ -10,6 +10,7 @@ import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { type RuleDraft, captureRule } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
+import { captureEdge } from "~/lib/edge-capture.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
@@ -79,10 +80,8 @@ export async function action({
     {
       rule: ruleText,
       predicate,
-      intent_ids: intentId ? [intentId] : [],
       severity,
       enforced_by: enforcedBy,
-      authored_by_principal_id: authorPrincipalId ?? undefined,
     } satisfies RuleDraft,
     me?.id,
   );
@@ -97,6 +96,36 @@ export async function action({
   );
   if ("error" in result) {
     return Response.json(result, { status: result.status ?? 400 });
+  }
+  if (authorPrincipalId) {
+    const edge = await captureEdge({
+      docoId: meta.docoId,
+      actorId: me?.id ?? null,
+      edgeType: "attributed_to",
+      fromId: result.id,
+      toId: authorPrincipalId,
+      props: { role: "owned_by" },
+      reason: `Rule ${result.id} authored by Principal ${authorPrincipalId}`,
+      metadata: { route: "rules.new" },
+    });
+    if ("error" in edge) {
+      return Response.json(edge, { status: edge.status });
+    }
+  }
+  if (intentId) {
+    const edge = await captureEdge({
+      docoId: meta.docoId,
+      actorId: me?.id ?? null,
+      edgeType: "supports",
+      fromId: result.id,
+      toId: intentId,
+      props: { role: "serves" },
+      reason: `Rule ${result.id} serves Intent ${intentId}`,
+      metadata: { route: "rules.new" },
+    });
+    if ("error" in edge) {
+      return Response.json(edge, { status: edge.status });
+    }
   }
   return redirect(`/${handle}/rule/${result.id}`);
 }

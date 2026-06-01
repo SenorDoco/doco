@@ -40,7 +40,7 @@ export async function loader({
           to: "target_or_$alias",
           label: "optional edge label",
         },
-        note: "Adds a typed relation by patching whichever field owns that relation kind.",
+        note: "Adds a typed relation as a first-class edge row.",
       },
       relate_many: {
         shape: {
@@ -54,7 +54,7 @@ export async function loader({
             },
           ],
         },
-        note: "Adds multiple typed relations in one owner patch where possible. Use this when sibling edges must be valid together.",
+        note: "Adds multiple typed relations as first-class edge rows. Use this when sibling edges must be valid together.",
       },
       append: {
         shape: {
@@ -86,8 +86,14 @@ export async function loader({
                 action: "SuD charges the authorized card",
                 verb: "charge",
                 lifecycle: "drafting",
-                actor_principal_id: "principal_01...",
               },
+            },
+            {
+              op: "relate",
+              relation_kind: "attributed_to",
+              from: "$charge_card",
+              to: "principal_01...",
+              relation_props: { role: "performed_by" },
             },
           ],
         },
@@ -105,7 +111,6 @@ export async function loader({
                 action: "Charge the authorized card",
                 verb: "charge",
                 lifecycle: "drafting",
-                actor_principal_id: "principal_01...",
               },
             },
             {
@@ -116,7 +121,6 @@ export async function loader({
                 action: "Send payment request to manual review",
                 verb: "send",
                 lifecycle: "drafting",
-                actor_principal_id: "principal_01...",
               },
             },
             {
@@ -133,6 +137,18 @@ export async function loader({
                   from: "decision_01...",
                   to: "$manual_review",
                   label: "No",
+                },
+                {
+                  relation_kind: "attributed_to",
+                  from: "$charge_card",
+                  to: "principal_01...",
+                  relation_props: { role: "performed_by" },
+                },
+                {
+                  relation_kind: "attributed_to",
+                  from: "$manual_review",
+                  to: "principal_01...",
+                  relation_props: { role: "performed_by" },
                 },
               ],
             },

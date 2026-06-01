@@ -19,18 +19,18 @@ export interface SubprocessCandidate {
   pool_id: string;
   /** Every Intent this node `serves`. The primary one (highest
    *  PageRank) is its `pool_id`; the rest are sub-process candidates. */
-  intent_ids?: string[];
+  served_intent_ids?: string[];
 }
 
 /**
  * The Intents an Action drills into as sub-processes: every Intent it
  * `serves` that (a) isn't the Action's own pool and (b) has a pool
- * actually rendered on the current canvas. Order follows `intent_ids`;
+ * actually rendered on the current canvas. Order follows the served Intent ids;
  * duplicates are dropped.
  *
  * Only Actions qualify. The BPMN "+" collapsed-subprocess marker is an
  * *activity* glyph, so gateways (Decisions) and other shapes never
- * carry it even when they list multiple `intent_ids`. Restricting to
+ * carry it even when they serve multiple Intents. Restricting to
  * rendered pools keeps the rule honest: we only draw a drill-down link
  * to a sub-process the viewer can actually see.
  */
@@ -39,7 +39,7 @@ export function subprocessTargetIntents(
   renderedIntentPools: ReadonlySet<string>,
 ): string[] {
   if (node.entity_type !== "action") return [];
-  const served = node.intent_ids;
+  const served = node.served_intent_ids;
   if (!served || served.length === 0) return [];
   const homeIntent = node.pool_id.startsWith("pool:") ? node.pool_id.slice("pool:".length) : null;
   const targets: string[] = [];

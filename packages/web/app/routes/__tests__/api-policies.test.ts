@@ -127,6 +127,7 @@ describe("/<doco>/api/policies.json", () => {
         created_by_user_id: "user_alice",
       }),
       "https://doco.test",
+      expect.any(Object),
     );
   });
 });

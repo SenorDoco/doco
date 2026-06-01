@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   runAuthoringPolicies: vi.fn(),
   reindexAndScheduleAttach: vi.fn(),
   appendAuditEvent: vi.fn(),
-  reconcileNodeEdges: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
@@ -58,10 +57,6 @@ vi.mock("~/lib/db.server", () => ({
   docoPath: (handle: string) => `/tmp/docos/${handle}`,
 }));
 
-vi.mock("~/lib/managed-edges.server", () => ({
-  reconcileNodeEdges: mocks.reconcileNodeEdges,
-}));
-
 import { action } from "../$docoHandle.api.principals[.]json";
 
 function principalRequest(body: Record<string, unknown>): Request {
@@ -91,7 +86,6 @@ describe("principal API", () => {
       violations: [],
     });
     mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
-    mocks.reconcileNodeEdges.mockResolvedValue({ created: 0, retired: 0 });
     mocks.getEntity.mockResolvedValue(null);
   });
 
@@ -254,13 +248,7 @@ describe("principal API", () => {
     });
   });
 
-  it("accepts a reports_to manager principal and stores it in data", async () => {
-    mocks.getEntity.mockResolvedValue({
-      id: "principal_manager",
-      doco_id: "doco_acme",
-      data: { node_type: "principal", name: "boss" },
-    });
-
+  it("rejects reports_to in principal JSON because reporting lines are edges", async () => {
     const response = await action({
       request: principalRequest({
         name: "alice",
@@ -269,24 +257,15 @@ describe("principal API", () => {
       params: { docoHandle: "acme" } as never,
     });
 
-    expect(response.status).toBe(201);
-    expect(mocks.getEntity).toHaveBeenCalledWith("principal", "principal_manager");
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          name: "alice",
-          reports_to: "principal_manager",
-        }),
-      }),
-    );
-    expect(mocks.reindexAndScheduleAttach).toHaveBeenCalledWith(
-      expect.stringContaining("acme"),
-      "doco_acme",
-      expect.stringMatching(/^principal_/),
-    );
+    expect(response.status).toBe(400);
+    expect(mocks.getEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("reports_to is not a node JSON field"),
+    });
   });
 
-  it("rejects reports_to that doesn't look like a principal id", async () => {
+  it("rejects reports_to before validating endpoint shape", async () => {
     const response = await action({
       request: principalRequest({
         name: "alice",
@@ -298,17 +277,11 @@ describe("principal API", () => {
     expect(response.status).toBe(400);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("reports_to must be a principal id"),
+      error: expect.stringContaining("reports_to is not a node JSON field"),
     });
   });
 
-  it("rejects reports_to that points at a principal in a different Doco", async () => {
-    mocks.getEntity.mockResolvedValue({
-      id: "principal_stranger",
-      doco_id: "doco_other",
-      data: { node_type: "principal", name: "stranger" },
-    });
-
+  it("rejects reports_to even when it looks like a principal id", async () => {
     const response = await action({
       request: principalRequest({
         name: "alice",
@@ -318,9 +291,10 @@ describe("principal API", () => {
     });
 
     expect(response.status).toBe(400);
+    expect(mocks.getEntity).not.toHaveBeenCalled();
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("reports_to principal not found"),
+      error: expect.stringContaining("reports_to is not a node JSON field"),
     });
   });
 });

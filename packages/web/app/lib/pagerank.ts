@@ -3,8 +3,8 @@
  * optional personalization vector for "personalized PageRank" from a
  * focal node.
  *
- * Used by the BPMN perspective to pick a primary Intent when a node
- * lists multiple `intent_ids`. With no focal node, the unweighted
+ * Used by graph perspectives to pick a primary node from several edge-linked
+ * candidates. With no focal node, the unweighted
  * teleport distribution gives standard PageRank — the Intent that the
  * graph's structure says is most important wins. With a focal node,
  * teleport biases back to the focal so the Intent most relevant *to

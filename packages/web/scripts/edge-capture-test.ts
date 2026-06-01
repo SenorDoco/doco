@@ -62,10 +62,10 @@ async function main(): Promise<void> {
   const created = await captureEdge({
     docoId,
     actorId: userId,
-    edgeType: "implemented_by",
+    edgeType: "supports",
     fromId: decisionId,
     toId: refId,
-    props: { note: "ships in PR #634" },
+    props: { role: "implemented_by", note: "ships in PR #634" },
     reason: "link decision to the PR that ships it",
   });
   check("captureEdge succeeds", "ok" in created && created.ok === true);
@@ -76,9 +76,10 @@ async function main(): Promise<void> {
   const dup = await captureEdge({
     docoId,
     actorId: userId,
-    edgeType: "implemented_by",
+    edgeType: "supports",
     fromId: decisionId,
     toId: refId,
+    props: { role: "implemented_by" },
   });
   check("duplicate live edge rejected (409)", "error" in dup && dup.status === 409);
 
@@ -94,7 +95,7 @@ async function main(): Promise<void> {
   const selfEdge = await captureEdge({
     docoId,
     actorId: userId,
-    edgeType: "serves",
+    edgeType: "supports",
     fromId: decisionId,
     toId: decisionId,
   });
@@ -102,7 +103,7 @@ async function main(): Promise<void> {
   const missing = await captureEdge({
     docoId,
     actorId: userId,
-    edgeType: "serves",
+    edgeType: "supports",
     fromId: decisionId,
     toId: makeEntityId("reference", generateUlid()),
   });
@@ -134,9 +135,10 @@ async function main(): Promise<void> {
   const recreated = await captureEdge({
     docoId,
     actorId: userId,
-    edgeType: "implemented_by",
+    edgeType: "supports",
     fromId: decisionId,
     toId: refId,
+    props: { role: "implemented_by" },
   });
   check("recreate after retire succeeds", "ok" in recreated && recreated.ok === true);
 

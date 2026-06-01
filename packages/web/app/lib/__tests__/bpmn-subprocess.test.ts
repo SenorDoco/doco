@@ -10,7 +10,7 @@ describe("subprocessTargetIntents", () => {
         {
           entity_type: "action",
           pool_id: "pool:intent_home",
-          intent_ids: ["intent_home", "intent_sub"],
+          served_intent_ids: ["intent_home", "intent_sub"],
         },
         rendered("intent_home", "intent_sub"),
       ),
@@ -20,7 +20,7 @@ describe("subprocessTargetIntents", () => {
   it("excludes the home Intent even when it is listed first or last", () => {
     expect(
       subprocessTargetIntents(
-        { entity_type: "action", pool_id: "pool:intent_home", intent_ids: ["intent_home"] },
+        { entity_type: "action", pool_id: "pool:intent_home", served_intent_ids: ["intent_home"] },
         rendered("intent_home"),
       ),
     ).toEqual([]);
@@ -32,20 +32,20 @@ describe("subprocessTargetIntents", () => {
         {
           entity_type: "action",
           pool_id: "pool:intent_home",
-          intent_ids: ["intent_home", "intent_hidden"],
+          served_intent_ids: ["intent_home", "intent_hidden"],
         },
         rendered("intent_home"), // intent_hidden has no pool
       ),
     ).toEqual([]);
   });
 
-  it("preserves intent_ids order and de-duplicates", () => {
+  it("preserves served Intent order and de-duplicates", () => {
     expect(
       subprocessTargetIntents(
         {
           entity_type: "action",
           pool_id: "pool:intent_home",
-          intent_ids: ["intent_b", "intent_home", "intent_a", "intent_b"],
+          served_intent_ids: ["intent_b", "intent_home", "intent_a", "intent_b"],
         },
         rendered("intent_home", "intent_a", "intent_b"),
       ),
@@ -58,7 +58,7 @@ describe("subprocessTargetIntents", () => {
         {
           entity_type: "decision",
           pool_id: "pool:intent_home",
-          intent_ids: ["intent_home", "intent_sub"],
+          served_intent_ids: ["intent_home", "intent_sub"],
         },
         rendered("intent_home", "intent_sub"),
       ),
@@ -80,7 +80,11 @@ describe("subprocessTargetIntents", () => {
     // a genuine drill-down target.
     expect(
       subprocessTargetIntents(
-        { entity_type: "action", pool_id: "pool:unassigned", intent_ids: ["intent_a", "intent_b"] },
+        {
+          entity_type: "action",
+          pool_id: "pool:unassigned",
+          served_intent_ids: ["intent_a", "intent_b"],
+        },
         rendered("intent_a", "intent_b"),
       ),
     ).toEqual(["intent_a", "intent_b"]);

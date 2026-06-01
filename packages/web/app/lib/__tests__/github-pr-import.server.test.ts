@@ -74,7 +74,7 @@ describe("linkPullRequestToWork", () => {
         edgeType: "supports",
         fromId: "intent_01BX5ZZKBKACTAV9WEVGEMMVRZ",
         toId: "reference_pr",
-        props: { role: "implemented_by", source_field: "implemented_by" },
+        props: { role: "implemented_by" },
       }),
     );
   });
@@ -166,9 +166,10 @@ describe("PR changed-code business-process links", () => {
     expect(res).toEqual({ linked: 1, existing: 0, skipped: 0 });
     expect(capture).toHaveBeenCalledWith(
       expect.objectContaining({
-        edgeType: "implemented_by",
+        edgeType: "supports",
         fromId: "action_01ARZ3NDEKTSV4RRFFQ69G5FAV",
         toId: "reference_pr",
+        props: { role: "implemented_by" },
         reason:
           "Linked from a GitHub pull request touching an existing business-process code reference.",
       }),
