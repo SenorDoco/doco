@@ -13,6 +13,7 @@
 //
 // Writer-gated mutations (matches the legacy /settings/integrations actions).
 import { roleAtLeast } from "@doco/db";
+import { waitUntil } from "@vercel/functions";
 import { Form, useActionData, useLoaderData, useSearchParams } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -28,8 +29,11 @@ import {
   githubOrgAccounts,
   parseRepoSlug,
   removeConnection,
+  resumeCursorFromConnections,
+  setBackfillState,
 } from "~/lib/github-connection.server";
 import { lifecycleColor } from "~/lib/node-colors";
+import { kickBackfillRun } from "./api.github.backfill-run";
 
 export async function loader({
   request,
@@ -113,6 +117,20 @@ export async function action({
       createdByUserId: me.id,
     });
     return { ok: true, sync: { repo, ...result } };
+  }
+
+  if (intent === "resync-all") {
+    // Recover a stalled / incomplete org import: rebuild the resumable cursor
+    // from the current connections and kick the worker. Idempotent upserts mean
+    // re-walking already-imported PRs just no-ops; gaps from a dropped chain or
+    // an old timed-out backfill get filled. Kicked off the request path so the
+    // form returns immediately and the "importing…" banner takes over.
+    const ctx = await getDocoConnectionsContext(meta.docoId);
+    if (!ctx || ctx.connections.length === 0)
+      return { error: "Nothing is connected to re-import." };
+    await setBackfillState(meta.docoId, resumeCursorFromConnections(ctx.connections, ctx.backfill));
+    waitUntil(kickBackfillRun(new URL(request.url).origin, meta.docoId));
+    return { ok: true, message: "Re-importing pull requests in the background…" };
   }
 
   return { error: `Unknown action: ${intent}` };
@@ -336,6 +354,24 @@ export default function DocoIntegrations() {
                 ) : (
                   <p className="text-sm text-muted-foreground">No repositories connected yet.</p>
                 )}
+                {connections.length > 0 ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Import stuck or incomplete? Re-import walks every connected repo from the
+                      start — already-imported PRs are skipped.
+                    </p>
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="resync-all" />
+                      <button
+                        type="submit"
+                        className="shrink-0 rounded border px-2 py-1 text-xs"
+                        disabled={importing}
+                      >
+                        {importing ? "Importing…" : "Re-import all PRs"}
+                      </button>
+                    </Form>
+                  </div>
+                ) : null}
                 {docoInstallUrl ? null : (
                   <details className="text-sm">
                     <summary className="cursor-pointer">Connect a repository (manual)</summary>

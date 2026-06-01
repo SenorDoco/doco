@@ -13,8 +13,53 @@ import {
   normalizeConnections,
   normalizeInstallations,
   parseRepoSlug,
+  resumeCursorFromConnections,
   subscribeInstallation,
 } from "../github-connection.server";
+
+describe("resumeCursorFromConnections", () => {
+  const conns: GitHubConnection[] = [
+    { repo: "acme/store", installation_id: 42 },
+    { repo: "acme/web", installation_id: 42 },
+  ];
+  it("rebuilds a running cursor whose queue is every connected repo, reset to the start", () => {
+    const cur = resumeCursorFromConnections(conns);
+    expect(cur).toMatchObject({
+      status: "running",
+      queue: ["acme/store", "acme/web"],
+      repo_index: 0,
+      page: 1,
+      repos: 2,
+      installation_id: 42,
+    });
+    expect(typeof cur.cursor_at).toBe("string");
+    expect(typeof cur.started_at).toBe("string");
+  });
+  it("carries forward tallies and started_at from a prior (stranded) marker", () => {
+    const cur = resumeCursorFromConnections(conns, {
+      status: "running",
+      started_at: "2026-01-01T00:00:00.000Z",
+      imported: 4200,
+      updated: 7,
+      unchanged: 12,
+      failed: 1,
+      installation_id: 99,
+    });
+    expect(cur).toMatchObject({
+      started_at: "2026-01-01T00:00:00.000Z",
+      imported: 4200,
+      updated: 7,
+      unchanged: 12,
+      failed: 1,
+      installation_id: 99,
+      repo_index: 0,
+      page: 1,
+    });
+  });
+  it("yields an empty queue when nothing is connected", () => {
+    expect(resumeCursorFromConnections([]).queue).toEqual([]);
+  });
+});
 
 describe("githubOrgAccounts", () => {
   it("derives owners from connected repos when there are no installation subs", () => {

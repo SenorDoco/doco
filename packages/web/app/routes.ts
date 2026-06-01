@@ -181,6 +181,8 @@ export default [
   route("api/github/setup", "routes/api.github.setup.tsx"),
   // Self-chaining PR-import worker (one time-budgeted slice per invocation).
   route("api/github/backfill-run", "routes/api.github.backfill-run.tsx"),
+  // Cron sweep: re-kicks "running" backfills whose chain dropped (durability net).
+  route("api/github/backfill-sweep", "routes/api.github.backfill-sweep.tsx"),
   // Host-level human-invite + API-key endpoints. Splitting the two
   // makes the "is this a human or an agent?" choice show up in the URL
   // instead of being a body flag.
