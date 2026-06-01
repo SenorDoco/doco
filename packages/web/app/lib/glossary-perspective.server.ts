@@ -14,6 +14,9 @@
 // It reads the same nodes the List perspective shows; only the
 // presentation differs, so there is no new write surface here.
 
+import type { PerspectiveWindowSelection } from "./perspective-window.server";
+import { windowNodeIds } from "./perspective-window.server";
+
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -36,6 +39,7 @@ interface NodeRow {
 
 interface GlossaryLoadOptions {
   limit?: number;
+  window?: PerspectiveWindowSelection;
 }
 
 export interface GlossaryAlternative {
@@ -264,9 +268,11 @@ export async function loadGlossaryPerspectiveData(
   handle: string,
   options: GlossaryLoadOptions = {},
 ): Promise<GlossaryPerspectiveData> {
+  const windowIds = windowNodeIds(options.window);
   const limit = normalizeLimit(options.limit);
   const params: unknown[] = [docoId];
-  if (limit != null) params.push(limit);
+  if (windowIds.length > 0) params.push(windowIds);
+  else if (limit != null) params.push(limit);
   // Union the content tables into one shape. Policies (guidance /
   // authoring) and structural Principals are excluded — they're not
   // glossary headwords. Each table projects its type-named prose column
@@ -291,8 +297,9 @@ export async function loadGlossaryPerspectiveData(
      WHERE doco_id = $1
        AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
        AND COALESCE(lifecycle, 'asserted') <> 'retired'
+       ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}
      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id ASC
-     ${limit != null ? "LIMIT $2" : ""}
+     ${windowIds.length === 0 && limit != null ? "LIMIT $2" : ""}
     `,
     params,
   );

@@ -42,6 +42,8 @@
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
 import { highestRanked, pageRank } from "./pagerank";
+import type { PerspectiveWindowSelection } from "./perspective-window.server";
+import { windowNodeIds } from "./perspective-window.server";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -189,13 +191,21 @@ interface EdgeRow {
 export async function loadBpmnGraph(
   c: QueryClient,
   docoId: string,
-  opts: { focusId?: string; handle?: string; nodeLimit?: number } = {},
+  opts: {
+    focusId?: string;
+    handle?: string;
+    nodeLimit?: number;
+    window?: PerspectiveWindowSelection;
+  } = {},
 ): Promise<BpmnGraphData> {
   // Post-collapse: one `nodes` query over the eight BPMN node types
   // (BPMN_TABLES deliberately excludes logs and principals — principals
   // are loaded separately below as actor lanes). `summary` is the first
   // line of `prose`.
   const bpmnTypeList = BPMN_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
+  const windowIds = windowNodeIds(opts.window);
+  const nodeParams: unknown[] = [docoId];
+  if (windowIds.length > 0) nodeParams.push(windowIds);
   const nodeSql = `SELECT t.id,
               t.node_type AS entity_type,
               split_part(t.prose, E'\n', 1) AS summary,
@@ -205,17 +215,19 @@ export async function loadBpmnGraph(
          FROM nodes t
         WHERE t.doco_id = $1
           AND t.node_type IN (${bpmnTypeList})
-          AND COALESCE(t.lifecycle, 'asserted') <> 'retired'`;
+          AND COALESCE(t.lifecycle, 'asserted') <> 'retired'
+          ${windowIds.length > 0 ? "AND t.id = ANY($2::text[])" : ""}`;
 
   const [nodeRows, principalRows, userRows] = await Promise.all([
-    c.query<NodeRow>(nodeSql, [docoId]),
+    c.query<NodeRow>(nodeSql, nodeParams),
     c.query<PrincipalRow>(
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
-      [docoId],
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+          ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}`,
+      nodeParams,
     ),
     c.query<UserRow>(
       `SELECT c.id, c.github_login
