@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import {
   Links,
   Meta,
@@ -7,6 +8,7 @@ import {
   isRouteErrorResponse,
   useLoaderData,
   useLocation,
+  useNavigationType,
   useRouteError,
 } from "react-router";
 
@@ -14,6 +16,7 @@ import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied
 import { AgentSidebar } from "~/components/agent-sidebar";
 import { FeedbackReporter } from "~/components/feedback-reporter";
 import { SiteHeader, SiteHeaderSuppressionProvider } from "~/components/site-header";
+import { createMainScrollRestorer } from "~/lib/main-scroll-restoration";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import "./app.css";
 
@@ -74,6 +77,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   const data = useLoaderData() as { me: CurrentPrincipal | null } | undefined;
   const me = data?.me ?? null;
+  const mainRef = useMainScrollRestoration();
   // Signed-out: the anonymous landing + sign-in flow has its own header
   // chrome; let it render as-is.
   if (!me) {
@@ -90,7 +94,7 @@ export default function App() {
       <SiteHeader me={me} shellOwner />
       <div className="flex min-h-0 flex-1">
         <AgentSidebar me={me} />
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
           <SiteHeaderSuppressionProvider>
             <Outlet />
           </SiteHeaderSuppressionProvider>
@@ -99,6 +103,39 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+function useMainScrollRestoration() {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const mainRef = useRef<HTMLElement>(null);
+  const restorerRef = useRef<ReturnType<typeof createMainScrollRestorer> | null>(null);
+
+  if (!restorerRef.current) {
+    restorerRef.current = createMainScrollRestorer();
+  }
+
+  useLayoutEffect(() => {
+    const element = mainRef.current;
+    if (!element) return;
+    restorerRef.current?.applyNavigation({ element, key: location.key, navigationType });
+  }, [location.key, navigationType]);
+
+  useLayoutEffect(() => {
+    const save = () => {
+      const element = mainRef.current;
+      if (!element) return;
+      restorerRef.current?.saveCurrent(element);
+    };
+
+    window.addEventListener("pagehide", save);
+    return () => {
+      save();
+      window.removeEventListener("pagehide", save);
+    };
+  }, []);
+
+  return mainRef;
 }
 
 export function ErrorBoundary() {
