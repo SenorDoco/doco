@@ -183,6 +183,7 @@ interface UserRow {
 }
 
 interface EdgeRow {
+  id: string;
   from_id: string;
   to_id: string;
   edge_type: string;
@@ -255,7 +256,7 @@ export async function loadBpmnGraph(
   let links: OverviewGraphLink[] = [];
   if (nodeIdSet.size > 0) {
     const edgeRows = await c.query<EdgeRow>(
-      `SELECT from_id, to_id, edge_type, edge_props_json
+      `SELECT id, from_id, to_id, edge_type, edge_props_json
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -264,10 +265,12 @@ export async function loadBpmnGraph(
       [docoId, Array.from(nodeIdSet)],
     );
     links = edgeRows.rows.map((r) => ({
+      id: r.id,
       source: r.from_id,
       target: r.to_id,
       edge_type: r.edge_type,
       label: r.edge_type === "sequence_flow" ? sequenceFlowLabel(r.edge_props_json) : null,
+      href: opts.handle ? `/${opts.handle}/edges/${r.id}` : null,
     }));
 
     // Reconstruct the managed relationship fields (actor_id, decided_by, …)

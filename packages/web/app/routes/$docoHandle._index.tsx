@@ -19,6 +19,7 @@ import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activi
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { EdgeDialog } from "~/components/edge-dialog";
 import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
@@ -27,6 +28,7 @@ import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes
 import {
   OverviewGraph,
   type OverviewGraphData,
+  type OverviewGraphLink,
   type OverviewGraphNode,
 } from "~/components/overview-graph";
 import { PerspectiveFrame } from "~/components/perspective-frame";
@@ -47,6 +49,7 @@ import {
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { type EdgeDialogDetail, loadEdgeDialogDetail } from "~/lib/edge-detail.server";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadGlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
@@ -124,7 +127,13 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoHandle?: string; docoId?: string; type?: string; id?: string };
+  params: {
+    docoHandle?: string;
+    docoId?: string;
+    type?: string;
+    id?: string;
+    edgeKey?: string;
+  };
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   const { handle } = ctx;
@@ -136,6 +145,7 @@ export async function loader({
     requestedEntityType && typeof params.id === "string"
       ? { entityType: requestedEntityType, id: params.id }
       : null;
+  const requestedEdgeId = typeof params.edgeKey === "string" ? params.edgeKey : null;
   if (requestedNode && !isGraphNodeType(requestedNode.entityType)) {
     throw new Response("Unknown node type", { status: 404 });
   }
@@ -284,6 +294,12 @@ export async function loader({
     if (requestedNode && !selectedNode) {
       throw new Response(`Node not found: ${requestedNode.id}`, { status: 404 });
     }
+    const selectedEdge = requestedEdgeId
+      ? await loadEdgeDialogDetail(c, { docoId: ctx.meta.docoId }, { handle, id: requestedEdgeId })
+      : null;
+    if (requestedEdgeId && !selectedEdge) {
+      throw new Response(`Edge not found: ${requestedEdgeId}`, { status: 404 });
+    }
     // `?dialog=skip` lets the agent's auto-focus center the graph on
     // a node without popping the detail overlay over the chat. We
     // still load the detail above (the 404 check stays meaningful)
@@ -291,6 +307,7 @@ export async function loader({
     // stays empty.
     const skipDialog = new URL(request.url).searchParams.get("dialog") === "skip";
     const dialogNode = skipDialog ? null : selectedNode;
+    const dialogEdge = skipDialog ? null : selectedEdge;
     // Visualization perspectives — tabs above the graph body. Existing
     // Docos created before migration 007 may have no perspectives
     // attached; ensureDefaultsAttached backfills built-ins on first
@@ -305,10 +322,11 @@ export async function loader({
     const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canWriteDoco(ctx.meta, me?.id ?? null);
     const shouldLoadOverviewGraph = activeKind === "graph" || activeKind === "list";
+    const focusNodeId = selectedNode?.id ?? selectedEdge?.from.id;
     const graph = shouldLoadOverviewGraph
       ? await loadOverviewGraph(c, ctx.meta.docoId, {
           handle,
-          ...(selectedNode ? { centerId: selectedNode.id } : {}),
+          ...(focusNodeId ? { centerId: focusNodeId } : {}),
         })
       : null;
 
@@ -324,7 +342,7 @@ export async function loader({
     const bpmnGraph =
       activeKind === "bpmn"
         ? await loadBpmnGraph(c, ctx.meta.docoId, {
-            focusId: selectedNode?.id,
+            focusId: focusNodeId,
             handle,
           })
         : null;
@@ -389,7 +407,10 @@ export async function loader({
       glossaryData,
       pullRequestsData,
       focusedNodeId: selectedNode?.id ?? null,
+      focusedEdgeId: selectedEdge?.id ?? null,
+      focusedEdge: selectedEdge,
       selectedNode: dialogNode,
+      selectedEdge: dialogEdge,
     };
   });
 }
@@ -422,6 +443,26 @@ interface NodeDialogState {
   detail: NodeDialogDetail | null;
   loading: boolean;
   error: string | null;
+}
+
+interface EdgeDialogState {
+  detail: EdgeDialogDetail | null;
+  loading: boolean;
+  error: string | null;
+}
+
+interface EdgeFocusState {
+  id: string;
+  source: string;
+  target: string;
+}
+
+function edgeFocusFromDetail(detail: EdgeDialogDetail): EdgeFocusState {
+  return {
+    id: detail.id,
+    source: detail.from.id,
+    target: detail.to.id,
+  };
 }
 
 function graphWithCenter(graph: OverviewGraphData, centerId: string | null): OverviewGraphData {
@@ -465,6 +506,9 @@ export function meta({
     const display = data.selectedNode.name ?? data.selectedNode.summary ?? data.selectedNode.id;
     return [{ title: `${display} · ${data.handle} · Doco` }];
   }
+  if (data?.focusedEdge) {
+    return [{ title: `${data.focusedEdge.edge_type} edge · ${data.handle} · Doco` }];
+  }
   return [{ title: `${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
@@ -502,14 +546,19 @@ export default function DocoHome({
     glossaryData,
     pullRequestsData,
     focusedNodeId,
+    focusedEdge,
     selectedNode,
+    selectedEdge,
   } = loaderData;
 
   const pageRanksMap = useMemo(() => new Map(Object.entries(pageRanks)), [pageRanks]);
   const defaultFocusId = useMemo(
     () =>
-      focusedNodeId ?? (graph ? highestRankedNodeId(graph.nodes, pageRanksMap) : null) ?? docoId,
-    [focusedNodeId, graph, pageRanksMap, docoId],
+      focusedNodeId ??
+      focusedEdge?.from.id ??
+      (graph ? highestRankedNodeId(graph.nodes, pageRanksMap) : null) ??
+      docoId,
+    [focusedNodeId, focusedEdge, graph, pageRanksMap, docoId],
   );
   const graphData = useMemo<OverviewGraphData>(() => {
     const base = graph ?? {
@@ -522,29 +571,35 @@ export default function DocoHome({
   }, [graph, defaultFocusId, pageRanksMap]);
   const activeSlug = activePerspectiveSlug ?? "graph";
   const effectivePerspectiveKind = activePerspectiveKind ?? "graph";
-  const routeFocusId = focusedNodeId;
+  const routeFocusId = focusedNodeId ?? focusedEdge?.from.id ?? null;
   const [graphState, setGraphState] = useState<OverviewGraphData>(() => graphData);
   const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(() =>
     selectedNode ? { detail: selectedNode, loading: false, error: null } : null,
+  );
+  const [edgeDialog, setEdgeDialog] = useState<EdgeDialogState | null>(() =>
+    selectedEdge ? { detail: selectedEdge, loading: false, error: null } : null,
+  );
+  const [edgeFocus, setEdgeFocus] = useState<EdgeFocusState | null>(() =>
+    focusedEdge ? edgeFocusFromDetail(focusedEdge) : null,
   );
   const [lifecycleUpdating, setLifecycleUpdating] = useState<LifecycleStage | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const clientDialogOverrideRef = useRef(false);
 
-  // While the node dialog is open it overlays the right column on
+  // While a detail dialog is open it overlays the right column on
   // wide screens and the whole content area on narrow screens. The
   // audit panel underneath shouldn't scroll out of position when the
   // user wheels over (or near) the dialog — only the dialog's own
   // body should scroll. Lock body scroll for the duration the dialog
   // is open and restore on close.
   useEffect(() => {
-    if (!nodeDialog) return;
+    if (!nodeDialog && !edgeDialog) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [nodeDialog]);
+  }, [nodeDialog, edgeDialog]);
 
   useEffect(() => {
     setGraphState((prev) => {
@@ -561,9 +616,21 @@ export default function DocoHome({
   useEffect(() => {
     if (!selectedNode) return;
     if (clientDialogOverrideRef.current) return;
+    setEdgeDialog(null);
+    setEdgeFocus(null);
     setNodeDialog({ detail: selectedNode, loading: false, error: null });
     setGraphState((prev) => graphWithCenter(prev, selectedNode.id));
   }, [selectedNode]);
+
+  useEffect(() => {
+    if (!focusedEdge) return;
+    if (clientDialogOverrideRef.current) return;
+    setNodeDialog(null);
+    setLifecycleError(null);
+    setEdgeFocus(edgeFocusFromDetail(focusedEdge));
+    setEdgeDialog(selectedEdge ? { detail: selectedEdge, loading: false, error: null } : null);
+    setGraphState((prev) => graphWithCenter(prev, focusedEdge.from.id));
+  }, [focusedEdge, selectedEdge]);
 
   // Lifecycle filter is page-level so it persists across perspective
   // tab switches. The set of lifecycles present in the data drives
@@ -572,13 +639,21 @@ export default function DocoHome({
     const set = new Set<string>(LIFECYCLE_ORDER);
     for (const facet of facets.lifecycle) set.add(facet.value);
     if (selectedNode?.lifecycle) set.add(selectedNode.lifecycle);
+    if (focusedEdge?.from.lifecycle) set.add(focusedEdge.from.lifecycle);
+    if (focusedEdge?.to.lifecycle) set.add(focusedEdge.to.lifecycle);
     return set;
-  }, [facets.lifecycle, selectedNode?.lifecycle]);
+  }, [facets.lifecycle, selectedNode?.lifecycle, focusedEdge]);
 
   const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(() =>
     selectedNode
       ? new Set([...initialVisibleLifecycles(availableLifecycles), selectedNode.lifecycle])
-      : initialVisibleLifecycles(availableLifecycles),
+      : focusedEdge
+        ? new Set([
+            ...initialVisibleLifecycles(availableLifecycles),
+            focusedEdge.from.lifecycle,
+            focusedEdge.to.lifecycle,
+          ])
+        : initialVisibleLifecycles(availableLifecycles),
   );
 
   // Keep visible set in sync if the data introduces a new lifecycle.
@@ -700,6 +775,8 @@ export default function DocoHome({
         clientDialogOverrideRef.current = true;
         window.history.pushState({ docoNodeDialog: id }, "", href);
       }
+      setEdgeDialog(null);
+      setEdgeFocus(null);
       setLifecycleError(null);
       setNodeDialog((prev) => ({
         detail: options.keepDetail ? (prev?.detail ?? null) : null,
@@ -734,12 +811,72 @@ export default function DocoHome({
     [handle],
   );
 
+  const loadEdgeDialog = useCallback(
+    async (
+      edge: Pick<OverviewGraphLink, "id" | "href" | "source" | "target">,
+      options: { pushUrl?: boolean; keepDetail?: boolean } = {},
+    ) => {
+      if (!edge.id) return;
+      const href = edge.href ?? `/${handle}/edges/${edge.id}`;
+      const pushUrl = options.pushUrl ?? true;
+      if (pushUrl && typeof window !== "undefined") {
+        clientDialogOverrideRef.current = true;
+        window.history.pushState({ docoEdgeDialog: edge.id }, "", href);
+      }
+      if (edge.source && edge.target) {
+        setEdgeFocus({ id: edge.id, source: edge.source, target: edge.target });
+        setGraphState((prev) => graphWithCenter(prev, edge.source));
+      }
+      setNodeDialog(null);
+      setLifecycleError(null);
+      setEdgeDialog((prev) => ({
+        detail: options.keepDetail ? (prev?.detail ?? null) : null,
+        loading: true,
+        error: null,
+      }));
+      try {
+        const detailUrl = new URL(`/${handle}/graph-edge-details.json`, window.location.origin);
+        detailUrl.searchParams.set("id", edge.id);
+        const res = await fetch(detailUrl.toString(), {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Request failed with ${res.status}`);
+        }
+        const json = (await res.json()) as { edge?: EdgeDialogDetail | null };
+        const detail = json.edge;
+        if (!detail) throw new Error(`Edge not found: ${edge.id}`);
+        setEdgeDialog({ detail, loading: false, error: null });
+        setEdgeFocus(edgeFocusFromDetail(detail));
+        setGraphState((prev) => graphWithCenter(prev, detail.from.id));
+        setVisibleLifecycles(
+          (prev) => new Set([...prev, detail.from.lifecycle, detail.to.lifecycle]),
+        );
+      } catch (err) {
+        setEdgeDialog((prev) => ({
+          detail: options.keepDetail ? (prev?.detail ?? null) : null,
+          loading: false,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      }
+    },
+    [handle],
+  );
+
   const handleGraphNodeClick = useCallback(
     (node: OverviewGraphNode) => {
       const href = node.href ?? `/${handle}/${node.entity_type}/${node.id}`;
       void loadNodeDialog(node.entity_type, node.id, href);
     },
     [handle, loadNodeDialog],
+  );
+
+  const handleGraphEdgeClick = useCallback(
+    (edge: OverviewGraphLink) => {
+      void loadEdgeDialog(edge);
+    },
+    [loadEdgeDialog],
   );
 
   const closeNodeDialog = useCallback(() => {
@@ -751,9 +888,25 @@ export default function DocoHome({
     }
   }, [handle]);
 
+  const closeEdgeDialog = useCallback(() => {
+    clientDialogOverrideRef.current = true;
+    setEdgeDialog(null);
+    setEdgeFocus(null);
+    setGraphState((prev) => graphWithCenter(prev, null));
+    if (typeof window !== "undefined") {
+      const href =
+        activeSlug === "graph"
+          ? `/${handle}`
+          : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
+      window.history.replaceState(window.history.state, "", href);
+    }
+  }, [activeSlug, handle]);
+
   const clearPerspectiveFocus = useCallback(() => {
     clientDialogOverrideRef.current = true;
     setNodeDialog(null);
+    setEdgeDialog(null);
+    setEdgeFocus(null);
     setLifecycleError(null);
     setGraphState((prev) => graphWithCenter(prev, null));
     if (typeof window !== "undefined") {
@@ -855,6 +1008,11 @@ export default function DocoHome({
     [loadNodeDialog, nodeDialog?.detail?.id, revalidator],
   );
 
+  const focusedGraphNodeIds = useMemo(
+    () => (edgeFocus ? [edgeFocus.source, edgeFocus.target] : []),
+    [edgeFocus],
+  );
+
   const allSearchHref = allNodesSearchPath(handle);
 
   const sections: NodesOverviewSection[] = [
@@ -885,12 +1043,12 @@ export default function DocoHome({
     },
   ];
 
-  // Shared NodeDialog content. The same `showSidePanel` flag that shows
+  // Shared detail-dialog content. The same `showSidePanel` flag that shows
   // the activity column also picks the dialog's wrapper: an absolute overlay
   // inside the right column when the pane is wide enough for both, otherwise
   // a fixed overlay floating on top of the perspective. Both wrappers reuse
   // this element so the props aren't duplicated.
-  const nodeDialogPanel =
+  const activeDialogPanel =
     nodeDialog && !isPerspectiveFullscreen ? (
       <NodeDialog
         detail={nodeDialog.detail}
@@ -900,6 +1058,16 @@ export default function DocoHome({
         lifecycleError={lifecycleError}
         onClose={closeNodeDialog}
         onLifecycleChange={handleLifecycleChange}
+        onOpenNode={(entityType, id, href) => {
+          void loadNodeDialog(entityType, id, href);
+        }}
+      />
+    ) : edgeDialog && !isPerspectiveFullscreen ? (
+      <EdgeDialog
+        detail={edgeDialog.detail}
+        loading={edgeDialog.loading}
+        error={edgeDialog.error}
+        onClose={closeEdgeDialog}
         onOpenNode={(entityType, id, href) => {
           void loadNodeDialog(entityType, id, href);
         }}
@@ -1046,7 +1214,11 @@ export default function DocoHome({
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
                     initialFocusId={routeFocusId}
-                    onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    onCenterChange={(id) => {
+                      setEdgeDialog(null);
+                      setEdgeFocus(null);
+                      setGraphState((prev) => graphWithCenter(prev, id));
+                    }}
                     onPaneClick={clearPerspectiveFocus}
                     onNodeClick={(node) => {
                       void loadNodeDialog("principal", node.id, node.href);
@@ -1063,8 +1235,11 @@ export default function DocoHome({
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
                     initialFocusId={routeFocusId}
+                    focusedEdgeId={edgeFocus?.id ?? null}
+                    focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onPaneClick={clearPerspectiveFocus}
+                    onEdgeClick={handleGraphEdgeClick}
                     onNodeClick={(node) => {
                       void loadNodeDialog(
                         node.entity_type,
@@ -1100,29 +1275,44 @@ export default function DocoHome({
                     fillHeight
                     visibleLifecycles={visibleLifecycles}
                     initialFocusId={routeFocusId}
+                    focusedEdgeId={edgeFocus?.id ?? null}
+                    focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onPaneClick={clearPerspectiveFocus}
                     onNodeClick={handleGraphNodeClick}
+                    onEdgeClick={handleGraphEdgeClick}
                   />
                 )}
               </PerspectiveFrame>
-              {/* Fullscreen-only: render the node dialog inside the aside,
+              {/* Fullscreen-only: render the detail dialog inside the aside,
                   anchored to the right of the canvas. Outside fullscreen, the
                   same dialog renders in the right column (further down). */}
-              {isPerspectiveFullscreen && nodeDialog ? (
+              {isPerspectiveFullscreen && (nodeDialog || edgeDialog) ? (
                 <div className="absolute bottom-3 right-3 top-3 z-[100] w-[min(440px,40%)]">
-                  <NodeDialog
-                    detail={nodeDialog.detail}
-                    loading={nodeDialog.loading}
-                    error={nodeDialog.error}
-                    lifecycleUpdating={lifecycleUpdating}
-                    lifecycleError={lifecycleError}
-                    onClose={closeNodeDialog}
-                    onLifecycleChange={handleLifecycleChange}
-                    onOpenNode={(entityType, id, href) => {
-                      void loadNodeDialog(entityType, id, href);
-                    }}
-                  />
+                  {nodeDialog ? (
+                    <NodeDialog
+                      detail={nodeDialog.detail}
+                      loading={nodeDialog.loading}
+                      error={nodeDialog.error}
+                      lifecycleUpdating={lifecycleUpdating}
+                      lifecycleError={lifecycleError}
+                      onClose={closeNodeDialog}
+                      onLifecycleChange={handleLifecycleChange}
+                      onOpenNode={(entityType, id, href) => {
+                        void loadNodeDialog(entityType, id, href);
+                      }}
+                    />
+                  ) : edgeDialog ? (
+                    <EdgeDialog
+                      detail={edgeDialog.detail}
+                      loading={edgeDialog.loading}
+                      error={edgeDialog.error}
+                      onClose={closeEdgeDialog}
+                      onOpenNode={(entityType, id, href) => {
+                        void loadNodeDialog(entityType, id, href);
+                      }}
+                    />
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1176,21 +1366,21 @@ export default function DocoHome({
             {/* Wide content pane: dialog overlays the right column
                 while the user reads it. Narrow content pane: the fixed
                 wrapper below renders the same dialog over the canvas. */}
-            {nodeDialog && !isPerspectiveFullscreen ? (
-              <div className="absolute inset-0 z-[100]">{nodeDialogPanel}</div>
+            {(nodeDialog || edgeDialog) && !isPerspectiveFullscreen ? (
+              <div className="absolute inset-0 z-[100]">{activeDialogPanel}</div>
             ) : null}
           </div>
         </div>
         {/* Narrow content pane: floating dialog over the canvas. The
             Señor Doco rail's width is published as a CSS var by
             AgentSidebar so the dialog never covers it. */}
-        {nodeDialog && !isPerspectiveFullscreen ? (
+        {(nodeDialog || edgeDialog) && !isPerspectiveFullscreen ? (
           <div
             className={`fixed bottom-4 right-3 top-20 z-[100] [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
               showSidePanel ? "hidden" : "block"
             }`}
           >
-            {nodeDialogPanel}
+            {activeDialogPanel}
           </div>
         ) : null}
       </main>
