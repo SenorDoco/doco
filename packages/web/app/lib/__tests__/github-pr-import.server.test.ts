@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
   updateEntity: vi.fn(),
 }));
 
-vi.mock("@doco/db", () => ({ withClient: mocks.withClient }));
+vi.mock("@doco/db", () => ({
+  withClient: mocks.withClient,
+  getUserByGithubLogin: vi.fn(async () => null),
+}));
 vi.mock("../capture.server", () => ({
   NO_FIELDS_CHANGED: "No fields changed.",
   captureReference: mocks.captureReference,
@@ -208,5 +211,61 @@ describe("upsertPullRequestReference", () => {
     mocks.captureReference.mockResolvedValue({ error: "locator is required." });
     const res = await upsertPullRequestReference(basePr, opts);
     expect(res).toEqual({ status: "error", error: "locator is required." });
+  });
+
+  it("attributes a created Reference to the PR author resolved from github_login", async () => {
+    mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
+      fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
+    );
+    mocks.captureReference.mockResolvedValue({ id: "reference_new" });
+    const resolveAuthorUserId = vi.fn(async () => "user_octocat");
+    await upsertPullRequestReference(
+      { ...basePr, user: { login: "octocat" } },
+      { ...opts, resolveAuthorUserId },
+    );
+    expect(resolveAuthorUserId).toHaveBeenCalledWith("octocat");
+    expect(mocks.captureReference.mock.calls[0][4]).toMatchObject({
+      created_by_user_id: "user_octocat",
+    });
+  });
+
+  it("creates without attribution when the author's github_login is unknown", async () => {
+    mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
+      fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
+    );
+    mocks.captureReference.mockResolvedValue({ id: "reference_new" });
+    const resolveAuthorUserId = vi.fn(async () => null);
+    await upsertPullRequestReference(
+      { ...basePr, user: { login: "ghost" } },
+      { ...opts, resolveAuthorUserId },
+    );
+    expect(mocks.captureReference.mock.calls[0][4].created_by_user_id).toBeUndefined();
+  });
+
+  it("an explicit createdByUserId wins over login resolution (no lookup)", async () => {
+    mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
+      fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
+    );
+    mocks.captureReference.mockResolvedValue({ id: "reference_new" });
+    const resolveAuthorUserId = vi.fn(async () => "user_resolved");
+    await upsertPullRequestReference(
+      { ...basePr, user: { login: "octocat" } },
+      { ...opts, createdByUserId: "user_explicit", resolveAuthorUserId },
+    );
+    expect(resolveAuthorUserId).not.toHaveBeenCalled();
+    expect(mocks.captureReference.mock.calls[0][4]).toMatchObject({
+      created_by_user_id: "user_explicit",
+    });
+  });
+
+  it("does not resolve an author on the update path", async () => {
+    existing("reference_existing");
+    mocks.updateEntity.mockResolvedValue({ id: "reference_existing", changed: ["lifecycle"] });
+    const resolveAuthorUserId = vi.fn(async () => "user_octocat");
+    await upsertPullRequestReference(
+      { ...basePr, state: "closed", merged: true, user: { login: "octocat" } },
+      { ...opts, resolveAuthorUserId },
+    );
+    expect(resolveAuthorUserId).not.toHaveBeenCalled();
   });
 });

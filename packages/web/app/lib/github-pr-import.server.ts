@@ -11,7 +11,7 @@
 // the upsert orchestration delegates to the already-tested captureReference /
 // updateEntity write paths. Author attribution (github_login → Doco user) is
 // resolved by the caller and passed as createdByUserId.
-import { withClient } from "@doco/db";
+import { getUserByGithubLogin, withClient } from "@doco/db";
 import { isEntityId } from "@doco/shared";
 import {
   NO_FIELDS_CHANGED,
@@ -118,8 +118,21 @@ export interface UpsertPullRequestOpts {
   docoSlug: string;
   docoHost?: string;
   actorId?: string | null;
-  /** Resolved Doco user id for the PR author (from github_login), if any. */
+  /** Resolved Doco user id for the PR author (from github_login), if any.
+   *  When omitted, the upsert resolves it from the PR author's github_login. */
   createdByUserId?: string | null;
+  /** Override the github_login → Doco-user-id lookup (testing seam). */
+  resolveAuthorUserId?: (login: string) => Promise<string | null>;
+}
+
+/**
+ * Map a PR author's github_login to a Doco user id, so an imported PR is
+ * attributed to the person who opened it (when they've signed into this Doco
+ * with the same GitHub account). Null when the login isn't a known Doco user.
+ */
+export async function resolveAuthorUserIdByLogin(login: string): Promise<string | null> {
+  const u = await getUserByGithubLogin(login);
+  return u?.id ?? null;
 }
 
 /**
@@ -269,12 +282,26 @@ export async function upsertPullRequestReference(
     return { status: "updated", id: existingId };
   }
 
+  // Attribute the new Reference to the PR author. Prefer an explicitly-passed
+  // id; otherwise resolve the PR author's github_login → Doco user. Resolution
+  // only happens on create (an existing Reference's author never changes) and
+  // only when the PR carries an author login, so a repeat backfill that finds
+  // everything `unchanged` never pays for a lookup.
+  let createdByUserId = opts.createdByUserId ?? null;
+  if (!createdByUserId && pr.user?.login) {
+    const resolve = opts.resolveAuthorUserId ?? resolveAuthorUserIdByLogin;
+    try {
+      createdByUserId = await resolve(pr.user.login);
+    } catch {
+      createdByUserId = null;
+    }
+  }
   const res = await captureReference(
     opts.docoDir,
     opts.docoId,
     opts.ownerSlug,
     opts.docoSlug,
-    { ...draft, ...(opts.createdByUserId ? { created_by_user_id: opts.createdByUserId } : {}) },
+    { ...draft, ...(createdByUserId ? { created_by_user_id: createdByUserId } : {}) },
     opts.docoHost,
   );
   if ("error" in res) return { status: "error", error: res.error };
