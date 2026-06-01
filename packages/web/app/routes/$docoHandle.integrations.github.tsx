@@ -7,18 +7,25 @@
 // Writer-gated mutations (the connection model is a managed list).
 import { roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
-import { Form, Link, useActionData, useLoaderData, useSearchParams } from "react-router";
+import { ArrowUpRight, Github, Plus } from "lucide-react";
+import { Form, Link, redirect, useActionData, useLoaderData, useSearchParams } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
-import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import {
+  getDocoLevelRole,
+  listAccessibleDocoIdsForPrincipal,
+  loadDocoRouteForRead,
+} from "~/lib/doco-access.server";
 import { type BackfillResult, backfillRepoPullRequests } from "~/lib/github-backfill.server";
 import {
+  type GitHubInstallationChoice,
   addConnection,
   buildInstallUrl,
   getDocoConnectionsContext,
   githubOrgAccounts,
+  listGitHubInstallationChoicesForDocos,
   parseRepoSlug,
   reconcileInstallationConnections,
   removeConnection,
@@ -38,13 +45,29 @@ export async function loader({
   const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const ctx = await getDocoConnectionsContext(meta.docoId);
   const docoInstallUrl = buildInstallUrl(meta.docoId);
+  const role = me
+    ? await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id)
+    : null;
+  const canManage = roleAtLeast(role, "writer");
+  const accessibleDocoIds = me ? await listAccessibleDocoIdsForPrincipal(me.id) : [];
+  const installationChoices = me
+    ? await listGitHubInstallationChoicesForDocos(accessibleDocoIds)
+    : [];
+  const connectedHere = (ctx?.connections.length ?? 0) > 0 || (ctx?.installations.length ?? 0) > 0;
+
+  if (canManage && !connectedHere && installationChoices.length === 0 && docoInstallUrl) {
+    throw redirect(docoInstallUrl);
+  }
+
   return {
     me,
     handle: meta.handle,
     ownerSlug,
     orgHandle: ctx?.orgHandle ?? "",
+    canManage,
     docoInstallUrl,
     connections: ctx?.connections ?? [],
+    installationChoices,
     orgAccounts: ctx
       ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
       : [],
@@ -92,6 +115,67 @@ export async function action({
       connected_at: new Date().toISOString(),
     });
     return { ok: true, message: `Connected ${parsed.owner}/${parsed.name}.` };
+  }
+
+  if (intent === "connect-existing-repos") {
+    const installationId = Number(form.get("installation_id"));
+    if (!Number.isInteger(installationId) || installationId <= 0) {
+      return { error: "Choose a GitHub organization first." };
+    }
+    const requestedRepos = [
+      ...new Set(
+        form
+          .getAll("repo")
+          .map((repo) => String(repo).trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (requestedRepos.length === 0) return { error: "Pick at least one repository." };
+
+    const choices = await listGitHubInstallationChoicesForDocos(
+      await listAccessibleDocoIdsForPrincipal(me.id),
+    );
+    const choice = choices.find((c) => c.installation_id === installationId);
+    if (!choice) return { error: "That GitHub connection is not available to your account." };
+    const allowedRepos = new Set(choice.repositories);
+    const repos: string[] = [];
+    for (const repoInput of requestedRepos) {
+      const parsedRepo = parseRepoSlug(repoInput);
+      if (!parsedRepo) return { error: `Invalid repo: ${repoInput}` };
+      const repo = `${parsedRepo.owner}/${parsedRepo.name}`;
+      if (!allowedRepos.has(repo)) {
+        return { error: `${repo} is not available from the selected GitHub connection.` };
+      }
+      repos.push(repo);
+    }
+
+    const connectedAt = new Date().toISOString();
+    for (const repo of repos) {
+      await addConnection(meta.docoId, {
+        repo,
+        installation_id: installationId,
+        connected_at: connectedAt,
+      });
+    }
+    await setBackfillState(meta.docoId, {
+      status: "running",
+      started_at: connectedAt,
+      repos: repos.length,
+      installation_id: installationId,
+      queue: repos,
+      repo_index: 0,
+      page: 1,
+      imported: 0,
+      updated: 0,
+      unchanged: 0,
+      failed: 0,
+      cursor_at: connectedAt,
+    });
+    waitUntil(kickBackfillRun(new URL(request.url).origin, meta.docoId));
+    return {
+      ok: true,
+      message: `Connecting ${repos.length} ${repos.length === 1 ? "repository" : "repositories"} and importing pull requests in the background…`,
+    };
   }
 
   if (intent === "backfill") {
@@ -182,12 +266,22 @@ const DESTRUCTIVE_BTN =
   "neu-button rounded-md border border-border px-2.5 py-1 text-xs font-medium text-destructive hover:bg-input";
 
 export default function DocoGitHubIntegration() {
-  const { me, handle, ownerSlug, docoInstallUrl, connections, orgAccounts, backfill } =
-    useLoaderData<typeof loader>();
+  const {
+    me,
+    handle,
+    ownerSlug,
+    canManage,
+    docoInstallUrl,
+    connections,
+    installationChoices,
+    orgAccounts,
+    backfill,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
   const flash = searchParams.get("github");
   const importing = backfill?.status === "running" || flash === "importing";
+  const connectedRepoSet = new Set(connections.map((connection) => connection.repo));
 
   return (
     <div>
@@ -296,6 +390,13 @@ export default function DocoGitHubIntegration() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {canManage && installationChoices.length > 0 ? (
+              <ExistingGitHubPicker
+                choices={installationChoices}
+                connectedRepos={connectedRepoSet}
+                docoInstallUrl={docoInstallUrl}
+              />
+            ) : null}
             {orgAccounts.length > 0 ? (
               <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
                 <p className="text-foreground">
@@ -390,5 +491,99 @@ export default function DocoGitHubIntegration() {
         </Card>
       </main>
     </div>
+  );
+}
+
+function ExistingGitHubPicker({
+  choices,
+  connectedRepos,
+  docoInstallUrl,
+}: {
+  choices: GitHubInstallationChoice[];
+  connectedRepos: Set<string>;
+  docoInstallUrl: string | null;
+}) {
+  return (
+    <section className="space-y-3 rounded-md border border-border bg-background p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Github className="h-4 w-4 text-primary" aria-hidden="true" />
+            Use an existing GitHub connection
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Pick repositories from GitHub organizations Doco already has access to.
+          </p>
+        </div>
+        {docoInstallUrl ? (
+          <a
+            href={docoInstallUrl}
+            className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            Add repositories in GitHub
+            <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
+        ) : null}
+      </div>
+
+      <div className="space-y-3">
+        {choices.map((choice) => (
+          <Form key={choice.installation_id} method="post" className="space-y-3">
+            <input type="hidden" name="intent" value="connect-existing-repos" />
+            <input type="hidden" name="installation_id" value={choice.installation_id} />
+            <div className="space-y-2 rounded-md border border-border/80 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-mono text-sm font-semibold text-foreground">
+                    {choice.account}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Seen on {choice.source_doco_handles.join(", ")}
+                    {choice.repositories_unavailable ? " · showing known repositories only" : ""}
+                  </p>
+                </div>
+                <button type="submit" className={PRIMARY_BTN}>
+                  Connect selected repos
+                </button>
+              </div>
+              {choice.repositories.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {choice.repositories.map((repo) => {
+                    const alreadyConnected = connectedRepos.has(repo);
+                    return (
+                      <label
+                        key={repo}
+                        className="flex min-w-0 items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          name="repo"
+                          value={repo}
+                          disabled={alreadyConnected}
+                          className="h-3.5 w-3.5 shrink-0 accent-primary"
+                        />
+                        <span className="min-w-0 flex-1 truncate font-mono" title={repo}>
+                          {repo}
+                        </span>
+                        {alreadyConnected ? (
+                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Connected
+                          </span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No repositories are available from this GitHub organization yet.
+                </p>
+              )}
+            </div>
+          </Form>
+        ))}
+      </div>
+    </section>
   );
 }

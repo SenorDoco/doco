@@ -9,6 +9,7 @@ import {
   addConnection,
   buildInstallUrl,
   githubOrgAccounts,
+  groupKnownGitHubInstallations,
   importInstallationConnections,
   normalizeBackfillState,
   normalizeConnections,
@@ -128,6 +129,44 @@ describe("githubOrgAccounts", () => {
   });
   it("is empty when nothing is connected", () => {
     expect(githubOrgAccounts({ installations: [], connections: [] })).toEqual([]);
+  });
+});
+
+describe("groupKnownGitHubInstallations", () => {
+  it("groups installation orgs, repositories, and source Docos", () => {
+    expect(
+      groupKnownGitHubInstallations([
+        {
+          handle: "one-prs",
+          githubIntegration: {
+            installations: [{ installation_id: 42, account: "acme" }],
+            connections: [{ repo: "acme/web", installation_id: 42 }],
+          },
+        },
+        {
+          handle: "two-prs",
+          githubIntegration: {
+            connections: [
+              { repo: "acme/api", installation_id: 42 },
+              { repo: "zeta/docs", installation_id: 7 },
+            ],
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        installation_id: 42,
+        account: "acme",
+        connected_repositories: ["acme/api", "acme/web"],
+        source_doco_handles: ["one-prs", "two-prs"],
+      },
+      {
+        installation_id: 7,
+        account: "zeta",
+        connected_repositories: ["zeta/docs"],
+        source_doco_handles: ["two-prs"],
+      },
+    ]);
   });
 });
 

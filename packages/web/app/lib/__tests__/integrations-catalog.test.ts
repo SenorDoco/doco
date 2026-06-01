@@ -59,14 +59,14 @@ describe("integrations-catalog", () => {
       );
     });
 
-    it("links GitHub to the GitHub App install URL when called from its own Doco", () => {
+    it("routes GitHub clicks from a Doco through the Doco-specific connection flow", () => {
       const href = connectHrefFor({
         integration: github,
         pageScope: "doco",
         docoHandle: "test",
         docoInstallUrl: "https://github.com/apps/doco/installations/new?state=docoid",
       });
-      expect(href).toBe("https://github.com/apps/doco/installations/new?state=docoid");
+      expect(href).toBe("/test/integrations/github");
     });
 
     it("routes GitHub clicks from the account page to a pick-doco prompt", () => {

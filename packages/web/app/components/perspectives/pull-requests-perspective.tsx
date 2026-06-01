@@ -7,7 +7,7 @@
 // color always encodes lifecycle (see ~/lib/node-colors).
 //
 // When the Doco has no GitHub connection, this paints an empty state that
-// points at the integrations page rather than the (necessarily empty) list.
+// points at the Doco-specific GitHub connection flow.
 //
 // All chrome (border, background, fullscreen + lifecycle overlays) is owned
 // by the PerspectiveFrame; this component only paints the content.
@@ -23,7 +23,7 @@ import type {
 
 interface PullRequestsPerspectiveProps {
   data: PullRequestsPerspectiveData;
-  /** Doco handle — used to link to its integrations page in the empty state. */
+  /** Doco handle — used to link to its GitHub connection flow in the empty state. */
   handle: string;
   /**
    * Page-level lifecycle filter set. PRs whose lifecycle isn't in this set
@@ -158,7 +158,7 @@ function NotConnected({ handle }: { handle: string }) {
         closed PRs show up here, grouped by lifecycle.
       </p>
       <Link
-        to={`/${handle}/integrations`}
+        to={`/${handle}/integrations/github`}
         className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
       >
         <Github aria-hidden className="h-3.5 w-3.5" />
