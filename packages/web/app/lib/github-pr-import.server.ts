@@ -48,6 +48,7 @@ export interface PullRequestRefLifecycle {
 /**
  * Map a GitHub PR's state to the Reference's lifecycle. Pure.
  *   open            → drafting (in-flight, may still change)
+ *   open + approved → asserted (the team has signed off, not yet shipped)
  *   merged          → asserted + outcome succeeded (a settled fact: it shipped)
  *   closed-unmerged → retired (abandoned)
  *
@@ -57,12 +58,20 @@ export interface PullRequestRefLifecycle {
  * off `merged` alone would mis-map every backfilled merged PR (state "closed",
  * merged boolean absent) to retired. merged_at is present on both the list and
  * webhook payloads, so it's the reliable signal.
+ *
+ * `approved` is supplied by the `pull_request_review` webhook (an approving
+ * review on an open PR). Approval lifts an open PR drafting → asserted; merge
+ * then adds `outcome: succeeded`. New commits (a later `synchronize` re-sync
+ * without `approved`) drop it back to drafting, mirroring GitHub dismissing a
+ * stale review.
  */
 export function pullRequestRefLifecycle(
   pr: Pick<GitHubPullRequest, "state" | "merged" | "merged_at">,
+  opts?: { approved?: boolean },
 ): PullRequestRefLifecycle {
   if (pr.merged || pr.merged_at) return { lifecycle: "asserted", outcome: "succeeded" };
   if (pr.state === "closed") return { lifecycle: "retired" };
+  if (opts?.approved) return { lifecycle: "asserted" };
   return { lifecycle: "drafting" };
 }
 
@@ -78,8 +87,11 @@ export function pullRequestReferenceProse(pr: Pick<GitHubPullRequest, "title" | 
  * idempotency key). Pure. The caller fills `created_by_user_id` from the PR
  * author's github_login → Doco user mapping.
  */
-export function pullRequestToReferenceDraft(pr: GitHubPullRequest): ReferenceDraft {
-  const { lifecycle, outcome } = pullRequestRefLifecycle(pr);
+export function pullRequestToReferenceDraft(
+  pr: GitHubPullRequest,
+  opts?: { approved?: boolean },
+): ReferenceDraft {
+  const { lifecycle, outcome } = pullRequestRefLifecycle(pr, opts);
   return {
     reference: pullRequestReferenceProse(pr),
     ref_type: "url",
@@ -123,6 +135,9 @@ export interface UpsertPullRequestOpts {
   createdByUserId?: string | null;
   /** Override the github_login → Doco-user-id lookup (testing seam). */
   resolveAuthorUserId?: (login: string) => Promise<string | null>;
+  /** The PR carries an approving review (from `pull_request_review`): an open
+   *  PR maps drafting → asserted. Ignored once merged/closed. */
+  approved?: boolean;
 }
 
 /**
@@ -247,7 +262,7 @@ export async function upsertPullRequestReference(
   pr: GitHubPullRequest,
   opts: UpsertPullRequestOpts,
 ): Promise<PullRequestSyncResult> {
-  const draft = pullRequestToReferenceDraft(pr);
+  const draft = pullRequestToReferenceDraft(pr, { approved: opts.approved });
   const existingId = await findReferenceIdByLocator(opts.docoId, draft.locator);
 
   if (existingId) {

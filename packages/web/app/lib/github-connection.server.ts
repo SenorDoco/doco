@@ -435,6 +435,81 @@ export async function detachInstallationFromOtherDocos(
   });
 }
 
+/**
+ * Uninstall cleanup: detach an App installation from EVERY Doco — drop its
+ * `installations[]` subscription and any `connections[]` carrying that
+ * installation id. Driven by the `installation` webhook's "deleted" action so a
+ * Doco doesn't keep syncing a repo the App can no longer see. Idempotent; the
+ * indexed `@>` predicates touch only the Docos that actually hold it.
+ */
+export async function unsubscribeInstallationEverywhere(installationId: number): Promise<void> {
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                data,
+                '{github_integration,installations}',
+                COALESCE((
+                  SELECT jsonb_agg(elem)
+                    FROM jsonb_array_elements(data->'github_integration'->'installations') AS elem
+                   WHERE (elem->>'installation_id')::int <> $1
+                ), '[]'::jsonb)
+              ),
+              updated_at = now()
+        WHERE data->'github_integration'->'installations'
+                @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))`,
+      [installationId],
+    );
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                data,
+                '{github_integration,connections}',
+                COALESCE((
+                  SELECT jsonb_agg(elem)
+                    FROM jsonb_array_elements(data->'github_integration'->'connections') AS elem
+                   WHERE (elem->>'installation_id')::int <> $1
+                ), '[]'::jsonb)
+              ),
+              updated_at = now()
+        WHERE data->'github_integration'->'connections'
+                @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))`,
+      [installationId],
+    );
+  });
+}
+
+/**
+ * Detach specific repos from EVERY Doco's `connections[]` — driven by the
+ * `installation_repositories` webhook's "removed" action (access revoked for
+ * those repos). A repo belongs to one Doco, so removing by full-name is
+ * unambiguous. No-op for an empty list. Idempotent.
+ */
+export async function detachReposEverywhere(repos: string[]): Promise<void> {
+  if (repos.length === 0) return;
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                data,
+                '{github_integration,connections}',
+                COALESCE((
+                  SELECT jsonb_agg(elem)
+                    FROM jsonb_array_elements(data->'github_integration'->'connections') AS elem
+                   WHERE elem->>'repo' <> ALL($1::text[])
+                ), '[]'::jsonb)
+              ),
+              updated_at = now()
+        WHERE EXISTS (
+                SELECT 1
+                  FROM jsonb_array_elements(data->'github_integration'->'connections') AS elem
+                 WHERE elem->>'repo' = ANY($1::text[])
+              )`,
+      [repos],
+    );
+  });
+}
+
 /** Injectable seams so the move orchestration is unit-testable without a DB. */
 export interface SubscribeInstallationDeps {
   detachElsewhere: (installationId: number, keepDocoId: string) => Promise<void>;

@@ -128,6 +128,22 @@ describe("pullRequestRefLifecycle", () => {
       lifecycle: "retired",
     });
   });
+  it("open + approved → asserted (signed off, not yet shipped — no outcome)", () => {
+    expect(pullRequestRefLifecycle({ state: "open" }, { approved: true })).toEqual({
+      lifecycle: "asserted",
+    });
+  });
+  it("merge still wins over approval (asserted + succeeded)", () => {
+    expect(pullRequestRefLifecycle({ state: "closed", merged: true }, { approved: true })).toEqual({
+      lifecycle: "asserted",
+      outcome: "succeeded",
+    });
+  });
+  it("approval does not resurrect a closed-unmerged PR (stays retired)", () => {
+    expect(pullRequestRefLifecycle({ state: "closed", merged: false }, { approved: true })).toEqual(
+      { lifecycle: "retired" },
+    );
+  });
 });
 
 describe("pullRequestReferenceProse", () => {
