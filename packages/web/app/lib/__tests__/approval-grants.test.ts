@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ApprovalDocoOption,
   type ApprovalOrgOption,
+  approvalTargetNotOwnedMessage,
   resolveApprovalGrantView,
 } from "../approval-grants";
 
@@ -20,29 +21,40 @@ const orgs: ApprovalOrgOption[] = [
 ];
 
 describe("resolveApprovalGrantView", () => {
-  it("returns the full matrix, no notice, when no target is requested", () => {
+  it("offers the full matrix when no target is requested", () => {
     const v = resolveApprovalGrantView(docos, orgs, null);
-    expect(v.docos).toEqual(docos);
-    expect(v.orgs).toEqual(orgs);
-    expect(v.targetedMessage).toBeNull();
+    expect(v.blocked).toBe(false);
+    if (!v.blocked) {
+      expect(v.docos).toEqual(docos);
+      expect(v.orgs).toEqual(orgs);
+    }
   });
 
-  // The point of the change: the SAME matrix everywhere. A requested
-  // target must not strip orgs (account/org scopes) nor narrow the doco
-  // list. Previously a target did both, so the approve screen lost its
-  // account and organization scopes.
-  it("keeps the full matrix when the target matches an owned doco", () => {
+  it("offers the full matrix when the target is a doco you own", () => {
     const v = resolveApprovalGrantView(docos, orgs, "torre-bpms");
-    expect(v.docos).toEqual(docos); // not narrowed to just the target
-    expect(v.orgs).toEqual(orgs); // org + account scopes preserved
-    expect(v.targetedMessage).toBeNull();
+    expect(v.blocked).toBe(false);
+    if (!v.blocked) {
+      expect(v.docos).toEqual(docos); // not narrowed to just the target
+      expect(v.orgs).toEqual(orgs); // org + account scopes preserved
+    }
   });
 
-  it("keeps the full matrix and adds a notice when the target isn't owned", () => {
+  // A target you don't own is a TERMINAL error: granting some other doco
+  // wouldn't satisfy the request, so the screen blocks the whole picker
+  // rather than offering an unrelated matrix.
+  it("blocks when the target is a doco you don't own", () => {
     const v = resolveApprovalGrantView(docos, orgs, "doco-bpms");
-    expect(v.docos).toEqual(docos);
-    expect(v.orgs).toEqual(orgs); // still offers every org you can grant
-    expect(v.targetedMessage).toContain("doco-bpms");
-    expect(v.targetedMessage).toContain("you don't own that Doco");
+    expect(v.blocked).toBe(true);
+    if (v.blocked) expect(v.targetDocoHandle).toBe("doco-bpms");
+  });
+});
+
+describe("approvalTargetNotOwnedMessage", () => {
+  it("names the handle and points at the agent — not at picking an owned doco", () => {
+    const m = approvalTargetNotOwnedMessage("doco-bpms");
+    expect(m).toContain("doco-bpms");
+    expect(m).toContain("agent");
+    expect(m).not.toMatch(/client/i);
+    expect(m).not.toMatch(/pick from/i);
   });
 });

@@ -6,11 +6,14 @@
 // rejects anything less on submit, so the picker only offers what the
 // approver owns.
 //
-// A client may name a Doco it wants (`target_doco_handle`). That request
-// does NOT change the matrix — the approver always sees the full set of
-// scopes (account / org / doco / types) they're entitled to, exactly
-// like the collaborators and API-token pages. The target only drives a
-// notice when the requested handle isn't one the approver owns.
+// A client may name a Doco it wants (`target_doco_handle`). When the
+// approver owns it (or no target was given), the matrix is the full set
+// of scopes (account / org / doco / types) they're entitled to — exactly
+// like the collaborators and API-token pages. When the approver does NOT
+// own the requested Doco, the request can't be satisfied (granting some
+// other Doco wouldn't help), so the screen BLOCKS: a terminal "you don't
+// own that Doco — ask the agent to target a different one" message, with
+// no picker.
 
 import type { DocoRole } from "@doco/db";
 
@@ -34,27 +37,37 @@ export interface ApprovalOrgOption {
   my_role: DocoRole;
 }
 
-export interface ApprovalGrantView {
-  docos: ApprovalDocoOption[];
-  orgs: ApprovalOrgOption[];
-  targetedMessage: string | null;
-}
+export type ApprovalGrantView =
+  | { blocked: false; docos: ApprovalDocoOption[]; orgs: ApprovalOrgOption[] }
+  | { blocked: true; targetDocoHandle: string };
 
 /**
- * Resolve what the approve screen shows for a requested target. The
- * matrix (docos + orgs) is returned UNCHANGED — the picker is identical
- * at every entry point; a requested target never strips scopes or
- * narrows the list. The target only controls the "you don't own that
- * Doco" notice.
+ * Resolve what the approve screen shows for a requested target.
+ *
+ *   - No target, or a target Doco the approver owns → `blocked: false`
+ *     with the full matrix (identical at every entry point; the target
+ *     never strips scopes or narrows the list).
+ *   - A target Doco the approver does NOT own → `blocked: true`. The
+ *     request can't be satisfied, so the route shows only the terminal
+ *     message (see `approvalTargetNotOwnedMessage`) — no picker.
  */
 export function resolveApprovalGrantView(
   docos: ApprovalDocoOption[],
   orgs: ApprovalOrgOption[],
   targetDocoHandle: string | null | undefined,
 ): ApprovalGrantView {
-  const targetedMessage =
-    targetDocoHandle && !docos.some((d) => d.handle === targetDocoHandle)
-      ? `The token requested access to "${targetDocoHandle}" but you don't own that Doco — pick from the Docos you do own below, or ask the client to target a different one.`
-      : null;
-  return { docos, orgs, targetedMessage };
+  if (targetDocoHandle && !docos.some((d) => d.handle === targetDocoHandle)) {
+    return { blocked: true, targetDocoHandle };
+  }
+  return { blocked: false, docos, orgs };
+}
+
+/**
+ * The terminal message shown when a client requested a Doco the approver
+ * doesn't own. It names the Doco and points the user at the agent — it
+ * does NOT suggest picking some other owned Doco, because that wouldn't
+ * give the agent the access it asked for.
+ */
+export function approvalTargetNotOwnedMessage(targetDocoHandle: string): string {
+  return `The token requested access to "${targetDocoHandle}", a Doco you don't own. Ask the agent to target a different one.`;
 }
