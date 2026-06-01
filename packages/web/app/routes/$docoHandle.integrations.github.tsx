@@ -175,10 +175,9 @@ export async function action({
       cursor_at: connectedAt,
     });
     waitUntil(kickBackfillRun(new URL(request.url).origin, meta.docoId));
-    return {
-      ok: true,
-      message: `Connecting ${repos.length} ${repos.length === 1 ? "repository" : "repositories"} and importing pull requests in the background…`,
-    };
+    // Hand the user a standalone "import started" screen (PRG redirect) rather
+    // than an inline banner — one clear confirmation, one way forward.
+    throw redirect(`/${meta.handle}/integrations/github?github=importing&count=${repos.length}`);
   }
 
   if (intent === "connect-installation") {
@@ -318,20 +317,6 @@ export function buildInstallationPickerChoices(
   });
 }
 
-export function repositoryPickerDescription({
-  orgAccountCount,
-  pickerChoiceCount,
-}: {
-  orgAccountCount: number;
-  pickerChoiceCount: number;
-}): string {
-  if (pickerChoiceCount > 0) return "Select one or more repositories for this Doco.";
-  if (orgAccountCount > 0) {
-    return "All repositories from the connected GitHub account can sync to this Doco.";
-  }
-  return "No GitHub repositories are selected for this Doco yet.";
-}
-
 /**
  * Repositories an org-level ("all repositories") connection covers, for the
  * connected-account view. When a Doco subscribes to an installation rather than
@@ -370,30 +355,70 @@ export default function DocoGitHubIntegration() {
     connections,
     installations,
     installationChoices,
-    orgAccounts,
     backfill,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
   const flash = searchParams.get("github");
-  const importing = backfill?.status === "running" || flash === "importing";
+  const importing = backfill?.status === "running";
   const connectedRepoSet = new Set(connections.map((connection) => connection.repo));
   const connectedInstallationIds = new Set(
     installations.map((installation) => installation.installation_id),
   );
-  const pickerChoices = buildInstallationPickerChoices(
+  const subscribedAccounts = [...new Set(installations.map((i) => i.account))].sort();
+  // Section 2 lists only what's still addable — org groups with repos left to
+  // pick, or an empty all-repos org to attach. Orgs fully connected here drop out.
+  const addableChoices = buildInstallationPickerChoices(
     installationChoices,
     connectedRepoSet,
     connectedInstallationIds,
-  ).filter((choice) => !choice.isInstallationConnected);
-  const hasSelectableRepositories = pickerChoices.some(
-    (choice) => choice.hasSelectableRepositories,
+  ).filter(
+    (choice) =>
+      !choice.isInstallationConnected &&
+      (choice.hasSelectableRepositories || choice.canConnectInstallation),
   );
-  const hasConnectableInstallations = pickerChoices.some((choice) => choice.canConnectInstallation);
   const coveredOrgRepositories = connectedOrgRepositories(
     installationChoices,
     connectedInstallationIds,
   );
+
+  // Standalone "import started" screen — shown right after connecting repos (a
+  // PRG redirect from the connect action). One clear message, one way forward:
+  // into the Doco itself.
+  if (flash === "importing") {
+    const count = Number(searchParams.get("count") ?? 0);
+    return (
+      <div>
+        <SiteHeader me={me} />
+        <main className="mx-auto max-w-xl px-6 py-16">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <span
+              aria-hidden
+              className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+            />
+            <h1 className="text-2xl font-semibold">Import started</h1>
+            <p className="text-sm text-muted-foreground">
+              We&apos;re importing pull requests
+              {count > 0 ? (
+                <>
+                  {" "}
+                  from <span className="font-mono font-semibold tabular-nums">{count}</span>{" "}
+                  {count === 1 ? "repository" : "repositories"}
+                </>
+              ) : null}{" "}
+              in the background. You can keep working — they&apos;ll appear on{" "}
+              <span className="font-mono font-semibold">{handle}</span> as they sync, and new repos
+              in the organization sync automatically.
+            </p>
+            <Link to={`/${handle}`} className={`mt-2 ${PRIMARY_BTN}`}>
+              Continue
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -414,40 +439,6 @@ export default function DocoGitHubIntegration() {
           </p>
         </header>
 
-        {importing ? (
-          <p className="flex items-center gap-2 rounded-md border border-border bg-background p-3 text-sm text-foreground">
-            <span
-              aria-hidden
-              className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
-            />
-            <span>
-              Importing pull requests in the background
-              {backfill?.repos ? (
-                <>
-                  {" "}
-                  —{" "}
-                  <span className="font-mono font-semibold tabular-nums">
-                    {Math.min((backfill.repo_index ?? 0) + 1, backfill.repos)}
-                  </span>
-                  {" / "}
-                  <span className="font-mono font-semibold tabular-nums">{backfill.repos}</span>{" "}
-                  repo(s)
-                  {backfill.imported ? (
-                    <>
-                      ,{" "}
-                      <span className="font-mono font-semibold tabular-nums">
-                        {backfill.imported}
-                      </span>{" "}
-                      imported so far
-                    </>
-                  ) : null}
-                </>
-              ) : null}{" "}
-              — you can keep working; they'll appear as they sync, and new repos in the org sync
-              automatically.
-            </span>
-          </p>
-        ) : null}
         {flash === "forbidden" ? (
           <p className="rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive">
             You need write access to connect this Doco.
@@ -464,14 +455,9 @@ export default function DocoGitHubIntegration() {
             Sign in, then run Connect again.
           </p>
         ) : null}
-        {!importing && flash === "connected" ? (
+        {flash === "connected" ? (
           <p className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
-            GitHub is connected.{" "}
-            {hasSelectableRepositories
-              ? "Choose the repositories to connect to this Doco."
-              : hasConnectableInstallations
-                ? "Connect the GitHub account to this Doco."
-                : "No repositories are available yet; add repositories in GitHub to make them selectable here."}
+            GitHub is connected. Choose the repositories to track on this Doco below.
           </p>
         ) : null}
         {actionData && "error" in actionData ? (
@@ -490,109 +476,89 @@ export default function DocoGitHubIntegration() {
           </p>
         ) : null}
 
+        {/* Section 1 — the repositories this Doco is connected to on GitHub. */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Choose repositories</CardTitle>
+            <CardTitle className="text-base">Connected repositories</CardTitle>
             <CardDescription>
-              {repositoryPickerDescription({
-                orgAccountCount: orgAccounts.length,
-                pickerChoiceCount: pickerChoices.length,
-              })}
+              Repositories on GitHub this Doco tracks pull requests from.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {canManage && pickerChoices.length > 0 ? (
-              <ExistingGitHubPicker choices={pickerChoices} docoInstallUrl={docoInstallUrl} />
+            {importing ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span
+                  aria-hidden
+                  className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                />
+                <span>
+                  Importing pull requests…
+                  {backfill?.imported ? (
+                    <>
+                      {" "}
+                      <span className="font-mono font-semibold tabular-nums">
+                        {backfill.imported}
+                      </span>{" "}
+                      imported so far.
+                    </>
+                  ) : null}
+                </span>
+              </p>
             ) : null}
-            {orgAccounts.length > 0 ? (
-              <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-                <p className="text-foreground">
-                  GitHub connected to{" "}
-                  {orgAccounts.map((a, i) => (
-                    <span key={a}>
-                      {i > 0 ? ", " : ""}
-                      <span className="font-mono font-semibold">{a}</span>
-                    </span>
-                  ))}
-                  .
-                </p>
-                {connections.length > 0 ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    <span className="font-mono font-semibold tabular-nums">
-                      {connections.length}
-                    </span>{" "}
-                    {connections.length === 1 ? "repository is" : "repositories are"} selected for
-                    this Doco.
-                  </p>
-                ) : (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {coveredOrgRepositories.length > 0 ? (
-                      <>
-                        All{" "}
-                        <span className="font-mono font-semibold tabular-nums">
-                          {coveredOrgRepositories.length}
-                        </span>{" "}
-                        {coveredOrgRepositories.length === 1 ? "repository" : "repositories"} from
-                        this GitHub account sync to this Doco, including any added later.
-                      </>
-                    ) : (
-                      "All repositories from this GitHub account can sync to this Doco, including any added later."
-                    )}
-                  </p>
-                )}
-                {connections.length === 0 && coveredOrgRepositories.length > 0 ? (
-                  <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                    {coveredOrgRepositories.map((repo) => (
-                      <li
-                        key={repo}
-                        className="min-w-0 truncate rounded border border-border bg-card px-2 py-1 font-mono text-xs"
-                        title={repo}
-                      >
-                        {repo}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {canManage && docoInstallUrl ? (
-                  <a
-                    href={docoInstallUrl}
-                    className="neu-button mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
-                  >
-                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                    Add organizations or repositories in GitHub
-                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </a>
-                ) : null}
-              </div>
+            {subscribedAccounts.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Connected to{" "}
+                {subscribedAccounts.map((a, i) => (
+                  <span key={a}>
+                    {i > 0 ? ", " : ""}
+                    <span className="font-mono font-semibold text-foreground">{a}</span>
+                  </span>
+                ))}{" "}
+                — all repositories sync automatically, including ones added later.
+              </p>
             ) : null}
             {connections.length > 0 ? (
               <ul className="divide-y rounded border">
                 {connections.map((c) => (
                   <li key={c.repo} className="flex items-center justify-between gap-2 px-3 py-2">
                     <span className="font-mono text-sm">{c.repo}</span>
-                    <span className="flex gap-2">
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="backfill" />
-                        <input type="hidden" name="repo" value={c.repo} />
-                        <button type="submit" className={NEUTRAL_BTN}>
-                          Re-import
-                        </button>
-                      </Form>
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="disconnect" />
-                        <input type="hidden" name="repo" value={c.repo} />
-                        <button type="submit" className={DESTRUCTIVE_BTN}>
-                          Disconnect
-                        </button>
-                      </Form>
-                    </span>
+                    {canManage ? (
+                      <span className="flex gap-2">
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="backfill" />
+                          <input type="hidden" name="repo" value={c.repo} />
+                          <button type="submit" className={NEUTRAL_BTN}>
+                            Re-import
+                          </button>
+                        </Form>
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="disconnect" />
+                          <input type="hidden" name="repo" value={c.repo} />
+                          <button type="submit" className={DESTRUCTIVE_BTN}>
+                            Disconnect
+                          </button>
+                        </Form>
+                      </span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
-            ) : orgAccounts.length === 0 ? (
+            ) : coveredOrgRepositories.length > 0 ? (
+              <ul className="grid gap-1.5 sm:grid-cols-2">
+                {coveredOrgRepositories.map((repo) => (
+                  <li
+                    key={repo}
+                    className="min-w-0 truncate rounded border border-border bg-card px-2 py-1 font-mono text-xs"
+                    title={repo}
+                  >
+                    {repo}
+                  </li>
+                ))}
+              </ul>
+            ) : subscribedAccounts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No repositories connected yet.</p>
             ) : null}
-            {connections.length > 0 ? (
+            {canManage && connections.length > 0 ? (
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
                   Import stuck or incomplete? Re-import walks every connected repo from the start —
@@ -606,42 +572,19 @@ export default function DocoGitHubIntegration() {
                 </Form>
               </div>
             ) : null}
-            {docoInstallUrl ? null : (
-              <details className="text-sm">
-                <summary className="cursor-pointer">Connect a repository (manual)</summary>
-                <Form method="post" className="mt-2 space-y-2">
-                  <input type="hidden" name="intent" value="connect" />
-                  <input
-                    name="repo"
-                    placeholder="owner/name"
-                    required
-                    className="block w-full rounded border px-2 py-1 text-sm"
-                  />
-                  <input
-                    name="installation_id"
-                    type="number"
-                    placeholder="App installation ID"
-                    required
-                    className="block w-full rounded border px-2 py-1 text-sm"
-                  />
-                  <button type="submit" className={PRIMARY_BTN}>
-                    Connect
-                  </button>
-                </Form>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  The one-click flow needs DOCO_GITHUB_APP_SLUG configured; until then, enter the
-                  repo and App installation id.
-                </p>
-              </details>
-            )}
           </CardContent>
         </Card>
+
+        {/* Section 2 — every repo Doco can see, to add more (writers only). */}
+        {canManage ? (
+          <AddMoreRepositories choices={addableChoices} docoInstallUrl={docoInstallUrl} />
+        ) : null}
       </main>
     </div>
   );
 }
 
-function ExistingGitHubPicker({
+function AddMoreRepositories({
   choices,
   docoInstallUrl,
 }: {
@@ -649,32 +592,72 @@ function ExistingGitHubPicker({
   docoInstallUrl: string | null;
 }) {
   return (
-    <section className="space-y-3 rounded-md border border-border bg-background p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Github className="h-4 w-4 text-primary" aria-hidden="true" />
-            Repositories
-          </h2>
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Github className="h-4 w-4 text-primary" aria-hidden="true" />
+              Add more repositories
+            </CardTitle>
+            <CardDescription>
+              Repositories you&apos;ve granted Doco access to. Pick the ones to track on this Doco.
+            </CardDescription>
+          </div>
+          {docoInstallUrl ? (
+            <a
+              href={docoInstallUrl}
+              className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Add organizations or repositories in GitHub
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          ) : null}
         </div>
-        {docoInstallUrl ? (
-          <a
-            href={docoInstallUrl}
-            className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            Add organizations or repositories in GitHub
-            <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </a>
-        ) : null}
-      </div>
-
-      <div className="space-y-3">
-        {choices.map((choice) => (
-          <InstallationChoiceForm key={choice.installation_id} choice={choice} />
-        ))}
-      </div>
-    </section>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {choices.length > 0 ? (
+          choices.map((choice) => (
+            <InstallationChoiceForm key={choice.installation_id} choice={choice} />
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {docoInstallUrl
+              ? "Every repository Doco can see is already connected. Grant access to more organizations or repositories in GitHub to track additional ones."
+              : "No additional repositories are available to add."}
+          </p>
+        )}
+        {docoInstallUrl ? null : (
+          <details className="text-sm">
+            <summary className="cursor-pointer">Connect a repository (manual)</summary>
+            <Form method="post" className="mt-2 space-y-2">
+              <input type="hidden" name="intent" value="connect" />
+              <input
+                name="repo"
+                placeholder="owner/name"
+                required
+                className="block w-full rounded border px-2 py-1 text-sm"
+              />
+              <input
+                name="installation_id"
+                type="number"
+                placeholder="App installation ID"
+                required
+                className="block w-full rounded border px-2 py-1 text-sm"
+              />
+              <button type="submit" className={PRIMARY_BTN}>
+                Connect
+              </button>
+            </Form>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The one-click flow needs DOCO_GITHUB_APP_SLUG configured; until then, enter the repo
+              and App installation id.
+            </p>
+          </details>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -707,7 +690,7 @@ function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }
               disabled={selectedCount === 0}
             >
               {selectedCount > 0
-                ? `Connect ${selectedCount} ${selectedCount === 1 ? "repo" : "repos"}`
+                ? `Add ${selectedCount} ${selectedCount === 1 ? "repo" : "repos"}`
                 : "Select repos"}
             </button>
           ) : choice.canConnectInstallation ? (
@@ -717,7 +700,7 @@ function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }
               value="connect-installation"
               className={PRIMARY_BTN}
             >
-              Connect all repositories
+              Add all repositories
             </button>
           ) : null}
         </div>
@@ -747,12 +730,6 @@ function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }
               : "No repositories are available from this GitHub organization yet."}
           </p>
         )}
-        {choice.connectedRepositories.length > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Already connected:{" "}
-            <span className="font-mono">{choice.connectedRepositories.join(", ")}</span>
-          </p>
-        ) : null}
       </div>
     </Form>
   );

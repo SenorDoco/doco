@@ -87,7 +87,6 @@ import {
   buildInstallationPickerChoices,
   connectedOrgRepositories,
   loader,
-  repositoryPickerDescription,
 } from "../$docoHandle.integrations.github";
 
 const routeArgs = {
@@ -186,16 +185,22 @@ describe("/:docoHandle/integrations/github", () => {
       },
     ]);
 
-    const result = await action({
+    const response = (await action({
       request: postForm({
         intent: "connect-existing-repos",
         installation_id: "42",
         repo: ["acme/web", "acme/api"],
       }),
       ...routeArgs,
-    });
+    }).catch((error: Response) => error)) as Response;
 
-    expect(result).toMatchObject({ ok: true });
+    // Connecting repos now hands the user a standalone "import started" screen
+    // (PRG redirect) instead of returning an inline banner message.
+    expect(response.status).toBe(302);
+    const location = response.headers.get("Location") ?? "";
+    expect(location).toContain("/meta-pull-requests/integrations/github");
+    expect(location).toContain("github=importing");
+    expect(location).toContain("count=2");
     expect(mocks.addConnection).toHaveBeenCalledTimes(2);
     expect(mocks.addConnection).toHaveBeenCalledWith(
       "doco_1",
@@ -305,10 +310,23 @@ describe("/:docoHandle/integrations/github", () => {
     ]);
   });
 
-  it("describes an account-level GitHub connection without implying repos are missing", () => {
-    expect(repositoryPickerDescription({ orgAccountCount: 1, pickerChoiceCount: 0 })).toBe(
-      "All repositories from the connected GitHub account can sync to this Doco.",
+  it("offers only not-yet-connected repos to add, in the order GitHub returned", () => {
+    const [choice] = buildInstallationPickerChoices(
+      [
+        {
+          installation_id: 42,
+          account: "acme",
+          repositories: ["acme/api", "acme/docs", "acme/web"],
+          connected_repositories: ["acme/web"],
+          source_doco_handles: ["existing-prs"],
+        },
+      ],
+      new Set(["acme/web"]),
     );
+
+    expect(choice.selectableRepositories).toEqual(["acme/api", "acme/docs"]);
+    expect(choice.connectedRepositories).toEqual(["acme/web"]);
+    expect(choice.hasSelectableRepositories).toBe(true);
   });
 
   it("lists the repositories covered by a connected org installation", () => {
