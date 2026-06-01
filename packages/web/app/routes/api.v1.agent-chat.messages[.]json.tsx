@@ -22,6 +22,7 @@ import {
   loadConversationByIdForPrincipal,
   loadOrCreateConversation,
   runAssistantTurn,
+  stopActiveTurnForPrincipal,
 } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
@@ -103,14 +104,18 @@ export async function action({ request }: { request: Request }) {
       ? parsed.conversation_id
       : null;
 
-  const conversation = conversationId
+  let conversation = conversationId
     ? await loadConversationByIdForPrincipal(conversationId, me.id)
     : await loadOrCreateConversation(me.id);
   if (!conversation) {
     return Response.json({ error: "conversation_not_found" }, { status: 404 });
   }
   if (conversation.active_turn_started_at) {
-    return Response.json({ error: "turn_in_progress" }, { status: 409 });
+    const stopped = await stopActiveTurnForPrincipal(conversation.id, me.id);
+    if (!stopped.row) {
+      return Response.json({ error: "conversation_not_found" }, { status: 404 });
+    }
+    conversation = stopped.row;
   }
   const cookieHeader = request.headers.get("cookie") ?? "";
   const origin = new URL(request.url).origin;

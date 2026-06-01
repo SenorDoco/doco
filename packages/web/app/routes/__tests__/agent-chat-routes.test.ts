@@ -63,10 +63,14 @@ describe("agent chat routes", () => {
     });
   });
 
-  it("rejects a new ask while the target conversation has an active turn", async () => {
+  it("stops the active turn and starts a fresh ask when a new message arrives", async () => {
     mocks.loadConversationByIdForPrincipal.mockResolvedValue(
       conversationRow({ active_turn_started_at: new Date("2026-01-01T00:00:05Z") }),
     );
+    mocks.stopActiveTurnForPrincipal.mockResolvedValue({
+      row: conversationRow({ active_turn_started_at: null }),
+      stopped: true,
+    });
 
     const response = await postMessageAction({
       request: jsonRequest("https://doco.test/api/v1/agent-chat/messages.json", {
@@ -75,9 +79,17 @@ describe("agent chat routes", () => {
       }),
     });
 
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({ error: "turn_in_progress" });
-    expect(mocks.runAssistantTurn).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.stopActiveTurnForPrincipal).toHaveBeenCalledWith("conv_1", "user_alice");
+    expect(mocks.runAssistantTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversation: expect.objectContaining({
+          id: "conv_1",
+          active_turn_started_at: null,
+        }),
+        userText: "One more thing",
+      }),
+    );
   });
 
   it("lets the owner of a thread request that its active turn stop", async () => {

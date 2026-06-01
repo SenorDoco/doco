@@ -1965,13 +1965,53 @@ function stitchMissingToolResults(messages: MessageParam[]): MessageParam[] {
   return out;
 }
 
+function userMessageHasToolResult(message: MessageParam): boolean {
+  if (message.role !== "user" || !Array.isArray(message.content)) return false;
+  return message.content.some(
+    (block) =>
+      block && typeof block === "object" && (block as { type?: string }).type === "tool_result",
+  );
+}
+
+function contentArray(content: MessageParam["content"]): ContentBlockParam[] {
+  return typeof content === "string" ? [{ type: "text", text: content }] : [...content];
+}
+
+export function coalesceAdjacentUserMessagesForAnthropic(messages: MessageParam[]): MessageParam[] {
+  const out: MessageParam[] = [];
+  for (const message of messages) {
+    const prev = out[out.length - 1];
+    if (
+      prev?.role === "user" &&
+      message.role === "user" &&
+      !userMessageHasToolResult(prev) &&
+      !userMessageHasToolResult(message)
+    ) {
+      prev.content = [
+        ...contentArray(prev.content),
+        {
+          type: "text",
+          text: "\n\n[Additional user message sent while the previous reply was interrupted]\n\n",
+        },
+        ...contentArray(message.content),
+      ];
+      continue;
+    }
+    out.push({
+      ...message,
+      content: Array.isArray(message.content) ? [...message.content] : message.content,
+    });
+  }
+  return out;
+}
+
 async function rowsToHistory(rows: ChatMessageRow[]): Promise<MessageParam[]> {
   const raw: MessageParam[] = [];
   for (const r of rows) {
     const content = await hydrateMessageContent(r.content, r.conversation_id);
     raw.push({ role: r.role, content });
   }
-  const out = stitchMissingToolResults(raw);
+  const out = coalesceAdjacentUserMessagesForAnthropic(stitchMissingToolResults(raw));
   // Cross-turn prompt caching. Anthropic re-uses cached prefixes when
   // a subsequent request starts byte-identically; the breakpoint lives
   // on the LAST content block of whatever message we mark. By tagging

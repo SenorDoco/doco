@@ -4,6 +4,7 @@ import {
   MAX_REPLAY_MESSAGES,
   buildDocoCreationContractPrompt,
   buildOperationMemoryFromRows,
+  coalesceAdjacentUserMessagesForAnthropic,
   trimHistoryToWindow,
 } from "../agent-chat.server";
 
@@ -58,6 +59,18 @@ describe("conversation replay window", () => {
     const trimmed = trimHistoryToWindow(rows, { maxMessages: 10, maxApproxTokens: 50 });
 
     expect(trimmed.map((r) => r.id)).toEqual(["msg_3", "msg_4"]);
+  });
+
+  it("coalesces adjacent human asks left by an interrupted reply", () => {
+    const messages = coalesceAdjacentUserMessagesForAnthropic([
+      { role: "user", content: [{ type: "text", text: "First ask" }] },
+      { role: "user", content: [{ type: "text", text: "Actually, include this too" }] },
+    ]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ role: "user" });
+    expect(JSON.stringify(messages[0]?.content)).toContain("First ask");
+    expect(JSON.stringify(messages[0]?.content)).toContain("Actually, include this too");
   });
 });
 

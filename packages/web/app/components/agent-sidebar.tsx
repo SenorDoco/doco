@@ -575,6 +575,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const messageListPinnedToBottomRef = useRef(true);
   const messageListUserInteractingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const sendSeqRef = useRef(0);
 
   const setCollapsedPersistent = useCallback((next: boolean) => {
     setCollapsed(next);
@@ -1505,13 +1506,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const attachmentIds = sentAttachments.map((a) => a.id);
       const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
       if (!text && attachmentIds.length === 0) return;
-      // While Señor Doco is mid-reply, the Anthropic API can't accept
-      // another user message in the same conversation (the wire
-      // protocol requires user→assistant→user alternation). The UI's
-      // primary action becomes Stop during that window; keep typed
-      // text in the composer until the current turn settles.
+      const sendSeq = sendSeqRef.current + 1;
+      sendSeqRef.current = sendSeq;
       if ((busy || remoteInflight) && !override) {
-        return;
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setInFlight(null);
+        setTurnUsage(null);
+        setRemoteInflight(false);
       }
       // Crash-safe pending-send. Write to localStorage SYNCHRONOUSLY
       // before any await. If the tab dies (reload, network drop)
@@ -1630,7 +1632,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         if (res.status === 409) {
           localContent.push({
             type: "text",
-            text: "[error] Señor Doco is already working in this chat. Stop the current reply before sending another ask.",
+            text: "[error] Señor Doco is already restarting. Try sending again in a moment.",
           });
           bumpInFlight();
           setRemoteInflight(true);
@@ -1649,6 +1651,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const decoder = new TextDecoder();
         let buf = "";
         streamLoop: for (;;) {
+          if (sendSeq !== sendSeqRef.current) break;
           const { done, value } = await reader.read();
           if (done) break;
           buf += decoder.decode(value, { stream: true });
@@ -1667,6 +1670,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             } catch {
               continue;
             }
+            if (sendSeq !== sendSeqRef.current) break streamLoop;
             if (event.kind === "text_delta") {
               const last = localContent[localContent.length - 1];
               if (last && last.type === "text") {
@@ -1785,45 +1789,47 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           bumpInFlight();
         }
       } finally {
-        abortRef.current = null;
-        // Commit the in-flight content as saved messages. Canonical history
-        // (with server-assigned ids and timestamps) gets re-hydrated on the
-        // next mount via the conversation endpoint — we don't block here on
-        // a reload round-trip.
-        const committed: ChatMessage[] = [];
-        if (localContent.length > 0) {
-          committed.push({
-            id: persistedAssistantMessageId ?? `local_${Date.now() + 1}`,
-            role: "assistant",
-            content: localContent.slice(),
-            created_at: new Date().toISOString(),
-          });
+        if (sendSeq === sendSeqRef.current) {
+          abortRef.current = null;
+          // Commit the in-flight content as saved messages. Canonical history
+          // (with server-assigned ids and timestamps) gets re-hydrated on the
+          // next mount via the conversation endpoint — we don't block here on
+          // a reload round-trip.
+          const committed: ChatMessage[] = [];
+          if (localContent.length > 0) {
+            committed.push({
+              id: persistedAssistantMessageId ?? `local_${Date.now() + 1}`,
+              role: "assistant",
+              content: localContent.slice(),
+              created_at: new Date().toISOString(),
+            });
+          }
+          if (localResults.size > 0) {
+            committed.push({
+              id: `local_${Date.now() + 2}`,
+              role: "user",
+              content: Array.from(localResults.values()),
+              created_at: new Date().toISOString(),
+            });
+          }
+          if (committed.length > 0) {
+            setMessages((prev) => [...prev, ...committed]);
+          }
+          setInFlight(null);
+          setBusy(false);
+          // Per-request token counter is only meaningful while the
+          // request is in flight; clear it once the turn settles.
+          setTurnUsage(null);
+          // Settled — tell other tabs to re-fetch the final state (covers
+          // the late-arriving assistant message) and that Señor Doco is
+          // no longer mid-reply.
+          broadcastSync({ kind: "remote-inflight", busy: false });
+          broadcastSync({ kind: "changed" });
+          // Refresh the thread list so the active thread's preview /
+          // updated_at reflect the assistant's reply when the user
+          // navigates back to the list.
+          void loadConversationsList();
         }
-        if (localResults.size > 0) {
-          committed.push({
-            id: `local_${Date.now() + 2}`,
-            role: "user",
-            content: Array.from(localResults.values()),
-            created_at: new Date().toISOString(),
-          });
-        }
-        if (committed.length > 0) {
-          setMessages((prev) => [...prev, ...committed]);
-        }
-        setInFlight(null);
-        setBusy(false);
-        // Per-request token counter is only meaningful while the
-        // request is in flight; clear it once the turn settles.
-        setTurnUsage(null);
-        // Settled — tell other tabs to re-fetch the final state (covers
-        // the late-arriving assistant message) and that Señor Doco is
-        // no longer mid-reply.
-        broadcastSync({ kind: "remote-inflight", busy: false });
-        broadcastSync({ kind: "changed" });
-        // Refresh the thread list so the active thread's preview /
-        // updated_at reflect the assistant's reply when the user
-        // navigates back to the list.
-        void loadConversationsList();
       }
     },
     [
@@ -1844,45 +1850,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       maybeFollowCreateResult,
     ],
   );
-
-  const stopActiveTurn = useCallback(async () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setBusy(false);
-    setInFlight(null);
-    setRemoteInflight(false);
-    setTurnUsage(null);
-    setQueuedSends([]);
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.removeItem(PENDING_SEND_KEY);
-      } catch {}
-    }
-    broadcastSync({ kind: "remote-inflight", busy: false });
-
-    if (!conversationId) return;
-    try {
-      const res = await fetch(
-        `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
-        {
-          method: "PATCH",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stop_active_turn: true }),
-        },
-      );
-      if (!res.ok) {
-        setLoadError(`Couldn't stop Señor Doco (HTTP ${res.status})`);
-        return;
-      }
-      setLoadError(null);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err));
-    } finally {
-      void reload();
-      void loadConversationsList();
-    }
-  }, [broadcastSync, conversationId, loadConversationsList, reload]);
 
   // Pending-send recovery. send() writes the user's text to
   // localStorage synchronously before its fetch; if the tab died
@@ -2335,8 +2302,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   value={inputText}
                   onChange={setInputText}
                   onSend={send}
-                  onStop={stopActiveTurn}
-                  busy={busy || remoteInflight}
                   username={me.username}
                   staged={staged}
                   queuedCount={queuedSends.length}
@@ -3649,8 +3614,6 @@ function Composer({
   value,
   onChange,
   onSend,
-  onStop,
-  busy,
   username,
   staged,
   queuedCount,
@@ -3662,8 +3625,6 @@ function Composer({
   value: string;
   onChange: (s: string) => void;
   onSend: () => void;
-  onStop: () => void;
-  busy: boolean;
   username: string;
   staged: StagedAttachment[];
   queuedCount: number;
@@ -3683,9 +3644,7 @@ function Composer({
   });
   const canSend = value.trim().length > 0 || staged.length > 0;
   const queuedLabel = queuedCount === 0 ? null : `${queuedCount} queued`;
-  const helperLabel = busy
-    ? "Stop the current reply before sending another ask"
-    : "⏎ to send · ⇧⏎ for newline";
+  const helperLabel = "⏎ to send · ⇧⏎ for newline";
   return (
     <div
       className={cn(
@@ -3742,7 +3701,7 @@ function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if (!busy) onSend();
+            onSend();
           }
         }}
       />
@@ -3773,17 +3732,15 @@ function Composer({
         </div>
         <button
           type="button"
-          onClick={busy ? onStop : onSend}
-          disabled={!busy && !canSend}
-          aria-label={busy ? "Stop Señor Doco" : "Send message"}
+          onClick={onSend}
+          disabled={!canSend}
+          aria-label="Send message"
           className={cn(
             "neu-button rounded-md px-3 py-1 text-[11px] font-semibold hover:opacity-90 disabled:opacity-50",
-            busy
-              ? "border border-destructive/40 bg-destructive/10 text-destructive"
-              : "bg-primary text-primary-foreground",
+            "bg-primary text-primary-foreground",
           )}
         >
-          {busy ? "Stop" : "Send"}
+          Send
         </button>
       </div>
     </div>
