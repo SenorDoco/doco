@@ -721,16 +721,19 @@ export async function refreshTokens(args: {
       user_id: string;
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
+      granted_doco_write_types: Record<string, string[]>;
       granted_org_ids: string[];
       granted_org_roles: Record<string, string>;
+      granted_org_write_types: Record<string, string[]>;
       scope: string | null;
       expires_at: Date;
       revoked: boolean;
       non_rotating: boolean;
     }>(
-      `SELECT client_id, user_id, granted_doco_ids, granted_doco_roles,
-              granted_org_ids, granted_org_roles, scope, expires_at, revoked,
-              non_rotating
+      `SELECT client_id, user_id,
+              granted_doco_ids, granted_doco_roles, granted_doco_write_types,
+              granted_org_ids, granted_org_roles, granted_org_write_types,
+              scope, expires_at, revoked, non_rotating
          FROM oauth_refresh_tokens
         WHERE token = $1
         FOR UPDATE`,
@@ -752,22 +755,27 @@ export async function refreshTokens(args: {
     const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
     const rolesJson = JSON.stringify(row.granted_doco_roles ?? {});
+    const docoWriteTypesJson = JSON.stringify(row.granted_doco_write_types ?? {});
     const orgIds = row.granted_org_ids ?? [];
     const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
+    const orgWriteTypesJson = JSON.stringify(row.granted_org_write_types ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, user_id, granted_doco_ids,
-          granted_doco_roles, granted_org_ids, granted_org_roles,
+          granted_doco_roles, granted_doco_write_types,
+          granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         access_token,
         row.client_id,
         row.user_id,
         row.granted_doco_ids,
         rolesJson,
+        docoWriteTypesJson,
         orgIds,
         orgRolesJson,
+        orgWriteTypesJson,
         row.scope,
         access_expires,
       ],
@@ -796,17 +804,20 @@ export async function refreshTokens(args: {
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, user_id, granted_doco_ids,
-          granted_doco_roles, granted_org_ids, granted_org_roles,
+          granted_doco_roles, granted_doco_write_types,
+          granted_org_ids, granted_org_roles, granted_org_write_types,
           scope, expires_at, non_rotating)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         refresh_token,
         row.client_id,
         row.user_id,
         row.granted_doco_ids,
         rolesJson,
+        docoWriteTypesJson,
         orgIds,
         orgRolesJson,
+        orgWriteTypesJson,
         row.scope,
         refresh_expires,
         false,

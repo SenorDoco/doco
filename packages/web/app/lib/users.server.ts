@@ -41,6 +41,7 @@ export interface UserCell {
 
 export interface GrantRow extends UserCell {
   role: DocoRole;
+  write_types: string[];
   joined_at: string;
 }
 
@@ -117,14 +118,14 @@ export async function loadUserSections(principalId: string): Promise<{
   const orgRoleRows: Array<{
     org: { id: string; handle: string; name: string };
     myRole: DocoRole;
-    rows: Array<{ user_id: string; role: DocoRole; joined_at: string }>;
+    rows: Array<{ user_id: string; role: DocoRole; write_types: string[]; joined_at: string }>;
   }> = [];
   const allPrincipalIds = new Set<string>();
   for (const org of myOrgs) {
     const myRole = (await getOrgRole(org.id, principalId)) ?? "reader";
     const result = await withClient(async (c) =>
-      c.query<{ user_id: string; role: string; joined_at: string | Date }>(
-        "SELECT user_id, role, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
+      c.query<{ user_id: string; role: string; write_types: string[]; joined_at: string | Date }>(
+        "SELECT user_id, role, write_types, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
         [org.id],
       ),
     );
@@ -133,6 +134,7 @@ export async function loadUserSections(principalId: string): Promise<{
       return {
         user_id: String(row.user_id),
         role: row.role as DocoRole,
+        write_types: normalizeWriteTypes(row.write_types),
         joined_at:
           row.joined_at instanceof Date ? row.joined_at.toISOString() : String(row.joined_at),
       };
@@ -166,7 +168,7 @@ export async function loadUserSections(principalId: string): Promise<{
   const docoRoleRows: Array<{
     doco: { id: string; handle: string; ownerId: string; ownerSlug: string; label: string };
     myRole: DocoRole;
-    rows: Array<{ user_id: string; role: DocoRole; joined_at: string }>;
+    rows: Array<{ user_id: string; role: DocoRole; write_types: string[]; joined_at: string }>;
   }> = [];
   for (const docoId of accessibleDocoIds) {
     const doco = await getDocoById(docoId);
@@ -174,7 +176,12 @@ export async function loadUserSections(principalId: string): Promise<{
     const users = await listDocoUsers(docoId);
     const rows = users.map((u) => {
       allPrincipalIds.add(u.user_id);
-      return { user_id: u.user_id, role: u.role, joined_at: u.joined_at };
+      return {
+        user_id: u.user_id,
+        role: u.role,
+        write_types: u.write_types,
+        joined_at: u.joined_at,
+      };
     });
     const myRole =
       (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principalId)) ??
@@ -208,6 +215,7 @@ export async function loadUserSections(principalId: string): Promise<{
         entry.rows.map(async (row) => ({
           ...(await enrichPrincipal(row.user_id, lastActivity)),
           role: row.role,
+          write_types: row.write_types,
           joined_at: row.joined_at,
         })),
       ),
@@ -222,6 +230,7 @@ export async function loadUserSections(principalId: string): Promise<{
         entry.rows.map(async (row) => ({
           ...(await enrichPrincipal(row.user_id, lastActivity)),
           role: row.role,
+          write_types: row.write_types,
           joined_at: row.joined_at,
         })),
       ),

@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   listOrganizationsForUser: vi.fn(),
   getDocoLevelRole: vi.fn(),
   listAccessibleDocoIdsForPrincipal: vi.fn(),
+  issueTokens: vi.fn(),
+  registerClient: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
@@ -31,11 +33,11 @@ vi.mock("~/lib/doco-labels", () => ({
 }));
 
 vi.mock("~/lib/oauth-server.server", () => ({
-  issueTokens: vi.fn(),
-  registerClient: vi.fn(),
+  issueTokens: mocks.issueTokens,
+  registerClient: mocks.registerClient,
 }));
 
-import { listApiKeysForUser } from "../api-keys.server";
+import { addGrantsToApiKey, listApiKeysForUser } from "../api-keys.server";
 
 describe("listApiKeysForUser", () => {
   beforeEach(() => {
@@ -77,5 +79,78 @@ describe("listApiKeysForUser", () => {
         source: "agent",
       }),
     ]);
+  });
+});
+
+describe("addGrantsToApiKey", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getDocoLevelRole.mockResolvedValue("owner");
+    mocks.getOrgRole.mockResolvedValue("owner");
+  });
+
+  it("widens an existing token without dropping current grants or per-type writes", async () => {
+    const queries = vi.fn(async (sql: string, _values?: unknown[]) => {
+      if (sql.includes("SELECT owner_id FROM docos")) {
+        return { rows: [{ owner_id: "organization_torre" }] };
+      }
+      if (sql.includes("FROM oauth_refresh_tokens")) {
+        return {
+          rows: [
+            {
+              client_id: "doco_client_existing",
+              user_id: "user_agent",
+              granted_doco_ids: ["doco_existing"],
+              granted_doco_roles: { doco_existing: "reader" },
+              granted_doco_write_types: { doco_existing: ["decision"] },
+              granted_org_ids: [],
+              granted_org_roles: {},
+              granted_org_write_types: {},
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    mocks.withClient.mockImplementation(async (callback) => callback({ query: queries }));
+
+    await addGrantsToApiKey({
+      me: { id: "user_owner", username: "owner" } as never,
+      client_id: "doco_client_existing",
+      grants: [
+        {
+          level: "doco",
+          target_id: "doco_existing",
+          role: "reader",
+          write_types: ["intent"],
+        },
+        {
+          level: "doco",
+          target_id: "doco_new",
+          role: "writer",
+          write_types: ["*"],
+        },
+      ],
+    });
+
+    const refreshUpdate = queries.mock.calls.find(
+      ([sql]) => typeof sql === "string" && sql.includes("UPDATE oauth_refresh_tokens"),
+    );
+    const accessUpdate = queries.mock.calls.find(
+      ([sql]) => typeof sql === "string" && sql.includes("UPDATE oauth_access_tokens"),
+    );
+    expect(refreshUpdate).toBeTruthy();
+    expect(accessUpdate).toBeTruthy();
+
+    const values = (refreshUpdate?.[1] ?? []) as unknown[];
+    expect(values[1]).toEqual(["doco_existing", "doco_new"]);
+    expect(JSON.parse(String(values[2]))).toEqual({
+      doco_existing: "reader",
+      doco_new: "writer",
+    });
+    expect(JSON.parse(String(values[3]))).toEqual({
+      doco_existing: ["decision", "intent"],
+      doco_new: ["*"],
+    });
   });
 });

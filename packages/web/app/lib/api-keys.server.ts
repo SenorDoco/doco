@@ -19,7 +19,7 @@
 // /authorize endpoint rejects it as a callback target.
 
 import { type DocoRole, getOrgRole, listOrganizationsForUser, withClient } from "@doco/db";
-import { normalizeWriteTypes } from "@doco/shared";
+import { WRITE_ALL, normalizeWriteTypes } from "@doco/shared";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { issueTokens, registerClient } from "~/lib/oauth-server.server";
@@ -43,6 +43,7 @@ export interface ApiKeyScopeGrant {
   target_label: string;
   target_link: string;
   role: DocoRole;
+  writeTypes: string[];
 }
 
 export interface ApiKeyRow {
@@ -88,8 +89,10 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
       redirect_uris: string[];
       granted_doco_ids: string[] | null;
       granted_doco_roles: Record<string, string> | null;
+      granted_doco_write_types: Record<string, string[]> | null;
       granted_org_ids: string[] | null;
       granted_org_roles: Record<string, string> | null;
+      granted_org_write_types: Record<string, string[]> | null;
       created_at: Date | string;
       expires_at: Date | string;
       last_seen_at: Date | string | null;
@@ -104,8 +107,10 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
               c.redirect_uris,
               rt.granted_doco_ids,
               rt.granted_doco_roles,
+              rt.granted_doco_write_types,
               rt.granted_org_ids,
               rt.granted_org_roles,
+              rt.granted_org_write_types,
               rt.created_at,
               rt.expires_at,
               (SELECT MAX(at.created_at)
@@ -138,24 +143,28 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
       const handle = orgHandles.get(orgId);
       if (!handle) continue;
       const role = (row.granted_org_roles?.[orgId] ?? "reader") as DocoRole;
+      const writeTypes = normalizeWriteTypes(row.granted_org_write_types?.[orgId]);
       grants.push({
         level: "org",
         target_id: orgId,
         target_label: handle,
         target_link: `/orgs/${handle}`,
         role,
+        writeTypes,
       });
     }
     for (const docoId of row.granted_doco_ids ?? []) {
       const label = docoLabels.get(docoId);
       if (!label) continue;
       const role = (row.granted_doco_roles?.[docoId] ?? "reader") as DocoRole;
+      const writeTypes = normalizeWriteTypes(row.granted_doco_write_types?.[docoId]);
       grants.push({
         level: "doco",
         target_id: docoId,
         target_label: label.label,
         target_link: `/${label.handle}`,
         role,
+        writeTypes,
       });
     }
     grants.sort((a, b) => a.target_label.localeCompare(b.target_label));
@@ -292,17 +301,19 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
 export interface MintApiKeyInput {
   me: CurrentPrincipal;
   label: string;
-  grants: Array<{
-    level: "account" | "org" | "doco";
-    /** Empty for account-level grants (the minter's account is the scope). */
-    target_id: string;
-    role: DocoRole;
-    /** Per-type write set (decision_per_type_write_grants); "*" = all. */
-    write_types?: string[];
-  }>;
+  grants: ApiKeyGrantInput[];
   // When the key is for a cloud dev environment, mint a non-rotating
   // refresh token so it survives as a pinned environment variable.
   non_rotating?: boolean;
+}
+
+export interface ApiKeyGrantInput {
+  level: "account" | "org" | "doco";
+  /** Empty for account-level grants (the minter's account is the scope). */
+  target_id: string;
+  role: DocoRole;
+  /** Per-type write set (decision_per_type_write_grants); "*" = all. */
+  write_types?: string[];
 }
 
 export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> {
@@ -319,12 +330,63 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
   // token is a snapshot credential: orgs created later are NOT auto-added
   // (mint a fresh token to widen). Non-owned orgs are skipped — you can
   // only delegate from orgs you own.
-  const expandedGrants: typeof input.grants = [];
-  for (const grant of input.grants) {
+  const expandedGrants = await expandAccountGrants(input.me, input.grants);
+  if (expandedGrants.length === 0) {
+    throw new Error("You don't own any organization to scope an account token to.");
+  }
+  const grants = expandedGrants;
+
+  await assertApiKeyGrantsAllowed(input.me, grants);
+
+  const client = await registerClient({
+    client_name: trimmedLabel,
+    redirect_uris: [PERSONAL_API_KEY_REDIRECT],
+  });
+
+  const {
+    granted_doco_ids,
+    granted_doco_roles,
+    granted_doco_write_types,
+    granted_org_ids,
+    granted_org_roles,
+    granted_org_write_types,
+    scopeGrants,
+  } = await serializeApiKeyGrants(grants);
+
+  const tokens = await issueTokens({
+    client_id: client.client_id,
+    user_id: input.me.id,
+    granted_doco_ids,
+    granted_doco_roles,
+    granted_doco_write_types,
+    granted_org_ids,
+    granted_org_roles,
+    granted_org_write_types,
+    scope: null,
+    non_rotating: input.non_rotating ?? false,
+  });
+
+  return {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    client_id: client.client_id,
+    expires_in: tokens.expires_in,
+    client_name: trimmedLabel,
+    scope_grants: scopeGrants,
+    non_rotating: input.non_rotating ?? false,
+  };
+}
+
+async function expandAccountGrants(
+  me: CurrentPrincipal,
+  inputGrants: ApiKeyGrantInput[],
+): Promise<ApiKeyGrantInput[]> {
+  const expandedGrants: ApiKeyGrantInput[] = [];
+  for (const grant of inputGrants) {
     if (grant.level === "account") {
-      const orgs = await listOrganizationsForUser(input.me.id);
+      const orgs = await listOrganizationsForUser(me.id);
       for (const org of orgs) {
-        const myRole = await getOrgRole(org.id, input.me.id);
+        const myRole = await getOrgRole(org.id, me.id);
         if (myRole === "owner") {
           expandedGrants.push({
             level: "org",
@@ -338,19 +400,21 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
       expandedGrants.push(grant);
     }
   }
-  if (expandedGrants.length === 0) {
-    throw new Error("You don't own any organization to scope an account token to.");
-  }
-  const grants = expandedGrants;
+  return expandedGrants;
+}
 
+async function assertApiKeyGrantsAllowed(
+  me: CurrentPrincipal,
+  grants: ApiKeyGrantInput[],
+): Promise<void> {
   for (const grant of grants) {
     if (!ALL_ROLES.includes(grant.role)) {
       throw new Error(`Invalid role: ${grant.role}`);
     }
     const myRole =
       grant.level === "org"
-        ? await getOrgRole(grant.target_id, input.me.id)
-        : await getDocoLevelRoleForGrant(grant.target_id, input.me.id);
+        ? await getOrgRole(grant.target_id, me.id)
+        : await getDocoLevelRoleForGrant(grant.target_id, me.id);
     if (!myRole) {
       throw new Error(`You don't have a role on this ${grant.level}.`);
     }
@@ -360,12 +424,17 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
       );
     }
   }
+}
 
-  const client = await registerClient({
-    client_name: trimmedLabel,
-    redirect_uris: [PERSONAL_API_KEY_REDIRECT],
-  });
-
+async function serializeApiKeyGrants(grants: ApiKeyGrantInput[]): Promise<{
+  granted_doco_ids: string[];
+  granted_doco_roles: Record<string, string>;
+  granted_doco_write_types: Record<string, string[]>;
+  granted_org_ids: string[];
+  granted_org_roles: Record<string, string>;
+  granted_org_write_types: Record<string, string[]>;
+  scopeGrants: ApiKeyScopeGrant[];
+}> {
   const granted_doco_ids: string[] = [];
   const granted_doco_roles: Record<string, string> = {};
   const granted_doco_write_types: Record<string, string[]> = {};
@@ -406,6 +475,7 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
         target_label: handle,
         target_link: `/orgs/${handle}`,
         role: grant.role,
+        writeTypes: wt ?? [],
       });
     } else {
       granted_doco_ids.push(grant.target_id);
@@ -419,32 +489,175 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
         target_label: label?.label ?? grant.target_id,
         target_link: `/${handle}`,
         role: grant.role,
+        writeTypes: wt ?? [],
       });
     }
   }
 
-  const tokens = await issueTokens({
-    client_id: client.client_id,
-    user_id: input.me.id,
+  return {
     granted_doco_ids,
     granted_doco_roles,
     granted_doco_write_types,
     granted_org_ids,
     granted_org_roles,
     granted_org_write_types,
-    scope: null,
-    non_rotating: input.non_rotating ?? false,
-  });
-
-  return {
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    client_id: client.client_id,
-    expires_in: tokens.expires_in,
-    client_name: trimmedLabel,
-    scope_grants: scopeGrants,
-    non_rotating: input.non_rotating ?? false,
+    scopeGrants,
   };
+}
+
+export async function addGrantsToApiKey(input: {
+  me: CurrentPrincipal;
+  client_id: string;
+  grants: ApiKeyGrantInput[];
+}): Promise<ApiKeyScopeGrant[]> {
+  if (!input.client_id.trim()) throw new Error("Missing client_id.");
+  if (input.grants.length === 0) throw new Error("Pick at least one thing to grant access to.");
+
+  const expandedGrants = await expandAccountGrants(input.me, input.grants);
+  if (expandedGrants.length === 0) {
+    throw new Error("You don't own any organization to scope an account token to.");
+  }
+  await assertApiKeyGrantsAllowed(input.me, expandedGrants);
+
+  const incoming = await serializeApiKeyGrants(expandedGrants);
+
+  return await withClient(async (c) => {
+    const existing = await c.query<{
+      client_id: string;
+      user_id: string;
+      granted_doco_ids: string[] | null;
+      granted_doco_roles: Record<string, string> | null;
+      granted_doco_write_types: Record<string, string[]> | null;
+      granted_org_ids: string[] | null;
+      granted_org_roles: Record<string, string> | null;
+      granted_org_write_types: Record<string, string[]> | null;
+    }>(
+      `SELECT rt.client_id, rt.user_id,
+              rt.granted_doco_ids, rt.granted_doco_roles, rt.granted_doco_write_types,
+              rt.granted_org_ids, rt.granted_org_roles, rt.granted_org_write_types
+         FROM oauth_refresh_tokens rt
+         JOIN users subject ON subject.id = rt.user_id
+        WHERE rt.client_id = $1
+          AND (rt.user_id = $2 OR subject.owner_id = $2)
+          AND rt.revoked = false
+          AND rt.expires_at > now()
+        ORDER BY rt.created_at DESC
+        LIMIT 1`,
+      [input.client_id, input.me.id],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new Error("Token not found or already revoked.");
+
+    const mergedDoco = mergeTokenScope(
+      row.granted_doco_ids ?? [],
+      row.granted_doco_roles ?? {},
+      row.granted_doco_write_types ?? {},
+      incoming.granted_doco_ids,
+      incoming.granted_doco_roles,
+      incoming.granted_doco_write_types,
+    );
+    const mergedOrg = mergeTokenScope(
+      row.granted_org_ids ?? [],
+      row.granted_org_roles ?? {},
+      row.granted_org_write_types ?? {},
+      incoming.granted_org_ids,
+      incoming.granted_org_roles,
+      incoming.granted_org_write_types,
+    );
+
+    const values = [
+      input.client_id,
+      mergedDoco.ids,
+      JSON.stringify(mergedDoco.roles),
+      JSON.stringify(mergedDoco.writeTypes),
+      mergedOrg.ids,
+      JSON.stringify(mergedOrg.roles),
+      JSON.stringify(mergedOrg.writeTypes),
+      input.me.id,
+    ];
+    await c.query(
+      `UPDATE oauth_refresh_tokens rt
+          SET granted_doco_ids = $2,
+              granted_doco_roles = $3::jsonb,
+              granted_doco_write_types = $4::jsonb,
+              granted_org_ids = $5,
+              granted_org_roles = $6::jsonb,
+              granted_org_write_types = $7::jsonb
+         FROM users subject
+        WHERE rt.user_id = subject.id
+          AND rt.client_id = $1
+          AND (rt.user_id = $8 OR subject.owner_id = $8)
+          AND rt.revoked = false
+          AND rt.expires_at > now()`,
+      values,
+    );
+    await c.query(
+      `UPDATE oauth_access_tokens at
+          SET granted_doco_ids = $2,
+              granted_doco_roles = $3::jsonb,
+              granted_doco_write_types = $4::jsonb,
+              granted_org_ids = $5,
+              granted_org_roles = $6::jsonb,
+              granted_org_write_types = $7::jsonb
+         FROM users subject
+        WHERE at.user_id = subject.id
+          AND at.client_id = $1
+          AND (at.user_id = $8 OR subject.owner_id = $8)
+          AND at.revoked = false
+          AND at.expires_at > now()`,
+      values,
+    );
+
+    return incoming.scopeGrants;
+  });
+}
+
+function mergeTokenScope(
+  baseIds: string[],
+  baseRoles: Record<string, string>,
+  baseWriteTypes: Record<string, string[]>,
+  incomingIds: string[],
+  incomingRoles: Record<string, string>,
+  incomingWriteTypes: Record<string, string[]>,
+): { ids: string[]; roles: Record<string, string>; writeTypes: Record<string, string[]> } {
+  const ids = [...new Set([...baseIds, ...incomingIds])].sort();
+  const incomingSet = new Set(incomingIds);
+  const baseSet = new Set(baseIds);
+  const roles: Record<string, string> = {};
+  const writeTypes: Record<string, string[]> = {};
+  for (const id of ids) {
+    const baseRole = baseSet.has(id) ? ((baseRoles[id] ?? "reader") as DocoRole) : null;
+    const incomingRole = incomingSet.has(id) ? ((incomingRoles[id] ?? "reader") as DocoRole) : null;
+    const role =
+      baseRole && incomingRole
+        ? rankOf(incomingRole) > rankOf(baseRole)
+          ? incomingRole
+          : baseRole
+        : (baseRole ?? incomingRole ?? "reader");
+    roles[id] = role;
+    if (role !== "owner") {
+      const merged = mergeWriteTypes(
+        effectiveStoredWriteTypes(baseRole, baseWriteTypes[id]),
+        effectiveStoredWriteTypes(incomingRole, incomingWriteTypes[id]),
+      );
+      if (merged.length > 0) writeTypes[id] = merged;
+    }
+  }
+  return { ids, roles, writeTypes };
+}
+
+function effectiveStoredWriteTypes(role: DocoRole | null, writeTypes: string[] | undefined) {
+  if (!role || role === "owner") return [];
+  const normalized = normalizeWriteTypes(writeTypes);
+  if (normalized.length > 0) return normalized;
+  return role === "writer" ? [WRITE_ALL] : [];
+}
+
+function mergeWriteTypes(a: string[], b: string[]): string[] {
+  const left = normalizeWriteTypes(a);
+  const right = normalizeWriteTypes(b);
+  if (left.includes(WRITE_ALL) || right.includes(WRITE_ALL)) return [WRITE_ALL];
+  return normalizeWriteTypes([...left, ...right]);
 }
 
 async function getDocoLevelRoleForGrant(
