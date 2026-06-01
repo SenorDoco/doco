@@ -118,6 +118,14 @@ describe("availableScopes", () => {
     // catalog: organization_A is owner → account offered; org + doco + types too.
     expect(scopes).toEqual(["account", "org", "doco", "types"]);
   });
+  it("uses plural scope labels for broad targets", () => {
+    expect(availableScopes(catalog).map((s) => s.title)).toEqual([
+      "All your orgs and docos",
+      "Specific organization(s)",
+      "Specific docos",
+      "Specific node or edge types",
+    ]);
+  });
   it("omits account when the user owns no org", () => {
     const noOwner: GrantCatalog = {
       orgs: [{ id: "organization_X", label: "x" }],

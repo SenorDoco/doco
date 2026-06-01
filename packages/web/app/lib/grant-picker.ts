@@ -251,7 +251,7 @@ export interface ScopeChoice {
 
 /**
  * Which scope choices the wizard should offer, given what the granting
- * user can reach. "My entire account" only makes sense if the user OWNS
+ * user can reach. "All your orgs and docos" only makes sense if the user OWNS
  * at least one org (an account grant cascades through owned orgs); org
  * and doco/types require at least one grantable target of that kind.
  */
@@ -263,22 +263,22 @@ export function availableScopes(catalog: GrantCatalog): ScopeChoice[] {
   if (ownsAnOrg) {
     out.push({
       scope: "account",
-      title: "My entire account",
+      title: "All your orgs and docos",
       blurb: "Every organization you own, and every doco under them — now and in the future.",
     });
   }
   if (hasOrg) {
     out.push({
       scope: "org",
-      title: "A specific organization",
-      blurb: "One organization and all of its docos.",
+      title: "Specific organization(s)",
+      blurb: "One or more organizations and all of their docos.",
     });
   }
   if (hasDoco) {
     out.push({
       scope: "doco",
-      title: "A specific doco",
-      blurb: "Read, write, or own a single doco.",
+      title: "Specific docos",
+      blurb: "Read, write, or own selected docos.",
     });
     out.push({
       scope: "types",
