@@ -65,8 +65,7 @@ BODY (JSON)
                                   (e.g. a glossary term entry with no alternate names); do
                                   not invent filler to satisfy a non-existent requirement.
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
-  sequence_to        optional   BPMN forward flow targets: ["action_01..."] or
-                                  [{ "target": "action_01...", "label": "Yes" }]
+  BPMN flow         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="sequence_flow"
   decided_by_principal_id optional  principal id who made the decision; auth fills this
   born_from          optional   reference id (e.g. born_from a bugfix decision)
   lifecycle          optional   one of "drafting" | "asserted" | "retired"; default "asserted"
@@ -114,7 +113,7 @@ UPDATE AN EXISTING DECISION
   Body fields are all optional (only the keys you include are touched):
     decision / question / chosen / alternatives / lifecycle
     deprecated / outcome / superseded_by
-    intent_ids / intent_ids_add / intent_ids_remove / sequence_to
+    intent_ids / intent_ids_add / intent_ids_remove
     decided_by_principal_id / born_from
 
   Response is the same shape as the capture endpoint (ok, id, path,
@@ -236,9 +235,7 @@ BODY (JSON)
   verb                required   short verb such as "refactor", "migrate", "deploy"
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
-  preceded_by         optional   entity ids that precede this action (causally or chronologically)
-  sequence_to         optional   BPMN forward flow targets: ["action_01..."] or
-                                  [{ "target": "decision_01...", "label": "complete" }]
+  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with sequence_flow / preceded_by relations
   gated_by            optional   ["rule_01...", ...] rule ids that gate this action (BPMN-style policy guards)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
@@ -277,7 +274,7 @@ UPDATE AN EXISTING ACTION
 
   Other patchable fields include action, lifecycle, deprecated,
   outcome, superseded_by, intent_ids/add/remove, verb,
-  outputs, preceded_by, sequence_to, decision_ids, and performed_at.
+  outputs, decision_ids, and performed_at. Use changesets for sequence_flow / preceded_by edges.
 `,
 
   logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
@@ -300,7 +297,7 @@ BODY (JSON)
   template_id         optional   Action id this Log instances
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
-  preceded_by         optional   entity ids that precede this Log
+  preceded_by         use POST ${baseUrl}/${handle}/api/changesets.json with relation_kind="preceded_by"
   inputs              optional   event input object or value
   actor_principal_id  optional   principal id who performed it; auth fills this
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "retired"
@@ -335,7 +332,7 @@ UPDATE AN EXISTING LOG
   Body fields are all optional; only the keys you include change. Every
   field except system identity/audit columns is patchable — log, verb,
   happened_at, outputs, inputs, lifecycle, deprecated, outcome,
-  superseded_by, intent_ids/add/remove, decision_ids, preceded_by, and
+  superseded_by, intent_ids/add/remove, decision_ids, and
   template_id. To preserve a clean record of what was first observed, you
   can instead capture a superseding Log and link it via superseded_by.
 `,
@@ -519,9 +516,7 @@ BODY (JSON)
   kind                required   "initial" | "intermediate" | "terminal"
   intent_ids          optional   ["intent_01...", ...]
   invariants          optional   ["condition true while in this state", ...]
-  preceded_by         optional   entity ids that precede this state
-  sequence_to         optional   BPMN forward flow targets: ["action_01..."] or
-                                  [{ "target": "action_01...", "label": "start" }]
+  flow relations      use POST ${baseUrl}/${handle}/api/changesets.json with sequence_flow / preceded_by relations
   lifecycle           optional   one of "drafting" | "asserted" | "retired"; default "asserted"
   deprecated          optional   boolean warning label; lifecycle is unchanged
   outcome             optional   "succeeded" | "failed"
@@ -551,7 +546,7 @@ UPDATE AN EXISTING STATE
 
   Body fields are all optional. Patchable fields include state,
   lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  kind, invariants, preceded_by, and sequence_to.
+  kind and invariants. Use changesets for sequence_flow / preceded_by edges.
 `,
 
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)

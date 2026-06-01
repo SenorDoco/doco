@@ -264,11 +264,7 @@ export async function loadBpmnGraph(
         LIMIT 5000`,
       [docoId, Array.from(nodeIdSet)],
     );
-    links = withNodeAuthoredSequenceLinks(
-      edgeRows.rows.map((r) => bpmnLinkFromEdgeRow(r, opts.handle)),
-      allRows,
-      nodeIdSet,
-    );
+    links = edgeRows.rows.map((r) => bpmnLinkFromEdgeRow(r, opts.handle));
 
     // Reconstruct the managed relationship fields (actor_id, decided_by, …)
     // onto each node's `data` from first-class edges — they no longer live in
@@ -695,73 +691,6 @@ function bpmnLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): Overview
     label: row.edge_type === "sequence_flow" ? sequenceFlowLabel(row.edge_props_json) : null,
     href,
   };
-}
-
-function withNodeAuthoredSequenceLinks(
-  materializedLinks: OverviewGraphLink[],
-  rows: readonly NodeRow[],
-  nodeIds: ReadonlySet<string>,
-): OverviewGraphLink[] {
-  const links = [...materializedLinks];
-  const materializedSequencePairs = new Set(
-    materializedLinks
-      .filter((link) => link.edge_type === "sequence_flow")
-      .map((link) => `${link.source}\u0000${link.target}`),
-  );
-  const syntheticKeys = new Set<string>();
-  const add = (
-    source: string,
-    target: string,
-    props: Record<string, unknown> | null,
-    keySuffix: string,
-  ) => {
-    if (!nodeIds.has(source) || !nodeIds.has(target)) return;
-    if (materializedSequencePairs.has(`${source}\u0000${target}`)) return;
-    const key = `${source}\u0000${target}\u0000${keySuffix}`;
-    if (syntheticKeys.has(key)) return;
-    syntheticKeys.add(key);
-    links.push({
-      id: `field-sequence:${source}->${target}:${keySuffix}`,
-      source,
-      target,
-      edge_type: "sequence_flow",
-      label: sequenceFlowLabel(props),
-      href: null,
-    });
-  };
-
-  for (const row of rows) {
-    const data = row.data ?? {};
-    for (const [index, entry] of sequenceToEntries(data.sequence_to).entries()) {
-      add(row.id, entry.target, entry.props, `sequence_to:${index}`);
-    }
-    for (const [index, predecessorId] of toStringArray(data.preceded_by).entries()) {
-      add(predecessorId, row.id, null, `preceded_by:${index}`);
-    }
-  }
-
-  return links;
-}
-
-function sequenceToEntries(
-  value: unknown,
-): { target: string; props: Record<string, unknown> | null }[] {
-  if (!Array.isArray(value)) return [];
-  const entries: { target: string; props: Record<string, unknown> | null }[] = [];
-  for (const item of value) {
-    if (typeof item === "string" && item.length > 0) {
-      entries.push({ target: item, props: null });
-      continue;
-    }
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const { target, ...props } = item as Record<string, unknown>;
-    if (typeof target !== "string" || target.length === 0) continue;
-    entries.push({
-      target,
-      props: Object.keys(props).length > 0 ? props : null,
-    });
-  }
-  return entries;
 }
 
 export function computeNearestIntentByNode(

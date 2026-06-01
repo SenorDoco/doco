@@ -1311,14 +1311,14 @@ label shown in lists; the rest is the body. POSTs that send the old
 required prose key is now \`intent\` / \`decision\` / \`action\` /
 etc., not \`summary\`.
 
-- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], sequence_to?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
+- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
 - Intent:    { intent*, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
-- Action:    { action*, verb*, intent_ids?[], decision_ids?[], preceded_by?[], sequence_to?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], preceded_by?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Action:    { action*, verb*, intent_ids?[], decision_ids?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
 - Rule:      { rule*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
 - Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
 - Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[] }
-- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], sequence_to?[] }
+- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[] }
 - Idea:      { idea*, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
 - Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
 - Policy (Node-authoring, owner-only): same endpoint with policy_kind*("node_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
@@ -1348,16 +1348,16 @@ Then navigate to the page that visibly proves the change:
 | Action | Navigate to |
 |---|---|
 | Captured a new node | /<handle>/<type>/<id>?dialog=skip — focus the graph/list on the node without opening the detail dialog |
-| Added/changed a edge (patched a ref field on a node) | /<handle>/<type>/<from-id>?dialog=skip — focus the source node's graph neighborhood without opening the detail dialog |
+| Added/changed an edge | /<handle>/edges/<edge-id> — show the edge detail, or /<handle>/<type>/<from-id>?dialog=skip to focus the source node |
 | Browsing edges in general | /<handle>/edges (list) or /<handle>/edges/<edge-key> (detail with two-node graph) |
 | Created a new doco / org | /<new-handle> |
 | User asked "show me X" | the page that lists or details X |
 
 Never paste the URL on a separate line — the footer-line's link covers it, and the navigate already moved them there. If the response also returns \`warnings[]\`, those are model-facing hints, not user-facing; do not paste them.
 
-## Adding a edge
+## Adding an edge
 
-Edges in Doco are derived from reference fields on nodes (D-017, fields-as-edges). For one-off edits, PATCH the owning field on the node. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback.
+Edges in Doco are first-class rows. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback. BPMN/process ordering must be authored as sequence_flow / preceded_by edges, never as sequence_to / preceded_by fields on node JSON.
 
 Changeset example for BPMN-style ordered flow:
 
@@ -1382,7 +1382,7 @@ Changeset example for BPMN-style ordered flow:
     ]
   }
 
-Common relation kinds: sequence_flow → sequence_to (source -> target, edge labels allowed) · preceded_by → preceded_by (stored on later node) · serves → intent_ids · enacts → decision_ids · gated_by → gated_by · tests → target_ref · born_from → born_from · superseded_by → superseded_by · reports_to → reports_to · implemented_by → implemented_by (any node → code-artifact References; e.g. Decision/ADR shipped by these PRs, BPMN Action implemented at these code locations). There is no POST /<handle>/api/edges.json — use changesets or patch reference fields; the indexer materializes the edge synchronously.
+Common relation kinds: sequence_flow (source -> target, edge labels allowed) · preceded_by (later node -> predecessor edge; use sequence_flow for BPMN control flow) · serves → intent_ids · enacts → decision_ids · gated_by → gated_by · tests → target_ref · born_from → born_from · superseded_by → superseded_by · reports_to → reports_to · implemented_by → implemented_by (any node → code-artifact References; e.g. Decision/ADR shipped by these PRs, BPMN Action implemented at these code locations). You can also POST /<handle>/api/edges.json for direct edge creation.
 
 When sibling relations must become valid together, use \`op: "relate_many"\` in the same changeset. This is especially important for exhaustive gateways, tree siblings, and other structures where adding the first edge alone would be temporarily invalid.
 

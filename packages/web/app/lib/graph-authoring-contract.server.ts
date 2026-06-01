@@ -6,6 +6,7 @@ export type RelationCardinality = "one" | "many";
 export interface RelationKindSpec {
   kind: string;
   field: string;
+  storage?: "field" | "edge";
   owner: RelationOwner;
   value: RelationOwner;
   cardinality: RelationCardinality;
@@ -23,19 +24,22 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = {
   sequence_flow: {
     kind: "sequence_flow",
     field: "sequence_to",
+    storage: "edge",
     owner: "from",
     value: "to",
     cardinality: "many",
     acceptsProps: ["label", "condition", "kind"],
-    description: "Forward ordered flow. Stored on the source as sequence_to.",
+    description: "Forward ordered flow. Authored as a first-class edge.",
   },
   preceded_by: {
     kind: "preceded_by",
     field: "preceded_by",
+    storage: "edge",
     owner: "to",
     value: "from",
     cardinality: "many",
-    description: "Causal/chronological predecessor. Stored on the later node.",
+    description:
+      "Causal/chronological predecessor. Authored as a first-class edge from the later node to the predecessor.",
   },
   serves: {
     kind: "serves",
@@ -296,9 +300,12 @@ export function unsupportedRelationFieldError(
   body: Record<string, unknown>,
 ): string | null {
   for (const spec of Object.values(RELATION_KINDS)) {
-    if (!spec.owners) continue;
     const value = body[spec.field];
     if (value === undefined || value === null) continue;
+    if (spec.storage === "edge") {
+      return `${spec.field} (the \`${spec.kind}\` relation) must be authored as an edge, not stored in node JSON. Use a changeset relate operation or the edges API.`;
+    }
+    if (!spec.owners) continue;
     if (!spec.owners.includes(entityType)) {
       return `${spec.field} (the \`${spec.kind}\` relation) is only valid on ${spec.owners.join(
         " or ",
