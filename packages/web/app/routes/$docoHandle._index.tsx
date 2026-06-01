@@ -1173,6 +1173,7 @@ export default function DocoHome({
                 {effectivePerspectiveKind === "approval" && approvalData ? (
                   <ApprovalPerspective
                     nodes={approvalData.nodes}
+                    focusId={perspectiveFocusId}
                     canChangeLifecycle={canAdminPerspectives}
                     onOpenNode={(node) => {
                       void loadNodeDialog(node.entity_type, node.id, node.href);
@@ -1184,12 +1185,14 @@ export default function DocoHome({
                     nodes={graphState.nodes}
                     pageRanks={pageRanksMap}
                     visibleLifecycles={visibleLifecycles}
+                    focusId={perspectiveFocusId}
                   />
                 ) : effectivePerspectiveKind === "glossary" && glossaryData ? (
                   <GlossaryPerspective
                     data={glossaryData}
                     title={handle}
                     visibleLifecycles={visibleLifecycles}
+                    focusId={perspectiveFocusId}
                     onOpenNode={(entry) => {
                       void loadNodeDialog(
                         entry.entityType,
@@ -1203,6 +1206,7 @@ export default function DocoHome({
                     data={pullRequestsData}
                     handle={handle}
                     visibleLifecycles={visibleLifecycles}
+                    focusId={perspectiveFocusId}
                   />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
                   <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />

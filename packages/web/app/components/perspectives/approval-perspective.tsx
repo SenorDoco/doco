@@ -6,6 +6,7 @@ import type { ApprovalPerspectiveNode } from "~/lib/approval-perspective.server"
 import { lifecycleColor } from "~/lib/node-colors";
 import type { LifecycleStage } from "~/lib/node-detail.server";
 import { timeAgo } from "~/lib/time-ago";
+import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
 type ApprovalSortKey =
   | "proposed_desc"
@@ -37,6 +38,8 @@ interface ApprovalPerspectiveProps {
   nodes: readonly ApprovalPerspectiveNode[];
   canChangeLifecycle: boolean;
   onOpenNode: (node: ApprovalPerspectiveNode) => void;
+  /** Node to scroll into view and pulse — the perspective's one-shot focus. */
+  focusId?: string | null;
   onLifecycleTransition: (
     node: ApprovalPerspectiveNode,
     lifecycle: Extract<LifecycleStage, "asserted" | "drafting">,
@@ -48,7 +51,9 @@ export function ApprovalPerspective({
   canChangeLifecycle,
   onOpenNode,
   onLifecycleTransition,
+  focusId,
 }: ApprovalPerspectiveProps) {
+  usePerspectiveFocusScroll(focusId);
   const [query, setQuery] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [sort, setSort] = useState<ApprovalSortKey>("proposed_desc");

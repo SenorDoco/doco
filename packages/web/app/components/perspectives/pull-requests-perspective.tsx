@@ -20,6 +20,7 @@ import type {
   PullRequestGroup,
   PullRequestsPerspectiveData,
 } from "~/lib/pull-requests-perspective.server";
+import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
 interface PullRequestsPerspectiveProps {
   data: PullRequestsPerspectiveData;
@@ -30,13 +31,17 @@ interface PullRequestsPerspectiveProps {
    * are excluded before render. When omitted, every PR is shown.
    */
   visibleLifecycles?: Set<string>;
+  /** Node to scroll into view and pulse — the perspective's one-shot focus. */
+  focusId?: string | null;
 }
 
 export function PullRequestsPerspective({
   data,
   handle,
   visibleLifecycles,
+  focusId,
 }: PullRequestsPerspectiveProps) {
+  usePerspectiveFocusScroll(focusId);
   const groups = useMemo(() => {
     if (!visibleLifecycles) return data.groups;
     return data.groups

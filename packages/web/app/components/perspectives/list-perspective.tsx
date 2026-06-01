@@ -26,6 +26,7 @@ import {
 } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
 import { timeAgo } from "~/lib/time-ago";
+import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
 export type ListSortKey = "recent" | "oldest" | "rank_desc" | "rank_asc";
 
@@ -86,9 +87,17 @@ interface ListPerspectiveProps {
    * is shown.
    */
   visibleLifecycles?: Set<string>;
+  /** Node to scroll into view and pulse — the perspective's one-shot focus. */
+  focusId?: string | null;
 }
 
-export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPerspectiveProps) {
+export function ListPerspective({
+  nodes,
+  pageRanks,
+  visibleLifecycles,
+  focusId,
+}: ListPerspectiveProps) {
+  usePerspectiveFocusScroll(focusId);
   const graphReferenceIdRef = useRef(`list-${Math.random().toString(36).slice(2)}`);
   const [sort, setSort] = useState<ListSortKey>("recent");
 
