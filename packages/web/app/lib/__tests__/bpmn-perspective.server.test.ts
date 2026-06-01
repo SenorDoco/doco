@@ -358,6 +358,96 @@ describe("loadBpmnGraph", () => {
     );
   });
 
+  it("falls back to node-authored flow fields when sequence edges are not materialized", async () => {
+    const intentId = "intent_01PROCESS";
+    const firstId = "action_01FIRST";
+    const secondId = "action_01SECOND";
+    const thirdId = "action_01THIRD";
+
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Field-authored process",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: firstId,
+          entity_type: "action",
+          summary: "First step",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {
+            actor_id: "principal_system",
+            intent_ids: [intentId],
+            sequence_to: [{ target: secondId, label: "next" }],
+          },
+        },
+        {
+          id: secondId,
+          entity_type: "action",
+          summary: "Second step",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {
+            actor_id: "principal_system",
+            intent_ids: [intentId],
+          },
+        },
+        {
+          id: thirdId,
+          entity_type: "action",
+          summary: "Third legacy step",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:03:00.000Z",
+          data: {
+            actor_id: "principal_system",
+            intent_ids: [intentId],
+            preceded_by: [secondId],
+          },
+        },
+      ],
+      principals: [
+        {
+          id: "principal_system",
+          name: "System",
+          lifecycle: "asserted",
+        },
+      ],
+      users: [],
+      edges: [],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "field-flow" });
+
+    expect(graph.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: firstId,
+          target: secondId,
+          edge_type: "sequence_flow",
+          label: "next",
+          href: null,
+        }),
+        expect.objectContaining({
+          source: secondId,
+          target: thirdId,
+          edge_type: "sequence_flow",
+          href: null,
+        }),
+      ]),
+    );
+    expect(graph.nodes.find((node) => node.id === secondId)?.bfs_depth).toBeGreaterThan(
+      graph.nodes.find((node) => node.id === firstId)?.bfs_depth ?? 0,
+    );
+    expect(graph.nodes.find((node) => node.id === thirdId)?.bfs_depth).toBeGreaterThan(
+      graph.nodes.find((node) => node.id === secondId)?.bfs_depth ?? 0,
+    );
+  });
+
   it("assigns later sequence targets a greater layout depth even when a loop points back", async () => {
     const intentId = "intent_01PROCESS";
     const decisionId = "decision_01ROUTE";
