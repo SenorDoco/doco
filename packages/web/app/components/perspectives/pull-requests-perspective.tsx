@@ -69,7 +69,7 @@ export function PullRequestsPerspective({
         ) : (
           <div className="flex flex-col gap-5">
             {groups.map((group) => (
-              <PullRequestGroupSection key={group.lifecycle} group={group} />
+              <PullRequestGroupSection key={group.lifecycle} group={group} handle={handle} />
             ))}
           </div>
         )}
@@ -78,7 +78,7 @@ export function PullRequestsPerspective({
   );
 }
 
-function PullRequestGroupSection({ group }: { group: PullRequestGroup }) {
+function PullRequestGroupSection({ group, handle }: { group: PullRequestGroup; handle: string }) {
   return (
     <section>
       <h3 className="flex items-center gap-2 px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -92,14 +92,18 @@ function PullRequestGroupSection({ group }: { group: PullRequestGroup }) {
       </h3>
       <ul className="divide-y divide-border rounded-md border border-border">
         {group.prs.map((pr) => (
-          <li key={pr.id}>
-            <a
-              href={pr.url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-background"
-              data-node-id={pr.id}
-              data-node-lifecycle={pr.lifecycle}
+          <li
+            key={pr.id}
+            className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-background"
+            data-node-id={pr.id}
+            data-node-href={`/${handle}/reference/${pr.id}`}
+            data-node-lifecycle={pr.lifecycle}
+          >
+            {/* Clicking the entry opens the node dialog, like every other
+                perspective. The PR URL is reached via the explicit button. */}
+            <Link
+              to={`/${handle}/reference/${pr.id}`}
+              className="flex min-w-0 flex-1 items-center gap-3"
             >
               <span aria-hidden className="shrink-0 text-muted-foreground">
                 {pr.lifecycle === "asserted" ? (
@@ -120,7 +124,17 @@ function PullRequestGroupSection({ group }: { group: PullRequestGroup }) {
               >
                 {group.label}
               </span>
-              <ExternalLink aria-hidden className="h-3 w-3 shrink-0 text-muted-foreground" />
+            </Link>
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-card"
+              title="View this pull request on GitHub"
+            >
+              <Github aria-hidden className="h-3 w-3" />
+              View in GitHub
+              <ExternalLink aria-hidden className="h-2.5 w-2.5" />
             </a>
           </li>
         ))}
