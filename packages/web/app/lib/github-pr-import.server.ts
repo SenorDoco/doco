@@ -40,6 +40,12 @@ export interface GitHubPullRequest {
   user?: { login?: string } | null;
 }
 
+/** The subset of GitHub's `List pull request files` response used for code-linking. */
+export interface GitHubPullRequestFile {
+  filename: string;
+  patch?: string | null;
+}
+
 export interface PullRequestRefLifecycle {
   lifecycle: "drafting" | "asserted" | "retired";
   outcome?: "succeeded";
@@ -138,6 +144,8 @@ export interface UpsertPullRequestOpts {
   /** The PR carries an approving review (from `pull_request_review`): an open
    *  PR maps drafting → asserted. Ignored once merged/closed. */
   approved?: boolean;
+  /** Changed files for the PR, when the caller has a GitHub installation token. */
+  changedFiles?: GitHubPullRequestFile[];
 }
 
 /**
@@ -211,6 +219,227 @@ export interface PrWorkLinkResult {
   skipped: number;
 }
 
+export interface ChangedLineRange {
+  start: number;
+  end: number;
+}
+
+export interface ChangedFileLineRanges {
+  path: string;
+  ranges: ChangedLineRange[];
+}
+
+export interface CodeReferenceLocator {
+  path: string;
+  start: number;
+  end: number;
+}
+
+const HUNK_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+const LINE_ANCHOR_RE = /#L(\d+)(?:C\d+)?(?:-L?(\d+)(?:C\d+)?)?/i;
+const COLON_LINE_RE = /^(.*):(\d+)(?:-(\d+))?$/;
+
+/** Parse the added/changed new-file line ranges out of GitHub's unified patch. */
+export function changedRangesFromPullRequestFiles(
+  files: readonly GitHubPullRequestFile[],
+): ChangedFileLineRanges[] {
+  const out: ChangedFileLineRanges[] = [];
+  for (const file of files) {
+    const ranges: ChangedLineRange[] = [];
+    let newLine = 0;
+    let pendingStart: number | null = null;
+    let pendingEnd: number | null = null;
+
+    const flush = () => {
+      if (pendingStart !== null && pendingEnd !== null) {
+        ranges.push({ start: pendingStart, end: pendingEnd });
+      }
+      pendingStart = null;
+      pendingEnd = null;
+    };
+
+    for (const line of (file.patch ?? "").split(/\r?\n/)) {
+      const hunk = HUNK_RE.exec(line);
+      if (hunk) {
+        flush();
+        newLine = Number(hunk[1]);
+        continue;
+      }
+      if (!newLine) continue;
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        pendingStart ??= newLine;
+        pendingEnd = newLine;
+        newLine++;
+        continue;
+      }
+      flush();
+      if (line.startsWith("-") && !line.startsWith("---")) continue;
+      if (line.startsWith("\\")) continue;
+      newLine++;
+    }
+    flush();
+    if (ranges.length > 0) out.push({ path: normalizePath(file.filename), ranges });
+  }
+  return out;
+}
+
+/** Parse a repository code locator that includes an explicit line or line range. */
+export function parseCodeReferenceLocator(
+  locator: string | null | undefined,
+): CodeReferenceLocator | null {
+  const raw = (locator ?? "").trim();
+  if (!raw) return null;
+
+  let start: number | null = null;
+  let end: number | null = null;
+  let pathPart = raw;
+
+  const anchor = LINE_ANCHOR_RE.exec(raw);
+  if (anchor) {
+    start = Number(anchor[1]);
+    end = Number(anchor[2] ?? anchor[1]);
+    pathPart = raw.slice(0, anchor.index);
+  } else {
+    pathPart = raw.replace(/[?#].*$/, "");
+    const colon = COLON_LINE_RE.exec(pathPart);
+    if (colon && !colon[1].match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+$/i)) {
+      pathPart = colon[1];
+      start = Number(colon[2]);
+      end = Number(colon[3] ?? colon[2]);
+    }
+  }
+
+  if (!start || !end) return null;
+  return {
+    path: normalizeReferencePath(pathPart),
+    start: Math.min(start, end),
+    end: Math.max(start, end),
+  };
+}
+
+function normalizeReferencePath(raw: string): string {
+  const withoutQuery = raw.replace(/[?#].*$/, "");
+  try {
+    const url = new URL(withoutQuery);
+    return normalizePath(`${url.hostname}${decodePath(url.pathname)}`);
+  } catch {
+    return normalizePath(withoutQuery);
+  }
+}
+
+function decodePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+function normalizePath(path: string): string {
+  return decodePath(path).replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/").trim();
+}
+
+function pathsMatch(referencePath: string, changedPath: string): boolean {
+  const ref = normalizePath(referencePath);
+  const changed = normalizePath(changedPath);
+  return ref === changed || ref.endsWith(`/${changed}`) || changed.endsWith(`/${ref}`);
+}
+
+function rangesOverlap(a: ChangedLineRange, b: ChangedLineRange): boolean {
+  return a.start <= b.end && b.start <= a.end;
+}
+
+function locatorOverlapsChangedLines(
+  locator: string | null | undefined,
+  changedRanges: readonly ChangedFileLineRanges[],
+): boolean {
+  const parsed = parseCodeReferenceLocator(locator);
+  if (!parsed) return false;
+  for (const file of changedRanges) {
+    if (!pathsMatch(parsed.path, file.path)) continue;
+    for (const range of file.ranges) {
+      if (rangesOverlap(range, parsed)) return true;
+    }
+  }
+  return false;
+}
+
+interface BusinessProcessReferenceRow {
+  reference_id: string;
+  locator: string | null;
+  target_ref: string | null;
+  implemented_by_from_id: string | null;
+}
+
+/**
+ * Find business-process nodes already connected to code-artifact References
+ * whose locator line range overlaps this PR's changed lines.
+ */
+export async function findBusinessProcessReferenceTargetsForChangedLines(
+  docoId: string,
+  changedRanges: readonly ChangedFileLineRanges[],
+): Promise<string[]> {
+  if (changedRanges.length === 0) return [];
+  return withClient(async (c) => {
+    const r = await c.query<BusinessProcessReferenceRow>(
+      `SELECT r.id AS reference_id,
+              r.locator,
+              r.data->>'target_ref' AS target_ref,
+              e.from_id AS implemented_by_from_id
+         FROM nodes r
+         LEFT JOIN edges e
+           ON e.doco_id = r.doco_id
+          AND e.edge_type = 'implemented_by'
+          AND e.to_id = r.id
+          AND e.lifecycle <> 'retired'
+        WHERE r.doco_id = $1
+          AND r.node_type = 'reference'
+          AND COALESCE(r.lifecycle, 'asserted') <> 'retired'
+          AND r.locator IS NOT NULL
+          AND (r.data->>'target_ref' IS NOT NULL OR e.from_id IS NOT NULL)`,
+      [docoId],
+    );
+    const targetIds: string[] = [];
+    for (const row of r.rows) {
+      if (!locatorOverlapsChangedLines(row.locator, changedRanges)) continue;
+      for (const candidate of [row.target_ref, row.implemented_by_from_id]) {
+        if (!candidate || candidate === row.reference_id || !isEntityId(candidate)) continue;
+        if (!targetIds.includes(candidate)) targetIds.push(candidate);
+      }
+    }
+    return targetIds;
+  });
+}
+
+/** Cheap preflight so GitHub sync only fetches PR files when code references exist. */
+export async function hasBusinessProcessCodeReferences(docoId: string): Promise<boolean> {
+  return withClient(async (c) => {
+    const r = await c.query<{ x: number }>(
+      `SELECT 1 AS x
+         FROM nodes r
+         LEFT JOIN edges e
+           ON e.doco_id = r.doco_id
+          AND e.edge_type = 'implemented_by'
+          AND e.to_id = r.id
+          AND e.lifecycle <> 'retired'
+        WHERE r.doco_id = $1
+          AND r.node_type = 'reference'
+          AND COALESCE(r.lifecycle, 'asserted') <> 'retired'
+          AND r.locator IS NOT NULL
+          AND (r.data->>'target_ref' IS NOT NULL OR e.from_id IS NOT NULL)
+        LIMIT 1`,
+      [docoId],
+    );
+    return r.rows.length > 0;
+  });
+}
+
+export interface LinkPrToBusinessProcessReferencesDeps {
+  findTargets: typeof findBusinessProcessReferenceTargetsForChangedLines;
+  exists: typeof edgeExists;
+  capture: (input: CaptureEdgeInput) => Promise<EdgeCaptureResult>;
+}
+
 /**
  * Ensure an `implemented_by` edge from each referenced work node → the PR's
  * Reference node. Idempotent (skips edges that already exist) and forgiving
@@ -252,6 +481,64 @@ export async function linkPullRequestToWork(
 }
 
 /**
+ * Ensure an `implemented_by` edge from each business-process event whose
+ * existing code Reference overlaps the PR's changed lines → the PR Reference.
+ */
+export async function linkPullRequestToBusinessProcessReferences(
+  opts: {
+    docoId: string;
+    prRefId: string;
+    changedFiles?: readonly GitHubPullRequestFile[];
+    actorId?: string | null;
+  },
+  deps?: Partial<LinkPrToBusinessProcessReferencesDeps>,
+): Promise<PrWorkLinkResult> {
+  const result: PrWorkLinkResult = { linked: 0, existing: 0, skipped: 0 };
+  const changedRanges = changedRangesFromPullRequestFiles(opts.changedFiles ?? []);
+  if (changedRanges.length === 0) return result;
+
+  const findTargets = deps?.findTargets ?? findBusinessProcessReferenceTargetsForChangedLines;
+  const exists = deps?.exists ?? edgeExists;
+  const capture = deps?.capture ?? captureEdge;
+  const nodeIds = [...new Set(await findTargets(opts.docoId, changedRanges))];
+  for (const nodeId of nodeIds) {
+    if (nodeId === opts.prRefId) continue;
+    if (await exists(opts.docoId, "implemented_by", nodeId, opts.prRefId)) {
+      result.existing++;
+      continue;
+    }
+    const res = await capture({
+      docoId: opts.docoId,
+      actorId: opts.actorId ?? null,
+      edgeType: "implemented_by",
+      fromId: nodeId,
+      toId: opts.prRefId,
+      reason:
+        "Linked from a GitHub pull request touching an existing business-process code reference.",
+    });
+    if ("ok" in res) result.linked++;
+    else result.skipped++;
+  }
+  return result;
+}
+
+async function linkPullRequestContext(opts: {
+  docoId: string;
+  prRefId: string;
+  body: string | null | undefined;
+  changedFiles?: readonly GitHubPullRequestFile[];
+  actorId?: string | null;
+}): Promise<PrWorkLinkResult> {
+  const work = await linkPullRequestToWork(opts);
+  const businessProcess = await linkPullRequestToBusinessProcessReferences(opts);
+  return {
+    linked: work.linked + businessProcess.linked,
+    existing: work.existing + businessProcess.existing,
+    skipped: work.skipped + businessProcess.skipped,
+  };
+}
+
+/**
  * Idempotently import a PR as a Reference: PATCH the existing Reference that
  * shares the PR URL, or capture a new one. Keyed on `locator`, so a webhook
  * re-delivery or a backfill overlap never duplicates. A no-op PATCH (the PR is
@@ -285,13 +572,23 @@ export async function upsertPullRequestReference(
     if ("error" in res) {
       // An idempotent re-sync that finds the Reference already current isn't a
       // failure — it's the steady state.
-      if (res.error === NO_FIELDS_CHANGED) return { status: "unchanged", id: existingId };
+      if (res.error === NO_FIELDS_CHANGED) {
+        const links = await linkPullRequestContext({
+          docoId: opts.docoId,
+          prRefId: existingId,
+          body: pr.body,
+          changedFiles: opts.changedFiles,
+          actorId: opts.actorId,
+        });
+        return { status: links.linked > 0 ? "updated" : "unchanged", id: existingId };
+      }
       return { status: "error", error: res.error };
     }
-    await linkPullRequestToWork({
+    await linkPullRequestContext({
       docoId: opts.docoId,
       prRefId: existingId,
       body: pr.body,
+      changedFiles: opts.changedFiles,
       actorId: opts.actorId,
     });
     return { status: "updated", id: existingId };
@@ -320,10 +617,11 @@ export async function upsertPullRequestReference(
     opts.docoHost,
   );
   if ("error" in res) return { status: "error", error: res.error };
-  await linkPullRequestToWork({
+  await linkPullRequestContext({
     docoId: opts.docoId,
     prRefId: res.id,
     body: pr.body,
+    changedFiles: opts.changedFiles,
     actorId: opts.actorId,
   });
   return { status: "created", id: res.id };

@@ -13,7 +13,7 @@
 // panel / docs): DOCO_GITHUB_APP_ID, DOCO_GITHUB_APP_PRIVATE_KEY (PEM; literal
 // "\n" escapes are tolerated for single-line env vars).
 import { createSign } from "node:crypto";
-import type { GitHubPullRequest } from "./github-pr-import.server";
+import type { GitHubPullRequest, GitHubPullRequestFile } from "./github-pr-import.server";
 
 const GITHUB_API = "https://api.github.com";
 const API_VERSION = "2022-11-28";
@@ -172,6 +172,38 @@ export async function listRepoPullRequests(
     if (page === startPage + maxPages - 1) hasMore = true;
   }
   return { prs, hasMore };
+}
+
+/**
+ * List changed files for one pull request. GitHub includes a unified `patch`
+ * for text files; binary/large files may omit it, and those simply don't
+ * participate in line-level Doco linking.
+ */
+export async function listPullRequestFiles(
+  token: string,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  opts?: { fetchImpl?: typeof fetch; perPage?: number; maxPages?: number },
+): Promise<GitHubPullRequestFile[]> {
+  const per = opts?.perPage ?? 100;
+  const maxPages = opts?.maxPages ?? 10;
+  const files: GitHubPullRequestFile[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const { data, linkHeader } = await githubGet<GitHubPullRequestFile[]>(
+      token,
+      `/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=${per}&page=${page}`,
+      opts?.fetchImpl,
+    );
+    if (!Array.isArray(data) || data.length === 0) break;
+    files.push(
+      ...data
+        .filter((f) => typeof f.filename === "string")
+        .map((f) => ({ filename: f.filename, patch: f.patch ?? null })),
+    );
+    if (!linkHeader || !linkHeader.includes('rel="next"')) break;
+  }
+  return files;
 }
 
 /**

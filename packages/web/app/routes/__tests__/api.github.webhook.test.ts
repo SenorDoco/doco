@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   upsertPullRequestReference,
+  hasBusinessProcessCodeReferences,
+  mintInstallationToken,
+  listPullRequestFiles,
   backfillInstallationRepos,
   addConnection,
   detachReposEverywhere,
@@ -10,6 +13,14 @@ const {
   findDocoByInstallation,
 } = vi.hoisted(() => ({
   upsertPullRequestReference: vi.fn(async () => ({ status: "updated", id: "reference_x" })),
+  hasBusinessProcessCodeReferences: vi.fn(async () => false),
+  mintInstallationToken: vi.fn(async () => ({
+    token: "ghs_test",
+    expires_at: "2030-01-01T00:00:00Z",
+  })),
+  listPullRequestFiles: vi.fn(
+    async (): Promise<Array<{ filename: string; patch: string | null }>> => [],
+  ),
   backfillInstallationRepos: vi.fn(async () => ({
     repos: 1,
     created: 0,
@@ -27,7 +38,11 @@ const {
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/repos/${h}` }));
-vi.mock("~/lib/github-pr-import.server", () => ({ upsertPullRequestReference }));
+vi.mock("~/lib/github-app.server", () => ({ mintInstallationToken, listPullRequestFiles }));
+vi.mock("~/lib/github-pr-import.server", () => ({
+  upsertPullRequestReference,
+  hasBusinessProcessCodeReferences,
+}));
 vi.mock("~/lib/github-backfill.server", () => ({ backfillInstallationRepos }));
 vi.mock("~/lib/github-connection.server", () => ({
   addConnection,
@@ -140,6 +155,42 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     expect(upsertPullRequestReference).toHaveBeenCalledWith(
       expect.objectContaining({ number: 5 }),
       expect.objectContaining({ approved: true, docoId: "doco_1" }),
+    );
+  });
+
+  it("pull_request sync passes changed files when the Doco has code references", async () => {
+    hasBusinessProcessCodeReferences.mockResolvedValueOnce(true);
+    listPullRequestFiles.mockResolvedValueOnce([
+      {
+        filename: "packages/web/app/lib/github-pr-import.server.ts",
+        patch: "@@ -1,1 +1,2 @@\n x\n+y",
+      },
+    ]);
+    const res = await send("pull_request", {
+      action: "opened",
+      repository: { full_name: "acme/store" },
+      installation: { id: 99 },
+      pull_request: {
+        number: 5,
+        title: "t",
+        html_url: "https://github.com/acme/store/pull/5",
+        state: "open",
+      },
+    });
+    expect(await res.json()).toMatchObject({ ok: true, repo: "acme/store" });
+    expect(mintInstallationToken).toHaveBeenCalledWith(99);
+    expect(listPullRequestFiles).toHaveBeenCalledWith("ghs_test", "acme", "store", 5);
+    expect(upsertPullRequestReference).toHaveBeenCalledWith(
+      expect.objectContaining({ number: 5 }),
+      expect.objectContaining({
+        docoId: "doco_1",
+        changedFiles: [
+          {
+            filename: "packages/web/app/lib/github-pr-import.server.ts",
+            patch: "@@ -1,1 +1,2 @@\n x\n+y",
+          },
+        ],
+      }),
     );
   });
 
