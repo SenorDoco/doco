@@ -169,7 +169,7 @@ select {
 
 @container (min-width: 840px) {
   .org-home-layout-grid {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
