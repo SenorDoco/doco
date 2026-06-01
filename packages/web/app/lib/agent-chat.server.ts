@@ -952,7 +952,10 @@ function summarizeCreatedDoco(
   const requestedName = request
     ? stringField(request, "name") || stringField(request, "doco_name")
     : "";
-  const templateHandle = request ? stringField(request, "template_handle") || "generic" : "generic";
+  const templateHandle =
+    stringField(response, "template_handle") ||
+    (request ? stringField(request, "template_handle") : "") ||
+    "generic";
   const details = [
     id ? `id ${id}` : "",
     requestedName ? `requested name=${requestedName}` : "",
@@ -1004,10 +1007,14 @@ This section overrides the "tool first" speed rule below.
   implies the business-processes template.
 - If the user explicitly says "blank", "from scratch", "generic", or names a
   template handle, use that choice without asking.
+- The create body field is \`template_handle\`, for example
+  \`{"name":"terms","org_id":"org_...","template_handle":"glossaries"}\`.
+  Do not send \`template\`; \`template_handle\` is the contract field.
 - POST /api/v1/docos.json creates a new doco. A 201 response is authoritative.
-  Use the returned id, handle, qualified_handle, template/goal, and visibility
-  as durable facts for the rest of the thread. A later list response containing
-  the same id confirms the creation; it does not mean the doco pre-existed.
+  Use the returned id, handle, qualified_handle, template_handle, goal, and
+  visibility as durable facts for the rest of the thread. A later list response
+  containing the same id confirms the creation; it does not mean the doco
+  pre-existed.
 - When answering questions about what you previously created, prefer persisted
   tool results and the durable operation memory in the user turn over current
   lists or inference.

@@ -112,6 +112,7 @@ describe("/api/v1/docos.json", () => {
       org_handle: "torre",
       org_id: "organization_torre",
       qualified_handle: "torre/bpms",
+      template_handle: "generic",
       visibility: "public",
       goal: "Process memory.",
     });
@@ -120,6 +121,45 @@ describe("/api/v1/docos.json", () => {
         orgId: "organization_torre",
         requestedHandle: "bpms",
         createdByUserId: "user_alice",
+      }),
+    );
+  });
+
+  it("accepts the common template alias and returns the applied template handle", async () => {
+    mocks.getOrgRole.mockResolvedValue("owner");
+    mocks.createDocoInOrg.mockResolvedValue({
+      docoId: "doco_glossary",
+      handle: "glossary",
+      orgId: "organization_torre",
+      orgHandle: "torre",
+      goal: "Glossary memory.",
+    });
+
+    const response = await action({
+      request: jsonRequest({
+        org_id: "organization_torre",
+        name: "Glossary",
+        template: "glossaries",
+      }),
+    } as never);
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      id: "doco_glossary",
+      handle: "glossary",
+      org_handle: "torre",
+      org_id: "organization_torre",
+      qualified_handle: "torre/glossary",
+      template_handle: "glossaries",
+      visibility: "private",
+      goal: "Glossary memory.",
+    });
+    expect(mocks.createDocoInOrg).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: "organization_torre",
+        requestedHandle: "glossary",
+        createdByUserId: "user_alice",
+        templateHandle: "glossaries",
       }),
     );
   });

@@ -10,6 +10,7 @@
 //
 // POST body (JSON):
 //   { template_handle?: string,        // "generic" | "business-processes" | ...
+//     template?: string,               // accepted compatibility alias
 //     org_id: string,                  // ULID of the owning organization
 //     name: string,                    // requested globally-unique handle
 //     privacy?: "private"|"public",    // alias: visibility
@@ -23,13 +24,18 @@
 //
 // Behavior: caller must hold owner on the target org. The requested
 // handle is silently auto-suffixed on collision. Returns 201 with
-// `{ id, handle, org_id, org_handle, qualified_handle, visibility, goal }`.
+// `{ id, handle, org_id, org_handle, qualified_handle, template_handle,
+//    visibility, goal }`.
 
 import { getOrgRole, roleAtLeast, withClient } from "@doco/db";
 import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
+import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { createDocoInOrg } from "~/lib/redeem.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
+
+const DEFAULT_TEMPLATE_HANDLE = "generic";
+const KNOWN_TEMPLATE_HANDLES = new Set(DOCO_TEMPLATES.map((template) => template.handle));
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipalAsync(request);
@@ -80,6 +86,7 @@ export async function action({ request }: { request: Request }) {
     org_id?: unknown;
     requested_suffix?: unknown;
     template_handle?: unknown;
+    template?: unknown;
     privacy?: unknown;
     visibility?: unknown;
     goal?: unknown;
@@ -95,8 +102,11 @@ export async function action({ request }: { request: Request }) {
     (typeof body.doco_name === "string" ? body.doco_name.trim() : "") ||
     (typeof body.requested_suffix === "string" ? body.requested_suffix.trim() : "");
   const handle = requestedName.toLowerCase();
-  const templateHandle =
-    typeof body.template_handle === "string" ? body.template_handle.trim() : null;
+  const requestedTemplateHandle = readTemplateHandle(body);
+  if (requestedTemplateHandle.error) {
+    return Response.json({ error: requestedTemplateHandle.error }, { status: 400 });
+  }
+  const templateHandle = requestedTemplateHandle.value ?? DEFAULT_TEMPLATE_HANDLE;
   const privacy = body.privacy ?? body.visibility;
   const visibility = privacy === "public" ? "public" : "private";
   // Goal is optional. If the caller omits it, the host defaults to the
@@ -107,6 +117,15 @@ export async function action({ request }: { request: Request }) {
 
   if (!orgId) return Response.json({ error: "`org_id` is required." }, { status: 400 });
   if (!handle) return Response.json({ error: "`name` is required." }, { status: 400 });
+  if (!KNOWN_TEMPLATE_HANDLES.has(templateHandle)) {
+    return Response.json(
+      {
+        error: `Unknown template_handle "${templateHandle}".`,
+        supported_template_handles: [...KNOWN_TEMPLATE_HANDLES],
+      },
+      { status: 400 },
+    );
+  }
 
   const orgRole = await getOrgRole(orgId, me.id);
   if (!roleAtLeast(orgRole, "owner")) {
@@ -127,7 +146,7 @@ export async function action({ request }: { request: Request }) {
       createdByUserId: me.id,
       visibility,
       autoSuffix: true,
-      ...(templateHandle && templateHandle !== "generic"
+      ...(templateHandle !== DEFAULT_TEMPLATE_HANDLE
         ? { templateHandle }
         : { templateHandle: null }),
       ...(goal !== undefined ? { goal } : {}),
@@ -139,6 +158,7 @@ export async function action({ request }: { request: Request }) {
         org_id: rec.orgId,
         org_handle: rec.orgHandle,
         qualified_handle: qualifiedDocoLabel({ ownerSlug: rec.orgHandle, handle: rec.handle }),
+        template_handle: templateHandle,
         visibility,
         goal: rec.goal,
       },
@@ -147,4 +167,21 @@ export async function action({ request }: { request: Request }) {
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
   }
+}
+
+function readTemplateHandle(body: {
+  template_handle?: unknown;
+  template?: unknown;
+}): { value: string; error?: undefined } | { value?: undefined; error: string } {
+  const templateHandle =
+    typeof body.template_handle === "string" ? body.template_handle.trim() : "";
+  const templateAlias = typeof body.template === "string" ? body.template.trim() : "";
+
+  if (templateHandle && templateAlias && templateHandle !== templateAlias) {
+    return {
+      error: "`template_handle` and `template` disagree; send only `template_handle`.",
+    };
+  }
+
+  return { value: templateHandle || templateAlias || DEFAULT_TEMPLATE_HANDLE };
 }
