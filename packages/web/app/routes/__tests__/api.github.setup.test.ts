@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getInstallationAccount: vi.fn(),
   importInstallationConnections: vi.fn(),
   kickBackfillRun: vi.fn(),
+  recordInstallationAuthorization: vi.fn(),
   setBackfillState: vi.fn(),
   subscribeInstallation: vi.fn(),
   waitUntil: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("~/lib/github-app.server", () => ({
 vi.mock("~/lib/github-connection.server", () => ({
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
   importInstallationConnections: mocks.importInstallationConnections,
+  recordInstallationAuthorization: mocks.recordInstallationAuthorization,
   setBackfillState: mocks.setBackfillState,
   subscribeInstallation: mocks.subscribeInstallation,
 }));
@@ -75,19 +77,18 @@ describe("api.github.setup loader", () => {
     mocks.getInstallationAccount.mockResolvedValue({ account: "acme" });
     mocks.importInstallationConnections.mockResolvedValue({ repos: [] });
     mocks.kickBackfillRun.mockResolvedValue(undefined);
+    mocks.recordInstallationAuthorization.mockResolvedValue([]);
     mocks.setBackfillState.mockResolvedValue(undefined);
     mocks.subscribeInstallation.mockResolvedValue([]);
   });
 
-  it("records the installation subscription even when GitHub returns no repos", async () => {
+  it("records the GitHub installation and returns to the repository chooser", async () => {
     const response = await loader({ request: setupRequest() });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
-      "/prs/integrations/github?github=connected&count=0&imported=0",
-    );
+    expect(response.headers.get("Location")).toBe("/prs/integrations/github?github=connected");
     expect(mocks.getInstallationAccount).toHaveBeenCalledWith(42);
-    expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
+    expect(mocks.recordInstallationAuthorization).toHaveBeenCalledWith(
       "doco_1",
       expect.objectContaining({
         installation_id: 42,
@@ -95,34 +96,23 @@ describe("api.github.setup loader", () => {
         connected_at: expect.any(String),
       }),
     );
-    expect(mocks.importInstallationConnections).toHaveBeenCalledWith({
-      docoId: "doco_1",
-      installationId: 42,
-    });
+    expect(mocks.subscribeInstallation).not.toHaveBeenCalled();
+    expect(mocks.importInstallationConnections).not.toHaveBeenCalled();
   });
 
-  it("records the installation before starting the repo backfill", async () => {
+  it("does not import repositories until the user selects them", async () => {
     mocks.importInstallationConnections.mockResolvedValue({ repos: ["acme/app"] });
 
     const response = await loader({ request: setupRequest() });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
-      "/prs/integrations/github?github=importing&count=1",
-    );
-    expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
+    expect(response.headers.get("Location")).toBe("/prs/integrations/github?github=connected");
+    expect(mocks.recordInstallationAuthorization).toHaveBeenCalledWith(
       "doco_1",
       expect.objectContaining({ installation_id: 42, account: "acme" }),
     );
-    expect(mocks.setBackfillState).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({
-        status: "running",
-        repos: 1,
-        installation_id: 42,
-        queue: ["acme/app"],
-      }),
-    );
-    expect(mocks.waitUntil).toHaveBeenCalledWith(expect.any(Promise));
+    expect(mocks.importInstallationConnections).not.toHaveBeenCalled();
+    expect(mocks.setBackfillState).not.toHaveBeenCalled();
+    expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@
 import { roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { ArrowUpRight, Github, Plus } from "lucide-react";
+import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useSearchParams } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -257,6 +258,28 @@ export function meta({ params }: { params: { docoHandle: string } }) {
   return [{ title: `GitHub · Integrations · ${params.docoHandle} · Doco` }];
 }
 
+export type InstallationPickerChoice = GitHubInstallationChoice & {
+  selectableRepositories: string[];
+  connectedRepositories: string[];
+  hasSelectableRepositories: boolean;
+};
+
+export function buildInstallationPickerChoices(
+  choices: GitHubInstallationChoice[],
+  connectedRepos: Set<string>,
+): InstallationPickerChoice[] {
+  return choices.map((choice) => {
+    const connectedRepositories = choice.repositories.filter((repo) => connectedRepos.has(repo));
+    const selectableRepositories = choice.repositories.filter((repo) => !connectedRepos.has(repo));
+    return {
+      ...choice,
+      selectableRepositories,
+      connectedRepositories,
+      hasSelectableRepositories: selectableRepositories.length > 0,
+    };
+  });
+}
+
 // Doco's raised "neu-button" affordance — primary (filled) and neutral variants.
 const PRIMARY_BTN =
   "neu-button inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-55";
@@ -282,6 +305,10 @@ export default function DocoGitHubIntegration() {
   const flash = searchParams.get("github");
   const importing = backfill?.status === "running" || flash === "importing";
   const connectedRepoSet = new Set(connections.map((connection) => connection.repo));
+  const pickerChoices = buildInstallationPickerChoices(installationChoices, connectedRepoSet);
+  const hasSelectableRepositories = pickerChoices.some(
+    (choice) => choice.hasSelectableRepositories,
+  );
 
   return (
     <div>
@@ -354,14 +381,10 @@ export default function DocoGitHubIntegration() {
         ) : null}
         {!importing && flash === "connected" ? (
           <p className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
-            Connected —{" "}
-            <span
-              className="font-mono font-semibold tabular-nums"
-              style={{ color: lifecycleColor("asserted") }}
-            >
-              {searchParams.get("count") ?? 0}
-            </span>{" "}
-            repo(s). New repos in the org sync automatically.
+            GitHub is connected.{" "}
+            {hasSelectableRepositories
+              ? "Choose the repositories to connect to this Doco."
+              : "No repositories are available yet; add repositories in GitHub to make them selectable here."}
           </p>
         ) : null}
         {actionData && "error" in actionData ? (
@@ -382,39 +405,33 @@ export default function DocoGitHubIntegration() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Repositories</CardTitle>
+            <CardTitle className="text-base">Choose repositories</CardTitle>
             <CardDescription>
-              {orgAccounts.length > 0
-                ? "Connected at the organization level — every repo syncs automatically, including ones added later."
-                : "New PRs sync automatically via webhook; existing PRs import on demand."}
+              {pickerChoices.length > 0
+                ? "Select one or more repositories for this Doco."
+                : "No GitHub repositories are selected for this Doco yet."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {canManage && installationChoices.length > 0 ? (
-              <ExistingGitHubPicker
-                choices={installationChoices}
-                connectedRepos={connectedRepoSet}
-                docoInstallUrl={docoInstallUrl}
-              />
+            {canManage && pickerChoices.length > 0 ? (
+              <ExistingGitHubPicker choices={pickerChoices} docoInstallUrl={docoInstallUrl} />
             ) : null}
-            {orgAccounts.length > 0 ? (
+            {orgAccounts.length > 0 && connections.length > 0 ? (
               <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
                 <p className="text-foreground">
-                  Connected to{" "}
+                  GitHub connected to{" "}
                   {orgAccounts.map((a, i) => (
                     <span key={a}>
                       {i > 0 ? ", " : ""}
                       <span className="font-mono font-semibold">{a}</span>
                     </span>
-                  ))}{" "}
-                  — all repositories sync automatically.
+                  ))}
+                  .
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  New repos added to the{" "}
-                  {orgAccounts.length === 1 ? "organization" : "organizations"} are picked up on
-                  their own; no need to add them here.{" "}
                   <span className="font-mono font-semibold tabular-nums">{connections.length}</span>{" "}
-                  {connections.length === 1 ? "repository" : "repositories"} covered so far.
+                  {connections.length === 1 ? "repository is" : "repositories are"} selected for
+                  this Doco.
                 </p>
               </div>
             ) : null}
@@ -496,11 +513,9 @@ export default function DocoGitHubIntegration() {
 
 function ExistingGitHubPicker({
   choices,
-  connectedRepos,
   docoInstallUrl,
 }: {
-  choices: GitHubInstallationChoice[];
-  connectedRepos: Set<string>;
+  choices: InstallationPickerChoice[];
   docoInstallUrl: string | null;
 }) {
   return (
@@ -509,11 +524,8 @@ function ExistingGitHubPicker({
         <div className="space-y-1">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Github className="h-4 w-4 text-primary" aria-hidden="true" />
-            Use an existing GitHub connection
+            Repositories
           </h2>
-          <p className="text-xs text-muted-foreground">
-            Pick repositories from GitHub organizations Doco already has access to.
-          </p>
         </div>
         {docoInstallUrl ? (
           <a
@@ -529,61 +541,73 @@ function ExistingGitHubPicker({
 
       <div className="space-y-3">
         {choices.map((choice) => (
-          <Form key={choice.installation_id} method="post" className="space-y-3">
-            <input type="hidden" name="intent" value="connect-existing-repos" />
-            <input type="hidden" name="installation_id" value={choice.installation_id} />
-            <div className="space-y-2 rounded-md border border-border/80 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-mono text-sm font-semibold text-foreground">
-                    {choice.account}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Seen on {choice.source_doco_handles.join(", ")}
-                    {choice.repositories_unavailable ? " · showing known repositories only" : ""}
-                  </p>
-                </div>
-                <button type="submit" className={PRIMARY_BTN}>
-                  Connect selected repos
-                </button>
-              </div>
-              {choice.repositories.length > 0 ? (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {choice.repositories.map((repo) => {
-                    const alreadyConnected = connectedRepos.has(repo);
-                    return (
-                      <label
-                        key={repo}
-                        className="flex min-w-0 items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs"
-                      >
-                        <input
-                          type="checkbox"
-                          name="repo"
-                          value={repo}
-                          disabled={alreadyConnected}
-                          className="h-3.5 w-3.5 shrink-0 accent-primary"
-                        />
-                        <span className="min-w-0 flex-1 truncate font-mono" title={repo}>
-                          {repo}
-                        </span>
-                        {alreadyConnected ? (
-                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Connected
-                          </span>
-                        ) : null}
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No repositories are available from this GitHub organization yet.
-                </p>
-              )}
-            </div>
-          </Form>
+          <InstallationChoiceForm key={choice.installation_id} choice={choice} />
         ))}
       </div>
     </section>
+  );
+}
+
+function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }) {
+  const [selectedCount, setSelectedCount] = useState(0);
+
+  return (
+    <Form
+      method="post"
+      className="space-y-3"
+      onChange={(event) => {
+        setSelectedCount(event.currentTarget.querySelectorAll('input[name="repo"]:checked').length);
+      }}
+    >
+      <input type="hidden" name="intent" value="connect-existing-repos" />
+      <input type="hidden" name="installation_id" value={choice.installation_id} />
+      <div className="space-y-2 rounded-md border border-border/80 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-mono text-sm font-semibold text-foreground">{choice.account}</p>
+            {choice.repositories_unavailable ? (
+              <p className="text-[11px] text-muted-foreground">Showing known repositories only.</p>
+            ) : null}
+          </div>
+          {choice.hasSelectableRepositories ? (
+            <button type="submit" className={PRIMARY_BTN} disabled={selectedCount === 0}>
+              {selectedCount > 0
+                ? `Connect ${selectedCount} ${selectedCount === 1 ? "repo" : "repos"}`
+                : "Select repos"}
+            </button>
+          ) : null}
+        </div>
+        {choice.selectableRepositories.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {choice.selectableRepositories.map((repo) => (
+              <label
+                key={repo}
+                className="flex min-w-0 items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs"
+              >
+                <input
+                  type="checkbox"
+                  name="repo"
+                  value={repo}
+                  className="h-3.5 w-3.5 shrink-0 accent-primary"
+                />
+                <span className="min-w-0 flex-1 truncate font-mono" title={repo}>
+                  {repo}
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            No repositories are available from this GitHub organization yet.
+          </p>
+        )}
+        {choice.connectedRepositories.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Already connected:{" "}
+            <span className="font-mono">{choice.connectedRepositories.join(", ")}</span>
+          </p>
+        ) : null}
+      </div>
+    </Form>
   );
 }

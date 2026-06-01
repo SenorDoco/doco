@@ -1,6 +1,6 @@
 // Inbound GitHub App webhook. Verifies x-hub-signature-256 against
-// DOCO_GITHUB_WEBHOOK_SECRET, then routes by App *installation* (not a repo
-// list), so a brand-new repo in the org syncs automatically. Events handled:
+// DOCO_GITHUB_WEBHOOK_SECRET, then routes repo events to Docos that selected
+// that repository or intentionally subscribed to the whole installation. Events handled:
 //   - pull_request           → upsert the PR as a Reference in the subscribed Doco.
 //   - pull_request_review     → an approving review lifts an open PR to asserted.
 //   - installation_repositories (added)   → backfill the new repos' existing PRs.
@@ -23,6 +23,7 @@ import {
 } from "~/lib/github-pr-import.server";
 import {
   findDocoByInstallation,
+  findDocoTargetsForGitHubRepo,
   parseInstallationEvent,
   parseInstallationRepositoriesEvent,
   parsePullRequestEvent,
@@ -174,7 +175,7 @@ export async function action({ request }: { request: Request }) {
     ) {
       return Response.json({ ok: true, ignored: true });
     }
-    const docos = await findDocoByInstallation(evt.installationId);
+    const docos = await findDocoTargetsForGitHubRepo(evt.installationId, evt.repoFullName);
     console.info(
       `[github webhook] review approved ${evt.repoFullName}#${evt.pr.number} (installation ${evt.installationId}) → ${docos.length} subscribed doco(s)`,
     );
@@ -218,7 +219,7 @@ export async function action({ request }: { request: Request }) {
   if (parsed.installationId == null) {
     return Response.json({ ok: true, ignored: "no installation id" });
   }
-  const docos = await findDocoByInstallation(parsed.installationId);
+  const docos = await findDocoTargetsForGitHubRepo(parsed.installationId, parsed.repoFullName);
   console.info(
     `[github webhook] ${parsed.action} ${parsed.repoFullName}#${parsed.pr.number} (installation ${parsed.installationId}) → ${docos.length} subscribed doco(s)`,
   );

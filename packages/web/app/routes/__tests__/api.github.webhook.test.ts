@@ -11,6 +11,7 @@ const {
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
   findDocoByInstallation,
+  findDocoTargetsForGitHubRepo,
 } = vi.hoisted(() => ({
   upsertPullRequestReference: vi.fn(async () => ({ status: "updated", id: "reference_x" })),
   hasBusinessProcessCodeReferences: vi.fn(async () => false),
@@ -32,6 +33,9 @@ const {
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
+    { docoId: "doco_1", handle: "store", orgHandle: "acme" },
+  ]),
+  findDocoTargetsForGitHubRepo: vi.fn(async () => [
     { docoId: "doco_1", handle: "store", orgHandle: "acme" },
   ]),
 }));
@@ -56,7 +60,7 @@ vi.mock("~/lib/github-webhook.server", async () => {
   const actual = await vi.importActual<typeof import("../../lib/github-webhook.server")>(
     "../../lib/github-webhook.server",
   );
-  return { ...actual, findDocoByInstallation };
+  return { ...actual, findDocoByInstallation, findDocoTargetsForGitHubRepo };
 });
 
 import { action } from "../api.github.webhook";
@@ -152,6 +156,7 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       },
     });
     expect(await res.json()).toMatchObject({ ok: true, repo: "acme/store" });
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store");
     expect(upsertPullRequestReference).toHaveBeenCalledWith(
       expect.objectContaining({ number: 5 }),
       expect.objectContaining({ approved: true, docoId: "doco_1" }),
@@ -178,6 +183,7 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       },
     });
     expect(await res.json()).toMatchObject({ ok: true, repo: "acme/store" });
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store");
     expect(mintInstallationToken).toHaveBeenCalledWith(99);
     expect(listPullRequestFiles).toHaveBeenCalledWith("ghs_test", "acme", "store", 5);
     expect(upsertPullRequestReference).toHaveBeenCalledWith(
