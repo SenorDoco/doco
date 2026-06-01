@@ -82,7 +82,12 @@ vi.mock("../api.github.backfill-run", () => ({
   kickBackfillRun: mocks.kickBackfillRun,
 }));
 
-import { action, buildInstallationPickerChoices, loader } from "../$docoHandle.integrations.github";
+import {
+  action,
+  buildInstallationPickerChoices,
+  loader,
+  repositoryPickerDescription,
+} from "../$docoHandle.integrations.github";
 
 const routeArgs = {
   params: { docoHandle: "meta-pull-requests" },
@@ -297,5 +302,11 @@ describe("/:docoHandle/integrations/github", () => {
         canConnectInstallation: false,
       }),
     ]);
+  });
+
+  it("describes an account-level GitHub connection without implying repos are missing", () => {
+    expect(repositoryPickerDescription({ orgAccountCount: 1, pickerChoiceCount: 0 })).toBe(
+      "All repositories from the connected GitHub account can sync to this Doco.",
+    );
   });
 });

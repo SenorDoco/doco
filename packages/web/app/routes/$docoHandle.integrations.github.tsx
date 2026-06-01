@@ -318,6 +318,20 @@ export function buildInstallationPickerChoices(
   });
 }
 
+export function repositoryPickerDescription({
+  orgAccountCount,
+  pickerChoiceCount,
+}: {
+  orgAccountCount: number;
+  pickerChoiceCount: number;
+}): string {
+  if (pickerChoiceCount > 0) return "Select one or more repositories for this Doco.";
+  if (orgAccountCount > 0) {
+    return "All repositories from the connected GitHub account can sync to this Doco.";
+  }
+  return "No GitHub repositories are selected for this Doco yet.";
+}
+
 // Doco's raised "neu-button" affordance — primary (filled) and neutral variants.
 const PRIMARY_BTN =
   "neu-button inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-55";
@@ -456,9 +470,10 @@ export default function DocoGitHubIntegration() {
           <CardHeader>
             <CardTitle className="text-base">Choose repositories</CardTitle>
             <CardDescription>
-              {pickerChoices.length > 0
-                ? "Select one or more repositories for this Doco."
-                : "No GitHub repositories are selected for this Doco yet."}
+              {repositoryPickerDescription({
+                orgAccountCount: orgAccounts.length,
+                pickerChoiceCount: pickerChoices.length,
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
