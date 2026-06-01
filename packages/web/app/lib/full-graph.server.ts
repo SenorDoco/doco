@@ -6,6 +6,8 @@ import type {
   OverviewGraphNode,
   OverviewNodeDetail,
 } from "~/components/overview-graph";
+import type { PerspectiveWindowSelection } from "./perspective-window.server";
+import { windowNodeIds } from "./perspective-window.server";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -101,8 +103,21 @@ function overviewRowsSql(includeLabel = false): string {
 async function loadOverviewRows(
   c: QueryClient,
   docoId: string,
-  options: { centerId?: string; limit?: number } = {},
+  options: { centerId?: string; limit?: number; window?: PerspectiveWindowSelection } = {},
 ): Promise<OverviewGraphRow[]> {
+  const windowIds = windowNodeIds(options.window);
+  if (windowIds.length > 0) {
+    return (
+      await c.query<OverviewGraphRow>(
+        `SELECT *
+           FROM (${overviewRowsSql(true)}) nodes
+          WHERE id = ANY($2::text[])
+          ORDER BY array_position($2::text[], id) NULLS LAST, id`,
+        [docoId, windowIds],
+      )
+    ).rows;
+  }
+
   const limit = options.limit ? Math.max(1, Math.floor(options.limit)) : null;
   const params: unknown[] = [docoId];
   let limitSql = "";
@@ -160,11 +175,17 @@ async function loadOverviewLinks(
 export async function loadOverviewGraph(
   c: QueryClient,
   docoId: string,
-  options: { centerId?: string; handle?: string; limit?: number } = {},
+  options: {
+    centerId?: string;
+    handle?: string;
+    limit?: number;
+    window?: PerspectiveWindowSelection;
+  } = {},
 ): Promise<OverviewGraphData> {
   const rows = await loadOverviewRows(c, docoId, {
     centerId: options.centerId,
     limit: options.limit,
+    window: options.window,
   });
   const nodeIds = rows.map((row) => row.id);
   const links = await loadOverviewLinks(c, docoId, nodeIds);
@@ -179,14 +200,15 @@ export async function loadOverviewGraph(
     lifecycle: row.lifecycle ?? "asserted",
     created_at: toIso(row.created_at),
     href: overviewEntityHref(options.handle, row.entity_type, row.id),
-    is_center: row.id === options.centerId,
+    is_center: row.id === (options.centerId ?? options.window?.focusNodeId ?? undefined),
   }));
+  const requestedCenterId = options.centerId ?? options.window?.focusNodeId ?? undefined;
   const centerId =
-    (options.centerId && nodes.some((node) => node.id === options.centerId)
-      ? options.centerId
+    (requestedCenterId && nodes.some((node) => node.id === requestedCenterId)
+      ? requestedCenterId
       : null) ??
     nodes[0]?.id ??
-    options.centerId ??
+    requestedCenterId ??
     docoId;
 
   return {

@@ -137,6 +137,37 @@ describe("loadOverviewGraph", () => {
     expect(entityQuery?.params).toEqual(["doco_large", 750, "decision_focus"]);
   });
 
+  it("uses a shared perspective window when one is provided", async () => {
+    const { client, captured } = makeQueryClient({
+      entities: [
+        {
+          id: "decision_focus",
+          entity_type: "decision",
+          name: null,
+          label: "Focused decision",
+          lifecycle: "asserted",
+          created_at: "2026-05-01T00:00:00.000Z",
+        },
+      ],
+      edges: [],
+    });
+
+    await loadOverviewGraph(client, "doco_large", {
+      centerId: "decision_focus",
+      handle: "large",
+      limit: 750,
+      window: {
+        focusNodeId: "decision_focus",
+        nodeIds: ["decision_focus", "intent_neighbor"],
+      },
+    });
+
+    const entityQuery = captured.find((c) => /FROM nodes t/i.test(c.sql));
+    expect(entityQuery?.sql).toMatch(/id = ANY\(\$2::text\[\]\)/);
+    expect(entityQuery?.sql).not.toMatch(/LIMIT \$2/);
+    expect(entityQuery?.params).toEqual(["doco_large", ["decision_focus", "intent_neighbor"]]);
+  });
+
   it("returns stable edge ids and hrefs for clickable perspective edges", async () => {
     const { client } = makeQueryClient({
       entities: [

@@ -9,6 +9,8 @@ import { loadGlossaryPerspectiveData } from "./glossary-perspective.server";
 import type { OrgTreeData } from "./org-tree-perspective.server";
 import { loadOrgTreeData } from "./org-tree-perspective.server";
 import { pageRank } from "./pagerank";
+import type { PerspectiveWindowSpec } from "./perspective-window.server";
+import { PERSPECTIVE_WINDOW_SPECS, selectPerspectiveWindow } from "./perspective-window.server";
 import type { PerspectiveKind } from "./perspectives.server";
 import type { PullRequestsPerspectiveData } from "./pull-requests-perspective.server";
 import { loadPullRequestsPerspective } from "./pull-requests-perspective.server";
@@ -66,14 +68,25 @@ export async function loadDocoHomePerspectiveData(
     glossaryData: null,
     pullRequestsData: null,
   };
+  const perspectiveWindow =
+    args.activeKind === "pull-requests"
+      ? null
+      : await selectPerspectiveWindow(c, {
+          docoId: args.docoId,
+          explicitFocusNodeId: args.focusNodeId ?? null,
+          limit: budget.nodeLimit,
+          spec: perspectiveWindowSpecFor(args.activeKind),
+        });
+  const focusNodeId = perspectiveWindow?.focusNodeId ?? args.focusNodeId ?? undefined;
 
   switch (args.activeKind) {
     case "graph":
     case "list": {
       const graph = await loadOverviewGraph(c, args.docoId, {
         handle: args.handle,
-        ...(args.focusNodeId ? { centerId: args.focusNodeId } : {}),
+        ...(focusNodeId ? { centerId: focusNodeId } : {}),
         limit: budget.nodeLimit,
+        window: perspectiveWindow ?? undefined,
       });
       const pageRankMap = pageRank(graph.nodes, graph.links);
       return {
@@ -86,9 +99,10 @@ export async function loadDocoHomePerspectiveData(
       return {
         ...empty,
         bpmnGraph: await loadBpmnGraph(c, args.docoId, {
-          focusId: args.focusNodeId ?? undefined,
+          focusId: focusNodeId,
           handle: args.handle,
           nodeLimit: budget.nodeLimit,
+          window: perspectiveWindow ?? undefined,
         }),
       };
     case "org-tree":
@@ -96,6 +110,7 @@ export async function loadDocoHomePerspectiveData(
         ...empty,
         orgTreeData: await loadOrgTreeData(c, args.docoId, args.handle, {
           limit: budget.nodeLimit,
+          window: perspectiveWindow ?? undefined,
         }),
       };
     case "sla":
@@ -103,6 +118,7 @@ export async function loadDocoHomePerspectiveData(
         ...empty,
         slaData: await loadSlaPerspectiveData(c, args.docoId, args.handle, {
           limit: budget.nodeLimit,
+          window: perspectiveWindow ?? undefined,
         }),
       };
     case "approval":
@@ -110,6 +126,7 @@ export async function loadDocoHomePerspectiveData(
         ...empty,
         approvalData: await loadApprovalPerspectiveData(c, args.docoId, args.handle, {
           limit: budget.nodeLimit,
+          window: perspectiveWindow ?? undefined,
         }),
       };
     case "glossary":
@@ -117,6 +134,7 @@ export async function loadDocoHomePerspectiveData(
         ...empty,
         glossaryData: await loadGlossaryPerspectiveData(c, args.docoId, args.handle, {
           limit: budget.nodeLimit,
+          window: perspectiveWindow ?? undefined,
         }),
       };
     case "pull-requests":
@@ -131,4 +149,11 @@ export async function loadDocoHomePerspectiveData(
       throw new Error(`Unhandled perspective kind: ${exhaustive}`);
     }
   }
+}
+
+function perspectiveWindowSpecFor(
+  kind: Exclude<PerspectiveKind, "pull-requests">,
+): PerspectiveWindowSpec {
+  if (kind === "list") return PERSPECTIVE_WINDOW_SPECS.graph;
+  return PERSPECTIVE_WINDOW_SPECS[kind];
 }

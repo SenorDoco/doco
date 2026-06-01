@@ -1,4 +1,6 @@
 import { DOCO_NODE_TABLE_SPECS } from "@doco/db";
+import type { PerspectiveWindowSelection } from "./perspective-window.server";
+import { windowNodeIds } from "./perspective-window.server";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -48,6 +50,7 @@ interface ApprovalRow {
 
 interface ApprovalLoadOptions {
   limit?: number;
+  window?: PerspectiveWindowSelection;
 }
 
 function normalizeLimit(value: number | null | undefined): number | null {
@@ -88,9 +91,11 @@ export async function loadApprovalPerspectiveData(
   handle: string,
   options: ApprovalLoadOptions = {},
 ): Promise<ApprovalPerspectiveData> {
+  const windowIds = windowNodeIds(options.window);
   const limit = normalizeLimit(options.limit);
   const params: unknown[] = [docoId];
-  if (limit != null) params.push(limit);
+  if (windowIds.length > 0) params.push(windowIds);
+  else if (limit != null) params.push(limit);
   const rows = (
     await c.query<ApprovalRow>(
       `WITH proposed_events AS (
@@ -109,6 +114,7 @@ export async function loadApprovalPerspectiveData(
          SELECT *
            FROM (${approvalRowsSql()}) nodes
           WHERE lifecycle = 'drafting'
+            ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}
        ),
        resolved_actors AS (
          SELECT n.*,
@@ -138,10 +144,10 @@ export async function loadApprovalPerspectiveData(
               n.proposed_at,
               n.author_id,
               COALESCE(author.github_login, author.email, author.id) AS author_name
-         FROM resolved_actors n
+        FROM resolved_actors n
          LEFT JOIN users author ON author.id = n.author_id
         ORDER BY COALESCE(n.proposed_at, n.created_at) DESC NULLS LAST, n.id ASC
-        ${limit != null ? "LIMIT $2" : ""}`,
+        ${windowIds.length === 0 && limit != null ? "LIMIT $2" : ""}`,
       params,
     )
   ).rows;

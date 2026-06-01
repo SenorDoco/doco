@@ -10,6 +10,23 @@ const mocks = vi.hoisted(() => ({
   loadPullRequestsPerspective: vi.fn(),
   loadSlaPerspectiveData: vi.fn(),
   pageRank: vi.fn(),
+  selectPerspectiveWindow: vi.fn(),
+  window: {
+    focusNodeId: "decision_window",
+    nodeIds: ["decision_window"],
+    reasonByNodeId: {},
+    totalEligibleByType: {},
+    omittedCountsByType: {},
+    hasMore: false,
+  },
+  specs: {
+    graph: { key: "graph" },
+    bpmn: { key: "bpmn" },
+    "org-tree": { key: "org-tree" },
+    sla: { key: "sla" },
+    approval: { key: "approval" },
+    glossary: { key: "glossary" },
+  },
 }));
 
 vi.mock("../approval-perspective.server", () => ({
@@ -28,6 +45,10 @@ vi.mock("../sla-perspective.server", () => ({
   loadSlaPerspectiveData: mocks.loadSlaPerspectiveData,
 }));
 vi.mock("../pagerank", () => ({ pageRank: mocks.pageRank }));
+vi.mock("../perspective-window.server", () => ({
+  PERSPECTIVE_WINDOW_SPECS: mocks.specs,
+  selectPerspectiveWindow: mocks.selectPerspectiveWindow,
+}));
 
 import {
   DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET,
@@ -72,6 +93,7 @@ describe("loadDocoHomePerspectiveData", () => {
       loadedCount: 0,
       hasMore: false,
     });
+    mocks.selectPerspectiveWindow.mockResolvedValue(mocks.window);
   });
 
   it.each(ALL_KINDS)("applies the default page budget to %s", async (kind) => {
@@ -83,11 +105,25 @@ describe("loadDocoHomePerspectiveData", () => {
     });
 
     const budget = DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET;
+    const expectedSpec =
+      kind === "list" ? mocks.specs.graph : mocks.specs[kind as keyof typeof mocks.specs];
+    if (kind === "pull-requests") {
+      expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
+    } else {
+      expect(mocks.selectPerspectiveWindow).toHaveBeenCalledWith(client, {
+        docoId: "doco_1",
+        explicitFocusNodeId: "decision_focus",
+        limit: budget.nodeLimit,
+        spec: expectedSpec,
+      });
+    }
+
     if (kind === "graph" || kind === "list") {
       expect(mocks.loadOverviewGraph).toHaveBeenCalledWith(client, "doco_1", {
         handle: "acme",
-        centerId: "decision_focus",
+        centerId: "decision_window",
         limit: budget.nodeLimit,
+        window: mocks.window,
       });
       return;
     }
@@ -95,9 +131,10 @@ describe("loadDocoHomePerspectiveData", () => {
 
     if (kind === "bpmn") {
       expect(mocks.loadBpmnGraph).toHaveBeenCalledWith(client, "doco_1", {
-        focusId: "decision_focus",
+        focusId: "decision_window",
         handle: "acme",
         nodeLimit: budget.nodeLimit,
+        window: mocks.window,
       });
     } else if (kind === "pull-requests") {
       expect(mocks.loadPullRequestsPerspective).toHaveBeenCalledWith(client, "doco_1", {
@@ -106,18 +143,22 @@ describe("loadDocoHomePerspectiveData", () => {
     } else if (kind === "org-tree") {
       expect(mocks.loadOrgTreeData).toHaveBeenCalledWith(client, "doco_1", "acme", {
         limit: budget.nodeLimit,
+        window: mocks.window,
       });
     } else if (kind === "sla") {
       expect(mocks.loadSlaPerspectiveData).toHaveBeenCalledWith(client, "doco_1", "acme", {
         limit: budget.nodeLimit,
+        window: mocks.window,
       });
     } else if (kind === "approval") {
       expect(mocks.loadApprovalPerspectiveData).toHaveBeenCalledWith(client, "doco_1", "acme", {
         limit: budget.nodeLimit,
+        window: mocks.window,
       });
     } else {
       expect(mocks.loadGlossaryPerspectiveData).toHaveBeenCalledWith(client, "doco_1", "acme", {
         limit: budget.nodeLimit,
+        window: mocks.window,
       });
     }
   });

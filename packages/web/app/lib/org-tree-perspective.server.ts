@@ -12,6 +12,9 @@
 // is set — orphan members (no manager and no reports) still render
 // as standalone nodes so the author can wire them up.
 
+import type { PerspectiveWindowSelection } from "./perspective-window.server";
+import { windowNodeIds } from "./perspective-window.server";
+
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -60,6 +63,7 @@ interface OrgTreeEdgeRow {
 
 interface OrgTreeLoadOptions {
   limit?: number;
+  window?: PerspectiveWindowSelection;
 }
 
 function normalizeLimit(value: number | null | undefined): number | null {
@@ -125,9 +129,11 @@ export async function loadOrgTreeData(
   handle: string,
   options: OrgTreeLoadOptions = {},
 ): Promise<OrgTreeData> {
+  const windowIds = windowNodeIds(options.window);
   const limit = normalizeLimit(options.limit);
   const params: unknown[] = [docoId];
-  if (limit != null) params.push(limit);
+  if (windowIds.length > 0) params.push(windowIds);
+  else if (limit != null) params.push(limit);
   const rows = (
     await c.query<OrgTreeRow>(
       // Migration 037 dropped `summary` from principals; the
@@ -137,8 +143,9 @@ export async function loadOrgTreeData(
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
+          ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}
         ORDER BY created_at
-        ${limit != null ? "LIMIT $2" : ""}`,
+        ${windowIds.length === 0 && limit != null ? "LIMIT $2" : ""}`,
       params,
     )
   ).rows;
