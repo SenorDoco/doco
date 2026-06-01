@@ -21,9 +21,19 @@ vi.mock("@doco/db", () => ({
   withClient: mocks.withClient,
 }));
 
-import { buildSlackAppMentionResponse, getSlackBotIdentity } from "../slack.server";
+import {
+  buildSlackAppMentionResponse,
+  clearSlackIntegrationContextCache,
+  getSlackBotIdentity,
+} from "../slack.server";
 
 describe("Slack response flow", () => {
+  beforeEach(() => {
+    clearSlackIntegrationContextCache();
+    mocks.query.mockReset();
+    mocks.withClient.mockReset();
+  });
+
   it("still asks the LLM when the preliminary Doco search has no excerpts", async () => {
     mocks.withClient.mockImplementation(async (callback) => callback({ query: mocks.query }));
     mocks.query
@@ -59,6 +69,58 @@ describe("Slack response flow", () => {
       expect.objectContaining({
         hits: [],
         connections: [expect.objectContaining({ targetLabel: "doco", role: "reader" })],
+      }),
+    );
+  });
+
+  it("reuses the resolved Slack integration context across turns", async () => {
+    mocks.withClient.mockImplementation(async (callback) => callback({ query: mocks.query }));
+    mocks.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            channel_id: "*",
+            channel_name: "workspace",
+            target_level: "org",
+            target_id: "organization_doco",
+            role: "reader",
+            target_label: "doco",
+            doco_handle: null,
+            org_handle: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    const answerGenerator = vi.fn(async () => "cached context answer");
+
+    const first = await buildSlackAppMentionResponse({
+      workspaceId: "T-cache",
+      channelId: "C-cache",
+      chatUserId: "U-cache",
+      messageText: "hello",
+      recentMessages: [],
+      answerGenerator,
+    });
+    const second = await buildSlackAppMentionResponse({
+      workspaceId: "T-cache",
+      channelId: "C-cache",
+      chatUserId: "U-cache",
+      messageText: "hi",
+      recentMessages: [],
+      answerGenerator,
+    });
+
+    expect(first).toBe("cached context answer");
+    expect(second).toBe("cached context answer");
+    expect(mocks.query).toHaveBeenCalledTimes(2);
+    expect(answerGenerator).toHaveBeenCalledTimes(2);
+    expect(answerGenerator).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        connections: expect.arrayContaining([
+          expect.objectContaining({ targetLabel: "doco", role: "reader" }),
+        ]),
+        personalActors: [],
+        integrationContextCache: expect.objectContaining({ status: "hit" }),
       }),
     );
   });
