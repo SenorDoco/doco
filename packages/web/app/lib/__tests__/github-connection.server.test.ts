@@ -5,6 +5,7 @@ vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 import { withClient } from "@doco/db";
 import {
   type GitHubConnection,
+  type GitHubInstallationAuthorization,
   type GitHubInstallationSub,
   addConnection,
   buildInstallUrl,
@@ -13,9 +14,11 @@ import {
   importInstallationConnections,
   normalizeBackfillState,
   normalizeConnections,
+  normalizeInstallationAuthorizations,
   normalizeInstallations,
   parseRepoSlug,
   reconcileInstallationConnections,
+  recordInstallationAuthorization,
   resumeCursorFromConnections,
   subscribeInstallation,
 } from "../github-connection.server";
@@ -165,6 +168,36 @@ describe("groupKnownGitHubInstallations", () => {
         account: "zeta",
         connected_repositories: ["zeta/docs"],
         source_doco_handles: ["two-prs"],
+      },
+    ]);
+  });
+});
+
+describe("normalizeInstallationAuthorizations", () => {
+  it("reads the repo-picker authorization shape", () => {
+    expect(
+      normalizeInstallationAuthorizations({
+        installation_authorizations: [{ installation_id: 5, account: "acme" }],
+      }),
+    ).toEqual([{ installation_id: 5, account: "acme" }]);
+  });
+
+  it("makes authorized installations reusable choices without subscribing every repo", () => {
+    expect(
+      groupKnownGitHubInstallations([
+        {
+          handle: "new-prs",
+          githubIntegration: {
+            installation_authorizations: [{ installation_id: 42, account: "acme" }],
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        installation_id: 42,
+        account: "acme",
+        connected_repositories: [],
+        source_doco_handles: ["new-prs"],
       },
     ]);
   });
@@ -358,6 +391,30 @@ describe("subscribeInstallation — one installation ↔ one Doco", () => {
       { detachElsewhere: vi.fn(async () => {}), list, write: vi.fn(async () => {}) },
     );
     expect(result).toEqual([{ installation_id: 5, account: "acme" }]);
+  });
+});
+
+describe("recordInstallationAuthorization", () => {
+  it("records an available GitHub installation without detaching it from other Docos", async () => {
+    const list = vi.fn(
+      async () => [{ installation_id: 1, account: "old" }] as GitHubInstallationAuthorization[],
+    );
+    const write = vi.fn(async (_id: string, _auths: GitHubInstallationAuthorization[]) => {});
+
+    const result = await recordInstallationAuthorization(
+      "doco_1",
+      { installation_id: 5, account: "acme" },
+      { list, write },
+    );
+
+    expect(write).toHaveBeenCalledWith("doco_1", [
+      { installation_id: 1, account: "old" },
+      { installation_id: 5, account: "acme" },
+    ]);
+    expect(result).toEqual([
+      { installation_id: 1, account: "old" },
+      { installation_id: 5, account: "acme" },
+    ]);
   });
 });
 

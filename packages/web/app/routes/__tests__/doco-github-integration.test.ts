@@ -80,7 +80,7 @@ vi.mock("../api.github.backfill-run", () => ({
   kickBackfillRun: mocks.kickBackfillRun,
 }));
 
-import { action, loader } from "../$docoHandle.integrations.github";
+import { action, buildInstallationPickerChoices, loader } from "../$docoHandle.integrations.github";
 
 const routeArgs = {
   params: { docoHandle: "meta-pull-requests" },
@@ -206,5 +206,29 @@ describe("/:docoHandle/integrations/github", () => {
       }),
     );
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks an installed GitHub org with no repositories as not selectable", () => {
+    const choices = buildInstallationPickerChoices(
+      [
+        {
+          installation_id: 42,
+          account: "Doco-to",
+          repositories: [],
+          connected_repositories: [],
+          source_doco_handles: ["meta-pull-requests"],
+        },
+      ],
+      new Set(),
+    );
+
+    expect(choices).toEqual([
+      expect.objectContaining({
+        account: "Doco-to",
+        selectableRepositories: [],
+        connectedRepositories: [],
+        hasSelectableRepositories: false,
+      }),
+    ]);
   });
 });

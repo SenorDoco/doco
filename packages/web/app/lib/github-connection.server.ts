@@ -435,6 +435,11 @@ export function groupKnownGitHubInstallations(
   };
 
   for (const row of rows) {
+    for (const auth of normalizeInstallationAuthorizations(row.githubIntegration)) {
+      const entry = entryFor(auth.installation_id);
+      entry.accounts.add(auth.account);
+      entry.handles.add(row.handle);
+    }
     for (const sub of normalizeInstallations(row.githubIntegration)) {
       const entry = entryFor(sub.installation_id);
       entry.accounts.add(sub.account);
@@ -560,6 +565,83 @@ export interface GitHubInstallationSub {
   /** Org / owner login the installation belongs to. */
   account: string;
   connected_at?: string;
+}
+
+export type GitHubInstallationAuthorization = GitHubInstallationSub;
+
+/** GitHub installations the user has authorized for repo selection. These are
+ * not org-wide subscriptions; they only make repositories selectable in the
+ * Doco UI after GitHub sends the user back from the install flow. */
+export function normalizeInstallationAuthorizations(
+  raw: unknown,
+): GitHubInstallationAuthorization[] {
+  if (!raw || typeof raw !== "object") return [];
+  const list = (raw as { installation_authorizations?: unknown }).installation_authorizations;
+  if (!Array.isArray(list)) return [];
+  const out: GitHubInstallationAuthorization[] = [];
+  for (const x of list) {
+    if (!x || typeof x !== "object") continue;
+    const e = x as { installation_id?: unknown; account?: unknown; connected_at?: unknown };
+    if (typeof e.installation_id !== "number" || typeof e.account !== "string") continue;
+    out.push({
+      installation_id: e.installation_id,
+      account: e.account,
+      ...(typeof e.connected_at === "string" ? { connected_at: e.connected_at } : {}),
+    });
+  }
+  return out;
+}
+
+export async function listInstallationAuthorizations(
+  docoId: string,
+): Promise<GitHubInstallationAuthorization[]> {
+  return withClient(async (c) => {
+    const r = await c.query<{ gh: unknown }>(
+      `SELECT data->'github_integration' AS gh FROM docos WHERE id = $1`,
+      [docoId],
+    );
+    return normalizeInstallationAuthorizations(r.rows[0]?.gh);
+  });
+}
+
+async function writeInstallationAuthorizations(
+  docoId: string,
+  auths: GitHubInstallationAuthorization[],
+): Promise<void> {
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                COALESCE(data, '{}'::jsonb)
+                  || jsonb_build_object(
+                       'github_integration',
+                       COALESCE(data->'github_integration', '{}'::jsonb)),
+                '{github_integration,installation_authorizations}', $2::jsonb, true),
+              updated_at = now()
+        WHERE id = $1`,
+      [docoId, JSON.stringify(auths)],
+    );
+  });
+}
+
+export interface RecordInstallationAuthorizationDeps {
+  list: (docoId: string) => Promise<GitHubInstallationAuthorization[]>;
+  write: (docoId: string, auths: GitHubInstallationAuthorization[]) => Promise<void>;
+}
+
+export async function recordInstallationAuthorization(
+  docoId: string,
+  auth: GitHubInstallationAuthorization,
+  deps?: Partial<RecordInstallationAuthorizationDeps>,
+): Promise<GitHubInstallationAuthorization[]> {
+  const list = deps?.list ?? listInstallationAuthorizations;
+  const write = deps?.write ?? writeInstallationAuthorizations;
+  const next = [
+    ...(await list(docoId)).filter((a) => a.installation_id !== auth.installation_id),
+    auth,
+  ];
+  await write(docoId, next);
+  return next;
 }
 
 /** Read docos.data.github_integration.installations as a list. Pure. */
