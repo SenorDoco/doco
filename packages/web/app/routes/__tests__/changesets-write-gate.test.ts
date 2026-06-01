@@ -100,6 +100,43 @@ describe("changesets write gate", () => {
     );
   });
 
+  it("preserves the edge role on broad role-bearing relations", async () => {
+    await action({
+      request: changesetRequest({
+        operations: [
+          {
+            op: "relate",
+            relation_kind: "attributed_to",
+            from: "action_01A",
+            to: "principal_01B",
+            relation_props: { role: "performed_by" },
+          },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+
+    // The role must survive onto the edge — a role-less attributed_to edge
+    // fails the `performed_by` authoring policy and gets duplicated by a
+    // second, role-bearing edge from the direct edges route.
+    expect(mocks.captureEdge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        edgeType: "attributed_to",
+        fromId: "action_01A",
+        toId: "principal_01B",
+        props: { role: "performed_by" },
+      }),
+    );
+    // Dedupe must key on the role, not a role-less edge.
+    expect(mocks.edgeExists).toHaveBeenCalledWith(
+      "doco_acme",
+      "attributed_to",
+      "action_01A",
+      "principal_01B",
+      "performed_by",
+    );
+  });
+
   it("does not execute any operation when the preflight write gate rejects", async () => {
     mocks.requireDocoTypeWritesForRequest.mockResolvedValue(
       Response.json(
