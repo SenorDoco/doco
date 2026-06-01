@@ -54,6 +54,7 @@ import {
   runDocoApiToolRequest,
 } from "./doco-api-tool.server";
 import { qualifiedDocoLabel } from "./doco-labels";
+import { DOCO_TEMPLATES } from "./doco-templates-meta";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
 import { internalFetch } from "./internal-fetch.server";
@@ -158,6 +159,11 @@ export interface AttachmentRefBlock {
   size_bytes: number;
 }
 export type PersistedContentBlock = ContentBlockParam | AttachmentRefBlock;
+
+export interface ReplayTrimOptions {
+  maxMessages?: number;
+  maxApproxTokens?: number;
+}
 
 export interface ChatAttachmentMeta {
   id: string;
@@ -782,7 +788,10 @@ export async function loadMessages(conversationId: string): Promise<ChatMessageR
  * The result is a contiguous slice ending at the latest message,
  * starting at a user-role text message.
  */
-export const MAX_REPLAY_MESSAGES = 40;
+export const MAX_REPLAY_MESSAGES = 160;
+export const MAX_REPLAY_APPROX_TOKENS = 64_000;
+const APPROX_CHARS_PER_TOKEN = 4;
+const MAX_OPERATION_MEMORY_FACTS = 24;
 
 function isToolResultUserMessage(row: ChatMessageRow): boolean {
   if (row.role !== "user") return false;
@@ -795,19 +804,216 @@ function isToolResultUserMessage(row: ChatMessageRow): boolean {
 
 export function trimHistoryToWindow(
   rows: ChatMessageRow[],
-  maxMessages: number = MAX_REPLAY_MESSAGES,
+  options: number | ReplayTrimOptions = MAX_REPLAY_MESSAGES,
 ): ChatMessageRow[] {
-  if (rows.length <= maxMessages) return rows;
-  let start = rows.length - maxMessages;
+  const maxMessages =
+    typeof options === "number" ? options : (options.maxMessages ?? MAX_REPLAY_MESSAGES);
+  const maxApproxTokens =
+    typeof options === "number" ? MAX_REPLAY_APPROX_TOKENS : options.maxApproxTokens;
+
+  let start = rows.length > maxMessages ? rows.length - maxMessages : 0;
+  start = findCleanReplayStart(rows, start);
+  let window = rows.slice(start);
+
+  while (
+    maxApproxTokens !== undefined &&
+    approximateReplayTokens(window) > maxApproxTokens &&
+    start < rows.length - 1
+  ) {
+    start = findCleanReplayStart(rows, start + 1);
+    window = rows.slice(start);
+  }
+  return window;
+}
+
+function findCleanReplayStart(rows: ChatMessageRow[], start: number): number {
+  let candidate = start;
   // Anthropic requires messages[0] to be role="user" AND not a tool_result-
   // only message (those need a preceding assistant tool_use). Walk forward
   // until we land on a clean conversational user turn.
-  while (start < rows.length) {
-    const row = rows[start];
+  while (candidate < rows.length) {
+    const row = rows[candidate];
     if (row.role === "user" && !isToolResultUserMessage(row)) break;
-    start++;
+    candidate++;
   }
-  return rows.slice(start);
+  return candidate;
+}
+
+function approximateReplayTokens(rows: ChatMessageRow[]): number {
+  let chars = 0;
+  for (const row of rows) {
+    chars += row.role.length + JSON.stringify(row.content).length;
+  }
+  return Math.ceil(chars / APPROX_CHARS_PER_TOKEN);
+}
+
+interface DocoToolUseMemory {
+  id: string;
+  method: string;
+  path: string;
+  body: unknown;
+}
+
+interface DocoApiMemoryEnvelope {
+  status: number;
+  ok: boolean;
+  body: unknown;
+}
+
+export function buildOperationMemoryFromRows(rows: ChatMessageRow[]): string {
+  const pending = new Map<string, DocoToolUseMemory>();
+  const creationFacts: string[] = [];
+  const writeFacts: string[] = [];
+
+  for (const row of rows) {
+    for (const block of row.content) {
+      const typed = block as {
+        type?: string;
+        id?: unknown;
+        name?: unknown;
+        input?: unknown;
+        tool_use_id?: unknown;
+        content?: unknown;
+      };
+      if (row.role === "assistant" && typed.type === "tool_use" && typed.name === "doco_api") {
+        const input = typed.input as { method?: unknown; path?: unknown; body?: unknown };
+        if (typeof typed.id !== "string") continue;
+        pending.set(typed.id, {
+          id: typed.id,
+          method: typeof input?.method === "string" ? input.method.toUpperCase() : "GET",
+          path: typeof input?.path === "string" ? input.path : "",
+          body: input?.body,
+        });
+      }
+      if (row.role !== "user" || typed.type !== "tool_result") continue;
+      const toolUseId = typeof typed.tool_use_id === "string" ? typed.tool_use_id : "";
+      const toolUse = pending.get(toolUseId);
+      if (!toolUse) continue;
+      const envelope = parseDocoApiToolEnvelope(typed.content);
+      if (!envelope || !envelope.ok || envelope.status < 200 || envelope.status >= 300) continue;
+      if (!["POST", "PATCH", "DELETE"].includes(toolUse.method)) continue;
+
+      if (toolUse.method === "POST" && toolUse.path === "/api/v1/docos.json") {
+        const fact = summarizeCreatedDoco(toolUse, envelope);
+        if (fact) creationFacts.push(fact);
+      } else {
+        const fact = summarizeWrite(toolUse, envelope);
+        if (fact) writeFacts.push(fact);
+      }
+    }
+  }
+
+  const facts = [...creationFacts, ...writeFacts].slice(-MAX_OPERATION_MEMORY_FACTS);
+  if (facts.length === 0) return "";
+  return [
+    "Durable operation memory from this thread:",
+    "These facts come from persisted tool results across the whole stored conversation. Treat them as authoritative when answering what you previously did.",
+    ...facts.map((fact) => `- ${fact}`),
+  ].join("\n");
+}
+
+function parseDocoApiToolEnvelope(content: unknown): DocoApiMemoryEnvelope | null {
+  const raw = typeof content === "string" ? content : extractTextContent(content);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<DocoApiMemoryEnvelope>;
+    if (typeof parsed.status !== "number" || typeof parsed.ok !== "boolean") return null;
+    return { status: parsed.status, ok: parsed.ok, body: parsed.body };
+  } catch {
+    return null;
+  }
+}
+
+function extractTextContent(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block) => {
+      const text = (block as { text?: unknown })?.text;
+      return typeof text === "string" ? text : "";
+    })
+    .join("");
+}
+
+function summarizeCreatedDoco(
+  toolUse: DocoToolUseMemory,
+  envelope: DocoApiMemoryEnvelope,
+): string | null {
+  const response = asRecord(envelope.body);
+  if (!response) return null;
+  const id = stringField(response, "id");
+  const qualified =
+    stringField(response, "qualified_handle") ||
+    [stringField(response, "org_handle"), stringField(response, "handle")]
+      .filter(Boolean)
+      .join("/");
+  const label = qualified || stringField(response, "handle") || id;
+  if (!label) return null;
+  const request = asRecord(toolUse.body);
+  const requestedName = request
+    ? stringField(request, "name") || stringField(request, "doco_name")
+    : "";
+  const templateHandle = request ? stringField(request, "template_handle") || "generic" : "generic";
+  const details = [
+    id ? `id ${id}` : "",
+    requestedName ? `requested name=${requestedName}` : "",
+    `template_handle=${templateHandle}`,
+  ].filter(Boolean);
+  const detailText = details.length ? ` (${details.join("; ")})` : "";
+  return `Created doco ${label}${detailText} from ${toolUse.method} ${toolUse.path} -> ${envelope.status}. This creation result is authoritative; a later list containing the same id confirms the creation, not that it pre-existed.`;
+}
+
+function summarizeWrite(
+  toolUse: DocoToolUseMemory,
+  envelope: DocoApiMemoryEnvelope,
+): string | null {
+  const response = asRecord(envelope.body);
+  const footer = response ? firstString(response.footer_lines) : "";
+  if (footer) return `${toolUse.method} ${toolUse.path} -> ${envelope.status}: ${footer}`;
+  const id = response ? stringField(response, "id") : "";
+  return `${toolUse.method} ${toolUse.path} -> ${envelope.status}${id ? ` (id ${id})` : ""}.`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
+function firstString(value: unknown): string {
+  return Array.isArray(value) && typeof value[0] === "string" ? value[0] : "";
+}
+
+export function buildDocoCreationContractPrompt(): string {
+  const templateList = DOCO_TEMPLATES.map(
+    (template) => `- ${template.handle}: ${template.label} — ${template.description}`,
+  ).join("\n");
+  return `## Doco creation contract
+
+Creating a doco is one of the few places where clarification beats speed.
+This section overrides the "tool first" speed rule below.
+
+- If the user asks to create a doco and their request names or implies a
+  domain with a matching non-generic template, ask one short question before
+  POSTing: whether to use that template or start blank/generic. Example:
+  "Glossary doco" implies the glossaries template; "business process doco"
+  implies the business-processes template.
+- If the user explicitly says "blank", "from scratch", "generic", or names a
+  template handle, use that choice without asking.
+- POST /api/v1/docos.json creates a new doco. A 201 response is authoritative.
+  Use the returned id, handle, qualified_handle, template/goal, and visibility
+  as durable facts for the rest of the thread. A later list response containing
+  the same id confirms the creation; it does not mean the doco pre-existed.
+- When answering questions about what you previously created, prefer persisted
+  tool results and the durable operation memory in the user turn over current
+  lists or inference.
+
+Available creation templates:
+${templateList}`;
 }
 
 // Page size for the sidebar's infinite-scroll hydration. Tuned to fill
@@ -1266,6 +1472,8 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   POST  /api/v1/docos.json                       — create a doco; owner role on the target org required
   POST  /api/v1/orgs.json                        — create an org (NO GET — to list the user's orgs, see the "Your orgs" section below)
   GET   /api/v1/agent-bootstrap.json             — re-read policies
+
+${buildDocoCreationContractPrompt()}
 
 ### Discovery — "what's in this doco?"
 
@@ -2046,6 +2254,10 @@ async function* streamAssistantTurn(args: {
 
   const histStart = performance.now();
   const allHistory = await loadMessages(args.conversation.id);
+  const operationMemory = buildOperationMemoryFromRows(allHistory);
+  if (operationMemory) {
+    userContent[0] = { type: "text", text: `${turnHeader}${operationMemory}\n\n${args.userText}` };
+  }
   const history = trimHistoryToWindow(allHistory);
   // History now includes the user message we just persisted; drop
   // the trailing user row so we don't double-add the same content
