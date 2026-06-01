@@ -25,6 +25,7 @@ import {
   addConnection,
   buildInstallUrl,
   getDocoConnectionsContext,
+  githubOrgAccounts,
   parseRepoSlug,
   removeConnection,
 } from "~/lib/github-connection.server";
@@ -46,6 +47,9 @@ export async function loader({
     orgHandle: ctx?.orgHandle ?? "",
     docoInstallUrl,
     connections: ctx?.connections ?? [],
+    orgAccounts: ctx
+      ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
+      : [],
     backfill: ctx?.backfill ?? null,
   };
 }
@@ -158,7 +162,7 @@ export function meta({ params }: { params: { docoHandle: string } }) {
 }
 
 export default function DocoIntegrations() {
-  const { me, handle, orgHandle, docoInstallUrl, connections, backfill } =
+  const { me, handle, orgHandle, docoInstallUrl, connections, orgAccounts, backfill } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
@@ -270,10 +274,35 @@ export default function DocoIntegrations() {
               <CardHeader>
                 <CardTitle className="text-base">GitHub repositories</CardTitle>
                 <CardDescription>
-                  New PRs sync automatically via webhook; existing PRs import on demand.
+                  {orgAccounts.length > 0
+                    ? "Connected at the organization level — every repo syncs automatically, including ones added later."
+                    : "New PRs sync automatically via webhook; existing PRs import on demand."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                {orgAccounts.length > 0 ? (
+                  <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+                    <p className="text-foreground">
+                      Connected to{" "}
+                      {orgAccounts.map((a, i) => (
+                        <span key={a}>
+                          {i > 0 ? ", " : ""}
+                          <span className="font-mono font-semibold">{a}</span>
+                        </span>
+                      ))}{" "}
+                      — all repositories sync automatically.
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      New repos added to the{" "}
+                      {orgAccounts.length === 1 ? "organization" : "organizations"} are picked up on
+                      their own; no need to add them here.{" "}
+                      <span className="font-mono font-semibold tabular-nums">
+                        {connections.length}
+                      </span>{" "}
+                      {connections.length === 1 ? "repository" : "repositories"} covered so far.
+                    </p>
+                  </div>
+                ) : null}
                 {connections.length > 0 ? (
                   <ul className="divide-y rounded border">
                     {connections.map((c) => (

@@ -312,12 +312,32 @@ export interface DocoConnectionsContext {
   handle: string;
   orgHandle: string;
   connections: GitHubConnection[];
+  /** Org/owner installation subscriptions (org-wide auto-sync). */
+  installations: GitHubInstallationSub[];
   /** In-progress / last-finished PR import, for the "importing…" banner. */
   backfill: GitHubBackfillState | null;
 }
 
-/** Doco handle + org handle + all connections + backfill marker, in one query
- *  (for the Integrations UI and per-repo backfill). */
+/**
+ * Org/owner accounts a Doco's GitHub connection covers — for the "Connected to
+ * <org> — all repos auto-syncing" framing. Prefers explicit installation
+ * subscriptions (which carry the account login); falls back to the distinct
+ * owners of the connected repos (every repo from one install shares the org
+ * owner). Pure; de-duped + sorted.
+ */
+export function githubOrgAccounts(input: {
+  installations: GitHubInstallationSub[];
+  connections: GitHubConnection[];
+}): string[] {
+  const fromSubs = input.installations.map((i) => i.account);
+  const fromRepos = input.connections
+    .map((c) => c.repo.split("/")[0])
+    .filter((owner): owner is string => Boolean(owner));
+  return [...new Set([...fromSubs, ...fromRepos])].sort();
+}
+
+/** Doco handle + org handle + all connections + installations + backfill
+ *  marker, in one query (for the Integrations UI and per-repo backfill). */
 export async function getDocoConnectionsContext(
   docoId: string,
 ): Promise<DocoConnectionsContext | null> {
@@ -335,6 +355,7 @@ export async function getDocoConnectionsContext(
           handle: row.handle,
           orgHandle: row.org_handle,
           connections: normalizeConnections(row.gh),
+          installations: normalizeInstallations(row.gh),
           backfill: normalizeBackfillState(row.gh),
         }
       : null;
