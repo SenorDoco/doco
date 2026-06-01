@@ -290,6 +290,7 @@ describe("loadNodeDialogDetail", () => {
     });
     const actorLabelQuery = capturedSql.find((sql) => sql.includes("WITH input(actor_id)"));
 
+    expect(actorLabelQuery).toContain("left(i.actor_id, 5)");
     expect(actorLabelQuery).toContain("data->>'name'");
     expect(detail?.authoring.created).toMatchObject({
       user_id: "user_alice",
