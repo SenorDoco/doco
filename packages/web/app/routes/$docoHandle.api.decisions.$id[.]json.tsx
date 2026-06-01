@@ -1,5 +1,6 @@
 import { getEntity, roleAtLeast } from "@doco/db";
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
+import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { type DecisionPatch, updateDecision } from "~/lib/capture.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
@@ -67,6 +68,7 @@ export async function action({
     patch,
     docoHost,
     me?.id ?? null,
+    authoringContextForRequest(request),
   );
   if ("error" in result) {
     return Response.json(result, { status: result.status ?? 400 });

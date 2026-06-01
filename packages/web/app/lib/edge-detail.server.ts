@@ -1,3 +1,5 @@
+import { type AuthoringPair, authoringEntry } from "./authoring-provenance";
+
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -14,6 +16,7 @@ interface EdgeDetailRow {
   created_at: Date | string | null;
   created_by: string | null;
   updated_at: Date | string | null;
+  updated_by: string | null;
   retired_at: Date | string | null;
 }
 
@@ -31,6 +34,8 @@ interface EdgeVersionRow {
   op: string;
   recorded_at?: Date | string | null;
   actor?: string | null;
+  source?: string | null;
+  metadata?: Record<string, unknown> | null;
   reason?: string | null;
 }
 
@@ -49,6 +54,7 @@ export interface EdgeDialogHistoryEntry {
   op: string;
   recorded_at: string | null;
   actor: string | null;
+  mechanism: string | null;
   reason: string | null;
 }
 
@@ -65,12 +71,42 @@ export interface EdgeDialogDetail {
   created_at: string | null;
   created_by: string | null;
   updated_at: string | null;
+  updated_by: string | null;
   retired_at: string | null;
+  authoring: AuthoringPair;
   href: string;
   doco: EdgeDialogDocoRef;
   from: EdgeDialogEndpoint;
   to: EdgeDialogEndpoint;
   history: EdgeDialogHistoryEntry[];
+}
+
+async function resolveActorLabels(
+  c: QueryClient,
+  actorIds: string[],
+): Promise<Map<string, string>> {
+  const requested = Array.from(new Set(actorIds.filter(Boolean)));
+  if (requested.length === 0) return new Map();
+  const rows = (
+    await c.query<{
+      actor_id: string;
+      label: string | null;
+    }>(
+      `WITH input(actor_id) AS (
+         SELECT unnest($1::text[])
+       )
+       SELECT i.actor_id,
+              COALESCE(u.github_login, u.email, u.id) AS label
+         FROM input i
+         LEFT JOIN users u ON u.id = i.actor_id`,
+      [requested],
+    )
+  ).rows;
+  return new Map(
+    rows
+      .map((row) => [row.actor_id, row.label] as const)
+      .filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+  );
 }
 
 function toIso(value: Date | string | null | undefined): string | null {
@@ -111,7 +147,7 @@ export async function loadEdgeDialogDetail(
   const edge = (
     await c.query<EdgeDetailRow>(
       `SELECT id, from_id, from_node_type, to_id, to_node_type, edge_type,
-              props, lifecycle, created_at, created_by, updated_at, retired_at
+              props, lifecycle, created_at, created_by, updated_at, updated_by, retired_at
          FROM edges
         WHERE doco_id = $1 AND id = $2`,
       [meta.docoId, options.id],
@@ -138,13 +174,20 @@ export async function loadEdgeDialogDetail(
   );
   const versions = (
     await c.query<EdgeVersionRow>(
-      `SELECT version, op, recorded_at, actor, reason
+      `SELECT version, op, recorded_at, actor, source, metadata, reason
          FROM edge_versions
         WHERE entity_id = $1
         ORDER BY version`,
       [edge.id],
     )
   ).rows;
+  const actorLabels = await resolveActorLabels(c, [
+    edge.created_by ?? "",
+    edge.updated_by ?? "",
+    ...versions.flatMap((entry) => (entry.actor ? [entry.actor] : [])),
+  ]);
+  const createdVersion = versions[0];
+  const updatedVersion = versions.at(-1);
 
   return {
     id: edge.id,
@@ -154,7 +197,24 @@ export async function loadEdgeDialogDetail(
     created_at: toIso(edge.created_at),
     created_by: edge.created_by,
     updated_at: toIso(edge.updated_at),
+    updated_by: edge.updated_by,
     retired_at: toIso(edge.retired_at),
+    authoring: {
+      created: authoringEntry({
+        actor: createdVersion?.actor ?? edge.created_by,
+        labels: actorLabels,
+        source: createdVersion?.source ?? null,
+        metadata: createdVersion?.metadata ?? null,
+        at: toIso(createdVersion?.recorded_at) ?? toIso(edge.created_at),
+      }),
+      updated: authoringEntry({
+        actor: updatedVersion?.actor ?? edge.updated_by ?? edge.created_by,
+        labels: actorLabels,
+        source: updatedVersion?.source ?? null,
+        metadata: updatedVersion?.metadata ?? null,
+        at: toIso(updatedVersion?.recorded_at) ?? toIso(edge.updated_at),
+      }),
+    },
     href: `/${options.handle}/edges/${edge.id}`,
     doco: {
       handle: options.handle,
@@ -171,6 +231,14 @@ export async function loadEdgeDialogDetail(
       op: version.op,
       recorded_at: toIso(version.recorded_at),
       actor: version.actor ?? null,
+      mechanism:
+        authoringEntry({
+          actor: version.actor ?? null,
+          labels: actorLabels,
+          source: version.source ?? null,
+          metadata: version.metadata ?? null,
+          at: toIso(version.recorded_at),
+        })?.mechanism ?? null,
       reason: version.reason ?? null,
     })),
   };

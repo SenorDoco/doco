@@ -200,6 +200,8 @@ interface InternalFetchInput {
   body?: unknown;
   /** Optional user-agent to mark internal calls in logs. */
   userAgent?: string;
+  /** Optional authoring surface propagated into capture/history metadata. */
+  authoringSurface?: string;
 }
 
 /**
@@ -246,6 +248,9 @@ export async function internalFetch(input: InternalFetchInput): Promise<Response
     Accept: "application/json",
     "User-Agent": input.userAgent ?? "Doco-Internal-Fetch/1",
   });
+  if (input.authoringSurface) {
+    headers.set("X-Doco-Authoring-Surface", input.authoringSurface);
+  }
   const init: RequestInit = { method, headers };
   if (method !== "GET" && method !== "HEAD" && input.body !== undefined) {
     headers.set("Content-Type", "application/json");

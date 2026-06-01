@@ -12,6 +12,7 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
+import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import {
   type NodeAuthoringPolicyDraft,
   captureGuidancePolicy,
@@ -128,6 +129,7 @@ export async function action({
         docoSlug,
         draft,
         docoHost,
+        { authoring: authoringContextForRequest(request) },
       );
     } else {
       const evaluationKind =
@@ -162,6 +164,7 @@ export async function action({
         docoSlug,
         draft,
         docoHost,
+        { authoring: authoringContextForRequest(request) },
       );
     }
     if ("error" in captured) {

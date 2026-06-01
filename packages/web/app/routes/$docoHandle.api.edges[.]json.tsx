@@ -5,6 +5,7 @@
 // boundary; per-edge-type write grants gate creation, exactly like nodes.
 
 import { withClient } from "@doco/db";
+import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { canWriteDocoTypeForRequest, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { captureEdge } from "~/lib/edge-capture.server";
 
@@ -81,6 +82,7 @@ export async function action({ request, params }: { request: Request; params: Pa
     props: (body.props as Record<string, unknown> | undefined) ?? null,
     lifecycle: body.lifecycle === "drafting" ? "drafting" : "asserted",
     reason: typeof body.reason === "string" ? body.reason : null,
+    ...authoringContextForRequest(request),
   });
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: result.status });

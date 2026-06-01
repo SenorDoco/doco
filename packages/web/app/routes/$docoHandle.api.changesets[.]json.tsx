@@ -6,7 +6,9 @@
 
 import { getEntity, roleAtLeast, withClient } from "@doco/db";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
+import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import {
+  type AuthoringWriteContext,
   type CaptureError,
   type EntityPatch,
   type NodeTypeName,
@@ -75,6 +77,7 @@ interface ChangesetContext {
   docoSlug: string;
   docoHost: string;
   actorId: string | null;
+  authoring: AuthoringWriteContext;
   me: MeLike;
   request: Request;
 }
@@ -168,6 +171,7 @@ export async function action({
     docoSlug,
     docoHost: new URL(request.url).origin,
     actorId: me.id,
+    authoring: authoringContextForRequest(request),
     me: { id: me.id, username: me.username },
     request,
   };
@@ -308,6 +312,7 @@ async function createNode(
     ctx.docoSlug,
     draft,
     ctx.docoHost,
+    ctx.authoring,
   );
   if ("error" in result) {
     // Pave the draft-first path: if an asserted node blocked on a missing
@@ -594,6 +599,7 @@ async function patchRelationOwner(
       patch,
       ctx.docoHost,
       ctx.actorId,
+      ctx.authoring,
     );
   }
   if (ownerType === "principal") {
@@ -619,6 +625,7 @@ async function patchRelationOwner(
     allowedFields: undefined,
     docoHost: ctx.docoHost,
     actorId: ctx.actorId,
+    authoring: ctx.authoring,
   });
 }
 
@@ -632,8 +639,10 @@ async function patchPrincipal(
   headers.set("content-type", "application/json");
   const cookie = ctx.request.headers.get("cookie");
   const authorization = ctx.request.headers.get("authorization");
+  const authoringSurface = ctx.request.headers.get("x-doco-authoring-surface");
   if (cookie) headers.set("cookie", cookie);
   if (authorization) headers.set("authorization", authorization);
+  if (authoringSurface) headers.set("x-doco-authoring-surface", authoringSurface);
   const response = await action({
     request: new Request(`${ctx.docoHost}/${ctx.docoSlug}/api/principals/${ownerId}.json`, {
       method: "PATCH",
