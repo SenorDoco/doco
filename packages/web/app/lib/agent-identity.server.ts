@@ -1,5 +1,5 @@
 // Agent self-identity — powers GET /api/v1/whoami.json and the
-// "Authenticated as @username, with these levels of access" block the
+// "Authenticated as <credential>, with these levels of access" block the
 // MCP server renders right after a successful OAuth completion.
 //
 // "Levels of access" means what the *token* can touch, not the raw
@@ -8,11 +8,16 @@
 // who minted it, never wider). Cookie sessions (browser, no token)
 // fall back to the principal's full membership set.
 
-import type { DocoRole } from "@doco/db";
+import { type DocoRole, getUserById } from "@doco/db";
 import { loadScopeOptions } from "~/lib/api-keys.server";
 import { getOauthTokenForRequest } from "~/lib/doco-access.server";
-import { getCurrentPrincipalAsync } from "~/lib/session.server";
+import {
+  type CurrentPrincipal,
+  getCurrentPrincipalAsync,
+  userDisplayName,
+} from "~/lib/session.server";
 import { rankOf } from "~/lib/user-invite";
+import type { ValidAccessToken } from "./oauth-server.server";
 
 export interface IdentityGrant {
   scope: "org" | "doco";
@@ -26,18 +31,52 @@ export interface AgentIdentity {
   user_id: string;
   username: string;
   type: "person" | "agent";
+  credential: AgentCredentialIdentity | null;
+  indicator_prefix: string;
   grants: IdentityGrant[];
 }
 
-export async function loadAgentIdentity(request: Request): Promise<AgentIdentity | null> {
+export interface AgentCredentialIdentity {
+  nickname: string;
+  on_behalf_of_username: string;
+  indicator_prefix: string;
+}
+
+export interface AgentDisplayIdentity {
+  user_id: string;
+  username: string;
+  type: "person" | "agent";
+  credential: AgentCredentialIdentity | null;
+  indicator_prefix: string;
+}
+
+export async function loadAgentDisplayIdentity(
+  request: Request,
+): Promise<AgentDisplayIdentity | null> {
   const me = await getCurrentPrincipalAsync(request);
   if (!me) return null;
+
+  const token = await getOauthTokenForRequest(request);
+  const credential = token ? await loadCredentialIdentity(me, token) : null;
+
+  return {
+    user_id: me.id,
+    username: me.username,
+    type: me.type,
+    credential,
+    indicator_prefix: credential?.indicator_prefix ?? `[🔮 Doco @${cleanUsername(me.username)}]`,
+  };
+}
+
+export async function loadAgentIdentity(request: Request): Promise<AgentIdentity | null> {
+  const display = await loadAgentDisplayIdentity(request);
+  if (!display) return null;
 
   const token = await getOauthTokenForRequest(request);
   // loadScopeOptions returns every org/doco the principal can reach plus
   // the role they hold there — the upper bound on what any of their
   // tokens can grant.
-  const options = await loadScopeOptions(me.id);
+  const options = await loadScopeOptions(display.user_id);
 
   let grants: IdentityGrant[];
   if (token) {
@@ -61,5 +100,46 @@ export async function loadAgentIdentity(request: Request): Promise<AgentIdentity
   }
   grants.sort((a, b) => a.label.localeCompare(b.label));
 
-  return { user_id: me.id, username: me.username, type: me.type, grants };
+  return { ...display, grants };
+}
+
+async function loadCredentialIdentity(
+  me: CurrentPrincipal,
+  token: ValidAccessToken,
+): Promise<AgentCredentialIdentity> {
+  const onBehalfOf = await resolveOnBehalfOfUsername(me);
+  const nickname = credentialNickname(me, token);
+  return {
+    nickname,
+    on_behalf_of_username: onBehalfOf,
+    indicator_prefix: `[🔮 Doco ${nickname} on behalf of @${cleanUsername(onBehalfOf)}]`,
+  };
+}
+
+async function resolveOnBehalfOfUsername(me: CurrentPrincipal): Promise<string> {
+  if (me.type !== "agent") return cleanUsername(me.username);
+  const agent = await getUserById(me.id);
+  const ownerId = agent?.owner_id;
+  if (!ownerId) return cleanUsername(me.username);
+  const owner = await getUserById(ownerId);
+  return owner ? cleanUsername(userDisplayName(owner)) : cleanUsername(me.username);
+}
+
+function credentialNickname(me: CurrentPrincipal, token: ValidAccessToken): string {
+  // Agent OAuth tokens are represented by a named agent user; personal API
+  // keys use the OAuth client label the human typed on /api-keys.
+  const preferred = me.type === "agent" ? me.username : token.client_name;
+  return cleanIndicatorSegment(preferred || token.client_name || token.client_id.slice(0, 20));
+}
+
+function cleanUsername(value: string): string {
+  return cleanIndicatorSegment(value).replace(/^@+/, "");
+}
+
+function cleanIndicatorSegment(value: string): string {
+  const clean = value
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[\[\]\r\n]+/g, "");
+  return clean || "unknown";
 }

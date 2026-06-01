@@ -300,13 +300,18 @@ query is sent), then the N-found line AFTER the result returns:
 [🔮 Doco] <N> relevant nodes found (<X.X>s)
 \`\`\`
 
-**Your Doco username.** Every \`doco_search\` response carries a
-\`viewer.username\`, and \`doco_complete_authentication\` returns an
-"Authenticated as @username" block. Once you know it, prefix every Doco
-indicator line with your handle — \`[🔮 Doco @username] <querying-verb>\`,
-\`[🔮 Doco @username] <N> relevant nodes found …\`, and the closing
-tally. Before you know it (the very first line of a cold session, before
-any search returns), plain \`[🔮 Doco]\` is fine.
+**Your Doco credential label.** Every \`doco_search\` response may carry
+\`viewer.indicator_prefix\`, and \`doco_complete_authentication\` returns
+an "Authenticated as <credential>" block. Once you know the prefix, use it
+verbatim for every Doco indicator line. For OAuth/API-key agents this
+looks like \`[🔮 Doco <token nickname> on behalf of @username]\`, so the
+query/count/tally lines become \`[🔮 Doco <token nickname> on behalf of
+@username] <querying-verb>\`, \`[🔮 Doco <token nickname> on behalf of
+@username] <N> relevant nodes found …\`, and the closing tally. If the
+response lacks \`viewer.indicator_prefix\` but has \`viewer.username\`,
+fall back to \`[🔮 Doco @username]\`. Before you know either (the very
+first line of a cold session, before any search returns), plain
+\`[🔮 Doco]\` is fine.
 
 Pick \`<querying-verb>\` at random:
 
@@ -351,7 +356,7 @@ bootstrap couldn't reach Doco):
    to send another message saying they approved; the tool blocks while
    polling so the agent can learn when approval lands.
 4. **If it succeeds**: \`doco_complete_authentication\` returns an
-   "Authenticated as @username. I've got the following levels of
+   "Authenticated as <credential>. I've got the following levels of
    access:" block — render it verbatim at the top of your reply, then
    retry \`doco_search\` and continue with the substantive answer using
    the now-available Doco.
@@ -392,12 +397,13 @@ Render one tally line per source the agent has potential access to
 **Connected source** (you queried or wrote — even if N == 0):
 
 \`\`\`
-[🔮 Doco @username] <doco-or-org-name>: **<N>** nodes added/updated
+[🔮 Doco <token nickname> on behalf of @username] <doco-or-org-name>: **<N>** nodes added/updated
 \`\`\`
 
-(Prefix with your \`@username\` once you know it — see "Your Doco
-username" in section 1. Plain \`[🔮 Doco]\` only before your first
-search of a cold session.)
+(Use \`viewer.indicator_prefix\` once you know it — see "Your Doco
+credential label" in section 1. Fall back to \`[🔮 Doco @username]\`
+only when no credential-aware prefix is provided. Plain \`[🔮 Doco]\`
+only before your first search of a cold session.)
 
 **Source whose access hasn't been granted yet**:
 

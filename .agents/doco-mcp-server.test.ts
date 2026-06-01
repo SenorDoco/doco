@@ -407,26 +407,46 @@ describe("doco-mcp-server", () => {
   });
 
   it("doco_complete_authentication returns isError when no device flow is in progress", async () => {
-    const responses = await exchange(
-      [
-        INIT_MESSAGE,
-        INITIALIZED_NOTIFICATION,
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-no-device-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_complete_authentication", arguments: {} },
+          },
+        ],
+        2,
         {
-          jsonrpc: "2.0",
-          id: 2,
-          method: "tools/call",
-          params: { name: "doco_complete_authentication", arguments: {} },
+          cwd: projectDir,
+          env: {
+            DOCO_DEVICE_CLIENT_ID: undefined,
+            DOCO_DEVICE_CODE: undefined,
+            DOCO_DEVICE_INTERVAL: undefined,
+            DOCO_DEVICE_EXPIRES_AT: undefined,
+            DOCO_DEVICE_TARGET_HANDLE: undefined,
+            DOCO_DEVICE_REQUESTED_ROLE: undefined,
+          },
         },
-      ],
-      2,
-    );
-    const callResp = responses.find((r) => r.id === 2);
-    const result = callResp?.result as {
-      isError: boolean;
-      content: Array<{ type: string; text: string }>;
-    };
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/no device-authorization flow in progress/i);
+      );
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/no device-authorization flow in progress/i);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("doco_complete_authentication returns isError when device code has expired", async () => {
@@ -970,6 +990,86 @@ describe("doco-mcp-server", () => {
       };
       expect(result.isError).toBeFalsy();
       expect(seenAuth).toEqual(["Bearer doco_pt_committed_test_token"]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_search tells agents to use the credential-aware indicator prefix", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-indicator-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    const searchServer = createServer((req, res) => {
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            count: 0,
+            duration_ms: 8,
+            hits: [],
+            viewer: {
+              username: "torrenegra",
+              type: "person",
+              credential: {
+                nickname: "Nightly Doco Runner",
+                on_behalf_of_username: "torrenegra",
+                indicator_prefix: "[🔮 Doco Nightly Doco Runner on behalf of @torrenegra]",
+              },
+              indicator_prefix: "[🔮 Doco Nightly Doco Runner on behalf of @torrenegra]",
+            },
+          }),
+        );
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_personal_oauth_token", ""].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_search", arguments: { query: "indicator prefix" } },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined },
+        },
+      );
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain(
+        "Prefix Doco indicator lines this turn with [🔮 Doco Nightly Doco Runner on behalf of @torrenegra].",
+      );
+      expect(result.content[0].text).not.toContain("[🔮 Doco @torrenegra]");
     } finally {
       await new Promise<void>((resolve) => {
         searchServer.close(() => resolve());
