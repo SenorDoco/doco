@@ -231,14 +231,67 @@ export async function clearAllConnections(docoId: string): Promise<void> {
   });
 }
 
+// ─── Backfill progress marker ────────────────────────────────────────────
+// A connect kicks off the PR import off the request path (waitUntil); for an
+// org with tens of thousands of PRs that runs long. We stamp a marker on the
+// Doco so the UI can say "importing in the background — keep working" and the
+// user isn't blocked. Stored at docos.data.github_integration.backfill; no
+// migration (plain JSONB, like connections/installations).
+
+export interface GitHubBackfillState {
+  status: "running" | "done";
+  started_at?: string;
+  finished_at?: string;
+  /** Repos covered by the backfill. */
+  repos?: number;
+  /** PR References created (new) this run. */
+  imported?: number;
+}
+
+/** Read the backfill marker off a raw github_integration value. Pure. */
+export function normalizeBackfillState(raw: unknown): GitHubBackfillState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const b = (raw as { backfill?: unknown }).backfill;
+  if (!b || typeof b !== "object") return null;
+  const e = b as Record<string, unknown>;
+  if (e.status !== "running" && e.status !== "done") return null;
+  return {
+    status: e.status,
+    ...(typeof e.started_at === "string" ? { started_at: e.started_at } : {}),
+    ...(typeof e.finished_at === "string" ? { finished_at: e.finished_at } : {}),
+    ...(typeof e.repos === "number" ? { repos: e.repos } : {}),
+    ...(typeof e.imported === "number" ? { imported: e.imported } : {}),
+  };
+}
+
+/** Write the backfill marker, preserving sibling github_integration keys. */
+export async function setBackfillState(docoId: string, state: GitHubBackfillState): Promise<void> {
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                COALESCE(data, '{}'::jsonb)
+                  || jsonb_build_object(
+                       'github_integration',
+                       COALESCE(data->'github_integration', '{}'::jsonb)),
+                '{github_integration,backfill}', $2::jsonb, true),
+              updated_at = now()
+        WHERE id = $1`,
+      [docoId, JSON.stringify(state)],
+    );
+  });
+}
+
 export interface DocoConnectionsContext {
   handle: string;
   orgHandle: string;
   connections: GitHubConnection[];
+  /** In-progress / last-finished PR import, for the "importing…" banner. */
+  backfill: GitHubBackfillState | null;
 }
 
-/** Doco handle + org handle + all connections, in one query (for the
- *  Integrations UI and per-repo backfill). */
+/** Doco handle + org handle + all connections + backfill marker, in one query
+ *  (for the Integrations UI and per-repo backfill). */
 export async function getDocoConnectionsContext(
   docoId: string,
 ): Promise<DocoConnectionsContext | null> {
@@ -252,7 +305,12 @@ export async function getDocoConnectionsContext(
     );
     const row = r.rows[0];
     return row
-      ? { handle: row.handle, orgHandle: row.org_handle, connections: normalizeConnections(row.gh) }
+      ? {
+          handle: row.handle,
+          orgHandle: row.org_handle,
+          connections: normalizeConnections(row.gh),
+          backfill: normalizeBackfillState(row.gh),
+        }
       : null;
   });
 }

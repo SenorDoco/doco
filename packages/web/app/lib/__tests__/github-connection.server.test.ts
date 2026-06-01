@@ -8,11 +8,29 @@ import {
   addConnection,
   buildInstallUrl,
   importInstallationConnections,
+  normalizeBackfillState,
   normalizeConnections,
   normalizeInstallations,
   parseRepoSlug,
   subscribeInstallation,
 } from "../github-connection.server";
+
+describe("normalizeBackfillState", () => {
+  it("reads a running / done marker", () => {
+    expect(
+      normalizeBackfillState({ backfill: { status: "running", repos: 3, started_at: "t" } }),
+    ).toEqual({ status: "running", repos: 3, started_at: "t" });
+    expect(normalizeBackfillState({ backfill: { status: "done", imported: 12 } })).toEqual({
+      status: "done",
+      imported: 12,
+    });
+  });
+  it("returns null for missing / invalid markers", () => {
+    expect(normalizeBackfillState(null)).toBeNull();
+    expect(normalizeBackfillState({})).toBeNull();
+    expect(normalizeBackfillState({ backfill: { status: "bogus" } })).toBeNull();
+  });
+});
 
 describe("parseRepoSlug", () => {
   it("splits owner/name", () => {

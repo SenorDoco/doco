@@ -46,6 +46,7 @@ export async function loader({
     orgHandle: ctx?.orgHandle ?? "",
     docoInstallUrl,
     connections: ctx?.connections ?? [],
+    backfill: ctx?.backfill ?? null,
   };
 }
 
@@ -157,10 +158,12 @@ export function meta({ params }: { params: { docoHandle: string } }) {
 }
 
 export default function DocoIntegrations() {
-  const { me, handle, orgHandle, docoInstallUrl, connections } = useLoaderData<typeof loader>();
+  const { me, handle, orgHandle, docoInstallUrl, connections, backfill } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
   const flash = searchParams.get("github");
+  const importing = backfill?.status === "running" || flash === "importing";
 
   return (
     <div>
@@ -175,7 +178,28 @@ export default function DocoIntegrations() {
           <ScopeNavLinks scope="doco" orgHandle={orgHandle} />
         </header>
 
-        {flash === "connected" ? (
+        {importing ? (
+          <p className="flex items-center gap-2 rounded-md border border-border bg-background p-3 text-sm text-foreground">
+            <span
+              aria-hidden
+              className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+            />
+            <span>
+              Importing pull requests in the background
+              {backfill?.repos ? (
+                <>
+                  {" "}
+                  from{" "}
+                  <span className="font-mono font-semibold tabular-nums">{backfill.repos}</span>{" "}
+                  repo(s)
+                </>
+              ) : null}{" "}
+              — you can keep working; they'll appear here as they sync, and new repos in the org
+              sync automatically.
+            </span>
+          </p>
+        ) : null}
+        {!importing && flash === "connected" ? (
           <p className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
             Connected —{" "}
             <span
