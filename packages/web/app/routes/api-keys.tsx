@@ -292,20 +292,20 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
     [scopeOptions],
   );
   const noScopes = catalog.targets.length === 0;
-  const [grant, setGrant] = useState<ComposedGrant | null>(null);
-  const writeTypes = grant ? resolveWriteTypes(grant.role, grant.writeTypes) : [];
+  const [grants, setGrants] = useState<ComposedGrant[]>([]);
 
-  const grantsPayload = useMemo(() => {
-    if (!grant) return "[]";
-    return JSON.stringify([
-      {
-        level: grant.level,
-        target_id: grant.targetId,
-        role: grant.role,
-        write_types: writeTypes,
-      },
-    ]);
-  }, [grant, writeTypes]);
+  const grantsPayload = useMemo(
+    () =>
+      JSON.stringify(
+        grants.map((g) => ({
+          level: g.level,
+          target_id: g.targetId,
+          role: g.role,
+          write_types: resolveWriteTypes(g.role, g.writeTypes),
+        })),
+      ),
+    [grants],
+  );
 
   return (
     <Form method="post" className="flex flex-col gap-3" data-testid="generate-api-key-form">
@@ -334,7 +334,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
         </p>
       ) : (
         <>
-          <GrantPicker catalog={catalog} value={grant} onChange={setGrant} />
+          <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} />
           <label className="flex items-start gap-2 text-sm" data-testid="api-key-cloud-env-label">
             <input
               type="checkbox"
@@ -353,7 +353,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
             <button
               type="submit"
               data-testid="api-key-submit"
-              disabled={submitting || !label.trim() || !grant}
+              disabled={submitting || !label.trim() || grants.length === 0}
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {submitting ? "Generating…" : cloudEnv ? "Generate cloud token" : "Generate token"}

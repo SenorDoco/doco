@@ -2,12 +2,7 @@ import { useMemo, useState } from "react";
 import { useFetcher } from "react-router";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { GrantPicker } from "~/components/grant-picker";
-import {
-  type ComposedGrant,
-  type DocoRole,
-  catalogFromOptions,
-  resolveWriteTypes,
-} from "~/lib/grant-picker";
+import { type ComposedGrant, type DocoRole, catalogFromOptions } from "~/lib/grant-picker";
 import type {
   InviteDefaultSelection,
   UserInviteActionResult,
@@ -61,36 +56,30 @@ function InviteHumanCard({
   const error = result && "error" in result ? result.error : undefined;
 
   const catalog = useMemo(() => catalogFromOptions(orgs, docos), [orgs, docos]);
-  // Pre-select the target the page linked to (?scope=level:id), as a reader
-  // grant the user can then widen in the picker.
-  const initial = useMemo<ComposedGrant | null>(() => {
-    const t = catalog.targets.find(
-      (x) => x.level === defaultSelection.level && x.id === defaultSelection.targetId,
-    );
-    return t ? { level: t.level, targetId: t.id, role: "reader", writeTypes: [] } : null;
-  }, [catalog, defaultSelection]);
-  const [grant, setGrant] = useState<ComposedGrant | null>(initial);
+  // The deep-link (?scope=level:id) is now just a hint; the wizard starts
+  // empty and the granter builds up one or more grants.
+  void defaultSelection;
+  const [grants, setGrants] = useState<ComposedGrant[]>([]);
 
   const noTargets = catalog.targets.length === 0;
-  const writeTypes = grant ? resolveWriteTypes(grant.role, grant.writeTypes) : [];
 
   return (
     <div className="space-y-3">
       <fetcher.Form method="post" className="flex flex-col gap-3">
         <input type="hidden" name="intent" value="invite" />
-        <input type="hidden" name="level" value={grant?.level ?? ""} />
-        <input type="hidden" name="target_id" value={grant?.targetId ?? ""} />
-        <input type="hidden" name="role" value={grant?.role ?? ""} />
-        <input type="hidden" name="write_types" value={writeTypes.join(",")} />
-        <GrantPicker catalog={catalog} value={grant} onChange={setGrant} />
+        {/* One invite link, all selected grants (decision: one-link-all-grants). */}
+        <input type="hidden" name="grants" value={JSON.stringify(grants)} />
+        <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} />
         <div className="flex justify-end">
           <button
             type="submit"
             data-testid="invite-submit"
-            disabled={fetcher.state !== "idle" || noTargets || !grant}
+            disabled={fetcher.state !== "idle" || noTargets || grants.length === 0}
             className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
-            {fetcher.state !== "idle" ? "Generating..." : "Generate invite link"}
+            {fetcher.state !== "idle"
+              ? "Generating..."
+              : `Generate invite link${grants.length > 1 ? ` (${grants.length} grants)` : ""}`}
           </button>
         </div>
       </fetcher.Form>

@@ -57,6 +57,18 @@ export interface Invite {
    * writer, empty otherwise), preserving pre-per-type behavior.
    */
   write_types?: string[];
+  /**
+   * Multi-grant invite (one link, all grants): every grant the redeemer
+   * receives on consume. When present, this is the source of truth and the
+   * legacy single level/role/write_types fields are ignored on redemption.
+   */
+  grants?: Array<{
+    level: "account" | "org" | "doco";
+    target_id: string;
+    role: "owner" | "writer" | "reader";
+    write_types: string[];
+    account_grantor_user_id?: string;
+  }>;
   /** ISO timestamp this invite expires (default 7 days from issue). */
   expires_at: string;
   /** ISO timestamp this invite was issued. */
@@ -142,6 +154,7 @@ export class InviteStore {
       org_id?: EntityId<"organization">;
       account_grantor_user_id?: EntityId<"principal">;
       write_types?: string[];
+      grants?: Invite["grants"];
     } = {},
   ): Promise<Invite> {
     const file = await this.load();

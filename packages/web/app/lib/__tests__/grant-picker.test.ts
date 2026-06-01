@@ -1,19 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
+  type ComposedGrant,
   type ExistingGrant,
   type GrantCatalog,
+  applyDocoTypeLevel,
+  applyTargetRole,
   availableScopes,
   describeExistingGrant,
   describeWriteScope,
   effectiveTypeLevel,
+  findGrant,
+  grantKey,
   grantableRoles,
   inheritedTypeLevel,
   rank,
+  removeGrant,
   resolveWriteTypes,
   scopeShowsPerTypeControls,
+  selectionCount,
   setTypeLevel,
+  targetRoleOptions,
+  targetRoleValue,
   targetsByOrg,
   typeDropdownValue,
+  upsertGrant,
   writableTypeGroups,
 } from "../grant-picker";
 
@@ -218,5 +228,74 @@ describe("scopeShowsPerTypeControls", () => {
     expect(scopeShowsPerTypeControls("account")).toBe(false);
     expect(scopeShowsPerTypeControls("org")).toBe(false);
     expect(scopeShowsPerTypeControls("doco")).toBe(false);
+  });
+});
+
+describe("multi-grant selection", () => {
+  it("upsert/find/remove by (level,targetId)", () => {
+    let list: ComposedGrant[] = [];
+    list = upsertGrant(list, { level: "org", targetId: "o1", role: "reader", writeTypes: [] });
+    list = upsertGrant(list, { level: "org", targetId: "o2", role: "writer", writeTypes: ["*"] });
+    expect(list).toHaveLength(2);
+    // upsert same key replaces, doesn't duplicate
+    list = upsertGrant(list, { level: "org", targetId: "o1", role: "owner", writeTypes: [] });
+    expect(list).toHaveLength(2);
+    expect(findGrant(list, "org", "o1")?.role).toBe("owner");
+    list = removeGrant(list, "org", "o1");
+    expect(findGrant(list, "org", "o1")).toBeUndefined();
+    expect(list).toHaveLength(1);
+  });
+
+  it("targetRoleOptions caps at the granter's role and always offers 'none'", () => {
+    expect(targetRoleOptions("writer")).toEqual(["none", "reader", "writer"]);
+    expect(targetRoleOptions("reader")).toEqual(["none", "reader"]);
+  });
+
+  it("applyTargetRole adds, switches, and removes org grants", () => {
+    let list: ComposedGrant[] = [];
+    list = applyTargetRole(list, "org", "o1", "writer");
+    expect(findGrant(list, "org", "o1")).toEqual({
+      level: "org",
+      targetId: "o1",
+      role: "writer",
+      writeTypes: ["*"],
+    });
+    list = applyTargetRole(list, "org", "o1", "reader");
+    expect(findGrant(list, "org", "o1")?.writeTypes).toEqual([]);
+    list = applyTargetRole(list, "org", "o1", "none");
+    expect(findGrant(list, "org", "o1")).toBeUndefined();
+  });
+
+  it("targetRoleValue reflects the current selection ('none' when absent)", () => {
+    const list = applyTargetRole([], "doco", "d1", "reader");
+    expect(targetRoleValue(list, "doco", "d1")).toBe("reader");
+    expect(targetRoleValue(list, "doco", "d9")).toBe("none");
+  });
+
+  it("applyDocoTypeLevel builds a per-type doco grant and drops it when empty", () => {
+    const ALLT = ["decision", "intent"] as const;
+    let list: ComposedGrant[] = [];
+    list = applyDocoTypeLevel(list, "d1", "decision", "write", ALLT);
+    expect(findGrant(list, "doco", "d1")).toEqual({
+      level: "doco",
+      targetId: "d1",
+      role: "reader",
+      writeTypes: ["decision"],
+    });
+    // add the other type → wildcard collapse
+    list = applyDocoTypeLevel(list, "d1", "intent", "write", ALLT);
+    expect(findGrant(list, "doco", "d1")?.writeTypes).toEqual(["*"]);
+    // back both to read → grant removed (nothing to grant)
+    list = applyDocoTypeLevel(list, "d1", "decision", "read", ALLT);
+    list = applyDocoTypeLevel(list, "d1", "intent", "read", ALLT);
+    expect(findGrant(list, "doco", "d1")).toBeUndefined();
+  });
+
+  it("selectionCount counts grants", () => {
+    let list: ComposedGrant[] = [];
+    expect(selectionCount(list)).toBe(0);
+    list = applyTargetRole(list, "org", "o1", "reader");
+    list = applyTargetRole(list, "org", "o2", "owner");
+    expect(selectionCount(list)).toBe(2);
   });
 });
