@@ -27,11 +27,13 @@ describe("backfillRepoPullRequests", () => {
   it("mints a token, lists the repo's PRs, and upserts each", async () => {
     const mintToken = vi.fn(async () => ({ token: "ghs_x", expires_at: "" }));
     const listPrs = vi.fn(async () => ({ prs: [pr(1), pr(2), pr(3)], hasMore: false }));
+    const hasCodeReferences = vi.fn(async () => false);
     const upsert = vi.fn(async () => ({ status: "created", id: "reference_x" }));
 
     const res = await backfillRepoPullRequests(opts, {
       mintToken: mintToken as never,
       listPrs: listPrs as never,
+      hasCodeReferences: hasCodeReferences as never,
       upsert: upsert as never,
     });
 
@@ -55,6 +57,7 @@ describe("backfillRepoPullRequests", () => {
   it("classifies created / updated / unchanged / failed without aborting", async () => {
     const mintToken = vi.fn(async () => ({ token: "t", expires_at: "" }));
     const listPrs = vi.fn(async () => ({ prs: [pr(1), pr(2), pr(3), pr(4)], hasMore: false }));
+    const hasCodeReferences = vi.fn(async () => false);
     const upsert = vi
       .fn()
       .mockResolvedValueOnce({ status: "error", error: "boom" })
@@ -65,6 +68,7 @@ describe("backfillRepoPullRequests", () => {
     const res = await backfillRepoPullRequests(opts, {
       mintToken: mintToken as never,
       listPrs: listPrs as never,
+      hasCodeReferences: hasCodeReferences as never,
       upsert: upsert as never,
     });
 
@@ -81,11 +85,17 @@ describe("backfillRepoPullRequests", () => {
   it("returns nextPage when hasMore is true", async () => {
     const mintToken = vi.fn(async () => ({ token: "t", expires_at: "" }));
     const listPrs = vi.fn(async () => ({ prs: [pr(1), pr(2)], hasMore: true }));
+    const hasCodeReferences = vi.fn(async () => false);
     const upsert = vi.fn(async () => ({ status: "created", id: "r1" }));
 
     const res = await backfillRepoPullRequests(
       { ...opts, startPage: 1, pagesPerBatch: 5 },
-      { mintToken: mintToken as never, listPrs: listPrs as never, upsert: upsert as never },
+      {
+        mintToken: mintToken as never,
+        listPrs: listPrs as never,
+        hasCodeReferences: hasCodeReferences as never,
+        upsert: upsert as never,
+      },
     );
 
     expect(res.nextPage).toBe(6);
@@ -94,14 +104,54 @@ describe("backfillRepoPullRequests", () => {
   it("passes startPage to listPrs for cursor-based continuation", async () => {
     const mintToken = vi.fn(async () => ({ token: "t", expires_at: "" }));
     const listPrs = vi.fn(async () => ({ prs: [pr(501)], hasMore: false }));
+    const hasCodeReferences = vi.fn(async () => false);
     const upsert = vi.fn(async () => ({ status: "unchanged", id: "r1" }));
 
     await backfillRepoPullRequests(
       { ...opts, startPage: 6, pagesPerBatch: 5 },
-      { mintToken: mintToken as never, listPrs: listPrs as never, upsert: upsert as never },
+      {
+        mintToken: mintToken as never,
+        listPrs: listPrs as never,
+        hasCodeReferences: hasCodeReferences as never,
+        upsert: upsert as never,
+      },
     );
 
     expect(listPrs).toHaveBeenCalledWith("t", "acme", "store", { startPage: 6, maxPages: 5 });
+  });
+
+  it("loads PR files and passes changedFiles when code references exist", async () => {
+    const mintToken = vi.fn(async () => ({ token: "t", expires_at: "" }));
+    const listPrs = vi.fn(async () => ({ prs: [pr(1)], hasMore: false }));
+    const hasCodeReferences = vi.fn(async () => true);
+    const listFiles = vi.fn(async () => [
+      {
+        filename: "packages/web/app/lib/github-pr-import.server.ts",
+        patch: "@@ -1,1 +1,2 @@\n x\n+y",
+      },
+    ]);
+    const upsert = vi.fn(async () => ({ status: "updated", id: "r1" }));
+
+    await backfillRepoPullRequests(opts, {
+      mintToken: mintToken as never,
+      listPrs: listPrs as never,
+      hasCodeReferences: hasCodeReferences as never,
+      listFiles: listFiles as never,
+      upsert: upsert as never,
+    });
+
+    expect(listFiles).toHaveBeenCalledWith("t", "acme", "store", 1);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ number: 1 }),
+      expect.objectContaining({
+        changedFiles: [
+          {
+            filename: "packages/web/app/lib/github-pr-import.server.ts",
+            patch: "@@ -1,1 +1,2 @@\n x\n+y",
+          },
+        ],
+      }),
+    );
   });
 });
 

@@ -8,6 +8,7 @@
 //   - installation (deleted)  → uninstall: detach the installation everywhere.
 // Idempotent on the PR URL / installation id, so re-deliveries are safe.
 import { docoPath } from "~/lib/db.server";
+import { listPullRequestFiles, mintInstallationToken } from "~/lib/github-app.server";
 import { backfillInstallationRepos } from "~/lib/github-backfill.server";
 import {
   addConnection,
@@ -15,7 +16,9 @@ import {
   unsubscribeInstallationEverywhere,
 } from "~/lib/github-connection.server";
 import {
+  type GitHubPullRequestFile,
   type PullRequestSyncStatus,
+  hasBusinessProcessCodeReferences,
   upsertPullRequestReference,
 } from "~/lib/github-pr-import.server";
 import {
@@ -39,6 +42,28 @@ const SYNC_ACTIONS = new Set([
   "labeled",
   "unlabeled",
 ]);
+
+interface ChangedFilesCache {
+  token?: string;
+  files?: GitHubPullRequestFile[];
+}
+
+async function changedFilesForDocoIfUseful(opts: {
+  docoId: string;
+  installationId: number;
+  repoFullName: string;
+  pullNumber: number;
+  cache: ChangedFilesCache;
+}): Promise<GitHubPullRequestFile[] | undefined> {
+  if (!(await hasBusinessProcessCodeReferences(opts.docoId))) return undefined;
+  const [owner, repo] = opts.repoFullName.split("/");
+  if (!owner || !repo) return undefined;
+  if (!opts.cache.files) {
+    opts.cache.token ??= (await mintInstallationToken(opts.installationId)).token;
+    opts.cache.files = await listPullRequestFiles(opts.cache.token, owner, repo, opts.pullNumber);
+  }
+  return opts.cache.files;
+}
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -154,13 +179,29 @@ export async function action({ request }: { request: Request }) {
       `[github webhook] review approved ${evt.repoFullName}#${evt.pr.number} (installation ${evt.installationId}) → ${docos.length} subscribed doco(s)`,
     );
     const results: Array<{ doco: string; status: PullRequestSyncStatus }> = [];
+    const changedFilesCache: ChangedFilesCache = {};
     for (const conn of docos) {
+      let changedFiles: GitHubPullRequestFile[] | undefined;
+      try {
+        changedFiles = await changedFilesForDocoIfUseful({
+          docoId: conn.docoId,
+          installationId: evt.installationId,
+          repoFullName: evt.repoFullName,
+          pullNumber: evt.pr.number,
+          cache: changedFilesCache,
+        });
+      } catch (error) {
+        console.warn(
+          `[github webhook] unable to list files for ${evt.repoFullName}#${evt.pr.number}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       const res = await upsertPullRequestReference(evt.pr, {
         docoDir: docoPath(conn.handle),
         docoId: conn.docoId,
         ownerSlug: conn.orgHandle,
         docoSlug: conn.handle,
         approved: true,
+        ...(changedFiles ? { changedFiles } : {}),
       });
       results.push({ doco: conn.handle, status: res.status });
     }
@@ -182,12 +223,28 @@ export async function action({ request }: { request: Request }) {
     `[github webhook] ${parsed.action} ${parsed.repoFullName}#${parsed.pr.number} (installation ${parsed.installationId}) → ${docos.length} subscribed doco(s)`,
   );
   const results: Array<{ doco: string; status: PullRequestSyncStatus }> = [];
+  const changedFilesCache: ChangedFilesCache = {};
   for (const conn of docos) {
+    let changedFiles: GitHubPullRequestFile[] | undefined;
+    try {
+      changedFiles = await changedFilesForDocoIfUseful({
+        docoId: conn.docoId,
+        installationId: parsed.installationId,
+        repoFullName: parsed.repoFullName,
+        pullNumber: parsed.pr.number,
+        cache: changedFilesCache,
+      });
+    } catch (error) {
+      console.warn(
+        `[github webhook] unable to list files for ${parsed.repoFullName}#${parsed.pr.number}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     const res = await upsertPullRequestReference(parsed.pr, {
       docoDir: docoPath(conn.handle),
       docoId: conn.docoId,
       ownerSlug: conn.orgHandle,
       docoSlug: conn.handle,
+      ...(changedFiles ? { changedFiles } : {}),
     });
     if (res.status === "error") {
       console.error(

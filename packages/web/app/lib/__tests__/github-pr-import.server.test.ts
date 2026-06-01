@@ -18,7 +18,11 @@ vi.mock("../capture.server", () => ({
 
 import {
   type GitHubPullRequest,
+  type GitHubPullRequestFile,
+  changedRangesFromPullRequestFiles,
+  linkPullRequestToBusinessProcessReferences,
   linkPullRequestToWork,
+  parseCodeReferenceLocator,
   parsePrWorkLinks,
   pullRequestRefLifecycle,
   pullRequestReferenceProse,
@@ -89,6 +93,85 @@ describe("linkPullRequestToWork", () => {
       },
     );
     expect(res).toEqual({ linked: 0, existing: 0, skipped: 1 });
+  });
+});
+
+describe("PR changed-code business-process links", () => {
+  const files: GitHubPullRequestFile[] = [
+    {
+      filename: "packages/web/app/lib/github-pr-import.server.ts",
+      patch: [
+        "@@ -209,6 +209,8 @@ export async function linkPullRequestToWork(",
+        "   const result: PrWorkLinkResult = { linked: 0, existing: 0, skipped: 0 };",
+        "+  await linkPullRequestToBusinessProcessReferences(opts);",
+        "+  return result;",
+        " }",
+      ].join("\n"),
+    },
+  ];
+
+  it("parses changed line ranges from a GitHub PR file patch", () => {
+    expect(changedRangesFromPullRequestFiles(files)).toEqual([
+      {
+        path: "packages/web/app/lib/github-pr-import.server.ts",
+        ranges: [{ start: 210, end: 211 }],
+      },
+    ]);
+  });
+
+  it("parses code-reference locators with line anchors", () => {
+    expect(
+      parseCodeReferenceLocator(
+        "https://github.com/torrenegra/doco/blob/main/packages/web/app/lib/github-pr-import.server.ts#L210-L211",
+      ),
+    ).toEqual({
+      path: "github.com/torrenegra/doco/blob/main/packages/web/app/lib/github-pr-import.server.ts",
+      start: 210,
+      end: 211,
+    });
+    expect(
+      parseCodeReferenceLocator("packages/web/app/lib/github-pr-import.server.ts:210"),
+    ).toEqual({
+      path: "packages/web/app/lib/github-pr-import.server.ts",
+      start: 210,
+      end: 210,
+    });
+  });
+
+  it("links a PR to an existing business-process event when the diff touches its code reference", async () => {
+    const exists = vi.fn(async () => false);
+    const capture = vi.fn(async () => ({
+      ok: true as const,
+      id: "edge_pr_to_action",
+      path: "",
+      edge: {} as never,
+      footer_lines: [],
+    }));
+
+    const res = await linkPullRequestToBusinessProcessReferences(
+      {
+        docoId: "doco_1",
+        prRefId: "reference_pr",
+        changedFiles: files,
+        actorId: null,
+      },
+      {
+        exists: exists as never,
+        capture: capture as never,
+        findTargets: vi.fn(async () => ["action_01ARZ3NDEKTSV4RRFFQ69G5FAV"]),
+      },
+    );
+
+    expect(res).toEqual({ linked: 1, existing: 0, skipped: 0 });
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        edgeType: "implemented_by",
+        fromId: "action_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        toId: "reference_pr",
+        reason:
+          "Linked from a GitHub pull request touching an existing business-process code reference.",
+      }),
+    );
   });
 });
 

@@ -10,10 +10,14 @@
 // for repos with thousands of PRs.
 import {
   type RepoPullRequestsPage,
+  listPullRequestFiles,
   listRepoPullRequests,
   mintInstallationToken,
 } from "./github-app.server";
-import { upsertPullRequestReference } from "./github-pr-import.server";
+import {
+  hasBusinessProcessCodeReferences,
+  upsertPullRequestReference,
+} from "./github-pr-import.server";
 
 export interface BackfillOpts {
   docoDir: string;
@@ -40,6 +44,8 @@ export interface BackfillDeps {
     repo: string,
     opts?: { startPage?: number; maxPages?: number },
   ) => Promise<RepoPullRequestsPage>;
+  listFiles: typeof listPullRequestFiles;
+  hasCodeReferences: typeof hasBusinessProcessCodeReferences;
   upsert: typeof upsertPullRequestReference;
 }
 
@@ -66,6 +72,8 @@ export async function backfillRepoPullRequests(
 ): Promise<BackfillResult> {
   const mintToken = deps?.mintToken ?? mintInstallationToken;
   const listPrs = deps?.listPrs ?? listRepoPullRequests;
+  const listFiles = deps?.listFiles ?? listPullRequestFiles;
+  const hasCodeReferences = deps?.hasCodeReferences ?? hasBusinessProcessCodeReferences;
   const upsert = deps?.upsert ?? upsertPullRequestReference;
 
   const startPage = opts.startPage ?? 1;
@@ -76,15 +84,27 @@ export async function backfillRepoPullRequests(
     startPage,
     maxPages: pagesPerBatch,
   });
+  const shouldLoadChangedFiles = await hasCodeReferences(opts.docoId);
 
   const tally = { created: 0, updated: 0, unchanged: 0, failed: 0 };
   for (const pr of prs) {
+    let changedFiles: Awaited<ReturnType<typeof listPullRequestFiles>> | undefined;
+    if (shouldLoadChangedFiles) {
+      try {
+        changedFiles = await listFiles(token, opts.owner, opts.repo, pr.number);
+      } catch (error) {
+        console.warn(
+          `[github backfill] unable to list files for ${opts.owner}/${opts.repo}#${pr.number}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     const res = await upsert(pr, {
       docoDir: opts.docoDir,
       docoId: opts.docoId,
       ownerSlug: opts.ownerSlug,
       docoSlug: opts.docoSlug,
       ...(opts.createdByUserId ? { createdByUserId: opts.createdByUserId } : {}),
+      ...(changedFiles ? { changedFiles } : {}),
     });
     if (res.status === "created") tally.created++;
     else if (res.status === "updated") tally.updated++;
