@@ -145,7 +145,7 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
     node_types: ["decision", "rule", "reference", "eval"],
     constraints: [
       "Each term entry is a Decision: `chosen` is the canonical headword, `question` the concept, and the prose the definition.",
-      "Keep one concept per Decision; record aliases and deprecated wording in `alternatives`.",
+      "Keep one concept per Decision; record aliases, synonyms, and rejected labels in `alternatives`.",
       "Use Rules for terminology usage policies and References to cite authoritative sources.",
       "Link related, confusable, or homograph terms with `relates_to`; point deprecated terms at their replacement with `replaces`.",
     ],
