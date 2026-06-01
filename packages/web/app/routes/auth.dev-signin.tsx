@@ -37,21 +37,37 @@ async function ensureTestUser(githubLogin: TestUsername): Promise<string> {
   const existing = await getUserByGithubLogin(githubLogin);
   if (existing) return existing.id;
   const id = `user_${ulid()}`;
+  const data = JSON.stringify({
+    id,
+    kind: "person",
+    github_login: githubLogin,
+    note: "Lazy-created by /auth/dev-signin for testing.",
+  });
   await withClient(async (c) => {
-    await c.query(
-      `INSERT INTO users (id, github_login, data)
-       VALUES ($1, $2, $3::jsonb)
-       ON CONFLICT (id) DO NOTHING`,
-      [
-        id,
-        githubLogin,
-        JSON.stringify({
-          id,
-          github_login: githubLogin,
-          note: "Lazy-created by /auth/dev-signin for testing.",
-        }),
-      ],
+    const kindColumn = await c.query<{ has_kind_column: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+           FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'users'
+            AND column_name = 'kind'
+       ) AS has_kind_column`,
     );
+    if (kindColumn.rows[0]?.has_kind_column === true) {
+      await c.query(
+        `INSERT INTO users (id, kind, github_login, data)
+         VALUES ($1, $2, $3, $4::jsonb)
+         ON CONFLICT (id) DO NOTHING`,
+        [id, "person", githubLogin, data],
+      );
+    } else {
+      await c.query(
+        `INSERT INTO users (id, github_login, data)
+         VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT (id) DO NOTHING`,
+        [id, githubLogin, data],
+      );
+    }
   });
   const reloaded = await getUserByGithubLogin(githubLogin);
   if (!reloaded) throw new Error("ensureTestUser: post-insert lookup failed");
