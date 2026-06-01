@@ -32,6 +32,7 @@ import {
   removeConnection,
   resumeCursorFromConnections,
   setBackfillState,
+  subscribeInstallation,
 } from "~/lib/github-connection.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import { kickBackfillRun } from "./api.github.backfill-run";
@@ -68,6 +69,7 @@ export async function loader({
     canManage,
     docoInstallUrl,
     connections: ctx?.connections ?? [],
+    installations: ctx?.installations ?? [],
     installationChoices,
     orgAccounts: ctx
       ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
@@ -179,6 +181,32 @@ export async function action({
     };
   }
 
+  if (intent === "connect-installation") {
+    const installationId = Number(form.get("installation_id"));
+    if (!Number.isInteger(installationId) || installationId <= 0) {
+      return { error: "Choose a GitHub organization first." };
+    }
+
+    const choices = await listGitHubInstallationChoicesForDocos(
+      await listAccessibleDocoIdsForPrincipal(me.id),
+    );
+    const choice = choices.find((c) => c.installation_id === installationId);
+    if (!choice) return { error: "That GitHub connection is not available to your account." };
+    if (choice.repository_selection !== "all") {
+      return { error: "Choose at least one repository from this GitHub connection." };
+    }
+
+    await subscribeInstallation(meta.docoId, {
+      installation_id: installationId,
+      account: choice.account,
+      connected_at: new Date().toISOString(),
+    });
+    return {
+      ok: true,
+      message: `Connected ${choice.account}. New pull request activity will sync automatically.`,
+    };
+  }
+
   if (intent === "backfill") {
     if (!parsed) return { error: "Invalid repo." };
     const repo = `${parsed.owner}/${parsed.name}`;
@@ -262,20 +290,30 @@ export type InstallationPickerChoice = GitHubInstallationChoice & {
   selectableRepositories: string[];
   connectedRepositories: string[];
   hasSelectableRepositories: boolean;
+  canConnectInstallation: boolean;
+  isInstallationConnected: boolean;
 };
 
 export function buildInstallationPickerChoices(
   choices: GitHubInstallationChoice[],
   connectedRepos: Set<string>,
+  connectedInstallationIds = new Set<number>(),
 ): InstallationPickerChoice[] {
   return choices.map((choice) => {
     const connectedRepositories = choice.repositories.filter((repo) => connectedRepos.has(repo));
     const selectableRepositories = choice.repositories.filter((repo) => !connectedRepos.has(repo));
+    const isInstallationConnected = connectedInstallationIds.has(choice.installation_id);
     return {
       ...choice,
       selectableRepositories,
       connectedRepositories,
       hasSelectableRepositories: selectableRepositories.length > 0,
+      canConnectInstallation:
+        !isInstallationConnected &&
+        choice.repository_selection === "all" &&
+        selectableRepositories.length === 0 &&
+        connectedRepositories.length === 0,
+      isInstallationConnected,
     };
   });
 }
@@ -296,6 +334,7 @@ export default function DocoGitHubIntegration() {
     canManage,
     docoInstallUrl,
     connections,
+    installations,
     installationChoices,
     orgAccounts,
     backfill,
@@ -305,10 +344,18 @@ export default function DocoGitHubIntegration() {
   const flash = searchParams.get("github");
   const importing = backfill?.status === "running" || flash === "importing";
   const connectedRepoSet = new Set(connections.map((connection) => connection.repo));
-  const pickerChoices = buildInstallationPickerChoices(installationChoices, connectedRepoSet);
+  const connectedInstallationIds = new Set(
+    installations.map((installation) => installation.installation_id),
+  );
+  const pickerChoices = buildInstallationPickerChoices(
+    installationChoices,
+    connectedRepoSet,
+    connectedInstallationIds,
+  ).filter((choice) => !choice.isInstallationConnected);
   const hasSelectableRepositories = pickerChoices.some(
     (choice) => choice.hasSelectableRepositories,
   );
+  const hasConnectableInstallations = pickerChoices.some((choice) => choice.canConnectInstallation);
 
   return (
     <div>
@@ -384,7 +431,9 @@ export default function DocoGitHubIntegration() {
             GitHub is connected.{" "}
             {hasSelectableRepositories
               ? "Choose the repositories to connect to this Doco."
-              : "No repositories are available yet; add repositories in GitHub to make them selectable here."}
+              : hasConnectableInstallations
+                ? "Connect the GitHub account to this Doco."
+                : "No repositories are available yet; add repositories in GitHub to make them selectable here."}
           </p>
         ) : null}
         {actionData && "error" in actionData ? (
@@ -416,7 +465,7 @@ export default function DocoGitHubIntegration() {
             {canManage && pickerChoices.length > 0 ? (
               <ExistingGitHubPicker choices={pickerChoices} docoInstallUrl={docoInstallUrl} />
             ) : null}
-            {orgAccounts.length > 0 && connections.length > 0 ? (
+            {orgAccounts.length > 0 ? (
               <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
                 <p className="text-foreground">
                   GitHub connected to{" "}
@@ -428,11 +477,19 @@ export default function DocoGitHubIntegration() {
                   ))}
                   .
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  <span className="font-mono font-semibold tabular-nums">{connections.length}</span>{" "}
-                  {connections.length === 1 ? "repository is" : "repositories are"} selected for
-                  this Doco.
-                </p>
+                {connections.length > 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    <span className="font-mono font-semibold tabular-nums">
+                      {connections.length}
+                    </span>{" "}
+                    {connections.length === 1 ? "repository is" : "repositories are"} selected for
+                    this Doco.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    All repositories from this GitHub account can sync to this Doco.
+                  </p>
+                )}
               </div>
             ) : null}
             {connections.length > 0 ? (
@@ -459,9 +516,9 @@ export default function DocoGitHubIntegration() {
                   </li>
                 ))}
               </ul>
-            ) : (
+            ) : orgAccounts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No repositories connected yet.</p>
-            )}
+            ) : null}
             {connections.length > 0 ? (
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
@@ -559,7 +616,6 @@ function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }
         setSelectedCount(event.currentTarget.querySelectorAll('input[name="repo"]:checked').length);
       }}
     >
-      <input type="hidden" name="intent" value="connect-existing-repos" />
       <input type="hidden" name="installation_id" value={choice.installation_id} />
       <div className="space-y-2 rounded-md border border-border/80 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -570,10 +626,25 @@ function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }
             ) : null}
           </div>
           {choice.hasSelectableRepositories ? (
-            <button type="submit" className={PRIMARY_BTN} disabled={selectedCount === 0}>
+            <button
+              type="submit"
+              name="intent"
+              value="connect-existing-repos"
+              className={PRIMARY_BTN}
+              disabled={selectedCount === 0}
+            >
               {selectedCount > 0
                 ? `Connect ${selectedCount} ${selectedCount === 1 ? "repo" : "repos"}`
                 : "Select repos"}
+            </button>
+          ) : choice.canConnectInstallation ? (
+            <button
+              type="submit"
+              name="intent"
+              value="connect-installation"
+              className={PRIMARY_BTN}
+            >
+              Connect all repositories
             </button>
           ) : null}
         </div>
@@ -598,7 +669,9 @@ function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            No repositories are available from this GitHub organization yet.
+            {choice.canConnectInstallation
+              ? "All repositories are allowed for this GitHub account."
+              : "No repositories are available from this GitHub organization yet."}
           </p>
         )}
         {choice.connectedRepositories.length > 0 ? (
