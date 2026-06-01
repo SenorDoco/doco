@@ -198,6 +198,7 @@ export interface FilterFacets {
     activeCount?: number;
     updatedAt: string | null;
   }[];
+  edgeType: { value: string; count: number; updatedAt: string | null }[];
 }
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
@@ -258,6 +259,24 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   }
   entityTypeCounts.sort((a, b) => b.count - a.count);
 
+  const edgeTypeCounts = (
+    await c.query<{ value: string; n: string; updated_at: Date | string | null }>(
+      `SELECT edge_type AS value,
+              COUNT(*)::text AS n,
+              MAX(updated_at) AS updated_at
+         FROM edges
+        WHERE doco_id = $1
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+        GROUP BY edge_type
+        ORDER BY COUNT(*) DESC, edge_type`,
+      [docoId],
+    )
+  ).rows.map((row) => ({
+    value: row.value,
+    count: Number(row.n),
+    updatedAt: toIso(row.updated_at),
+  }));
+
   return {
     lifecycle: Array.from(lifecycleFacets.entries())
       .map(([value, facet]) => ({ value, count: facet.count, updatedAt: facet.updatedAt }))
@@ -274,6 +293,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
         return a.value.localeCompare(b.value);
       }),
     entityType: entityTypeCounts,
+    edgeType: edgeTypeCounts,
   };
 }
 
