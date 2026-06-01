@@ -4,9 +4,12 @@
 // GET response:
 //   { docos: [{ id, handle, org_id, org_handle, qualified_handle }] }
 // Empty array when the caller has access to nothing. Sorted by
-// `org_handle/handle` for stable client rendering. The set matches
-// the dashboard / OAuth-approve "what can I see?" view: direct
-// ownership ∪ org membership ∪ explicit `doco_users` grant.
+// `org_handle/handle` for stable client rendering. For a cookie
+// session the set matches the dashboard "what can I see?" view:
+// direct ownership ∪ org membership ∪ explicit `doco_users` grant.
+// An OAuth bearer is additionally narrowed to the token's organization
+// boundary (see `listVisibleDocoIdsForRequest`) so a token scoped to
+// one Doco never enumerates Docos in a different organization.
 //
 // POST body (JSON):
 //   { template_handle?: string,        // "generic" | "business-processes" | ...
@@ -28,7 +31,7 @@
 //    visibility, goal }`.
 
 import { getOrgRole, roleAtLeast, withClient } from "@doco/db";
-import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import { listVisibleDocoIdsForRequest } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { createDocoInOrg } from "~/lib/redeem.server";
@@ -42,7 +45,7 @@ export async function loader({ request }: { request: Request }) {
   if (!me) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
-  const ids = await listAccessibleDocoIdsForPrincipal(me.id);
+  const ids = await listVisibleDocoIdsForRequest(request, me.id);
   if (ids.length === 0) {
     return Response.json({ docos: [] });
   }

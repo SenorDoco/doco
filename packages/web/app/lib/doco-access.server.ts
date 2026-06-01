@@ -285,6 +285,110 @@ export function oauthTokenGrantsDoco(
 }
 
 /**
+ * owner_id for each given Doco id (ids without a row are omitted). The
+ * listing gates below use this to learn which org owns each Doco.
+ */
+async function loadDocoOwnerIds(docoIds: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = [...new Set(docoIds)].filter(Boolean);
+  if (ids.length === 0) return out;
+  await withClient(async (c) => {
+    const r = await c.query<{ id: string; owner_id: string }>(
+      "SELECT id, owner_id FROM docos WHERE id = ANY($1::text[])",
+      [ids],
+    );
+    for (const row of r.rows) out.set(String(row.id), String(row.owner_id));
+  });
+  return out;
+}
+
+/**
+ * Organizations an OAuth token may "touch" for listing purposes: the
+ * orgs granted to it directly, unioned with the org that owns any
+ * individually-granted Doco (so a Doco-scoped token still counts as
+ * being "in" that Doco's organization). `ownerByGrantedDocoId` maps each
+ * `granted_doco_ids` entry to its owner_id.
+ */
+export function tokenReachableOrgIdsFromGrant(
+  token: Pick<ValidAccessToken, "granted_doco_ids" | "granted_org_ids">,
+  ownerByGrantedDocoId: ReadonlyMap<string, string>,
+): Set<string> {
+  const orgs = new Set<string>(
+    (token.granted_org_ids ?? []).filter((id) => id.startsWith("organization_")),
+  );
+  for (const docoId of token.granted_doco_ids ?? []) {
+    const owner = ownerByGrantedDocoId.get(docoId);
+    if (owner?.startsWith("organization_")) orgs.add(owner);
+  }
+  return orgs;
+}
+
+/**
+ * Narrow a principal's accessible-Doco set to what an OAuth token may
+ * ENUMERATE, enforcing the same organization boundary the read gate
+ * (`oauthTokenGrantsDoco`) enforces — widened only to same-org siblings.
+ *
+ * A Doco survives iff it is individually granted, OR its owning org is
+ * one the token can reach (`tokenReachableOrgIdsFromGrant`). This keeps
+ * references WITHIN an organization (a token scoped to one Doco can see
+ * its siblings) but blocks a token from learning the names of Docos in a
+ * DIFFERENT organization it was never granted — the cross-org leak a
+ * scoped token would otherwise get from `listAccessibleDocoIdsForPrincipal`,
+ * which unions every org the underlying human belongs to. Personal
+ * (principal-owned) Docos have no org, so they appear only when granted
+ * directly. Always a subset of the principal set: never widens access.
+ */
+export function filterDocosToOrgBoundary(
+  accessibleDocoIds: readonly string[],
+  ownerByDocoId: ReadonlyMap<string, string>,
+  token: Pick<ValidAccessToken, "granted_doco_ids" | "granted_org_ids">,
+): string[] {
+  const grantedDocoIds = new Set(token.granted_doco_ids ?? []);
+  const reachableOrgs = tokenReachableOrgIdsFromGrant(token, ownerByDocoId);
+  return accessibleDocoIds.filter((id) => {
+    if (grantedDocoIds.has(id)) return true;
+    const ownerId = ownerByDocoId.get(id);
+    return !!ownerId && ownerId.startsWith("organization_") && reachableOrgs.has(ownerId);
+  });
+}
+
+/**
+ * The Docos a REQUEST may enumerate in `/api/v1/docos.json` and similar
+ * listings. Cookie / anonymous requests (no bearer) get the full
+ * principal set unchanged — the dashboard and OAuth approve screen want
+ * everything the human can reach. A bearer-token request is narrowed to
+ * the token's organization boundary (see `filterDocosToOrgBoundary`) so
+ * a token scoped to one Doco never leaks the names of Docos in another
+ * organization.
+ */
+export async function listVisibleDocoIdsForRequest(
+  request: Request,
+  principalId: string,
+): Promise<string[]> {
+  const accessible = await listAccessibleDocoIdsForPrincipal(principalId);
+  const token = await getOauthTokenForRequest(request);
+  if (!token || accessible.length === 0) return accessible;
+  const ownerByDocoId = await loadDocoOwnerIds([...accessible, ...(token.granted_doco_ids ?? [])]);
+  return filterDocosToOrgBoundary(accessible, ownerByDocoId, token);
+}
+
+/**
+ * The organization-id set a bearer-token request may enumerate in
+ * `/api/v1/orgs.json`, or `null` for cookie / anonymous requests (which
+ * keep their full membership listing). Mirrors the Doco boundary above:
+ * a scoped token only sees orgs it can reach, never every org the
+ * underlying human belongs to.
+ */
+export async function tokenReachableOrgIdsForRequest(
+  request: Request,
+): Promise<Set<string> | null> {
+  const token = await getOauthTokenForRequest(request);
+  if (!token) return null;
+  const ownerByDocoId = await loadDocoOwnerIds(token.granted_doco_ids ?? []);
+  return tokenReachableOrgIdsFromGrant(token, ownerByDocoId);
+}
+
+/**
  * Read-access predicate for API endpoints that don't already go through
  * `loadDocoForRead`. Layers OAuth-token scope-down on top of the
  * principal-level `canAccessDoco`:

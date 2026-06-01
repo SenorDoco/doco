@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   createDocoInOrg: vi.fn(),
   getCurrentPrincipalAsync: vi.fn(),
   getOrgRole: vi.fn(),
-  listAccessibleDocoIdsForPrincipal: vi.fn(),
+  listVisibleDocoIdsForRequest: vi.fn(),
   query: vi.fn(),
 }));
 
@@ -19,7 +19,7 @@ vi.mock("@doco/db", () => ({
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
-  listAccessibleDocoIdsForPrincipal: mocks.listAccessibleDocoIdsForPrincipal,
+  listVisibleDocoIdsForRequest: mocks.listVisibleDocoIdsForRequest,
 }));
 
 vi.mock("~/lib/redeem.server", () => ({
@@ -50,7 +50,7 @@ describe("/api/v1/docos.json", () => {
   });
 
   it("lists qualified org/doco handles", async () => {
-    mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue(["doco_bpms"]);
+    mocks.listVisibleDocoIdsForRequest.mockResolvedValue(["doco_bpms"]);
     mocks.query.mockResolvedValue({
       rows: [
         {

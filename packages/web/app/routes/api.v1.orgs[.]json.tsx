@@ -3,7 +3,10 @@
 //
 // GET response: { orgs: [{ id, handle, name, member_count }] }.
 // Empty array when the caller is in no orgs. Sorted by handle ASC
-// for stable client rendering.
+// for stable client rendering. A cookie session lists every org the
+// caller belongs to; an OAuth bearer is narrowed to the orgs the token
+// can reach (granted orgs ∪ orgs that own a granted Doco) so a scoped
+// token never enumerates the caller's other organizations.
 //
 // POST body (JSON): { requested_id: string }
 //
@@ -17,6 +20,7 @@
 // bearer). Rate-limiting is out of scope.
 
 import { listOrganizationsForUser } from "@doco/db";
+import { tokenReachableOrgIdsForRequest } from "~/lib/doco-access.server";
 import { addOrganizationByHandle } from "~/lib/redeem.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
@@ -26,9 +30,14 @@ export async function loader({ request }: { request: Request }) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
   const rows = await listOrganizationsForUser(me.id);
-  rows.sort((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0));
+  // Cookie sessions see every membership org; an OAuth bearer is scoped
+  // to the orgs it can reach so a token can't enumerate the caller's
+  // other organizations.
+  const reachable = await tokenReachableOrgIdsForRequest(request);
+  const visible = reachable ? rows.filter((r) => reachable.has(r.id)) : rows;
+  visible.sort((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0));
   return Response.json({
-    orgs: rows.map((r) => ({
+    orgs: visible.map((r) => ({
       id: r.id,
       handle: r.handle,
       name: r.name,
