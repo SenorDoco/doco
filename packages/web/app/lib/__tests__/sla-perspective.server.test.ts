@@ -2,22 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { loadSlaPerspectiveData } from "../sla-perspective.server";
 
 function makeQueryClient(rows: Record<string, unknown[]>) {
-  const query = vi.fn(async (sql: string): Promise<{ rows: unknown[] }> => {
+  const query = vi.fn(async (sql: string, _params?: unknown[]): Promise<{ rows: unknown[] }> => {
+    if (/FROM edges/i.test(sql)) return { rows: rows.edges ?? [] };
     if (/node_type = 'rule'/i.test(sql)) return { rows: rows.rules ?? [] };
     if (/node_type = 'eval'/i.test(sql)) return { rows: rows.evals ?? [] };
     if (/node_type = 'reference'/i.test(sql)) return { rows: rows.references ?? [] };
     if (/node_type = 'action'/i.test(sql)) return { rows: rows.actions ?? [] };
     if (/node_type = 'decision'/i.test(sql)) return { rows: rows.decisions ?? [] };
     if (/node_type = 'principal'/i.test(sql)) return { rows: rows.principals ?? [] };
-    if (/FROM edges/i.test(sql)) return { rows: rows.edges ?? [] };
     return { rows: [] };
   });
   return {
     query,
     client: {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
-        void params;
-        return (await query(sql)) as { rows: T[] };
+        return (await query(sql, params)) as { rows: T[] };
       },
     },
   };
@@ -142,5 +141,25 @@ describe("loadSlaPerspectiveData", () => {
       expect.arrayContaining(["No owner", "No Eval", "No source Reference", "No remedy"]),
     );
     expect(query.mock.calls.some(([sql]) => /FROM logs/i.test(String(sql)))).toBe(false);
+  });
+
+  it("applies the supplied limit to each node query", async () => {
+    const { client, query } = makeQueryClient({
+      rules: [],
+      evals: [],
+      references: [],
+      actions: [],
+      decisions: [],
+      principals: [],
+    });
+
+    await loadSlaPerspectiveData(client, "doco_01", "acme-slas", { limit: 9 });
+
+    const nodeCalls = query.mock.calls.filter(([sql]) => /FROM nodes/i.test(String(sql)));
+    expect(nodeCalls).toHaveLength(6);
+    for (const [sql, params] of nodeCalls) {
+      expect(String(sql)).toMatch(/LIMIT \$2/);
+      expect(params).toEqual(["doco_01", 9]);
+    }
   });
 });

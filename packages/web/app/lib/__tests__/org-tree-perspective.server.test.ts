@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { loadOrgTreeData } from "../org-tree-perspective.server";
 
 describe("loadOrgTreeData", () => {
@@ -51,5 +51,22 @@ describe("loadOrgTreeData", () => {
         reports_to: "principal_alex",
       }),
     ]);
+  });
+
+  it("passes a SQL limit when a page budget is supplied", async () => {
+    const querySpy = vi.fn();
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        querySpy(sql, params);
+        expect(sql).toMatch(/LIMIT \$2/);
+        expect(params).toEqual(["doco_acme", 3]);
+        return { rows: [] };
+      },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme", { limit: 3 });
+
+    expect(data.nodes).toEqual([]);
+    expect(querySpy).toHaveBeenCalledOnce();
   });
 });

@@ -58,6 +58,10 @@ interface EdgeRow {
   edge_type: string;
 }
 
+interface SlaLoadOptions {
+  limit?: number;
+}
+
 export interface SlaLink {
   id: string;
   label: string;
@@ -102,6 +106,12 @@ function toIso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(String(value));
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function normalizeLimit(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  const limit = Math.floor(value);
+  return Number.isFinite(limit) && limit > 0 ? limit : null;
 }
 
 function firstLine(value: string | null | undefined): string {
@@ -200,7 +210,11 @@ export async function loadSlaPerspectiveData(
   c: QueryClient,
   docoId: string,
   handle: string,
+  options: SlaLoadOptions = {},
 ): Promise<SlaPerspectiveData> {
+  const limit = normalizeLimit(options.limit);
+  const params: unknown[] = [docoId];
+  if (limit != null) params.push(limit);
   const [rules, evals, references, actions, decisions, principals] = await Promise.all([
     c.query<RuleRow>(
       `SELECT id, prose AS rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
@@ -209,8 +223,9 @@ export async function loadSlaPerspectiveData(
         WHERE node_type = 'rule'
           AND doco_id = $1
           AND COALESCE(lifecycle, 'asserted') <> 'retired'
-        ORDER BY created_at DESC`,
-      [docoId],
+        ORDER BY created_at DESC
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     ),
     c.query<EvalRow>(
       `SELECT id, prose AS eval, COALESCE(lifecycle, 'asserted') AS lifecycle,
@@ -218,8 +233,10 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'eval'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
-      [docoId],
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+        ORDER BY created_at DESC
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     ),
     c.query<ReferenceRow>(
       `SELECT id, prose AS reference, ref_type, locator, title,
@@ -228,8 +245,10 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'reference'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
-      [docoId],
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+        ORDER BY created_at DESC
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     ),
     c.query<ActionRow>(
       `SELECT id, prose AS action, COALESCE(lifecycle, 'asserted') AS lifecycle,
@@ -237,8 +256,10 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'action'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
-      [docoId],
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+        ORDER BY created_at DESC
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     ),
     c.query<DecisionRow>(
       `SELECT id, prose AS decision, COALESCE(lifecycle, 'asserted') AS lifecycle,
@@ -246,16 +267,20 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'decision'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
-      [docoId],
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+        ORDER BY created_at DESC
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     ),
     c.query<PrincipalRow>(
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'`,
-      [docoId],
+          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+        ORDER BY created_at DESC
+        ${limit != null ? "LIMIT $2" : ""}`,
+      params,
     ),
   ]);
 

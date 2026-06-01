@@ -43,17 +43,12 @@ import { PullRequestsPerspective } from "~/components/perspectives/pull-requests
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
-import {
-  type ApprovalPerspectiveNode,
-  loadApprovalPerspectiveData,
-} from "~/lib/approval-perspective.server";
-import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
+import type { ApprovalPerspectiveNode } from "~/lib/approval-perspective.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
 import { type EdgeDialogDetail, loadEdgeDialogDetail } from "~/lib/edge-detail.server";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
-import { loadOverviewGraph } from "~/lib/full-graph.server";
-import { loadGlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import {
@@ -62,26 +57,19 @@ import {
   isGraphNodeType,
   loadNodeDialogDetail,
 } from "~/lib/node-detail.server";
-import { loadOrgTreeData } from "~/lib/org-tree-perspective.server";
-import { pageRank } from "~/lib/pagerank";
 import {
   ensureDefaultsAttached,
   listAvailablePerspectives,
   listPerspectivesForDoco,
   resolveActivePerspective,
 } from "~/lib/perspectives.server";
-import { loadPullRequestsPerspective } from "~/lib/pull-requests-perspective.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
-import { loadSlaPerspectiveData } from "~/lib/sla-perspective.server";
 import { timeAgo } from "~/lib/time-ago";
 import { useFullscreen } from "~/lib/use-fullscreen";
 
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
-const OVERVIEW_GRAPH_NODE_LIMIT = 750;
-const BPMN_GRAPH_NODE_LIMIT = 750;
-const PULL_REQUESTS_NODE_LIMIT = 500;
 // The side panel — the activity column, or the node dialog — sits to the
 // RIGHT of the perspective only when the two fit side by side: the
 // perspective and the panel together (excluding the gap between them) must
@@ -333,55 +321,22 @@ export async function loader({
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
     const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canWriteDoco(ctx.meta, me?.id ?? null);
-    const shouldLoadOverviewGraph = activeKind === "graph" || activeKind === "list";
     const focusNodeId = selectedNode?.id ?? selectedEdge?.from.id;
-    const graph = shouldLoadOverviewGraph
-      ? await loadOverviewGraph(c, ctx.meta.docoId, {
-          handle,
-          ...(focusNodeId ? { centerId: focusNodeId } : {}),
-          limit: OVERVIEW_GRAPH_NODE_LIMIT,
-        })
-      : null;
-
-    // PageRank over the loaded graph, for the List perspective's rank
-    // sort options. Cheap (~ms even for thousands of nodes) so we
-    // compute it on every load rather than caching.
-    const pageRankMap = graph ? pageRank(graph.nodes, graph.links) : new Map();
-    const pageRanks: Record<string, number> = {};
-    for (const [id, rank] of pageRankMap.entries()) pageRanks[id] = rank;
-
-    // BPMN data is only needed when the active perspective is bpmn —
-    // skip the principal+data join otherwise.
-    const bpmnGraph =
-      activeKind === "bpmn"
-        ? await loadBpmnGraph(c, ctx.meta.docoId, {
-            focusId: focusNodeId,
-            handle,
-            nodeLimit: BPMN_GRAPH_NODE_LIMIT,
-          })
-        : null;
-
-    // Org-tree data is only needed when that perspective is active —
-    // skip the principals fetch otherwise.
-    const orgTreeData =
-      activeKind === "org-tree" ? await loadOrgTreeData(c, ctx.meta.docoId, handle) : null;
-
-    const slaData =
-      activeKind === "sla" ? await loadSlaPerspectiveData(c, ctx.meta.docoId, handle) : null;
-    const approvalData =
-      activeKind === "approval"
-        ? await loadApprovalPerspectiveData(c, ctx.meta.docoId, handle)
-        : null;
-    const glossaryData =
-      activeKind === "glossary"
-        ? await loadGlossaryPerspectiveData(c, ctx.meta.docoId, handle)
-        : null;
-    const pullRequestsData =
-      activeKind === "pull-requests"
-        ? await loadPullRequestsPerspective(c, ctx.meta.docoId, {
-            limit: PULL_REQUESTS_NODE_LIMIT,
-          })
-        : null;
+    const {
+      graph,
+      pageRanks,
+      bpmnGraph,
+      orgTreeData,
+      slaData,
+      approvalData,
+      glossaryData,
+      pullRequestsData,
+    } = await loadDocoHomePerspectiveData(c, {
+      activeKind,
+      docoId: ctx.meta.docoId,
+      handle,
+      focusNodeId,
+    });
 
     // Policy count — guidance + node-authoring policies
     // attached to this Doco.

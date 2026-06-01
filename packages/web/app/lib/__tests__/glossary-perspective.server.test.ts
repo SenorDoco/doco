@@ -118,4 +118,24 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(data.groups).toEqual([]);
     expect(data.stats.entries).toBe(0);
   });
+
+  it("passes a SQL limit when a page budget is supplied", async () => {
+    const querySpy = vi.fn();
+    const client: Parameters<typeof loadGlossaryPerspectiveData>[0] = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        querySpy(sql, params);
+        expect(sql).toMatch(/ORDER BY updated_at DESC/);
+        expect(sql).toMatch(/LIMIT \$2/);
+        expect(params).toEqual(["doco_01", 40]);
+        return { rows: [] };
+      },
+    };
+
+    const data = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary", {
+      limit: 40,
+    });
+
+    expect(data.stats.entries).toBe(0);
+    expect(querySpy).toHaveBeenCalledOnce();
+  });
 });
