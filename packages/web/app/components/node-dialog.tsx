@@ -389,6 +389,7 @@ function EdgeList({
                       <LifecycleBadge lifecycle={edge.other_lifecycle} anchor="inline" />
                     </span>
                     <span className="font-mono">{edge.edge_type}</span>
+                    {edge.edge_label ? <span className="font-mono">{edge.edge_label}</span> : null}
                   </div>
                   <p
                     className={`mt-1 break-words text-xs text-foreground ${
