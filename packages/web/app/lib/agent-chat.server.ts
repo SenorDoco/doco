@@ -1,10 +1,10 @@
 // In-page assistant — server side.
 //
-// One rolling conversation per signed-in Principal. The sidebar reopens
-// to the most recently touched thread; "New chat" archives the current
-// row and starts fresh. Messages are persisted as Anthropic-shaped
-// content blocks so a turn that included tool_use / tool_result blocks
-// can be re-fed to the model verbatim on the next turn.
+// Multiple conversations per signed-in Principal. The sidebar reopens
+// explicit/sticky threads and creates the first row only when the user
+// starts chatting. Messages are persisted as Anthropic-shaped content
+// blocks so a turn that included tool_use / tool_result blocks can be
+// re-fed to the model verbatim on the next turn.
 //
 // The agent acts on behalf of the signed-in user: tool calls relay
 // through the user's session cookie, so the agent's read + write
@@ -2418,9 +2418,9 @@ async function resolveOrgAttachments(handles: string[]): Promise<OrgAttachmentIn
 /**
  * Load a snapshot for a specific thread or the user's active thread.
  *
- * - `conversationId` omitted: most-recent non-archived thread, or a
- *   fresh empty one when the user has never chatted. This is what the
- *   sidebar uses on first open.
+ * - `conversationId` omitted: most-recent non-archived thread, or
+ *   `null` when the user has never chatted. Snapshot reads never mint
+ *   empty rows; POST /messages.json creates the first thread.
  * - `conversationId` provided: that thread, scoped to the calling
  *   principal. Returns `null` when the id doesn't exist or belongs
  *   to a different user — callers should 404 in that case.
@@ -2434,7 +2434,8 @@ export async function loadSnapshotForPrincipal(
     conv = await loadConversationByIdForPrincipal(opts.conversationId, principalId);
     if (!conv) return null;
   } else {
-    conv = await loadOrCreateConversation(principalId);
+    conv = await loadActiveConversation(principalId);
+    if (!conv) return null;
   }
   const [{ messages: rows, hasMore }, events, attachedDocos, attachedOrgs] = await Promise.all([
     loadMessagesPage(conv.id, {

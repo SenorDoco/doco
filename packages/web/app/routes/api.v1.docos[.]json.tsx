@@ -23,8 +23,7 @@
 //
 // Behavior: caller must hold owner on the target org. The requested
 // handle is silently auto-suffixed on collision. Returns 201 with
-// `{ id, handle, org_id, org_handle, qualified_handle, visibility, goal,
-// chat_conversation_id }`.
+// `{ id, handle, org_id, org_handle, qualified_handle, visibility, goal }`.
 
 import { getOrgRole, roleAtLeast, withClient } from "@doco/db";
 import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
@@ -142,7 +141,6 @@ export async function action({ request }: { request: Request }) {
         qualified_handle: qualifiedDocoLabel({ ownerSlug: rec.orgHandle, handle: rec.handle }),
         visibility,
         goal: rec.goal,
-        chat_conversation_id: rec.companionChatId ?? null,
       },
       { status: 201 },
     );

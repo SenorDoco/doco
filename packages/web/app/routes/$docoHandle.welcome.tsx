@@ -4,11 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadPostCreateDocoRouteForRead } from "~/lib/doco-access.server";
-import {
-  readCreatedDocoChatIdSearchParam,
-  withCreatedDocoChatId,
-  withCreatedDocoId,
-} from "~/lib/post-create-doco-route";
+import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 
 /**
  * /:handle/welcome — post-create Doco concepts page.
@@ -37,7 +33,6 @@ export async function loader({
     handle: canonicalHandle,
     ownerSlug,
     createdDocoId,
-    createdDocoChatId: readCreatedDocoChatIdSearchParam(request),
   };
 }
 
@@ -50,7 +45,7 @@ export default function NewDocoStep4({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, handle, ownerSlug, createdDocoId, createdDocoChatId } = loaderData;
+  const { me, handle, ownerSlug, createdDocoId } = loaderData;
   // Continue lands the user on the Doco home. The old
   // /:handle/onboarding/agent step ("Bootstrap and collaborate")
   // duplicated affordances now reachable from the Doco page itself
@@ -58,10 +53,9 @@ export default function NewDocoStep4({
   // the post-create flow. createdDocoId stays in the URL so the
   // Doco page can highlight the just-created Doco in any "recent"
   // surfaces.
-  const docoHomePathBase = createdDocoId
+  const docoHomePath = createdDocoId
     ? withCreatedDocoId(`/${handle}`, createdDocoId)
     : `/${handle}`;
-  const docoHomePath = withCreatedDocoChatId(docoHomePathBase, createdDocoChatId);
   return (
     <div>
       <SiteHeader me={me} />

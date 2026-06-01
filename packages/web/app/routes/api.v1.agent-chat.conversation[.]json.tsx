@@ -1,8 +1,8 @@
 // GET /api/v1/agent-chat/conversation.json
 //
 // Returns a single Señor Doco thread's snapshot. With no query
-// params, returns the user's most-recent active thread (auto-created
-// when they've never chatted). Pass `?id=<conv_id>`
+// params, returns the user's most-recent active thread (or 404 when
+// they've never chatted). Pass `?id=<conv_id>`
 // to scope to a specific thread; 404 if it doesn't exist or belongs
 // to another user. `?before=<iso8601>` paginates older messages for
 // infinite scroll-up. Signed-out callers get 401.

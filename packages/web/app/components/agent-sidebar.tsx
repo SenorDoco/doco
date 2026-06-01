@@ -740,8 +740,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   }, [busy, conversationId]);
 
   useEffect(() => {
+    if (view !== "chat") {
+      setBootstrapped(true);
+      return;
+    }
     void reload();
-  }, [reload]);
+  }, [reload, view]);
 
   // Abort any in-flight send when the sidebar unmounts. This used
   // to live as the cleanup on the `[reload]` effect — but `reload`'s

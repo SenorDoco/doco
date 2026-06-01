@@ -99,7 +99,6 @@ describe("/api/v1/docos.json", () => {
       orgId: "organization_torre",
       orgHandle: "torre",
       goal: "Process memory.",
-      companionChatId: "conv_123",
     });
 
     const response = await action({
@@ -107,12 +106,14 @@ describe("/api/v1/docos.json", () => {
     } as never);
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       id: "doco_bpms",
       handle: "bpms",
       org_handle: "torre",
+      org_id: "organization_torre",
       qualified_handle: "torre/bpms",
       visibility: "public",
+      goal: "Process memory.",
     });
     expect(mocks.createDocoInOrg).toHaveBeenCalledWith(
       expect.objectContaining({

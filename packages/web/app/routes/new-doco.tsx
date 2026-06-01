@@ -12,7 +12,7 @@ import {
   handleValidityMessage,
 } from "~/lib/handle-format";
 import { isOrgMember, listMyOrgs, lookupOrgHandle } from "~/lib/org-helpers.server";
-import { withCreatedDocoChatId, withCreatedDocoId } from "~/lib/post-create-doco-route";
+import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 import {
   addOrganizationByHandle,
   createDocoInOrg,
@@ -188,12 +188,7 @@ export async function action({ request }: { request: Request }) {
     if (state.templateHandle === GITHUB_PR_TEMPLATE_HANDLE) {
       throw redirect(`/${rec.handle}/integrations/github`);
     }
-    throw redirect(
-      withCreatedDocoChatId(
-        withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId),
-        rec.companionChatId,
-      ),
-    );
+    throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {
     if (e instanceof Response) throw e;
     const message = (e as Error).message;
