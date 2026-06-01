@@ -73,7 +73,7 @@ export function connectHrefFor(opts: {
 
   if (integration.scope === "doco") {
     if (pageScope === "doco" && docoHandle) {
-      if (integration.id === "github" && docoInstallUrl) return docoInstallUrl;
+      if (integration.id === "github") return `/${docoHandle}/integrations/github`;
       return `/${docoHandle}/integrations`;
     }
     // Cross-scope from account/org → pick a Doco.

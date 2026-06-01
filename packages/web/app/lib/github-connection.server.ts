@@ -392,6 +392,134 @@ export function githubOrgAccounts(input: {
   return [...new Set([...fromSubs, ...fromRepos])].sort();
 }
 
+export interface GitHubInstallationChoice {
+  /** GitHub App installation id the user has already connected through Doco. */
+  installation_id: number;
+  /** GitHub org / owner login the installation belongs to. */
+  account: string;
+  /** Repositories currently visible to the installation and selectable here. */
+  repositories: string[];
+  /** Repositories Doco already knows under this installation. */
+  connected_repositories: string[];
+  /** Doco handles where this installation was discovered. */
+  source_doco_handles: string[];
+  /** True when GitHub could not be queried and repositories fell back to known Doco rows. */
+  repositories_unavailable?: boolean;
+}
+
+type KnownGitHubInstallationChoice = Omit<
+  GitHubInstallationChoice,
+  "repositories" | "repositories_unavailable"
+>;
+
+/**
+ * Group GitHub App installations already visible through Doco rows. This is the
+ * "does this user already have a GitHub connection?" source for the Doco-level
+ * connection flow; the route supplies only Doco ids the user can read.
+ */
+export function groupKnownGitHubInstallations(
+  rows: Array<{ handle: string; githubIntegration: unknown }>,
+): KnownGitHubInstallationChoice[] {
+  const byInstallation = new Map<
+    number,
+    { accounts: Set<string>; repos: Set<string>; handles: Set<string> }
+  >();
+
+  const entryFor = (installationId: number) => {
+    let entry = byInstallation.get(installationId);
+    if (!entry) {
+      entry = { accounts: new Set(), repos: new Set(), handles: new Set() };
+      byInstallation.set(installationId, entry);
+    }
+    return entry;
+  };
+
+  for (const row of rows) {
+    for (const sub of normalizeInstallations(row.githubIntegration)) {
+      const entry = entryFor(sub.installation_id);
+      entry.accounts.add(sub.account);
+      entry.handles.add(row.handle);
+    }
+    for (const conn of normalizeConnections(row.githubIntegration)) {
+      const entry = entryFor(conn.installation_id);
+      entry.repos.add(conn.repo);
+      entry.handles.add(row.handle);
+      const account = conn.repo.split("/")[0];
+      if (account) entry.accounts.add(account);
+    }
+  }
+
+  return [...byInstallation.entries()]
+    .map(([installation_id, entry]) => {
+      const connected = [...entry.repos].sort();
+      const [firstAccount] = [...entry.accounts].sort();
+      return {
+        installation_id,
+        account: firstAccount ?? connected[0]?.split("/")[0] ?? `installation-${installation_id}`,
+        connected_repositories: connected,
+        source_doco_handles: [...entry.handles].sort(),
+      };
+    })
+    .sort((a, b) => a.account.localeCompare(b.account) || a.installation_id - b.installation_id);
+}
+
+async function listKnownGitHubInstallationsForDocos(
+  docoIds: string[],
+): Promise<KnownGitHubInstallationChoice[]> {
+  if (docoIds.length === 0) return [];
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ handle: string; gh: unknown }>(
+      `SELECT handle, data->'github_integration' AS gh
+         FROM docos
+        WHERE id = ANY($1::text[])
+          AND data ? 'github_integration'
+        ORDER BY handle`,
+      [docoIds],
+    );
+    return groupKnownGitHubInstallations(
+      rows.map((row) => ({ handle: row.handle, githubIntegration: row.gh })),
+    );
+  });
+}
+
+/**
+ * List reusable GitHub org/repo choices for a signed-in user. The caller passes
+ * accessible Doco ids; this function never widens access on its own.
+ */
+export async function listGitHubInstallationChoicesForDocos(
+  docoIds: string[],
+  deps?: {
+    mintToken?: typeof mintInstallationToken;
+    listRepos?: typeof listInstallationRepos;
+  },
+): Promise<GitHubInstallationChoice[]> {
+  const mintToken = deps?.mintToken ?? mintInstallationToken;
+  const listRepos = deps?.listRepos ?? listInstallationRepos;
+  const known = await listKnownGitHubInstallationsForDocos(docoIds);
+  const choices: GitHubInstallationChoice[] = [];
+
+  for (const choice of known) {
+    try {
+      const { token } = await mintToken(choice.installation_id);
+      const repositories = await listRepos(token);
+      choices.push({
+        ...choice,
+        repositories: [
+          ...new Set(repositories.length > 0 ? repositories : choice.connected_repositories),
+        ].sort(),
+      });
+    } catch {
+      choices.push({
+        ...choice,
+        repositories: choice.connected_repositories,
+        repositories_unavailable: true,
+      });
+    }
+  }
+
+  return choices;
+}
+
 /** Doco handle + org handle + all connections + installations + backfill
  *  marker, in one query (for the Integrations UI and per-repo backfill). */
 export async function getDocoConnectionsContext(

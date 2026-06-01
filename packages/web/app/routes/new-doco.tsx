@@ -5,7 +5,6 @@ import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
-import { buildInstallUrl } from "~/lib/github-connection.server";
 import {
   HANDLE_FORMAT_HELP,
   HANDLE_INPUT_PATTERN,
@@ -187,7 +186,7 @@ export async function action({ request }: { request: Request }) {
       goal: state.goal,
     });
     if (state.templateHandle === GITHUB_PR_TEMPLATE_HANDLE) {
-      throw redirect(buildInstallUrl(rec.docoId) ?? `/${rec.handle}/integrations/github`);
+      throw redirect(`/${rec.handle}/integrations/github`);
     }
     throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {
