@@ -29,6 +29,7 @@ import {
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
+import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
 import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
@@ -1541,27 +1542,12 @@ function layOutBpmn(
       const label = link.label?.trim() || "";
       const edgeData: Record<string, unknown> = {};
       if (label) {
+        const { labelBoxStyle, labelStyle } = bpmnEdgeLabelStyles(stroke);
         edgeData.label = label;
         edgeData.labelOpacity = edgeOpacity;
         edgeData.labelZIndex = 1;
-        edgeData.labelBoxStyle = {
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: `1px solid ${stroke}`,
-          borderRadius: 4,
-          background: "#ffffff",
-          boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
-          padding: "2px 6px",
-        };
-        edgeData.labelStyle = {
-          color: "#202020",
-          fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
-          fontSize: 9,
-          fontWeight: 700,
-          lineHeight: 1,
-          whiteSpace: "nowrap",
-        };
+        edgeData.labelBoxStyle = labelBoxStyle;
+        edgeData.labelStyle = labelStyle;
       }
       const bow = computeEdgeBow(source, target);
       if (bow) {
