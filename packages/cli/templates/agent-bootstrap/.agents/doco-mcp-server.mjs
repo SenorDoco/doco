@@ -27,7 +27,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
-const SERVER_VERSION = "0.2.1";
+const SERVER_VERSION = "0.3.0";
 const DEFAULT_HOST = "https://doco.to";
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -59,8 +59,11 @@ const SERVER_INSTRUCTIONS = [
   "(which capture some WHY at merge time only).",
   "",
   "Available tools:",
-  "- doco_search: query the project's Doco for relevant prior context.",
-  "- doco_authenticate: start OAuth device flow when search returns 401/403.",
+  "- doco_search: query the project's Doco for relevant prior context (read).",
+  "- doco_capture: record a decision/intent/rule/etc. as it forms (write).",
+  "- doco_relate: link two nodes with a typed edge (write).",
+  "- doco_authenticate: start OAuth device flow when a call returns 401/403,",
+  "  or to step up to writer (requested_role='writer') for capture/relate.",
   "- doco_complete_authentication: finalize OAuth after the user approves.",
   "",
   "Credential sharing: agents working in the same local repository share",
@@ -220,6 +223,68 @@ const SEARCH_TOOL = {
   },
 };
 
+const CAPTURE_TOOL = {
+  name: "doco_capture",
+  description: [
+    "Capture a node in this project's Doco — a decision, intent, action,",
+    "rule, log, eval, reference, state, or idea. Records the institutional",
+    "'why' as it forms, complementing git's WHAT.",
+    "",
+    "Needs WRITE access (writer role, or a per-type write grant). If it",
+    "returns 403, call doco_authenticate with requested_role='writer' to",
+    "request write access from an owner, then retry — it's a grant change,",
+    "not a different login.",
+    "",
+    "Read GET /<handle>/api/<type>.txt for the exact body shape first.",
+    "Singular or plural `type` is accepted.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      type: {
+        type: "string",
+        description:
+          "Node type (plural): decisions | intents | actions | rules | logs | evals | references | states | ideas. Singular is accepted too.",
+      },
+      body: {
+        type: "object",
+        description:
+          "Type-specific capture body (e.g. a decision: { decision, question }). See /<handle>/api/<type>.txt.",
+        additionalProperties: true,
+      },
+    },
+    required: ["type", "body"],
+  },
+};
+
+const RELATE_TOOL = {
+  name: "doco_relate",
+  description: [
+    "Create a first-class edge between two nodes in this project's Doco",
+    "(e.g. supports, constrained_by, attributed_to, derived_from, flows_to,",
+    "relates_to). Needs write access to the edge type — same step-up path as",
+    "doco_capture if it returns 403.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      edge_type: {
+        type: "string",
+        description:
+          "Edge type, e.g. supports | constrained_by | attributed_to | flows_to | relates_to.",
+      },
+      from_id: { type: "string", description: "Source node id." },
+      to_id: { type: "string", description: "Target node id." },
+      props: {
+        type: "object",
+        description: "Optional edge props (e.g. role metadata).",
+        additionalProperties: true,
+      },
+    },
+    required: ["edge_type", "from_id", "to_id"],
+  },
+};
+
 const AUTH_TOOL = {
   name: "doco_authenticate",
   description: [
@@ -290,7 +355,7 @@ const COMPLETE_AUTH_TOOL = {
   },
 };
 
-const TOOLS = [SEARCH_TOOL, AUTH_TOOL, COMPLETE_AUTH_TOOL];
+const TOOLS = [SEARCH_TOOL, CAPTURE_TOOL, RELATE_TOOL, AUTH_TOOL, COMPLETE_AUTH_TOOL];
 
 const rl = createInterface({ input: stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
@@ -374,6 +439,10 @@ async function handleToolCall(message) {
   switch (params.name) {
     case SEARCH_TOOL.name:
       return handleSearch(message);
+    case CAPTURE_TOOL.name:
+      return handleCapture(message);
+    case RELATE_TOOL.name:
+      return handleRelate(message);
     case AUTH_TOOL.name:
       return handleAuthenticate(message);
     case COMPLETE_AUTH_TOOL.name:
@@ -420,7 +489,7 @@ async function handleSearch(message) {
   });
 }
 
-async function requestJsonWithStoredCredential(url, host) {
+async function requestJsonWithStoredCredential(url, host, options = {}) {
   let access = readEnv("DOCO_ACCESS").trim();
   let hadAccess = Boolean(access);
   let refreshError = "";
@@ -435,13 +504,13 @@ async function requestJsonWithStoredCredential(url, host) {
     }
   }
 
-  let result = await requestJson(url, { access });
+  let result = await requestJson(url, { ...options, access });
   if (result.status === 401 && access.startsWith("doco_at_")) {
     const refresh = await refreshStoredCredential(host);
     if (refresh.ok) {
       access = refresh.access;
       hadAccess = true;
-      result = await requestJson(url, { access });
+      result = await requestJson(url, { ...options, access });
     } else {
       refreshError = refresh.error || refresh.code;
     }
@@ -450,6 +519,136 @@ async function requestJsonWithStoredCredential(url, host) {
   result.hadAccess = hadAccess;
   if (refreshError) result.refresh_error = refreshError;
   return result;
+}
+
+// POST a JSON body to a per-doco write route (capture / edges), replaying
+// the stored credential with the same refresh-on-401 path as search. The
+// route's own per-type grant check gates the write — read vs write is a
+// matrix grant, never a different login.
+async function handleCapture(message) {
+  const args = message.params?.arguments || {};
+  const rawType = String(args.type || "")
+    .trim()
+    .toLowerCase();
+  // The per-type routes are keyed by the PLURAL type; accept either.
+  const type = rawType && !rawType.endsWith("s") ? `${rawType}s` : rawType;
+  const body = args.body;
+  if (!type) {
+    return errorResult(
+      message.id,
+      "doco_capture requires a `type` (e.g. decisions, intents, rules).",
+    );
+  }
+  if (!body || typeof body !== "object") {
+    return errorResult(
+      message.id,
+      "doco_capture requires a `body` object. Read GET /<handle>/api/<type>.txt for the exact shape.",
+    );
+  }
+  const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
+  if (!handle) {
+    return errorResult(
+      message.id,
+      "No Doco found in .doco/connections.md. Set DOCO_HANDLE in .env or add the connections file.",
+    );
+  }
+  const host = normalizeHost(readEnv("DOCO_HOST") || DEFAULT_HOST);
+  const url = new URL(`/${encodeURIComponent(handle)}/api/${encodeURIComponent(type)}.json`, host);
+  const result = await requestJsonWithStoredCredential(url, host, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!result.ok) {
+    return errorResult(message.id, formatWriteErrorForAgent(result, handle, type));
+  }
+  return send({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: {
+      content: [
+        {
+          type: "text",
+          text: formatWriteResult(result.body, `Captured ${type} in Doco '${handle}'.`),
+        },
+      ],
+    },
+  });
+}
+
+async function handleRelate(message) {
+  const args = message.params?.arguments || {};
+  const edgeType = String(args.edge_type || "").trim();
+  const fromId = String(args.from_id || "").trim();
+  const toId = String(args.to_id || "").trim();
+  if (!edgeType || !fromId || !toId) {
+    return errorResult(message.id, "doco_relate requires `edge_type`, `from_id`, and `to_id`.");
+  }
+  const payload = { edge_type: edgeType, from_id: fromId, to_id: toId };
+  if (args.props && typeof args.props === "object") payload.props = args.props;
+  const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
+  if (!handle) {
+    return errorResult(message.id, "No Doco found in .doco/connections.md.");
+  }
+  const host = normalizeHost(readEnv("DOCO_HOST") || DEFAULT_HOST);
+  const url = new URL(`/${encodeURIComponent(handle)}/api/edges.json`, host);
+  const result = await requestJsonWithStoredCredential(url, host, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!result.ok) {
+    return errorResult(message.id, formatWriteErrorForAgent(result, handle, "edges"));
+  }
+  return send({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: {
+      content: [
+        {
+          type: "text",
+          text: formatWriteResult(result.body, `Created ${edgeType} edge in Doco '${handle}'.`),
+        },
+      ],
+    },
+  });
+}
+
+// Render a write response (capture / edge). Prefers the route's
+// footer_lines (the protocol's user-facing operation lines) plus the
+// created id; falls back to a generic confirmation.
+function formatWriteResult(body, fallback) {
+  if (!body || typeof body !== "object") return fallback;
+  const lines = [];
+  const id = String(body.id || "").trim();
+  if (id) lines.push(`Created ${id}.`);
+  const footers = Array.isArray(body.footer_lines) ? body.footer_lines : [];
+  for (const f of footers) lines.push(String(f));
+  return lines.length ? lines.join("\n") : fallback;
+}
+
+function formatWriteErrorForAgent(result, handle, type) {
+  const status = result.status || 0;
+  const code = result.code || "";
+  const error = result.error || "request failed";
+  if (status === 401) {
+    return `Doco write unauthorized (401) for '${handle}'. ${
+      result.refresh_error ? `Local refresh failed (${result.refresh_error}); ` : ""
+    }call doco_authenticate to acquire a credential, then retry.`;
+  }
+  if (status === 403) {
+    return `Doco write forbidden (403) on '${type}' in '${handle}': this credential has read but not write access. Call doco_authenticate with requested_role='writer' (an owner approves — a grant change, no different login), then retry.`;
+  }
+  if (status === 404) {
+    return `Doco '${handle}' or type '${type}' not found (404). Verify the handle in .doco/connections.md and that '${type}' is a valid type (read GET /${handle}/api/${type}.txt).`;
+  }
+  if (status === 400 || status === 422) {
+    return `Doco rejected the write to '${type}' in '${handle}' (HTTP ${status}): ${error}. Read GET /${handle}/api/${type}.txt for the exact body shape.`;
+  }
+  if (code === "network" || code === "timeout" || status === 0) {
+    return `Could not reach Doco (${code}: ${error}). Check network policy / allowlist for doco.to.`;
+  }
+  return `Doco write failed (HTTP ${status}, ${code}): ${error}`;
 }
 
 async function refreshStoredCredential(host) {

@@ -66,9 +66,14 @@ filtered.
 
 Tools exposed:
 
-- `doco_search` — query the Doco for relevant prior context. It
+- `doco_search` — query the Doco for relevant prior context (read). It
   refreshes a missing or stale `DOCO_ACCESS` from `DOCO_REFRESH` +
   `DOCO_CLIENT_ID` before falling back to device flow.
+- `doco_capture` — record a decision/intent/rule/etc. as it forms
+  (write; needs writer). On 403, call `doco_authenticate` with
+  `requested_role=writer` to request write access, then retry — a grant
+  change, not a different login.
+- `doco_relate` — link two nodes with a typed edge (write).
 - `doco_authenticate` — start OAuth device-flow auth (returns a URL
   immediately, does not block).
 - `doco_complete_authentication` — finalize after user approves

@@ -15,6 +15,27 @@ export function loader({ request }: { request: Request }) {
   const baseUrl = getPublicBaseUrl(request).replace(/\/+$/, "");
   const body = `# Agent OAuth recipe — get a Doco access token
 
+## Use the hosted MCP connector first (recommended)
+
+The simplest path is the hosted MCP connector — no OAuth code to write.
+Point any MCP-capable client at:
+
+    ${baseUrl}/mcp
+
+It speaks MCP over Streamable HTTP. An unauthenticated request returns
+401 + a \`WWW-Authenticate\` header pointing at
+\`${baseUrl}/.well-known/oauth-protected-resource\` (RFC 9728); a
+connector client follows that to discover the OAuth server (RFC 8414)
+and run the flow for you. The connector is read + write —
+\`doco_search\`, \`doco_capture\`, \`doco_relate\`, and
+\`doco_request_access\` — and read vs write is a live matrix grant on the
+same token, never a different login. Setup per client: ${baseUrl}/connect.
+
+The recipes below are the **fallback** for runtimes that can't speak
+remote MCP — they drive the same OAuth flow by hand.
+
+## Driving OAuth by hand (no MCP runtime)
+
 You're an AI agent and you need to read or write a private Doco. You
 don't have an MCP runtime that handles auth for you. Pick one of the
 two patterns below, depending on your capabilities.
