@@ -31,7 +31,7 @@ import { listDocoStats } from "~/lib/doco-stats.server";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { pickGreetingVerb } from "~/lib/greeting";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host.server";
-import { lifecycleColor } from "~/lib/node-colors";
+import { EMPTY_LIFECYCLE_COUNTS, lifecycleColor, sumLifecycleCounts } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -78,6 +78,7 @@ export async function loader({ request }: { request: Request }) {
       href: `/orgs/${org.handle}`,
       label: org.display_name || org.handle,
       count: 0,
+      counts: { ...EMPTY_LIFECYCLE_COUNTS },
       lastUpdatedAt: null,
       children: [],
     });
@@ -90,6 +91,7 @@ export async function loader({ request }: { request: Request }) {
       href: `/${d.handle}`,
       label: d.handle,
       count: stats?.nodes ?? 0,
+      counts: stats?.counts ?? EMPTY_LIFECYCLE_COUNTS,
       lastUpdatedAt: stats?.lastUpdatedAt ?? null,
     };
 
@@ -100,6 +102,7 @@ export async function loader({ request }: { request: Request }) {
         href: d.ownerKind === "organization" ? `/orgs/${d.ownerUsername}` : `/${d.ownerUsername}`,
         label: d.ownerId === me.id ? "Personal" : d.ownerUsername,
         count: 0,
+        counts: { ...EMPTY_LIFECYCLE_COUNTS },
         lastUpdatedAt: null,
         children: [],
       };
@@ -108,6 +111,10 @@ export async function loader({ request }: { request: Request }) {
 
     group.children?.push(row);
     group.count += row.count;
+    group.counts = sumLifecycleCounts([
+      group.counts ?? EMPTY_LIFECYCLE_COUNTS,
+      row.counts ?? EMPTY_LIFECYCLE_COUNTS,
+    ]);
     group.lastUpdatedAt = newestIso(group.lastUpdatedAt, row.lastUpdatedAt);
   }
 

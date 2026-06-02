@@ -1,19 +1,22 @@
-// Per-Doco aggregate stats (Nodes, Active nodes, Edges, Last updated)
-// shown on the dashboard and owner-profile docos tables.
+// Per-Doco aggregate stats (Nodes, per-lifecycle counts, Edges, Last
+// updated) shown on the dashboard and owner-profile docos tables.
 //
 // `nodes` counts domain nodes: decisions, intents, rules,
 // actions, evals, ideas, reference_entities, logs, states, and the
 // Doco's principals. Policies are not nodes and are deliberately
 // excluded — they are surfaced via /<handle>/api/policies.json.
+// `counts` is that same total split by lifecycle stage
+// (drafting / asserted / retired) for the colored count display.
 // `edges` reads the persisted `edges` table.
 // `lastUpdatedAt` prefers the max `at` from `audit_events`, and falls
 // back to entity `updated_at` for imported/pre-audit Docos.
 
 import { withClient } from "@doco/db";
+import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts } from "./node-colors";
 
 export interface DocoStats {
   nodes: number;
-  activeNodes: number;
+  counts: LifecycleCounts;
   edges: number;
   lastUpdatedAt: string | null;
 }
@@ -42,7 +45,12 @@ export const NODE_TYPES_FOR_STATS = [
 // the list.
 export const NODE_TYPES_FOR_STATS_SQL = NODE_TYPES_FOR_STATS.map((t) => `'${t}'`).join(", ");
 
-const EMPTY: DocoStats = { nodes: 0, activeNodes: 0, edges: 0, lastUpdatedAt: null };
+const EMPTY: DocoStats = {
+  nodes: 0,
+  counts: EMPTY_LIFECYCLE_COUNTS,
+  edges: 0,
+  lastUpdatedAt: null,
+};
 
 export async function listDocoStats(docoIds: readonly string[]): Promise<Map<string, DocoStats>> {
   const out = new Map<string, DocoStats>();
@@ -55,10 +63,19 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
         WHERE doco_id = ANY($1)
           AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
     const [nodesRows, edgesRows, updatedRows] = await Promise.all([
-      c.query<{ doco_id: string; n: string; active_n: string; last_entity_at: string | null }>(
+      c.query<{
+        doco_id: string;
+        n: string;
+        drafting_n: string;
+        asserted_n: string;
+        retired_n: string;
+        last_entity_at: string | null;
+      }>(
         `SELECT doco_id,
                 COUNT(*)::text AS n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted')::text AS active_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'drafting')::text AS drafting_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted')::text AS asserted_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'retired')::text AS retired_n,
                 MAX(updated_at)::text AS last_entity_at
            FROM (${nodesSql}) t
           GROUP BY doco_id`,
@@ -74,12 +91,16 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
       ),
     ]);
 
-    for (const id of ids) out.set(id, { ...EMPTY });
+    for (const id of ids) out.set(id, { ...EMPTY, counts: { ...EMPTY_LIFECYCLE_COUNTS } });
     for (const r of nodesRows.rows) {
       const s = out.get(r.doco_id);
       if (s) {
         s.nodes = Number(r.n);
-        s.activeNodes = Number(r.active_n);
+        s.counts = {
+          drafting: Number(r.drafting_n),
+          asserted: Number(r.asserted_n),
+          retired: Number(r.retired_n),
+        };
         s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_entity_at);
       }
     }

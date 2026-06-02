@@ -1013,7 +1013,7 @@ export default function DocoHome({
         label: nodeTypeLabel(t.value),
         icon: <NodeTypeIcon entityType={t.value} />,
         count: t.count,
-        activeCount: t.activeCount,
+        counts: t.counts,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
         updatedAt: t.updatedAt,
       })),

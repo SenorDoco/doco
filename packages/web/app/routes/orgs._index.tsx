@@ -24,7 +24,7 @@ import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { NODE_TYPES_FOR_STATS_SQL } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs } from "~/lib/host.server";
-import { lifecycleColor } from "~/lib/node-colors";
+import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -36,6 +36,7 @@ interface OrgRow {
   handle: string;
   display_name: string;
   nodeCount: number;
+  counts: LifecycleCounts;
   lastUpdatedAt: string | null;
 }
 
@@ -68,7 +69,7 @@ export async function loader({ request }: { request: Request }) {
   const orgIds = orgsRaw.map((o) => o.id);
   // Post-collapse: count rows in the unified `nodes` table (the stats
   // node types). The outer query scopes by org via the docos join.
-  const nodesUnionSql = `SELECT doco_id, updated_at FROM nodes WHERE node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
+  const nodesUnionSql = `SELECT doco_id, lifecycle, updated_at FROM nodes WHERE node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
   const [orgLastActivity, orgNodeStats] = await Promise.all([
     withClient(async (c) => {
       if (orgIds.length === 0) return new Map<string, string | null>();
@@ -85,12 +86,27 @@ export async function loader({ request }: { request: Request }) {
       return m;
     }),
     withClient(async (c) => {
+      type OrgNodeStat = {
+        nodeCount: number;
+        counts: LifecycleCounts;
+        lastUpdatedAt: string | null;
+      };
       if (orgIds.length === 0) {
-        return new Map<string, { nodeCount: number; lastUpdatedAt: string | null }>();
+        return new Map<string, OrgNodeStat>();
       }
-      const r = await c.query<{ owner_id: string; n: string; last_entity_at: string | null }>(
+      const r = await c.query<{
+        owner_id: string;
+        n: string;
+        drafting_n: string;
+        asserted_n: string;
+        retired_n: string;
+        last_entity_at: string | null;
+      }>(
         `SELECT d.owner_id,
                 COUNT(*)::text AS n,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'asserted') = 'drafting')::text AS drafting_n,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'asserted') = 'asserted')::text AS asserted_n,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'asserted') = 'retired')::text AS retired_n,
                 MAX(t.updated_at)::text AS last_entity_at
            FROM (${nodesUnionSql}) t
            JOIN docos d ON d.id = t.doco_id
@@ -98,10 +114,15 @@ export async function loader({ request }: { request: Request }) {
           GROUP BY d.owner_id`,
         [orgIds],
       );
-      const m = new Map<string, { nodeCount: number; lastUpdatedAt: string | null }>();
+      const m = new Map<string, OrgNodeStat>();
       for (const row of r.rows) {
         m.set(String(row.owner_id), {
           nodeCount: Number(row.n),
+          counts: {
+            drafting: Number(row.drafting_n),
+            asserted: Number(row.asserted_n),
+            retired: Number(row.retired_n),
+          },
           lastUpdatedAt: row.last_entity_at,
         });
       }
@@ -118,6 +139,7 @@ export async function loader({ request }: { request: Request }) {
           orgNodeStats.get(o.id)?.lastUpdatedAt ?? null,
         ),
         nodeCount: orgNodeStats.get(o.id)?.nodeCount ?? 0,
+        counts: orgNodeStats.get(o.id)?.counts ?? EMPTY_LIFECYCLE_COUNTS,
       })),
     )
   ).sort((a, b) => {
@@ -242,6 +264,7 @@ export default function OrgsIndexPage({
     label: o.display_name || o.handle,
     count: o.nodeCount,
     countLabel: `${o.nodeCount} nodes`,
+    counts: o.counts,
     lastUpdatedAt: o.lastUpdatedAt,
   }));
   return (

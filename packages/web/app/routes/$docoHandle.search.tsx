@@ -230,7 +230,6 @@ function withHitDerivedCounts(facets: FilterFacets, hits: SearchHit[]): FilterFa
     entityType: facets.entityType.map((f) => ({
       value: f.value,
       count: nodeTypeCounts.get(f.value) ?? 0,
-      activeCount: f.activeCount,
       updatedAt: f.updatedAt,
     })),
     edgeType: facets.edgeType,
