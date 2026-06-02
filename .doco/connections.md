@@ -3,7 +3,7 @@
 This project is tracked in Doco - AI-native documentation of
 intents, decisions, rules, actions, and history. The Doco lives at:
 
-**https://doco.to/doco-bpms/**
+**https://doco.to/torre-bpms/**
 
 ## Browsing
 
