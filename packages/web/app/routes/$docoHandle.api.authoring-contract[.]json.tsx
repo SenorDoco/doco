@@ -73,8 +73,8 @@ export async function loader({
         },
         note: "Creates a node and immediately relates an existing node to it. Preferred for ordered perspectives.",
       },
-      activate: {
-        shape: { op: "activate", target: "node_id_or_$alias" },
+      assert: {
+        shape: { op: "assert", target: "node_id_or_$alias" },
         note: "Transition a node to 'asserted' (publish a draft). target is an id or a $alias from this changeset.",
       },
       retire: {
