@@ -43,7 +43,7 @@ export function AccessDeniedView({
       <main className="mx-auto max-w-md px-6 py-10">
         <Card>
           <CardHeader>
-            <CardTitle>Private Doco</CardTitle>
+            <CardTitle>Private doco</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
@@ -51,8 +51,8 @@ export function AccessDeniedView({
             </p>
             {signed_in ? (
               <p className="mt-3 text-sm">
-                You don't have access. Ask the Doco's owner for an invite URL — they can mint one
-                from the invite manager.
+                You don't have access. Ask a doco owner to invite you — they can mint an invite from
+                the invite manager.
               </p>
             ) : (
               <>
@@ -64,10 +64,39 @@ export function AccessDeniedView({
                   Sign in
                 </Link>
                 <p className="mt-4 text-xs text-muted-foreground">
-                  If your account doesn't have access, ask the Doco's owner for an invite URL.
+                  If your account doesn't have access, ask a doco owner to invite you.
                 </p>
               </>
             )}
+            <div className="mt-6 border-t border-border pt-4">
+              <p className="text-xs font-semibold text-muted-foreground">Are you an AI agent?</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                You can get one-click access — no human invite needed:
+              </p>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                <li>
+                  Start the OAuth flow — call the{" "}
+                  <code className="rounded bg-input px-1 py-0.5 font-mono">doco_authenticate</code>{" "}
+                  MCP tool, or POST{" "}
+                  <code className="rounded bg-input px-1 py-0.5 font-mono">
+                    /oauth/device_authorization
+                  </code>
+                  . Full recipe:{" "}
+                  <Link to="/protocol/agent-oauth-recipe" className="underline hover:opacity-80">
+                    /protocol/agent-oauth-recipe
+                  </Link>
+                  .
+                </li>
+                <li>
+                  Show your human the verification link. They approve with one click at{" "}
+                  <Link to="/device" className="underline hover:opacity-80">
+                    /device
+                  </Link>
+                  .
+                </li>
+                <li>Retry your request — you're in.</li>
+              </ol>
+            </div>
           </CardContent>
         </Card>
       </main>
