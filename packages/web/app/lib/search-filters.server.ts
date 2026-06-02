@@ -3,6 +3,7 @@
 // BEFORE the cosine top-N slice.
 import { NODE_TYPES } from "@doco/shared";
 import type { PoolClient } from "pg";
+import type { LifecycleCounts } from "./node-colors";
 
 /**
  * Parsed filter spec. `null` for a field means "no filter" (everything
@@ -132,7 +133,11 @@ export interface FilterFacets {
   entityType: {
     value: string;
     count: number;
-    activeCount?: number;
+    // Per-lifecycle breakdown (drafting / asserted / retired) of `count`.
+    // `computeFilterFacets` always populates it; the search surface
+    // rebuilds hit-scoped counts via `withHitDerivedCounts` and omits it
+    // (the search UI shows only the total per type), so it is optional.
+    counts?: LifecycleCounts;
     updatedAt: string | null;
   }[];
   edgeType: { value: string; count: number; updatedAt: string | null }[];
@@ -176,17 +181,21 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   const entityTypeCounts: {
     value: string;
     count: number;
-    activeCount: number;
+    counts: LifecycleCounts;
     updatedAt: string | null;
   }[] = (
     await c.query<{
       node_type: string;
       n: string;
-      active_n: string;
+      drafting_n: string;
+      asserted_n: string;
+      retired_n: string;
       updated_at: Date | string | null;
     }>(
       `SELECT COUNT(*)::text AS n,
-              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted'))::text AS active_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'drafting'))::text AS drafting_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted'))::text AS asserted_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'retired'))::text AS retired_n,
               MAX(updated_at) AS updated_at,
               node_type
          FROM nodes
@@ -199,7 +208,11 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   ).rows.map((row) => ({
     value: row.node_type,
     count: Number(row.n),
-    activeCount: Number(row.active_n),
+    counts: {
+      drafting: Number(row.drafting_n),
+      asserted: Number(row.asserted_n),
+      retired: Number(row.retired_n),
+    },
     updatedAt: toIso(row.updated_at),
   }));
   entityTypeCounts.sort((a, b) => b.count - a.count);

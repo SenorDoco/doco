@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Card, CardTitle } from "~/components/card";
+import { LifecycleCountsLabel } from "~/components/lifecycle-counts";
 import { cn } from "~/lib/cn";
+import type { LifecycleCounts } from "~/lib/node-colors";
 import { timeAgo } from "~/lib/time-ago";
 
 export interface AccessListItem {
@@ -10,6 +12,7 @@ export interface AccessListItem {
   label: string;
   count: number;
   countLabel?: string;
+  counts?: LifecycleCounts;
   lastUpdatedAt: string | null;
   children?: AccessListItem[];
 }
@@ -110,7 +113,15 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
             {item.label}
           </Link>
           <span className="ml-1 whitespace-nowrap text-[11px] text-muted-foreground">
-            ({item.countLabel ?? item.count})
+            {item.counts ? (
+              <>
+                {"("}
+                <LifecycleCountsLabel counts={item.counts} />
+                {")"}
+              </>
+            ) : (
+              `(${item.countLabel ?? item.count})`
+            )}
           </span>
         </div>
         <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">

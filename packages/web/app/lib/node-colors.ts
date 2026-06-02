@@ -26,6 +26,54 @@ export function lifecycleColor(lifecycle: string | null | undefined): string {
 }
 
 /**
+ * Canonical lifecycle progression. Counts, filter rows, and the stats
+ * cards all render the stages in this order so a given color always
+ * lands in the same position.
+ */
+export const LIFECYCLE_ORDER = ["drafting", "asserted", "retired"] as const;
+
+/** A node count broken out by lifecycle stage. */
+export interface LifecycleCounts {
+  drafting: number;
+  asserted: number;
+  retired: number;
+}
+
+export const EMPTY_LIFECYCLE_COUNTS: LifecycleCounts = {
+  drafting: 0,
+  asserted: 0,
+  retired: 0,
+};
+
+/**
+ * Expand a {@link LifecycleCounts} into canonical-order parts, each
+ * tagged with its lifecycle color, ready to render as
+ * `drafting / asserted / retired`. All three stages are always present
+ * (zeros included) so a color's position stays stable.
+ */
+export function lifecycleCountParts(
+  counts: LifecycleCounts,
+): { lifecycle: string; count: number; color: string }[] {
+  return LIFECYCLE_ORDER.map((lifecycle) => ({
+    lifecycle,
+    count: counts[lifecycle],
+    color: lifecycleColor(lifecycle),
+  }));
+}
+
+/** Sum a list of per-stage counts (e.g. an org row = Σ of its docos). */
+export function sumLifecycleCounts(list: readonly LifecycleCounts[]): LifecycleCounts {
+  return list.reduce<LifecycleCounts>(
+    (acc, c) => ({
+      drafting: acc.drafting + c.drafting,
+      asserted: acc.asserted + c.asserted,
+      retired: acc.retired + c.retired,
+    }),
+    { drafting: 0, asserted: 0, retired: 0 },
+  );
+}
+
+/**
  * Picks a readable foreground color (dark or white) for text placed
  * on a lifecycle-colored background. Uses WCAG relative luminance:
  * light backgrounds get dark text; everything else gets white.

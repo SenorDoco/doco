@@ -30,7 +30,7 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { listDocoStats } from "~/lib/doco-stats.server";
-import { lifecycleColor } from "~/lib/node-colors";
+import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -43,6 +43,7 @@ interface OrgDoco {
   docoId: string;
   handle: string;
   nodes: number;
+  counts: LifecycleCounts;
   lastUpdatedAt: string | null;
 }
 
@@ -96,11 +97,16 @@ export async function loader({
     const docos: OrgDoco[] = docoRows
       .map((r): OrgDoco => {
         const id = String(r.id);
-        const stats = statsByDocoId.get(id) ?? { nodes: 0, lastUpdatedAt: null };
+        const stats = statsByDocoId.get(id) ?? {
+          nodes: 0,
+          counts: EMPTY_LIFECYCLE_COUNTS,
+          lastUpdatedAt: null,
+        };
         return {
           docoId: id,
           handle: String(r.handle),
           nodes: stats.nodes,
+          counts: stats.counts,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
       })
@@ -284,6 +290,7 @@ export default function OrgHome({
     handle: d.handle,
     ownerHandle: org.handle,
     nodeCount: d.nodes,
+    counts: d.counts,
     lastUpdatedAt: d.lastUpdatedAt,
   }));
 

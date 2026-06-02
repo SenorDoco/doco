@@ -31,13 +31,17 @@ describe("computeFilterFacets", () => {
               {
                 node_type: "decision",
                 n: "2",
-                active_n: "2",
+                drafting_n: "0",
+                asserted_n: "2",
+                retired_n: "0",
                 updated_at: "2026-05-31T18:00:00.000Z",
               },
               {
                 node_type: "intent",
                 n: "1",
-                active_n: "0",
+                drafting_n: "1",
+                asserted_n: "0",
+                retired_n: "0",
                 updated_at: "2026-05-31T17:00:00.000Z",
               },
             ] as T[],
@@ -58,13 +62,13 @@ describe("computeFilterFacets", () => {
       {
         value: "decision",
         count: 2,
-        activeCount: 2,
+        counts: { drafting: 0, asserted: 2, retired: 0 },
         updatedAt: "2026-05-31T18:00:00.000Z",
       },
       {
         value: "intent",
         count: 1,
-        activeCount: 0,
+        counts: { drafting: 1, asserted: 0, retired: 0 },
         updatedAt: "2026-05-31T17:00:00.000Z",
       },
     ]);

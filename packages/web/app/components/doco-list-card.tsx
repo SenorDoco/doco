@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
+import type { LifecycleCounts } from "~/lib/node-colors";
 
 export interface DocoListEntry {
   id: string;
@@ -7,6 +8,7 @@ export interface DocoListEntry {
   href?: string;
   ownerHandle?: string;
   nodeCount: number;
+  counts?: LifecycleCounts;
   lastUpdatedAt: string | null;
 }
 
@@ -29,6 +31,7 @@ export function DocoListCard({
     label: showOwner && d.ownerHandle ? `${d.ownerHandle} / ${d.handle}` : d.handle,
     count: d.nodeCount,
     countLabel: `${d.nodeCount} nodes`,
+    counts: d.counts,
     lastUpdatedAt: d.lastUpdatedAt,
   }));
 
