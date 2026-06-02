@@ -20,7 +20,7 @@ import {
   upsertOrgUser,
 } from "@doco/db";
 import { normalizeWriteTypes } from "@doco/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -29,6 +29,7 @@ import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { UserInviteCards } from "~/components/user-invite-cards";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
+import { focusFirstError, validateGrantForm } from "~/lib/grant-form-validation";
 import {
   type ComposedGrant,
   type ExistingGrant,
@@ -711,6 +712,8 @@ function AddUserAccessForm({
   const fetcher = useFetcher<ActionResult>();
   const [open, setOpen] = useState(false);
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const grantsRef = useRef<HTMLDivElement>(null);
   const done =
     fetcher.state === "idle" &&
     fetcher.data &&
@@ -724,6 +727,19 @@ function AddUserAccessForm({
     }
   }, [done]);
   const payload = useMemo(() => JSON.stringify(grants), [grants]);
+
+  // Submit stays clickable so an empty selection explains itself rather than
+  // doing nothing.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const found = validateGrantForm({ grantCount: grants.length });
+    if (found.length === 0) {
+      setGrantError(null);
+      return;
+    }
+    e.preventDefault();
+    setGrantError(found[0].message);
+    focusFirstError("grants", { grants: grantsRef.current });
+  }
 
   if (!open) {
     return (
@@ -741,19 +757,36 @@ function AddUserAccessForm({
   return (
     <fetcher.Form
       method="post"
+      onSubmit={handleSubmit}
       className="mt-2 space-y-3 rounded-md border border-border p-3"
       data-testid={`add-user-access-form-${principalId}`}
     >
       <input type="hidden" name="intent" value="add_grants" />
       <input type="hidden" name="user_id" value={principalId} />
       <input type="hidden" name="grants" value={payload} />
-      <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} existing={existing} />
+      <div ref={grantsRef}>
+        <GrantPicker
+          catalog={catalog}
+          grants={grants}
+          onChange={(next) => {
+            setGrants(next);
+            if (next.length > 0) setGrantError(null);
+          }}
+          existing={existing}
+        />
+        {grantError ? (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            {grantError}
+          </p>
+        ) : null}
+      </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => {
             setGrants([]);
+            setGrantError(null);
             setOpen(false);
           }}
           className="neu-button rounded-md px-2 py-1 text-xs"
@@ -762,7 +795,7 @@ function AddUserAccessForm({
         </button>
         <button
           type="submit"
-          disabled={fetcher.state !== "idle" || grants.length === 0}
+          disabled={fetcher.state !== "idle"}
           className="neu-button bg-primary text-primary-foreground rounded-md px-2 py-1 text-xs font-semibold disabled:opacity-50"
         >
           {fetcher.state !== "idle" ? "Saving…" : `Save access changes for ${username}`}

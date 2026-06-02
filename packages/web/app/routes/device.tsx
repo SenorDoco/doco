@@ -229,6 +229,7 @@ function renderStage(data: LoaderData) {
               name="user_code"
               autoComplete="off"
               spellCheck={false}
+              required
               placeholder="WXYZ-1234"
               className="block w-full rounded-md px-3 py-2 font-mono text-xl uppercase tracking-widest text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
@@ -251,9 +252,9 @@ function renderStage(data: LoaderData) {
         <CardHeader>
           <CardTitle>Authorize token access</CardTitle>
           <CardDescription>
-            <strong>{data.client_name}</strong> wants access to your Docos. Name the token, then
-            pick individual Docos or grant access to an entire organization — code{" "}
-            <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
+            An agent is requesting access to your Docos through <strong>{data.client_name}</strong>.
+            Name the token, then pick individual Docos or grant access to an entire organization —
+            code <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>

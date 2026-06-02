@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { GrantPicker } from "~/components/grant-picker";
+import { focusFirstError, validateGrantForm } from "~/lib/grant-form-validation";
 import { type ComposedGrant, type DocoRole, catalogFromOptions } from "~/lib/grant-picker";
 import type {
   InviteDefaultSelection,
@@ -60,21 +61,50 @@ function InviteHumanCard({
   // empty and the granter builds up one or more grants.
   void defaultSelection;
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const grantsRef = useRef<HTMLDivElement>(null);
 
   const noTargets = catalog.targets.length === 0;
 
+  // Submit stays clickable so clicking with nothing selected explains itself
+  // instead of doing nothing.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const found = validateGrantForm({ grantCount: grants.length });
+    if (found.length === 0) {
+      setGrantError(null);
+      return;
+    }
+    e.preventDefault();
+    setGrantError(found[0].message);
+    focusFirstError("grants", { grants: grantsRef.current });
+  }
+
   return (
     <div className="space-y-3">
-      <fetcher.Form method="post" className="flex flex-col gap-3">
+      <fetcher.Form method="post" onSubmit={handleSubmit} className="flex flex-col gap-3">
         <input type="hidden" name="intent" value="invite" />
         {/* One invite link, all selected grants (decision: one-link-all-grants). */}
         <input type="hidden" name="grants" value={JSON.stringify(grants)} />
-        <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} />
+        <div ref={grantsRef}>
+          <GrantPicker
+            catalog={catalog}
+            grants={grants}
+            onChange={(next) => {
+              setGrants(next);
+              if (next.length > 0) setGrantError(null);
+            }}
+          />
+          {grantError ? (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              {grantError}
+            </p>
+          ) : null}
+        </div>
         <div className="flex justify-end">
           <button
             type="submit"
             data-testid="invite-submit"
-            disabled={fetcher.state !== "idle" || noTargets || grants.length === 0}
+            disabled={fetcher.state !== "idle" || noTargets}
             className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
             {fetcher.state !== "idle"

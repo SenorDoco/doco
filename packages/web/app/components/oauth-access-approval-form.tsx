@@ -1,7 +1,13 @@
 import type { DocoRole } from "@doco/db";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { GrantPicker } from "~/components/grant-picker";
 import type { ApprovalDocoOption, ApprovalOrgOption } from "~/lib/approval-grants";
+import {
+  GRANT_REQUIRED_MESSAGE,
+  type GrantFormFieldKey,
+  focusFirstError,
+  validateGrantForm,
+} from "~/lib/grant-form-validation";
 import {
   type ComposedGrant,
   type GrantCatalog,
@@ -37,10 +43,48 @@ export function OAuthAccessApprovalForm({
   const [tokenName, setTokenName] = useState("");
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
   const grantsPayload = useMemo(() => JSON.stringify(grants.map(grantPayload)), [grants]);
-  const nothingSelected = grants.length === 0;
+  const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
+
+  const tokenNameRef = useRef<HTMLInputElement>(null);
+  const grantsRef = useRef<HTMLDivElement>(null);
+
+  function clearError(field: GrantFormFieldKey) {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const { [field]: _cleared, ...rest } = prev;
+      return rest;
+    });
+  }
+
+  // The Approve button always submits (it is never disabled) so that a click
+  // on an incomplete form surfaces the reason instead of silently doing
+  // nothing. Validate here, and if anything is missing, block the POST, show
+  // the app's error styling, and scroll + focus the first offending field.
+  // Deny/Cancel carries a different decision value and `formNoValidate`, so it
+  // skips validation entirely.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    if (submitter && submitter.value !== "approve") return;
+
+    const found = validateGrantForm({
+      name: { value: tokenName, message: "Enter a name for this token." },
+      grantCount: grants.length,
+    });
+    if (found.length === 0) {
+      setErrors({});
+      return;
+    }
+
+    e.preventDefault();
+    setErrors(Object.fromEntries(found.map((f) => [f.field, f.message])));
+    focusFirstError(found[0].field, {
+      name: tokenNameRef.current,
+      grants: grantsRef.current,
+    });
+  }
 
   return (
-    <form method="post" className="space-y-4">
+    <form method="post" noValidate onSubmit={handleSubmit} className="space-y-4">
       {hiddenFields
         ? Object.entries(hiddenFields).map(([name, value]) => (
             <input key={name} type="hidden" name={name} value={value} />
@@ -48,23 +92,55 @@ export function OAuthAccessApprovalForm({
         : null}
       <input type="hidden" name="grants" value={grantsPayload} />
 
-      <label className="block text-sm">
-        <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-          Token name
-        </span>
-        <input
-          type="text"
-          name="token_name"
-          value={tokenName}
-          onChange={(e) => setTokenName(e.currentTarget.value)}
-          required
-          maxLength={120}
-          placeholder={tokenNamePlaceholder}
-          className="block w-full max-w-md rounded-md px-3 py-2 text-sm"
-        />
-      </label>
+      <div>
+        <label className="block text-sm">
+          <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+            Token name
+          </span>
+          <input
+            ref={tokenNameRef}
+            type="text"
+            name="token_name"
+            value={tokenName}
+            onChange={(e) => {
+              const next = e.currentTarget.value;
+              setTokenName(next);
+              if (next.trim()) clearError("name");
+            }}
+            required
+            maxLength={120}
+            placeholder={tokenNamePlaceholder}
+            aria-invalid={errors.name ? true : undefined}
+            aria-describedby={errors.name ? "token-name-error" : undefined}
+            className={`block w-full max-w-md rounded-md px-3 py-2 text-sm${
+              errors.name ? " border border-destructive ring-1 ring-destructive" : ""
+            }`}
+          />
+        </label>
+        {errors.name ? (
+          <p id="token-name-error" role="alert" className="mt-1 text-xs text-destructive">
+            {errors.name}
+          </p>
+        ) : null}
+      </div>
 
-      <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} />
+      <div ref={grantsRef}>
+        <GrantPicker
+          catalog={catalog}
+          grants={grants}
+          onChange={(next) => {
+            setGrants(next);
+            if (next.length > 0) clearError("grants");
+          }}
+        />
+        {errors.grants ? (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            {errors.grants}
+          </p>
+        ) : grants.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
+        ) : null}
+      </div>
 
       {requestedRole ? (
         <p className="text-xs text-muted-foreground">
@@ -73,19 +149,12 @@ export function OAuthAccessApprovalForm({
         </p>
       ) : null}
 
-      {nothingSelected ? (
-        <p className="text-xs text-muted-foreground">
-          Select at least one access grant to approve.
-        </p>
-      ) : null}
-
       <div className="flex gap-2">
         <button
           type="submit"
           name="decision"
           value="approve"
-          disabled={nothingSelected || !tokenName.trim()}
-          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
         >
           {approveLabel}
         </button>
