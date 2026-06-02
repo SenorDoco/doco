@@ -10,7 +10,7 @@
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
@@ -130,7 +130,7 @@ export default function ProjectTokensPage({
   return (
     <div>
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-6 space-y-5">
+      <DocoPageMain className="py-6 space-y-5">
         <div className="space-y-1">
           <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Project tokens" })} />
           <h1 className="text-lg font-semibold tracking-tight">
@@ -212,7 +212,7 @@ export default function ProjectTokensPage({
             ))}
           </CardContent>
         </Card>
-      </SingleColumnPageMain>
+      </DocoPageMain>
     </div>
   );
 }

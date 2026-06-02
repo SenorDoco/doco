@@ -5,7 +5,7 @@ import { withClient } from "@doco/db";
 import { Form, redirect } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { type RuleDraft, captureRule } from "~/lib/capture.server";
@@ -144,7 +144,7 @@ export default function NewRule({
   return (
     <div>
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-6 space-y-4">
+      <DocoPageMain className="py-6 space-y-4">
         <Breadcrumb
           items={docoBreadcrumb({
             ownerSlug,
@@ -251,7 +251,7 @@ export default function NewRule({
             </Form>
           </CardContent>
         </Card>
-      </SingleColumnPageMain>
+      </DocoPageMain>
     </div>
   );
 }

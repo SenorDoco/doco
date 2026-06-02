@@ -11,7 +11,7 @@ import { Form, Link, useNavigation } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -140,7 +140,7 @@ export default function Invites({
   return (
     <div>
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-6 space-y-5">
+      <DocoPageMain className="py-6 space-y-5">
         <div className="space-y-1">
           <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })} />
           <h1 className="text-lg font-semibold tracking-tight">
@@ -232,7 +232,7 @@ export default function Invites({
             ))}
           </CardContent>
         </Card>
-      </SingleColumnPageMain>
+      </DocoPageMain>
     </div>
   );
 }

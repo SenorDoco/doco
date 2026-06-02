@@ -1,7 +1,7 @@
 import { Link, redirect } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadPostCreateDocoRouteForRead } from "~/lib/doco-access.server";
 import { withCreatedDocoId } from "~/lib/post-create-doco-route";
@@ -59,7 +59,7 @@ export default function NewDocoStep4({
   return (
     <div>
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-8 space-y-4">
+      <DocoPageMain className="py-8 space-y-4">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Welcome" })} />
         <Card>
           <CardHeader>
@@ -93,7 +93,7 @@ export default function NewDocoStep4({
             Open your Doco -&gt;
           </Link>
         </div>
-      </SingleColumnPageMain>
+      </DocoPageMain>
     </div>
   );
 }
