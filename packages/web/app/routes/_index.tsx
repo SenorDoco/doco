@@ -1,6 +1,6 @@
 import { Link, redirect } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
-import { DOCO_TAGLINE, VersionPill } from "~/components/version-pill";
+import { VersionPill } from "~/components/version-pill";
 import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
@@ -156,10 +156,9 @@ export default function Home() {
         <section className="px-6 py-16 md:py-24">
           <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
             <DocoMark height={88} />
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <h1 className="text-3xl font-bold leading-tight md:text-5xl">
               Shared memory for AI and teams
-            </p>
-            <h1 className="text-3xl font-bold leading-tight md:text-5xl">{DOCO_TAGLINE}</h1>
+            </h1>
             <p className="max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">
               Git remembers <span className="font-semibold text-foreground">what</span> changed.
               Doco remembers <span className="font-semibold text-foreground">why</span>.
