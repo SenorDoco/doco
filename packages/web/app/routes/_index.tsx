@@ -31,8 +31,103 @@ export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | unde
   return [{ title: `${data.host.name} · Doco` }];
 }
 
-export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
-  const { host } = loaderData;
+/** Outcome-framed reasons to adopt Doco. */
+const BENEFITS: ReadonlyArray<{ title: string; body: string }> = [
+  {
+    title: "Onboard people and agents in minutes",
+    body: "New contributors inherit the reasoning behind the code — not just the code itself.",
+  },
+  {
+    title: "Agents stop relitigating settled calls",
+    body: "Before they act, agents search the Doco — so they build on prior decisions instead of contradicting them.",
+  },
+  {
+    title: "Decisions outlive the people who made them",
+    body: "Turnover, re-orgs, and reset context windows no longer erase your institutional memory.",
+  },
+  {
+    title: "One source of truth for humans and AI",
+    body: "The same structured record powers your team and every agent working alongside them.",
+  },
+];
+
+/** What makes Doco different from a wiki, an ADR folder, or a chat log. */
+const FEATURES: ReadonlyArray<{ title: string; body: string }> = [
+  {
+    title: "A typed knowledge graph, not a wiki",
+    body: "Decisions, Rules, Intents, Actions, and References — each a first-class node with the right shape, never a wall of prose.",
+  },
+  {
+    title: "Relationships are first-class",
+    body: "Edges link a decision to the rule it spawned and an action to who performed it — trace cause and effect, don't just read pages.",
+  },
+  {
+    title: "Built for agents from the ground up",
+    body: "A native MCP server, OAuth 2.1, and a shared protocol let Claude Code, Cursor, and Codex discover and query your Doco automatically.",
+  },
+  {
+    title: "Semantic search across the lifetime",
+    body: "Ask in plain language and get the ranked decisions and rules that actually bear on the question.",
+  },
+  {
+    title: "Perspectives that visualize the graph",
+    body: "Business-process maps, glossaries, and org trees — live views built from the same nodes, not diagrams that rot.",
+  },
+  {
+    title: "Traceable to code, append-only by design",
+    body: "Link any node to the exact file and line that implements it, on a history that's only ever added to.",
+  },
+];
+
+/** The three-step adoption loop. */
+const STEPS: ReadonlyArray<{ n: string; title: string; body: string }> = [
+  {
+    n: "1",
+    title: "Connect",
+    body: "Run the wizard or doco install-agent-bootstrap. Doco commits a few files so every teammate and agent finds the same memory.",
+  },
+  {
+    n: "2",
+    title: "Capture",
+    body: 'As decisions get made and rules emerge, you (or your agent) just "doco it." The why lands as a typed node the moment it forms.',
+  },
+  {
+    n: "3",
+    title: "Recall",
+    body: "Anyone — human or agent — searches before acting, and builds on what the project already knows.",
+  },
+];
+
+/**
+ * The two primary calls to action, kept from the original landing page.
+ * Reused verbatim in the hero and the closing band, so they live in one place.
+ */
+function PrimaryCtas() {
+  return (
+    <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+      <Link
+        to="/new-doco"
+        className="neu-surface-interactive group rounded-lg border border-primary bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+      >
+        <div className="text-base font-semibold">Create a new doco</div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          Start tracking alignment for a new project.
+        </div>
+      </Link>
+      <Link
+        to="/onboarding/join"
+        className="neu-surface-interactive group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+      >
+        <div className="text-base font-semibold">Join an existing doco</div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          Collaborate on a project that's already tracked here.
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="neu-header border-b border-border bg-card">
@@ -55,34 +150,119 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
           </Link>
         </div>
       </header>
-      <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-        <div className="-translate-y-3 md:-translate-y-6 flex w-full max-w-4xl flex-col items-center gap-8 text-center">
-          <DocoMark height={96} />
-          <h1 className="w-full max-w-4xl text-2xl font-bold leading-tight md:text-4xl">
-            {DOCO_TAGLINE}
-          </h1>
-          <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
-            <Link
-              to="/onboarding/join"
-              className="neu-surface-interactive group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
-            >
-              <div className="text-base font-semibold">Join an existing doco</div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                Collaborate on a project that's already tracked here.
-              </div>
-            </Link>
-            <Link
-              to="/new-doco"
-              className="neu-surface-interactive group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
-            >
-              <div className="text-base font-semibold">Create a new doco</div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                Start tracking alignment for a new project.
-              </div>
-            </Link>
+
+      <main className="flex-1">
+        {/* Hero */}
+        <section className="px-6 py-16 md:py-24">
+          <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
+            <DocoMark height={88} />
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Institutional memory for software projects
+            </p>
+            <h1 className="text-3xl font-bold leading-tight md:text-5xl">{DOCO_TAGLINE}</h1>
+            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
+              Git remembers <span className="font-semibold text-foreground">what</span> changed.
+              Doco remembers <span className="font-semibold text-foreground">why</span> — the
+              decisions, rules, and intent behind your project — in a typed, searchable graph your
+              team and your AI agents share.
+            </p>
+            <PrimaryCtas />
           </div>
-        </div>
+        </section>
+
+        {/* Benefits */}
+        <section className="border-t border-border bg-card px-6 py-16">
+          <div className="mx-auto max-w-5xl">
+            <h2 className="text-center text-xl font-bold md:text-2xl">
+              Stop losing the &ldquo;why&rdquo;
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-muted-foreground">
+              Review comments scroll away, threads vanish, and the reasoning lives in one person's
+              head — until they leave or an agent's context resets. Doco keeps it.
+            </p>
+            <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {BENEFITS.map((benefit) => (
+                <div
+                  key={benefit.title}
+                  className="neu-surface rounded-lg border border-border bg-card p-6 text-left"
+                >
+                  <div className="text-base font-semibold">{benefit.title}</div>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {benefit.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Unique functionality */}
+        <section className="border-t border-border px-6 py-16">
+          <div className="mx-auto max-w-5xl">
+            <h2 className="text-center text-xl font-bold md:text-2xl">
+              Not another wiki — a living graph
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-muted-foreground">
+              Doco captures structure, relationships, and provenance that prose docs can't.
+            </p>
+            <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {FEATURES.map((feature) => (
+                <div
+                  key={feature.title}
+                  className="neu-surface rounded-lg border border-border bg-card p-6 text-left"
+                >
+                  <div className="text-base font-semibold">{feature.title}</div>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {feature.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section className="border-t border-border bg-card px-6 py-16">
+          <div className="mx-auto max-w-5xl">
+            <h2 className="text-center text-xl font-bold md:text-2xl">Connect, capture, recall</h2>
+            <div className="mt-10 grid grid-cols-1 gap-8 md:grid-cols-3">
+              {STEPS.map((step) => (
+                <div key={step.n} className="text-left">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-sm font-bold text-primary">
+                    {step.n}
+                  </div>
+                  <div className="mt-4 text-base font-semibold">{step.title}</div>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Agents welcome */}
+        <section className="border-t border-border px-6 py-16">
+          <div className="neu-surface mx-auto max-w-3xl rounded-lg border border-border bg-card p-8 text-center">
+            <h2 className="text-lg font-bold md:text-xl">Your AI can read this too</h2>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Doco is as usable by your agents as by you. Point any agent at{" "}
+              <a className="text-primary underline" href="/llms.txt">
+                /llms.txt
+              </a>{" "}
+              and it self-onboards — authenticates, reads the protocol, and starts contributing to
+              the shared record. Zero install.
+            </p>
+          </div>
+        </section>
+
+        {/* Closing CTA */}
+        <section className="border-t border-border bg-card px-6 py-16">
+          <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 text-center">
+            <h2 className="text-xl font-bold md:text-2xl">Start your project's memory today</h2>
+            <PrimaryCtas />
+          </div>
+        </section>
       </main>
+
       <footer className="neu-header border-t border-border bg-card px-6 py-8">
         <div className="neu-surface mx-auto max-w-3xl rounded-lg bg-card p-5 text-left text-xs text-muted-foreground">
           <p className="mb-2 font-semibold text-foreground">
