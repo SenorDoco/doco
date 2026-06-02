@@ -21,6 +21,7 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EdgeDialog } from "~/components/edge-dialog";
+import { GithubIntegrationCard } from "~/components/github-integration-card";
 import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
@@ -47,6 +48,7 @@ import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-acc
 import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
 import { type EdgeDialogDetail, loadEdgeDialogDetail } from "~/lib/edge-detail.server";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
+import { githubIntegrationStatus } from "~/lib/github-connection.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import {
@@ -337,6 +339,16 @@ export async function loader({
     ).rows[0];
     const policyCount = Number(policyRow?.n ?? 0);
 
+    // GitHub-connected Docos get a status box atop the right column; the marker
+    // also tells us when the initial PR backfill is still importing old PRs.
+    const githubRow = (
+      await c.query<{ gh: unknown }>(
+        `SELECT data->'github_integration' AS gh FROM docos WHERE id = $1`,
+        [ctx.meta.docoId],
+      )
+    ).rows[0];
+    const githubIntegration = githubIntegrationStatus(githubRow?.gh ?? null);
+
     return {
       items,
       facets,
@@ -349,6 +361,7 @@ export async function loader({
       ownerSlug: ctx.canonicalOwnerSlug,
       ownerIsOrg: ctx.meta.ownerId.startsWith("organization_"),
       canInviteUsers: await canAdminDoco(ctx.meta, me?.id ?? null),
+      githubIntegration,
       host: await loadHostConfig(),
       me,
       graph,
@@ -491,6 +504,7 @@ export default function DocoHome({
     ownerSlug,
     ownerIsOrg,
     canInviteUsers,
+    githubIntegration,
     me,
     graph,
     policyCount,
@@ -1252,6 +1266,10 @@ export default function DocoHome({
               the browser width before this page gets laid out. */}
           <div className={`relative min-h-0 min-w-0 ${showSidePanel ? "block" : "hidden"}`}>
             <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
+              {githubIntegration ? (
+                <GithubIntegrationCard handle={handle} importing={githubIntegration.importing} />
+              ) : null}
+
               <Card>
                 <CardHeader className="px-4 py-3">
                   <CardTitle className="text-sm">Activity</CardTitle>

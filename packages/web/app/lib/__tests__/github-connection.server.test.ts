@@ -10,6 +10,7 @@ import {
   addConnection,
   buildInstallUrl,
   githubImportProgress,
+  githubIntegrationStatus,
   githubOrgAccounts,
   groupKnownGitHubInstallations,
   importInstallationConnections,
@@ -319,6 +320,40 @@ describe("githubImportProgress", () => {
   it("is null for a finished or absent backfill", () => {
     expect(githubImportProgress({ status: "done", repos: 4, repo_index: 4 })).toBeNull();
     expect(githubImportProgress(null)).toBeNull();
+  });
+});
+
+describe("githubIntegrationStatus", () => {
+  it("is null when nothing is connected — no box on a plain Doco", () => {
+    expect(githubIntegrationStatus(null)).toBeNull();
+    expect(githubIntegrationStatus({})).toBeNull();
+    expect(githubIntegrationStatus({ connections: [], installations: [] })).toBeNull();
+  });
+  it("reports connected + not importing for a repo connection with no backfill", () => {
+    expect(
+      githubIntegrationStatus({ connections: [{ repo: "acme/store", installation_id: 7 }] }),
+    ).toEqual({ importing: false });
+  });
+  it("reports connected via an org-wide installation even before any repo syncs", () => {
+    expect(
+      githubIntegrationStatus({ installations: [{ installation_id: 7, account: "acme" }] }),
+    ).toEqual({ importing: false });
+  });
+  it("reports importing while a backfill is running", () => {
+    expect(
+      githubIntegrationStatus({
+        connections: [{ repo: "acme/store", installation_id: 7 }],
+        backfill: { status: "running", repos: 3 },
+      }),
+    ).toEqual({ importing: true });
+  });
+  it("is not importing once the backfill is done", () => {
+    expect(
+      githubIntegrationStatus({
+        connections: [{ repo: "acme/store", installation_id: 7 }],
+        backfill: { status: "done", imported: 12 },
+      }),
+    ).toEqual({ importing: false });
   });
 });
 
