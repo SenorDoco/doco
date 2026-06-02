@@ -332,7 +332,13 @@ export default function UsersPage({
     const next = new URLSearchParams(searchParams);
     if (value === "all") next.delete("scope");
     else next.set("scope", value);
-    setSearchParams(next, { replace: true });
+    // Filtering in place — keep the reader's scroll position. preventScrollReset
+    // is mirrored into history state for the custom main-pane scroll restorer.
+    setSearchParams(next, {
+      replace: true,
+      preventScrollReset: true,
+      state: { preventScrollReset: true },
+    });
   }
 
   const orgRows = useMemo(() => {

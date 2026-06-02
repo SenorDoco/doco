@@ -115,11 +115,24 @@ function useMainScrollRestoration() {
     restorerRef.current = createMainScrollRestorer();
   }
 
+  // In-place navigations (a confirm-form reveal, a list filter) carry
+  // `state: { preventScrollReset: true }` so the restorer keeps the pane put
+  // instead of jumping to the top. The built-in <ScrollRestoration> reads React
+  // Router's own preventScrollReset, but this main-pane restorer can't, so we
+  // thread the intent through history state.
+  const preventReset =
+    (location.state as { preventScrollReset?: boolean } | null)?.preventScrollReset === true;
+
   useLayoutEffect(() => {
     const element = mainRef.current;
     if (!element) return;
-    restorerRef.current?.applyNavigation({ element, key: location.key, navigationType });
-  }, [location.key, navigationType]);
+    restorerRef.current?.applyNavigation({
+      element,
+      key: location.key,
+      navigationType,
+      preventReset,
+    });
+  }, [location.key, navigationType, preventReset]);
 
   useLayoutEffect(() => {
     const save = () => {
