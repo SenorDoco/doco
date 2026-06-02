@@ -10,53 +10,5 @@
       "mcp__7087442d-26eb-4e3d-8452-02da344449d7__list_deployments",
       "mcp__7087442d-26eb-4e3d-8452-02da344449d7__get_deployment"
     ]
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/bootstrap-fetch.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/user-prompt-fetch.sh",
-            "timeout": 8
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/post-tool-use-check.sh",
-            "timeout": 6
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/stop-check.sh",
-            "timeout": 6
-          }
-        ]
-      }
-    ]
   }
 }

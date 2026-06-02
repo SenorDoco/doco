@@ -1,16 +1,6 @@
-# Local index cache — per-clone, regenerable, never source-of-truth (D-023).
-# Includes seq.json + cache.db. The audit log moved to Postgres
-# (rule_01KRKQDHWNWJAF4YKTMCB2A0D9). Files-not-directory pattern so
-# the v15 connections pointer file (.doco/connections.md) can be
-# re-included.
-.doco/*
-# v15 (decision_01KS3DX190V93NGR3QQ37J8TVQ): the connections pointer
-# file IS committed. Replaces the legacy DOCO.md.
-!.doco/connections.md
-# Committable read-only project tokens (handle → doco_pt_…). Only
-# present when the Doco owner has minted one and confirmed that
-# anyone with read access to this repo may also read the Doco.
-!.doco/project-tokens.json
+# Local Doco index cache — per-clone, regenerable, never source-of-truth (D-023).
+# Nothing in .doco/ is committed.
+.doco/
 
 # Node / TypeScript
 node_modules/
