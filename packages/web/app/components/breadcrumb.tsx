@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { cn } from "~/lib/cn";
 
 export interface BreadcrumbItem {
@@ -14,21 +14,27 @@ export function Breadcrumb({
   items: BreadcrumbItem[];
   className?: string;
 }) {
+  // The current page's path, used to keep the trailing (current) crumb
+  // clickable on every page — even leaf labels like "Access tokens" that
+  // carry no explicit `to`. It self-links to the page you are already on.
+  const { pathname } = useLocation();
   if (items.length === 0) return null;
   return (
     <nav aria-label="Breadcrumb" className={cn("text-xs text-muted-foreground", className)}>
       <ol className="flex flex-wrap items-center gap-1.5">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
+          // Every crumb with a destination is a link; the current crumb always
+          // gets one — its own `to`, or the current path as a self-link — so
+          // the trailing item is clickable everywhere. Earlier crumbs without a
+          // `to` have no natural target and stay plain text.
+          const href = item.to ?? (isLast ? pathname : undefined);
           return (
             <Fragment key={`${item.label}-${index}`}>
               <li>
-                {item.to ? (
-                  // The current item stays clickable too — it links to its own
-                  // page and keeps aria-current so assistive tech still reads it
-                  // as the current location.
+                {href ? (
                   <Link
-                    to={item.to}
+                    to={href}
                     aria-current={isLast ? "page" : undefined}
                     className="hover:text-foreground hover:underline transition-colors"
                   >
