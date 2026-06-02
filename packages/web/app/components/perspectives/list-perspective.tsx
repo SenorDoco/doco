@@ -170,7 +170,7 @@ export function ListPerspective({
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as ListSortKey)}
-            className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+            className="rounded-md px-2 py-1 text-xs"
           >
             {SORT_OPTIONS.map((key) => (
               <option key={key} value={key}>
