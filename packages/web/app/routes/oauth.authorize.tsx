@@ -25,7 +25,6 @@ import {
   approvalTargetNotOwnedMessage,
   resolveApprovalGrantView,
 } from "~/lib/approval-grants";
-import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import {
   loadApprovalGrantOptions,
   readOAuthApprovalGrants,
@@ -55,9 +54,6 @@ interface LoaderData {
   // When set, the client requested a Doco the user doesn't own — render
   // only the terminal not-owned message instead of the picker.
   blockedTargetHandle: string | null;
-  // True when the signed-in user can reach at least one Doco (owned OR as a
-  // member) — gates whether the approve form renders at all.
-  hasAccess: boolean;
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
 
@@ -86,9 +82,6 @@ export async function loader({ request }: { request: Request }) {
   // they don't own blocks with a terminal message.
   const { docos, orgs } = await loadApprovalGrantOptions(principal.id);
   const view = resolveApprovalGrantView(docos, orgs, params.target_doco_handle);
-  // Full access defers to the matrix, so the form must render for members who
-  // own nothing — gate on reach (any Doco they can read), not on ownership.
-  const hasAccess = (await listAccessibleDocoIdsForPrincipal(principal.id)).length > 0;
 
   const data: LoaderData = view.blocked
     ? {
@@ -97,7 +90,6 @@ export async function loader({ request }: { request: Request }) {
         docos: [],
         orgs: [],
         blockedTargetHandle: view.targetDocoHandle,
-        hasAccess,
         me: principal,
       }
     : {
@@ -106,7 +98,6 @@ export async function loader({ request }: { request: Request }) {
         docos: view.docos,
         orgs: view.orgs,
         blockedTargetHandle: null,
-        hasAccess,
         me: principal,
       };
   return data;
@@ -191,11 +182,6 @@ export default function AuthorizePage() {
             {data.blockedTargetHandle ? (
               <p className="text-sm text-destructive">
                 {approvalTargetNotOwnedMessage(data.blockedTargetHandle)}
-              </p>
-            ) : !data.hasAccess ? (
-              <p className="text-sm text-destructive">
-                You don't have access to any Docos or organizations yet. Create or join one, then
-                return to this page.
               </p>
             ) : (
               <OAuthAccessApprovalForm
