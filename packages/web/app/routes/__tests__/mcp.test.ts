@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   edgesAction: vi.fn(),
   changesetsAction: vi.fn(),
   requestDocoAccess: vi.fn(),
+  loadAgentIdentity: vi.fn(),
   fetchMock: vi.fn(),
 }));
 
@@ -16,6 +17,7 @@ vi.mock("~/lib/session.server", () => ({
 vi.mock("~/lib/access-requests.server", () => ({
   requestDocoAccess: mocks.requestDocoAccess,
 }));
+vi.mock("~/lib/agent-identity.server", () => ({ loadAgentIdentity: mocks.loadAgentIdentity }));
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
 vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
 vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction }));
@@ -67,12 +69,13 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.instructions).toContain("doco_capture");
   });
 
-  it("tools/list advertises read + write tools (search, get, capture, relate, changeset)", async () => {
+  it("tools/list advertises whoami + read + write tools", async () => {
     const res = await action({
       request: rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" }, BEARER),
     });
     const body: Json = await res.json();
     expect(body.result.tools.map((t: Json) => t.name)).toEqual([
+      "doco_whoami",
       "doco_search",
       "doco_get",
       "doco_capture",
@@ -80,6 +83,41 @@ describe("POST /mcp (hosted remote MCP)", () => {
       "doco_changeset",
       "doco_request_access",
     ]);
+  });
+
+  it("doco_whoami returns identity + reachable workspaces/docos from loadAgentIdentity", async () => {
+    mocks.loadAgentIdentity.mockResolvedValue({
+      user_id: "user_alice",
+      username: "alice",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @alice]",
+      grants: [
+        { scope: "workspace", id: "workspace_acme", label: "acme", role: "owner" },
+        { scope: "doco", id: "doco_1", label: "acme/proj1", role: "writer" },
+      ],
+    });
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 30,
+          method: "tools/call",
+          params: { name: "doco_whoami", arguments: {} },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    const text: string = body.result.content[0].text;
+    expect(mocks.loadAgentIdentity).toHaveBeenCalledTimes(1);
+    expect(body.result.structuredContent.grants).toHaveLength(2);
+    expect(text).toContain("[🔮 Doco @alice]");
+    // The two access levels are surfaced distinctly.
+    expect(text).toContain("Workspaces you can reach");
+    expect(text).toContain("acme (workspace): owner");
+    expect(text).toContain("Docos you can reach");
+    expect(text).toContain("acme/proj1: writer");
   });
 
   it("ping returns an empty result", async () => {

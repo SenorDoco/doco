@@ -17,6 +17,8 @@ vi.mock("~/lib/api-keys.server", () => ({
 
 vi.mock("~/lib/doco-access.server", () => ({
   getOauthTokenForRequest: mocks.getOauthTokenForRequest,
+  tokenDefersScope: (t: { granted_doco_ids?: readonly string[] | null }) =>
+    (t.granted_doco_ids ?? []).includes("*"),
 }));
 
 vi.mock("~/lib/session.server", () => ({
@@ -105,5 +107,51 @@ describe("loadAgentIdentity", () => {
       on_behalf_of_username: "torrenegra",
       indicator_prefix: "[🔮 Doco Repo Codex on behalf of @torrenegra]",
     });
+  });
+
+  it('expands a defer-to-matrix ("*") token to the full reachable set', async () => {
+    mocks.getCurrentPrincipalAsync.mockResolvedValue({
+      id: "user_alice",
+      username: "alice",
+      type: "person",
+      isHuman: true,
+    });
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "workspace", id: "workspace_acme", label: "acme", myRole: "owner" },
+      { level: "doco", id: "doco_1", label: "acme/proj1", myRole: "writer" },
+    ]);
+    // The connector identity token reaches everything the principal can, live —
+    // its granted_doco_ids is ["*"], not an explicit id list. Discovery must
+    // show the full reachable set, not an empty list.
+    mocks.getOauthTokenForRequest.mockResolvedValue(accessToken({ granted_doco_ids: ["*"] }));
+
+    const identity = await loadAgentIdentity(new Request("https://doco.test/api/v1/whoami.json"));
+
+    expect(identity?.grants).toEqual([
+      { scope: "workspace", id: "workspace_acme", label: "acme", role: "owner" },
+      { scope: "doco", id: "doco_1", label: "acme/proj1", role: "writer" },
+    ]);
+  });
+
+  it("filters grants to the token's explicitly granted ids and caps the role", async () => {
+    mocks.getCurrentPrincipalAsync.mockResolvedValue({
+      id: "user_alice",
+      username: "alice",
+      type: "person",
+      isHuman: true,
+    });
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "doco", id: "doco_1", label: "acme/proj1", myRole: "owner" },
+      { level: "doco", id: "doco_2", label: "acme/proj2", myRole: "owner" },
+    ]);
+    mocks.getOauthTokenForRequest.mockResolvedValue(
+      accessToken({ granted_doco_ids: ["doco_1"], granted_doco_roles: { doco_1: "reader" } }),
+    );
+
+    const identity = await loadAgentIdentity(new Request("https://doco.test/api/v1/whoami.json"));
+
+    expect(identity?.grants).toEqual([
+      { scope: "doco", id: "doco_1", label: "acme/proj1", role: "reader" },
+    ]);
   });
 });
