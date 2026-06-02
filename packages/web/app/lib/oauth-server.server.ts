@@ -197,6 +197,57 @@ export function mergeGrantSets(base: GrantSets, incoming: GrantSets): GrantSets 
 }
 
 // ---------------------------------------------------------------------------
+// Single-workspace token invariant.
+// ---------------------------------------------------------------------------
+
+/**
+ * Security invariant (workspace-bound tokens): a token may grant access to AT
+ * MOST ONE workspace, and the legacy defer-scope "*" ("Full access — follows
+ * your permissions") token is no longer allowed at all. This is what stops a
+ * token from becoming a master key to everything a human can reach.
+ *
+ * A token's "touched workspaces" = `granted_workspace_ids` unioned with the
+ * owning workspace of every granted Doco. Personal (user-owned) Docos have no
+ * workspace and don't count toward the limit. Throws
+ * `OauthError("invalid_scope", …)` when the grant carries the "*" wildcard or
+ * would span more than one workspace.
+ *
+ * Enforced at every mint chokepoint (authorization code, direct token
+ * issuance, device approval, and personal-API-key widening) so no path —
+ * OAuth, device flow, or the /api-keys page — can mint a broader credential.
+ */
+export async function assertSingleWorkspaceGrant(grants: {
+  granted_doco_ids?: string[];
+  granted_workspace_ids?: string[];
+}): Promise<void> {
+  const docoIds = grants.granted_doco_ids ?? [];
+  const workspaceIds = grants.granted_workspace_ids ?? [];
+  if (docoIds.includes("*") || workspaceIds.includes("*")) {
+    throw new OauthError(
+      "invalid_scope",
+      "Full-access tokens are no longer allowed — scope the token to a single workspace.",
+    );
+  }
+  const touched = new Set(workspaceIds.filter((id) => id.startsWith("workspace_")));
+  const realDocoIds = [...new Set(docoIds.filter(Boolean))];
+  if (realDocoIds.length > 0 && touched.size <= 1) {
+    await withClient(async (c) => {
+      const r = await c.query<{ owner_id: string }>(
+        "SELECT owner_id FROM docos WHERE id = ANY($1::text[])",
+        [realDocoIds],
+      );
+      for (const row of r.rows) {
+        const owner = String(row.owner_id);
+        if (owner.startsWith("workspace_")) touched.add(owner);
+      }
+    });
+  }
+  if (touched.size > 1) {
+    throw new OauthError("invalid_scope", "A token can be scoped to at most one workspace.");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // PKCE (RFC 7636).
 // ---------------------------------------------------------------------------
 
@@ -331,6 +382,10 @@ export interface IssueAuthCodeInput {
 export async function issueAuthorizationCode(
   input: IssueAuthCodeInput,
 ): Promise<{ code: string; expires_at: Date }> {
+  await assertSingleWorkspaceGrant({
+    granted_doco_ids: input.granted_doco_ids,
+    granted_workspace_ids: input.granted_workspace_ids ?? [],
+  });
   const code = mintOpaque(CODE_PREFIX);
   const expires_at = new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000);
   const tokenName = normalizeTokenName(input.token_name);
@@ -527,6 +582,10 @@ export interface IssuedTokens {
 }
 
 export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens> {
+  await assertSingleWorkspaceGrant({
+    granted_doco_ids: input.granted_doco_ids,
+    granted_workspace_ids: input.granted_workspace_ids ?? [],
+  });
   const access_token = mintOpaque(ACCESS_TOKEN_PREFIX);
   const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
   const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
@@ -932,6 +991,10 @@ export async function approveDeviceAuthorization(args: {
   granted_workspace_roles?: Record<string, string>;
   granted_workspace_write_types?: Record<string, string[]>;
 }): Promise<void> {
+  await assertSingleWorkspaceGrant({
+    granted_doco_ids: args.granted_doco_ids,
+    granted_workspace_ids: args.granted_workspace_ids ?? [],
+  });
   await withTransaction(async (c) => {
     const pending = await c.query<{ client_id: string }>(
       `SELECT client_id

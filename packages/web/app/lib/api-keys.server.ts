@@ -22,7 +22,11 @@ import { type DocoRole, getWorkspaceRole, listWorkspacesForUser, withClient } fr
 import { WRITE_ALL, normalizeWriteTypes } from "@doco/shared";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
-import { issueTokens, registerClient } from "~/lib/oauth-server.server";
+import {
+  assertSingleWorkspaceGrant,
+  issueTokens,
+  registerClient,
+} from "~/lib/oauth-server.server";
 import type { CurrentPrincipal } from "~/lib/session.server";
 import { ALL_ROLES, rankOf } from "~/lib/user-invite";
 
@@ -535,6 +539,14 @@ export async function addGrantsToApiKey(input: {
       incoming.granted_workspace_roles,
       incoming.granted_workspace_write_types,
     );
+
+    // The merged result — not just the incoming delta — must still fit inside a
+    // single workspace. Widening a token toward a second workspace is rejected
+    // here before any row is written.
+    await assertSingleWorkspaceGrant({
+      granted_doco_ids: mergedDoco.ids,
+      granted_workspace_ids: mergedWorkspace.ids,
+    });
 
     const values = [
       input.client_id,

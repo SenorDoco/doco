@@ -19,7 +19,9 @@ vi.mock("@doco/shared", () => ({
 import {
   type GrantSets,
   approveDeviceAuthorization,
+  assertSingleWorkspaceGrant,
   issueAuthorizationCode,
+  issueTokens,
   mergeGrantSets,
   normalizeTokenName,
   refreshTokens,
@@ -45,6 +47,11 @@ describe("OAuth token authorization", () => {
     mocks.generateUlid.mockReturnValue("01AGENT0000000000000000000");
     mocks.query.mockResolvedValue({ rows: [], rowCount: 1 });
     mocks.withTransaction.mockImplementation(async (callback) =>
+      callback({
+        query: mocks.query,
+      }),
+    );
+    mocks.withClient.mockImplementation(async (callback) =>
       callback({
         query: mocks.query,
       }),
@@ -186,6 +193,148 @@ describe("OAuth token authorization", () => {
     expect(roles).toEqual({ doco_new: "writer" });
     const writeTypes = JSON.parse((update?.[1] as unknown[])[5] as string);
     expect(writeTypes).toEqual({ doco_new: ["intent"] });
+  });
+});
+
+describe("single-workspace token invariant (assertSingleWorkspaceGrant)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.generateUlid.mockReturnValue("01AGENT0000000000000000000");
+    mocks.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mocks.withTransaction.mockImplementation(async (callback) => callback({ query: mocks.query }));
+    mocks.withClient.mockImplementation(async (callback) => callback({ query: mocks.query }));
+  });
+
+  // Map a doco-id → owning workspace via the mocked `SELECT owner_id FROM docos`.
+  function withDocoOwners(owners: Record<string, string>) {
+    mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (String(sql).includes("FROM docos")) {
+        const ids = (params?.[0] as string[]) ?? [];
+        return {
+          rows: ids
+            .filter((id) => owners[id])
+            .map((id) => ({ owner_id: owners[id] })),
+          rowCount: ids.length,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  }
+
+  it("allows a token scoped to exactly one workspace", async () => {
+    await expect(
+      assertSingleWorkspaceGrant({
+        granted_doco_ids: [],
+        granted_workspace_ids: ["workspace_a"],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows a token scoped to docos that all live in one workspace", async () => {
+    withDocoOwners({ doco_1: "workspace_a", doco_2: "workspace_a" });
+    await expect(
+      assertSingleWorkspaceGrant({
+        granted_doco_ids: ["doco_1", "doco_2"],
+        granted_workspace_ids: [],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows docos within the single granted workspace", async () => {
+    withDocoOwners({ doco_1: "workspace_a" });
+    await expect(
+      assertSingleWorkspaceGrant({
+        granted_doco_ids: ["doco_1"],
+        granted_workspace_ids: ["workspace_a"],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows personal (non-workspace) docos with no workspace grant", async () => {
+    withDocoOwners({ doco_1: "user_alice" });
+    await expect(
+      assertSingleWorkspaceGrant({
+        granted_doco_ids: ["doco_1"],
+        granted_workspace_ids: [],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects the defer-scope '*' (full-access) token", async () => {
+    await expect(
+      assertSingleWorkspaceGrant({ granted_doco_ids: ["*"], granted_workspace_ids: [] }),
+    ).rejects.toThrow(/full-access|single workspace/i);
+  });
+
+  it("rejects a token spanning two workspaces", async () => {
+    await expect(
+      assertSingleWorkspaceGrant({
+        granted_doco_ids: [],
+        granted_workspace_ids: ["workspace_a", "workspace_b"],
+      }),
+    ).rejects.toThrow(/at most one workspace/i);
+  });
+
+  it("rejects docos that live in different workspaces", async () => {
+    withDocoOwners({ doco_1: "workspace_a", doco_2: "workspace_b" });
+    await expect(
+      assertSingleWorkspaceGrant({
+        granted_doco_ids: ["doco_1", "doco_2"],
+        granted_workspace_ids: [],
+      }),
+    ).rejects.toThrow(/at most one workspace/i);
+  });
+
+  it("rejects a doco whose workspace differs from the granted workspace", async () => {
+    withDocoOwners({ doco_1: "workspace_b" });
+    await expect(
+      assertSingleWorkspaceGrant({
+        granted_doco_ids: ["doco_1"],
+        granted_workspace_ids: ["workspace_a"],
+      }),
+    ).rejects.toThrow(/at most one workspace/i);
+  });
+
+  it("issueAuthorizationCode rejects a cross-workspace grant", async () => {
+    withDocoOwners({ doco_1: "workspace_b" });
+    await expect(
+      issueAuthorizationCode({
+        client_id: "doco_client_x",
+        approver_user_id: "user_owner",
+        token_name: "broad",
+        redirect_uri: "http://127.0.0.1:4321/callback",
+        code_challenge: "challenge",
+        granted_doco_ids: ["doco_1"],
+        granted_workspace_ids: ["workspace_a"],
+        scope: "doco",
+      }),
+    ).rejects.toThrow(/at most one workspace/i);
+    expect(callsTo("INSERT INTO oauth_authorization_codes")).toHaveLength(0);
+  });
+
+  it("issueTokens rejects a defer-scope '*' grant", async () => {
+    await expect(
+      issueTokens({
+        client_id: "doco_client_x",
+        user_id: "user_owner",
+        granted_doco_ids: ["*"],
+        scope: null,
+      }),
+    ).rejects.toThrow(/full-access|single workspace/i);
+    expect(callsTo("INSERT INTO oauth_access_tokens")).toHaveLength(0);
+  });
+
+  it("approveDeviceAuthorization rejects a two-workspace grant", async () => {
+    await expect(
+      approveDeviceAuthorization({
+        device_code: "doco_dc_123",
+        approver_user_id: "user_owner",
+        token_name: "broad",
+        granted_doco_ids: [],
+        granted_workspace_ids: ["workspace_a", "workspace_b"],
+      }),
+    ).rejects.toThrow(/at most one workspace/i);
+    expect(callsTo("UPDATE oauth_device_authorizations")).toHaveLength(0);
   });
 });
 
