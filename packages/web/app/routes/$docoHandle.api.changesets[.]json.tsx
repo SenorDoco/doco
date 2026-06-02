@@ -84,8 +84,8 @@ interface RetireOperation {
   target: string;
 }
 
-// Replace a node: create the replacement, then retire the old one with a
-// `superseded_by` pointer to it.
+// Replace a node: create the replacement, retire the old one, and link them
+// with a first-class `replaces` edge.
 interface SupersedeOperation {
   op: "supersede";
   target: string;
@@ -322,6 +322,8 @@ function collectChangesetWriteTypes(
       const oldType = targetType(op.target);
       if (!oldType) return { error: `Cannot supersede: unrecognized target "${op.target}".` };
       types.add(oldType);
+      const spec = relationKind("replaces");
+      if (spec) types.add(spec.kind);
     }
   }
   return { types: [...types] };
@@ -455,8 +457,9 @@ async function applyLifecyclePatch(
 }
 
 // Replace a node: create the replacement (same path as a create op, so aliases
-// and authoring policies apply), then retire the old node with a superseded_by
-// pointer to the replacement.
+// and authoring policies apply), retire the old node, and link them with a
+// first-class `replaces` edge. (superseded_by can't live in node JSON — graph
+// links are edge rows only — so the relationship is the edge.)
 async function supersedeNode(
   op: SupersedeOperation,
   index: number,
@@ -481,9 +484,12 @@ async function supersedeNode(
   if (!created.ok || !created.id) {
     return { ...created, op: "supersede" };
   }
+  // Retire before relating: retiring keys off active references, and we don't
+  // want the just-added `replaces` edge to look like one. The edge then points
+  // at the retired (superseded) node.
   const retired = await applyLifecyclePatch(
     oldId,
-    { lifecycle: "retired", superseded_by: created.id },
+    { lifecycle: "retired" },
     "supersede",
     index,
     ctx,
@@ -491,13 +497,27 @@ async function supersedeNode(
   if (!retired.ok) {
     return { op_index: index, op: "supersede", ok: false, error: retired.error };
   }
+  const related = await relateNodes(
+    { op: "relate", relation_kind: "replaces", from: created.id, to: oldId },
+    index,
+    ctx,
+    aliases,
+  );
+  if (!related.ok) {
+    return { op_index: index, op: "supersede", ok: false, error: related.error };
+  }
   return {
     op_index: index,
     op: "supersede",
     ok: true,
     id: created.id,
     ...(op.alias ? { alias: cleanAlias(op.alias) } : {}),
-    footer_lines: [...(created.footer_lines ?? []), ...(retired.footer_lines ?? [])],
+    ...(related.relation ? { relation: related.relation } : {}),
+    footer_lines: [
+      ...(created.footer_lines ?? []),
+      ...(retired.footer_lines ?? []),
+      ...(related.footer_lines ?? []),
+    ],
   };
 }
 
