@@ -185,6 +185,10 @@ export default [
   // Per-user UI preferences (graph auto-reorder, future flags). Stored
   // on users.data.preferences; auth-gated to the signed-in user.
   route("api/v1/me/preferences.json", "routes/api.v1.me.preferences[.]json.tsx"),
+  // Agent self-identity: who is this token/session + the access levels on the
+  // credential. Powers the post-auth "Authenticated as…" summary that the
+  // stdio MCP server renders (agent-identity.server.ts).
+  route("api/v1/whoami.json", "routes/api.v1.whoami[.]json.tsx"),
   route("api/v1/feedback-reports.json", "routes/api.v1.feedback-reports[.]json.tsx"),
   // Inbound GitHub App webhook (pull_request events → Reference upserts).
   route("api/github/webhook", "routes/api.github.webhook.tsx"),
