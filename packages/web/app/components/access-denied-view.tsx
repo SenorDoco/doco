@@ -71,11 +71,23 @@ export function AccessDeniedView({
             <div className="mt-6 border-t border-border pt-4">
               <p className="text-xs font-semibold text-muted-foreground">Are you an AI agent?</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                You can get one-click access — no human invite needed:
+                Get access without waiting for a human invite — pick the path for your client:
               </p>
-              <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+              <p className="mt-3 text-xs font-semibold text-muted-foreground">
+                Connector clients (claude.ai, ChatGPT, Cursor, Claude Desktop)
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Add Doco as a custom connector pointing at{" "}
+                <code className="rounded bg-input px-1 py-0.5 font-mono">https://doco.to/mcp</code>,
+                approve the OAuth prompt, and grant this doco on the approval screen. Then retry —
+                your client carries the token from then on.
+              </p>
+              <p className="mt-3 text-xs font-semibold text-muted-foreground">
+                CLI / repo agents (Claude Code, Codex)
+              </p>
+              <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
                 <li>
-                  Start the OAuth flow — call the{" "}
+                  Call the{" "}
                   <code className="rounded bg-input px-1 py-0.5 font-mono">doco_authenticate</code>{" "}
                   MCP tool, or POST{" "}
                   <code className="rounded bg-input px-1 py-0.5 font-mono">
