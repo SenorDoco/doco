@@ -49,6 +49,7 @@ import {
 } from "~/lib/graph-depth";
 import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
+import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
 import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import "@xyflow/react/dist/style.css";
@@ -77,6 +78,9 @@ interface BpmnPerspectiveProps {
    */
   lanes: BpmnLane[];
   nodes: BpmnNode[];
+  /** TRUE total of BPMN flow nodes (steps) before the server cap — drives the
+   *  "Showing the latest N of M steps" overlay. Defaults to `nodes.length`. */
+  totalCount?: number;
   links: OverviewGraphLink[];
   /**
    * Per-node global PageRank score on the doco's edge graph.
@@ -202,6 +206,7 @@ export function BpmnPerspective({
   pools,
   lanes: lanesRaw,
   nodes: nodesRaw,
+  totalCount,
   links,
   globalPagerank,
   onNodeClick,
@@ -961,6 +966,15 @@ export function BpmnPerspective({
 
   return (
     <div ref={graphRef} className="relative h-full w-full">
+      {/* Dataset count overlay — honest about the server cap. Describes the
+          delivered steps vs the true total, independent of the lifecycle
+          filter and the render-window viewport. */}
+      <div className="pointer-events-none absolute left-3 top-3 z-20 rounded bg-card/80 px-2 py-1 text-xs tabular-nums text-muted-foreground backdrop-blur-sm">
+        {perspectiveCountLabel(
+          { loaded: nodesRaw.length, total: totalCount ?? nodesRaw.length },
+          "step",
+        )}
+      </div>
       {Flow ? (
         <Flow.ReactFlow
           nodes={flowNodes}

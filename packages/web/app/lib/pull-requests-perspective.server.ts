@@ -50,9 +50,22 @@ export interface PullRequestsPerspectiveData {
   groups: PullRequestGroup[];
   /** Number of PR rows serialized into this response. */
   loadedCount: number;
-  /** True when the perspective intentionally returned a bounded slice. */
+  /**
+   * TRUE total of PR-shaped reference nodes for this Doco, across ALL
+   * lifecycles (Merged + Open + Closed). This is the count the header reports;
+   * it is independent of the client-side lifecycle filter, so hiding "Closed"
+   * never changes it.
+   */
+  totalCount: number;
+  /** True when the response is a bounded slice (`totalCount > loadedCount`). */
   hasMore: boolean;
 }
+
+/** Internal: a slice row plus the windowed total. `COUNT(*) OVER()` is a
+ *  bigint, which the pg driver returns as a string, so widen accordingly. */
+type PullRequestRefRowWithTotal = PullRequestRefRow & {
+  total_count: number | string | null;
+};
 
 // Display order + human labels for the three PR lifecycle buckets. Merged
 // (the settled, shipped outcome) leads, then Open work in motion, then Closed.
@@ -112,11 +125,16 @@ export async function loadPullRequestsPerspective(
   const limit = Math.max(1, Math.floor(opts.limit ?? DEFAULT_PULL_REQUEST_LIMIT));
   const queryLimit = limit + 1;
 
-  const { rows } = await c.query<PullRequestRefRow>(
+  // `COUNT(*) OVER()` rides on the same single scan: it reports the full
+  // filtered total (computed before LIMIT) while we still return only the
+  // latest `limit + 1` rows. Cheaper than a second COUNT, and it makes
+  // `totalCount`/`hasMore` a single source of truth.
+  const { rows } = await c.query<PullRequestRefRowWithTotal>(
     `SELECT id,
             prose AS reference,
             locator,
-            lifecycle
+            lifecycle,
+            COUNT(*) OVER() AS total_count
        FROM nodes
       WHERE doco_id = $1
         AND node_type = 'reference'
@@ -125,13 +143,15 @@ export async function loadPullRequestsPerspective(
       LIMIT $2`,
     [docoId, queryLimit],
   );
-  const hasMore = rows.length > limit;
-  const visibleRows = hasMore ? rows.slice(0, limit) : rows;
+  const totalCount = Number(rows[0]?.total_count ?? 0);
+  const visibleRows = rows.length > limit ? rows.slice(0, limit) : rows;
+  const loadedCount = visibleRows.length;
 
   return {
     connected,
     groups: groupPullRequestReferences(visibleRows),
-    loadedCount: visibleRows.length,
-    hasMore,
+    loadedCount,
+    totalCount,
+    hasMore: totalCount > loadedCount,
   };
 }

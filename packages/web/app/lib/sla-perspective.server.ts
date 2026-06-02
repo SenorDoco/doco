@@ -12,6 +12,8 @@ interface RuleRow {
   created_at: string | null;
   created_by: string | null;
   data: Record<string, unknown> | null;
+  /** Windowed `COUNT(*) OVER()` total commitments (bigint → string from pg). */
+  total_count?: number | string | null;
 }
 
 interface EvalRow {
@@ -97,6 +99,12 @@ export interface SlaCommitment {
 
 export interface SlaPerspectiveData {
   commitments: SlaCommitment[];
+  /**
+   * TRUE total of SLA commitments (rule nodes, retired excluded) for this Doco,
+   * counted before the page limit. `commitments.length` is the loaded slice;
+   * the header reports loaded vs this total.
+   */
+  totalCount: number;
   stats: {
     commitments: number;
     evidenceLinked: number;
@@ -231,7 +239,8 @@ export async function loadSlaPerspectiveData(
   const [rules, evals, references, actions, decisions, principals] = await Promise.all([
     c.query<RuleRow>(
       `SELECT id, prose AS rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
-              created_at::text AS created_at, created_by, data
+              created_at::text AS created_at, created_by, data,
+              COUNT(*) OVER() AS total_count
          FROM nodes
         WHERE node_type = 'rule'
           AND doco_id = $1
@@ -450,5 +459,7 @@ export async function loadSlaPerspectiveData(
     externalRefs: references.rows.filter((row) => row.locator || row.ref_type === "url").length,
   };
 
-  return { commitments, stats };
+  const totalCount = Number(rules.rows[0]?.total_count ?? 0);
+
+  return { commitments, totalCount, stats };
 }

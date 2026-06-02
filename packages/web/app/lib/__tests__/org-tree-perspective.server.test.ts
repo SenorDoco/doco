@@ -67,6 +67,34 @@ describe("loadOrgTreeData", () => {
     const data = await loadOrgTreeData(client, "doco_acme", "acme", { limit: 3 });
 
     expect(data.nodes).toEqual([]);
+    expect(data.totalCount).toBe(0);
     expect(querySpy).toHaveBeenCalledOnce();
+  });
+
+  it("reports the true principal total via COUNT(*) OVER()", async () => {
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      async query<T>(sql: string): Promise<{ rows: T[] }> {
+        if (/FROM edges/i.test(sql)) return { rows: [] as T[] };
+        expect(sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+        return {
+          rows: [
+            {
+              id: "principal_alex",
+              name: "Alex",
+              lifecycle: "asserted",
+              body_md: "Person. CEO.",
+              data: {},
+              // pg returns the windowed bigint as a string.
+              total_count: "830",
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme", { limit: 1 });
+
+    expect(data.totalCount).toBe(830);
+    expect(data.nodes).toHaveLength(1);
   });
 });

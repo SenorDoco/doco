@@ -1173,6 +1173,7 @@ export default function DocoHome({
                 {effectivePerspectiveKind === "approval" && approvalData ? (
                   <ApprovalPerspective
                     nodes={approvalData.nodes}
+                    totalCount={approvalData.totalCount}
                     focusId={perspectiveFocusId}
                     canChangeLifecycle={canAdminPerspectives}
                     onOpenNode={(node) => {
@@ -1186,6 +1187,8 @@ export default function DocoHome({
                     pageRanks={pageRanksMap}
                     visibleLifecycles={visibleLifecycles}
                     focusId={perspectiveFocusId}
+                    loadedCount={graphState.nodes.length}
+                    totalCount={graphState.totalNodeCount ?? graphState.nodes.length}
                   />
                 ) : effectivePerspectiveKind === "glossary" && glossaryData ? (
                   <GlossaryPerspective
@@ -1213,6 +1216,7 @@ export default function DocoHome({
                 ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
                   <OrgTreePerspective
                     nodes={orgTreeData.nodes}
+                    totalCount={orgTreeData.totalCount}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
                     initialFocusId={perspectiveFocusId}
@@ -1232,6 +1236,7 @@ export default function DocoHome({
                     pools={bpmnGraph.pools}
                     lanes={bpmnGraph.lanes}
                     nodes={bpmnGraph.nodes}
+                    totalCount={bpmnGraph.totalCount}
                     links={bpmnGraph.links}
                     globalPagerank={bpmnGraph.global_pagerank}
                     visibleLifecycles={visibleLifecycles}

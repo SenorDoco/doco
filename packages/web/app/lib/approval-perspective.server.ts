@@ -35,6 +35,12 @@ export interface ApprovalPerspectiveNode {
 
 export interface ApprovalPerspectiveData {
   nodes: ApprovalPerspectiveNode[];
+  /**
+   * TRUE total of proposed (drafting) nodes for this Doco — counted before the
+   * page limit, so the header can say "Showing the latest N of M" when the
+   * queue is capped. `nodes.length` is the loaded slice.
+   */
+  totalCount: number;
 }
 
 interface ApprovalRow {
@@ -46,6 +52,8 @@ interface ApprovalRow {
   proposed_at: Date | string | null;
   author_id: string | null;
   author_name: string | null;
+  /** Windowed `COUNT(*) OVER()` total drafting nodes (bigint → string from pg). */
+  total_count?: number | string | null;
 }
 
 interface ApprovalLoadOptions {
@@ -143,7 +151,8 @@ export async function loadApprovalPerspectiveData(
               n.created_at,
               n.proposed_at,
               n.author_id,
-              COALESCE(author.github_login, author.email, author.id) AS author_name
+              COALESCE(author.github_login, author.email, author.id) AS author_name,
+              COUNT(*) OVER() AS total_count
         FROM resolved_actors n
          LEFT JOIN users author ON author.id = n.author_id
         ORDER BY COALESCE(n.proposed_at, n.created_at) DESC NULLS LAST, n.id ASC
@@ -153,6 +162,7 @@ export async function loadApprovalPerspectiveData(
   ).rows;
 
   return {
+    totalCount: Number(rows[0]?.total_count ?? 0),
     nodes: rows.map((row) => {
       const href = `/${handle}/${row.entity_type}/${row.id}`;
       const updateSegment = UPDATE_SEGMENTS[row.entity_type];

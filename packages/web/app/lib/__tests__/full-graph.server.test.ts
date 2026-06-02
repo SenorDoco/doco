@@ -210,4 +210,63 @@ describe("loadOverviewGraph", () => {
       },
     ]);
   });
+
+  it("reports the true total node count and hasMore for a bounded slice", async () => {
+    // The windowed COUNT(*) reflects the full domain (here 750) even though the
+    // slice returns one row; pg hands the bigint back as a string.
+    const { client, captured } = makeQueryClient({
+      entities: [
+        {
+          id: "decision_focus",
+          entity_type: "decision",
+          name: null,
+          label: "Focused decision",
+          lifecycle: "asserted",
+          created_at: "2026-05-01T00:00:00.000Z",
+          total_node_count: "750",
+        },
+      ],
+      edges: [],
+    });
+
+    const graph = await loadOverviewGraph(client, "doco_large", { handle: "large", limit: 1 });
+
+    const entityQuery = captured.find((c) => /FROM nodes t/i.test(c.sql));
+    expect(entityQuery?.sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+    expect(graph.nodes).toHaveLength(1);
+    expect(graph.totalNodeCount).toBe(750);
+    expect(graph.hasMore).toBe(true);
+  });
+
+  it("reports hasMore=false when every node fits", async () => {
+    const { client } = makeQueryClient({
+      entities: [
+        {
+          id: "decision_01",
+          entity_type: "decision",
+          name: null,
+          label: "A",
+          lifecycle: "asserted",
+          created_at: "2026-04-01T00:00:00Z",
+          total_node_count: "2",
+        },
+        {
+          id: "intent_01",
+          entity_type: "intent",
+          name: null,
+          label: "B",
+          lifecycle: "asserted",
+          created_at: "2026-04-01T00:00:00Z",
+          total_node_count: "2",
+        },
+      ],
+      edges: [],
+    });
+
+    const graph = await loadOverviewGraph(client, "doco_acme", { handle: "acme" });
+
+    expect(graph.totalNodeCount).toBe(2);
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.hasMore).toBe(false);
+  });
 });

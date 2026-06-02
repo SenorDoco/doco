@@ -45,6 +45,12 @@ export interface OrgTreeNode {
 
 export interface OrgTreeData {
   nodes: OrgTreeNode[];
+  /**
+   * TRUE total of Principal nodes for this Doco (all lifecycles, matching the
+   * query), counted before the page limit. `nodes.length` is the loaded slice;
+   * the header reports loaded vs this total.
+   */
+  totalCount: number;
 }
 
 interface OrgTreeRow {
@@ -53,6 +59,8 @@ interface OrgTreeRow {
   lifecycle: string | null;
   body_md: string | null;
   data: Record<string, unknown>;
+  /** Windowed `COUNT(*) OVER()` total principals (bigint → string from pg). */
+  total_count?: number | string | null;
 }
 
 interface OrgTreeEdgeRow {
@@ -139,7 +147,8 @@ export async function loadOrgTreeData(
       // Migration 037 dropped `summary` from principals; the
       // description shown under the label is now the first non-blank
       // line of `body_md`.
-      `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle, body_md, data
+      `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle, body_md, data,
+              COUNT(*) OVER() AS total_count
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
@@ -197,5 +206,7 @@ export async function loadOrgTreeData(
     };
   });
 
-  return { nodes };
+  const totalCount = Number(rows[0]?.total_count ?? 0);
+
+  return { nodes, totalCount };
 }

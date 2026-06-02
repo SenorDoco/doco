@@ -121,6 +121,13 @@ export interface BpmnGraphData {
    *  reuse the same graph to compute personalized PageRank from a
    *  focal node without re-running queries. */
   global_pagerank?: Record<string, number>;
+  /**
+   * TRUE total of BPMN flow nodes ("steps") for this Doco, counted before the
+   * server node cap. `nodes.length` is the delivered slice; the header reports
+   * delivered vs this total. Optional so fixtures/mocks stay valid — the loader
+   * always sets it.
+   */
+  totalCount?: number;
 }
 
 const BPMN_TABLES: { table: string; entityType: string }[] = [
@@ -590,7 +597,10 @@ function limitBpmnGraph(
   nodeLimit: number | undefined,
   focusId: string | undefined,
 ): BpmnGraphData {
-  if (!nodeLimit || graph.nodes.length <= nodeLimit) return graph;
+  // The full built graph holds every flow node ("step"); capture that as the
+  // true total before any cap so the header can say "Showing the latest N of M".
+  const totalCount = graph.nodes.length;
+  if (!nodeLimit || graph.nodes.length <= nodeLimit) return { ...graph, totalCount };
 
   const limit = Math.max(1, Math.floor(nodeLimit));
   const selected = selectBpmnNodeIds(graph.nodes, graph.links, limit, focusId);
@@ -606,7 +616,7 @@ function limitBpmnGraph(
       ([id]) => nodeIds.has(id) || poolIds.has(`pool:${id}`),
     ),
   );
-  return { pools, lanes, nodes, links, global_pagerank: globalPagerank };
+  return { pools, lanes, nodes, links, global_pagerank: globalPagerank, totalCount };
 }
 
 function selectBpmnNodeIds(

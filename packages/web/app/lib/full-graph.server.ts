@@ -28,6 +28,9 @@ interface OverviewGraphRow {
   label?: string | null;
   lifecycle: string | null;
   created_at: string | null;
+  /** Windowed `COUNT(*) OVER()` — the full filtered total, repeated on every
+   *  row. pg returns the bigint as a string. Absent on the node-details query. */
+  total_node_count?: number | string | null;
 }
 
 // Note tables only — policies are not
@@ -109,7 +112,7 @@ async function loadOverviewRows(
   if (windowIds.length > 0) {
     return (
       await c.query<OverviewGraphRow>(
-        `SELECT *
+        `SELECT *, COUNT(*) OVER() AS total_node_count
            FROM (${overviewRowsSql(true)}) nodes
           WHERE id = ANY($2::text[])
           ORDER BY array_position($2::text[], id) NULLS LAST, id`,
@@ -127,7 +130,7 @@ async function loadOverviewRows(
   }
   return (
     await c.query<OverviewGraphRow>(
-      `SELECT *
+      `SELECT *, COUNT(*) OVER() AS total_node_count
          FROM (${overviewRowsSql(true)}) nodes
         ORDER BY
           ${limit !== null ? "id = $3 DESC," : ""}
@@ -211,11 +214,18 @@ export async function loadOverviewGraph(
     requestedCenterId ??
     docoId;
 
+  // True total of graph-eligible nodes (the windowed count, computed before the
+  // slice limit). `hasMore` drives the List header's "Showing the latest N of M"
+  // line; the focus-window path counts only its own rows, so it's never "more".
+  const totalNodeCount = Number(rows[0]?.total_node_count ?? 0);
+
   return {
     centerId,
     nodes,
     links: linksWithHrefs,
     detailUrl: options.handle ? `/${options.handle}/graph-node-details.json` : null,
+    totalNodeCount,
+    hasMore: totalNodeCount > nodes.length,
   };
 }
 

@@ -25,6 +25,7 @@ import {
   publishGraphReferences,
 } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
+import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { timeAgo } from "~/lib/time-ago";
 import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
@@ -89,6 +90,16 @@ interface ListPerspectiveProps {
   visibleLifecycles?: Set<string>;
   /** Node to scroll into view and pulse — the perspective's one-shot focus. */
   focusId?: string | null;
+  /**
+   * Dataset counts for the header. `loadedCount` is how many nodes were
+   * serialized into the page (pre-lifecycle-filter); `totalCount` is the true
+   * total of graph-eligible nodes. Both default to `nodes.length` (no
+   * truncation). The header describes the dataset, not the filtered view, so
+   * the lifecycle filter never changes it — its effect shows in which rows
+   * render below.
+   */
+  loadedCount?: number;
+  totalCount?: number;
 }
 
 export function ListPerspective({
@@ -96,6 +107,8 @@ export function ListPerspective({
   pageRanks,
   visibleLifecycles,
   focusId,
+  loadedCount,
+  totalCount,
 }: ListPerspectiveProps) {
   usePerspectiveFocusScroll(focusId);
   const graphReferenceIdRef = useRef(`list-${Math.random().toString(36).slice(2)}`);
@@ -143,8 +156,14 @@ export function ListPerspective({
     // positions over the perspective's top-right.
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 pb-3 pt-12">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {filtered.length} node{filtered.length === 1 ? "" : "s"}
+        {/* Headline describes the dataset (loaded vs true total), not the
+            lifecycle-filtered view — the filter's effect shows in which rows
+            render below. */}
+        <p className="text-xs tabular-nums text-muted-foreground">
+          {perspectiveCountLabel(
+            { loaded: loadedCount ?? nodes.length, total: totalCount ?? nodes.length },
+            "node",
+          )}
         </p>
         <label className="inline-flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Sort by</span>

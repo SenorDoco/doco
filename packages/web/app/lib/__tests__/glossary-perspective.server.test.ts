@@ -156,6 +156,36 @@ describe("loadGlossaryPerspectiveData", () => {
     });
 
     expect(data.stats.entries).toBe(0);
+    expect(data.totalCount).toBe(0);
     expect(querySpy).toHaveBeenCalledOnce();
+  });
+
+  it("reports the true total via COUNT(*) OVER() so the header can show truncation", async () => {
+    const querySpy = vi.fn();
+    const client = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        querySpy(sql, params);
+        expect(sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+        return {
+          rows: [
+            row({
+              id: "decision_01",
+              entity_type: "decision",
+              label: "Doco",
+              prose: "Doco — institutional memory.",
+              // pg returns the windowed bigint as a string.
+              total_count: "1800",
+            }),
+          ] as T[],
+        };
+      },
+    };
+
+    const data = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary", {
+      limit: 1,
+    });
+
+    expect(data.totalCount).toBe(1800);
+    expect(data.stats.entries).toBe(1);
   });
 });

@@ -11,6 +11,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router";
 import type { GlossaryEntry, GlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
 import { handleNodeDialogLinkClick } from "~/lib/node-dialog-link";
+import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
 interface GlossaryPerspectiveProps {
@@ -97,9 +98,12 @@ export function GlossaryPerspective({
         }}
       >
         <div className="mx-auto max-w-5xl">
+          {/* The masthead states the true lexicon size (all entries), not the
+              loaded slice; the footer below clarifies when only the latest are
+              rendered. */}
           <Masthead
             title={title}
-            count={data.stats.entries}
+            count={data.totalCount}
             firstWord={firstWord}
             lastWord={lastWord}
           />
@@ -128,8 +132,13 @@ export function GlossaryPerspective({
             className="mt-10 border-t pt-3 text-center text-[11px] italic"
             style={{ borderColor: RULE, color: INK_SOFT }}
           >
-            fin · {data.stats.entries} entries · {data.stats.defined} defined ·{" "}
-            {data.stats.withAliases} with aliases
+            {data.totalCount > data.stats.entries
+              ? perspectiveCountLabel(
+                  { loaded: data.stats.entries, total: data.totalCount },
+                  "term",
+                )
+              : `fin · ${data.stats.entries} entries`}{" "}
+            · {data.stats.defined} defined · {data.stats.withAliases} with aliases
             {data.stats.drafting > 0 ? ` · ${data.stats.drafting} in draft` : ""}
           </p>
         </div>

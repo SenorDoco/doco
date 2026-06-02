@@ -35,6 +35,8 @@ interface NodeRow {
   locator: string | null;
   citation: string | null;
   title: string | null;
+  /** Windowed `COUNT(*) OVER()` total glossary entries (bigint → string from pg). */
+  total_count?: number | string | null;
 }
 
 interface GlossaryLoadOptions {
@@ -81,6 +83,13 @@ export interface GlossaryPerspectiveData {
   groups: GlossaryGroup[];
   /** Every distinct letter that has at least one entry (for the index). */
   letters: string[];
+  /**
+   * TRUE total of glossary-eligible nodes for this Doco (same domain as the
+   * query: the five glossary types, retired excluded), counted before the
+   * page limit. The header reports loaded (`stats.entries`) vs this total; the
+   * sub-stats below describe the loaded slice.
+   */
+  totalCount: number;
   stats: {
     entries: number;
     defined: number;
@@ -300,7 +309,8 @@ export async function loadGlossaryPerspectiveData(
            prose AS prose,
            COALESCE(lifecycle, 'asserted') AS lifecycle,
            data,
-           ref_type, locator, citation, title
+           ref_type, locator, citation, title,
+           COUNT(*) OVER() AS total_count
       FROM nodes
      WHERE doco_id = $1
        AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
@@ -341,6 +351,7 @@ export async function loadGlossaryPerspectiveData(
     withAliases: entries.filter((e) => e.alternatives.length > 0).length,
     drafting: entries.filter((e) => e.lifecycle === "drafting").length,
   };
+  const totalCount = Number(rows[0]?.total_count ?? 0);
 
-  return { groups, letters, stats };
+  return { groups, letters, totalCount, stats };
 }

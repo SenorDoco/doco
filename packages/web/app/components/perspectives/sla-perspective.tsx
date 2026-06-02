@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, ExternalLink, FileText, ShieldCheck } from
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
+import { perspectiveCountLabel } from "~/lib/perspective-count";
 import type { SlaCommitment, SlaLink, SlaPerspectiveData } from "~/lib/sla-perspective.server";
 
 interface SlaPerspectiveProps {
@@ -20,6 +21,14 @@ export function SlaPerspective({ data, visibleLifecycles }: SlaPerspectiveProps)
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden px-3 pb-20 pt-12">
+      {/* Dataset headline — honest about truncation. The metric grid below
+          reports stats over the loaded slice. */}
+      <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        {perspectiveCountLabel(
+          { loaded: data.stats.commitments, total: data.totalCount },
+          "commitment",
+        )}
+      </p>
       <div className="grid shrink-0 grid-cols-2 gap-2 lg:grid-cols-6">
         <Metric label="Commitments" value={data.stats.commitments} />
         <Metric label="Evidence" value={`${data.stats.evidenceLinked}/${data.stats.commitments}`} />
