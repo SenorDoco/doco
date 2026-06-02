@@ -5,9 +5,15 @@
 // contracts then interpret those relations for rendering.
 
 import { getEntity, withClient } from "@doco/db";
+import { NODE_CATALOG } from "@doco/shared";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
-import type { AuthoringWriteContext, CaptureError } from "~/lib/capture.server";
+import {
+  type AuthoringWriteContext,
+  type CaptureError,
+  type EntityPatch,
+  updateEntity,
+} from "~/lib/capture.server";
 import { loadDocoRouteForRead, requireDocoTypeWritesForRequest } from "~/lib/doco-access.server";
 import { captureEdge, edgeExists } from "~/lib/edge-capture.server";
 import {
@@ -18,7 +24,14 @@ import {
 } from "~/lib/graph-authoring-contract.server";
 import { CAPTURE_REGISTRY_BY_ENTITY_TYPE, type MeLike } from "~/lib/node-capture-registry.server";
 
-type Operation = CreateOperation | RelateOperation | RelateManyOperation | AppendOperation;
+type Operation =
+  | CreateOperation
+  | RelateOperation
+  | RelateManyOperation
+  | AppendOperation
+  | ActivateOperation
+  | RetireOperation
+  | SupersedeOperation;
 
 interface CreateOperation {
   op: "create";
@@ -56,6 +69,29 @@ interface AppendOperation {
   label?: string;
   condition?: string;
   relation_props?: Record<string, unknown>;
+}
+
+// Lifecycle transitions — append-only-safe (history is kept in the immutable
+// audit log; "retire" is a tombstone, never a hard delete). `target` is a node
+// id or a `$alias` defined earlier in the same changeset.
+interface ActivateOperation {
+  op: "activate";
+  target: string;
+}
+
+interface RetireOperation {
+  op: "retire";
+  target: string;
+}
+
+// Replace a node: create the replacement, then retire the old one with a
+// `superseded_by` pointer to it.
+interface SupersedeOperation {
+  op: "supersede";
+  target: string;
+  entity_type: string;
+  alias?: string;
+  body: Record<string, unknown>;
 }
 
 interface ChangesetBody {
@@ -180,7 +216,11 @@ export async function action({
     const result = await applyOperation(op, i, ctx, aliases);
     results.push(result);
     if (result.footer_lines) footerLines.push(...result.footer_lines);
-    if (result.ok && result.id && (result.op === "create" || result.op === "append")) {
+    if (
+      result.ok &&
+      result.id &&
+      (result.op === "create" || result.op === "append" || result.op === "supersede")
+    ) {
       createdIds.push(result.id);
     }
     if (!result.ok) {
@@ -216,6 +256,22 @@ function collectChangesetWriteTypes(
   operations: unknown[],
 ): { types: string[] } | { error: string } {
   const types = new Set<string>();
+  // Alias → entity_type, so activate/retire/supersede targeting a node created
+  // earlier in the same batch can be type-checked before anything runs.
+  const aliasTypes = new Map<string, string>();
+  for (const raw of operations) {
+    const op = raw as CreateOperation | AppendOperation | SupersedeOperation;
+    if (!op || typeof op !== "object" || !("op" in op)) continue;
+    if ((op.op === "create" || op.op === "append" || op.op === "supersede") && op.alias) {
+      const entityType = normalizeEntityType(op.entity_type);
+      if (entityType) aliasTypes.set(cleanAlias(op.alias), entityType);
+    }
+  }
+  const targetType = (target: unknown): string | null => {
+    const t = String(target ?? "").trim();
+    if (!t) return null;
+    return t.startsWith("$") ? (aliasTypes.get(cleanAlias(t)) ?? null) : entityTypeFromId(t);
+  };
   for (let i = 0; i < operations.length; i++) {
     const op = operations[i] as Operation;
     if (!op || typeof op !== "object" || !("op" in op)) continue;
@@ -249,6 +305,23 @@ function collectChangesetWriteTypes(
         if (!spec) return { error: `Unknown relation_kind "${kind}".` };
         types.add(spec.kind);
       }
+      continue;
+    }
+    if (op.op === "activate" || op.op === "retire") {
+      const entityType = targetType(op.target);
+      if (!entityType) {
+        return { error: `Cannot ${op.op}: unrecognized node id/alias "${op.target}".` };
+      }
+      types.add(entityType);
+      continue;
+    }
+    if (op.op === "supersede") {
+      const newType = normalizeEntityType(op.entity_type);
+      if (!newType) return { error: `Unsupported supersede entity_type "${op.entity_type}".` };
+      types.add(newType);
+      const oldType = targetType(op.target);
+      if (!oldType) return { error: `Cannot supersede: unrecognized target "${op.target}".` };
+      types.add(oldType);
     }
   }
   return { types: [...types] };
@@ -303,11 +376,128 @@ async function applyOperation(
       footer_lines: [...(created.footer_lines ?? []), ...(related.footer_lines ?? [])],
     };
   }
+  if (op.op === "activate") {
+    return transitionNode(op.target, "asserted", "activate", index, ctx, aliases);
+  }
+  if (op.op === "retire") {
+    return transitionNode(op.target, "retired", "retire", index, ctx, aliases);
+  }
+  if (op.op === "supersede") {
+    return supersedeNode(op, index, ctx, aliases);
+  }
   return {
     op_index: index,
     op: (op as { op?: Operation["op"] }).op ?? "create",
     ok: false,
     error: `Unknown operation "${String((op as { op?: unknown }).op)}".`,
+  };
+}
+
+// Lifecycle transition (activate → asserted, retire → retired) via updateEntity,
+// the same primitive the per-entity PATCH routes use. `target` resolves an id or
+// a `$alias` created earlier in the batch; the entity type comes from the id.
+async function transitionNode(
+  target: string,
+  lifecycle: "asserted" | "retired",
+  opName: "activate" | "retire",
+  index: number,
+  ctx: ChangesetContext,
+  aliases: Map<string, string>,
+): Promise<OperationResult> {
+  const id = resolveRef(target, aliases);
+  if (!id) {
+    return {
+      op_index: index,
+      op: opName,
+      ok: false,
+      error: `Could not resolve ${opName} target "${target}".`,
+    };
+  }
+  return applyLifecyclePatch(id, { lifecycle }, opName, index, ctx);
+}
+
+async function applyLifecyclePatch(
+  id: string,
+  patch: EntityPatch,
+  opName: Operation["op"],
+  index: number,
+  ctx: ChangesetContext,
+): Promise<OperationResult> {
+  const entityType = entityTypeFromId(id);
+  const segment = entityType
+    ? NODE_CATALOG[entityType as keyof typeof NODE_CATALOG]?.segment
+    : null;
+  if (!entityType || !segment) {
+    return {
+      op_index: index,
+      op: opName,
+      ok: false,
+      error: `Cannot ${opName} "${id}": unrecognized node id.`,
+    };
+  }
+  const result = await updateEntity({
+    docoDir: ctx.dir,
+    docoId: ctx.docoId,
+    ownerSlug: ctx.ownerSlug,
+    docoSlug: ctx.docoSlug,
+    entityType: entityType as Parameters<typeof updateEntity>[0]["entityType"],
+    pluralDir: segment,
+    id,
+    patch,
+    docoHost: ctx.docoHost,
+    actorId: ctx.actorId,
+    authoring: ctx.authoring,
+  });
+  if ("error" in result) {
+    return { op_index: index, op: opName, ok: false, error: result.error };
+  }
+  return { op_index: index, op: opName, ok: true, id, footer_lines: result.footer_lines };
+}
+
+// Replace a node: create the replacement (same path as a create op, so aliases
+// and authoring policies apply), then retire the old node with a superseded_by
+// pointer to the replacement.
+async function supersedeNode(
+  op: SupersedeOperation,
+  index: number,
+  ctx: ChangesetContext,
+  aliases: Map<string, string>,
+): Promise<OperationResult> {
+  const oldId = resolveRef(op.target, aliases);
+  if (!oldId) {
+    return {
+      op_index: index,
+      op: "supersede",
+      ok: false,
+      error: `Could not resolve supersede target "${op.target}".`,
+    };
+  }
+  const created = await createNode(
+    { op: "create", entity_type: op.entity_type, alias: op.alias, body: op.body },
+    index,
+    ctx,
+    aliases,
+  );
+  if (!created.ok || !created.id) {
+    return { ...created, op: "supersede" };
+  }
+  const retired = await applyLifecyclePatch(
+    oldId,
+    { lifecycle: "retired", superseded_by: created.id },
+    "supersede",
+    index,
+    ctx,
+  );
+  if (!retired.ok) {
+    return { op_index: index, op: "supersede", ok: false, error: retired.error };
+  }
+  return {
+    op_index: index,
+    op: "supersede",
+    ok: true,
+    id: created.id,
+    ...(op.alias ? { alias: cleanAlias(op.alias) } : {}),
+    footer_lines: [...(created.footer_lines ?? []), ...(retired.footer_lines ?? [])],
   };
 }
 
