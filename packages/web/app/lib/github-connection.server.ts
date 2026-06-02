@@ -262,6 +262,16 @@ export async function clearAllConnections(docoId: string): Promise<void> {
 // user isn't blocked. Stored at docos.data.github_integration.backfill; no
 // schema change needed (plain JSONB, like connections/installations).
 
+/** A repo the backfill could not import (gone, access revoked, or transient
+ *  failures past the retry cap) — recorded so the gap is visible, not silent. */
+export interface BackfillError {
+  repo: string;
+  page?: number;
+  message: string;
+  /** ISO time the repo was skipped. */
+  at: string;
+}
+
 export interface GitHubBackfillState {
   status: "running" | "done";
   started_at?: string;
@@ -290,6 +300,21 @@ export interface GitHubBackfillState {
    *  cursor_at is stale means the self-chaining worker dropped its chain; the
    *  sweep re-kicks it. Absent on pre-resumable markers (treated as stale). */
   cursor_at?: string;
+  /** Consecutive failed attempts at the current cursor position; resets on any
+   *  progress. The driver skips the repo once this reaches the retry cap. */
+  attempts?: number;
+  /** ISO time before which the worker must not retry — set when a slice paused
+   *  on a GitHub rate limit, so the import resumes only once the window clears. */
+  retry_after?: string;
+  /** Repos skipped (gone/forbidden, or transient failures past the cap). */
+  errors?: BackfillError[];
+}
+
+/** Validate a persisted backfill error before trusting it. Pure. */
+function isBackfillError(x: unknown): x is BackfillError {
+  if (!x || typeof x !== "object") return false;
+  const e = x as Record<string, unknown>;
+  return typeof e.repo === "string" && typeof e.message === "string" && typeof e.at === "string";
 }
 
 /** Read the backfill marker off a raw github_integration value. Pure. */
@@ -316,6 +341,9 @@ export function normalizeBackfillState(raw: unknown): GitHubBackfillState | null
     ...num("unchanged"),
     ...num("failed"),
     ...(typeof e.cursor_at === "string" ? { cursor_at: e.cursor_at } : {}),
+    ...num("attempts"),
+    ...(typeof e.retry_after === "string" ? { retry_after: e.retry_after } : {}),
+    ...(Array.isArray(e.errors) ? { errors: e.errors.filter(isBackfillError) } : {}),
   };
 }
 

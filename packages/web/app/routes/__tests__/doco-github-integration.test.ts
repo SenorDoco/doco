@@ -87,6 +87,8 @@ import {
   buildInstallationPickerChoices,
   connectedOrgRepositories,
   loader,
+  resyncButton,
+  skippedReposNote,
 } from "../$docoHandle.integrations.github";
 
 const routeArgs = {
@@ -405,5 +407,62 @@ describe("/:docoHandle/integrations/github", () => {
     expect(data.docoInstallUrl).toBe(
       "https://github.com/apps/doco-pr-sync/installations/new?state=doco_1",
     );
+  });
+
+  it("turns a failed per-repo Re-import into a friendly message, not a 500", async () => {
+    mocks.getDocoConnectionsContext.mockResolvedValue({
+      handle: "meta-pull-requests",
+      orgHandle: "meta",
+      connections: [{ repo: "acme/web", installation_id: 42 }],
+      installations: [],
+      backfill: null,
+    });
+    mocks.backfillRepoPullRequests.mockRejectedValue(new Error("GitHub GET … failed: 403"));
+
+    const result = await action({
+      request: postForm({ intent: "backfill", repo: "acme/web" }),
+      ...routeArgs,
+    });
+
+    expect(result).toMatchObject({ error: expect.stringContaining("acme/web") });
+  });
+});
+
+// The recovery control must NEVER be disabled: a stuck "running" marker is the
+// exact situation it exists to fix, so disabling it while running locked users
+// out (the original bug). It stays clickable; only its label changes.
+describe("resyncButton", () => {
+  it("is enabled while importing, framed as a restart", () => {
+    expect(resyncButton({ status: "running" })).toEqual({
+      label: "Restart import",
+      disabled: false,
+    });
+  });
+  it("is enabled when idle or finished", () => {
+    expect(resyncButton(null)).toEqual({ label: "Re-import all PRs", disabled: false });
+    expect(resyncButton({ status: "done" })).toEqual({
+      label: "Re-import all PRs",
+      disabled: false,
+    });
+  });
+});
+
+describe("skippedReposNote", () => {
+  it("is null when nothing was skipped", () => {
+    expect(skippedReposNote(null)).toBeNull();
+    expect(skippedReposNote({ status: "running" })).toBeNull();
+    expect(skippedReposNote({ status: "running", errors: [] })).toBeNull();
+  });
+  it("names the skipped repositories so the gap is visible", () => {
+    const note = skippedReposNote({
+      status: "done",
+      errors: [
+        { repo: "acme/a", message: "404", at: "t" },
+        { repo: "acme/b", message: "403", at: "t" },
+      ],
+    });
+    expect(note).toContain("acme/a");
+    expect(note).toContain("acme/b");
+    expect(note).toMatch(/couldn.t be imported/i);
   });
 });

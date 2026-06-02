@@ -1,6 +1,7 @@
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  GitHubApiError,
   buildAppJwt,
   getInstallationAccount,
   githubAppConfigured,
@@ -8,6 +9,7 @@ import {
   listRepoPullRequests,
   mintInstallationToken,
   normalizePem,
+  retryAfterMsFromHeaders,
 } from "../github-app.server";
 
 // A throwaway RSA keypair for signing/verifying test JWTs (pkcs1, like GitHub's).
@@ -217,5 +219,87 @@ describe("normalizePem", () => {
     expect(out).toContain("\n");
     expect(out.startsWith("-----BEGIN")).toBe(true);
     expect(out.trimEnd().endsWith("KEY-----")).toBe(true);
+  });
+});
+
+describe("retryAfterMsFromHeaders", () => {
+  const NOW = 1_000_000;
+  it("uses the Retry-After header (seconds) when present", () => {
+    expect(retryAfterMsFromHeaders(new Headers({ "retry-after": "30" }), NOW)).toBe(30_000);
+  });
+  it("falls back to x-ratelimit-reset when the budget is exhausted", () => {
+    const resetSec = Math.floor(NOW / 1000) + 45;
+    const headers = new Headers({
+      "x-ratelimit-remaining": "0",
+      "x-ratelimit-reset": String(resetSec),
+    });
+    expect(retryAfterMsFromHeaders(headers, NOW)).toBe(45_000);
+  });
+  it("returns null when there is no rate-limit timing to read", () => {
+    expect(retryAfterMsFromHeaders(new Headers(), NOW)).toBeNull();
+  });
+  it("never returns a negative wait (a reset already in the past clamps to 0)", () => {
+    const headers = new Headers({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1" });
+    expect(retryAfterMsFromHeaders(headers, NOW)).toBe(0);
+  });
+});
+
+// A backfill walking a 16k-PR org WILL hit GitHub's primary/secondary rate
+// limits and the occasional gone/forbidden repo. githubGet must classify those
+// so the driver can pause-and-resume (rate limit) vs. skip-and-continue
+// (permanent) instead of throwing an opaque Error that wedges the whole import.
+describe("GitHub API error classification (surfaced through listRepoPullRequests)", () => {
+  const call = (res: Response) =>
+    listRepoPullRequests("ghs_x", "acme", "store", {
+      fetchImpl: vi.fn().mockResolvedValue(res) as unknown as typeof fetch,
+    });
+
+  it("classifies HTTP 429 as a rate limit carrying the retry delay", async () => {
+    const err = (await call(
+      new Response("slow down", { status: 429, headers: { "retry-after": "20" } }),
+    ).catch((e) => e)) as GitHubApiError;
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.rateLimited).toBe(true);
+    expect(err.permanent).toBe(false);
+    expect(err.retryAfterMs).toBe(20_000);
+  });
+
+  it("classifies 403 with x-ratelimit-remaining:0 as a rate limit", async () => {
+    const resetSec = Math.floor(Date.now() / 1000) + 60;
+    const err = (await call(
+      new Response("API rate limit exceeded", {
+        status: 403,
+        headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(resetSec) },
+      }),
+    ).catch((e) => e)) as GitHubApiError;
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.rateLimited).toBe(true);
+    expect(err.retryAfterMs).toBeGreaterThan(0);
+  });
+
+  it("classifies 404 as permanent — the repo is skipped, never retried forever", async () => {
+    const err = (await call(new Response("Not Found", { status: 404 })).catch(
+      (e) => e,
+    )) as GitHubApiError;
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.permanent).toBe(true);
+    expect(err.rateLimited).toBe(false);
+  });
+
+  it("classifies a bare 403 (no rate-limit signal) as permanent — access revoked", async () => {
+    const err = (await call(new Response("Forbidden", { status: 403 })).catch(
+      (e) => e,
+    )) as GitHubApiError;
+    expect(err.permanent).toBe(true);
+    expect(err.rateLimited).toBe(false);
+  });
+
+  it("classifies 5xx as transient (neither rate-limited nor permanent)", async () => {
+    const err = (await call(new Response("Server Error", { status: 500 })).catch(
+      (e) => e,
+    )) as GitHubApiError;
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.rateLimited).toBe(false);
+    expect(err.permanent).toBe(false);
   });
 });
