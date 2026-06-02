@@ -19,7 +19,6 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import { graphRenderBudgetFor, shouldPublishViewport } from "~/lib/graph-render-performance";
 import { lifecycleColor } from "~/lib/node-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { type Point, layoutOverviewGraphNodes } from "~/lib/overview-graph-layout";
@@ -137,6 +136,10 @@ const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
+const OVERVIEW_RENDER_NODE_BUDGET = 100;
+const OVERVIEW_RENDER_FIRST_DEGREE_MIN = 50;
+const OVERVIEW_RENDER_EDGE_BUDGET = 700;
+const OVERVIEW_PLACEHOLDER_STUB_BUDGET = 120;
 const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_PX = 252;
 const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_JITTER_PX = 24;
 const OVERVIEW_PLACEHOLDER_EDGE_FADE_PX = 200;
@@ -208,8 +211,8 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
 
   return (
     <div
-      className="relative h-full w-full overflow-visible"
-      style={{ opacity: data.opacity, transition: "opacity 500ms ease" }}
+      className="doco-graph-fade relative h-full w-full overflow-visible"
+      style={{ opacity: data.opacity }}
     >
       <Handle
         type="target"
@@ -304,7 +307,9 @@ export function OverviewGraph({
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
   const updateViewport = useCallback((next: FlowViewport) => {
-    setViewport((prev) => (shouldPublishViewport(prev, next) ? next : prev));
+    setViewport((prev) =>
+      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
+    );
   }, []);
 
   const allLifecycles = useMemo(() => {
@@ -375,15 +380,6 @@ export function OverviewGraph({
     () => links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target)),
     [links, visibleIds],
   );
-  const renderBudget = useMemo(
-    () =>
-      graphRenderBudgetFor({
-        perspective: "graph",
-        nodeCount: visibleNodes.length,
-        linkCount: visibleLinks.length,
-      }),
-    [visibleNodes.length, visibleLinks.length],
-  );
   const visibleDepthByNodeId = useMemo(
     () => computeDepthFromCenter(visibleNodes, visibleLinks, focusCenterId),
     [visibleNodes, visibleLinks, focusCenterId],
@@ -395,11 +391,11 @@ export function OverviewGraph({
         visibleLinks,
         selectionCenterId,
         pageRanks,
-        renderBudget.nodeBudget,
+        OVERVIEW_RENDER_NODE_BUDGET,
         { docoHandle, perspective: "graph" },
-        { minFirstDegree: renderBudget.minFirstDegree },
+        { minFirstDegree: OVERVIEW_RENDER_FIRST_DEGREE_MIN },
       ),
-    [visibleNodes, visibleLinks, selectionCenterId, pageRanks, renderBudget, docoHandle],
+    [visibleNodes, visibleLinks, selectionCenterId, pageRanks, docoHandle],
   );
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
@@ -442,15 +438,8 @@ export function OverviewGraph({
         if (aRank !== bRank) return bRank - aRank;
         return a.index - b.index;
       });
-    return candidates.slice(0, renderBudget.edgeBudget).map((entry) => entry.link);
-  }, [
-    visibleLinks,
-    renderedNodeIds,
-    visibleDepthByNodeId,
-    focusCenterId,
-    pageRanks,
-    renderBudget.edgeBudget,
-  ]);
+    return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
+  }, [visibleLinks, renderedNodeIds, visibleDepthByNodeId, focusCenterId, pageRanks]);
   const positions = useMemo(() => {
     const computed = layoutOverviewGraphNodes(
       renderedNodes,
@@ -580,7 +569,7 @@ export function OverviewGraph({
       count: number,
       summaryIndex: number,
     ) => {
-      if (stubIndex >= renderBudget.placeholderStubBudget) return;
+      if (stubIndex >= OVERVIEW_PLACEHOLDER_STUB_BUDGET) return;
       const anchor = positions.get(anchorId);
       if (!anchor) return;
       const anchorCenter = {
@@ -662,14 +651,7 @@ export function OverviewGraph({
     });
 
     return { nodes, edges };
-  }, [
-    visibleLinks,
-    renderedNodeIds,
-    visibleIds,
-    positions,
-    visibleNodeById,
-    renderBudget.placeholderStubBudget,
-  ]);
+  }, [visibleLinks, renderedNodeIds, visibleIds, positions, visibleNodeById]);
 
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;
@@ -688,6 +670,11 @@ export function OverviewGraph({
     return () => window.clearTimeout(timeout);
   }, [detailUrl, detailIds]);
 
+  // Derive the one boolean the node cards actually consume from the
+  // zoom so the memo below rebuilds only when the detail threshold is
+  // crossed — not on every 0.01-step zoom tick, which would rebuild and
+  // re-render every card mid-gesture.
+  const showDetail = viewport.zoom >= DETAIL_ZOOM;
   const flowNodes = useMemo(() => {
     const nodeNodes = renderedNodes.map((node) => {
       const position = positions.get(node.id) ?? { x: 0, y: 0 };
@@ -703,7 +690,7 @@ export function OverviewGraph({
         data: {
           node,
           detail: details.get(node.id),
-          showDetail: viewport.zoom >= DETAIL_ZOOM,
+          showDetail,
           referenceNumber: referenceNumberByNodeId.get(node.id),
           isNew: newNodeIds.has(node.id),
           opacity,
@@ -725,7 +712,7 @@ export function OverviewGraph({
     renderedNodes,
     positions,
     details,
-    viewport.zoom,
+    showDetail,
     referenceNumberByNodeId,
     newNodeIds,
     depthByNodeId,
@@ -756,6 +743,7 @@ export function OverviewGraph({
         source: link.source,
         target: link.target,
         type: "curvedBezier",
+        className: "doco-graph-fade-edge",
         selectable: false,
         focusable: false,
         interactionWidth: clickable ? 18 : 0,
@@ -764,7 +752,6 @@ export function OverviewGraph({
           stroke: lifecycleColor(sourceLifecycle),
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 4) : baseStrokeWidth,
           strokeOpacity: isFocused ? 0.95 : 0.5 * edgeOpacity * transitionOpacity,
-          transition: "stroke-opacity 500ms ease, opacity 500ms ease, stroke-width 150ms ease",
           cursor: clickable ? "pointer" : undefined,
         },
       };

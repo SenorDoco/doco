@@ -7,7 +7,8 @@
 // and returns JSON.
 
 import { Form, Link, redirect, useNavigation } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -91,22 +92,22 @@ export default function PerspectivesPicker({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-3xl px-6 py-6">
-        <div className="mb-4 space-y-1">
-          <Breadcrumb
-            items={[
-              ...docoBreadcrumb({ ownerSlug, handle }),
-              { label: "Perspectives", to: `/${handle}/perspectives` },
-            ]}
-          />
-          <div className="flex items-center justify-between gap-2">
-            <h1 className="text-lg font-semibold tracking-tight">Perspectives</h1>
+        <PageHeader
+          className="mb-4"
+          breadcrumb={[
+            ...docoBreadcrumb({ ownerSlug, handle }),
+            { label: "Perspectives", to: `/${handle}/perspectives` },
+          ]}
+          title="Perspectives"
+          actions={
             <Link
               to={`/${handle}`}
               className="neu-button rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               ← Back to {handle}
             </Link>
-          </div>
+          }
+        >
           <p className="text-sm text-muted-foreground">
             Visualization perspectives switch how the Doco's nodes and edges render. Add any of the
             perspectives below to put a tab on this Doco's overview page.
@@ -114,7 +115,7 @@ export default function PerspectivesPicker({
               <span className="ml-1 italic">Adding requires owner or writer access.</span>
             ) : null}
           </p>
-        </div>
+        </PageHeader>
         <ul className="neu-surface divide-y divide-border rounded-md bg-card">
           {available.map((p) => {
             const isAttached = attachedSet.has(p.id);

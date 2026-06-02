@@ -24,15 +24,18 @@ vi.mock("~/lib/api-keys.server", () => ({
   revokeApiKey: mocks.revokeApiKey,
 }));
 
-vi.mock("~/components/agent-invite-prompt", () => ({
-  AgentInvitePrompt: () => createElement("div", { "data-testid": "agent-invite-prompt" }),
-}));
-
 vi.mock("~/components/site-header", () => ({
   SiteHeader: () => null,
 }));
 
-import ApiKeysPage, { ManualMcpPanel, action, formatLastUsedLabel, meta } from "../api-keys";
+import { catalogFromOptions } from "~/lib/grant-picker";
+import ApiKeysPage, {
+  ExistingTokensPanel,
+  ManualMcpPanel,
+  action,
+  formatLastUsedLabel,
+  meta,
+} from "../api-keys";
 
 function formRequest(fields: Record<string, string>): Request {
   return new Request("https://doco.test/api-keys", {
@@ -79,7 +82,7 @@ describe("/api-keys page action", () => {
     });
   });
 
-  it("labels the tokens and MCP page with the requested title", () => {
+  it("organizes the page into Add MCP / Generate tokens / Existing tokens tabs", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -98,8 +101,23 @@ describe("/api-keys page action", () => {
 
     expect(meta()[0]?.title).toBe("Tokens/MCP · Doco");
     expect(markup).toContain("Tokens/MCP");
-    expect(markup).toContain("Add MCP manually");
-    expect(markup).not.toContain(">Access tokens</h1>");
+    // The three tabs that replace the old mode switcher.
+    expect(markup).toContain("Add MCP");
+    expect(markup).toContain("Generate tokens");
+    expect(markup).toContain("Existing tokens");
+    // The "Invite AI agent" onboarding option is gone for good.
+    expect(markup).not.toContain("Invite AI agent");
+  });
+
+  it("drops the redundant 'All access tokens' heading from the existing-tokens tab", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ExistingTokensPanel, { keys: [], catalog: catalogFromOptions([], []) }),
+    );
+
+    // The tab label is self-explanatory, so the in-panel title is removed…
+    expect(markup).not.toContain("All access tokens");
+    // …but the empty state still reads.
+    expect(markup).toContain("No active tokens yet.");
   });
 
   it("teaches the per-workspace MCP URL with the id placeholder when there are no workspaces", () => {

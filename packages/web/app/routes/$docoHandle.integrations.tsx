@@ -8,9 +8,10 @@
 //   Right — the catalog of integrations you can wire up at any level.
 import { useEffect, useRef } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { AvailableIntegrations, ScopeNavLinks } from "~/components/integrations-shell";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -113,14 +114,17 @@ export default function DocoIntegrations() {
     <div>
       <SiteHeader me={me} />
       <SingleColumnPageMain className="space-y-6 py-6">
-        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "App integrations" })} />
-        <header className="space-y-3">
-          <h1 className="text-2xl font-semibold">App integrations</h1>
-          <p className="text-sm text-muted-foreground">
-            What&apos;s connected to {handle}, and what else you can wire up at any level.
-          </p>
-          <ScopeNavLinks scope="doco" workspaceHandle={workspaceHandle} />
-        </header>
+        <PageHeader
+          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "App integrations" })}
+          title="App integrations"
+        >
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">
+              What&apos;s connected to {handle}, and what else you can wire up at any level.
+            </p>
+            <ScopeNavLinks scope="doco" workspaceHandle={workspaceHandle} />
+          </div>
+        </PageHeader>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="space-y-3">

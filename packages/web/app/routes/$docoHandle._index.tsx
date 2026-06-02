@@ -18,11 +18,9 @@ import { Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { GithubIntegrationCard } from "~/components/github-integration-card";
-import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
 import { NodeTypeIcon } from "~/components/node-type-icon";
@@ -33,6 +31,7 @@ import {
   type OverviewGraphLink,
   type OverviewGraphNode,
 } from "~/components/overview-graph";
+import { PageHeader } from "~/components/page-header";
 import { PerspectiveFrame } from "~/components/perspective-frame";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
@@ -1026,36 +1025,27 @@ export default function DocoHome({
       <main className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
-        <div className="mb-6 shrink-0 space-y-1">
-          <Breadcrumb
-            items={[
-              { label: "Home", to: "/" },
-              ...(ownerSlug
-                ? [
-                    {
-                      label: ownerSlug,
-                      to: ownerIsWorkspace ? `/workspaces/${ownerSlug}` : `/users/${ownerSlug}`,
-                    },
-                  ]
-                : []),
-              { label: handle },
-            ]}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-lg font-semibold tracking-tight">
-              <Link to={allSearchHref} className="hover:text-primary">
-                {handle}
-              </Link>
-            </h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to={`/${handle}/integrations`}
-                className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
-              >
-                App integrations
-              </Link>
-              {canInviteUsers ? <UsersLink level="doco" targetId={docoId} /> : null}
-              {canInviteUsers ? <ApiKeysLink /> : null}
+        <PageHeader
+          className="mb-6 shrink-0"
+          breadcrumb={[
+            { label: "Home", to: "/" },
+            ...(ownerSlug
+              ? [
+                  {
+                    label: ownerSlug,
+                    to: ownerIsWorkspace ? `/workspaces/${ownerSlug}` : `/users/${ownerSlug}`,
+                  },
+                ]
+              : []),
+            { label: handle },
+          ]}
+          title={
+            <Link to={allSearchHref} className="hover:text-primary">
+              {handle}
+            </Link>
+          }
+          actions={
+            <>
               <Link
                 to={`/${handle}/policies`}
                 className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
@@ -1070,10 +1060,11 @@ export default function DocoHome({
                   Settings
                 </Link>
               ) : null}
-            </div>
-          </div>
+            </>
+          }
+        >
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
-        </div>
+        </PageHeader>
         <div
           ref={contentPaneRef}
           className={`grid min-h-0 flex-1 gap-6 ${

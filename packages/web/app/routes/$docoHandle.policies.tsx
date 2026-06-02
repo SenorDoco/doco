@@ -1,8 +1,9 @@
 import { withClient } from "@doco/db";
 import { Link } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { canEditPolicies, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -94,20 +95,14 @@ export default function Policies({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
-        <header>
-          <Breadcrumb
-            items={docoBreadcrumb({
-              ownerSlug,
-              handle,
-              pageLabel: "Policies",
-            })}
-            className="mb-1"
-          />
-          <h1 className="text-2xl font-semibold">Policies</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+        <PageHeader
+          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Policies" })}
+          title="Policies"
+        >
+          <p className="text-sm text-muted-foreground">
             Rules that govern how nodes get added to this doco. {AGENT_EXPOSURE_NOTE}
           </p>
-        </header>
+        </PageHeader>
 
         <ArticleSection
           title="Guidance policies"
