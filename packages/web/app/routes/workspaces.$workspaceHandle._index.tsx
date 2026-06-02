@@ -1,9 +1,9 @@
-// /workspaces/:workspaceHandle — per-Workspace home. A full-width two-column layout.
+// /workspaces/:workspaceHandle — per-Workspace home. A wide two-column layout.
 // The header (workspace handle + ULID, +Agent/User on desktop) spans the top.
-// Left column (half the shell once it widens past the breakpoint):
+// Left column (flexible content area once it widens past the breakpoint):
 //   - Constitution (founding-charter presentation, fills the column)
 //   - Latest activity feed (20 events, with per-row Doco context)
-// Right column (the other half — equal 50/50 split):
+// Right column (compact sidebar):
 //   - Search box (submits to /workspaces/:workspaceHandle/search)
 //   - Docos in this workspace (with a +Doco button)
 //   - Activity heatmap (52w)
@@ -306,7 +306,7 @@ export default function WorkspaceHome({
   return (
     <div>
       <SiteHeader me={me} />
-      <main className="space-y-6 px-6 py-6">
+      <main className="mx-auto w-full max-w-6xl px-6 py-6 space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <Breadcrumb items={workspaceBreadcrumb({ workspaceSlug: workspace.handle })} />
@@ -333,125 +333,122 @@ export default function WorkspaceHome({
           </div>
         </div>
 
-        <div className="workspace-home-layout-shell">
-          <div className="workspace-home-layout-grid grid gap-6">
-            {/* Left column — the constitution gets the full available width
-                (mirroring how perspectives render on the Doco overview), with
-                the latest activity feed beneath it. */}
-            <section className="min-w-0 space-y-4">
-              <WorkspaceConstitutionCard
-                workspaceHandle={workspace.handle}
-                constitution={workspace.constitution}
-                canEdit={canEditConstitution}
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+          {/* Left column — the constitution gets the full available width, with
+              the latest activity feed beneath it. */}
+          <section className="min-w-0 space-y-4">
+            <WorkspaceConstitutionCard
+              workspaceHandle={workspace.handle}
+              constitution={workspace.constitution}
+              canEdit={canEditConstitution}
+            />
+
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Latest activity</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {items.length === 0 ? (
+                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                    No recorded activity yet across this workspace's Docos.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {items.map((it) => (
+                      <WorkspaceFeedLine key={it.event_id} event={it} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* Right column — search, the workspace's Docos, then the activity
+              matrix and top contributors. */}
+          <aside className="min-w-0 space-y-4">
+            <Form
+              method="get"
+              action={`/workspaces/${workspace.handle}/search`}
+              className="flex gap-2"
+            >
+              <input
+                name="q"
+                type="search"
+                placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
+                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
               />
-
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Latest activity</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {items.length === 0 ? (
-                    <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                      No recorded activity yet across this workspace's Docos.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-border">
-                      {items.map((it) => (
-                        <WorkspaceFeedLine key={it.event_id} event={it} />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-
-            {/* Right column — search, the workspace's Docos, then the activity
-                matrix and top contributors. */}
-            <aside className="min-w-0 space-y-4">
-              <Form
-                method="get"
-                action={`/workspaces/${workspace.handle}/search`}
-                className="flex gap-2"
+              <button
+                type="submit"
+                className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
               >
-                <input
-                  name="q"
-                  type="search"
-                  placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
-                  className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-                />
-                <button
-                  type="submit"
-                  className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+                Search
+              </button>
+            </Form>
+
+            <DocoListCard
+              title="Docos in this workspace"
+              headerAction={
+                <Link
+                  to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
+                  className="neu-button rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Search
-                </button>
-              </Form>
+                  + Doco
+                </Link>
+              }
+              docos={docoItems}
+              empty={
+                <p className="text-xs italic text-muted-foreground">
+                  This workspace doesn't own any Docos yet.
+                </p>
+              }
+            />
 
-              <DocoListCard
-                title="Docos in this workspace"
-                headerAction={
-                  <Link
-                    to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
-                    className="neu-button rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                  >
-                    + Doco
-                  </Link>
-                }
-                docos={docoItems}
-                empty={
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Top contributors</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {topContributors.length === 0 ? (
                   <p className="text-xs italic text-muted-foreground">
-                    This workspace doesn't own any Docos yet.
+                    No recorded contributions yet.
                   </p>
-                }
-              />
-
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Top contributors</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {topContributors.length === 0 ? (
-                    <p className="text-xs italic text-muted-foreground">
-                      No recorded contributions yet.
-                    </p>
-                  ) : (
-                    <ul className="space-y-1">
-                      {topContributors.map((c) => (
-                        <li
-                          key={c.userId}
-                          className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
+                ) : (
+                  <ul className="space-y-1">
+                    {topContributors.map((c) => (
+                      <li
+                        key={c.userId}
+                        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
+                      >
+                        <span className="truncate" title={c.username}>
+                          {c.username}
+                        </span>
+                        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                          {c.eventCount}
+                        </span>
+                        <time
+                          dateTime={c.lastAt}
+                          title={c.lastAt}
+                          suppressHydrationWarning
+                          className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
                         >
-                          <span className="truncate" title={c.username}>
-                            {c.username}
-                          </span>
-                          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                            {c.eventCount}
-                          </span>
-                          <time
-                            dateTime={c.lastAt}
-                            title={c.lastAt}
-                            suppressHydrationWarning
-                            className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
-                          >
-                            {timeAgo(c.lastAt)}
-                          </time>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </aside>
-          </div>
+                          {timeAgo(c.lastAt)}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
         </div>
       </main>
     </div>

@@ -195,103 +195,112 @@ export default function WorkspaceSettings({
           </div>
         ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Rename</CardTitle>
-            <CardDescription>Update the workspace handle used in URLs.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form method="post" className="space-y-3">
-              <input type="hidden" name="intent" value="rename" />
-              <label className="block text-xs">
-                <span className="mb-1 block font-semibold text-foreground">Workspace handle</span>
-                <input
-                  name="workspace_handle"
-                  required
-                  pattern={HANDLE_INPUT_PATTERN}
-                  defaultValue={workspace.handle}
-                  title={HANDLE_FORMAT_HELP}
-                  aria-describedby="workspace-handle-help"
-                  onInvalid={(event) => {
-                    event.currentTarget.setCustomValidity(
-                      handleValidityMessage(event.currentTarget.validity, "Workspace handle"),
-                    );
-                  }}
-                  onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
-                />
-                <span
-                  id="workspace-handle-help"
-                  className="mt-1 block text-[11px] text-muted-foreground"
-                >
-                  {HANDLE_FORMAT_HELP} Renaming takes effect immediately.
-                </span>
-              </label>
-              <button
-                type="submit"
-                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
-              >
-                Rename workspace
-              </button>
-            </Form>
-          </CardContent>
-        </Card>
-
-        <Card className="border-destructive/40">
-          <CardHeader>
-            <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
-            <CardDescription>
-              Deleting this workspace permanently removes it and its {workspace.docoCount} doco
-              {workspace.docoCount === 1 ? "" : "s"}. This cannot be undone.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!isConfirmingDelete ? (
-              // Reveal the confirm form in place — preventScrollReset (mirrored
-              // into history state for the main-pane restorer) keeps this
-              // same-page navigation from yanking the reader to the top.
-              <Link
-                to={`/workspaces/${workspace.handle}/settings?confirm=delete`}
-                preventScrollReset
-                state={{ preventScrollReset: true }}
-                className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
-              >
-                Delete this workspace...
-              </Link>
-            ) : (
-              <Form method="post" className="space-y-3">
-                <input type="hidden" name="intent" value="delete" />
-                <p className="text-xs">
-                  Type the workspace handle{" "}
-                  <span className="font-mono font-semibold">{workspace.handle}</span> to confirm.
-                </p>
-                <input
-                  name="confirm_handle"
-                  required
-                  autoComplete="off"
-                  placeholder={workspace.handle}
-                  className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
-                />
-                <div className="flex items-center gap-2">
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="min-w-0">
+            <Card>
+              <CardHeader>
+                <CardTitle>Rename</CardTitle>
+                <CardDescription>Update the workspace handle used in URLs.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form method="post" className="space-y-3">
+                  <input type="hidden" name="intent" value="rename" />
+                  <label className="block text-xs">
+                    <span className="mb-1 block font-semibold text-foreground">
+                      Workspace handle
+                    </span>
+                    <input
+                      name="workspace_handle"
+                      required
+                      pattern={HANDLE_INPUT_PATTERN}
+                      defaultValue={workspace.handle}
+                      title={HANDLE_FORMAT_HELP}
+                      aria-describedby="workspace-handle-help"
+                      onInvalid={(event) => {
+                        event.currentTarget.setCustomValidity(
+                          handleValidityMessage(event.currentTarget.validity, "Workspace handle"),
+                        );
+                      }}
+                      onInput={(event) => event.currentTarget.setCustomValidity("")}
+                      className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+                    />
+                    <span
+                      id="workspace-handle-help"
+                      className="mt-1 block text-[11px] text-muted-foreground"
+                    >
+                      {HANDLE_FORMAT_HELP} Renaming takes effect immediately.
+                    </span>
+                  </label>
                   <button
                     type="submit"
-                    className="rounded-md bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground hover:opacity-90"
+                    className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                   >
-                    Delete permanently
+                    Rename workspace
                   </button>
+                </Form>
+              </CardContent>
+            </Card>
+          </section>
+
+          <aside className="min-w-0">
+            <Card className="border-destructive/40">
+              <CardHeader>
+                <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
+                <CardDescription>
+                  Deleting this workspace permanently removes it and its {workspace.docoCount} doco
+                  {workspace.docoCount === 1 ? "" : "s"}. This cannot be undone.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!isConfirmingDelete ? (
+                  // Reveal the confirm form in place — preventScrollReset (mirrored
+                  // into history state for the main-pane restorer) keeps this
+                  // same-page navigation from yanking the reader to the top.
                   <Link
-                    to={`/workspaces/${workspace.handle}/settings`}
+                    to={`/workspaces/${workspace.handle}/settings?confirm=delete`}
                     preventScrollReset
                     state={{ preventScrollReset: true }}
-                    className="text-xs text-muted-foreground hover:text-foreground"
+                    className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
                   >
-                    Cancel
+                    Delete this workspace...
                   </Link>
-                </div>
-              </Form>
-            )}
-          </CardContent>
-        </Card>
+                ) : (
+                  <Form method="post" className="space-y-3">
+                    <input type="hidden" name="intent" value="delete" />
+                    <p className="text-xs">
+                      Type the workspace handle{" "}
+                      <span className="font-mono font-semibold">{workspace.handle}</span> to
+                      confirm.
+                    </p>
+                    <input
+                      name="confirm_handle"
+                      required
+                      autoComplete="off"
+                      placeholder={workspace.handle}
+                      className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        className="rounded-md bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground hover:opacity-90"
+                      >
+                        Delete permanently
+                      </button>
+                      <Link
+                        to={`/workspaces/${workspace.handle}/settings`}
+                        preventScrollReset
+                        state={{ preventScrollReset: true }}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Cancel
+                      </Link>
+                    </div>
+                  </Form>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
       </SingleColumnPageMain>
     </div>
   );

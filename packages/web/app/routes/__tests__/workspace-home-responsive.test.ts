@@ -3,25 +3,26 @@ import { describe, expect, it } from "vitest";
 
 const routeSource = () =>
   readFileSync(new URL("../workspaces.$workspaceHandle._index.tsx", import.meta.url), "utf8");
-const appCss = () => readFileSync(new URL("../../app.css", import.meta.url), "utf8");
+const searchSource = () =>
+  readFileSync(new URL("../workspaces.$workspaceHandle.search.tsx", import.meta.url), "utf8");
+const settingsSource = () =>
+  readFileSync(new URL("../workspaces.$workspaceHandle.settings.tsx", import.meta.url), "utf8");
+
+const workspaceTwoColumnGrid = "grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]";
 
 describe("/workspaces/:workspaceHandle responsive layout", () => {
-  it("stacks the two-column shell until its own width reaches the shared 840px breakpoint", () => {
-    expect(routeSource()).toContain("workspace-home-layout-shell");
-    expect(routeSource()).toContain("workspace-home-layout-grid");
-    expect(routeSource()).not.toContain("min-[840px]:grid-cols-[minmax(0,1fr)_320px]");
+  it("uses the shared wide page width and desktop sidebar grid", () => {
+    const src = routeSource();
 
-    expect(appCss()).toContain("container-type: inline-size");
-    expect(appCss()).toContain("@container (min-width: 840px)");
-    // The two columns split the shell evenly (50/50) once it widens, instead
-    // of a flexible left column beside a fixed 320px sidebar.
-    expect(appCss()).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)");
-    expect(appCss()).not.toContain("minmax(0, 1fr) 320px");
+    expect(src).toContain("mx-auto w-full max-w-6xl px-6");
+    expect(src).toContain(workspaceTwoColumnGrid);
+    expect(src).not.toContain("workspace-home-layout-shell");
+    expect(src).not.toContain("workspace-home-layout-grid");
   });
 
-  it("puts the constitution + activity feed in the left column and the docos sidebar in the right, split 50/50", () => {
+  it("puts the constitution + activity feed in the left column and the docos sidebar in the right", () => {
     const src = routeSource();
-    const grid = src.indexOf("workspace-home-layout-grid");
+    const grid = src.indexOf(workspaceTwoColumnGrid);
     const constitution = src.indexOf("<WorkspaceConstitutionCard");
     const aside = src.indexOf("<aside");
     const search = src.indexOf("/workspaces/${workspace.handle}/search");
@@ -37,8 +38,16 @@ describe("/workspaces/:workspaceHandle responsive layout", () => {
     expect(search).toBeGreaterThan(aside);
 
     // The constitution fills the column instead of being capped/centered, and
-    // the page spans the full viewport width like the perspective views do.
+    // the page uses the shared workspace width instead of reverting to the
+    // narrow Doco-page width.
     expect(src).not.toContain("max-w-3xl");
-    expect(src).not.toContain("max-w-6xl");
+    expect(src).not.toContain("max-w-4xl");
+  });
+
+  it("splits workspace search and settings pages into content and side columns", () => {
+    for (const src of [searchSource(), settingsSource()]) {
+      expect(src).toContain(workspaceTwoColumnGrid);
+      expect(src).toContain("<aside");
+    }
   });
 });
