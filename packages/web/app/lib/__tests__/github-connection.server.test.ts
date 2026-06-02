@@ -266,6 +266,25 @@ describe("normalizeBackfillState", () => {
     expect(normalizeBackfillState({})).toBeNull();
     expect(normalizeBackfillState({ backfill: { status: "bogus" } })).toBeNull();
   });
+  it("carries the resilience cursor: attempts, retry_after, and validated errors[]", () => {
+    const state = normalizeBackfillState({
+      backfill: {
+        status: "running",
+        attempts: 2,
+        retry_after: "2026-06-01T00:05:00.000Z",
+        errors: [
+          { repo: "acme/gone", page: 7, message: "GitHub GET … failed: 404", at: "t1" },
+          { not: "an error" }, // malformed — must be dropped
+        ],
+      },
+    });
+    expect(state).toMatchObject({
+      status: "running",
+      attempts: 2,
+      retry_after: "2026-06-01T00:05:00.000Z",
+      errors: [{ repo: "acme/gone", page: 7, message: "GitHub GET … failed: 404", at: "t1" }],
+    });
+  });
 });
 
 describe("githubImportProgress", () => {

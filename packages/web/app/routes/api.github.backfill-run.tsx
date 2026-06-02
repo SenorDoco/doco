@@ -86,19 +86,38 @@ export async function action({ request }: { request: Request }) {
 
   const installationId = working.installation_id ?? ctx.connections[0]?.installation_id ?? 0;
 
-  const { done } = await runBackfillSlice(working, {
-    docoId,
-    docoDir: docoPath(ctx.handle),
-    ownerSlug: ctx.orgHandle,
-    docoSlug: ctx.handle,
-    installationId,
-  });
+  // A slice that paused on a rate limit stamped `retry_after`. Until it passes,
+  // running again would just re-hit the limit, so decline cheaply (no slice, no
+  // re-kick) and let the sweep resume once the window clears.
+  if (working.retry_after && Date.parse(working.retry_after) > Date.now()) {
+    return Response.json({ done: false, waiting: true });
+  }
 
-  // More slices remain — re-trigger ourselves off the request path so the
-  // whole org drains across as many invocations as it takes, each well within
-  // the function timeout.
-  if (!done) {
+  // Isolate the slice: with per-repo error handling inside the driver an
+  // exception here is unexpected, but if one slips through we must not 500 the
+  // worker (which would drop the chain). Return 200 and leave the marker for the
+  // sweep to retry from its last persisted cursor.
+  let done = false;
+  let rateLimited = false;
+  try {
+    ({ done, rateLimited } = await runBackfillSlice(working, {
+      docoId,
+      docoDir: docoPath(ctx.handle),
+      ownerSlug: ctx.orgHandle,
+      docoSlug: ctx.handle,
+      installationId,
+    }));
+  } catch (err) {
+    console.error("[github backfill-run] slice failed; leaving recovery to the sweep:", err);
+    return Response.json({ done: false, error: "slice failed" });
+  }
+
+  // More slices remain — re-trigger ourselves off the request path so the whole
+  // org drains across as many invocations as it takes, each well within the
+  // function timeout. A rate-limit pause is the exception: don't chain into the
+  // same wall; the sweep picks it back up after `retry_after`.
+  if (!done && !rateLimited) {
     waitUntil(kickBackfillRun(new URL(request.url).origin, docoId));
   }
-  return Response.json({ done });
+  return Response.json({ done, ...(rateLimited ? { rateLimited: true } : {}) });
 }

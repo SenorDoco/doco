@@ -21,6 +21,7 @@ import {
 } from "~/lib/doco-access.server";
 import { type BackfillResult, backfillRepoPullRequests } from "~/lib/github-backfill.server";
 import {
+  type GitHubBackfillState,
   type GitHubInstallationChoice,
   addConnection,
   buildInstallUrl,
@@ -212,17 +213,27 @@ export async function action({
     const ctx = await getDocoConnectionsContext(meta.docoId);
     const conn = ctx?.connections.find((c) => c.repo === repo);
     if (!ctx || !conn) return { error: "That repo isn't connected." };
-    const result = await backfillRepoPullRequests({
-      docoDir: docoPath(ctx.handle),
-      docoId: meta.docoId,
-      ownerSlug: ctx.orgHandle,
-      docoSlug: ctx.handle,
-      owner: parsed.owner,
-      repo: parsed.name,
-      installationId: conn.installation_id,
-      createdByUserId: me.id,
-    });
-    return { ok: true, sync: { repo, ...result } };
+    // Runs synchronously in the request (one 500-PR window). A GitHub failure
+    // here — rate limit, a gone repo — must surface as a message, not a 500
+    // error boundary; point the user at the background "Re-import all PRs".
+    try {
+      const result = await backfillRepoPullRequests({
+        docoDir: docoPath(ctx.handle),
+        docoId: meta.docoId,
+        ownerSlug: ctx.orgHandle,
+        docoSlug: ctx.handle,
+        owner: parsed.owner,
+        repo: parsed.name,
+        installationId: conn.installation_id,
+        createdByUserId: me.id,
+      });
+      return { ok: true, sync: { repo, ...result } };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "GitHub request failed";
+      return {
+        error: `Couldn't re-import ${repo}: ${detail}. Use "Re-import all PRs" to resume in the background.`,
+      };
+    }
   }
 
   if (intent === "resync-all") {
@@ -337,6 +348,36 @@ export function connectedOrgRepositories(
   ].sort();
 }
 
+/**
+ * The "Re-import all PRs" recovery control. It is NEVER disabled: a stuck
+ * "running" marker is the exact situation it exists to recover, so disabling it
+ * while importing locked users out (the original bug). It stays clickable; only
+ * its label changes to signal a restart while one is in flight. Pure.
+ */
+export function resyncButton(backfill: GitHubBackfillState | null): {
+  label: string;
+  disabled: boolean;
+} {
+  const running = backfill?.status === "running";
+  return { label: running ? "Restart import" : "Re-import all PRs", disabled: false };
+}
+
+/**
+ * A short note naming the repositories the backfill had to skip (gone,
+ * forbidden, or transient failures past the retry cap), so the gap is visible
+ * instead of silent. Null when nothing was skipped. Pure.
+ */
+export function skippedReposNote(backfill: GitHubBackfillState | null): string | null {
+  const repos = [...new Set((backfill?.errors ?? []).map((e) => e.repo))];
+  if (repos.length === 0) return null;
+  const shown = repos.slice(0, 3).join(", ");
+  const more = repos.length > 3 ? ` and ${repos.length - 3} more` : "";
+  const one = repos.length === 1;
+  return `${repos.length} ${one ? "repository" : "repositories"} couldn't be imported and ${
+    one ? "was" : "were"
+  } skipped: ${shown}${more}.`;
+}
+
 // Doco's raised "neu-button" affordance — primary (filled) and neutral variants.
 const PRIMARY_BTN =
   "neu-button inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-55";
@@ -361,6 +402,8 @@ export default function DocoGitHubIntegration() {
   const [searchParams] = useSearchParams();
   const flash = searchParams.get("github");
   const importing = backfill?.status === "running";
+  const resync = resyncButton(backfill);
+  const skipped = skippedReposNote(backfill);
   const connectedRepoSet = new Set(connections.map((connection) => connection.repo));
   const connectedInstallationIds = new Set(
     installations.map((installation) => installation.installation_id),
@@ -557,6 +600,7 @@ export default function DocoGitHubIntegration() {
             ) : subscribedAccounts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No repositories connected yet.</p>
             ) : null}
+            {skipped ? <p className="text-xs text-destructive">{skipped}</p> : null}
             {canManage && connections.length > 0 ? (
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
@@ -565,8 +609,12 @@ export default function DocoGitHubIntegration() {
                 </p>
                 <Form method="post">
                   <input type="hidden" name="intent" value="resync-all" />
-                  <button type="submit" className={`shrink-0 ${PRIMARY_BTN}`} disabled={importing}>
-                    {importing ? "Importing…" : "Re-import all PRs"}
+                  <button
+                    type="submit"
+                    className={`shrink-0 ${PRIMARY_BTN}`}
+                    disabled={resync.disabled}
+                  >
+                    {resync.label}
                   </button>
                 </Form>
               </div>

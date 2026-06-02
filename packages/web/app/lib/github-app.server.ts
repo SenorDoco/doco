@@ -167,6 +167,102 @@ export async function mintInstallationToken(
   return { token: body.token, expires_at: body.expires_at };
 }
 
+/**
+ * A GitHub API failure, classified so the backfill driver can react instead of
+ * wedging: `rateLimited` (pause and resume after `retryAfterMs`), `permanent`
+ * (a gone/forbidden repo — skip it), or neither (a transient blip — bounded
+ * retry, then skip).
+ */
+export class GitHubApiError extends Error {
+  readonly status: number;
+  readonly rateLimited: boolean;
+  readonly permanent: boolean;
+  readonly retryAfterMs: number | null;
+  constructor(opts: {
+    message: string;
+    status: number;
+    rateLimited: boolean;
+    permanent: boolean;
+    retryAfterMs: number | null;
+  }) {
+    super(opts.message);
+    this.name = "GitHubApiError";
+    this.status = opts.status;
+    this.rateLimited = opts.rateLimited;
+    this.permanent = opts.permanent;
+    this.retryAfterMs = opts.retryAfterMs;
+  }
+}
+
+/**
+ * How long to wait before retrying, read from GitHub's rate-limit headers: the
+ * `Retry-After` seconds (secondary limits) or the gap until `x-ratelimit-reset`
+ * once `x-ratelimit-remaining` hits 0 (primary limit). Null when neither is
+ * present; never negative. Pure given the clock.
+ */
+export function retryAfterMsFromHeaders(headers: Headers, nowMs: number): number | null {
+  const retryAfter = headers.get("retry-after");
+  if (retryAfter != null && retryAfter.trim() !== "" && Number.isFinite(Number(retryAfter))) {
+    return Math.max(0, Number(retryAfter) * 1000);
+  }
+  const remaining = headers.get("x-ratelimit-remaining");
+  const reset = headers.get("x-ratelimit-reset");
+  if (remaining === "0" && reset != null && Number.isFinite(Number(reset))) {
+    return Math.max(0, Number(reset) * 1000 - nowMs);
+  }
+  return null;
+}
+
+/** Classify a failed GitHub response into a {@link GitHubApiError}. Reads the body once. */
+async function githubErrorFromResponse(label: string, res: Response): Promise<GitHubApiError> {
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    /* body is best-effort context only */
+  }
+  const status = res.status;
+  const secondaryRateLimit = /\brate limit\b/i.test(body);
+  const rateLimited =
+    status === 429 ||
+    (status === 403 &&
+      (res.headers.get("x-ratelimit-remaining") === "0" ||
+        res.headers.has("retry-after") ||
+        secondaryRateLimit));
+  // 404/410/451 = gone / blocked; a 403 with no rate-limit signal = access
+  // revoked. None recover on retry, so the driver skips that repo instead of
+  // re-throwing on it forever.
+  const permanent =
+    !rateLimited && (status === 404 || status === 410 || status === 451 || status === 403);
+  return new GitHubApiError({
+    message: `${label} failed: ${status}`,
+    status,
+    rateLimited,
+    permanent,
+    retryAfterMs: rateLimited ? retryAfterMsFromHeaders(res.headers, Date.now()) : null,
+  });
+}
+
+/**
+ * Reduce any thrown error to the three signals the backfill driver needs.
+ * Unknown errors (a network blip, a token-mint hiccup) are treated as
+ * transient — retried a bounded number of times, then the repo is skipped.
+ */
+export function classifyGitHubError(err: unknown): {
+  rateLimited: boolean;
+  permanent: boolean;
+  retryAfterMs: number | null;
+} {
+  if (err instanceof GitHubApiError) {
+    return {
+      rateLimited: err.rateLimited,
+      permanent: err.permanent,
+      retryAfterMs: err.retryAfterMs,
+    };
+  }
+  return { rateLimited: false, permanent: false, retryAfterMs: null };
+}
+
 async function githubGet<T>(
   token: string,
   path: string,
@@ -181,7 +277,7 @@ async function githubGet<T>(
     },
   });
   if (!res.ok) {
-    throw new Error(`GitHub GET ${path} failed: ${res.status}`);
+    throw await githubErrorFromResponse(`GitHub GET ${path}`, res);
   }
   return { data: (await res.json()) as T, linkHeader: res.headers.get("link") };
 }

@@ -177,4 +177,65 @@ describe("api.github.backfill-run action", () => {
     });
     expect(res.status).toBe(200);
   });
+
+  it("does NOT immediately re-kick when the slice paused for a rate limit", async () => {
+    // An immediate re-kick would just re-hit the same rate limit. The marker's
+    // retry_after + the sweep resume it once GitHub's window clears.
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [],
+      backfill: { status: "running", queue: ["acme/a", "acme/b"], installation_id: 7, page: 1 },
+    });
+    runBackfillSlice.mockResolvedValue({ done: false, rateLimited: true });
+
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+
+    expect(await res.json()).toMatchObject({ done: false, rateLimited: true });
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  it("skips running a slice while a rate-limit retry_after is still in the future", async () => {
+    const future = new Date(Date.now() + 30 * 60_000).toISOString();
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [{ repo: "acme/a", installation_id: 7 }],
+      backfill: {
+        status: "running",
+        queue: ["acme/a"],
+        installation_id: 7,
+        page: 1,
+        retry_after: future,
+      },
+    });
+
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+
+    expect(await res.json()).toMatchObject({ done: false, waiting: true });
+    expect(runBackfillSlice).not.toHaveBeenCalled();
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 (not a 500) and drops the chain to the sweep if a slice throws", async () => {
+    getDocoConnectionsContext.mockResolvedValue({
+      handle: "d",
+      orgHandle: "o",
+      connections: [],
+      backfill: { status: "running", queue: ["acme/a"], installation_id: 7, page: 1 },
+    });
+    runBackfillSlice.mockRejectedValue(new Error("unexpected blowup"));
+
+    const res = await action({
+      request: post({ docoId: "doco_1" }, { Authorization: `Bearer ${SECRET}` }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ done: false });
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
 });

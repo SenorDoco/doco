@@ -4,8 +4,26 @@ import { describe, expect, it, vi } from "vitest";
 // import @doco/db; mock it so the module graph resolves without a real DB.
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
+import { GitHubApiError } from "../github-app.server";
 import { runBackfillSlice } from "../github-backfill-driver.server";
 import type { GitHubBackfillState } from "../github-connection.server";
+
+const rateLimitError = (retryAfterMs: number) =>
+  new GitHubApiError({
+    message: "rate limited",
+    status: 429,
+    rateLimited: true,
+    permanent: false,
+    retryAfterMs,
+  });
+const permanentError = () =>
+  new GitHubApiError({
+    message: "GitHub GET … failed: 404",
+    status: 404,
+    rateLimited: false,
+    permanent: true,
+    retryAfterMs: null,
+  });
 
 const ctx = {
   docoId: "doco_1",
@@ -186,5 +204,107 @@ describe("runBackfillSlice", () => {
     expect(res.done).toBe(true);
     expect(backfillRepo).not.toHaveBeenCalled();
     expect(lastSaved(save).status).toBe("done");
+  });
+});
+
+// The wedge bug: one repo throwing (rate limit, a gone/forbidden repo, a
+// transient 5xx) used to propagate out of runBackfillSlice BEFORE the cursor
+// was saved, so the chain died, the count froze, and the 5-minute sweep just
+// re-threw the same error forever. The slice must instead isolate the failure,
+// always persist the cursor, and keep the import moving.
+describe("runBackfillSlice — resilience to a throwing repo", () => {
+  it("never aborts the slice without saving when a repo throws (the core regression)", async () => {
+    const backfillRepo = vi.fn().mockRejectedValue(new Error("boom: transient 503"));
+    const save = vi.fn(async () => {});
+
+    // Old behaviour: this rejected and `save` was never called. New: it resolves.
+    await expect(
+      runBackfillSlice(
+        baseState({ queue: ["acme/a", "acme/b"] }),
+        ctx,
+        { backfillRepo: backfillRepo as never, save, now: () => 0 },
+        200_000,
+      ),
+    ).resolves.toMatchObject({ done: false });
+    expect(save).toHaveBeenCalledTimes(1);
+    const saved = lastSaved(save);
+    expect(saved.status).toBe("running");
+    expect(saved.repo_index).toBe(0); // cursor held on the failing repo
+    expect(saved.attempts).toBe(1); // one strike recorded for a bounded retry
+  });
+
+  it("skips a permanently-gone repo (404) immediately and finishes the rest", async () => {
+    const backfillRepo = vi
+      .fn()
+      .mockRejectedValueOnce(permanentError()) // acme/a — gone
+      .mockResolvedValueOnce(page({ created: 4 })); // acme/b — fine
+    const save = vi.fn(async () => {});
+
+    const res = await runBackfillSlice(
+      baseState({ queue: ["acme/a", "acme/b"] }),
+      ctx,
+      { backfillRepo: backfillRepo as never, save, now: () => 0 },
+      200_000,
+    );
+
+    expect(res.done).toBe(true);
+    expect(backfillRepo).toHaveBeenCalledTimes(2);
+    const saved = lastSaved(save);
+    expect(saved.status).toBe("done");
+    expect(saved.imported).toBe(4); // acme/b still imported
+    expect(saved.errors).toEqual([
+      expect.objectContaining({ repo: "acme/a", message: expect.stringContaining("404") }),
+    ]);
+  });
+
+  it("retries a transient failure across slices, then skips it after the cap", async () => {
+    // acme/a always throws a transient error; acme/b is healthy.
+    const backfillRepo = vi.fn(async (o: { repo: string }) => {
+      if (o.repo === "a") throw new Error("transient 502");
+      return page({ created: 1 });
+    });
+    const save = vi.fn(async () => {});
+
+    let state: GitHubBackfillState = baseState({ queue: ["acme/a", "acme/b"] });
+    let done = false;
+    let slices = 0;
+    while (!done && slices < 10) {
+      const res = await runBackfillSlice(
+        state,
+        ctx,
+        { backfillRepo: backfillRepo as never, save, now: () => 0 },
+        200_000,
+      );
+      done = res.done;
+      state = lastSaved(save);
+      slices++;
+    }
+
+    expect(done).toBe(true);
+    // acme/a attempted exactly the cap (3) before being skipped; acme/b once.
+    expect(backfillRepo.mock.calls.filter((c) => c[0].repo === "a")).toHaveLength(3);
+    expect(backfillRepo.mock.calls.filter((c) => c[0].repo === "b")).toHaveLength(1);
+    expect(state.imported).toBe(1);
+    expect(state.errors).toEqual([expect.objectContaining({ repo: "acme/a" })]);
+  });
+
+  it("pauses (does not skip) on a rate limit, recording retry_after and holding the cursor", async () => {
+    const backfillRepo = vi.fn().mockRejectedValue(rateLimitError(60_000));
+    const save = vi.fn(async () => {});
+
+    const res = await runBackfillSlice(
+      baseState({ queue: ["acme/a", "acme/b"] }),
+      ctx,
+      { backfillRepo: backfillRepo as never, save, now: () => 0 },
+      200_000,
+    );
+
+    expect(res).toMatchObject({ done: false, rateLimited: true });
+    expect(backfillRepo).toHaveBeenCalledTimes(1); // stopped the whole slice
+    const saved = lastSaved(save);
+    expect(saved.repo_index).toBe(0); // not advanced — we'll resume here
+    expect(saved.attempts ?? 0).toBe(0); // a pause is not a failed attempt
+    expect(saved.errors ?? []).toEqual([]); // nothing skipped
+    expect(saved.retry_after).toBe(new Date(60_000).toISOString());
   });
 });
