@@ -81,10 +81,10 @@ describe("changesets write gate", () => {
     });
   });
 
-  it("activate transitions a node to asserted via updateEntity", async () => {
+  it("assert transitions a node to asserted via updateEntity", async () => {
     const response = await action({
       request: changesetRequest({
-        operations: [{ op: "activate", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+        operations: [{ op: "assert", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
       }),
       params: { docoHandle: "acme" },
     });
@@ -104,6 +104,20 @@ describe("changesets write gate", () => {
         patch: { lifecycle: "asserted" },
       }),
     );
+  });
+
+  it("rejects the former 'activate' op — renamed to 'assert', no backwards compat", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [{ op: "activate", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { ok: boolean; error?: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain('Unknown operation "activate"');
+    expect(mocks.updateEntity).not.toHaveBeenCalled();
   });
 
   it("retire transitions a node to retired", async () => {
@@ -153,7 +167,7 @@ describe("changesets write gate", () => {
     expect(body.results[0].id).toBe("decision_01NEW");
   });
 
-  it("preflights the node type for activate/retire/supersede targets", async () => {
+  it("preflights the node type for assert/retire/supersede targets", async () => {
     await action({
       request: changesetRequest({
         operations: [

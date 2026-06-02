@@ -29,7 +29,7 @@ type Operation =
   | RelateOperation
   | RelateManyOperation
   | AppendOperation
-  | ActivateOperation
+  | AssertOperation
   | RetireOperation
   | SupersedeOperation;
 
@@ -74,8 +74,8 @@ interface AppendOperation {
 // Lifecycle transitions — append-only-safe (history is kept in the immutable
 // audit log; "retire" is a tombstone, never a hard delete). `target` is a node
 // id or a `$alias` defined earlier in the same changeset.
-interface ActivateOperation {
-  op: "activate";
+interface AssertOperation {
+  op: "assert";
   target: string;
 }
 
@@ -256,7 +256,7 @@ function collectChangesetWriteTypes(
   operations: unknown[],
 ): { types: string[] } | { error: string } {
   const types = new Set<string>();
-  // Alias → entity_type, so activate/retire/supersede targeting a node created
+  // Alias → entity_type, so assert/retire/supersede targeting a node created
   // earlier in the same batch can be type-checked before anything runs.
   const aliasTypes = new Map<string, string>();
   for (const raw of operations) {
@@ -307,7 +307,7 @@ function collectChangesetWriteTypes(
       }
       continue;
     }
-    if (op.op === "activate" || op.op === "retire") {
+    if (op.op === "assert" || op.op === "retire") {
       const entityType = targetType(op.target);
       if (!entityType) {
         return { error: `Cannot ${op.op}: unrecognized node id/alias "${op.target}".` };
@@ -378,8 +378,8 @@ async function applyOperation(
       footer_lines: [...(created.footer_lines ?? []), ...(related.footer_lines ?? [])],
     };
   }
-  if (op.op === "activate") {
-    return transitionNode(op.target, "asserted", "activate", index, ctx, aliases);
+  if (op.op === "assert") {
+    return transitionNode(op.target, "asserted", "assert", index, ctx, aliases);
   }
   if (op.op === "retire") {
     return transitionNode(op.target, "retired", "retire", index, ctx, aliases);
@@ -395,13 +395,13 @@ async function applyOperation(
   };
 }
 
-// Lifecycle transition (activate → asserted, retire → retired) via updateEntity,
+// Lifecycle transition (assert → asserted, retire → retired) via updateEntity,
 // the same primitive the per-entity PATCH routes use. `target` resolves an id or
 // a `$alias` created earlier in the batch; the entity type comes from the id.
 async function transitionNode(
   target: string,
   lifecycle: "asserted" | "retired",
-  opName: "activate" | "retire",
+  opName: "assert" | "retire",
   index: number,
   ctx: ChangesetContext,
   aliases: Map<string, string>,
