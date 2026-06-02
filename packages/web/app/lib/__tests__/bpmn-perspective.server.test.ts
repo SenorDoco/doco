@@ -98,7 +98,8 @@ describe("loadBpmnGraph", () => {
     const graph = await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
 
     const principalQuery = captured.find((q) => /node_type = 'principal'/i.test(q.sql));
-    expect(principalQuery?.sql).toMatch(/COALESCE\(lifecycle, 'asserted'\) <> 'retired'/);
+    // Drafting Principals must load (the lifecycle filter is the client's
+    // job), so the principal query must not narrow to asserted-only.
     expect(principalQuery?.sql).not.toMatch(/COALESCE\(lifecycle, 'asserted'\) = 'asserted'/);
 
     expect(graph.lanes).toContainEqual(
@@ -114,6 +115,93 @@ describe("loadBpmnGraph", () => {
         id: "action_01CHECK",
         laneId: "pool:intent_01PROCESS::principal_support",
         pool_id: "pool:intent_01PROCESS",
+      }),
+    );
+  });
+
+  it("loads every lifecycle so the client filter can reveal retired nodes", async () => {
+    // Regression: the BPMN loader used to hardcode `<> 'retired'` on its
+    // node, principal, and edge queries, so retired nodes never reached
+    // the client. The lifecycle filter (Drafting/Asserted/Retired) lives
+    // client-side (`visibleLifecycles`) and is the only thing that should
+    // hide a lifecycle — pre-filtering on the server makes toggling
+    // "Retired" on a no-op, leaving the canvas "So empty". The Graph/List
+    // loader (full-graph.server) already returns every lifecycle and lets
+    // the client filter; BPMN must do the same.
+    const intentId = "intent_01RETIRED";
+    const firstId = "action_01RET_A";
+    const secondId = "action_01RET_B";
+
+    const { client, captured } = makeQueryClient({
+      nodes: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Retired process",
+          lifecycle: "retired",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: firstId,
+          entity_type: "action",
+          summary: "Retired step one",
+          lifecycle: "retired",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {},
+        },
+        {
+          id: secondId,
+          entity_type: "action",
+          summary: "Retired step two",
+          lifecycle: "retired",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {},
+        },
+      ],
+      principals: [
+        {
+          id: "principal_retired",
+          name: "Retired Actor",
+          lifecycle: "retired",
+        },
+      ],
+      users: [],
+      edges: [
+        edge("edge_07A_INTENT", firstId, intentId, "serves"),
+        edge("edge_07B_INTENT", secondId, intentId, "serves"),
+        edge("edge_07A_ACTOR", firstId, "principal_retired", "performed_by"),
+        edge("edge_07B_ACTOR", secondId, "principal_retired", "performed_by"),
+        edge("edge_07FLOW", firstId, secondId, "flows_to"),
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "retired-flow" });
+
+    const nodeQuery = captured.find(
+      (q) => /FROM nodes t/i.test(q.sql) && /node_type IN/i.test(q.sql),
+    );
+    const principalQuery = captured.find((q) => /node_type = 'principal'/i.test(q.sql));
+    const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
+
+    // None of the loader's queries may pre-exclude retired — the client
+    // lifecycle filter owns that decision.
+    expect(nodeQuery?.sql).not.toMatch(/<> 'retired'/);
+    expect(principalQuery?.sql).not.toMatch(/<> 'retired'/);
+    expect(edgeQuery?.sql).not.toMatch(/<> 'retired'/);
+
+    // And the loader must not drop retired rows in JS either: retired
+    // nodes, their flow edges, and a retired Principal's named actor lane
+    // all survive to the client.
+    expect(graph.nodes.map((n) => n.id)).toEqual(expect.arrayContaining([firstId, secondId]));
+    expect(graph.links).toContainEqual(
+      expect.objectContaining({ id: "edge_07FLOW", source: firstId, target: secondId }),
+    );
+    expect(graph.lanes).toContainEqual(
+      expect.objectContaining({
+        kind: "actor",
+        label: "Retired Actor",
+        lifecycle: "retired",
       }),
     );
   });
