@@ -279,3 +279,72 @@ describe("tokenReachableOrgIdsForRequest", () => {
     expect(reachable && [...reachable].sort()).toEqual(["organization_meta", "organization_torre"]);
   });
 });
+
+describe('defer-scope ("*") connector token', () => {
+  it("grants any Doco at the scope gate (the matrix gates the role/write elsewhere)", () => {
+    const t = token({ granted_doco_ids: ["*"] });
+    expect(oauthTokenGrantsDoco(t, { ownerId: "organization_A", docoId: "doco_anything" })).toBe(
+      true,
+    );
+    expect(oauthTokenGrantsDoco(t, { ownerId: "principal_USER", docoId: "doco_personal" })).toBe(
+      true,
+    );
+  });
+
+  it("enumerates every accessible Doco (no org-boundary narrowing)", () => {
+    const owners = new Map([
+      ["doco_torre1", "organization_torre"],
+      ["doco_meta1", "organization_meta"],
+      ["doco_personal", "principal_alice"],
+    ]);
+    const accessible = ["doco_torre1", "doco_meta1", "doco_personal"];
+    expect(
+      filterDocosToOrgBoundary(accessible, owners, token({ granted_doco_ids: ["*"] })),
+    ).toEqual(accessible);
+  });
+
+  it("applies no org narrowing for listings (returns null)", async () => {
+    mocks.validateAccessToken.mockResolvedValue(token({ granted_doco_ids: ["*"] }));
+    const request = new Request("https://doco.test/api/v1/orgs.json", {
+      headers: { Authorization: "Bearer doco_at_x" },
+    });
+    await expect(tokenReachableOrgIdsForRequest(request)).resolves.toBeNull();
+  });
+
+  it("ALLOWS a write when the live matrix grants it", async () => {
+    mocks.getDocoUserGrant.mockResolvedValue({ role: "writer", writeTypes: ["*"] });
+    mocks.validateAccessToken.mockResolvedValue(
+      token({ granted_doco_ids: ["*"], granted_doco_write_types: { "*": ["*"] } }),
+    );
+    const request = new Request("https://doco.test/acme/api/decisions.json", {
+      headers: { Authorization: "Bearer doco_at_x" },
+    });
+    await expect(
+      canWriteDocoTypeForRequest(
+        request,
+        { ownerId: "organization_A", docoId: "doco_new" },
+        "user_agent",
+        "decision",
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("DENIES a write when the principal has NO matrix grant (no over-grant)", async () => {
+    // The safety invariant: "*" defers to the matrix; it can never exceed it.
+    mocks.getDocoUserGrant.mockResolvedValue(null);
+    mocks.validateAccessToken.mockResolvedValue(
+      token({ granted_doco_ids: ["*"], granted_doco_write_types: { "*": ["*"] } }),
+    );
+    const request = new Request("https://doco.test/acme/api/decisions.json", {
+      headers: { Authorization: "Bearer doco_at_x" },
+    });
+    await expect(
+      canWriteDocoTypeForRequest(
+        request,
+        { ownerId: "organization_A", docoId: "doco_new" },
+        "user_agent",
+        "decision",
+      ),
+    ).resolves.toBe(false);
+  });
+});

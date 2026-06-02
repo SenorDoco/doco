@@ -80,7 +80,7 @@ export async function readOAuthApprovalGrants(
     // The "identity" level means "scope to my full live reach, deferring the
     // role to the matrix" — it wins over any granular entries in the payload.
     if (parsed.some((g) => g.level === "identity")) {
-      return identityScopedGrants(principalId);
+      return identityScopedGrants();
     }
     return serializeApprovalGrants(parsed, principalId);
   }
@@ -99,25 +99,17 @@ export async function readOAuthApprovalGrants(
  * automatically. No ownership gate is needed precisely because the matrix —
  * not the token — is the ceiling.
  */
-export async function identityScopedGrants(principalId: string): Promise<OAuthApprovalGrantSets> {
+export function identityScopedGrants(): OAuthApprovalGrantSets {
+  // Defer SCOPE + role to the live matrix. "*" means "any Doco the principal
+  // can reach"; with no role cap and open write types, the access engine's
+  // effective access stays min(matrix, *) = the principal's live access. A
+  // new grant (a new Doco, or reader→writer) applies on the next call with no
+  // re-auth, and the doco/org enumeration endpoints expand "*" to the live
+  // accessible set. A brand-new user can mint this too — their agent then
+  // requests access and it works live.
   const grants = emptyGrantSets();
-  for (const org of await listOrganizationsForUser(principalId)) {
-    if (!grants.granted_org_ids.includes(org.id)) {
-      grants.granted_org_ids.push(org.id);
-      grants.granted_org_write_types[org.id] = [WRITE_ALL];
-    }
-  }
-  for (const id of await listAccessibleDocoIdsForPrincipal(principalId)) {
-    if (!grants.granted_doco_ids.includes(id)) {
-      grants.granted_doco_ids.push(id);
-      grants.granted_doco_write_types[id] = [WRITE_ALL];
-    }
-  }
-  if (grants.granted_doco_ids.length === 0 && grants.granted_org_ids.length === 0) {
-    throw approvalError("You don't have access to any Docos or organizations yet.", 400);
-  }
-  grants.granted_doco_ids.sort();
-  grants.granted_org_ids.sort();
+  grants.granted_doco_ids = ["*"];
+  grants.granted_doco_write_types = { "*": [WRITE_ALL] };
   return grants;
 }
 

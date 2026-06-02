@@ -117,6 +117,18 @@ export async function getDocoLevelGrant(
  * routes the caller still routes through the token gate
  * (`enforceOauthGrant`) which now also narrows per type.
  */
+/**
+ * A "*" in granted_doco_ids marks a defer-scope (identity / "Full access")
+ * token: it may touch ANY Doco the principal can reach, with role + per-type
+ * writes gated by the LIVE matrix grant (canAccessDoco / canWriteDocoType),
+ * never a frozen scope list. Effective access stays min(matrix, *) = the
+ * principal's live access, so a new grant (a new Doco, or reader→writer)
+ * applies on the next call with no re-auth.
+ */
+function tokenDefersScope(token: { granted_doco_ids?: readonly string[] | null }): boolean {
+  return (token.granted_doco_ids ?? []).includes("*");
+}
+
 export async function canWriteDocoType(
   meta: { ownerId: string; docoId?: string },
   principalId: string | null,
@@ -148,6 +160,10 @@ function tokenWriteTypeCap(
   const caps = new Set<string>();
   let matched = false;
 
+  if (tokenDefersScope(token)) {
+    matched = true;
+    addTokenWriteCap(caps, undefined, token.granted_doco_write_types?.["*"] ?? [WRITE_ALL]);
+  }
   if (meta.docoId && token.granted_doco_ids.includes(meta.docoId)) {
     matched = true;
     addTokenWriteCap(
@@ -274,6 +290,7 @@ export function oauthTokenGrantsDoco(
   token: ValidAccessToken,
   meta: { ownerId: string; docoId: string },
 ): boolean {
+  if (tokenDefersScope(token)) return true;
   if (token.granted_doco_ids.includes(meta.docoId)) return true;
   if (
     meta.ownerId.startsWith("organization_") &&
@@ -343,6 +360,8 @@ export function filterDocosToOrgBoundary(
   ownerByDocoId: ReadonlyMap<string, string>,
   token: Pick<ValidAccessToken, "granted_doco_ids" | "granted_org_ids">,
 ): string[] {
+  // Defer-scope tokens enumerate everything the principal can reach.
+  if (tokenDefersScope(token)) return [...accessibleDocoIds];
   const grantedDocoIds = new Set(token.granted_doco_ids ?? []);
   const reachableOrgs = tokenReachableOrgIdsFromGrant(token, ownerByDocoId);
   return accessibleDocoIds.filter((id) => {
@@ -384,6 +403,8 @@ export async function tokenReachableOrgIdsForRequest(
 ): Promise<Set<string> | null> {
   const token = await getOauthTokenForRequest(request);
   if (!token) return null;
+  // Defer-scope tokens reach every org the principal does — no narrowing.
+  if (tokenDefersScope(token)) return null;
   const ownerByDocoId = await loadDocoOwnerIds(token.granted_doco_ids ?? []);
   return tokenReachableOrgIdsFromGrant(token, ownerByDocoId);
 }
@@ -906,7 +927,7 @@ async function enforceOauthGrant(
     return;
   }
 
-  const docoGranted = token.granted_doco_ids.includes(doco.docoId);
+  const docoGranted = tokenDefersScope(token) || token.granted_doco_ids.includes(doco.docoId);
   const orgGranted =
     doco.ownerId.startsWith("organization_") &&
     (token.granted_org_ids ?? []).includes(doco.ownerId);

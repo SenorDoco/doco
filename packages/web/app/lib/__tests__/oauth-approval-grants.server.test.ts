@@ -97,37 +97,27 @@ describe("readOAuthApprovalGrants", () => {
   // (["*"]) so writes defer to the matrix too. Unlike the granular picker it
   // does NOT gate on ownership — a member self-scoping their own connector is
   // safe because effective access stays min(matrix, scope).
-  it("identity grant scopes to the principal's full reach, roles deferred to the matrix", async () => {
-    mocks.listOrganizationsForUser.mockResolvedValue([
-      { id: "organization_torre" },
-      { id: "organization_acme" },
-    ]);
-    mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue(["doco_bpms", "doco_road"]);
-
-    const grants = await readOAuthApprovalGrants(
-      formWithGrants([{ level: "identity" }]),
-      "user_member",
-    );
-
-    expect(grants).toEqual({
-      granted_doco_ids: ["doco_bpms", "doco_road"],
-      granted_doco_roles: {},
-      granted_doco_write_types: { doco_bpms: ["*"], doco_road: ["*"] },
-      granted_org_ids: ["organization_acme", "organization_torre"],
-      granted_org_roles: {},
-      granted_org_write_types: { organization_acme: ["*"], organization_torre: ["*"] },
-    });
-    // No ownership gate — the granular path keeps its owner check, this one
-    // relies on min(matrix, scope) instead.
-    expect(mocks.getDocoLevelRole).not.toHaveBeenCalled();
-  });
-
-  it("identity grant errors when the principal can reach nothing", async () => {
+  it('identity grant defers scope + role to the matrix ("*"), even with no current reach', async () => {
+    // A brand-new user (no reach) can still mint a "*" token so their agent
+    // can request access and have it work live, no re-auth. The matrix
+    // (min(matrix, *)) is the sole ceiling at access time.
     mocks.listOrganizationsForUser.mockResolvedValue([]);
     mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue([]);
 
-    await expect(
-      readOAuthApprovalGrants(formWithGrants([{ level: "identity" }]), "user_new"),
-    ).rejects.toMatchObject({ status: 400 });
+    const grants = await readOAuthApprovalGrants(
+      formWithGrants([{ level: "identity" }]),
+      "user_new",
+    );
+
+    expect(grants).toEqual({
+      granted_doco_ids: ["*"],
+      granted_doco_roles: {},
+      granted_doco_write_types: { "*": ["*"] },
+      granted_org_ids: [],
+      granted_org_roles: {},
+      granted_org_write_types: {},
+    });
+    // No ownership gate and no reach lookup — the matrix gates at access time.
+    expect(mocks.getDocoLevelRole).not.toHaveBeenCalled();
   });
 });
