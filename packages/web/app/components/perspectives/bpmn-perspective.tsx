@@ -50,6 +50,7 @@ import {
   opacityForEdge,
 } from "~/lib/graph-depth";
 import type { GraphReferenceItem } from "~/lib/graph-references";
+import { graphRenderBudgetFor, shouldPublishViewport } from "~/lib/graph-render-performance";
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
@@ -153,10 +154,6 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
-const BPMN_RENDER_NODE_BUDGET = 100;
-const BPMN_RENDER_FIRST_DEGREE_MIN = 50;
-const BPMN_RENDER_EDGE_BUDGET = 700;
-const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -250,9 +247,7 @@ export function BpmnPerspective({
   // don't yank the canvas around.
   const defaultFocusAppliedRef = useRef(false);
   const updateViewport = useCallback((next: FlowViewport) => {
-    setViewport((prev) =>
-      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
-    );
+    setViewport((prev) => (shouldPublishViewport(prev, next) ? next : prev));
   }, []);
 
   // Drop nodes whose lifecycle is filtered out. Lanes are never
@@ -307,6 +302,15 @@ export function BpmnPerspective({
     () => new Set(filteredNodes.map((node) => node.id)),
     [filteredNodes],
   );
+  const renderBudget = useMemo(
+    () =>
+      graphRenderBudgetFor({
+        perspective: "bpmn",
+        nodeCount: filteredNodes.length,
+        linkCount: links.length,
+      }),
+    [filteredNodes.length, links.length],
+  );
   const focusCandidates = useMemo(
     () => bpmnFocusCandidates(filteredNodes, pools, visibleLifecycles),
     [filteredNodes, pools, visibleLifecycles],
@@ -348,11 +352,11 @@ export function BpmnPerspective({
       selectionLinks,
       selectionCenterId,
       pageRankMap,
-      BPMN_RENDER_NODE_BUDGET,
+      renderBudget.nodeBudget,
       { docoHandle, perspective: "bpmn" },
-      { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN },
+      { minFirstDegree: renderBudget.minFirstDegree },
     );
-  }, [pools, filteredNodes, links, selectionCenterId, pageRankMap, docoHandle]);
+  }, [pools, filteredNodes, links, selectionCenterId, pageRankMap, renderBudget, docoHandle]);
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
@@ -527,7 +531,7 @@ export function BpmnPerspective({
       count: number,
       summaryIndex: number,
     ) => {
-      if (stubIndex >= BPMN_PLACEHOLDER_STUB_BUDGET) return;
+      if (stubIndex >= renderBudget.placeholderStubBudget) return;
       const position = layout.nodePositions.get(anchorNode.id);
       if (!position) return;
       const size = sizeForNode(anchorNode);
@@ -604,7 +608,15 @@ export function BpmnPerspective({
     });
 
     return { nodes, edges };
-  }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
+  }, [
+    links,
+    renderedNodeIds,
+    filteredNodeIds,
+    layout.nodePositions,
+    nodeById,
+    nodeByFullId,
+    renderBudget.placeholderStubBudget,
+  ]);
 
   // Sub-process drill-down links. The "+" marker and its reserved room
   // are decided in layOutBpmn (stable, data-level, rides on the node's
@@ -703,7 +715,7 @@ export function BpmnPerspective({
     () => [
       ...layout.flowEdges
         .filter((edge) => renderedNodeIds.has(edge.source) && renderedNodeIds.has(edge.target))
-        .slice(0, BPMN_RENDER_EDGE_BUDGET)
+        .slice(0, renderBudget.edgeBudget)
         .map((edge) => {
           const transitionOpacity = Math.min(
             renderWindowOpacityById.get(edge.source) ?? 1,
@@ -751,6 +763,7 @@ export function BpmnPerspective({
       renderWindowOpacityById,
       externalEdgeStubs.edges,
       subprocessEdges,
+      renderBudget.edgeBudget,
     ],
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the

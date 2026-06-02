@@ -44,6 +44,7 @@ const DISCONNECTED_COMPONENT_RADIUS = 620;
 const DISCONNECTED_COMPONENT_SIZE_SPACING = 24;
 const COMPACT_DISCONNECTED_COMPONENT_RADIUS = 280;
 const COMPACT_DISCONNECTED_COMPONENT_SIZE_SPACING = 8;
+const FAST_OVERVIEW_LAYOUT_NODE_THRESHOLD = 80;
 
 const EDGE_LAYOUT_WEIGHT = new Map<string, number>([
   ["flows_to", 2.4],
@@ -461,5 +462,8 @@ export function layoutOverviewGraphNodes(
   links: readonly OverviewLayoutLink[],
   centerId: string,
 ): Map<string, Point> {
+  if (nodes.length >= FAST_OVERVIEW_LAYOUT_NODE_THRESHOLD) {
+    return depthRingLayout(nodes, links, centerId);
+  }
   return clusteredForceLayout(nodes, links, centerId);
 }
