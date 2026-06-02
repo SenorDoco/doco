@@ -12,6 +12,7 @@ import {
   type ComposedGrant,
   type GrantCatalog,
   catalogFromOptions,
+  identityGrant,
   resolveWriteTypes,
 } from "~/lib/grant-picker";
 
@@ -41,14 +42,8 @@ export function OAuthAccessApprovalForm({
 }) {
   const catalog = useMemo(() => approvalCatalog(docos, workspaces), [docos, workspaces]);
   const [tokenName, setTokenName] = useState("");
-  // "full" → defer to the live matrix (every Doco you can reach, at your
-  // current role); "specific" → the granular owner-scoped picker.
-  const [mode, setMode] = useState<"full" | "specific">("full");
-  const [grants, setGrants] = useState<ComposedGrant[]>([]);
-  const grantsPayload = useMemo(
-    () => JSON.stringify(mode === "full" ? [{ level: "identity" }] : grants.map(grantPayload)),
-    [mode, grants],
-  );
+  const [grants, setGrants] = useState<ComposedGrant[]>(() => [identityGrant()]);
+  const grantsPayload = useMemo(() => JSON.stringify(grants.map(grantPayload)), [grants]);
   const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
 
   const tokenNameRef = useRef<HTMLInputElement>(null);
@@ -74,7 +69,7 @@ export function OAuthAccessApprovalForm({
 
     const found = validateGrantForm({
       name: { value: tokenName, message: "Enter a name for this token." },
-      grantCount: mode === "full" ? 1 : grants.length,
+      grantCount: grants.length,
     });
     if (found.length === 0) {
       setErrors({});
@@ -130,65 +125,24 @@ export function OAuthAccessApprovalForm({
         ) : null}
       </div>
 
-      <fieldset className="space-y-2">
-        <legend className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-          Access
-        </legend>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="radio"
-            name="access_mode"
-            checked={mode === "full"}
-            onChange={() => {
-              setMode("full");
-              clearError("grants");
-            }}
-            className="mt-1"
-          />
-          <span>
-            <span className="font-medium">Full access — follows your permissions</span>
-            <span className="block text-xs text-muted-foreground">
-              Every Doco you can reach, at your current role. Read→write tracks your live access, so
-              you never reconnect when your permissions change.
-            </span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="radio"
-            name="access_mode"
-            checked={mode === "specific"}
-            onChange={() => setMode("specific")}
-            className="mt-1"
-          />
-          <span>
-            <span className="font-medium">Specific Docos</span>
-            <span className="block text-xs text-muted-foreground">
-              Pick individual workspaces and Docos you own, each at a chosen role.
-            </span>
-          </span>
-        </label>
-      </fieldset>
-
-      {mode === "specific" ? (
-        <div ref={grantsRef}>
-          <GrantPicker
-            catalog={catalog}
-            grants={grants}
-            onChange={(next) => {
-              setGrants(next);
-              if (next.length > 0) clearError("grants");
-            }}
-          />
-          {errors.grants ? (
-            <p role="alert" className="mt-2 text-xs text-destructive">
-              {errors.grants}
-            </p>
-          ) : grants.length === 0 ? (
-            <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
-          ) : null}
-        </div>
-      ) : null}
+      <div ref={grantsRef}>
+        <GrantPicker
+          catalog={catalog}
+          grants={grants}
+          onChange={(next) => {
+            setGrants(next);
+            if (next.length > 0) clearError("grants");
+          }}
+          includeIdentityScope
+        />
+        {errors.grants ? (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            {errors.grants}
+          </p>
+        ) : grants.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
+        ) : null}
+      </div>
 
       {requestedRole ? (
         <p className="text-xs text-muted-foreground">
@@ -244,6 +198,9 @@ function approvalCatalog(
 }
 
 function grantPayload(g: ComposedGrant) {
+  if (g.level === "identity") {
+    return { level: "identity" };
+  }
   return {
     level: g.level,
     targetId: g.targetId,

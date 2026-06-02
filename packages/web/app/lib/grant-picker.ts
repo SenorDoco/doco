@@ -43,14 +43,15 @@ export interface GrantCatalog {
 }
 
 /**
- * The four scope levels the grant wizard offers, in breadth order. The
+ * The scope levels the grant wizard can offer, in breadth order. The
  * first wizard question picks one of these; the flow then adapts:
+ *   - identity: defer OAuth connector access to the grantor's live matrix.
  *   - account: grant on the grantor's whole account (every workspace they own).
  *   - workspace:     grant on one workspace (and its Docos).
  *   - doco:    grant role on one Doco.
  *   - types:   grant write on specific node/edge types within one Doco.
  */
-export type GrantScope = "account" | "workspace" | "doco" | "types";
+export type GrantScope = "identity" | "account" | "workspace" | "doco" | "types";
 
 /**
  * A grant the user is composing or has saved. `writeTypes` is meaningful
@@ -58,17 +59,22 @@ export type GrantScope = "account" | "workspace" | "doco" | "types";
  * ignored); a reader with a non-empty write_types set is the per-type
  * "editor"; the wildcard means write-all (a classic writer).
  *
- * `level` is the persistence level: "account" writes account_grants;
- * "workspace" writes workspace_users; "doco" writes doco_users. The wizard's "types"
- * scope persists as a doco-level grant with a non-wildcard write set.
- * `targetId` is empty for account-level grants (the grantor IS the
- * scope).
+ * `level` is the persistence level: "identity" defers OAuth connector
+ * access to the grantor's live matrix; "account" writes account_grants;
+ * "workspace" writes workspace_users; "doco" writes doco_users. The
+ * wizard's "types" scope persists as a doco-level grant with a
+ * non-wildcard write set. `targetId` is empty for identity/account-level
+ * grants (the grantor IS the scope).
  */
 export interface ComposedGrant {
-  level: "account" | "workspace" | "doco";
+  level: "identity" | "account" | "workspace" | "doco";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
+}
+
+export function identityGrant(): ComposedGrant {
+  return { level: "identity", targetId: "", role: "reader", writeTypes: [] };
 }
 
 /**
@@ -278,6 +284,13 @@ export interface ScopeChoice {
   blurb: string;
 }
 
+export const identityScopeChoice: ScopeChoice = {
+  scope: "identity",
+  title: "Full access — follows your permissions",
+  blurb:
+    "Every Doco you can reach, at your current role. Read→write tracks your live access, so you never reconnect when your permissions change.",
+};
+
 /**
  * Which scope choices the wizard should offer, given what the granting
  * user can reach. "All your workspaces and docos" only makes sense if the user OWNS
@@ -367,7 +380,7 @@ export function findGrant(
 
 export function findExistingGrant(
   list: ExistingGrant[] | undefined,
-  level: ComposedGrant["level"],
+  level: ExistingGrant["level"],
   targetId: string,
 ): ExistingGrant | undefined {
   return list?.find((g) => g.level === level && g.targetId === targetId);
@@ -402,7 +415,7 @@ export function targetRoleOptions(maxRole: DocoRole): TargetRoleChoice[] {
 /** The dropdown value for a target given the current selection. */
 export function targetRoleValue(
   list: ComposedGrant[],
-  level: ComposedGrant["level"],
+  level: "workspace" | "doco",
   targetId: string,
   existing?: ExistingGrant[],
 ): TargetRoleChoice {
