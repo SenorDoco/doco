@@ -231,7 +231,7 @@ export default function WorkspaceSearch({
           <h1 className="text-xl font-semibold">Search across {workspace.handle}</h1>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_420px]">
           <section className="min-w-0 space-y-4">
             <Form method="get" className="flex gap-2">
               <input
