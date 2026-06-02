@@ -1,44 +1,13 @@
-import {
-  getDocoById,
-  getUserById,
-  listDocoUsers,
-  listEntitiesByDoco,
-  upsertEntity,
-} from "@doco/db";
-import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, generateUlid, makeEntityId, nowIso } from "@doco/shared";
-import { appendAuditEvent } from "~/lib/audit-log.server";
-import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
-import {
-  appendOperationTiming,
-  authoringPoliciesPassed,
-  reindexAndScheduleAttach,
-} from "~/lib/capture.server";
+import { getUserById, listDocoUsers, listEntitiesByDoco } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
+import { capturePrincipal } from "~/lib/principal-capture.server";
 
-// Footer-line helper: the Principal endpoints used to emit `name (id)`
-// as plain text, which the chat surface renders as an unclickable
-// 30-character ULID. Mirror what `renderOperationLines` does for
-// every other entity — wrap the name in a markdown link to the
-// principal's perspective view. The agent pastes the line verbatim,
-// the UI renders the markdown, and the user gets a one-click jump
-// instead of a raw id.
-function principalLinkLabel(name: string): string {
-  return name.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
-}
-
-function principalLine(
-  emoji: string,
-  verb: string,
-  name: string,
-  id: string,
-  request: Request,
-  docoHandle: string,
-): string {
-  const url = `${new URL(request.url).origin}/${docoHandle}/principal/${id}`;
-  return `[🔮 Doco] ${emoji} Principal ${verb}: [${principalLinkLabel(name)}](${url})`;
-}
-
+// POST — create a Principal (role-persona / process actor). Auth + the
+// per-type "principal" write gate live here; the create itself is the shared
+// capturePrincipal core (also used by the generic capture registry → changeset
+// → authoring contract), so a principal is created identically however it's
+// reached.
 export async function action({
   request,
   params,
@@ -49,7 +18,6 @@ export async function action({
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST." }, { status: 405 });
   }
-  const startedAt = performance.now();
 
   const { me, meta } = await loadDocoRouteForRead(request, params, "reader");
   if (!me) {
@@ -73,140 +41,39 @@ export async function action({
     body_md?: string;
     lifecycle?: string;
   };
-  for (const [field, value] of Object.entries(body)) {
-    if (value !== undefined && value !== null && BLOCKED_NODE_JSON_EDGE_FIELD_SET.has(field)) {
-      return Response.json(
-        { error: `${field} is not a node JSON field. Create a first-class edge instead.` },
-        { status: 400 },
-      );
-    }
-  }
-  const name = String(body.name ?? "").trim();
-  if (!name) {
-    return Response.json({ error: "name is required." }, { status: 400 });
-  }
 
-  // Resolve the new Principal's lifecycle. Honors an explicit
-  // `lifecycle` (drafting | asserted | retired), then the Doco's
-  // template default (`org-chart` ships `drafting`), then `asserted`.
-  // Lets a tentative seat be sketched as `drafting`.
-  //
-  // EXCEPTION — business-processes. There, Principals are swim-lane actors
-  // linked from work with `performed_by` edges, and active flow policies only
-  // accept non-retired/asserted Principals. Inheriting the template's
-  // `drafting` flow-node default would make a freshly-created lane actor fail
-  // the next relationship check. Org-chart's draftable seats are about
-  // reporting lines, so the inheritance only makes sense there. Default
-  // business-processes Principals to `asserted` unless the caller is explicit.
-  const VALID_PRINCIPAL_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
-  let lifecycle = "asserted";
-  if (body.lifecycle !== undefined) {
-    if (typeof body.lifecycle !== "string" || !VALID_PRINCIPAL_LIFECYCLES.has(body.lifecycle)) {
-      return Response.json(
-        { error: "lifecycle must be one of: drafting, asserted, retired." },
-        { status: 400 },
-      );
-    }
-    lifecycle = body.lifecycle;
-  } else {
-    const doco = await getDocoById(meta.docoId);
-    const templateHandle =
-      typeof doco?.data?.template_handle === "string" ? doco.data.template_handle : null;
-    const dflt = doco?.default_node_lifecycle;
-    // Skip the drafting inheritance for business-processes (see above) —
-    // its lane actors must be resolvable the moment they're created.
-    if (templateHandle !== "business-processes" && dflt && VALID_PRINCIPAL_LIFECYCLES.has(dflt)) {
-      lifecycle = dflt;
-    }
-  }
+  const result = await capturePrincipal(
+    docoPath(params.docoHandle),
+    meta.docoId,
+    "",
+    params.docoHandle,
+    // Spread the full body so capturePrincipal's blocked-edge-field guard sees
+    // every client field (e.g. reports_to); created_by is forced to the
+    // authenticated user regardless of what the client sent.
+    { ...body, created_by: me.id },
+    new URL(request.url).origin,
+  );
 
-  const id = makeEntityId("principal", generateUlid());
-  const now = nowIso();
-  // Migration 037 dropped `summary` from Principal — `body_md` is now
-  // the only narrative field. When no body is supplied it stays empty.
-  const bodyMd = body.body_md?.trim() || "";
-  // `body_md` is included in the candidate so the authoring-policy
-  // evaluator sees it. The org-chart template's "person-vs-agent must
-  // be declared in body_md" probabilistic gate reads the candidate's
-  // body_md field.
-  const raw = {
-    id,
-    doco_id: meta.docoId,
-    node_type: "principal",
-    name,
-    body_md: bodyMd,
-    created_at: now,
-    created_by: me.id,
-    lifecycle,
-  };
-
-  // Run the doco's authoring policies against the Principal before
-  // persisting. Reuses the same evaluator the generic capture routes
-  // call, so per-template policies that target Principals (the
-  // `org-chart` template ships several) get a chance to block or warn.
-  const pred = await runAuthoringPolicies({
-    docoId: meta.docoId,
-    candidate: raw as Parameters<typeof runAuthoringPolicies>[0]["candidate"],
-  });
-  if (pred.blocking) {
+  if ("error" in result) {
     return Response.json(
       {
-        error: `Authoring policy violation: ${pred.blocking.reason}`,
-        policy_id: pred.blocking.policy_id,
-        ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+        error: result.error,
+        ...(result.policy_id ? { policy_id: result.policy_id } : {}),
+        ...(result.warnings && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
       },
-      { status: 422 },
+      { status: result.status ?? 400 },
     );
   }
 
-  await upsertEntity({
-    id,
-    doco_id: meta.docoId,
-    entity_type: "principal",
-    data: raw,
-    body_md: bodyMd,
-    lifecycle,
-    created_at: now,
-    created_by: me.id,
-    updated_at: now,
-    updated_by: me.id,
-  });
-
-  // Reindex so FTS and embeddings reflect the new Principal. Other capture
-  // routes do this via the generic capture factory; principals use a bespoke
-  // handler and need to call the helper directly.
-  await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, id);
-  appendAuditEvent({
-    docoDir: docoPath(params.docoHandle),
-    docoId: meta.docoId,
-    by: me.id,
-    entity_type: "principal",
-    entity_id: id,
-    op: "entity.create",
-    after: {
-      name,
-      body_md: bodyMd,
-      lifecycle,
-    },
-  });
-
-  const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
-  const duration_ms = Math.round(performance.now() - startedAt);
   return Response.json(
     {
       ok: true,
-      id,
-      name,
+      id: result.id,
+      name: String(body.name ?? "").trim(),
       existed: false,
-      footer_lines: [
-        appendOperationTiming(principalLine("👤", "added", name, id, request, params.docoHandle), {
-          duration_ms,
-          authoringPoliciesPassed: authoringPoliciesPassed(pred),
-        }),
-        ...warningFooters,
-      ],
-      duration_ms,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+      footer_lines: result.footer_lines,
+      duration_ms: result.duration_ms,
+      ...(result.warnings && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
     },
     { status: 201 },
   );
