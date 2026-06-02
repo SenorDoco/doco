@@ -3,7 +3,7 @@ import {
   contractForAttachedPerspectives,
   relationKindList,
 } from "~/lib/graph-authoring-contract.server";
-import { CAPTURE_REGISTRY } from "~/lib/node-capture-registry.server";
+import { BESPOKE_CAPTURE_REGISTRY, CAPTURE_REGISTRY } from "~/lib/node-capture-registry.server";
 import { listPerspectivesForDoco } from "~/lib/perspectives.server";
 
 export async function loader({
@@ -15,7 +15,12 @@ export async function loader({
 }) {
   const { meta } = await loadDocoRouteForRead(request, params);
   const attached = await listPerspectivesForDoco(meta.docoId);
-  const entityTypes = Object.values(CAPTURE_REGISTRY).map((entry) => ({
+  // Generic AND bespoke node types — agents discover every authorable type,
+  // including bespoke ones like `principal`, from this one contract.
+  const entityTypes = [
+    ...Object.values(CAPTURE_REGISTRY),
+    ...Object.values(BESPOKE_CAPTURE_REGISTRY),
+  ].map((entry) => ({
     entity_type: entry.entityType,
     collection: entry.type,
     capture_endpoint: `/${params.docoHandle}/api/${entry.type}.json`,

@@ -21,6 +21,7 @@ import {
   captureRule,
   captureState,
 } from "~/lib/capture.server";
+import { type PrincipalDraft, capturePrincipal } from "~/lib/principal-capture.server";
 
 export interface MeLike {
   id: string | null;
@@ -88,6 +89,23 @@ export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   states: entry<StateDraft>("state", captureState),
 };
 
+// Bespoke captures: catalog node types (NODE_CATALOG[*].capture === "bespoke")
+// whose body diverges from the shared `prose` column, so they carry their own
+// captureFn instead of a generic one. Kept separate from CAPTURE_REGISTRY so the
+// generic /<doco>/api/<type>.json route stays generic-only — these have their
+// own bespoke route — while still being first-class everywhere that authors by
+// entity_type (changeset, the authoring contract). Same CaptureFn contract, so
+// nothing downstream special-cases them.
+export const BESPOKE_CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
+  principals: entry<PrincipalDraft>("principal", capturePrincipal),
+};
+
+// All capture-able node types keyed by singular entity_type — generic AND
+// bespoke. Changeset and any caller authoring by entity_type uses this, so a
+// bespoke type can't silently fall out (guarded by node-type-capture-coverage).
 export const CAPTURE_REGISTRY_BY_ENTITY_TYPE: Record<string, RegistryEntry> = Object.fromEntries(
-  Object.values(CAPTURE_REGISTRY).map((entry) => [entry.entityType, entry]),
+  [...Object.values(CAPTURE_REGISTRY), ...Object.values(BESPOKE_CAPTURE_REGISTRY)].map((entry) => [
+    entry.entityType,
+    entry,
+  ]),
 );
