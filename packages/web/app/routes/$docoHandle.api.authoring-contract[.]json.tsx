@@ -73,6 +73,24 @@ export async function loader({
         },
         note: "Creates a node and immediately relates an existing node to it. Preferred for ordered perspectives.",
       },
+      activate: {
+        shape: { op: "activate", target: "node_id_or_$alias" },
+        note: "Transition a node to 'asserted' (publish a draft). target is an id or a $alias from this changeset.",
+      },
+      retire: {
+        shape: { op: "retire", target: "node_id_or_$alias" },
+        note: "Soft-retire a node — a tombstone; history is kept and it's reversible by re-asserting. Use to clean up mistakes.",
+      },
+      supersede: {
+        shape: {
+          op: "supersede",
+          target: "old_node_id",
+          entity_type: "action",
+          alias: "optional_name",
+          body: {},
+        },
+        note: "Replace a node: creates the replacement, then retires the old one with a superseded_by pointer to it.",
+      },
     },
     examples: [
       {

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   edgeExists: vi.fn(),
   getEntity: vi.fn(),
   withClient: vi.fn(),
+  updateEntity: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
@@ -38,6 +39,10 @@ vi.mock("~/lib/node-capture-registry.server", () => ({
   },
 }));
 
+vi.mock("~/lib/capture.server", () => ({
+  updateEntity: mocks.updateEntity,
+}));
+
 import { action } from "../$docoHandle.api.changesets[.]json";
 
 function changesetRequest(body: Record<string, unknown>): Request {
@@ -66,6 +71,106 @@ describe("changesets write gate", () => {
       id: "edge_01NEW",
       footer_lines: [],
     });
+    mocks.updateEntity.mockResolvedValue({
+      ok: true,
+      id: "decision_0123456789ABCDEFGHJKMNPQRS",
+      path: "",
+      footer_lines: [],
+      duration_ms: 0,
+      changed: ["lifecycle"],
+    });
+  });
+
+  it("activate transitions a node to asserted via updateEntity", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [{ op: "activate", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.requireDocoTypeWritesForRequest).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.anything(),
+      "user_author",
+      expect.arrayContaining(["decision"]),
+      "apply this changeset",
+    );
+    expect(mocks.updateEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: "decision",
+        pluralDir: "decisions",
+        id: "decision_0123456789ABCDEFGHJKMNPQRS",
+        patch: { lifecycle: "asserted" },
+      }),
+    );
+  });
+
+  it("retire transitions a node to retired", async () => {
+    await action({
+      request: changesetRequest({
+        operations: [{ op: "retire", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(mocks.updateEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "decision_0123456789ABCDEFGHJKMNPQRS",
+        patch: { lifecycle: "retired" },
+      }),
+    );
+  });
+
+  it("supersede creates the replacement and retires the old node pointing at it", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [
+          {
+            op: "supersede",
+            target: "decision_0123456789ABCDEFGHJKMNPQRS",
+            entity_type: "decision",
+            body: { decision: "Revised", question: "Why?" },
+          },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    const body = (await response.json()) as { ok: boolean; results: Array<{ id?: string }> };
+    expect(response.status).toBe(200);
+    // New node created…
+    expect(mocks.captureFn).toHaveBeenCalled();
+    // …old node retired, pointing at the replacement.
+    expect(mocks.updateEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "decision_0123456789ABCDEFGHJKMNPQRS",
+        patch: { lifecycle: "retired", superseded_by: "decision_01NEW" },
+      }),
+    );
+    expect(body.results[0].id).toBe("decision_01NEW");
+  });
+
+  it("preflights the node type for activate/retire/supersede targets", async () => {
+    await action({
+      request: changesetRequest({
+        operations: [
+          { op: "retire", target: "action_0123456789ABCDEFGHJKMNPQRS" },
+          {
+            op: "supersede",
+            target: "decision_0123456789ABCDEFGHJKMNPQRS",
+            entity_type: "decision",
+            body: { decision: "x", question: "y" },
+          },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(mocks.requireDocoTypeWritesForRequest).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.anything(),
+      "user_author",
+      expect.arrayContaining(["action", "decision"]),
+      "apply this changeset",
+    );
   });
 
   it("preflights every node and relation type touched by the batch", async () => {

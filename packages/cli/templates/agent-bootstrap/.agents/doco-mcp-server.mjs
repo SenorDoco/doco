@@ -402,7 +402,7 @@ const CHANGESET_TOOL = {
       operations: {
         type: "array",
         description:
-          "Ordered ops: {op:'create',entity_type,alias?,body} | {op:'relate',relation_kind,from,to} | {op:'relate_many',relations:[…]} | {op:'append',entity_type,after,relation_kind,body}.",
+          "Ordered ops: {op:'create',entity_type,alias?,body} | {op:'relate',relation_kind,from,to} | {op:'relate_many',relations:[…]} | {op:'append',entity_type,after,relation_kind,body} | {op:'activate',target} | {op:'retire',target} | {op:'supersede',target,entity_type,body}. activate/retire/supersede `target` is a node id or a $alias from this batch.",
         items: { type: "object", additionalProperties: true },
       },
       validate_against: {
