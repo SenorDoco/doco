@@ -1048,6 +1048,12 @@ export default function DocoHome({
               </Link>
             </h1>
             <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to={`/${handle}/integrations`}
+                className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+              >
+                App integrations
+              </Link>
               {canInviteUsers ? <UsersLink level="doco" targetId={docoId} /> : null}
               {canInviteUsers ? <ApiKeysLink /> : null}
               <Link
@@ -1055,12 +1061,6 @@ export default function DocoHome({
                 className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
                 Policies ({policyCount})
-              </Link>
-              <Link
-                to={`/${handle}/integrations`}
-                className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
-              >
-                App integrations
               </Link>
               {canInviteUsers ? (
                 <Link
