@@ -8,8 +8,9 @@
 // install instructions for .doco/project-tokens.json.
 
 import { Form, Link, redirect, useNavigation } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -131,20 +132,23 @@ export default function ProjectTokensPage({
     <div>
       <SiteHeader me={me} />
       <DocoPageMain className="py-6 space-y-5">
-        <div className="space-y-1">
-          <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Project tokens" })} />
-          <h1 className="text-lg font-semibold tracking-tight">
-            <Link to={`/${handle}`} className="hover:text-primary">
-              {handle}
-            </Link>
-            <span className="text-muted-foreground"> · project tokens</span>
-          </h1>
+        <PageHeader
+          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Project tokens" })}
+          title={
+            <>
+              <Link to={`/${handle}`} className="hover:text-primary">
+                {handle}
+              </Link>
+              <span className="text-muted-foreground"> · project tokens</span>
+            </>
+          }
+        >
           <p className="text-sm text-muted-foreground">
             A project token is a committable, read-only credential for this Doco. Commit it to{" "}
             <code>.doco/project-tokens.json</code> in any repo whose readers can also read this Doco
             — agents that clone the repo will then read the Doco without OAuth.
           </p>
-        </div>
+        </PageHeader>
 
         <Card>
           <CardHeader>

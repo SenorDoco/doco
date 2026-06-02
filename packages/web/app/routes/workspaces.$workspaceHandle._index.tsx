@@ -14,9 +14,10 @@ import { entityUrl } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
+import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import {
   activityRowLifecycle,
@@ -306,23 +307,22 @@ export default function WorkspaceHome({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto w-full max-w-6xl px-6 py-6 space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <Breadcrumb items={workspaceBreadcrumb({ workspaceSlug: workspace.handle })} />
-            <h1 className="text-2xl font-semibold">{workspace.handle}</h1>
-            <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {canInviteUsers ? (
+        <PageHeader
+          breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle })}
+          title={workspace.handle}
+          actions={
+            canInviteUsers ? (
               <Link
                 to={`/workspaces/${workspace.handle}/settings`}
                 className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
               >
                 Settings
               </Link>
-            ) : null}
-          </div>
-        </div>
+            ) : null
+          }
+        >
+          <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
+        </PageHeader>
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_420px]">
           {/* Left column — the constitution gets the full available width, with

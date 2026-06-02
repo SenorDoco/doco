@@ -11,8 +11,9 @@
 
 import { withClient } from "@doco/db";
 import { Link } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -101,13 +102,15 @@ export default function EdgesIndex({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Edges" })} />
-        <header className="flex items-baseline justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Edges</h1>
-          <div className="text-xs text-muted-foreground">
-            {edges.length} edge{edges.length === 1 ? "" : "s"}
-          </div>
-        </header>
+        <PageHeader
+          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Edges" })}
+          title="Edges"
+          actions={
+            <div className="text-xs text-muted-foreground">
+              {edges.length} edge{edges.length === 1 ? "" : "s"}
+            </div>
+          }
+        />
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-3">
             <CardTitle className="text-sm">
