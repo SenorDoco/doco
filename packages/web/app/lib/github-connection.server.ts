@@ -373,6 +373,26 @@ export function githubImportProgress(
   return { done, total };
 }
 
+/** View-state for the Doco-home "GitHub integration" box. */
+export interface GitHubIntegrationStatus {
+  /** A PR backfill is actively importing this Doco's historical PRs. */
+  importing: boolean;
+}
+
+/**
+ * The Doco-home "GitHub integration" box state from a raw
+ * `docos.data.github_integration` value: null when the Doco tracks no repo and
+ * no org installation (so no box is shown), else whether an initial PR import
+ * is still running. A Doco counts as connected the moment it subscribes to an
+ * org installation, even before the first repo syncs — same "connected" rule as
+ * the Integrations page. Pure, so one column fetch on the home loader drives it.
+ */
+export function githubIntegrationStatus(raw: unknown): GitHubIntegrationStatus | null {
+  const connected = normalizeConnections(raw).length > 0 || normalizeInstallations(raw).length > 0;
+  if (!connected) return null;
+  return { importing: normalizeBackfillState(raw)?.status === "running" };
+}
+
 /**
  * Build a fresh resumable cursor from a Doco's current connections — the work
  * queue is every connected repo's full-name. Used to (re)start or recover a
