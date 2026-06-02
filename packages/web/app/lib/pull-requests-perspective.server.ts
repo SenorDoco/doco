@@ -26,6 +26,8 @@ export interface PullRequestRefRow {
   locator: string | null;
   /** Canonical lifecycle stage (drafting/asserted/retired); null defaults to drafting. */
   lifecycle: string | null;
+  /** Last time the imported PR Reference changed in Doco. */
+  updated_at: string | null;
 }
 
 export interface PullRequestItem {
@@ -37,6 +39,7 @@ export interface PullRequestItem {
    *  server-side so the client component needn't import from this `.server`
    *  module at runtime. */
   label: string;
+  updatedAt: string | null;
 }
 
 export interface PullRequestsPerspectiveData {
@@ -98,6 +101,7 @@ export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequest
       url,
       lifecycle,
       label: pullRequestLabel(lifecycle),
+      updatedAt: row.updated_at,
     };
   });
 }
@@ -128,6 +132,7 @@ export async function loadPullRequestsPerspective(
             prose AS reference,
             locator,
             lifecycle,
+            updated_at::text AS updated_at,
             (SELECT COUNT(*)
                FROM nodes
               WHERE doco_id = $1
@@ -137,7 +142,7 @@ export async function loadPullRequestsPerspective(
       WHERE doco_id = $1
         AND node_type = 'reference'
         AND locator LIKE '%/pull/%'
-      ORDER BY created_at DESC, id ASC
+      ORDER BY updated_at DESC, created_at DESC, id ASC
       LIMIT $2`,
     [docoId, queryLimit],
   );

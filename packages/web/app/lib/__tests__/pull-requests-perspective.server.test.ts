@@ -21,6 +21,7 @@ function row(over: Partial<PullRequestRefRow>): PullRequestRefRow {
     reference: "Some title\n\nbody",
     locator: "https://github.com/acme/web/pull/1",
     lifecycle: "asserted",
+    updated_at: "2026-06-02T16:00:00.000Z",
     ...over,
   };
 }
@@ -70,6 +71,14 @@ describe("pullRequestItemsFromRows", () => {
     ]);
 
     expect(items[0].url).toBe("https://github.com/a/b/pull/1");
+  });
+
+  it("carries the last updated timestamp for display", () => {
+    const items = pullRequestItemsFromRows([
+      row({ id: "reference_1", updated_at: "2026-06-02T17:00:00.000Z" }),
+    ]);
+
+    expect(items[0].updatedAt).toBe("2026-06-02T17:00:00.000Z");
   });
 });
 
@@ -166,5 +175,23 @@ describe("loadPullRequestsPerspective", () => {
     expect(data.items).toEqual([]);
     expect(data.totalCount).toBe(0);
     expect(data.hasMore).toBe(false);
+  });
+
+  it("loads PRs by most recently updated and exposes the updated timestamp", async () => {
+    const { client, captured } = makeClient([
+      prRow({
+        id: "reference_recent",
+        reference: "Recently updated",
+        locator: "https://github.com/acme/web/pull/2",
+        total_count: "1",
+        updated_at: "2026-06-02T17:00:00.000Z",
+      }),
+    ]);
+
+    const data = await loadPullRequestsPerspective(client, "doco_1");
+
+    expect(captured[0].sql).toMatch(/updated_at::text AS updated_at/);
+    expect(captured[0].sql).toMatch(/ORDER BY updated_at DESC, created_at DESC, id ASC/);
+    expect(data.items[0].updatedAt).toBe("2026-06-02T17:00:00.000Z");
   });
 });
