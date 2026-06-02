@@ -19,7 +19,6 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import { graphRenderBudgetFor, shouldPublishViewport } from "~/lib/graph-render-performance";
 import { lifecycleColor } from "~/lib/node-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { type Point, layoutOverviewGraphNodes } from "~/lib/overview-graph-layout";
@@ -137,6 +136,10 @@ const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
+const OVERVIEW_RENDER_NODE_BUDGET = 100;
+const OVERVIEW_RENDER_FIRST_DEGREE_MIN = 50;
+const OVERVIEW_RENDER_EDGE_BUDGET = 700;
+const OVERVIEW_PLACEHOLDER_STUB_BUDGET = 120;
 const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_PX = 252;
 const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_JITTER_PX = 24;
 const OVERVIEW_PLACEHOLDER_EDGE_FADE_PX = 200;
@@ -304,7 +307,9 @@ export function OverviewGraph({
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
   const updateViewport = useCallback((next: FlowViewport) => {
-    setViewport((prev) => (shouldPublishViewport(prev, next) ? next : prev));
+    setViewport((prev) =>
+      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
+    );
   }, []);
 
   const allLifecycles = useMemo(() => {
@@ -375,15 +380,6 @@ export function OverviewGraph({
     () => links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target)),
     [links, visibleIds],
   );
-  const renderBudget = useMemo(
-    () =>
-      graphRenderBudgetFor({
-        perspective: "graph",
-        nodeCount: visibleNodes.length,
-        linkCount: visibleLinks.length,
-      }),
-    [visibleNodes.length, visibleLinks.length],
-  );
   const visibleDepthByNodeId = useMemo(
     () => computeDepthFromCenter(visibleNodes, visibleLinks, focusCenterId),
     [visibleNodes, visibleLinks, focusCenterId],
@@ -395,11 +391,11 @@ export function OverviewGraph({
         visibleLinks,
         selectionCenterId,
         pageRanks,
-        renderBudget.nodeBudget,
+        OVERVIEW_RENDER_NODE_BUDGET,
         { docoHandle, perspective: "graph" },
-        { minFirstDegree: renderBudget.minFirstDegree },
+        { minFirstDegree: OVERVIEW_RENDER_FIRST_DEGREE_MIN },
       ),
-    [visibleNodes, visibleLinks, selectionCenterId, pageRanks, renderBudget, docoHandle],
+    [visibleNodes, visibleLinks, selectionCenterId, pageRanks, docoHandle],
   );
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
@@ -442,15 +438,8 @@ export function OverviewGraph({
         if (aRank !== bRank) return bRank - aRank;
         return a.index - b.index;
       });
-    return candidates.slice(0, renderBudget.edgeBudget).map((entry) => entry.link);
-  }, [
-    visibleLinks,
-    renderedNodeIds,
-    visibleDepthByNodeId,
-    focusCenterId,
-    pageRanks,
-    renderBudget.edgeBudget,
-  ]);
+    return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
+  }, [visibleLinks, renderedNodeIds, visibleDepthByNodeId, focusCenterId, pageRanks]);
   const positions = useMemo(() => {
     const computed = layoutOverviewGraphNodes(
       renderedNodes,
@@ -580,7 +569,7 @@ export function OverviewGraph({
       count: number,
       summaryIndex: number,
     ) => {
-      if (stubIndex >= renderBudget.placeholderStubBudget) return;
+      if (stubIndex >= OVERVIEW_PLACEHOLDER_STUB_BUDGET) return;
       const anchor = positions.get(anchorId);
       if (!anchor) return;
       const anchorCenter = {
@@ -662,14 +651,7 @@ export function OverviewGraph({
     });
 
     return { nodes, edges };
-  }, [
-    visibleLinks,
-    renderedNodeIds,
-    visibleIds,
-    positions,
-    visibleNodeById,
-    renderBudget.placeholderStubBudget,
-  ]);
+  }, [visibleLinks, renderedNodeIds, visibleIds, positions, visibleNodeById]);
 
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;
