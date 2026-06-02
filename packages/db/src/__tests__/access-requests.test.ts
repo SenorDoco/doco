@@ -31,9 +31,10 @@ const REQ = "user_req0000000000000000000000";
 async function seed(): Promise<void> {
   const db = mocks.db;
   await db.query("INSERT INTO users (id, data) VALUES ($1,'{}'),($2,'{}')", [OWNER, REQ]);
-  await db.query("INSERT INTO organizations (id, handle, name, data) VALUES ($1,'org','Org','{}')", [
-    ORG,
-  ]);
+  await db.query(
+    "INSERT INTO organizations (id, handle, name, data) VALUES ($1,'org','Org','{}')",
+    [ORG],
+  );
   await db.query(
     "INSERT INTO docos (id, handle, owner_id, org_id, data) VALUES ($1,'d1',$2,$2,'{}'),($3,'d2',$2,$2,'{}')",
     [DOCO, ORG, DOCO2],

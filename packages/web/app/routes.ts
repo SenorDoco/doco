@@ -151,6 +151,10 @@ export default [
   // and personal API keys minted here). The matching JSON endpoint
   // mints + lists + revokes keys for API consumers.
   route("api-keys", "routes/api-keys.tsx"),
+  // The owner's access-request inbox (approve/deny → writes a doco_users
+  // grant) + the landing for a just-sent request. Agents request via the
+  // doco_request_access MCP tool; humans via the private-doco 403 page.
+  route("access-requests", "routes/access-requests.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
   // install the MCP connector at /mcp/<handle>, no recipe to walk
   // through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
