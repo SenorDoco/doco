@@ -11,7 +11,8 @@
     "build": "react-router build",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc -p tsconfig.json --noEmit",
-    "test": "echo 'web tests run via Chrome E2E'"
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",
