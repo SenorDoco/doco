@@ -242,8 +242,13 @@ export default function OrgSettings({
           </CardHeader>
           <CardContent>
             {!isConfirmingDelete ? (
+              // Reveal the confirm form in place — preventScrollReset (mirrored
+              // into history state for the main-pane restorer) keeps this
+              // same-page navigation from yanking the reader to the top.
               <Link
                 to={`/orgs/${org.handle}/settings?confirm=delete`}
+                preventScrollReset
+                state={{ preventScrollReset: true }}
                 className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
               >
                 Delete this organization...
@@ -271,6 +276,8 @@ export default function OrgSettings({
                   </button>
                   <Link
                     to={`/orgs/${org.handle}/settings`}
+                    preventScrollReset
+                    state={{ preventScrollReset: true }}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
                     Cancel
