@@ -23,9 +23,13 @@ export function Breadcrumb({
           return (
             <Fragment key={`${item.label}-${index}`}>
               <li>
-                {item.to && !isLast ? (
+                {item.to ? (
+                  // The current item stays clickable too — it links to its own
+                  // page and keeps aria-current so assistive tech still reads it
+                  // as the current location.
                   <Link
                     to={item.to}
+                    aria-current={isLast ? "page" : undefined}
                     className="hover:text-foreground hover:underline transition-colors"
                   >
                     {item.label}
