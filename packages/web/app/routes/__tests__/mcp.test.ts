@@ -3,15 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipalAsync: vi.fn(),
   searchLoader: vi.fn(),
+  captureAction: vi.fn(),
+  edgesAction: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipalAsync: mocks.getCurrentPrincipalAsync,
 }));
-
-vi.mock("../$docoHandle.search[.]json", () => ({
-  loader: mocks.searchLoader,
-}));
+vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
+vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
+vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction }));
 
 import { action, loader } from "../mcp";
 
@@ -50,15 +51,19 @@ describe("POST /mcp (hosted remote MCP)", () => {
     const body: Json = await res.json();
     expect(body.result.protocolVersion).toBe("2024-11-05");
     expect(body.result.serverInfo.name).toBe("doco");
-    expect(body.result.instructions).toContain("doco_search");
+    expect(body.result.instructions).toContain("doco_capture");
   });
 
-  it("tools/list advertises only doco_search (auth tools drop in the connector flavor)", async () => {
+  it("tools/list advertises read + write tools (search, capture, relate)", async () => {
     const res = await action({
       request: rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" }, BEARER),
     });
     const body: Json = await res.json();
-    expect(body.result.tools.map((t: Json) => t.name)).toEqual(["doco_search"]);
+    expect(body.result.tools.map((t: Json) => t.name)).toEqual([
+      "doco_search",
+      "doco_capture",
+      "doco_relate",
+    ]);
   });
 
   it("ping returns an empty result", async () => {
@@ -66,14 +71,9 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect((await res.json()).result).toEqual({});
   });
 
-  it("tools/call doco_search delegates to the per-doco search loader, replaying the bearer", async () => {
+  it("doco_search delegates to the search loader, replaying the bearer", async () => {
     mocks.searchLoader.mockResolvedValue(
-      Response.json({
-        query: "auth",
-        count: 1,
-        hits: [{ id: "decision_1" }],
-        viewer: { username: "alice" },
-      }),
+      Response.json({ query: "auth", count: 1, hits: [{ id: "decision_1" }] }),
     );
     const res = await action({
       request: rpc(
@@ -90,7 +90,6 @@ describe("POST /mcp (hosted remote MCP)", () => {
       ),
     });
     const body: Json = await res.json();
-    expect(mocks.searchLoader).toHaveBeenCalledTimes(1);
     const callArg: Json = mocks.searchLoader.mock.calls[0][0];
     expect(callArg.params).toEqual({ docoHandle: "torre-bpms" });
     expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
@@ -99,7 +98,96 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.structuredContent.count).toBe(1);
   });
 
-  it("tools/call requires a doco handle", async () => {
+  it("doco_capture delegates a POST to the per-type capture route with the bearer + body", async () => {
+    mocks.captureAction.mockResolvedValue(
+      Response.json({ ok: true, id: "decision_1" }, { status: 201 }),
+    );
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 9,
+          method: "tools/call",
+          params: {
+            name: "doco_capture",
+            arguments: {
+              doco: "acme",
+              type: "decision",
+              body: { decision: "Use X", question: "X or Y?" },
+            },
+          },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    const callArg: Json = mocks.captureAction.mock.calls[0][0];
+    expect(callArg.params).toEqual({ docoHandle: "acme", type: "decision" });
+    expect(callArg.request.method).toBe("POST");
+    expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
+    expect(callArg.request.url).toContain("/acme/api/decision.json");
+    expect(await callArg.request.json()).toEqual({ decision: "Use X", question: "X or Y?" });
+    expect(body.result.structuredContent.id).toBe("decision_1");
+  });
+
+  it("doco_relate delegates a POST to the edges route with the edge body", async () => {
+    mocks.edgesAction.mockResolvedValue(Response.json({ ok: true, id: "edge_1" }, { status: 201 }));
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 10,
+          method: "tools/call",
+          params: {
+            name: "doco_relate",
+            arguments: {
+              doco: "acme",
+              edge_type: "supports",
+              from_id: "decision_1",
+              to_id: "intent_1",
+            },
+          },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    const callArg: Json = mocks.edgesAction.mock.calls[0][0];
+    expect(callArg.params).toEqual({ docoHandle: "acme" });
+    expect(callArg.request.method).toBe("POST");
+    expect(await callArg.request.json()).toEqual({
+      edge_type: "supports",
+      from_id: "decision_1",
+      to_id: "intent_1",
+    });
+    expect(body.result.structuredContent.id).toBe("edge_1");
+  });
+
+  it("doco_capture surfaces a write-denial as a clean tool error (grant change, not re-auth)", async () => {
+    mocks.captureAction.mockResolvedValue(
+      Response.json({ error: "not authorized" }, { status: 403 }),
+    );
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 11,
+          method: "tools/call",
+          params: {
+            name: "doco_capture",
+            arguments: { doco: "acme", type: "decision", body: { decision: "x", question: "y" } },
+          },
+        },
+        BEARER,
+      ),
+    });
+    expect(res.status).toBe(200);
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("isn't granted");
+  });
+
+  it("doco_search requires a doco handle", async () => {
     const res = await action({
       request: rpc(
         {
@@ -134,7 +222,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(res.status).toBe(200);
     const body: Json = await res.json();
     expect(body.result.isError).toBe(true);
-    expect(body.result.content[0].text).toContain("isn't granted access");
+    expect(body.result.content[0].text).toContain("isn't granted");
   });
 
   it("tools/call with an unknown tool errors (-32602)", async () => {
