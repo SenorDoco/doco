@@ -108,6 +108,38 @@ export function highestRankedNodeId(
   return best?.id ?? null;
 }
 
+export interface FocusCandidatePool {
+  intent_id?: string | null;
+  lifecycle?: string | null;
+}
+
+/**
+ * Candidate nodes a BPMN perspective may treat as its default camera
+ * focus (`selectionCenterId`): the lifecycle-visible graph nodes, plus
+ * one synthetic candidate per pool — the pool's intent — so a pool can
+ * win the cold-open focus when its intent carries the highest PageRank.
+ *
+ * Pool intents are gated by the SAME `visibleLifecycles` set that filters
+ * the nodes. Without that gate a retired pool (hidden out of the box, yet
+ * still drawn as scaffolding) could steal the default focus even though
+ * every retired *node* is filtered out — an inconsistency no "retired is
+ * hidden" view should produce.
+ */
+export function bpmnFocusCandidates(
+  filteredNodes: readonly FocusSelectableNode[],
+  pools: readonly FocusCandidatePool[],
+  visibleLifecycles: ReadonlySet<string> | undefined,
+): FocusSelectableNode[] {
+  return [
+    ...filteredNodes,
+    ...pools.flatMap((pool) =>
+      pool.intent_id && (!visibleLifecycles || visibleLifecycles.has(pool.lifecycle ?? "asserted"))
+        ? [{ id: pool.intent_id, lifecycle: pool.lifecycle ?? null, created_at: null }]
+        : [],
+    ),
+  ];
+}
+
 export function selectFocusedNodeIds(
   nodes: readonly FocusSelectableNode[],
   links: readonly FocusSelectableLink[],

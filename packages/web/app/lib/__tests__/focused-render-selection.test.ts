@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bpmnFocusCandidates,
   highestRankedNodeId,
   selectFocusedNodeIds,
   selectPersonalizedNodeIds,
@@ -131,5 +132,49 @@ describe("focused render selection", () => {
     expect(
       summarizeExternalConnections(perspectiveLinks, new Set(["b"]), new Set(["b", "c"])),
     ).toEqual([{ id: "b", incoming: 0, outgoing: 1 }]);
+  });
+});
+
+describe("bpmnFocusCandidates", () => {
+  const node = (id: string, lifecycle: string) => ({ id, lifecycle, created_at: null });
+  const filteredNodes = [node("step-1", "asserted")];
+  const pools = [
+    { intent_id: "intent-live", lifecycle: "drafting" },
+    { intent_id: "intent-dead", lifecycle: "retired" },
+  ];
+  // Out-of-the-box lifecycle filter: retired hidden, drafting + asserted shown.
+  const defaultVisible = new Set(["drafting", "asserted"]);
+
+  it("offers pool intents whose lifecycle is visible", () => {
+    const ids = bpmnFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
+    expect(ids).toContain("intent-live");
+  });
+
+  it("excludes a retired pool intent while retired is hidden, like a retired node", () => {
+    const ids = bpmnFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
+    expect(ids).not.toContain("intent-dead");
+  });
+
+  it("offers a retired pool intent once retired is toggled visible", () => {
+    const visible = new Set(["drafting", "asserted", "retired"]);
+    const ids = bpmnFocusCandidates(filteredNodes, pools, visible).map((n) => n.id);
+    expect(ids).toContain("intent-dead");
+  });
+
+  it("offers every pool intent when no lifecycle filter is set", () => {
+    const ids = bpmnFocusCandidates(filteredNodes, pools, undefined).map((n) => n.id);
+    expect(ids).toEqual(expect.arrayContaining(["intent-live", "intent-dead"]));
+  });
+
+  it("a hidden retired pool no longer steals the default focus from a visible node", () => {
+    // The retired pool carries the top PageRank, but it's hidden — so the
+    // highest-ranked *visible* candidate must win the cold-open focus.
+    const ranks = new Map([
+      ["intent-dead", 0.9],
+      ["intent-live", 0.5],
+      ["step-1", 0.1],
+    ]);
+    const candidates = bpmnFocusCandidates(filteredNodes, pools, defaultVisible);
+    expect(highestRankedNodeId(candidates, ranks)).toBe("intent-live");
   });
 });
