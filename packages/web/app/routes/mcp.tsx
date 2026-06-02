@@ -67,9 +67,9 @@ const CAPTURE_TOOL = {
   name: "doco_capture",
   description: [
     "Capture a node in a Doco — a decision, intent, action, rule, log, eval,",
-    "reference, state, idea, or principal. Records the institutional 'why' as",
-    "it forms. Needs write access (writer role, or a per-type write grant).",
-    "Read the type's body shape at /<doco>/api/<type>.txt first.",
+    "reference, state, or idea. Records the institutional 'why' as it forms.",
+    "Needs write access (writer role, or a per-type write grant). Read the",
+    "type's body shape at /<doco>/api/<type>.txt first.",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -78,7 +78,7 @@ const CAPTURE_TOOL = {
       type: {
         type: "string",
         description:
-          "Node type: decision | intent | action | rule | log | eval | reference | state | idea | principal.",
+          "Node type (plural): decisions | intents | actions | rules | logs | evals | references | states | ideas. Singular is accepted too.",
       },
       body: {
         type: "object",
@@ -257,7 +257,13 @@ async function runDocoCapture(
   args: Record<string, unknown>,
 ): Promise<ToolResult> {
   const doco = String(args.doco ?? "").trim();
-  const type = String(args.type ?? "").trim();
+  // The per-type capture routes are keyed by the PLURAL type
+  // (/<doco>/api/decisions.json, …/decisions.txt). Accept singular or plural
+  // from the caller and normalize, so doco_capture works either way.
+  const rawType = String(args.type ?? "")
+    .trim()
+    .toLowerCase();
+  const type = rawType && !rawType.endsWith("s") ? `${rawType}s` : rawType;
   const body = args.body;
   if (!doco || !type) return toolError("doco_capture requires `doco` and `type`.");
   if (!body || typeof body !== "object") {
