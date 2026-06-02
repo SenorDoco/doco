@@ -88,4 +88,25 @@ describe("overview graph layout", () => {
       expect(Math.round(distance(positions, "focus", node.id))).toBeLessThanOrEqual(360);
     }
   });
+
+  it("uses deterministic depth rings for 100-node render windows", () => {
+    const largeNodes = [
+      { id: "focus", entity_type: "idea" },
+      ...Array.from({ length: 99 }, (_, index) => ({
+        id: `n${String(index + 1).padStart(3, "0")}`,
+        entity_type: "idea",
+      })),
+    ];
+    const chainLinks = Array.from({ length: 99 }, (_, index) =>
+      index === 0
+        ? link("focus", "n001")
+        : link(`n${String(index).padStart(3, "0")}`, `n${String(index + 1).padStart(3, "0")}`),
+    );
+
+    const positions = layoutOverviewGraphNodes(largeNodes, chainLinks, "focus");
+
+    expect(positions.get("focus")).toEqual({ x: 0, y: 0 });
+    expect(Math.round(distance(positions, "focus", "n001"))).toBe(220);
+    expect(Math.round(distance(positions, "focus", "n002"))).toBe(400);
+  });
 });

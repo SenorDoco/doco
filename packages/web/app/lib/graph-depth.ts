@@ -56,8 +56,8 @@ export function computeDepthFromCenter<N extends NodeLike, L extends LinkLike>(
 
   const queue: string[] = [centerId];
   depth.set(centerId, 0);
-  while (queue.length > 0) {
-    const id = queue.shift() as string;
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const id = queue[cursor] as string;
     const here = depth.get(id) as number;
     for (const next of adjacency.get(id) ?? []) {
       if (depth.has(next)) continue;
