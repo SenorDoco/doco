@@ -111,7 +111,7 @@ export default function DocoIntegrations() {
   return (
     <div>
       <SiteHeader me={me} />
-      <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+      <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-6">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Integrations" })} />
         <header className="space-y-3">
           <h1 className="text-2xl font-semibold">Integrations</h1>
