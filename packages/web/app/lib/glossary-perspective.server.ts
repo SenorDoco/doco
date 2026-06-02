@@ -85,8 +85,8 @@ export interface GlossaryPerspectiveData {
   letters: string[];
   /**
    * TRUE total of glossary-eligible nodes for this Doco (same domain as the
-   * query: the five glossary types, retired excluded), counted before the
-   * page limit. The header reports loaded (`stats.entries`) vs this total; the
+   * query: the five glossary types, all lifecycles), counted before the page
+   * limit. The header reports loaded (`stats.entries`) vs this total; the
    * sub-stats below describe the loaded slice.
    */
   totalCount: number;
@@ -319,8 +319,7 @@ export async function loadGlossaryPerspectiveData(
            ref_type, locator, citation, title,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1
-               AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
-               AND COALESCE(lifecycle, 'asserted') <> 'retired') AS total_count
+               AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')) AS total_count
       FROM nodes
      WHERE doco_id = $1
        AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')

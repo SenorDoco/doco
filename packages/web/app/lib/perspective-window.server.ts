@@ -2,7 +2,7 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-type DefaultFocusStrategy = "central" | "approval" | "org-root";
+type DefaultFocusStrategy = "central" | "org-root";
 
 type WindowReason = "explicit_focus" | "default_focus" | "neighbor" | "ranked_fill";
 
@@ -126,23 +126,6 @@ export const PERSPECTIVE_WINDOW_SPECS = {
       action: 60,
       decision: 50,
       principal: 40,
-    },
-  },
-  approval: {
-    key: "approval",
-    nodeTypes: ALL_NODE_TYPES,
-    defaultFocusStrategy: "approval",
-    typeWeights: {
-      decision: 100,
-      action: 95,
-      rule: 90,
-      intent: 80,
-      eval: 70,
-      reference: 65,
-      state: 60,
-      principal: 50,
-      idea: 40,
-      log: 30,
     },
   },
   glossary: {
@@ -275,7 +258,6 @@ async function loadDefaultFocus(
         WHERE n.doco_id = $1
           AND n.node_type = ANY($2::text[])
           ${lifecyclePredicate("n", spec)}
-          ${defaultFocusPredicate(spec)}
         ORDER BY ${defaultFocusOrderSql("n", spec)}
         LIMIT 1`,
       [docoId, typeList(spec)],
@@ -368,13 +350,6 @@ async function loadRankedFill(
 
 function lifecyclePredicate(alias: string, spec: PerspectiveWindowSpec): string {
   return spec.excludeRetired ? `AND COALESCE(${alias}.lifecycle, 'asserted') <> 'retired'` : "";
-}
-
-function defaultFocusPredicate(spec: PerspectiveWindowSpec): string {
-  if (spec.defaultFocusStrategy === "approval") {
-    return "AND COALESCE(n.lifecycle, 'asserted') = 'drafting'";
-  }
-  return "";
 }
 
 function defaultFocusOrderSql(alias: string, spec: PerspectiveWindowSpec): string {

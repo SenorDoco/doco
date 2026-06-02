@@ -16,7 +16,6 @@ export type PerspectiveKind =
   | "bpmn"
   | "org-tree"
   | "sla"
-  | "approval"
   | "glossary"
   | "pull-requests";
 
@@ -82,6 +81,7 @@ export async function listPerspectivesForDoco(docoId: string): Promise<AttachedP
         FROM doco_perspectives dp
          JOIN perspectives p ON p.id = dp.perspective_id
         WHERE dp.doco_id = $1
+          AND p.kind <> 'approval'
         ORDER BY dp.position ASC, LOWER(p.name) ASC`,
       [docoId],
     );
@@ -94,9 +94,8 @@ export async function listPerspectivesForDoco(docoId: string): Promise<AttachedP
 }
 
 /**
- * Idempotent: attach graph + list + approval defaults if this Doco has no
- * perspectives attached yet. Called from the index route loader so every
- * Doco has tabs.
+ * Idempotent: attach graph + list defaults if this Doco has no perspectives
+ * attached yet. Called from the index route loader so every Doco has tabs.
  */
 export async function ensureDefaultsAttached(docoId: string): Promise<void> {
   await withClient(async (c) => {
@@ -117,12 +116,6 @@ export async function ensureDefaultsAttached(docoId: string): Promise<void> {
        ON CONFLICT (doco_id, perspective_id) DO NOTHING`,
       [docoId],
     );
-    await c.query(
-      `INSERT INTO doco_perspectives (doco_id, perspective_id, position, is_default)
-            VALUES ($1, 'perspective_approval', 2, false)
-       ON CONFLICT (doco_id, perspective_id) DO NOTHING`,
-      [docoId],
-    );
   });
 }
 
@@ -134,9 +127,12 @@ export async function ensureDefaultsAttached(docoId: string): Promise<void> {
 export async function listAvailablePerspectives(): Promise<Perspective[]> {
   return withClient(async (c) => {
     const { rows } = await c.query<PerspectiveRow>(
+      // The "approval"/Proposed perspective was removed; exclude any stale rows
+      // so it never reappears in the picker on existing Docos.
       `SELECT id, slug, kind, name, description, icon,
               owner_handle, is_builtin, config
          FROM perspectives
+        WHERE kind <> 'approval'
         ORDER BY LOWER(name) ASC`,
     );
     return rows.map(rowToPerspective);

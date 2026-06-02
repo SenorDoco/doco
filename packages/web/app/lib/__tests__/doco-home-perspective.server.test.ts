@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PerspectiveKind } from "../perspectives.server";
 
 const mocks = vi.hoisted(() => ({
-  loadApprovalPerspectiveData: vi.fn(),
   loadBpmnGraph: vi.fn(),
   loadGlossaryPerspectiveData: vi.fn(),
   loadOrgTreeData: vi.fn(),
@@ -24,14 +23,10 @@ const mocks = vi.hoisted(() => ({
     bpmn: { key: "bpmn" },
     "org-tree": { key: "org-tree" },
     sla: { key: "sla" },
-    approval: { key: "approval" },
     glossary: { key: "glossary" },
   },
 }));
 
-vi.mock("../approval-perspective.server", () => ({
-  loadApprovalPerspectiveData: mocks.loadApprovalPerspectiveData,
-}));
 vi.mock("../bpmn-perspective.server", () => ({ loadBpmnGraph: mocks.loadBpmnGraph }));
 vi.mock("../full-graph.server", () => ({ loadOverviewGraph: mocks.loadOverviewGraph }));
 vi.mock("../glossary-perspective.server", () => ({
@@ -61,7 +56,6 @@ const ALL_KINDS: PerspectiveKind[] = [
   "bpmn",
   "org-tree",
   "sla",
-  "approval",
   "glossary",
   "pull-requests",
 ];
@@ -81,7 +75,6 @@ describe("loadDocoHomePerspectiveData", () => {
     mocks.loadBpmnGraph.mockResolvedValue({ pools: [], lanes: [], nodes: [], links: [] });
     mocks.loadOrgTreeData.mockResolvedValue({ nodes: [] });
     mocks.loadSlaPerspectiveData.mockResolvedValue({ commitments: [], stats: {} });
-    mocks.loadApprovalPerspectiveData.mockResolvedValue({ nodes: [] });
     mocks.loadGlossaryPerspectiveData.mockResolvedValue({
       groups: [],
       letters: [],
@@ -89,8 +82,9 @@ describe("loadDocoHomePerspectiveData", () => {
     });
     mocks.loadPullRequestsPerspective.mockResolvedValue({
       connected: true,
-      groups: [],
+      items: [],
       loadedCount: 0,
+      totalCount: 0,
       hasMore: false,
     });
     mocks.selectPerspectiveWindow.mockResolvedValue(mocks.window);
@@ -147,11 +141,6 @@ describe("loadDocoHomePerspectiveData", () => {
       });
     } else if (kind === "sla") {
       expect(mocks.loadSlaPerspectiveData).toHaveBeenCalledWith(client, "doco_1", "acme", {
-        limit: budget.nodeLimit,
-        window: mocks.window,
-      });
-    } else if (kind === "approval") {
-      expect(mocks.loadApprovalPerspectiveData).toHaveBeenCalledWith(client, "doco_1", "acme", {
         limit: budget.nodeLimit,
         window: mocks.window,
       });

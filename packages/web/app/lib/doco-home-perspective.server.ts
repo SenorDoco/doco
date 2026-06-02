@@ -1,6 +1,4 @@
 import type { OverviewGraphData } from "~/components/overview-graph";
-import type { ApprovalPerspectiveData } from "./approval-perspective.server";
-import { loadApprovalPerspectiveData } from "./approval-perspective.server";
 import type { BpmnGraphData } from "./bpmn-perspective.server";
 import { loadBpmnGraph } from "./bpmn-perspective.server";
 import { loadOverviewGraph } from "./full-graph.server";
@@ -42,7 +40,6 @@ export interface DocoHomePerspectiveData {
   bpmnGraph: BpmnGraphData | null;
   orgTreeData: OrgTreeData | null;
   slaData: SlaPerspectiveData | null;
-  approvalData: ApprovalPerspectiveData | null;
   glossaryData: GlossaryPerspectiveData | null;
   pullRequestsData: PullRequestsPerspectiveData | null;
 }
@@ -64,7 +61,6 @@ export async function loadDocoHomePerspectiveData(
     bpmnGraph: null,
     orgTreeData: null,
     slaData: null,
-    approvalData: null,
     glossaryData: null,
     pullRequestsData: null,
   };
@@ -117,14 +113,6 @@ export async function loadDocoHomePerspectiveData(
       return {
         ...empty,
         slaData: await loadSlaPerspectiveData(c, args.docoId, args.handle, {
-          limit: budget.nodeLimit,
-          window: perspectiveWindow ?? undefined,
-        }),
-      };
-    case "approval":
-      return {
-        ...empty,
-        approvalData: await loadApprovalPerspectiveData(c, args.docoId, args.handle, {
           limit: budget.nodeLimit,
           window: perspectiveWindow ?? undefined,
         }),

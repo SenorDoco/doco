@@ -127,39 +127,6 @@ describe("selectPerspectiveWindow", () => {
     expect(window.reasonByNodeId.decision_central).toBe("default_focus");
   });
 
-  it("uses a perspective-specific default focus strategy for approval queues", async () => {
-    const { client, calls } = makeClient({
-      focus: {
-        id: "decision_draft",
-        node_type: "decision",
-        lifecycle: "drafting",
-        created_at: "2026-05-03T00:00:00.000Z",
-        degree: "0",
-      },
-      counts: [{ node_type: "decision", n: "1" }],
-      ranked: [
-        {
-          id: "decision_draft",
-          node_type: "decision",
-          lifecycle: "drafting",
-          created_at: "2026-05-03T00:00:00.000Z",
-          degree: "0",
-        },
-      ],
-    });
-
-    const window = await selectPerspectiveWindow(client, {
-      docoId: "doco_1",
-      explicitFocusNodeId: null,
-      limit: 10,
-      spec: PERSPECTIVE_WINDOW_SPECS.approval,
-    });
-
-    const defaultFocusQuery = calls.find((call) => /LIMIT 1/i.test(call.sql));
-    expect(defaultFocusQuery?.sql).toMatch(/COALESCE\(n\.lifecycle, 'asserted'\) = 'drafting'/);
-    expect(window.focusNodeId).toBe("decision_draft");
-  });
-
   it("keeps retired nodes in the window for client-lifecycle-filtered perspectives", async () => {
     // The window gates the loaders via `id = ANY(window)`. If the spec
     // excludes retired here, removing `<> 'retired'` from the loader is
