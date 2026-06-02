@@ -8,16 +8,19 @@
 // RFC 9728 protected-resource metadata, which a connector follows to
 // discover the OAuth server (RFC 8414) and run the flow.
 //
-// v1 exposes doco_search scoped to one Doco (an explicit `doco` handle),
-// reusing the per-doco search route's auth + ranking. Cross-doco
-// "search everything I can read" is a planned follow-up.
+// Tools: doco_search (read), doco_capture + doco_relate (write). Each
+// delegates to the matching per-doco REST route with the caller's bearer
+// replayed, so the route's own per-type grant checks gate access — read
+// vs write is a matrix grant, never a different login.
 
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
+import { action as captureAction } from "./$docoHandle.api.$type[.]json";
+import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
 import { loader as searchLoader } from "./$docoHandle.search[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
-const SERVER_VERSION = "0.3.0-remote";
+const SERVER_VERSION = "0.4.0-remote";
 
 // Self-sufficient instructions: in a connector context there is no repo
 // AGENTS.md, so the essentials ride here. Full protocol is linked.
@@ -25,7 +28,10 @@ const SERVER_INSTRUCTIONS = [
   "This project is tracked in a Doco — institutional memory of decisions,",
   "rules, intents, actions, and history. Call doco_search before answering",
   "substantive questions about how the project does things; there is almost",
-  "always prior art you'd otherwise miss. Full protocol at",
+  "always prior art you'd otherwise miss. Use doco_capture to record",
+  "decisions/rules/etc. as they form, and doco_relate to link them. If a",
+  "write is denied, your token has read but not write on that Doco — ask an",
+  "owner to grant writer (a grant change, no re-auth). Full protocol at",
   "/protocol/canonical-instructions.",
 ].join("\n");
 
@@ -53,13 +59,74 @@ const SEARCH_TOOL = {
   },
 };
 
-const TOOLS = [SEARCH_TOOL];
+const CAPTURE_TOOL = {
+  name: "doco_capture",
+  description: [
+    "Capture a node in a Doco — a decision, intent, action, rule, log, eval,",
+    "reference, state, idea, or principal. Records the institutional 'why' as",
+    "it forms. Needs write access (writer role, or a per-type write grant).",
+    "Read the type's body shape at /<doco>/api/<type>.txt first.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      doco: { type: "string", description: "Handle of the Doco to write to." },
+      type: {
+        type: "string",
+        description:
+          "Node type: decision | intent | action | rule | log | eval | reference | state | idea | principal.",
+      },
+      body: {
+        type: "object",
+        description:
+          "Type-specific capture body (e.g. a decision: { decision, question }). See /<doco>/api/<type>.txt.",
+        additionalProperties: true,
+      },
+    },
+    required: ["doco", "type", "body"],
+  },
+};
+
+const RELATE_TOOL = {
+  name: "doco_relate",
+  description: [
+    "Create a first-class edge between two nodes in a Doco (e.g. supports,",
+    "constrained_by, attributed_to, derived_from, flows_to, relates_to).",
+    "Needs write access to the edge type.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      doco: { type: "string", description: "Handle of the Doco." },
+      edge_type: {
+        type: "string",
+        description: "Edge type, e.g. supports | constrained_by | attributed_to | flows_to.",
+      },
+      from_id: { type: "string", description: "Source node id." },
+      to_id: { type: "string", description: "Target node id." },
+      props: {
+        type: "object",
+        description: "Optional edge props (e.g. role metadata).",
+        additionalProperties: true,
+      },
+    },
+    required: ["doco", "edge_type", "from_id", "to_id"],
+  },
+};
+
+const TOOLS = [SEARCH_TOOL, CAPTURE_TOOL, RELATE_TOOL];
 
 type Rpc = {
   jsonrpc?: string;
   id?: string | number | null;
   method?: string;
   params?: Record<string, unknown>;
+};
+
+type ToolResult = {
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent?: unknown;
+  isError?: boolean;
 };
 
 function rpcResult(id: Rpc["id"], result: unknown): Response {
@@ -84,65 +151,124 @@ function unauthorized(request: Request): Response {
   );
 }
 
-// Delegate doco_search to the per-doco search route loader, replaying the
-// caller's bearer so its own auth (enforceOauthGrant) gates access.
-async function runDocoSearch(
-  request: Request,
-  args: Record<string, unknown>,
-): Promise<{
-  content: Array<{ type: "text"; text: string }>;
-  structuredContent?: unknown;
-  isError?: boolean;
-}> {
+function toolError(text: string): ToolResult {
+  return { isError: true, content: [{ type: "text", text }] };
+}
+
+async function safeJson(r: Response): Promise<unknown> {
+  try {
+    return await r.json();
+  } catch {
+    return {};
+  }
+}
+
+// A route denial becomes a clean JSON-RPC tool error — never a raw
+// transport status a connector might misread as an auth failure. A missing
+// write grant is an authorization problem: ask an owner to grant it (a
+// matrix change), not re-authenticate.
+function delegateError(verb: string, doco: string, status: number, data: unknown): ToolResult {
+  if (status === 401 || status === 403) {
+    return toolError(
+      `Not authorized to ${verb} "${doco}". This token isn't granted that access — ask an owner to grant it (reader to read, writer or the per-type grant to write). It's a grant change, no re-auth.`,
+    );
+  }
+  if (status === 404) return toolError(`Doco "${doco}" not found. Check the handle.`);
+  const detail =
+    data && typeof data === "object" && "error" in (data as Record<string, unknown>)
+      ? ` ${String((data as Record<string, unknown>).error)}`
+      : "";
+  return toolError(`doco ${verb} failed for "${doco}" (status ${status}).${detail}`);
+}
+
+function bearerHeaders(request: Request, extra?: Record<string, string>): Headers {
+  const headers = new Headers(extra);
+  const auth = request.headers.get("authorization");
+  if (auth) headers.set("authorization", auth);
+  return headers;
+}
+
+// Delegate a tool to the matching per-doco route handler, replaying the
+// caller's bearer so the route's own auth + per-type grant checks gate
+// access. The route either THROWS a Response (no read access) or RETURNS a
+// non-ok Response (write denied, bad body); both become clean tool errors.
+async function delegate(
+  verb: string,
+  doco: string,
+  call: () => Promise<unknown>,
+): Promise<ToolResult> {
+  let res: Response;
+  try {
+    res = (await call()) as Response;
+  } catch (thrown) {
+    if (thrown instanceof Response) {
+      return delegateError(verb, doco, thrown.status, await safeJson(thrown));
+    }
+    throw thrown;
+  }
+  const data = await safeJson(res);
+  if (!res.ok) return delegateError(verb, doco, res.status, data);
+  return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
+}
+
+async function runDocoSearch(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
   const query = String(args.query ?? "").trim();
   const doco = String(args.doco ?? "").trim();
   const limit = Math.min(50, Math.max(1, Number(args.limit) || 10));
-  if (!doco) {
-    return {
-      isError: true,
-      content: [{ type: "text", text: "doco_search requires a `doco` handle." }],
-    };
-  }
+  if (!doco) return toolError("doco_search requires a `doco` handle.");
   const origin = new URL(request.url).origin;
-  const searchUrl = `${origin}/${encodeURIComponent(doco)}/search.json?q=${encodeURIComponent(query)}&limit=${limit}`;
-  const headers = new Headers();
-  const auth = request.headers.get("authorization");
-  if (auth) headers.set("authorization", auth);
-  const searchReq = new Request(searchUrl, { headers });
-  let res: Response;
-  try {
-    res = (await searchLoader({
-      request: searchReq,
-      params: { docoHandle: doco } as never,
-    })) as Response;
-  } catch (thrown) {
-    // The search route THROWS a Response for auth/lookup failures (403
-    // access_denied, 404 not found). Surface it as a tool error so the
-    // MCP client gets clean JSON-RPC, not a raw status it might misread
-    // as an authentication failure — a missing grant is an authorization
-    // problem (re-OAuth won't help; the principal needs to be granted).
-    if (thrown instanceof Response) return searchErrorResult(doco, thrown.status);
-    throw thrown;
-  }
-  if (!res.ok) return searchErrorResult(doco, res.status);
-  const data = await res.json();
-  return {
-    content: [{ type: "text", text: JSON.stringify(data) }],
-    structuredContent: data,
-  };
+  const url = `${origin}/${encodeURIComponent(doco)}/search.json?q=${encodeURIComponent(query)}&limit=${limit}`;
+  const req = new Request(url, { headers: bearerHeaders(request) });
+  return delegate("search", doco, () =>
+    searchLoader({ request: req, params: { docoHandle: doco } as never }),
+  );
 }
 
-function searchErrorResult(
-  doco: string,
-  status: number,
-): { content: Array<{ type: "text"; text: string }>; isError: true } {
-  const text =
-    status === 401 || status === 403
-      ? `Not authorized to search "${doco}". This token isn't granted access to that Doco — ask an owner to grant access, or re-authorize at /oauth/authorize with the right scope.`
-      : status === 404
-        ? `Doco "${doco}" not found. Check the handle.`
-        : `doco_search failed for "${doco}" (status ${status}).`;
-  return { isError: true, content: [{ type: "text", text }] };
+async function runDocoCapture(
+  request: Request,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const doco = String(args.doco ?? "").trim();
+  const type = String(args.type ?? "").trim();
+  const body = args.body;
+  if (!doco || !type) return toolError("doco_capture requires `doco` and `type`.");
+  if (!body || typeof body !== "object") {
+    return toolError(
+      "doco_capture requires a `body` object — see /<doco>/api/<type>.txt for the shape.",
+    );
+  }
+  const origin = new URL(request.url).origin;
+  const url = `${origin}/${encodeURIComponent(doco)}/api/${encodeURIComponent(type)}.json`;
+  const req = new Request(url, {
+    method: "POST",
+    headers: bearerHeaders(request, { "content-type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  return delegate("write to", doco, () =>
+    captureAction({ request: req, params: { docoHandle: doco, type } as never }),
+  );
+}
+
+async function runDocoRelate(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
+  const doco = String(args.doco ?? "").trim();
+  const edgeType = String(args.edge_type ?? "").trim();
+  const fromId = String(args.from_id ?? "").trim();
+  const toId = String(args.to_id ?? "").trim();
+  if (!doco || !edgeType || !fromId || !toId) {
+    return toolError("doco_relate requires `doco`, `edge_type`, `from_id`, and `to_id`.");
+  }
+  const payload: Record<string, unknown> = { edge_type: edgeType, from_id: fromId, to_id: toId };
+  if (args.props && typeof args.props === "object") payload.props = args.props;
+  const origin = new URL(request.url).origin;
+  const url = `${origin}/${encodeURIComponent(doco)}/api/edges.json`;
+  const req = new Request(url, {
+    method: "POST",
+    headers: bearerHeaders(request, { "content-type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  return delegate("create edges in", doco, () =>
+    edgesAction({ request: req, params: { docoHandle: doco } as never }),
+  );
 }
 
 async function dispatch(message: Rpc, request: Request): Promise<Response> {
@@ -159,11 +285,21 @@ async function dispatch(message: Rpc, request: Request): Promise<Response> {
     case "tools/list":
       return rpcResult(message.id, { tools: TOOLS });
     case "tools/call": {
-      const name = (message.params as { name?: string } | undefined)?.name;
-      if (name !== "doco_search") return rpcError(message.id, -32602, `Unknown tool: ${name}`);
-      const args =
-        (message.params as { arguments?: Record<string, unknown> } | undefined)?.arguments ?? {};
-      return rpcResult(message.id, await runDocoSearch(request, args));
+      const params = message.params as
+        | { name?: string; arguments?: Record<string, unknown> }
+        | undefined;
+      const name = params?.name;
+      const args = params?.arguments ?? {};
+      switch (name) {
+        case "doco_search":
+          return rpcResult(message.id, await runDocoSearch(request, args));
+        case "doco_capture":
+          return rpcResult(message.id, await runDocoCapture(request, args));
+        case "doco_relate":
+          return rpcResult(message.id, await runDocoRelate(request, args));
+        default:
+          return rpcError(message.id, -32602, `Unknown tool: ${name}`);
+      }
     }
     case "resources/list":
       return rpcResult(message.id, { resources: [] });
