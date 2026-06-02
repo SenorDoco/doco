@@ -139,11 +139,15 @@ describe("changesets write gate", () => {
     expect(response.status).toBe(200);
     // New node created…
     expect(mocks.captureFn).toHaveBeenCalled();
-    // …old node retired, pointing at the replacement.
+    // …linked to the old node with a first-class `replaces` edge…
+    expect(mocks.captureEdge).toHaveBeenCalledWith(
+      expect.objectContaining({ edgeType: "replaces" }),
+    );
+    // …and the old node retired (lifecycle only — the link is the edge).
     expect(mocks.updateEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "decision_0123456789ABCDEFGHJKMNPQRS",
-        patch: { lifecycle: "retired", superseded_by: "decision_01NEW" },
+        patch: { lifecycle: "retired" },
       }),
     );
     expect(body.results[0].id).toBe("decision_01NEW");

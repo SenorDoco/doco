@@ -89,7 +89,7 @@ export async function loader({
           alias: "optional_name",
           body: {},
         },
-        note: "Replace a node: creates the replacement, then retires the old one with a superseded_by pointer to it.",
+        note: "Replace a node: creates the replacement, retires the old one, and links them with a first-class 'replaces' edge.",
       },
     },
     examples: [
