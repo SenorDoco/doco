@@ -1,21 +1,10 @@
 import { useState } from "react";
 
 const AGENT_INVITE_HELP_TEXT =
-  "Doco will teach your agent to collaborate consistently. Copy this prompt into your AI agent in the project you want to work on. The easiest path is the hosted MCP connector — your agent connects, you approve in your browser, and read/write access follows the permissions you grant (no re-auth to step up).";
+  "Copy this into your AI agent, in the project you want it to work on.";
 
 export function buildAgentOAuthPrompt(host: string): string {
-  const connectUrl = `${host}/mcp`;
-  const recipeUrl = `${host}/protocol/agent-oauth-recipe`;
-  const deviceUrl = `${host}/device`;
-  return [
-    `Let's collaborate with Doco on this project. The host is ${host}.`,
-    "",
-    `Easiest: add Doco as a custom MCP connector pointing at ${connectUrl} — your client runs the OAuth flow and I approve in my browser. The connector is read + write: doco_search (read), doco_capture + doco_relate (write), and doco_request_access (ask me for more). Read vs write is a permission I grant on the same token, not a re-login.`,
-    "",
-    `If your runtime can't use a remote MCP connector, drive OAuth directly via the recipe at ${recipeUrl}: Recipe A (localhost-loopback) if you can bind a port and open a browser, otherwise Recipe B (device flow) — you'll show me a short code and I'll approve at ${deviceUrl}.`,
-    "",
-    `At the approve screen I'll pick "Full access" (follows my live permissions — you can read/write whatever I can, and read→write upgrades apply with no reconnect) or scope you to specific docos.`,
-  ].join("\n");
+  return `Let's use Doco on this project. Add a custom MCP connector pointing at ${host}/mcp and run its OAuth flow — I'll approve in my browser.`;
 }
 
 export function AgentInvitePrompt({
