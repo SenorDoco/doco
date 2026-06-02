@@ -160,11 +160,9 @@ export default function Home() {
               Shared memory for AI and teams
             </p>
             <h1 className="text-3xl font-bold leading-tight md:text-5xl">{DOCO_TAGLINE}</h1>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
+            <p className="max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">
               Git remembers <span className="font-semibold text-foreground">what</span> changed.
-              Doco remembers <span className="font-semibold text-foreground">why</span> — the
-              decisions, rules, and intent behind your project — in a typed, searchable graph your
-              team and your AI agents share.
+              Doco remembers <span className="font-semibold text-foreground">why</span>.
             </p>
             <PrimaryCtas />
           </div>
