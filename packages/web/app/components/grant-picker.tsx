@@ -12,11 +12,10 @@ import {
   applyDocoTypeLevel,
   applyTargetRole,
   availableScopes,
+  coerceSingleWorkspace,
   describeExistingGrant,
   findExistingGrant,
   findGrant,
-  identityGrant,
-  identityScopeChoice,
   inheritedTypeLevel,
   targetRoleOptions,
   targetRoleValue,
@@ -47,30 +46,25 @@ export function GrantPicker({
   grants,
   onChange,
   existing,
-  includeIdentityScope = false,
+  forToken = false,
 }: {
   catalog: GrantCatalog;
   grants: ComposedGrant[];
   onChange: (grants: ComposedGrant[]) => void;
   /** Grants the grantee/token already holds (widen-existing flow). */
   existing?: ExistingGrant[];
-  /** OAuth/device connector flow: offer "full access" as a picker card. */
-  includeIdentityScope?: boolean;
+  /**
+   * Minting a TOKEN rather than granting a person: withholds the account
+   * ("all your workspaces") scope and clamps the selection to a single
+   * workspace, mirroring the server-side one-workspace token cap.
+   */
+  forToken?: boolean;
 }) {
-  const catalogScopes = useMemo(() => availableScopes(catalog), [catalog]);
-  const scopes = useMemo(
-    () =>
-      includeIdentityScope
-        ? [
-            identityScopeChoice,
-            // The live identity grant replaces the account-wide choice on
-            // connector approval screens, avoiding two broad-access cards.
-            ...catalogScopes.filter((s) => s.scope !== "account"),
-          ]
-        : catalogScopes,
-    [catalogScopes, includeIdentityScope],
-  );
-  const [scope, setScope] = useState<GrantScope | null>(includeIdentityScope ? "identity" : null);
+  const scopes = useMemo(() => availableScopes(catalog, { forToken }), [catalog, forToken]);
+  // A token selection may never span more than one workspace.
+  const emit = (next: ComposedGrant[]) =>
+    onChange(forToken ? coerceSingleWorkspace(grants, next, catalog) : next);
+  const [scope, setScope] = useState<GrantScope | null>(null);
 
   if (scopes.length === 0) {
     return (
@@ -113,7 +107,7 @@ export function GrantPicker({
                 aria-pressed={selected}
                 onClick={() => {
                   setScope(s.scope);
-                  onChange(s.scope === "identity" ? [identityGrant()] : []);
+                  onChange([]);
                 }}
                 className={`neu-button${selected ? " neu-pressed" : ""} rounded-md border border-border px-3 py-2 text-left text-sm`}
               >
@@ -125,19 +119,14 @@ export function GrantPicker({
         </div>
       </fieldset>
 
-      {scope === "identity" ? null : scope === "account" ? (
-        <AccountStep catalog={catalog} grants={grants} onChange={onChange} />
+      {scope === "account" ? (
+        <AccountStep catalog={catalog} grants={grants} onChange={emit} />
       ) : scope === "workspace" ? (
-        <WorkspaceMultiStep
-          catalog={catalog}
-          grants={grants}
-          onChange={onChange}
-          existing={existing}
-        />
+        <WorkspaceMultiStep catalog={catalog} grants={grants} onChange={emit} existing={existing} />
       ) : scope === "doco" ? (
-        <DocoMultiStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
+        <DocoMultiStep catalog={catalog} grants={grants} onChange={emit} existing={existing} />
       ) : scope === "types" ? (
-        <TypesStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
+        <TypesStep catalog={catalog} grants={grants} onChange={emit} existing={existing} />
       ) : null}
     </div>
   );

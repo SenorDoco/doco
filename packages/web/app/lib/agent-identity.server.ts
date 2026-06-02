@@ -10,7 +10,7 @@
 
 import type { DocoRole } from "@doco/db";
 import { loadScopeOptions } from "~/lib/api-keys.server";
-import { getOauthTokenForRequest, tokenDefersScope } from "~/lib/doco-access.server";
+import { getOauthTokenForRequest } from "~/lib/doco-access.server";
 import { type CurrentPrincipal, getCurrentPrincipalAsync } from "~/lib/session.server";
 import { rankOf } from "~/lib/user-invite";
 import type { ValidAccessToken } from "./oauth-server.server";
@@ -75,11 +75,11 @@ export async function loadAgentIdentity(request: Request): Promise<AgentIdentity
   const options = await loadScopeOptions(display.user_id);
 
   let grants: IdentityGrant[];
-  // A defer-to-matrix ("*") token (the connector identity token) reaches
-  // everything the principal can, live — its granted_*_ids are ["*"], not an
-  // explicit id list, so the filter below would match nothing. Treat it like a
-  // cookie session: show the full reachable set with the matrix role.
-  if (token && !tokenDefersScope(token)) {
+  // Every token is explicit-scope (bound to one workspace, with optional
+  // per-Doco narrowing) — there is no defer-to-matrix "*" token anymore. So a
+  // bearer request shows exactly the granted targets, capped to the token's
+  // role; a cookie session (no token) shows the principal's full membership.
+  if (token) {
     const workspaceIds = new Set(token.granted_workspace_ids ?? []);
     const docoIds = new Set(token.granted_doco_ids ?? []);
     // A Doco is in scope if granted directly OR owned by a granted Workspace

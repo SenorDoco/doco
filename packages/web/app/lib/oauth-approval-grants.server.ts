@@ -64,7 +64,7 @@ export interface OAuthApprovalGrantSets {
 }
 
 interface ParsedApprovalGrant {
-  level: "account" | "workspace" | "doco" | "identity";
+  level: "account" | "workspace" | "doco";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
@@ -77,40 +77,12 @@ export async function readOAuthApprovalGrants(
   const rawGrants = String(form.get("grants") ?? "").trim();
   if (rawGrants) {
     const parsed = parseGrantPayload(rawGrants);
-    // The "identity" level means "scope to my full live reach, deferring the
-    // role to the matrix" — it wins over any granular entries in the payload.
-    if (parsed.some((g) => g.level === "identity")) {
-      return identityScopedGrants();
-    }
+    // Whatever the approver picked, the minted token is capped at a single
+    // workspace by assertSingleWorkspaceGrant at issuance — there is no
+    // full-access ("identity") grant anymore.
     return serializeApprovalGrants(parsed, principalId);
   }
   return serializeLegacyApprovalFields(form, principalId);
-}
-
-/**
- * The connector grant. Scopes a token to everything the principal can reach
- * right now — every workspace they belong to and every Doco they can access — with
- * NO role cap (granted_*_roles left empty, so the live matrix role is the only
- * ceiling) and write types left open (["*"], so writes defer to the matrix
- * too). Effective access is min(matrix, scope); since the scope is "all you
- * can reach, deferred", effective == your live matrix access, and a
- * reader->writer grant change applies on the next call with no re-auth. Workspace
- * grants are live, so Docos created later under those workspaces are covered
- * automatically. No ownership gate is needed precisely because the matrix —
- * not the token — is the ceiling.
- */
-export function identityScopedGrants(): OAuthApprovalGrantSets {
-  // Defer SCOPE + role to the live matrix. "*" means "any Doco the principal
-  // can reach"; with no role cap and open write types, the access engine's
-  // effective access stays min(matrix, *) = the principal's live access. A
-  // new grant (a new Doco, or reader→writer) applies on the next call with no
-  // re-auth, and the doco/workspace enumeration endpoints expand "*" to the live
-  // accessible set. A brand-new user can mint this too — their agent then
-  // requests access and it works live.
-  const grants = emptyGrantSets();
-  grants.granted_doco_ids = ["*"];
-  grants.granted_doco_write_types = { "*": [WRITE_ALL] };
-  return grants;
 }
 
 function parseGrantPayload(rawGrants: string): ParsedApprovalGrant[] {
@@ -137,16 +109,9 @@ function parseGrantPayload(rawGrants: string): ParsedApprovalGrant[] {
       write_types?: unknown;
     };
     const level =
-      grant.level === "account" ||
-      grant.level === "workspace" ||
-      grant.level === "doco" ||
-      grant.level === "identity"
+      grant.level === "account" || grant.level === "workspace" || grant.level === "doco"
         ? grant.level
         : null;
-    // Full-reach connector grant: no target, role deferred to the live matrix.
-    if (level === "identity") {
-      return { level, targetId: "", role: "reader", writeTypes: [] };
-    }
     const role = readRole(grant.role);
     const targetId = String(grant.targetId ?? grant.target_id ?? "").trim();
     if (!level || (level !== "account" && !targetId)) {

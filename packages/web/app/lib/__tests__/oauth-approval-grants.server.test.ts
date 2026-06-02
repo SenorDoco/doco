@@ -91,33 +91,12 @@ describe("readOAuthApprovalGrants", () => {
     expect(grants.granted_workspace_write_types).toEqual({ workspace_torre: ["intent"] });
   });
 
-  // The connector grant: "scope to my full live reach, defer the role to the
-  // matrix". Roles are left empty (so effective access = the live matrix role,
-  // making read->write a grant change with no re-auth) and write types open
-  // (["*"]) so writes defer to the matrix too. Unlike the granular picker it
-  // does NOT gate on ownership — a member self-scoping their own connector is
-  // safe because effective access stays min(matrix, scope).
-  it('identity grant defers scope + role to the matrix ("*"), even with no current reach', async () => {
-    // A brand-new user (no reach) can still mint a "*" token so their agent
-    // can request access and have it work live, no re-auth. The matrix
-    // (min(matrix, *)) is the sole ceiling at access time.
-    mocks.listWorkspacesForUser.mockResolvedValue([]);
-    mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue([]);
-
-    const grants = await readOAuthApprovalGrants(
-      formWithGrants([{ level: "identity" }]),
-      "user_new",
-    );
-
-    expect(grants).toEqual({
-      granted_doco_ids: ["*"],
-      granted_doco_roles: {},
-      granted_doco_write_types: { "*": ["*"] },
-      granted_workspace_ids: [],
-      granted_workspace_roles: {},
-      granted_workspace_write_types: {},
-    });
-    // No ownership gate and no reach lookup — the matrix gates at access time.
-    expect(mocks.getDocoLevelRole).not.toHaveBeenCalled();
+  // The full-access ("identity") grant was removed: a token is capped at a
+  // single workspace. A payload still carrying the legacy level is treated as
+  // an unknown grant with no target, which is rejected.
+  it("rejects a legacy identity grant payload (no full-access tokens)", async () => {
+    await expect(
+      readOAuthApprovalGrants(formWithGrants([{ level: "identity" }]), "user_new"),
+    ).rejects.toBeInstanceOf(Response);
   });
 });

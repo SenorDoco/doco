@@ -45,13 +45,19 @@ export interface GrantCatalog {
 /**
  * The scope levels the grant wizard can offer, in breadth order. The
  * first wizard question picks one of these; the flow then adapts:
- *   - identity: defer OAuth connector access to the grantor's live matrix.
  *   - account: grant on the grantor's whole account (every workspace they own).
  *   - workspace:     grant on one workspace (and its Docos).
  *   - doco:    grant role on one Doco.
  *   - types:   grant write on specific node/edge types within one Doco.
+ *
+ * `account` is a USER delegation (account_grants) only — it is never offered
+ * when minting a TOKEN, which is capped at a single workspace. The picker's
+ * `forToken` flag drops it (see `availableScopes`). There is no "identity"
+ * (full-access, follows-your-permissions) scope anymore: it minted a token
+ * that reached everything the human could, which the single-workspace rule
+ * forbids.
  */
-export type GrantScope = "identity" | "account" | "workspace" | "doco" | "types";
+export type GrantScope = "account" | "workspace" | "doco" | "types";
 
 /**
  * A grant the user is composing or has saved. `writeTypes` is meaningful
@@ -59,22 +65,17 @@ export type GrantScope = "identity" | "account" | "workspace" | "doco" | "types"
  * ignored); a reader with a non-empty write_types set is the per-type
  * "editor"; the wildcard means write-all (a classic writer).
  *
- * `level` is the persistence level: "identity" defers OAuth connector
- * access to the grantor's live matrix; "account" writes account_grants;
- * "workspace" writes workspace_users; "doco" writes doco_users. The
- * wizard's "types" scope persists as a doco-level grant with a
- * non-wildcard write set. `targetId` is empty for identity/account-level
- * grants (the grantor IS the scope).
+ * `level` is the persistence level: "account" writes account_grants (a USER
+ * delegation, never a token); "workspace" writes workspace_users; "doco"
+ * writes doco_users. The wizard's "types" scope persists as a doco-level grant
+ * with a non-wildcard write set. `targetId` is empty for account-level grants
+ * (the grantor IS the scope).
  */
 export interface ComposedGrant {
-  level: "identity" | "account" | "workspace" | "doco";
+  level: "account" | "workspace" | "doco";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
-}
-
-export function identityGrant(): ComposedGrant {
-  return { level: "identity", targetId: "", role: "reader", writeTypes: [] };
 }
 
 /**
@@ -284,27 +285,26 @@ export interface ScopeChoice {
   blurb: string;
 }
 
-export const identityScopeChoice: ScopeChoice = {
-  scope: "identity",
-  title: "Full access — follows your permissions",
-  blurb:
-    "Every Doco you can reach, at your current role. Read→write tracks your live access, so you never reconnect when your permissions change.",
-};
-
 /**
- * Which scope choices the wizard should offer, given what the granting
- * user can reach. "All your workspaces and docos" only makes sense if the user OWNS
- * at least one workspace (an account grant cascades through owned workspaces); workspace
- * and doco/types require at least one grantable target of that kind.
+ * Which scope choices the wizard should offer, given what the granting user
+ * can reach. When `forToken` is set (minting a credential rather than granting
+ * a person), the account scope is withheld: a token is capped at a single
+ * workspace, so "all your workspaces and docos" is never an option. The
+ * account scope otherwise appears only if the user OWNS at least one workspace
+ * (an account grant cascades through owned workspaces); workspace and
+ * doco/types require at least one grantable target of that kind.
  */
-export function availableScopes(catalog: GrantCatalog): ScopeChoice[] {
+export function availableScopes(
+  catalog: GrantCatalog,
+  opts: { forToken?: boolean } = {},
+): ScopeChoice[] {
   const ownsAnWorkspace = catalog.targets.some(
     (t) => t.level === "workspace" && t.maxRole === "owner",
   );
   const hasWorkspace = catalog.targets.some((t) => t.level === "workspace");
   const hasDoco = catalog.targets.some((t) => t.level === "doco");
   const out: ScopeChoice[] = [];
-  if (ownsAnWorkspace) {
+  if (ownsAnWorkspace && !opts.forToken) {
     out.push({
       scope: "account",
       title: "All your workspaces and docos",
@@ -476,4 +476,51 @@ export function applyDocoTypeLevel(
 /** Count of grants selected, for the submit button / summary. */
 export function selectionCount(list: ComposedGrant[]): number {
   return list.length;
+}
+
+/**
+ * The real workspace a composed grant belongs to, or null when it doesn't
+ * count toward the one-workspace token cap. A workspace grant is its own id; a
+ * Doco grant inherits its catalog target's workspace. Personal Docos (the
+ * "__other__" bucket) and any non-`workspace_` bucket return null — they're
+ * not a workspace, mirroring the server-side invariant.
+ */
+export function workspaceOfComposedGrant(
+  g: ComposedGrant,
+  catalog: GrantCatalog,
+): string | null {
+  if (g.level === "workspace") return g.targetId.startsWith("workspace_") ? g.targetId : null;
+  if (g.level === "doco") {
+    const t = catalog.targets.find((x) => x.level === "doco" && x.id === g.targetId);
+    const w = t?.workspaceId;
+    return w?.startsWith("workspace_") ? w : null;
+  }
+  return null;
+}
+
+/**
+ * Enforce the single-workspace token cap on a selection change. If the next
+ * selection touches more than one workspace, keep only the grants in the
+ * workspace of the most-recently-added entry (Doco grants in other workspaces
+ * are dropped); personal/no-workspace grants always survive. This makes the
+ * token picker honest about the rule the server enforces at mint time.
+ */
+export function coerceSingleWorkspace(
+  prev: ComposedGrant[],
+  next: ComposedGrant[],
+  catalog: GrantCatalog,
+): ComposedGrant[] {
+  const workspaces = new Set(
+    next.map((g) => workspaceOfComposedGrant(g, catalog)).filter((w): w is string => w !== null),
+  );
+  if (workspaces.size <= 1) return next;
+  const prevKeys = new Set(prev.map((g) => grantKey(g.level, g.targetId)));
+  const added = next.filter((g) => !prevKeys.has(grantKey(g.level, g.targetId)));
+  const keep =
+    (added.length > 0 ? workspaceOfComposedGrant(added[added.length - 1], catalog) : null) ??
+    workspaceOfComposedGrant(next[0], catalog);
+  return next.filter((g) => {
+    const w = workspaceOfComposedGrant(g, catalog);
+    return w === null || w === keep;
+  });
 }

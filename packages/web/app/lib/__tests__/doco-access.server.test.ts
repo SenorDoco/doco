@@ -287,69 +287,21 @@ describe("tokenReachableWorkspaceIdsForRequest", () => {
   });
 });
 
-describe('defer-scope ("*") connector token', () => {
-  it("grants any Doco at the scope gate (the matrix gates the role/write elsewhere)", () => {
+describe('legacy defer-scope ("*") token grants nothing now', () => {
+  // The "*" full-access token was removed (single-workspace rule). Issuance
+  // rejects it and the migration revokes any survivor, but defensively a "*"
+  // is now treated as a literal id that matches no Doco — never a wildcard.
+  it("does not grant an arbitrary Doco via the scope gate", () => {
     const t = token({ granted_doco_ids: ["*"] });
-    expect(oauthTokenGrantsDoco(t, { ownerId: "workspace_A", docoId: "doco_anything" })).toBe(true);
-    expect(oauthTokenGrantsDoco(t, { ownerId: "principal_USER", docoId: "doco_personal" })).toBe(
-      true,
+    expect(oauthTokenGrantsDoco(t, { ownerId: "workspace_A", docoId: "doco_anything" })).toBe(
+      false,
     );
   });
 
-  it("enumerates every accessible Doco (no workspace-boundary narrowing)", () => {
-    const owners = new Map([
-      ["doco_torre1", "workspace_torre"],
-      ["doco_meta1", "workspace_meta"],
-      ["doco_personal", "principal_alice"],
-    ]);
-    const accessible = ["doco_torre1", "doco_meta1", "doco_personal"];
+  it("enumerates nothing through the workspace boundary", () => {
+    const owners = new Map([["doco_torre1", "workspace_torre"]]);
     expect(
-      filterDocosToWorkspaceBoundary(accessible, owners, token({ granted_doco_ids: ["*"] })),
-    ).toEqual(accessible);
-  });
-
-  it("applies no workspace narrowing for listings (returns null)", async () => {
-    mocks.validateAccessToken.mockResolvedValue(token({ granted_doco_ids: ["*"] }));
-    const request = new Request("https://doco.test/api/v1/workspaces.json", {
-      headers: { Authorization: "Bearer doco_at_x" },
-    });
-    await expect(tokenReachableWorkspaceIdsForRequest(request)).resolves.toBeNull();
-  });
-
-  it("ALLOWS a write when the live matrix grants it", async () => {
-    mocks.getDocoUserGrant.mockResolvedValue({ role: "writer", writeTypes: ["*"] });
-    mocks.validateAccessToken.mockResolvedValue(
-      token({ granted_doco_ids: ["*"], granted_doco_write_types: { "*": ["*"] } }),
-    );
-    const request = new Request("https://doco.test/acme/api/decisions.json", {
-      headers: { Authorization: "Bearer doco_at_x" },
-    });
-    await expect(
-      canWriteDocoTypeForRequest(
-        request,
-        { ownerId: "workspace_A", docoId: "doco_new" },
-        "user_agent",
-        "decision",
-      ),
-    ).resolves.toBe(true);
-  });
-
-  it("DENIES a write when the principal has NO matrix grant (no over-grant)", async () => {
-    // The safety invariant: "*" defers to the matrix; it can never exceed it.
-    mocks.getDocoUserGrant.mockResolvedValue(null);
-    mocks.validateAccessToken.mockResolvedValue(
-      token({ granted_doco_ids: ["*"], granted_doco_write_types: { "*": ["*"] } }),
-    );
-    const request = new Request("https://doco.test/acme/api/decisions.json", {
-      headers: { Authorization: "Bearer doco_at_x" },
-    });
-    await expect(
-      canWriteDocoTypeForRequest(
-        request,
-        { ownerId: "workspace_A", docoId: "doco_new" },
-        "user_agent",
-        "decision",
-      ),
-    ).resolves.toBe(false);
+      filterDocosToWorkspaceBoundary(["doco_torre1"], owners, token({ granted_doco_ids: ["*"] })),
+    ).toEqual([]);
   });
 });

@@ -102,16 +102,35 @@ describe("/api-keys page action", () => {
     expect(markup).not.toContain(">Access tokens</h1>");
   });
 
-  it("renders the manual MCP setup content formerly hosted at /connect", () => {
+  it("teaches the per-workspace MCP URL with the id placeholder when there are no workspaces", () => {
     const markup = renderToStaticMarkup(
       createElement(ManualMcpPanel, { host: "https://doco.test" }),
     );
 
     expect(markup).toContain("Connect a client to Doco");
-    expect(markup).toContain("https://doco.test/mcp");
-    expect(markup).toContain("claude mcp add doco -- npx -y mcp-remote https://doco.test/mcp");
+    expect(markup).toContain("per workspace");
+    expect(markup).toContain("https://doco.test/WORKSPACE_ID/mcp");
+    expect(markup).toContain(
+      "claude mcp add doco -- npx -y mcp-remote https://doco.test/WORKSPACE_ID/mcp",
+    );
+    // No app-wide /mcp endpoint is advertised anymore.
+    expect(markup).not.toContain("https://doco.test/mcp");
     expect(markup).toContain("ChatGPT &amp; other MCP clients");
     expect(markup).toContain("doco_request_access");
+  });
+
+  it("lists a concrete per-workspace MCP URL when the user has a workspace", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ManualMcpPanel, {
+        host: "https://doco.test",
+        workspaces: [{ id: "workspace_01ABC", handle: "acme" }],
+      }),
+    );
+
+    expect(markup).toContain("https://doco.test/workspace_01ABC/mcp");
+    expect(markup).toContain(
+      "claude mcp add doco -- npx -y mcp-remote https://doco.test/workspace_01ABC/mcp",
+    );
   });
 });
 
