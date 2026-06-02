@@ -28,8 +28,9 @@ interface OverviewGraphRow {
   label?: string | null;
   lifecycle: string | null;
   created_at: string | null;
-  /** Windowed `COUNT(*) OVER()` — the full filtered total, repeated on every
-   *  row. pg returns the bigint as a string. Absent on the node-details query. */
+  /** Scalar-subquery total of graph-eligible nodes — the full filtered total,
+   *  repeated on every row (computed independently of the page LIMIT). pg
+   *  returns the bigint as a string. Absent on the node-details query. */
   total_node_count?: number | string | null;
 }
 
@@ -112,7 +113,7 @@ async function loadOverviewRows(
   if (windowIds.length > 0) {
     return (
       await c.query<OverviewGraphRow>(
-        `SELECT *, COUNT(*) OVER() AS total_node_count
+        `SELECT *, (SELECT COUNT(*) FROM (${overviewRowsSql(false)}) c) AS total_node_count
            FROM (${overviewRowsSql(true)}) nodes
           WHERE id = ANY($2::text[])
           ORDER BY array_position($2::text[], id) NULLS LAST, id`,
@@ -130,7 +131,7 @@ async function loadOverviewRows(
   }
   return (
     await c.query<OverviewGraphRow>(
-      `SELECT *, COUNT(*) OVER() AS total_node_count
+      `SELECT *, (SELECT COUNT(*) FROM (${overviewRowsSql(false)}) c) AS total_node_count
          FROM (${overviewRowsSql(true)}) nodes
         ORDER BY
           ${limit !== null ? "id = $3 DESC," : ""}

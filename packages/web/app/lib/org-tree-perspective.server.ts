@@ -59,7 +59,7 @@ interface OrgTreeRow {
   lifecycle: string | null;
   body_md: string | null;
   data: Record<string, unknown>;
-  /** Windowed `COUNT(*) OVER()` total principals (bigint → string from pg). */
+  /** Scalar-subquery total principals (bigint → string from pg). */
   total_count?: number | string | null;
 }
 
@@ -148,7 +148,8 @@ export async function loadOrgTreeData(
       // description shown under the label is now the first non-blank
       // line of `body_md`.
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle, body_md, data,
-              COUNT(*) OVER() AS total_count
+              (SELECT COUNT(*) FROM nodes
+                WHERE node_type = 'principal' AND doco_id = $1) AS total_count
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1

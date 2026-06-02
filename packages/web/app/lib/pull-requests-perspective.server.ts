@@ -125,16 +125,22 @@ export async function loadPullRequestsPerspective(
   const limit = Math.max(1, Math.floor(opts.limit ?? DEFAULT_PULL_REQUEST_LIMIT));
   const queryLimit = limit + 1;
 
-  // `COUNT(*) OVER()` rides on the same single scan: it reports the full
-  // filtered total (computed before LIMIT) while we still return only the
-  // latest `limit + 1` rows. Cheaper than a second COUNT, and it makes
-  // `totalCount`/`hasMore` a single source of truth.
+  // The true total comes from an uncorrelated scalar subquery (same predicate,
+  // no LIMIT), computed once as an InitPlan. `COUNT(*) OVER()` proved
+  // unreliable under LIMIT on the production planner — it returned the page
+  // limit, not the full count — and a result-row cap truncates windowed counts;
+  // a plain aggregate subquery is immune to both, keeping totalCount/hasMore
+  // correct on one round-trip.
   const { rows } = await c.query<PullRequestRefRowWithTotal>(
     `SELECT id,
             prose AS reference,
             locator,
             lifecycle,
-            COUNT(*) OVER() AS total_count
+            (SELECT COUNT(*)
+               FROM nodes
+              WHERE doco_id = $1
+                AND node_type = 'reference'
+                AND locator LIKE '%/pull/%') AS total_count
        FROM nodes
       WHERE doco_id = $1
         AND node_type = 'reference'

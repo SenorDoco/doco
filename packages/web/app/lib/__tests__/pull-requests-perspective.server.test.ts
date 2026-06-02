@@ -120,10 +120,11 @@ describe("loadPullRequestsPerspective", () => {
     };
   }
 
-  it("caps the rows shown but reports the true total via COUNT(*) OVER()", async () => {
-    // The query returns the latest `limit + 1` rows, each carrying the windowed
-    // total (a bigint, which pg hands back as a string). With limit 1 only one
-    // row is shown, but totalCount reflects the full 1,203-row domain.
+  it("caps the rows shown but reports the true total via a scalar COUNT subquery", async () => {
+    // The query returns the latest `limit + 1` rows, each carrying the true
+    // total from an uncorrelated scalar subquery (a bigint, which pg hands back
+    // as a string). With limit 1 only one row is shown, but totalCount reflects
+    // the full 1,203-row domain.
     const { client, captured } = makeClient([
       prRow({ id: "reference_1", total_count: "1203" }),
       prRow({
@@ -136,7 +137,10 @@ describe("loadPullRequestsPerspective", () => {
     const data = await loadPullRequestsPerspective(client, "doco_1", { limit: 1 });
 
     expect(captured[0].sql).toMatch(/LIMIT \$2/);
-    expect(captured[0].sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+    // The total is a scalar subquery, not a window function — COUNT(*) OVER()
+    // is unreliable under LIMIT on the production planner.
+    expect(captured[0].sql).toMatch(/\(SELECT COUNT\(\*\)/);
+    expect(captured[0].sql).not.toMatch(/COUNT\(\*\) OVER/);
     expect(captured[0].params).toEqual(["doco_1", 2]);
     expect(data.loadedCount).toBe(1);
     expect(data.totalCount).toBe(1203);

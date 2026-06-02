@@ -12,7 +12,7 @@ interface RuleRow {
   created_at: string | null;
   created_by: string | null;
   data: Record<string, unknown> | null;
-  /** Windowed `COUNT(*) OVER()` total commitments (bigint → string from pg). */
+  /** Scalar-subquery total commitments (bigint → string from pg). */
   total_count?: number | string | null;
 }
 
@@ -240,7 +240,9 @@ export async function loadSlaPerspectiveData(
     c.query<RuleRow>(
       `SELECT id, prose AS rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, created_by, data,
-              COUNT(*) OVER() AS total_count
+              (SELECT COUNT(*) FROM nodes
+                WHERE node_type = 'rule' AND doco_id = $1
+                  AND COALESCE(lifecycle, 'asserted') <> 'retired') AS total_count
          FROM nodes
         WHERE node_type = 'rule'
           AND doco_id = $1

@@ -160,12 +160,12 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(querySpy).toHaveBeenCalledOnce();
   });
 
-  it("reports the true total via COUNT(*) OVER() so the header can show truncation", async () => {
+  it("reports the true total via a scalar COUNT subquery so the header can show truncation", async () => {
     const querySpy = vi.fn();
     const client = {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
         querySpy(sql, params);
-        expect(sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+        expect(sql).toMatch(/\(SELECT COUNT\(\*\)/);
         return {
           rows: [
             row({

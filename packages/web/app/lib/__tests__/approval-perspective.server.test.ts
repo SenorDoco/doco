@@ -68,10 +68,10 @@ describe("loadApprovalPerspectiveData", () => {
     expect(data.totalCount).toBe(0);
   });
 
-  it("reports the true total of proposed nodes via COUNT(*) OVER()", async () => {
+  it("reports the true total of proposed nodes via a scalar COUNT subquery", async () => {
     const client = {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
-        expect(sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+        expect(sql).toMatch(/\(SELECT COUNT\(\*\)/);
         return {
           rows: [
             {
