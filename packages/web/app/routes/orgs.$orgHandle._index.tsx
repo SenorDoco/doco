@@ -542,7 +542,7 @@ function OrgConstitutionCard({
               name="constitution"
               defaultValue={constitution}
               rows={16}
-              className="w-full rounded-md border border-border bg-input px-3 py-2 font-serif text-sm leading-7 text-foreground outline-none focus:border-primary"
+              className="w-full rounded-md px-3 py-2 font-serif text-sm leading-7 text-foreground outline-none focus:border-primary"
             />
             <p className="text-[11px] italic text-muted-foreground">
               {CONSTITUTION_SHARING_DISCLAIMER}

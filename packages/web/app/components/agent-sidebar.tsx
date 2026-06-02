@@ -3697,7 +3697,7 @@ function Composer({
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Ask Señor Doco as ${username}…`}
         rows={2}
-        className="min-h-[44px] w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
+        className="min-h-[44px] w-full resize-none rounded-md px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();

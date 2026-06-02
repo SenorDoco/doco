@@ -254,7 +254,7 @@ export default function DocoSettings({
                 rows={3}
                 defaultValue={goal}
                 placeholder="What is this doco for? Agents read this first when they bootstrap."
-                className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                className="w-full rounded-md px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
               />
               <button
                 type="submit"
@@ -348,7 +348,7 @@ export default function DocoSettings({
                         perspectives.find((perspective) => perspective.isDefault)?.id ??
                         perspectives[0].id
                       }
-                      className="w-auto max-w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                      className="w-auto max-w-full rounded-md px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
                     >
                       {perspectives.map((perspective) => (
                         <option key={perspective.id} value={perspective.id}>
@@ -406,7 +406,7 @@ export default function DocoSettings({
                     );
                   }}
                   onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
+                  className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
                 />
                 <span
                   id="doco-handle-help"
@@ -441,7 +441,7 @@ export default function DocoSettings({
                   <select
                     name="target_org_id"
                     defaultValue={currentOrgId}
-                    className="w-auto max-w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
+                    className="w-auto max-w-full rounded-md px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
                   >
                     {currentOrgOptions.map((org) => (
                       <option key={org.id} value={org.id}>
@@ -499,7 +499,7 @@ export default function DocoSettings({
                   required
                   autoComplete="off"
                   placeholder={handle}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
+                  className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
                 />
                 <div className="flex items-center gap-2">
                   <button
