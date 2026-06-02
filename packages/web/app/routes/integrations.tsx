@@ -114,7 +114,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SiteHeader me={me} />
-      <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
+      <SingleColumnPageMain className="space-y-6 py-8">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "App integrations" })} />
         <header className="space-y-2">
           <h1 className="text-2xl font-semibold">App integrations</h1>
@@ -273,7 +273,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
             <AvailableIntegrations pageScope="account" />
           </section>
         </div>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

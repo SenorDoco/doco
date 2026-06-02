@@ -22,6 +22,7 @@ import {
   ScopeNavLinks,
   ScopePickerBanner,
 } from "~/components/integrations-shell";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -72,7 +73,7 @@ export default function WorkspaceIntegrations({
   return (
     <div>
       <SiteHeader me={me} />
-      <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-6">
+      <SingleColumnPageMain className="space-y-6 py-6">
         <Breadcrumb
           items={workspaceBreadcrumb({
             workspaceSlug: workspace.handle,
@@ -165,7 +166,7 @@ export default function WorkspaceIntegrations({
             <AvailableIntegrations pageScope="workspace" workspaceHandle={workspace.handle} />
           </section>
         </div>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

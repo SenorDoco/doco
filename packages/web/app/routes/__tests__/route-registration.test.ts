@@ -27,3 +27,10 @@ describe("api/v1 route registration", () => {
     expect(routesConfig).toContain(file);
   });
 });
+
+describe("retired routes", () => {
+  it("does not register the old /connect page", () => {
+    expect(routesConfig).not.toContain('route("connect"');
+    expect(routesConfig).not.toContain("routes/connect.tsx");
+  });
+});

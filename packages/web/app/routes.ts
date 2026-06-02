@@ -65,7 +65,6 @@ export default [
   route("ai", "routes/agent-probes[.]ts.tsx", { id: "probe-ai" }),
   route("getting-started", "routes/agent-probes[.]ts.tsx", { id: "probe-getting-started" }),
   route("install", "routes/agent-probes[.]ts.tsx", { id: "probe-install" }),
-  route("connect", "routes/connect.tsx"),
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
   route("dashboard", "routes/dashboard.tsx"),

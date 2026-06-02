@@ -15,6 +15,8 @@ import {
   describeExistingGrant,
   findExistingGrant,
   findGrant,
+  identityGrant,
+  identityScopeChoice,
   inheritedTypeLevel,
   targetRoleOptions,
   targetRoleValue,
@@ -45,15 +47,30 @@ export function GrantPicker({
   grants,
   onChange,
   existing,
+  includeIdentityScope = false,
 }: {
   catalog: GrantCatalog;
   grants: ComposedGrant[];
   onChange: (grants: ComposedGrant[]) => void;
   /** Grants the grantee/token already holds (widen-existing flow). */
   existing?: ExistingGrant[];
+  /** OAuth/device connector flow: offer "full access" as a picker card. */
+  includeIdentityScope?: boolean;
 }) {
-  const scopes = useMemo(() => availableScopes(catalog), [catalog]);
-  const [scope, setScope] = useState<GrantScope | null>(null);
+  const catalogScopes = useMemo(() => availableScopes(catalog), [catalog]);
+  const scopes = useMemo(
+    () =>
+      includeIdentityScope
+        ? [
+            identityScopeChoice,
+            // The live identity grant replaces the account-wide choice on
+            // connector approval screens, avoiding two broad-access cards.
+            ...catalogScopes.filter((s) => s.scope !== "account"),
+          ]
+        : catalogScopes,
+    [catalogScopes, includeIdentityScope],
+  );
+  const [scope, setScope] = useState<GrantScope | null>(includeIdentityScope ? "identity" : null);
 
   if (scopes.length === 0) {
     return (
@@ -96,7 +113,7 @@ export function GrantPicker({
                 aria-pressed={selected}
                 onClick={() => {
                   setScope(s.scope);
-                  onChange([]); // switching scope clears the selection
+                  onChange(s.scope === "identity" ? [identityGrant()] : []);
                 }}
                 className={`neu-button${selected ? " neu-pressed" : ""} rounded-md border border-border px-3 py-2 text-left text-sm`}
               >
@@ -108,7 +125,7 @@ export function GrantPicker({
         </div>
       </fieldset>
 
-      {scope === "account" ? (
+      {scope === "identity" ? null : scope === "account" ? (
         <AccountStep catalog={catalog} grants={grants} onChange={onChange} />
       ) : scope === "workspace" ? (
         <WorkspaceMultiStep

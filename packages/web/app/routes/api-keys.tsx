@@ -44,6 +44,7 @@ import {
   resolveWriteTypes,
 } from "~/lib/grant-picker";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { timeAgo } from "~/lib/time-ago";
 
 export async function loader({ request }: { request: Request }): Promise<ApiKeysPageData> {
   const me = await getCurrentPrincipal(request);
@@ -203,7 +204,7 @@ export default function ApiKeysPage({
   );
 }
 
-type AddAgentMode = "invite" | "generate";
+type AddAgentMode = "invite" | "manual" | "generate";
 
 function AddAgentCard({
   scopeOptions,
@@ -216,11 +217,12 @@ function AddAgentCard({
   error: string | null;
   minted: MintedApiKey | null;
 }) {
-  // Two ways to onboard an agent:
+  // Three ways to onboard an agent:
   //   - "invite":  copy a prompt that leads with the hosted MCP connector
   //                (read+write; the client runs OAuth itself), with the
   //                by-hand OAuth recipes as the fallback (see
   //                agent-invite-prompt.tsx).
+  //   - "manual":  show the client-specific hosted MCP connector setup.
   //   - "generate": pick scope + role and mint a Bearer token directly.
   // Default to "invite" because the hosted connector is the path most
   // agents should use (all MCP clients); the direct mint is the escape
@@ -237,7 +239,7 @@ function AddAgentCard({
         <div
           role="tablist"
           aria-label="Onboarding mode"
-          className="inline-flex rounded-md border border-border bg-background p-0.5"
+          className="flex flex-wrap rounded-md border border-border bg-background p-0.5"
         >
           <ModeButton
             mode="invite"
@@ -245,6 +247,13 @@ function AddAgentCard({
             onSelect={setMode}
             label="Invite AI agent (recommended)"
             testid="add-agent-mode-invite"
+          />
+          <ModeButton
+            mode="manual"
+            current={mode}
+            onSelect={setMode}
+            label="Add MCP manually"
+            testid="add-agent-mode-manual"
           />
           <ModeButton
             mode="generate"
@@ -257,6 +266,8 @@ function AddAgentCard({
 
         {mode === "invite" ? (
           <AgentInvitePrompt host={host} />
+        ) : mode === "manual" ? (
+          <ManualMcpPanel host={host} />
         ) : (
           <GenerateKeyPanel scopeOptions={scopeOptions} />
         )}
@@ -270,6 +281,89 @@ function AddAgentCard({
         {showMinted ? <MintedReveal minted={minted} /> : null}
       </CardContent>
     </Card>
+  );
+}
+
+function Code({ children }: { children: string }) {
+  return <code className="rounded bg-input px-1 py-0.5 font-mono">{children}</code>;
+}
+
+function CodeBlock({ children }: { children: string }) {
+  return (
+    <pre className="mt-2 overflow-x-auto rounded-md bg-input px-3 py-2 font-mono text-xs">
+      <code>{children}</code>
+    </pre>
+  );
+}
+
+export function ManualMcpPanel({ host }: { host: string }) {
+  const baseUrl = host.replace(/\/+$/, "");
+  const mcpUrl = `${baseUrl}/mcp`;
+  return (
+    <section className="space-y-5" data-testid="manual-mcp-panel">
+      <div className="space-y-2">
+        <h2 className="text-xl font-semibold">Connect a client to Doco</h2>
+        <p className="text-sm text-muted-foreground">
+          Doco hosts a remote MCP server at <Code>{mcpUrl}</Code>. Point any MCP-capable client at
+          it — the client runs the OAuth approval for you and carries the token from then on. The
+          machine-readable version of this page is{" "}
+          <a href="/llms.txt" className="underline hover:opacity-80">
+            /llms.txt
+          </a>
+          .
+        </p>
+      </div>
+
+      <section className="space-y-2 border-t border-border pt-4">
+        <h3 className="text-base font-semibold">claude.ai, Claude mobile, Cursor</h3>
+        <p className="text-sm text-muted-foreground">
+          Settings → Connectors → Add custom connector, and paste the URL:
+        </p>
+        <CodeBlock>{mcpUrl}</CodeBlock>
+        <p className="text-sm text-muted-foreground">
+          Approve the OAuth prompt — “Full access” follows your live permissions, or pick specific
+          Docos.
+        </p>
+      </section>
+
+      <section className="space-y-2 border-t border-border pt-4">
+        <h3 className="text-base font-semibold">Claude Desktop, Claude Code</h3>
+        <p className="text-sm text-muted-foreground">
+          These bridge to remote MCP with <Code>mcp-remote</Code>. Claude Code:
+        </p>
+        <CodeBlock>{`claude mcp add doco -- npx -y mcp-remote ${mcpUrl}`}</CodeBlock>
+        <p className="text-sm text-muted-foreground">
+          Claude Desktop — add to <Code>claude_desktop_config.json</Code>:
+        </p>
+        <CodeBlock>{`{
+  "mcpServers": {
+    "doco": { "command": "npx", "args": ["-y", "mcp-remote", "${mcpUrl}"] }
+  }
+}`}</CodeBlock>
+      </section>
+
+      <section className="space-y-2 border-t border-border pt-4">
+        <h3 className="text-base font-semibold">ChatGPT &amp; other MCP clients</h3>
+        <p className="text-sm text-muted-foreground">
+          Add a connector / custom MCP server with the URL:
+        </p>
+        <CodeBlock>{mcpUrl}</CodeBlock>
+      </section>
+
+      <section className="space-y-2 border-t border-border pt-4">
+        <h3 className="text-base font-semibold">What you get</h3>
+        <p className="text-sm text-muted-foreground">
+          The connector is read <em>and</em> write: <Code>doco_search</Code> and{" "}
+          <Code>doco_get</Code> (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, and{" "}
+          <Code>doco_changeset</Code> (batch write), and <Code>doco_request_access</Code> (ask an
+          owner for access). Read vs write is a live permission on the same token — stepping up
+          never means reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration); an
+          unauthenticated request returns a 401 whose <Code>WWW-Authenticate</Code> header points at{" "}
+          <Code>{`${baseUrl}/.well-known/oauth-protected-resource`}</Code> so the client discovers
+          the rest. No repo or local files needed.
+        </p>
+      </section>
+    </section>
   );
 }
 
@@ -349,12 +443,15 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const grantsPayload = useMemo(
     () =>
       JSON.stringify(
-        grants.map((g) => ({
-          level: g.level,
-          target_id: g.targetId,
-          role: g.role,
-          write_types: resolveWriteTypes(g.role, g.writeTypes),
-        })),
+        grants.map((g) => {
+          if (g.level === "identity") throw new Error("Identity grants are connector-only.");
+          return {
+            level: g.level,
+            target_id: g.targetId,
+            role: g.role,
+            write_types: resolveWriteTypes(g.role, g.writeTypes),
+          };
+        }),
       ),
     [grants],
   );
@@ -544,9 +641,7 @@ function KeyRow({ apiKey, catalog }: { apiKey: ApiKeyRow; catalog: GrantCatalog 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
             <span>Granted {formatDate(apiKey.granted_at)}</span>
             <span>·</span>
-            <span>
-              {apiKey.last_used_at ? `Last used ${formatDate(apiKey.last_used_at)}` : "Never used"}
-            </span>
+            <span>{formatLastUsedLabel(apiKey.last_used_at)}</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {apiKey.scope_grants.length === 0 ? (
@@ -683,12 +778,15 @@ function TokenAddAccessForm({
 }
 
 function grantsToPayload(grants: ComposedGrant[]): ApiKeyGrantInput[] {
-  return grants.map((g) => ({
-    level: g.level,
-    target_id: g.targetId,
-    role: g.role,
-    write_types: resolveWriteTypes(g.role, g.writeTypes),
-  }));
+  return grants.map((g) => {
+    if (g.level === "identity") throw new Error("Identity grants are connector-only.");
+    return {
+      level: g.level,
+      target_id: g.targetId,
+      role: g.role,
+      write_types: resolveWriteTypes(g.role, g.writeTypes),
+    };
+  });
 }
 
 function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {
@@ -711,4 +809,9 @@ function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+export function formatLastUsedLabel(iso: string | null, now = new Date()): string {
+  if (!iso) return "Never used";
+  return `Last used ${timeAgo(iso, now)}`;
 }
