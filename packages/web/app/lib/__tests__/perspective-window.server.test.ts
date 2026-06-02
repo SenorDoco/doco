@@ -159,4 +159,28 @@ describe("selectPerspectiveWindow", () => {
     expect(defaultFocusQuery?.sql).toMatch(/COALESCE\(n\.lifecycle, 'asserted'\) = 'drafting'/);
     expect(window.focusNodeId).toBe("decision_draft");
   });
+
+  it("keeps retired nodes in the window for client-lifecycle-filtered perspectives", async () => {
+    // The window gates the loaders via `id = ANY(window)`. If the spec
+    // excludes retired here, removing `<> 'retired'` from the loader is
+    // defeated — retired never reaches the client and toggling "Retired"
+    // on is a no-op (the BPMN PR #819 bug, re-introduced for every
+    // perspective once #821 routed them all through this window). These
+    // perspectives all render the lifecycle filter, so retired must stay
+    // in the window and let the client decide — like the graph spec.
+    for (const key of ["bpmn", "org-tree", "sla", "glossary"] as const) {
+      const { client, calls } = makeClient({ counts: [], ranked: [] });
+      await selectPerspectiveWindow(client, {
+        docoId: "doco_1",
+        explicitFocusNodeId: null,
+        limit: 5,
+        spec: PERSPECTIVE_WINDOW_SPECS[key],
+      });
+      for (const { sql } of calls) {
+        expect(sql, `${key} window must not pre-exclude retired nodes`).not.toMatch(
+          /COALESCE\(n\.lifecycle, 'asserted'\) <> 'retired'/,
+        );
+      }
+    }
+  });
 });

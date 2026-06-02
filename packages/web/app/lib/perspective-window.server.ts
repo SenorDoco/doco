@@ -9,6 +9,16 @@ type WindowReason = "explicit_focus" | "default_focus" | "neighbor" | "ranked_fi
 export interface PerspectiveWindowSpec {
   key: string;
   nodeTypes: readonly string[];
+  /**
+   * When set, retired nodes are dropped from window selection. No spec sets
+   * this today: every perspective renders the page-level lifecycle filter, so
+   * retired must stay in the window and let the client (`visibleLifecycles`,
+   * retired hidden by default) decide. Excluding retired here gates the
+   * loaders' `id = ANY(window)`, which would make toggling "Retired" on a
+   * no-op (the BPMN PR #819 bug). The graph/approval specs already keep
+   * retired in the window; `rankOrderSql` sorts retired last so they never
+   * crowd active nodes out of the budget.
+   */
   excludeRetired?: boolean;
   defaultFocusStrategy?: DefaultFocusStrategy;
   typeWeights?: Readonly<Record<string, number>>;
@@ -88,7 +98,6 @@ export const PERSPECTIVE_WINDOW_SPECS = {
   bpmn: {
     key: "bpmn",
     nodeTypes: BPMN_NODE_TYPES,
-    excludeRetired: true,
     typeWeights: {
       intent: 100,
       action: 90,
@@ -104,14 +113,12 @@ export const PERSPECTIVE_WINDOW_SPECS = {
   "org-tree": {
     key: "org-tree",
     nodeTypes: ["principal"],
-    excludeRetired: true,
     defaultFocusStrategy: "org-root",
     typeWeights: { principal: 100 },
   },
   sla: {
     key: "sla",
     nodeTypes: SLA_NODE_TYPES,
-    excludeRetired: true,
     typeWeights: {
       rule: 100,
       eval: 80,
@@ -141,7 +148,6 @@ export const PERSPECTIVE_WINDOW_SPECS = {
   glossary: {
     key: "glossary",
     nodeTypes: GLOSSARY_NODE_TYPES,
-    excludeRetired: true,
     typeWeights: {
       decision: 100,
       reference: 95,

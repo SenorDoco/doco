@@ -217,4 +217,43 @@ describe("loadSlaPerspectiveData", () => {
     const ruleCall = query.mock.calls.find(([sql]) => /node_type = 'rule'/i.test(String(sql)));
     expect(String(ruleCall?.[0])).toMatch(/COUNT\(\*\) OVER\(\)/);
   });
+
+  it("loads every lifecycle so the client filter can reveal a retired register", async () => {
+    // Regression (sibling of BPMN PR #819): every SLA node query hardcoded
+    // `<> 'retired'`. Commitments (rules) are filtered client-side by
+    // `visibleLifecycles`, so pre-excluding retired made toggling "Retired"
+    // on a no-op — a fully-retired register rendered "No SLA commitments
+    // match". The enrichment queries (eval/reference/action/decision/
+    // principal) drop it too, so a revealed retired commitment resolves its
+    // linked evidence and owner instead of bogusly reading empty.
+    const { client, query } = makeQueryClient({
+      rules: [
+        {
+          id: "rule_retired",
+          rule: "Legacy checkout availability was 99.5% monthly.",
+          lifecycle: "retired",
+          created_at: "2026-05-26T00:00:00.000Z",
+          created_by: null,
+          data: {},
+        },
+      ],
+      evals: [],
+      references: [],
+      actions: [],
+      decisions: [],
+      principals: [],
+      edges: [],
+    });
+
+    const data = await loadSlaPerspectiveData(client, "doco_01", "acme-slas");
+
+    const nodeCalls = query.mock.calls.filter(([sql]) => /FROM nodes/i.test(String(sql)));
+    expect(nodeCalls).toHaveLength(6);
+    for (const [sql] of nodeCalls) {
+      expect(String(sql)).not.toMatch(/<> 'retired'/);
+    }
+    // The retired rule survives as a commitment — the client filter owns
+    // hiding it.
+    expect(data.commitments.map((c) => c.id)).toContain("rule_retired");
+  });
 });
