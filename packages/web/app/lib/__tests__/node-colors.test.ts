@@ -2,16 +2,33 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_LIFECYCLE_COUNTS,
   LIFECYCLE_COLOR,
+  LIFECYCLE_DESCRIPTION,
   lifecycleCountParts,
+  lifecycleDescription,
   sumLifecycleCounts,
 } from "../node-colors";
 
 describe("lifecycleCountParts", () => {
-  it("returns drafting, asserted, retired in canonical order with their colors", () => {
+  it("returns each stage in canonical order with its color and hover title", () => {
     expect(lifecycleCountParts({ drafting: 1, asserted: 33, retired: 2 })).toEqual([
-      { lifecycle: "drafting", count: 1, color: LIFECYCLE_COLOR.drafting },
-      { lifecycle: "asserted", count: 33, color: LIFECYCLE_COLOR.asserted },
-      { lifecycle: "retired", count: 2, color: LIFECYCLE_COLOR.retired },
+      {
+        lifecycle: "drafting",
+        count: 1,
+        color: LIFECYCLE_COLOR.drafting,
+        title: LIFECYCLE_DESCRIPTION.drafting,
+      },
+      {
+        lifecycle: "asserted",
+        count: 33,
+        color: LIFECYCLE_COLOR.asserted,
+        title: LIFECYCLE_DESCRIPTION.asserted,
+      },
+      {
+        lifecycle: "retired",
+        count: 2,
+        color: LIFECYCLE_COLOR.retired,
+        title: LIFECYCLE_DESCRIPTION.retired,
+      },
     ]);
   });
 
@@ -34,5 +51,18 @@ describe("sumLifecycleCounts", () => {
 
   it("returns an all-zero total for an empty list", () => {
     expect(sumLifecycleCounts([])).toEqual(EMPTY_LIFECYCLE_COUNTS);
+  });
+});
+
+describe("lifecycleDescription", () => {
+  it("explains each stage by name", () => {
+    expect(lifecycleDescription("drafting")).toMatch(/^Drafting\b/);
+    expect(lifecycleDescription("asserted")).toMatch(/^Asserted\b/);
+    expect(lifecycleDescription("retired")).toMatch(/^Retired\b/);
+  });
+
+  it("defaults a null/undefined lifecycle to the asserted description", () => {
+    expect(lifecycleDescription(null)).toBe(LIFECYCLE_DESCRIPTION.asserted);
+    expect(lifecycleDescription(undefined)).toBe(LIFECYCLE_DESCRIPTION.asserted);
   });
 });

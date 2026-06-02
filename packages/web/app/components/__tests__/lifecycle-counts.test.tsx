@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { LIFECYCLE_COLOR } from "~/lib/node-colors";
+import { LIFECYCLE_COLOR, LIFECYCLE_DESCRIPTION } from "~/lib/node-colors";
 import { LifecycleCountsLabel } from "../lifecycle-counts";
 
 /** Strip HTML tags to recover the visible text content. */
@@ -18,6 +18,10 @@ describe("LifecycleCountsLabel", () => {
     expect(html).toContain(LIFECYCLE_COLOR.drafting);
     expect(html).toContain(LIFECYCLE_COLOR.asserted);
     expect(html).toContain(LIFECYCLE_COLOR.retired);
+    // ...and carries a hover title explaining what that color means.
+    expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.drafting}"`);
+    expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.asserted}"`);
+    expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.retired}"`);
   });
 
   it("always shows all three stages, even the zeros", () => {

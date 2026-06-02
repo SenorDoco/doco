@@ -8,7 +8,8 @@ import { type LifecycleCounts, lifecycleCountParts } from "~/lib/node-colors";
  *
  * All three are always shown — even zeros — so each color keeps a
  * stable position. Color is the only thing that distinguishes the
- * stages, matching the project-wide rule that color encodes lifecycle.
+ * stages, matching the project-wide rule that color encodes lifecycle,
+ * so each number carries a hover title naming its stage.
  */
 export function LifecycleCountsLabel({
   counts,
@@ -19,14 +20,13 @@ export function LifecycleCountsLabel({
 }) {
   const parts = lifecycleCountParts(counts);
   return (
-    <span
-      className={cn("tabular-nums", className)}
-      title="Nodes by lifecycle: drafting, asserted, retired"
-    >
+    <span className={cn("tabular-nums", className)}>
       {parts.map((part, i) => (
         <Fragment key={part.lifecycle}>
           {i > 0 ? <span className="text-muted-foreground">{"/"}</span> : null}
-          <span style={{ color: part.color }}>{part.count}</span>
+          <span style={{ color: part.color }} title={part.title}>
+            {part.count}
+          </span>
         </Fragment>
       ))}
     </span>

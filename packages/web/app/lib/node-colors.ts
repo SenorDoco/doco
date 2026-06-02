@@ -26,6 +26,21 @@ export function lifecycleColor(lifecycle: string | null | undefined): string {
 }
 
 /**
+ * One-line explanation of each lifecycle stage, surfaced as the hover
+ * title on a colored count so the meaning of each color is discoverable
+ * without a separate legend. Wording mirrors the LIFECYCLE_COLOR notes.
+ */
+export const LIFECYCLE_DESCRIPTION: Record<string, string> = {
+  drafting: "Drafting — provisional, work in motion",
+  asserted: "Asserted — settled, in force",
+  retired: "Retired — no longer in use",
+};
+
+export function lifecycleDescription(lifecycle: string | null | undefined): string {
+  return LIFECYCLE_DESCRIPTION[lifecycle ?? "asserted"] ?? lifecycleLabel(lifecycle);
+}
+
+/**
  * Canonical lifecycle progression. Counts, filter rows, and the stats
  * cards all render the stages in this order so a given color always
  * lands in the same position.
@@ -53,11 +68,12 @@ export const EMPTY_LIFECYCLE_COUNTS: LifecycleCounts = {
  */
 export function lifecycleCountParts(
   counts: LifecycleCounts,
-): { lifecycle: string; count: number; color: string }[] {
+): { lifecycle: string; count: number; color: string; title: string }[] {
   return LIFECYCLE_ORDER.map((lifecycle) => ({
     lifecycle,
     count: counts[lifecycle],
     color: lifecycleColor(lifecycle),
+    title: lifecycleDescription(lifecycle),
   }));
 }
 
