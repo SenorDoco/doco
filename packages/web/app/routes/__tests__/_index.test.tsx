@@ -39,9 +39,9 @@ describe("Home (anonymous landing)", () => {
     expect(html).toContain("Join an existing doco");
   });
 
-  it("leads with the institutional-memory positioning and keeps the tagline", () => {
+  it("leads with the shared-memory positioning and keeps the tagline", () => {
     const html = render();
-    expect(html).toContain("Institutional memory for software projects");
+    expect(html).toContain("Shared memory for AI and teams");
     expect(html).toContain("Keep people, agents, and work aligned");
   });
 

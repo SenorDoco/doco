@@ -157,7 +157,7 @@ export default function Home() {
           <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
             <DocoMark height={88} />
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Institutional memory for software projects
+              Shared memory for AI and teams
             </p>
             <h1 className="text-3xl font-bold leading-tight md:text-5xl">{DOCO_TAGLINE}</h1>
             <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
