@@ -314,14 +314,14 @@ export default function WorkspaceHome({
             <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {canInviteUsers ? <UsersLink level="workspace" targetId={workspace.id} /> : null}
-            {canInviteUsers ? <ApiKeysLink /> : null}
             <Link
               to={`/workspaces/${workspace.handle}/integrations`}
               className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               App integrations
             </Link>
+            {canInviteUsers ? <UsersLink level="workspace" targetId={workspace.id} /> : null}
+            {canInviteUsers ? <ApiKeysLink /> : null}
             {canInviteUsers ? (
               <Link
                 to={`/workspaces/${workspace.handle}/settings`}
