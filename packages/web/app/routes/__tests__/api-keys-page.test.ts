@@ -32,7 +32,7 @@ vi.mock("~/components/site-header", () => ({
   SiteHeader: () => null,
 }));
 
-import ApiKeysPage, { action, meta } from "../api-keys";
+import ApiKeysPage, { ManualMcpPanel, action, meta } from "../api-keys";
 
 function formRequest(fields: Record<string, string>): Request {
   return new Request("https://doco.test/api-keys", {
@@ -98,6 +98,19 @@ describe("/api-keys page action", () => {
 
     expect(meta()[0]?.title).toBe("Tokens/MCP · Doco");
     expect(markup).toContain("Tokens/MCP");
+    expect(markup).toContain("Add MCP manually");
     expect(markup).not.toContain(">Access tokens</h1>");
+  });
+
+  it("renders the manual MCP setup content formerly hosted at /connect", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ManualMcpPanel, { host: "https://doco.test" }),
+    );
+
+    expect(markup).toContain("Connect a client to Doco");
+    expect(markup).toContain("https://doco.test/mcp");
+    expect(markup).toContain("claude mcp add doco -- npx -y mcp-remote https://doco.test/mcp");
+    expect(markup).toContain("ChatGPT &amp; other MCP clients");
+    expect(markup).toContain("doco_request_access");
   });
 });

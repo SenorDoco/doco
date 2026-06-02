@@ -11,6 +11,7 @@ import { Link, useLoaderData, useRevalidator } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { AvailableIntegrations, ScopeNavLinks } from "~/components/integrations-shell";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
@@ -111,7 +112,7 @@ export default function DocoIntegrations() {
   return (
     <div>
       <SiteHeader me={me} />
-      <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-6">
+      <SingleColumnPageMain className="space-y-6 py-6">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "App integrations" })} />
         <header className="space-y-3">
           <h1 className="text-2xl font-semibold">App integrations</h1>
@@ -180,7 +181,7 @@ export default function DocoIntegrations() {
             />
           </section>
         </div>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

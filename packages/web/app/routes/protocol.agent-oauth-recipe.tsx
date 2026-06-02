@@ -29,7 +29,8 @@ connector client follows that to discover the OAuth server (RFC 8414)
 and run the flow for you. The connector is read + write —
 \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
-same token, never a different login. Setup per client: ${baseUrl}/connect.
+same token, never a different login. Setup per client lives in Tokens/MCP:
+open ${baseUrl}/api-keys and choose the "Add MCP manually" tab.
 
 The recipes below are the **fallback** for runtimes that can't speak
 remote MCP — they drive the same OAuth flow by hand.
