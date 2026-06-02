@@ -65,5 +65,35 @@ describe("loadApprovalPerspectiveData", () => {
     const data = await loadApprovalPerspectiveData(client, "doco_acme", "acme", { limit: 25 });
 
     expect(data.nodes).toEqual([]);
+    expect(data.totalCount).toBe(0);
+  });
+
+  it("reports the true total of proposed nodes via COUNT(*) OVER()", async () => {
+    const client = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        expect(sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+        return {
+          rows: [
+            {
+              id: "decision_01",
+              entity_type: "decision",
+              name: "A proposed decision",
+              lifecycle: "drafting",
+              created_at: "2026-05-25T10:00:00.000Z",
+              proposed_at: null,
+              author_id: null,
+              author_name: null,
+              // pg returns the windowed bigint as a string.
+              total_count: "812",
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const data = await loadApprovalPerspectiveData(client, "doco_acme", "acme", { limit: 1 });
+
+    expect(data.totalCount).toBe(812);
+    expect(data.nodes).toHaveLength(1);
   });
 });

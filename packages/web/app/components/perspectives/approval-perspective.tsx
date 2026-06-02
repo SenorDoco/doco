@@ -5,6 +5,7 @@ import { NodeTypeIcon } from "~/components/node-type-icon";
 import type { ApprovalPerspectiveNode } from "~/lib/approval-perspective.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import type { LifecycleStage } from "~/lib/node-detail.server";
+import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { timeAgo } from "~/lib/time-ago";
 import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
@@ -36,6 +37,8 @@ const SORT_OPTIONS: ApprovalSortKey[] = [
 
 interface ApprovalPerspectiveProps {
   nodes: readonly ApprovalPerspectiveNode[];
+  /** TRUE total of proposed nodes — drives the "Showing the latest N of M" header. */
+  totalCount: number;
   canChangeLifecycle: boolean;
   onOpenNode: (node: ApprovalPerspectiveNode) => void;
   /** Node to scroll into view and pulse — the perspective's one-shot focus. */
@@ -48,6 +51,7 @@ interface ApprovalPerspectiveProps {
 
 export function ApprovalPerspective({
   nodes,
+  totalCount,
   canChangeLifecycle,
   onOpenNode,
   onLifecycleTransition,
@@ -130,8 +134,13 @@ export function ApprovalPerspective({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {visible.length} of {nodes.length} proposed node{nodes.length === 1 ? "" : "s"}
+        {/* Headline describes the dataset (loaded vs true total). When the
+            queue is capped, say so honestly; otherwise show how many of the
+            total survive the in-page search filter. */}
+        <p className="text-xs tabular-nums text-muted-foreground">
+          {totalCount > nodes.length
+            ? perspectiveCountLabel({ loaded: nodes.length, total: totalCount }, "proposed node")
+            : `${visible.length} of ${totalCount} proposed node${totalCount === 1 ? "" : "s"}`}
         </p>
         <label className="inline-flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Sort by</span>

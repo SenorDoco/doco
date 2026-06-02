@@ -535,6 +535,10 @@ describe("loadBpmnGraph", () => {
     expect(graph.nodes.map((node) => node.id)).toEqual(["action_active"]);
     expect(graph.pools.map((pool) => pool.id)).toEqual(["pool:intent_active"]);
     expect(graph.lanes).toHaveLength(1);
+    // totalCount is the pre-cap flow-node count (both actions), even though the
+    // delivered slice holds one — so the header can say "Showing the latest 1 of 2 steps".
+    expect(graph.totalCount).toBe(2);
+    expect(graph.nodes).toHaveLength(1);
   });
 });
 

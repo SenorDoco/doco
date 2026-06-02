@@ -30,6 +30,7 @@ import { focalEdgeWidth } from "~/lib/graph-depth";
 import { lifecycleColor } from "~/lib/node-colors";
 import { ORG_TREE_NODE_H, ORG_TREE_NODE_W, layoutOrgTree } from "~/lib/org-tree-layout";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
+import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { type ReferenceCandidate, usePerspectiveReferences } from "~/lib/perspective-references";
 import "@xyflow/react/dist/style.css";
 
@@ -41,6 +42,8 @@ interface FlowViewport {
 
 interface OrgTreePerspectiveProps {
   nodes: OrgTreeNode[];
+  /** TRUE total of principals — drives the "Showing the latest N of M" overlay. */
+  totalCount?: number;
   visibleLifecycles?: Set<string> | null;
   centerId?: string | null;
   initialFocusId?: string | null;
@@ -112,6 +115,7 @@ const nodeTypes = { orgTreeNode: OrgTreeCard };
 
 function OrgTreeInner({
   nodes,
+  totalCount,
   visibleLifecycles,
   centerId,
   initialFocusId,
@@ -290,6 +294,14 @@ function OrgTreeInner({
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
+      {/* Dataset count overlay — honest about truncation. Describes the loaded
+          slice vs the true principal total, independent of the lifecycle filter. */}
+      <div className="pointer-events-none absolute left-3 top-3 z-10 rounded bg-card/80 px-2 py-1 text-xs tabular-nums text-muted-foreground backdrop-blur-sm">
+        {perspectiveCountLabel(
+          { loaded: nodes.length, total: totalCount ?? nodes.length },
+          "principal",
+        )}
+      </div>
       <ReactFlow
         nodes={rawRfNodes}
         edges={rfEdges}

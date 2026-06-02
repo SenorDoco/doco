@@ -187,4 +187,34 @@ describe("loadSlaPerspectiveData", () => {
       expect(params).toEqual(["doco_01", 9]);
     }
   });
+
+  it("reports the true commitment total via COUNT(*) OVER() on the rule query", async () => {
+    const { client, query } = makeQueryClient({
+      rules: [
+        {
+          id: "rule_01",
+          rule: "Checkout availability is 99.9% monthly.",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:00:00.000Z",
+          created_by: null,
+          data: {},
+          // pg returns the windowed bigint as a string.
+          total_count: "920",
+        },
+      ],
+      evals: [],
+      references: [],
+      actions: [],
+      decisions: [],
+      principals: [],
+      edges: [],
+    });
+
+    const data = await loadSlaPerspectiveData(client, "doco_01", "acme-slas", { limit: 1 });
+
+    expect(data.totalCount).toBe(920);
+    expect(data.stats.commitments).toBe(1);
+    const ruleCall = query.mock.calls.find(([sql]) => /node_type = 'rule'/i.test(String(sql)));
+    expect(String(ruleCall?.[0])).toMatch(/COUNT\(\*\) OVER\(\)/);
+  });
 });

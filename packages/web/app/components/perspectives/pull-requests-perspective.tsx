@@ -16,6 +16,7 @@ import { ExternalLink, GitMerge, GitPullRequest, Github } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
 import { lifecycleColor } from "~/lib/node-colors";
+import { perspectiveCountLabel } from "~/lib/perspective-count";
 import type {
   PullRequestGroup,
   PullRequestsPerspectiveData,
@@ -52,24 +53,24 @@ export function PullRequestsPerspective({
       .filter((group) => group.prs.length > 0);
   }, [data.groups, visibleLifecycles]);
 
-  const total = useMemo(() => groups.reduce((sum, group) => sum + group.prs.length, 0), [groups]);
-
   if (!data.connected) {
     return <NotConnected handle={handle} />;
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 px-3 pb-3 pt-12">
-      <div className="flex items-center justify-between gap-2">
-        <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2">
+        {/* One honest line about the dataset: the true total of PR references
+            (all lifecycles) and how many of the latest are shown when capped.
+            Independent of the lifecycle filter — its effect shows in the
+            per-group counts below, never here. */}
+        <p className="inline-flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
           <GitPullRequest aria-hidden className="h-3.5 w-3.5" />
-          <span className="tabular-nums">{total}</span> pull request{total === 1 ? "" : "s"}
+          {perspectiveCountLabel(
+            { loaded: data.loadedCount, total: data.totalCount },
+            "pull request",
+          )}
         </p>
-        {data.hasMore ? (
-          <p className="text-xs text-muted-foreground">
-            Showing latest <span className="tabular-nums">{data.loadedCount}</span>
-          </p>
-        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {groups.length === 0 ? (

@@ -98,37 +98,77 @@ describe("loadPullRequestsPerspective", () => {
     });
   });
 
-  it("caps the PR rows serialized into the page and detects more without counting them all", async () => {
+  function makeClient(rows: Record<string, unknown>[]) {
     const captured: { sql: string; params?: unknown[] }[] = [];
     const client = {
       async query<T>(sql: string, params?: unknown[]) {
         captured.push({ sql, params });
-        return {
-          rows: [
-            {
-              id: "reference_1",
-              reference: "Merged PR",
-              locator: "https://github.com/acme/web/pull/1",
-              lifecycle: "asserted",
-            },
-            {
-              id: "reference_2",
-              reference: "Another PR",
-              locator: "https://github.com/acme/web/pull/2",
-              lifecycle: "asserted",
-            },
-          ] as T[],
-        };
+        return { rows: rows as T[] };
       },
     };
+    return { client, captured };
+  }
+
+  function prRow(over: Record<string, unknown>) {
+    return {
+      id: "reference_1",
+      reference: "Merged PR",
+      locator: "https://github.com/acme/web/pull/1",
+      lifecycle: "asserted",
+      total_count: "2",
+      ...over,
+    };
+  }
+
+  it("caps the rows shown but reports the true total via COUNT(*) OVER()", async () => {
+    // The query returns the latest `limit + 1` rows, each carrying the windowed
+    // total (a bigint, which pg hands back as a string). With limit 1 only one
+    // row is shown, but totalCount reflects the full 1,203-row domain.
+    const { client, captured } = makeClient([
+      prRow({ id: "reference_1", total_count: "1203" }),
+      prRow({
+        id: "reference_2",
+        locator: "https://github.com/acme/web/pull/2",
+        total_count: "1203",
+      }),
+    ]);
 
     const data = await loadPullRequestsPerspective(client, "doco_1", { limit: 1 });
 
     expect(captured[0].sql).toMatch(/LIMIT \$2/);
-    expect(captured[0].sql).not.toMatch(/COUNT\(\*\) OVER/);
+    expect(captured[0].sql).toMatch(/COUNT\(\*\) OVER\(\)/);
     expect(captured[0].params).toEqual(["doco_1", 2]);
     expect(data.loadedCount).toBe(1);
+    expect(data.totalCount).toBe(1203);
     expect(data.hasMore).toBe(true);
     expect(data.groups[0].prs).toHaveLength(1);
+  });
+
+  it("reports hasMore=false and the true total when every PR fits", async () => {
+    const { client } = makeClient([
+      prRow({ id: "reference_1", total_count: "2" }),
+      prRow({
+        id: "reference_2",
+        locator: "https://github.com/acme/web/pull/2",
+        total_count: "2",
+      }),
+    ]);
+
+    const data = await loadPullRequestsPerspective(client, "doco_1", { limit: 5 });
+
+    expect(data.loadedCount).toBe(2);
+    expect(data.totalCount).toBe(2);
+    expect(data.hasMore).toBe(false);
+  });
+
+  it("returns a zero total and no groups when the Doco has no PRs", async () => {
+    const { client } = makeClient([]);
+
+    const data = await loadPullRequestsPerspective(client, "doco_1", { limit: 5 });
+
+    expect(data.totalCount).toBe(0);
+    expect(data.loadedCount).toBe(0);
+    expect(data.hasMore).toBe(false);
+    expect(data.groups).toEqual([]);
   });
 });
