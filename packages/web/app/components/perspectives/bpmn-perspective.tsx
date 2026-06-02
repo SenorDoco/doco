@@ -679,13 +679,15 @@ export function BpmnPerspective({
       const baseOpacity =
         typeof node.style?.opacity === "number" ? node.style.opacity : Number(node.style?.opacity);
       const transitionOpacity = renderWindowOpacityById.get(node.id) ?? 1;
+      // Opacity transition lives in the `.doco-graph-fade` CSS class, not
+      // inline — keeps it out of the per-render style object.
+      const className = node.className ? `${node.className} doco-graph-fade` : "doco-graph-fade";
       const style = {
         ...node.style,
         opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
-        transition: "opacity 500ms ease",
       };
-      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, style }];
-      return [{ ...node, data: { ...node.data, referenceNumber }, style }];
+      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, className, style }];
+      return [{ ...node, className, data: { ...node.data, referenceNumber }, style }];
     });
     return [...windowed, ...externalEdgeStubs.nodes];
   }, [
@@ -732,13 +734,16 @@ export function BpmnPerspective({
                   },
                 }
               : edgeData;
+          const className = edge.className
+            ? `${edge.className} doco-graph-fade-edge`
+            : "doco-graph-fade-edge";
           return {
             ...edge,
+            className,
             data,
             style: {
               ...edge.style,
               opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
-              transition: "opacity 500ms ease, stroke-opacity 500ms ease",
             },
           };
         }),
@@ -1109,6 +1114,7 @@ interface FlowNode {
   parentId?: string;
   extent?: "parent";
   style?: CSSProperties;
+  className?: string;
 }
 
 interface FlowEdge {
@@ -1128,6 +1134,7 @@ interface FlowEdge {
   focusable: boolean;
   interactionWidth: number;
   style?: CSSProperties;
+  className?: string;
   animated?: boolean;
   markerEnd?: { type: MarkerType; width?: number; height?: number; color?: string };
 }

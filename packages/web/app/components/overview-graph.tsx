@@ -211,8 +211,8 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
 
   return (
     <div
-      className="relative h-full w-full overflow-visible"
-      style={{ opacity: data.opacity, transition: "opacity 500ms ease" }}
+      className="doco-graph-fade relative h-full w-full overflow-visible"
+      style={{ opacity: data.opacity }}
     >
       <Handle
         type="target"
@@ -670,6 +670,11 @@ export function OverviewGraph({
     return () => window.clearTimeout(timeout);
   }, [detailUrl, detailIds]);
 
+  // Derive the one boolean the node cards actually consume from the
+  // zoom so the memo below rebuilds only when the detail threshold is
+  // crossed — not on every 0.01-step zoom tick, which would rebuild and
+  // re-render every card mid-gesture.
+  const showDetail = viewport.zoom >= DETAIL_ZOOM;
   const flowNodes = useMemo(() => {
     const nodeNodes = renderedNodes.map((node) => {
       const position = positions.get(node.id) ?? { x: 0, y: 0 };
@@ -685,7 +690,7 @@ export function OverviewGraph({
         data: {
           node,
           detail: details.get(node.id),
-          showDetail: viewport.zoom >= DETAIL_ZOOM,
+          showDetail,
           referenceNumber: referenceNumberByNodeId.get(node.id),
           isNew: newNodeIds.has(node.id),
           opacity,
@@ -707,7 +712,7 @@ export function OverviewGraph({
     renderedNodes,
     positions,
     details,
-    viewport.zoom,
+    showDetail,
     referenceNumberByNodeId,
     newNodeIds,
     depthByNodeId,
@@ -738,6 +743,7 @@ export function OverviewGraph({
         source: link.source,
         target: link.target,
         type: "curvedBezier",
+        className: "doco-graph-fade-edge",
         selectable: false,
         focusable: false,
         interactionWidth: clickable ? 18 : 0,
@@ -746,7 +752,6 @@ export function OverviewGraph({
           stroke: lifecycleColor(sourceLifecycle),
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 4) : baseStrokeWidth,
           strokeOpacity: isFocused ? 0.95 : 0.5 * edgeOpacity * transitionOpacity,
-          transition: "stroke-opacity 500ms ease, opacity 500ms ease, stroke-width 150ms ease",
           cursor: clickable ? "pointer" : undefined,
         },
       };
