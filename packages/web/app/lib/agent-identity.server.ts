@@ -82,20 +82,28 @@ export async function loadAgentIdentity(request: Request): Promise<AgentIdentity
   if (token && !tokenDefersScope(token)) {
     const workspaceIds = new Set(token.granted_workspace_ids ?? []);
     const docoIds = new Set(token.granted_doco_ids ?? []);
+    // A Doco is in scope if granted directly OR owned by a granted Workspace
+    // (a Workspace grant covers all its Docos — mirrors the access gate in
+    // doco-access.server). Otherwise a Workspace-scoped token would show the
+    // Workspace but hide the very Docos it can actually reach.
     grants = options
-      .filter(
-        (o) =>
-          (o.level === "workspace" && workspaceIds.has(o.id)) ||
-          (o.level === "doco" && docoIds.has(o.id)),
+      .filter((o) =>
+        o.level === "workspace"
+          ? workspaceIds.has(o.id)
+          : docoIds.has(o.id) || (o.workspaceId != null && workspaceIds.has(o.workspaceId)),
       )
       .map((o) => {
-        // The token may cap the role below the principal's own; show the
-        // effective (lower) role so the agent sees what it can actually do.
-        const cap = (
-          o.level === "workspace"
-            ? token.granted_workspace_roles?.[o.id]
-            : token.granted_doco_roles?.[o.id]
-        ) as DocoRole | undefined;
+        // Effective (capped) role — the token can cap below the principal's
+        // own. A Doco reached via a Workspace grant is capped by that
+        // Workspace's role.
+        let cap: DocoRole | undefined;
+        if (o.level === "workspace") {
+          cap = token.granted_workspace_roles?.[o.id] as DocoRole | undefined;
+        } else if (docoIds.has(o.id)) {
+          cap = token.granted_doco_roles?.[o.id] as DocoRole | undefined;
+        } else if (o.workspaceId != null) {
+          cap = token.granted_workspace_roles?.[o.workspaceId] as DocoRole | undefined;
+        }
         const role = cap && rankOf(cap) < rankOf(o.myRole) ? cap : o.myRole;
         return { scope: o.level, id: o.id, label: o.label, role };
       });
