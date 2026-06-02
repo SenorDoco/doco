@@ -106,9 +106,7 @@ async function principalReachesWorkspace(
   });
 }
 
-export type DocoInWorkspace =
-  | { ok: true; handle: string }
-  | { ok: false; message: string };
+export type DocoInWorkspace = { ok: true; handle: string } | { ok: false; message: string };
 
 /**
  * Resolve a tool's `doco` argument (handle or id) and confirm it belongs to

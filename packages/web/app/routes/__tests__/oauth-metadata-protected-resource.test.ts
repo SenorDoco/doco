@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { loader as workspaceLoader } from "../oauth-metadata-protected-resource.$workspaceId";
 import { loader } from "../oauth-metadata-protected-resource";
+import { loader as workspaceLoader } from "../oauth-metadata-protected-resource.$workspaceId";
 
 describe("/.well-known/oauth-protected-resource (RFC 9728, origin root)", () => {
   function load(urlStr: string): Promise<Record<string, unknown>> {

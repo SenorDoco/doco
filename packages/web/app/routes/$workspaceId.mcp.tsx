@@ -15,10 +15,7 @@
 
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
-import {
-  gateWorkspaceMcp,
-  resolveDocoInWorkspace,
-} from "~/lib/workspace-mcp.server";
+import { gateWorkspaceMcp, resolveDocoInWorkspace } from "~/lib/workspace-mcp.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
 import { action as changesetsAction } from "./$docoHandle.api.changesets[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
@@ -62,7 +59,10 @@ const SEARCH_TOOL = {
     type: "object",
     properties: {
       query: { type: "string", description: "Free-text query. Vector search; phrasing flexible." },
-      doco: { type: "string", description: "Handle of the Doco to search (must be in this workspace)." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to search (must be in this workspace).",
+      },
       limit: {
         type: "integer",
         minimum: 1,
@@ -86,7 +86,10 @@ const CAPTURE_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to write to (must be in this workspace)." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to write to (must be in this workspace).",
+      },
       type: {
         type: "string",
         description:
@@ -141,7 +144,10 @@ const REQUEST_ACCESS_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to request access to (in this workspace)." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to request access to (in this workspace).",
+      },
       role: {
         type: "string",
         description: "Role to request: reader | writer | owner.",
@@ -172,7 +178,10 @@ const GET_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to read from (must be in this workspace)." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to read from (must be in this workspace).",
+      },
       resource: {
         type: "string",
         description:
@@ -199,7 +208,10 @@ const CHANGESET_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to write to (must be in this workspace)." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to write to (must be in this workspace).",
+      },
       operations: {
         type: "array",
         description:
@@ -519,16 +531,17 @@ async function runDocoWhoami(request: Request, ctx: Ctx): Promise<ToolResult> {
   }
   return {
     content: [{ type: "text", text: lines.join("\n") }],
-    structuredContent: { ...identity, workspace_id: ctx.workspaceId, grants: [workspace, ...docos].filter(Boolean) },
+    structuredContent: {
+      ...identity,
+      workspace_id: ctx.workspaceId,
+      grants: [workspace, ...docos].filter(Boolean),
+    },
   };
 }
 
 // Not a delegate: requesting access is a first-party action. Still constrained
 // to a Doco in this workspace.
-async function runDocoRequestAccess(
-  ctx: Ctx,
-  args: Record<string, unknown>,
-): Promise<ToolResult> {
+async function runDocoRequestAccess(ctx: Ctx, args: Record<string, unknown>): Promise<ToolResult> {
   const resolved = await inWorkspace(ctx, args.doco);
   if ("error" in resolved) return resolved.error;
   const doco = resolved.handle;

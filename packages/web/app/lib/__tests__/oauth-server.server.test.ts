@@ -211,9 +211,7 @@ describe("single-workspace token invariant (assertSingleWorkspaceGrant)", () => 
       if (String(sql).includes("FROM docos")) {
         const ids = (params?.[0] as string[]) ?? [];
         return {
-          rows: ids
-            .filter((id) => owners[id])
-            .map((id) => ({ owner_id: owners[id] })),
+          rows: ids.filter((id) => owners[id]).map((id) => ({ owner_id: owners[id] })),
           rowCount: ids.length,
         };
       }

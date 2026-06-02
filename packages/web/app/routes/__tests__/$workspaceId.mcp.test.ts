@@ -62,7 +62,11 @@ describe("POST /<workspace-id>/mcp (per-workspace remote MCP)", () => {
   });
 
   it("401 + WWW-Authenticate at this workspace's protected-resource metadata when unauthenticated", async () => {
-    mocks.gateWorkspaceMcp.mockResolvedValue({ ok: false, kind: "unauthenticated", message: "Unauthorized" });
+    mocks.gateWorkspaceMcp.mockResolvedValue({
+      ok: false,
+      kind: "unauthenticated",
+      message: "Unauthorized",
+    });
     const res = await action({
       request: rpc({ jsonrpc: "2.0", id: 1, method: "initialize" }),
       params: PARAMS,
@@ -141,7 +145,12 @@ describe("POST /<workspace-id>/mcp (per-workspace remote MCP)", () => {
     });
     const res = await action({
       request: rpc(
-        { jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "doco_whoami", arguments: {} } },
+        {
+          jsonrpc: "2.0",
+          id: 30,
+          method: "tools/call",
+          params: { name: "doco_whoami", arguments: {} },
+        },
         BEARER,
       ),
       params: PARAMS,
@@ -199,7 +208,9 @@ describe("POST /<workspace-id>/mcp (per-workspace remote MCP)", () => {
   });
 
   it("doco_capture normalizes a singular type and delegates the POST", async () => {
-    mocks.captureAction.mockResolvedValue(Response.json({ ok: true, id: "decision_1" }, { status: 201 }));
+    mocks.captureAction.mockResolvedValue(
+      Response.json({ ok: true, id: "decision_1" }, { status: 201 }),
+    );
     await action({
       request: rpc(
         {

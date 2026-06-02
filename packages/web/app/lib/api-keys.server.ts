@@ -22,11 +22,7 @@ import { type DocoRole, getWorkspaceRole, listWorkspacesForUser, withClient } fr
 import { WRITE_ALL, normalizeWriteTypes } from "@doco/shared";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
-import {
-  assertSingleWorkspaceGrant,
-  issueTokens,
-  registerClient,
-} from "~/lib/oauth-server.server";
+import { assertSingleWorkspaceGrant, issueTokens, registerClient } from "~/lib/oauth-server.server";
 import type { CurrentPrincipal } from "~/lib/session.server";
 import { ALL_ROLES, rankOf } from "~/lib/user-invite";
 

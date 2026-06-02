@@ -392,11 +392,11 @@ export function ManualMcpPanel({
           The connector is read <em>and</em> write: <Code>doco_search</Code> and{" "}
           <Code>doco_get</Code> (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, and{" "}
           <Code>doco_changeset</Code> (batch write), and <Code>doco_request_access</Code> (ask an
-          owner for access) — all scoped to this one workspace. Read vs write is a live permission on
-          the same token — stepping up never means reconnecting. Auth is OAuth 2.1 (PKCE + dynamic
-          client registration); an unauthenticated request returns a 401 whose{" "}
-          <Code>WWW-Authenticate</Code> header points at this workspace's protected-resource metadata
-          so the client discovers the rest. No repo or local files needed.
+          owner for access) — all scoped to this one workspace. Read vs write is a live permission
+          on the same token — stepping up never means reconnecting. Auth is OAuth 2.1 (PKCE +
+          dynamic client registration); an unauthenticated request returns a 401 whose{" "}
+          <Code>WWW-Authenticate</Code> header points at this workspace's protected-resource
+          metadata so the client discovers the rest. No repo or local files needed.
         </p>
       </section>
     </section>

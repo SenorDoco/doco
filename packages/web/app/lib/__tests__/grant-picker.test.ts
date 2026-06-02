@@ -253,11 +253,29 @@ describe("coerceSingleWorkspace (token one-workspace cap)", () => {
       { id: "workspace_B", label: "B" },
     ],
     targets: [
-      { level: "workspace", id: "workspace_A", workspaceId: "workspace_A", label: "A", maxRole: "owner" },
-      { level: "workspace", id: "workspace_B", workspaceId: "workspace_B", label: "B", maxRole: "owner" },
+      {
+        level: "workspace",
+        id: "workspace_A",
+        workspaceId: "workspace_A",
+        label: "A",
+        maxRole: "owner",
+      },
+      {
+        level: "workspace",
+        id: "workspace_B",
+        workspaceId: "workspace_B",
+        label: "B",
+        maxRole: "owner",
+      },
       { level: "doco", id: "doco_a1", workspaceId: "workspace_A", label: "A/1", maxRole: "owner" },
       { level: "doco", id: "doco_b1", workspaceId: "workspace_B", label: "B/1", maxRole: "owner" },
-      { level: "doco", id: "doco_personal", workspaceId: "__other__", label: "me/p", maxRole: "owner" },
+      {
+        level: "doco",
+        id: "doco_personal",
+        workspaceId: "__other__",
+        label: "me/p",
+        maxRole: "owner",
+      },
     ],
   };
   const g = (level: "workspace" | "doco", targetId: string): ComposedGrant => ({

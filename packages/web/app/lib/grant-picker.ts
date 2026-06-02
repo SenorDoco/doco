@@ -485,10 +485,7 @@ export function selectionCount(list: ComposedGrant[]): number {
  * "__other__" bucket) and any non-`workspace_` bucket return null — they're
  * not a workspace, mirroring the server-side invariant.
  */
-export function workspaceOfComposedGrant(
-  g: ComposedGrant,
-  catalog: GrantCatalog,
-): string | null {
+export function workspaceOfComposedGrant(g: ComposedGrant, catalog: GrantCatalog): string | null {
   if (g.level === "workspace") return g.targetId.startsWith("workspace_") ? g.targetId : null;
   if (g.level === "doco") {
     const t = catalog.targets.find((x) => x.level === "doco" && x.id === g.targetId);
