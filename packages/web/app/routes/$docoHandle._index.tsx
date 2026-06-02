@@ -34,7 +34,6 @@ import {
 } from "~/components/overview-graph";
 import { PerspectiveFrame } from "~/components/perspective-frame";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
-import { ApprovalPerspective } from "~/components/perspectives/approval-perspective";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { GlossaryPerspective } from "~/components/perspectives/glossary-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
@@ -43,7 +42,6 @@ import { PullRequestsPerspective } from "~/components/perspectives/pull-requests
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
-import type { ApprovalPerspectiveNode } from "~/lib/approval-perspective.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
@@ -230,7 +228,6 @@ export async function loader({
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
     const totalNodes = facets.entityType.reduce((sum, t) => sum + t.count, 0);
-    const proposedCount = facets.lifecycle.find((facet) => facet.value === "drafting")?.count ?? 0;
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -320,21 +317,13 @@ export async function loader({
     const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canWriteDoco(ctx.meta, me?.id ?? null);
     const focusNodeId = selectedNode?.id ?? selectedEdge?.from.id;
-    const {
-      graph,
-      pageRanks,
-      bpmnGraph,
-      orgTreeData,
-      slaData,
-      approvalData,
-      glossaryData,
-      pullRequestsData,
-    } = await loadDocoHomePerspectiveData(c, {
-      activeKind,
-      docoId: ctx.meta.docoId,
-      handle,
-      focusNodeId,
-    });
+    const { graph, pageRanks, bpmnGraph, orgTreeData, slaData, glossaryData, pullRequestsData } =
+      await loadDocoHomePerspectiveData(c, {
+        activeKind,
+        docoId: ctx.meta.docoId,
+        handle,
+        focusNodeId,
+      });
 
     // Policy count — guidance + node-authoring policies
     // attached to this Doco.
@@ -352,7 +341,6 @@ export async function loader({
       items,
       facets,
       totalNodes,
-      proposedCount,
       byDay,
       topContributors,
       handle,
@@ -374,7 +362,6 @@ export async function loader({
       bpmnGraph,
       orgTreeData,
       slaData,
-      approvalData,
       glossaryData,
       pullRequestsData,
       focusedNodeId: selectedNode?.id ?? null,
@@ -496,7 +483,6 @@ export default function DocoHome({
     items,
     facets,
     totalNodes,
-    proposedCount,
     byDay,
     topContributors,
     handle,
@@ -517,7 +503,6 @@ export default function DocoHome({
     bpmnGraph,
     orgTreeData,
     slaData,
-    approvalData,
     glossaryData,
     pullRequestsData,
     focusedNodeId,
@@ -953,50 +938,6 @@ export default function DocoHome({
     [loadNodeDialog, nodeDialog],
   );
 
-  const handleApprovalLifecycleTransition = useCallback(
-    async (
-      node: ApprovalPerspectiveNode,
-      stage: Extract<LifecycleStage, "asserted" | "drafting">,
-    ) => {
-      if (!node.update_url) {
-        throw new Error("Lifecycle updates are not available for this node type.");
-      }
-      const res = await fetch(node.update_url, {
-        method: "PATCH",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ lifecycle: stage }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `Lifecycle update failed with ${res.status}`);
-      }
-      setGraphState((prev) => graphWithNodeLifecycle(prev, node.id, stage));
-      setNodeDialog((prev) =>
-        prev?.detail?.id === node.id
-          ? {
-              ...prev,
-              detail: {
-                ...prev.detail,
-                lifecycle: stage,
-              },
-            }
-          : prev,
-      );
-      setVisibleLifecycles((prev) => new Set([...prev, stage]));
-      if (nodeDialog?.detail?.id === node.id) {
-        await loadNodeDialog(node.entity_type, node.id, node.href, {
-          pushUrl: false,
-          keepDetail: true,
-        });
-      }
-      revalidator.revalidate();
-    },
-    [loadNodeDialog, nodeDialog?.detail?.id, revalidator],
-  );
-
   const focusedGraphNodeIds = useMemo(
     () => (edgeFocus ? [edgeFocus.source, edgeFocus.target] : []),
     [edgeFocus],
@@ -1132,56 +1073,37 @@ export default function DocoHome({
               availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
-              proposedCount={proposedCount}
             />
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Search floats over the top-left of whichever perspective
                   is active. Absolute so it sits inside the canvas without
                   pushing it down — keeps the tab/canvas seam clean. */}
-              {effectivePerspectiveKind === "approval" ? null : (
-                <div className="pointer-events-none absolute right-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
-                  <div className="pointer-events-auto">
-                    <SearchBoxWithHistory
-                      handle={handle}
-                      placeholder={
-                        totalNodes > 0
-                          ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
-                          : "Search nodes…"
-                      }
-                      compact
-                    />
-                  </div>
+              <div className="pointer-events-none absolute right-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
+                <div className="pointer-events-auto">
+                  <SearchBoxWithHistory
+                    handle={handle}
+                    placeholder={
+                      totalNodes > 0
+                        ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
+                        : "Search nodes…"
+                    }
+                    compact
+                  />
                 </div>
-              )}
+              </div>
               <PerspectiveFrame
                 fillHeight
-                rightTabAttached={perspectives.some((p) => p.kind === "approval")}
-                lifecycleFilter={
-                  effectivePerspectiveKind === "approval"
-                    ? undefined
-                    : {
-                        visible: visibleLifecycles,
-                        available: availableLifecycles,
-                        onToggle: toggleLifecycle,
-                      }
-                }
+                lifecycleFilter={{
+                  visible: visibleLifecycles,
+                  available: availableLifecycles,
+                  onToggle: toggleLifecycle,
+                }}
                 fullscreen={{
                   isFullscreen: isPerspectiveFullscreen,
                   onToggle: togglePerspectiveFullscreen,
                 }}
               >
-                {effectivePerspectiveKind === "approval" && approvalData ? (
-                  <ApprovalPerspective
-                    nodes={approvalData.nodes}
-                    totalCount={approvalData.totalCount}
-                    focusId={perspectiveFocusId}
-                    canChangeLifecycle={canAdminPerspectives}
-                    onOpenNode={(node) => {
-                      void loadNodeDialog(node.entity_type, node.id, node.href);
-                    }}
-                    onLifecycleTransition={handleApprovalLifecycleTransition}
-                  />
-                ) : effectivePerspectiveKind === "list" ? (
+                {effectivePerspectiveKind === "list" ? (
                   <ListPerspective
                     nodes={graphState.nodes}
                     pageRanks={pageRanksMap}

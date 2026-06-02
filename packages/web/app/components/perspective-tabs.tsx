@@ -10,7 +10,6 @@ import { Pin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
-import { lifecycleColor } from "~/lib/node-colors";
 import type { AttachedPerspective, Perspective } from "~/lib/perspectives.server";
 
 interface PerspectiveTabsProps {
@@ -19,7 +18,6 @@ interface PerspectiveTabsProps {
   availablePerspectives: Perspective[];
   activeSlug: string;
   canAdmin: boolean;
-  proposedCount?: number;
 }
 
 export function PerspectiveTabs({
@@ -28,11 +26,7 @@ export function PerspectiveTabs({
   availablePerspectives,
   activeSlug,
   canAdmin,
-  proposedCount = 0,
 }: PerspectiveTabsProps) {
-  const mainPerspectives = perspectives.filter((p) => p.kind !== "approval");
-  const approvalPerspectives = perspectives.filter((p) => p.kind === "approval");
-
   return (
     <div className="relative flex min-w-0 items-end justify-between gap-3">
       <nav
@@ -48,19 +42,18 @@ export function PerspectiveTabs({
         // sub-pixel vertical misalignment with the Link tabs.
         className="relative flex min-w-0 flex-wrap items-end self-start"
       >
-        {mainPerspectives.map((p, i) => (
+        {perspectives.map((p, i) => (
           <PerspectiveTab
             key={p.id}
             handle={handle}
             perspective={p}
-            proposedCount={proposedCount}
             active={p.slug === activeSlug}
             isFirst={i === 0}
             // Last perspective tab only rounds its top-right when the
             // settings chevron-tab ISN'T rendered after it. When canAdmin
             // is true, the settings tab is the visually-last cell and
             // owns the rounded outer corner.
-            isLast={i === mainPerspectives.length - 1 && !canAdmin}
+            isLast={i === perspectives.length - 1 && !canAdmin}
           />
         ))}
         {canAdmin ? (
@@ -72,26 +65,6 @@ export function PerspectiveTabs({
           />
         ) : null}
       </nav>
-      {approvalPerspectives.length > 0 ? (
-        <nav
-          aria-label="Proposed perspective"
-          role="tablist"
-          className="ml-auto flex shrink-0 items-end self-start"
-        >
-          {approvalPerspectives.map((p) => (
-            <PerspectiveTab
-              key={p.id}
-              handle={handle}
-              perspective={p}
-              proposedCount={proposedCount}
-              active={p.slug === activeSlug}
-              isFirst
-              isLast
-              variant="drafting"
-            />
-          ))}
-        </nav>
-      ) : null}
     </div>
   );
 }
@@ -99,25 +72,13 @@ export function PerspectiveTabs({
 interface PerspectiveTabProps {
   handle: string;
   perspective: AttachedPerspective;
-  proposedCount: number;
   active: boolean;
   isFirst: boolean;
   isLast: boolean;
-  variant?: "strip" | "drafting";
 }
 
-function PerspectiveTab({
-  handle,
-  perspective,
-  proposedCount,
-  active,
-  isFirst,
-  isLast,
-  variant = "strip",
-}: PerspectiveTabProps) {
+function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
-  const isProposedTab = variant === "drafting";
-  const proposedBlue = lifecycleColor("drafting");
   // Real tab-strip styling:
   //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
   //     border overlap the previous tab's right border so adjacent tabs
@@ -132,40 +93,23 @@ function PerspectiveTab({
   const tabClass = cn(
     "neu-surface-open-bottom relative top-0.5 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
     active ? "z-[60]" : "z-40",
-    isProposedTab
-      ? active
-        ? "rounded-t-md border-border bg-card text-foreground"
-        : "rounded-t-md border-border bg-input hover:bg-muted"
-      : "-ml-px first:ml-0 border-border text-foreground",
-    !isProposedTab && isFirst && "rounded-tl-md",
-    !isProposedTab && isLast && "rounded-tr-md",
-    !isProposedTab && (active ? "bg-card" : "bg-input hover:bg-muted"),
+    "-ml-px first:ml-0 border-border text-foreground",
+    isFirst && "rounded-tl-md",
+    isLast && "rounded-tr-md",
+    active ? "bg-card" : "bg-input hover:bg-muted",
   );
-  const tabStyle =
-    isProposedTab && !active
-      ? {
-          color: proposedBlue,
-        }
-      : undefined;
-  const name = isProposedTab ? "Proposed" : perspective.name;
-  const title = perspective.ownerHandle ? `${name} — by ${perspective.ownerHandle}` : name;
-  const label = perspective.kind === "approval" ? `${name} (${proposedCount})` : name;
+  const title = perspective.ownerHandle
+    ? `${perspective.name} — by ${perspective.ownerHandle}`
+    : perspective.name;
 
   return (
-    <Link
-      to={href}
-      role="tab"
-      aria-selected={active}
-      className={tabClass}
-      style={tabStyle}
-      title={title}
-    >
-      {!isProposedTab && perspective.icon ? (
+    <Link to={href} role="tab" aria-selected={active} className={tabClass} title={title}>
+      {perspective.icon ? (
         <span aria-hidden className="text-sm leading-none">
           {perspective.icon}
         </span>
       ) : null}
-      <span>{label}</span>
+      <span>{perspective.name}</span>
     </Link>
   );
 }
