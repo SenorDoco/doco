@@ -188,4 +188,38 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(data.totalCount).toBe(1800);
     expect(data.stats.entries).toBe(1);
   });
+
+  it("loads every lifecycle so the client filter can reveal retired entries", async () => {
+    // Regression (sibling of BPMN PR #819): the glossary loader hardcoded
+    // `<> 'retired'`, so retired terms never reached the client. The
+    // lifecycle filter (Drafting/Asserted/Retired) lives client-side
+    // (`visibleLifecycles`) and is the only thing that should hide a
+    // lifecycle — pre-filtering retired on the server makes toggling
+    // "Retired" on a no-op, leaving a fully-retired glossary blank.
+    const querySpy = vi.fn();
+    const client = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        querySpy(sql, params);
+        return {
+          rows: [
+            row({
+              id: "decision_retired",
+              entity_type: "decision",
+              label: "Sunset term",
+              prose: "A term we no longer use.",
+              lifecycle: "retired",
+            }),
+          ] as T[],
+        };
+      },
+    };
+
+    const data = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+
+    const [sql] = querySpy.mock.calls[0] as [string, unknown[]];
+    expect(sql).not.toMatch(/<> 'retired'/);
+    // The retired row survives to an entry — the client filter, not the
+    // server, owns hiding it.
+    expect(data.groups.flatMap((g) => g.entries).map((e) => e.id)).toContain("decision_retired");
+  });
 });

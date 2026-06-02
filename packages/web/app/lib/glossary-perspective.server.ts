@@ -301,6 +301,13 @@ export async function loadGlossaryPerspectiveData(
   // with a non-empty `title` headwords on the title. The promoted
   // reference scalars (ref_type/locator/citation/title) are NULL for the
   // other four types, exactly as the per-table legs projected.
+  //
+  // Every lifecycle loads, including retired. Hiding a lifecycle is the
+  // client's job: GlossaryPerspective applies the page-level lifecycle filter
+  // (`visibleLifecycles`, retired hidden by default). Pre-filtering retired
+  // here would make toggling "Retired" on a no-op, leaving a fully-retired
+  // glossary blank. Mirrors the Graph/List loader (full-graph.server) and the
+  // BPMN loader (PR #819), which both return every lifecycle.
   const { rows } = await c.query<NodeRow>(
     `
     SELECT id,
@@ -314,7 +321,6 @@ export async function loadGlossaryPerspectiveData(
       FROM nodes
      WHERE doco_id = $1
        AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
-       AND COALESCE(lifecycle, 'asserted') <> 'retired'
        ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}
      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id ASC
      ${windowIds.length === 0 && limit != null ? "LIMIT $2" : ""}

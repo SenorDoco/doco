@@ -160,6 +160,13 @@ export async function loadOrgTreeData(
   ).rows;
 
   const principalIds = rows.map((row) => row.id);
+  // Load reporting edges at every lifecycle, including retired. Principals
+  // already load at every lifecycle and are filtered client-side, so toggling
+  // "Retired" on reveals retired principals — but a retired principal's
+  // has_parent edge is itself retired, and excluding retired edges here would
+  // leave a revealed retired principal stranded as a disconnected root.
+  // layoutOrgTree only draws an edge when both endpoints are visible, so the
+  // edge-visibility decision belongs to the client. Mirrors full-graph.server.
   const edgeRows =
     principalIds.length === 0
       ? []
@@ -170,7 +177,6 @@ export async function loadOrgTreeData(
               WHERE doco_id = $1
                 AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))
                 AND edge_type = 'has_parent'
-                AND lifecycle <> 'retired'
               ORDER BY created_at, id`,
             [docoId, principalIds],
           )

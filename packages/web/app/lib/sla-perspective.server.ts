@@ -236,6 +236,14 @@ export async function loadSlaPerspectiveData(
   else if (limit != null) params.push(limit);
   const windowFilterSql = windowIds.length > 0 ? "AND id = ANY($2::text[])" : "";
   const limitSql = windowIds.length === 0 && limit != null ? "LIMIT $2" : "";
+  // Every lifecycle loads, including retired. Commitments (rules) are filtered
+  // client-side by SlaPerspective (`visibleLifecycles`, retired hidden by
+  // default), so pre-filtering retired here made toggling "Retired" on a no-op
+  // — a fully-retired register rendered "No SLA commitments match". The
+  // enrichment queries (eval/reference/action/decision/principal) drop the
+  // filter too so a revealed retired commitment resolves its linked evidence
+  // and owner instead of bogusly reading empty. Mirrors full-graph.server and
+  // the BPMN loader (PR #819), which return every lifecycle.
   const [rules, evals, references, actions, decisions, principals] = await Promise.all([
     c.query<RuleRow>(
       `SELECT id, prose AS rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
@@ -244,7 +252,6 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'rule'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
@@ -256,7 +263,6 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'eval'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
@@ -269,7 +275,6 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'reference'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
@@ -281,7 +286,6 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'action'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
@@ -293,7 +297,6 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'decision'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
@@ -304,7 +307,6 @@ export async function loadSlaPerspectiveData(
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,

@@ -97,4 +97,40 @@ describe("loadOrgTreeData", () => {
     expect(data.totalCount).toBe(830);
     expect(data.nodes).toHaveLength(1);
   });
+
+  it("loads retired reporting edges so revealed retired principals keep their lines", async () => {
+    // Regression (sibling of BPMN PR #819): the has_parent edge query
+    // hardcoded `lifecycle <> 'retired'`. Principals already load at every
+    // lifecycle, so toggling "Retired" on reveals retired principals — but
+    // their reporting lines vanished because a retired principal's edge is
+    // itself retired. layoutOrgTree only draws an edge when both endpoints
+    // are visible, so the edge filter belongs to the client, not the server.
+    const queries: string[] = [];
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      async query<T>(sql: string): Promise<{ rows: T[] }> {
+        queries.push(sql);
+        if (/FROM edges/i.test(sql)) {
+          return {
+            rows: [
+              { from_id: "principal_b", to_id: "principal_a", props: { role: "reports_to" } },
+            ] as T[],
+          };
+        }
+        return {
+          rows: [
+            { id: "principal_a", name: "A", lifecycle: "asserted", body_md: "Person.", data: {} },
+            { id: "principal_b", name: "B", lifecycle: "retired", body_md: "Person.", data: {} },
+          ] as T[],
+        };
+      },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme");
+
+    const edgeSql = queries.find((sql) => /FROM edges/i.test(sql));
+    expect(edgeSql).not.toMatch(/<> 'retired'/);
+    // The retired report still resolves its manager so the client can draw
+    // the line once "Retired" is toggled on.
+    expect(data.nodes.find((n) => n.id === "principal_b")?.reports_to).toBe("principal_a");
+  });
 });
