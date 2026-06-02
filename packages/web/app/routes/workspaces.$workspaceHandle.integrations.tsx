@@ -15,13 +15,14 @@
 import { getWorkspaceRole } from "@doco/db";
 import { ArrowRight } from "lucide-react";
 import { Link, redirect } from "react-router";
-import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
+import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import {
   AvailableIntegrations,
   ScopeNavLinks,
   ScopePickerBanner,
 } from "~/components/integrations-shell";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
@@ -74,20 +75,21 @@ export default function WorkspaceIntegrations({
     <div>
       <SiteHeader me={me} />
       <SingleColumnPageMain className="space-y-6 py-6">
-        <Breadcrumb
-          items={workspaceBreadcrumb({
+        <PageHeader
+          breadcrumb={workspaceBreadcrumb({
             workspaceSlug: workspace.handle,
             pageLabel: "App integrations",
           })}
-        />
-        <header className="space-y-3">
-          <h1 className="text-2xl font-semibold">App integrations</h1>
-          <p className="text-sm text-muted-foreground">
-            Everything wired up under {workspace.handle}, plus a rollup of each Doco&apos;s
-            connections.
-          </p>
-          <ScopeNavLinks scope="workspace" />
-        </header>
+          title="App integrations"
+        >
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Everything wired up under {workspace.handle}, plus a rollup of each Doco&apos;s
+              connections.
+            </p>
+            <ScopeNavLinks scope="workspace" />
+          </div>
+        </PageHeader>
 
         <ScopePickerBanner
           integrationId={pickingIntegrationId}

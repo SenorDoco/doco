@@ -6,8 +6,9 @@ import { entityUrl } from "@doco/shared";
 import type { EntityId } from "@doco/shared";
 import { Link } from "react-router";
 import { NodeTypeBadge } from "~/components/badge";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { activityRowLifecycle, shouldStrikeActivityTarget } from "~/lib/activity-feed";
 import { AUDIT_OP_SET, type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
@@ -75,12 +76,10 @@ export default function ActivityPage({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
-        <div>
-          <Breadcrumb
-            items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Activity" })}
-            className="mb-1"
-          />
-          <h1 className="text-xl font-semibold">Activity</h1>
+        <PageHeader
+          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Activity" })}
+          title="Activity"
+        >
           <p className="text-sm text-muted-foreground">
             Per-Doco audit-events log — every mutation that touched an entity. Filter via URL
             params:{" "}
@@ -89,7 +88,7 @@ export default function ActivityPage({
             </code>
             .
           </p>
-        </div>
+        </PageHeader>
 
         <FilterChips filters={filters} ownerSlug={ownerSlug} docoSlug={docoSlug} handle={handle} />
 

@@ -15,9 +15,10 @@ import {
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
-import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
+import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
@@ -223,13 +224,10 @@ export default function WorkspaceSearch({
     <div>
       <SiteHeader me={me} />
       <SingleColumnPageMain className="py-6 space-y-5">
-        <header className="space-y-1">
-          <Breadcrumb
-            items={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Search" })}
-            className="mb-1"
-          />
-          <h1 className="text-xl font-semibold">Search across {workspace.handle}</h1>
-        </header>
+        <PageHeader
+          breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Search" })}
+          title={`Search across ${workspace.handle}`}
+        />
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_420px]">
           <section className="min-w-0 space-y-4">

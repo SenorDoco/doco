@@ -8,9 +8,10 @@
 import type { EntityId } from "@doco/shared";
 import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
+import { PageHeader } from "~/components/page-header";
 import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
@@ -141,14 +142,17 @@ export default function Invites({
     <div>
       <SiteHeader me={me} />
       <DocoPageMain className="py-6 space-y-5">
-        <div className="space-y-1">
-          <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })} />
-          <h1 className="text-lg font-semibold tracking-tight">
-            <Link to={`/${handle}`} className="hover:text-primary">
-              {handle}
-            </Link>
-            <span className="text-muted-foreground"> · invites</span>
-          </h1>
+        <PageHeader
+          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })}
+          title={
+            <>
+              <Link to={`/${handle}`} className="hover:text-primary">
+                {handle}
+              </Link>
+              <span className="text-muted-foreground"> · invites</span>
+            </>
+          }
+        >
           <p className="text-sm text-muted-foreground">
             Share an invite URL with a person to grant them access to this Doco. Each invite is
             single-use and expires after the chosen window. For agent access, mint an{" "}
@@ -157,7 +161,7 @@ export default function Invites({
             </Link>{" "}
             instead.
           </p>
-        </div>
+        </PageHeader>
 
         <Card>
           <CardHeader>
