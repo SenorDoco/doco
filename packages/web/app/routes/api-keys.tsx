@@ -218,12 +218,14 @@ function AddAgentCard({
   minted: MintedApiKey | null;
 }) {
   // Two ways to onboard an agent:
-  //   - "invite":  copy a prompt that points the agent at /protocol/agent-oauth-recipe
-  //                and /device; the agent drives its own OAuth flow.
+  //   - "invite":  copy a prompt that leads with the hosted MCP connector
+  //                (read+write; the client runs OAuth itself), with the
+  //                by-hand OAuth recipes as the fallback (see
+  //                agent-invite-prompt.tsx).
   //   - "generate": pick scope + role and mint a Bearer token directly.
-  // Default to "invite" because the OAuth flow is what most agents land
-  // on (chat-only runtimes, MCP clients); the direct mint is the escape
-  // hatch for scripts and CI.
+  // Default to "invite" because the hosted connector is the path most
+  // agents should use (all MCP clients); the direct mint is the escape
+  // hatch for non-MCP scripts and CI.
   const [mode, setMode] = useState<AddAgentMode>("invite");
   // Switching modes after a successful mint shouldn't keep the
   // just-minted token visible under the wrong tab.

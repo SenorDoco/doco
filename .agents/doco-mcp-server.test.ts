@@ -295,6 +295,8 @@ describe("doco-mcp-server", () => {
     expect(result.serverInfo.name).toBe("doco");
     expect(result.serverInfo.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(result.instructions).toContain("doco_search");
+    expect(result.instructions).toContain("doco_capture");
+    expect(result.instructions).toContain("doco_relate");
     expect(result.instructions).toContain("doco_authenticate");
     expect(result.instructions).toContain("doco_complete_authentication");
     expect(result.instructions).toContain("same local repository");
@@ -321,6 +323,8 @@ describe("doco-mcp-server", () => {
     ).tools;
     expect(tools.map((t) => t.name)).toEqual([
       "doco_search",
+      "doco_capture",
+      "doco_relate",
       "doco_authenticate",
       "doco_complete_authentication",
     ]);
@@ -328,6 +332,11 @@ describe("doco-mcp-server", () => {
     expect(search?.description).toMatch(/CALL THIS BEFORE/);
     expect(search?.description).toMatch(/DOCO_REFRESH/);
     expect(search?.inputSchema.required).toContain("query");
+    const capture = tools.find((t) => t.name === "doco_capture");
+    expect(capture?.description).toMatch(/write/i);
+    expect(capture?.inputSchema.required).toEqual(["type", "body"]);
+    const relate = tools.find((t) => t.name === "doco_relate");
+    expect(relate?.inputSchema.required).toEqual(["edge_type", "from_id", "to_id"]);
     const authenticate = tools.find((t) => t.name === "doco_authenticate");
     expect(authenticate?.description).toMatch(/device-flow/);
     expect(authenticate?.description).toMatch(/shared/);
@@ -1339,4 +1348,205 @@ describe("doco-mcp-server", () => {
     },
     20000,
   );
+
+  it("doco_capture POSTs the body to the plural per-type route and renders id + footer_lines", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-capture-"));
+    mkdirSync(join(projectDir, ".doco"));
+    writeFileSync(join(projectDir, ".doco", "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    const seen: Array<{ auth: string; body: string }> = [];
+    const server = createServer(async (req, res) => {
+      // singular "decision" must be normalized to the plural route:
+      if (req.method === "POST" && req.url === "/doco-bpms/api/decisions.json") {
+        seen.push({
+          auth: String(req.headers.authorization || ""),
+          body: await readRequestBody(req),
+        });
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            id: "decision_abc",
+            footer_lines: ["[🔮 Doco] ✍️ Decision added"],
+          }),
+        );
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_writer", ""].join("\n"),
+      {
+        mode: 0o600,
+      },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doco_capture",
+              arguments: { type: "decision", body: { decision: "X", question: "Y?" } },
+            },
+          },
+        ],
+        2,
+        { cwd: projectDir, env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined } },
+      );
+      const result = responses.find((r) => r.id === 2)?.result as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain("decision_abc");
+      expect(result.content[0].text).toContain("Decision added");
+      expect(seen).toHaveLength(1);
+      expect(seen[0].auth).toBe("Bearer doco_at_writer");
+      expect(JSON.parse(seen[0].body)).toEqual({ decision: "X", question: "Y?" });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_capture surfaces a 403 as a writer step-up hint", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-capture-403-"));
+    mkdirSync(join(projectDir, ".doco"));
+    writeFileSync(join(projectDir, ".doco", "connections.md"), "https://doco.to/doco-bpms/\n");
+    const server = createServer((req, res) => {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "forbidden" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_reader", ""].join("\n"),
+      {
+        mode: 0o600,
+      },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doco_capture",
+              arguments: { type: "decisions", body: { decision: "x" } },
+            },
+          },
+        ],
+        2,
+        { cwd: projectDir, env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined } },
+      );
+      const result = responses.find((r) => r.id === 2)?.result as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/403/);
+      expect(result.content[0].text).toMatch(/requested_role='writer'/);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_relate POSTs the edge to the edges route", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-relate-"));
+    mkdirSync(join(projectDir, ".doco"));
+    writeFileSync(join(projectDir, ".doco", "connections.md"), "https://doco.to/doco-bpms/\n");
+    let body = "";
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/doco-bpms/api/edges.json") {
+        body = await readRequestBody(req);
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, id: "edge_xyz" }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_writer", ""].join("\n"),
+      {
+        mode: 0o600,
+      },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doco_relate",
+              arguments: { edge_type: "supports", from_id: "decision_1", to_id: "intent_1" },
+            },
+          },
+        ],
+        2,
+        { cwd: projectDir, env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined } },
+      );
+      const result = responses.find((r) => r.id === 2)?.result as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain("edge_xyz");
+      expect(JSON.parse(body)).toEqual({
+        edge_type: "supports",
+        from_id: "decision_1",
+        to_id: "intent_1",
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_capture returns isError when the body is missing", async () => {
+    const responses = await exchange(
+      [
+        INIT_MESSAGE,
+        INITIALIZED_NOTIFICATION,
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "doco_capture", arguments: { type: "decisions" } },
+        },
+      ],
+      2,
+    );
+    const result = responses.find((r) => r.id === 2)?.result as {
+      isError?: boolean;
+      content: Array<{ text: string }>;
+    };
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/body/);
+  });
 });
