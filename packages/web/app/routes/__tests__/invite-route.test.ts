@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   getDocoById: vi.fn(),
   query: vi.fn(),
   upsertDocoUser: vi.fn(),
-  upsertOrgUser: vi.fn(),
+  upsertWorkspaceUser: vi.fn(),
   withClient: vi.fn(),
 }));
 
@@ -16,7 +16,7 @@ vi.mock("@doco/db", () => ({
   getUserById: mocks.getUserById,
   getDocoById: mocks.getDocoById,
   upsertDocoUser: mocks.upsertDocoUser,
-  upsertOrgUser: mocks.upsertOrgUser,
+  upsertWorkspaceUser: mocks.upsertWorkspaceUser,
   withClient: mocks.withClient,
 }));
 
@@ -42,12 +42,12 @@ import { action, loader } from "../invite.$code";
 const ORG_INVITE = {
   kind: "invite",
   code: "invite_code",
-  level: "org",
-  org_id: "organization_torre",
+  level: "workspace",
+  workspace_id: "workspace_torre",
   grants: [
     {
-      level: "org",
-      target_id: "organization_torre",
+      level: "workspace",
+      target_id: "workspace_torre",
       role: "writer",
       write_types: ["*"],
     },
@@ -84,12 +84,12 @@ describe("/invite/:code", () => {
       redeemed_at: "2026-05-30T01:00:00.000Z",
     });
     mocks.query.mockResolvedValue({
-      rows: [{ id: "organization_torre", handle: "torre" }],
+      rows: [{ id: "workspace_torre", handle: "torre" }],
     });
     mocks.withClient.mockImplementation((callback) => callback({ query: mocks.query }));
   });
 
-  it("loads org-only invites without a doco anchor", async () => {
+  it("loads workspace-only invites without a doco anchor", async () => {
     const result = await loader({
       request: request(),
       params: { code: "invite_code" },
@@ -97,14 +97,14 @@ describe("/invite/:code", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      target: { level: "org", label: "torre" },
+      target: { level: "workspace", label: "torre" },
       inviter: { username: "owner" },
       signedIn: { username: "alice" },
     });
     expect(mocks.getDocoById).not.toHaveBeenCalled();
   });
 
-  it("accepts org-only invites by granting org membership", async () => {
+  it("accepts workspace-only invites by granting workspace membership", async () => {
     const result = await action({
       request: request("POST"),
       params: { code: "invite_code" },
@@ -112,11 +112,11 @@ describe("/invite/:code", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      continue_to: "/orgs/torre",
+      continue_to: "/workspaces/torre",
       target_label: "torre",
     });
-    expect(mocks.upsertOrgUser).toHaveBeenCalledWith({
-      org_id: "organization_torre",
+    expect(mocks.upsertWorkspaceUser).toHaveBeenCalledWith({
+      workspace_id: "workspace_torre",
       user_id: "user_alice",
       role: "writer",
       write_types: ["*"],
@@ -129,8 +129,8 @@ describe("/invite/:code", () => {
       ...ORG_INVITE,
       grants: [
         {
-          level: "org",
-          target_id: "organization_torre",
+          level: "workspace",
+          target_id: "workspace_torre",
           role: "writer",
           write_types: [],
         },
@@ -149,8 +149,8 @@ describe("/invite/:code", () => {
       params: { code: "invite_code" },
     });
 
-    expect(mocks.upsertOrgUser).toHaveBeenCalledWith({
-      org_id: "organization_torre",
+    expect(mocks.upsertWorkspaceUser).toHaveBeenCalledWith({
+      workspace_id: "workspace_torre",
       user_id: "user_alice",
       role: "writer",
       write_types: ["*"],

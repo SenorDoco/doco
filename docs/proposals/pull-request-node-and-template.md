@@ -267,7 +267,7 @@ BODY (JSON)
                                  (e.g. https://github.com/org/repo/pull/123)
   state               optional   "open" | "merged" | "closed"; default "open"
   draft               optional   boolean — GitHub draft flag
-  repo                optional   "org/repo" slug
+  repo                optional   "workspace/repo" slug
   number              optional   PR number within the repo
   change_type         optional   "feat"|"fix"|"refactor"|"docs"|"chore"|"perf"
                                  |"test"|"build"|"ci"|"revert"
@@ -418,7 +418,7 @@ Two signals, parsed from title/body/branch:
    trailers pre-stubbed.
 
 ### 6.4 Backfill historical PRs
-Page `GET /repos/{org}/{repo}/pulls?state=all&per_page=100` oldest-first;
+Page `GET /repos/{workspace}/{repo}/pulls?state=all&per_page=100` oldest-first;
 upsert each by `locator`. Safe to re-run (idempotent). Respect rate limits;
 store a cursor (`updated_at` high-water mark) for incremental catch-up.
 

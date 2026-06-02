@@ -56,7 +56,7 @@ describe("changesets write gate", () => {
       docoSlug: "acme",
       ownerSlug: "acme",
       me: { id: "user_author", username: "alice" },
-      meta: { ownerId: "organization_acme", docoId: "doco_acme" },
+      meta: { ownerId: "workspace_acme", docoId: "doco_acme" },
     });
     mocks.requireDocoTypeWritesForRequest.mockResolvedValue(null);
     mocks.captureFn.mockResolvedValue({ ok: true, id: "decision_01NEW", footer_lines: [] });
@@ -93,7 +93,7 @@ describe("changesets write gate", () => {
 
     expect(mocks.requireDocoTypeWritesForRequest).toHaveBeenCalledWith(
       expect.any(Request),
-      { ownerId: "organization_acme", docoId: "doco_acme" },
+      { ownerId: "workspace_acme", docoId: "doco_acme" },
       "user_author",
       expect.arrayContaining(["decision", "flows_to", "supports"]),
       "apply this changeset",

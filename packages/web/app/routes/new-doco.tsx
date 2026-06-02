@@ -11,20 +11,24 @@ import {
   friendlyHandleValidationError,
   handleValidityMessage,
 } from "~/lib/handle-format";
-import { isOrgMember, listMyOrgs, lookupOrgHandle } from "~/lib/org-helpers.server";
 import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 import {
-  addOrganizationByHandle,
-  createDocoInOrg,
-  ensurePersonalOrganization,
+  addWorkspaceByHandle,
+  createDocoInWorkspace,
+  ensurePersonalWorkspace,
   findAvailableDocoHandle,
 } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import {
+  isWorkspaceMember,
+  listMyWorkspaces,
+  lookupWorkspaceHandle,
+} from "~/lib/workspace-helpers.server";
 
 /**
  * /new-doco — doco creation form.
  *
- * Captures the template, org, Doco handle, and privacy settings in one
+ * Captures the template, workspace, Doco handle, and privacy settings in one
  * form. Submitting creates the Doco immediately, then redirects to the
  * post-create concepts page.
  *
@@ -41,17 +45,17 @@ const DEFAULT_TEMPLATE_HANDLE = "generic";
 const GITHUB_PR_TEMPLATE_HANDLE = "github-pull-requests";
 
 /**
- * Sentinel <option> value for "+ Create a new organization". Kept
+ * Sentinel <option> value for "+ Create a new workspace". Kept
  * distinct from "" (the unselected placeholder) so a fresh form can
- * start with no organization chosen without implying the create-new
+ * start with no workspace chosen without implying the create-new
  * flow.
  */
-export const CREATE_NEW_ORG_VALUE = "__new_org__";
+export const CREATE_NEW_ORG_VALUE = "__new_workspace__";
 
 interface CreationState {
   templateHandle: string;
-  orgId: string;
-  newOrgHandle: string;
+  workspaceId: string;
+  newWorkspaceHandle: string;
   name: string;
   visibility: "private" | "public";
   goal: string;
@@ -92,33 +96,33 @@ function defaultGoalForTemplate(templateHandle: string): string {
   return DOCO_TEMPLATES.find((t) => t.handle === templateHandle)?.description ?? "";
 }
 
-function defaultDocoNameForOrg(orgHandle: string): string {
-  return orgHandle ? `${orgHandle}-` : "";
+function defaultDocoNameForWorkspace(workspaceHandle: string): string {
+  return workspaceHandle ? `${workspaceHandle}-` : "";
 }
 
 /**
- * Initial value for the organization <select>. An empty string means
- * "no organization selected yet" — we deliberately do NOT default to
- * the user's first org, so picking one is a conscious choice. A
- * preserved new-org handle (e.g. after a failed submit) restores the
+ * Initial value for the workspace <select>. An empty string means
+ * "no workspace selected yet" — we deliberately do NOT default to
+ * the user's first workspace, so picking one is a conscious choice. A
+ * preserved new-workspace handle (e.g. after a failed submit) restores the
  * create-new flow.
  */
-export function initialOrgSelection(
-  formState: Pick<CreationState, "orgId" | "newOrgHandle">,
+export function initialWorkspaceSelection(
+  formState: Pick<CreationState, "workspaceId" | "newWorkspaceHandle">,
 ): string {
-  if (formState.orgId) return formState.orgId;
-  if (formState.newOrgHandle) return CREATE_NEW_ORG_VALUE;
+  if (formState.workspaceId) return formState.workspaceId;
+  if (formState.newWorkspaceHandle) return CREATE_NEW_ORG_VALUE;
   return "";
 }
 
 function parseFormState(form: FormData): CreationState {
-  const rawOrgId = String(form.get("org_id") ?? "").trim();
+  const rawWorkspaceId = String(form.get("workspace_id") ?? "").trim();
   return {
     templateHandle: normalizeTemplateHandle(String(form.get("template_handle") ?? "").trim()),
-    // The create-new sentinel collapses to an empty orgId; the action
-    // then creates the org from new_org_handle.
-    orgId: rawOrgId === CREATE_NEW_ORG_VALUE ? "" : rawOrgId,
-    newOrgHandle: String(form.get("new_org_handle") ?? "")
+    // The create-new sentinel collapses to an empty workspaceId; the action
+    // then creates the workspace from new_workspace_handle.
+    workspaceId: rawWorkspaceId === CREATE_NEW_ORG_VALUE ? "" : rawWorkspaceId,
+    newWorkspaceHandle: String(form.get("new_workspace_handle") ?? "")
       .trim()
       .toLowerCase(),
     name: String(form.get("name") ?? form.get("suffix") ?? "")
@@ -132,21 +136,21 @@ function parseFormState(form: FormData): CreationState {
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in?next=%2Fnew-doco");
-  await ensurePersonalOrganization(me.id, me.username);
-  const orgs = await listMyOrgs(me.id);
+  await ensurePersonalWorkspace(me.id, me.username);
+  const workspaces = await listMyWorkspaces(me.id);
   const url = new URL(request.url);
   const prefillTemplate = normalizeTemplateHandle(url.searchParams.get("template_handle") ?? "");
   const prefill: CreationState = {
     templateHandle: prefillTemplate,
-    orgId: url.searchParams.get("org_id") ?? "",
-    newOrgHandle: url.searchParams.get("new_org_handle") ?? "",
+    workspaceId: url.searchParams.get("workspace_id") ?? "",
+    newWorkspaceHandle: url.searchParams.get("new_workspace_handle") ?? "",
     name: readDocoName(url.searchParams),
     visibility: parseVisibility(url.searchParams.get("visibility")),
     goal: url.searchParams.get("goal") ?? defaultGoalForTemplate(prefillTemplate),
   };
   return {
     me,
-    orgs,
+    workspaces,
     prefill,
   };
 }
@@ -162,47 +166,47 @@ export async function action({ request }: { request: Request }) {
   if (!state.templateHandle) {
     return { error: "Pick a policies template.", suggestedHandle: null, state };
   }
-  if (!state.orgId && !state.newOrgHandle) {
-    return { error: "Pick an organization or create a new one.", suggestedHandle: null, state };
+  if (!state.workspaceId && !state.newWorkspaceHandle) {
+    return { error: "Pick an workspace or create a new one.", suggestedHandle: null, state };
   }
   if (!state.name) {
     return { error: "Doco handle is required.", suggestedHandle: null, state };
   }
 
-  let chosenOrgId: string;
+  let chosenWorkspaceId: string;
   try {
-    if (state.orgId) {
-      if (!(await isOrgMember(state.orgId, me.id))) {
+    if (state.workspaceId) {
+      if (!(await isWorkspaceMember(state.workspaceId, me.id))) {
         return {
-          error: "You are not a member of this organization.",
+          error: "You are not a member of this workspace.",
           suggestedHandle: null,
           state,
         };
       }
-      const handle = await lookupOrgHandle(state.orgId);
+      const handle = await lookupWorkspaceHandle(state.workspaceId);
       if (!handle) {
-        return { error: "Organization not found.", suggestedHandle: null, state };
+        return { error: "Workspace not found.", suggestedHandle: null, state };
       }
-      chosenOrgId = state.orgId;
+      chosenWorkspaceId = state.workspaceId;
     } else {
-      const created = await addOrganizationByHandle({
-        handle: state.newOrgHandle,
+      const created = await addWorkspaceByHandle({
+        handle: state.newWorkspaceHandle,
         ownerUserId: me.id,
         autoSuffix: true,
       });
-      chosenOrgId = created.id;
+      chosenWorkspaceId = created.id;
     }
   } catch (e) {
     return {
-      error: friendlyHandleValidationError((e as Error).message, "Organization handle"),
+      error: friendlyHandleValidationError((e as Error).message, "Workspace handle"),
       suggestedHandle: null,
       state,
     };
   }
 
   try {
-    const rec = await createDocoInOrg({
-      orgId: chosenOrgId,
+    const rec = await createDocoInWorkspace({
+      workspaceId: chosenWorkspaceId,
       requestedHandle: state.name,
       createdByUserId: me.id,
       visibility: state.visibility,
@@ -245,18 +249,20 @@ export default function NewDocoStep1({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: ActionData;
 }) {
-  const { me, orgs, prefill } = loaderData;
+  const { me, workspaces, prefill } = loaderData;
   const formState = actionData?.state ?? prefill;
-  const initialOrgId = initialOrgSelection(formState);
+  const initialWorkspaceId = initialWorkspaceSelection(formState);
   const initialTemplate = normalizeTemplateHandle(formState.templateHandle);
-  const initialOrgHandle =
-    initialOrgId === CREATE_NEW_ORG_VALUE
-      ? formState.newOrgHandle
-      : (orgs.find((o) => o.id === initialOrgId)?.handle ?? "");
+  const initialWorkspaceHandle =
+    initialWorkspaceId === CREATE_NEW_ORG_VALUE
+      ? formState.newWorkspaceHandle
+      : (workspaces.find((o) => o.id === initialWorkspaceId)?.handle ?? "");
   const [templateHandle, setTemplateHandle] = useState(initialTemplate);
-  const [orgId, setOrgId] = useState(initialOrgId);
-  const [newOrgHandle, setNewOrgHandle] = useState(formState.newOrgHandle);
-  const [name, setName] = useState(formState.name || defaultDocoNameForOrg(initialOrgHandle));
+  const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId);
+  const [newWorkspaceHandle, setNewWorkspaceHandle] = useState(formState.newWorkspaceHandle);
+  const [name, setName] = useState(
+    formState.name || defaultDocoNameForWorkspace(initialWorkspaceHandle),
+  );
   const [nameEdited, setNameEdited] = useState(Boolean(formState.name));
   const [visibility, setVisibility] = useState(formState.visibility);
   // Goal is prefilled with the chosen template's description and
@@ -273,25 +279,25 @@ export default function NewDocoStep1({
       setGoal(defaultGoalForTemplate(next));
     }
   };
-  const isCreateNewOrg = orgId === CREATE_NEW_ORG_VALUE;
-  const selectedOrgHandle = isCreateNewOrg
-    ? newOrgHandle || "<org>"
-    : (orgs.find((o) => o.id === orgId)?.handle ?? "<org>");
-  const updateOrgId = (value: string) => {
-    setOrgId(value);
+  const isCreateNewWorkspace = workspaceId === CREATE_NEW_ORG_VALUE;
+  const selectedWorkspaceHandle = isCreateNewWorkspace
+    ? newWorkspaceHandle || "<workspace>"
+    : (workspaces.find((o) => o.id === workspaceId)?.handle ?? "<workspace>");
+  const updateWorkspaceId = (value: string) => {
+    setWorkspaceId(value);
     if (!nameEdited) {
-      const nextOrgHandle =
+      const nextWorkspaceHandle =
         value === CREATE_NEW_ORG_VALUE
-          ? newOrgHandle
-          : (orgs.find((o) => o.id === value)?.handle ?? "");
-      setName(defaultDocoNameForOrg(nextOrgHandle));
+          ? newWorkspaceHandle
+          : (workspaces.find((o) => o.id === value)?.handle ?? "");
+      setName(defaultDocoNameForWorkspace(nextWorkspaceHandle));
     }
   };
-  const updateNewOrgHandle = (value: string) => {
+  const updateNewWorkspaceHandle = (value: string) => {
     const next = value.toLowerCase();
-    setNewOrgHandle(next);
-    if (!nameEdited && orgId === CREATE_NEW_ORG_VALUE) {
-      setName(defaultDocoNameForOrg(next));
+    setNewWorkspaceHandle(next);
+    if (!nameEdited && workspaceId === CREATE_NEW_ORG_VALUE) {
+      setName(defaultDocoNameForWorkspace(next));
     }
   };
 
@@ -362,51 +368,48 @@ export default function NewDocoStep1({
 
               <fieldset className="space-y-2">
                 <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Organization
+                  Workspace
                 </legend>
                 <select
-                  name="org_id"
+                  name="workspace_id"
                   required
-                  value={orgId}
-                  onChange={(e) => updateOrgId(e.target.value)}
+                  value={workspaceId}
+                  onChange={(e) => updateWorkspaceId(e.target.value)}
                   className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
                   <option value="" disabled>
-                    Select an organization…
+                    Select an workspace…
                   </option>
-                  {orgs.map((o) => (
+                  {workspaces.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.handle}
                       {o.handle === me.username ? " (personal)" : ""}
                     </option>
                   ))}
-                  <option value={CREATE_NEW_ORG_VALUE}>+ Create a new organization</option>
+                  <option value={CREATE_NEW_ORG_VALUE}>+ Create a new workspace</option>
                 </select>
-                {isCreateNewOrg ? (
+                {isCreateNewWorkspace ? (
                   <>
                     <input
                       type="text"
-                      name="new_org_handle"
+                      name="new_workspace_handle"
                       required
                       pattern={HANDLE_INPUT_PATTERN}
-                      value={newOrgHandle}
-                      onChange={(e) => updateNewOrgHandle(e.target.value)}
+                      value={newWorkspaceHandle}
+                      onChange={(e) => updateNewWorkspaceHandle(e.target.value)}
                       onInvalid={(event) => {
                         event.currentTarget.setCustomValidity(
-                          handleValidityMessage(
-                            event.currentTarget.validity,
-                            "Organization handle",
-                          ),
+                          handleValidityMessage(event.currentTarget.validity, "Workspace handle"),
                         );
                       }}
                       onInput={(event) => event.currentTarget.setCustomValidity("")}
-                      placeholder="Organization handle"
+                      placeholder="Workspace handle"
                       title={HANDLE_FORMAT_HELP}
-                      aria-describedby="new-doco-org-handle-help"
+                      aria-describedby="new-doco-workspace-handle-help"
                       className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                     />
                     <span
-                      id="new-doco-org-handle-help"
+                      id="new-doco-workspace-handle-help"
                       className="block text-[11px] text-muted-foreground"
                     >
                       {HANDLE_FORMAT_HELP}
@@ -435,8 +438,8 @@ export default function NewDocoStep1({
                     );
                   }}
                   onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  placeholder={defaultDocoNameForOrg(
-                    selectedOrgHandle === "<org>" ? "" : selectedOrgHandle,
+                  placeholder={defaultDocoNameForWorkspace(
+                    selectedWorkspaceHandle === "<workspace>" ? "" : selectedWorkspaceHandle,
                   )}
                   title={HANDLE_FORMAT_HELP}
                   aria-describedby="new-doco-name-help"

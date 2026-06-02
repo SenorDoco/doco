@@ -30,9 +30,9 @@ export interface AuditEvent {
   event_id: string;
   at: string;
   by: string | null;
-  /** Per-Doco entity events set doco_id. Org-scoped host events may set org_id. */
+  /** Per-Doco entity events set doco_id. Workspace-scoped host events may set workspace_id. */
   doco_id: string | null;
-  org_id: string | null;
+  workspace_id: string | null;
   entity_type: string;
   entity_id: string;
   op: AuditOp;
@@ -45,8 +45,8 @@ export interface AppendEventInput {
   docoDir: string;
   /** Set when the event is per-Doco. */
   docoId?: string | null;
-  /** Set when the event is org-scope. */
-  orgId?: string | null;
+  /** Set when the event is workspace-scope. */
+  workspaceId?: string | null;
   by: string | null;
   entity_type: string;
   entity_id: string;
@@ -66,7 +66,7 @@ export function appendAuditEvent(input: AppendEventInput): AuditEvent {
     at: new Date().toISOString(),
     by: input.by,
     doco_id: input.docoId ?? null,
-    org_id: input.orgId ?? null,
+    workspace_id: input.workspaceId ?? null,
     entity_type: input.entity_type,
     entity_id: input.entity_id,
     op: input.op,
@@ -80,7 +80,7 @@ export function appendAuditEvent(input: AppendEventInput): AuditEvent {
     at: event.at,
     by_user: event.by,
     doco_id: event.doco_id,
-    org_id: event.org_id,
+    workspace_id: event.workspace_id,
     entity_type: event.entity_type,
     entity_id: event.entity_id,
     op: event.op,
@@ -132,7 +132,7 @@ export async function readAuditEvents(
       at: r.at,
       by: r.by_user,
       doco_id: r.doco_id,
-      org_id: r.org_id ?? null,
+      workspace_id: r.workspace_id ?? null,
       entity_type: r.entity_type,
       entity_id: r.entity_id,
       op: r.op as AuditOp,

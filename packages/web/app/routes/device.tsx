@@ -26,7 +26,7 @@ import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
   type ApprovalDocoOption,
-  type ApprovalOrgOption,
+  type ApprovalWorkspaceOption,
   approvalTargetNotOwnedMessage,
   resolveApprovalGrantView,
 } from "~/lib/approval-grants";
@@ -47,7 +47,7 @@ interface LoaderData {
   stage: "enter-code" | "approve" | "target-not-owned" | "done" | "expired" | "denied" | "unknown";
   client_name?: string;
   docos?: ApprovalDocoOption[];
-  orgs?: ApprovalOrgOption[];
+  workspaces?: ApprovalWorkspaceOption[];
   target_doco_handle?: string | null;
   requested_role?: DocoRole | null;
   message?: string;
@@ -105,12 +105,12 @@ export async function loader({ request }: { request: Request }) {
 
   const client = await getClient(row.client_id);
   // The approve picker offers everything the signed-in user can grant —
-  // owner-tier orgs and Docos (the action re-checks owner on submit as a
+  // owner-tier workspaces and Docos (the action re-checks owner on submit as a
   // tamper defense). `target_doco_handle` never narrows this matrix; it
   // only drives the not-owned notice. Same builder + resolver as
   // /oauth/authorize, so both screens show the identical matrix.
-  const { docos, orgs } = await loadApprovalGrantOptions(me.id);
-  const view = resolveApprovalGrantView(docos, orgs, row.target_doco_handle);
+  const { docos, workspaces } = await loadApprovalGrantOptions(me.id);
+  const view = resolveApprovalGrantView(docos, workspaces, row.target_doco_handle);
 
   // The client asked for a Doco the user doesn't own — nothing here can
   // satisfy that (granting a different Doco wouldn't help), so show only
@@ -135,7 +135,7 @@ export async function loader({ request }: { request: Request }) {
     stage: "approve" as const,
     client_name: client?.client_name ?? row.client_id.slice(0, 20),
     docos: view.docos,
-    orgs: view.orgs,
+    workspaces: view.workspaces,
     requested_role: requestedRole,
     me,
   };
@@ -184,9 +184,9 @@ export async function action({ request }: { request: Request }) {
       granted_doco_ids: grants.granted_doco_ids,
       granted_doco_roles: grants.granted_doco_roles,
       granted_doco_write_types: grants.granted_doco_write_types,
-      granted_org_ids: grants.granted_org_ids,
-      granted_org_roles: grants.granted_org_roles,
-      granted_org_write_types: grants.granted_org_write_types,
+      granted_workspace_ids: grants.granted_workspace_ids,
+      granted_workspace_roles: grants.granted_workspace_roles,
+      granted_workspace_write_types: grants.granted_workspace_write_types,
     });
     return redirect(`/device?user_code=${encodeURIComponent(user_code)}`);
   }
@@ -246,27 +246,27 @@ function renderStage(data: LoaderData) {
   }
   if (data.stage === "approve") {
     const docos = data.docos ?? [];
-    const orgs = data.orgs ?? [];
+    const workspaces = data.workspaces ?? [];
     return (
       <>
         <CardHeader>
           <CardTitle>Authorize token access</CardTitle>
           <CardDescription>
             An agent is requesting access to your Docos through <strong>{data.client_name}</strong>.
-            Name the token, then pick individual Docos or grant access to an entire organization —
-            code <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
+            Name the token, then pick individual Docos or grant access to an entire workspace — code{" "}
+            <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {docos.length === 0 && orgs.length === 0 ? (
+          {docos.length === 0 && workspaces.length === 0 ? (
             <p className="text-sm text-destructive">
-              You don't own any Docos or organizations. Only owners can grant token access — create
-              one first, then re-enter this code.
+              You don't own any Docos or workspaces. Only owners can grant token access — create one
+              first, then re-enter this code.
             </p>
           ) : (
             <OAuthAccessApprovalForm
               docos={docos}
-              orgs={orgs}
+              workspaces={workspaces}
               tokenNamePlaceholder="e.g. Codex in Doco repo"
               requestedRole={data.requested_role ?? null}
               approveLabel="Approve"

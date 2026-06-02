@@ -2,7 +2,7 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-type DefaultFocusStrategy = "central" | "org-root";
+type DefaultFocusStrategy = "central" | "workspace-root";
 
 type WindowReason = "explicit_focus" | "default_focus" | "neighbor" | "ranked_fill";
 
@@ -113,7 +113,7 @@ export const PERSPECTIVE_WINDOW_SPECS = {
   "org-tree": {
     key: "org-tree",
     nodeTypes: ["principal"],
-    defaultFocusStrategy: "org-root",
+    defaultFocusStrategy: "workspace-root",
     typeWeights: { principal: 100 },
   },
   sla: {
@@ -353,7 +353,7 @@ function lifecyclePredicate(alias: string, spec: PerspectiveWindowSpec): string 
 }
 
 function defaultFocusOrderSql(alias: string, spec: PerspectiveWindowSpec): string {
-  if (spec.defaultFocusStrategy === "org-root") {
+  if (spec.defaultFocusStrategy === "workspace-root") {
     return `CASE WHEN NOT EXISTS (
               SELECT 1
                 FROM edges root_edge

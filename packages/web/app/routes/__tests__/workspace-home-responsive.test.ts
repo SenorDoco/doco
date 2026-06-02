@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const routeSource = () =>
-  readFileSync(new URL("../orgs.$orgHandle._index.tsx", import.meta.url), "utf8");
+  readFileSync(new URL("../workspaces.$workspaceHandle._index.tsx", import.meta.url), "utf8");
 const appCss = () => readFileSync(new URL("../../app.css", import.meta.url), "utf8");
 
-describe("/orgs/:orgHandle responsive layout", () => {
+describe("/workspaces/:workspaceHandle responsive layout", () => {
   it("stacks the two-column shell until its own width reaches the shared 840px breakpoint", () => {
-    expect(routeSource()).toContain("org-home-layout-shell");
-    expect(routeSource()).toContain("org-home-layout-grid");
+    expect(routeSource()).toContain("workspace-home-layout-shell");
+    expect(routeSource()).toContain("workspace-home-layout-grid");
     expect(routeSource()).not.toContain("min-[840px]:grid-cols-[minmax(0,1fr)_320px]");
 
     expect(appCss()).toContain("container-type: inline-size");
@@ -21,10 +21,10 @@ describe("/orgs/:orgHandle responsive layout", () => {
 
   it("puts the constitution + activity feed in the left column and the docos sidebar in the right, split 50/50", () => {
     const src = routeSource();
-    const grid = src.indexOf("org-home-layout-grid");
-    const constitution = src.indexOf("<OrgConstitutionCard");
+    const grid = src.indexOf("workspace-home-layout-grid");
+    const constitution = src.indexOf("<WorkspaceConstitutionCard");
     const aside = src.indexOf("<aside");
-    const search = src.indexOf("/orgs/${org.handle}/search");
+    const search = src.indexOf("/workspaces/${workspace.handle}/search");
     const latestActivity = src.indexOf("Latest activity");
 
     // The constitution now lives inside the grid's left column, not above it.

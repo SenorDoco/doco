@@ -19,13 +19,13 @@ import { rankOf } from "~/lib/user-invite";
 interface SlackSetupPageData {
   me: CurrentPrincipal;
   installation: SlackInstallationSummary;
-  orgGroups: OrgPermissionGroup[];
+  workspaceGroups: WorkspacePermissionGroup[];
 }
 
-interface OrgPermissionGroup {
+interface WorkspacePermissionGroup {
   key: string;
   handle: string;
-  orgOption: ScopeOption | null;
+  workspaceOption: ScopeOption | null;
   docos: DocoPermissionOption[];
 }
 
@@ -35,15 +35,15 @@ interface DocoPermissionOption {
   myRole: DocoRole;
 }
 
-interface DraftOrgState {
+interface DraftWorkspaceState {
   selected: boolean;
   mode: "all" | "specific";
-  orgRole: DocoRole;
+  workspaceRole: DocoRole;
   docoRoles: Record<string, DocoRole | "none">;
 }
 
 interface SlackGrantInput {
-  targetLevel: "org" | "doco";
+  targetLevel: "workspace" | "doco";
   targetId: string;
   role: DocoRole;
 }
@@ -68,12 +68,12 @@ export async function loader({ request }: { request: Request }): Promise<SlackSe
   const requestedTeamId = url.searchParams.get("team_id")?.trim();
   const installation =
     installations.find((item) => item.workspaceId === requestedTeamId) ?? installations[0];
-  const orgGroups = buildOrgPermissionGroups(await loadScopeOptions(me.id));
+  const workspaceGroups = buildWorkspacePermissionGroups(await loadScopeOptions(me.id));
 
   return {
     me,
     installation,
-    orgGroups,
+    workspaceGroups,
   };
 }
 
@@ -100,8 +100,8 @@ export async function action({ request }: { request: Request }) {
   }
 
   const scopeOptions = await loadScopeOptions(me.id);
-  const orgGroups = buildOrgPermissionGroups(scopeOptions);
-  const grants = collectGrantsFromForm(form, orgGroups);
+  const workspaceGroups = buildWorkspacePermissionGroups(scopeOptions);
+  const grants = collectGrantsFromForm(form, workspaceGroups);
   if (grants.length === 0) {
     return Response.json({ error: "pick_at_least_one_default_permission" }, { status: 400 });
   }
@@ -129,13 +129,13 @@ export function meta() {
 }
 
 export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupPageData }) {
-  const { me, installation, orgGroups } = loaderData;
-  const [orgState, setOrgState] = useState<Record<string, DraftOrgState>>(() =>
-    Object.fromEntries(orgGroups.map((group) => [group.key, initialOrgState(group)])),
+  const { me, installation, workspaceGroups } = loaderData;
+  const [workspaceState, setWorkspaceState] = useState<Record<string, DraftWorkspaceState>>(() =>
+    Object.fromEntries(workspaceGroups.map((group) => [group.key, initialWorkspaceState(group)])),
   );
 
-  function updateOrg(key: string, patch: Partial<DraftOrgState>) {
-    setOrgState((current) => ({
+  function updateWorkspace(key: string, patch: Partial<DraftWorkspaceState>) {
+    setWorkspaceState((current) => ({
       ...current,
       [key]: {
         ...current[key],
@@ -145,7 +145,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
   }
 
   function updateDocoRole(key: string, docoId: string, role: DocoRole | "none") {
-    setOrgState((current) => ({
+    setWorkspaceState((current) => ({
       ...current,
       [key]: {
         ...current[key],
@@ -179,22 +179,22 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
 
           <Card>
             <CardHeader>
-              <CardTitle>Organizations</CardTitle>
+              <CardTitle>Workspaces</CardTitle>
               <CardDescription>
-                Slack workspace: {installation.workspaceName}. Choose which organizations Señor Doco
+                Slack workspace: {installation.workspaceName}. Choose which workspaces Señor Doco
                 can use by default.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {orgGroups.length === 0 ? (
+              {workspaceGroups.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  You do not have access to any organization or Doco that can be shared with Slack.
+                  You do not have access to any workspace or Doco that can be shared with Slack.
                 </p>
               ) : null}
 
-              {orgGroups.map((group) => {
-                const state = orgState[group.key] ?? initialOrgState(group);
-                const allOrgAvailable = Boolean(group.orgOption);
+              {workspaceGroups.map((group) => {
+                const state = workspaceState[group.key] ?? initialWorkspaceState(group);
+                const allWorkspaceAvailable = Boolean(group.workspaceOption);
                 return (
                   <section
                     key={group.key}
@@ -203,11 +203,11 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                     <label className="flex items-start gap-3 text-sm font-semibold text-foreground">
                       <input
                         type="checkbox"
-                        name="org_key"
+                        name="workspace_key"
                         value={group.key}
                         checked={state.selected}
                         onChange={(event) =>
-                          updateOrg(group.key, { selected: event.target.checked })
+                          updateWorkspace(group.key, { selected: event.target.checked })
                         }
                         className="mt-1 h-4 w-4"
                       />
@@ -226,39 +226,41 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                           <label className="flex items-center gap-2">
                             <input
                               type="radio"
-                              name={`org_mode:${group.key}`}
+                              name={`workspace_mode:${group.key}`}
                               value="all"
                               checked={state.mode === "all"}
-                              disabled={!allOrgAvailable}
-                              onChange={() => updateOrg(group.key, { mode: "all" })}
+                              disabled={!allWorkspaceAvailable}
+                              onChange={() => updateWorkspace(group.key, { mode: "all" })}
                             />
                             All Docos in {group.handle}
                           </label>
                           <label className="flex items-center gap-2">
                             <input
                               type="radio"
-                              name={`org_mode:${group.key}`}
+                              name={`workspace_mode:${group.key}`}
                               value="specific"
                               checked={state.mode === "specific"}
-                              onChange={() => updateOrg(group.key, { mode: "specific" })}
+                              onChange={() => updateWorkspace(group.key, { mode: "specific" })}
                             />
                             Specific Docos
                           </label>
                         </div>
 
-                        {state.mode === "all" && allOrgAvailable ? (
+                        {state.mode === "all" && allWorkspaceAvailable ? (
                           <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             What should be Señor Doco's default level of access for all Docos in
-                            this organization?
+                            this workspace?
                             <select
-                              name={`org_role:${group.key}`}
-                              value={state.orgRole}
+                              name={`workspace_role:${group.key}`}
+                              value={state.workspaceRole}
                               onChange={(event) =>
-                                updateOrg(group.key, { orgRole: event.target.value as DocoRole })
+                                updateWorkspace(group.key, {
+                                  workspaceRole: event.target.value as DocoRole,
+                                })
                               }
                               className={ROLE_SELECT_CLASS}
                             >
-                              {rolesFor(group.orgOption?.myRole).map((role) => (
+                              {rolesFor(group.workspaceOption?.myRole).map((role) => (
                                 <option key={role} value={role}>
                                   {roleLabel(role)}
                                 </option>
@@ -267,11 +269,10 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                           </label>
                         ) : null}
 
-                        {state.mode === "all" && !allOrgAvailable ? (
+                        {state.mode === "all" && !allWorkspaceAvailable ? (
                           <p className="text-sm text-muted-foreground">
                             You can set defaults for specific Docos in {group.handle}, but you do
-                            not have organization-wide access to grant every Doco in this
-                            organization.
+                            not have workspace-wide access to grant every Doco in this workspace.
                           </p>
                         ) : null}
 
@@ -316,7 +317,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
 
               <button
                 type="submit"
-                disabled={orgGroups.length === 0}
+                disabled={workspaceGroups.length === 0}
                 className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
@@ -330,14 +331,14 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
   );
 }
 
-function buildOrgPermissionGroups(options: ScopeOption[]): OrgPermissionGroup[] {
-  const groups = new Map<string, OrgPermissionGroup>();
+function buildWorkspacePermissionGroups(options: ScopeOption[]): WorkspacePermissionGroup[] {
+  const groups = new Map<string, WorkspacePermissionGroup>();
   for (const option of options) {
-    if (option.level === "org") {
+    if (option.level === "workspace") {
       groups.set(option.label, {
         key: option.label,
         handle: option.label,
-        orgOption: option,
+        workspaceOption: option,
         docos: groups.get(option.label)?.docos ?? [],
       });
     }
@@ -345,13 +346,13 @@ function buildOrgPermissionGroups(options: ScopeOption[]): OrgPermissionGroup[] 
 
   for (const option of options) {
     if (option.level !== "doco") continue;
-    const { orgHandle } = splitDocoLabel(option.label);
-    const key = orgHandle || option.label;
+    const { workspaceHandle } = splitDocoLabel(option.label);
+    const key = workspaceHandle || option.label;
     const existing = groups.get(key);
     groups.set(key, {
       key,
-      handle: orgHandle || key,
-      orgOption: existing?.orgOption ?? null,
+      handle: workspaceHandle || key,
+      workspaceOption: existing?.workspaceOption ?? null,
       docos: [
         ...(existing?.docos ?? []),
         {
@@ -371,27 +372,30 @@ function buildOrgPermissionGroups(options: ScopeOption[]): OrgPermissionGroup[] 
     .sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
-function initialOrgState(group: OrgPermissionGroup): DraftOrgState {
+function initialWorkspaceState(group: WorkspacePermissionGroup): DraftWorkspaceState {
   return {
     selected: false,
-    mode: group.orgOption ? "all" : "specific",
-    orgRole: "reader",
+    mode: group.workspaceOption ? "all" : "specific",
+    workspaceRole: "reader",
     docoRoles: Object.fromEntries(group.docos.map((doco) => [doco.id, "none"])),
   };
 }
 
-function collectGrantsFromForm(form: FormData, groups: OrgPermissionGroup[]): SlackGrantInput[] {
-  const selectedOrgKeys = new Set(form.getAll("org_key").map((value) => String(value)));
+function collectGrantsFromForm(
+  form: FormData,
+  groups: WorkspacePermissionGroup[],
+): SlackGrantInput[] {
+  const selectedWorkspaceKeys = new Set(form.getAll("workspace_key").map((value) => String(value)));
   const grants: SlackGrantInput[] = [];
 
   for (const group of groups) {
-    if (!selectedOrgKeys.has(group.key)) continue;
-    const mode = form.get(`org_mode:${group.key}`) === "specific" ? "specific" : "all";
-    if (mode === "all" && group.orgOption) {
-      const roleField = `org_role:${group.key}`;
+    if (!selectedWorkspaceKeys.has(group.key)) continue;
+    const mode = form.get(`workspace_mode:${group.key}`) === "specific" ? "specific" : "all";
+    if (mode === "all" && group.workspaceOption) {
+      const roleField = `workspace_role:${group.key}`;
       const role = form.has(roleField) ? parseDefaultRole(form.get(roleField)) : "reader";
       if (!role) continue;
-      grants.push({ targetLevel: "org", targetId: group.orgOption.id, role });
+      grants.push({ targetLevel: "workspace", targetId: group.workspaceOption.id, role });
       continue;
     }
 
@@ -434,11 +438,11 @@ function roleLabel(role: DocoRole): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-function splitDocoLabel(label: string): { orgHandle: string; docoHandle: string } {
+function splitDocoLabel(label: string): { workspaceHandle: string; docoHandle: string } {
   const slash = label.indexOf("/");
-  if (slash < 0) return { orgHandle: "", docoHandle: label };
+  if (slash < 0) return { workspaceHandle: "", docoHandle: label };
   return {
-    orgHandle: label.slice(0, slash),
+    workspaceHandle: label.slice(0, slash),
     docoHandle: label.slice(slash + 1),
   };
 }

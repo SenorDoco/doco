@@ -57,7 +57,7 @@ describe("github connection route", () => {
     vi.clearAllMocks();
     mocks.loadDocoRouteForRead.mockResolvedValue({
       me: { id: "user_1" },
-      meta: { docoId: "doco_1", ownerId: "organization_1", handle: "store-doco" },
+      meta: { docoId: "doco_1", ownerId: "workspace_1", handle: "store-doco" },
     });
     mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.addConnection.mockResolvedValue([]);
@@ -101,7 +101,7 @@ describe("github connection route", () => {
   it("runs a backfill against a connected repo", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "store-doco",
-      orgHandle: "acme-org",
+      workspaceHandle: "acme-org",
       connections: [{ repo: "acme/store", installation_id: 42 }],
     });
     mocks.backfill.mockResolvedValue({ total: 5, imported: 5, failed: 0 });

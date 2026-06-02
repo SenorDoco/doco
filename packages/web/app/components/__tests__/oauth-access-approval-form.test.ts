@@ -12,12 +12,12 @@ describe("OAuthAccessApprovalForm", () => {
             id: "doco_bpms",
             handle: "torre-bpms",
             my_role: "owner",
-            org_id: "organization_torre",
+            workspace_id: "workspace_torre",
           },
         ],
-        orgs: [
+        workspaces: [
           {
-            id: "organization_torre",
+            id: "workspace_torre",
             handle: "torre",
             display_name: "Torre",
             my_role: "owner",
@@ -51,9 +51,9 @@ describe("OAuthAccessApprovalForm", () => {
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
         docos: [],
-        orgs: [
+        workspaces: [
           {
-            id: "organization_torre",
+            id: "workspace_torre",
             handle: "torre",
             display_name: "Torre",
             my_role: "owner",

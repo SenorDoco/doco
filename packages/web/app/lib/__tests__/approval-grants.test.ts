@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type ApprovalDocoOption,
-  type ApprovalOrgOption,
+  type ApprovalWorkspaceOption,
   approvalTargetNotOwnedMessage,
   resolveApprovalGrantView,
 } from "../approval-grants";
@@ -11,31 +11,31 @@ const docos: ApprovalDocoOption[] = [
     id: "doco_1",
     handle: "torre-bpms",
     my_role: "owner",
-    org_id: "organization_torre",
-    org_label: "torre",
+    workspace_id: "workspace_torre",
+    workspace_label: "torre",
   },
-  { id: "doco_2", handle: "solo", my_role: "owner", org_id: null, org_label: null },
+  { id: "doco_2", handle: "solo", my_role: "owner", workspace_id: null, workspace_label: null },
 ];
-const orgs: ApprovalOrgOption[] = [
-  { id: "organization_torre", handle: "torre", display_name: "Torre", my_role: "owner" },
+const workspaces: ApprovalWorkspaceOption[] = [
+  { id: "workspace_torre", handle: "torre", display_name: "Torre", my_role: "owner" },
 ];
 
 describe("resolveApprovalGrantView", () => {
   it("offers the full matrix when no target is requested", () => {
-    const v = resolveApprovalGrantView(docos, orgs, null);
+    const v = resolveApprovalGrantView(docos, workspaces, null);
     expect(v.blocked).toBe(false);
     if (!v.blocked) {
       expect(v.docos).toEqual(docos);
-      expect(v.orgs).toEqual(orgs);
+      expect(v.workspaces).toEqual(workspaces);
     }
   });
 
   it("offers the full matrix when the target is a doco you own", () => {
-    const v = resolveApprovalGrantView(docos, orgs, "torre-bpms");
+    const v = resolveApprovalGrantView(docos, workspaces, "torre-bpms");
     expect(v.blocked).toBe(false);
     if (!v.blocked) {
       expect(v.docos).toEqual(docos); // not narrowed to just the target
-      expect(v.orgs).toEqual(orgs); // org + account scopes preserved
+      expect(v.workspaces).toEqual(workspaces); // workspace + account scopes preserved
     }
   });
 
@@ -43,7 +43,7 @@ describe("resolveApprovalGrantView", () => {
   // wouldn't satisfy the request, so the screen blocks the whole picker
   // rather than offering an unrelated matrix.
   it("blocks when the target is a doco you don't own", () => {
-    const v = resolveApprovalGrantView(docos, orgs, "doco-bpms");
+    const v = resolveApprovalGrantView(docos, workspaces, "doco-bpms");
     expect(v.blocked).toBe(true);
     if (v.blocked) expect(v.targetDocoHandle).toBe("doco-bpms");
   });

@@ -325,7 +325,7 @@ bootstrap couldn't reach Doco):
    your reply:
 
    \`\`\`
-   [🔮 Doco] <doco-or-org-name> access not granted yet
+   [🔮 Doco] <doco-or-workspace-name> access not granted yet
 
    To let me read this project's prior decisions and rules, open
    [<URL>](<URL>) and click Approve. I'll pause here until you do.
@@ -374,12 +374,12 @@ Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 ## 3. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
 Render one tally line per source the agent has potential access to
-(each Doco or organization listed in the project's connections).
+(each Doco or workspace listed in the project's connections).
 
 **Connected source** (you queried or wrote — even if N == 0):
 
 \`\`\`
-[🔮 Doco <token nickname> on behalf of @username] <doco-or-org-name>: **<N>** nodes added/updated
+[🔮 Doco <token nickname> on behalf of @username] <doco-or-workspace-name>: **<N>** nodes added/updated
 \`\`\`
 
 (Use \`viewer.indicator_prefix\` once you know it — see "Your Doco
@@ -390,14 +390,14 @@ only before your first search of a cold session.)
 **Source whose access hasn't been granted yet**:
 
 \`\`\`
-[🔮 Doco] ⚠️ <doco-or-org-name> not queried or updated as access hasn't been granted yet.
+[🔮 Doco] ⚠️ <doco-or-workspace-name> not queried or updated as access hasn't been granted yet.
 \`\`\`
 
 The tally lines are the LAST lines of the LAST text output of the turn.
 
-- \`<doco-or-org-name>\` is the human-readable Doco handle if access is
-  scoped to one Doco, or the organization name if access is granted
-  org-wide (covering multiple Docos under that org).
+- \`<doco-or-workspace-name>\` is the human-readable Doco handle if access is
+  scoped to one Doco, or the workspace name if access is granted
+  workspace-wide (covering multiple Docos under that workspace).
 - \`<N>\` counts distinct entities the project owner captured on your
   behalf this turn (patch-3-fields-of-1-Decision = 1).
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).

@@ -268,9 +268,9 @@ export async function loadOverviewNodeDetails(
   });
 }
 
-// ─── Org-level (cross-Doco) variants ───────────────────────────────
+// ─── Workspace-level (cross-Doco) variants ───────────────────────────────
 //
-// Mirrors loadOverviewGraph but aggregates over every Doco the org
+// Mirrors loadOverviewGraph but aggregates over every Doco the workspace
 // owns. Each node carries its own Doco handle so the href points at
 // the right per-Doco entity URL.
 
@@ -296,7 +296,7 @@ function overviewRowsSqlMulti(): string {
              AND (t.node_type <> 'principal' OR COALESCE(t.lifecycle, 'asserted') = 'asserted')`;
 }
 
-export async function loadOrgOverviewGraph(
+export async function loadWorkspaceOverviewGraph(
   c: QueryClient,
   docoIds: string[],
   docoHandleByDocoId: Map<string, string>,

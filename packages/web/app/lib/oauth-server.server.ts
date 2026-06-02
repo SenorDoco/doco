@@ -78,16 +78,16 @@ function roleForGrant(grants: Record<string, string> | undefined, id: string): s
 // Grant sets & additive merge.
 // ---------------------------------------------------------------------------
 
-/** The set of Docos + orgs (with per-target role scope-down) an
+/** The set of Docos + workspaces (with per-target role scope-down) an
  * authorization grants. Shared shape across auth codes, device rows, and
  * the tokens they mint. */
 export interface GrantSets {
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_doco_write_types: Record<string, string[]>;
-  granted_org_ids: string[];
-  granted_org_roles: Record<string, string>;
-  granted_org_write_types: Record<string, string[]>;
+  granted_workspace_ids: string[];
+  granted_workspace_roles: Record<string, string>;
+  granted_workspace_write_types: Record<string, string[]>;
 }
 
 /** Power ordering of the three roles; the higher one wins when merging
@@ -153,7 +153,7 @@ function mergeWriteTypeScope(
 
 /**
  * Union two grant sets for additive re-authorization. The merged set
- * covers every Doco/org in EITHER input; for an id in both it keeps the
+ * covers every Doco/workspace in EITHER input; for an id in both it keeps the
  * STRONGER role. Re-authorizing a token therefore only ever widens its
  * access (more targets, or a higher role) — it never silently revokes a
  * grant the incoming approval happened to omit. Removing access is the
@@ -168,11 +168,11 @@ export function mergeGrantSets(base: GrantSets, incoming: GrantSets): GrantSets 
     incoming.granted_doco_ids,
     incoming.granted_doco_roles,
   );
-  const org = mergeScope(
-    base.granted_org_ids,
-    base.granted_org_roles,
-    incoming.granted_org_ids,
-    incoming.granted_org_roles,
+  const workspace = mergeScope(
+    base.granted_workspace_ids,
+    base.granted_workspace_roles,
+    incoming.granted_workspace_ids,
+    incoming.granted_workspace_roles,
   );
   return {
     granted_doco_ids: doco.ids,
@@ -184,14 +184,14 @@ export function mergeGrantSets(base: GrantSets, incoming: GrantSets): GrantSets 
       incoming.granted_doco_ids,
       incoming.granted_doco_write_types,
     ),
-    granted_org_ids: org.ids,
-    granted_org_roles: org.roles,
-    granted_org_write_types: mergeWriteTypeScope(
-      org.ids,
-      base.granted_org_ids,
-      base.granted_org_write_types,
-      incoming.granted_org_ids,
-      incoming.granted_org_write_types,
+    granted_workspace_ids: workspace.ids,
+    granted_workspace_roles: workspace.roles,
+    granted_workspace_write_types: mergeWriteTypeScope(
+      workspace.ids,
+      base.granted_workspace_ids,
+      base.granted_workspace_write_types,
+      incoming.granted_workspace_ids,
+      incoming.granted_workspace_write_types,
     ),
   };
 }
@@ -316,15 +316,15 @@ export interface IssueAuthCodeInput {
   /** Per-type write scope-down keyed by doco_id. Missing entry means all write types. */
   granted_doco_write_types?: Record<string, string[]>;
   /**
-   * Org-level grants. Listed org ids extend access to every Doco
-   * the org owns (live — including Docos created under the org
-   * after the token is minted). `granted_org_roles[org_id]` caps
-   * the effective role on Docos under that org.
+   * Workspace-level grants. Listed workspace ids extend access to every Doco
+   * the workspace owns (live — including Docos created under the workspace
+   * after the token is minted). `granted_workspace_roles[workspace_id]` caps
+   * the effective role on Docos under that workspace.
    */
-  granted_org_ids?: string[];
-  granted_org_roles?: Record<string, string>;
-  /** Per-type write scope-down keyed by org_id. Missing entry means all write types. */
-  granted_org_write_types?: Record<string, string[]>;
+  granted_workspace_ids?: string[];
+  granted_workspace_roles?: Record<string, string>;
+  /** Per-type write scope-down keyed by workspace_id. Missing entry means all write types. */
+  granted_workspace_write_types?: Record<string, string[]>;
   scope?: string;
 }
 
@@ -338,9 +338,9 @@ export async function issueAuthorizationCode(
     granted_doco_ids: input.granted_doco_ids,
     granted_doco_roles: input.granted_doco_roles ?? {},
     granted_doco_write_types: input.granted_doco_write_types ?? {},
-    granted_org_ids: input.granted_org_ids ?? [],
-    granted_org_roles: input.granted_org_roles ?? {},
-    granted_org_write_types: input.granted_org_write_types ?? {},
+    granted_workspace_ids: input.granted_workspace_ids ?? [],
+    granted_workspace_roles: input.granted_workspace_roles ?? {},
+    granted_workspace_write_types: input.granted_workspace_write_types ?? {},
   };
   await withTransaction(async (c) => {
     await c.query(
@@ -348,7 +348,7 @@ export async function issueAuthorizationCode(
          (code, client_id, user_id, redirect_uri, token_name,
           code_challenge, code_challenge_method, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
-          granted_org_ids, granted_org_roles, granted_org_write_types,
+          granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
@@ -361,9 +361,9 @@ export async function issueAuthorizationCode(
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
         JSON.stringify(grants.granted_doco_write_types),
-        grants.granted_org_ids,
-        JSON.stringify(grants.granted_org_roles),
-        JSON.stringify(grants.granted_org_write_types),
+        grants.granted_workspace_ids,
+        JSON.stringify(grants.granted_workspace_roles),
+        JSON.stringify(grants.granted_workspace_write_types),
         input.scope ?? null,
         expires_at,
       ],
@@ -378,9 +378,9 @@ export interface ConsumedAuthCode {
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_doco_write_types: Record<string, string[]>;
-  granted_org_ids: string[];
-  granted_org_roles: Record<string, string>;
-  granted_org_write_types: Record<string, string[]>;
+  granted_workspace_ids: string[];
+  granted_workspace_roles: Record<string, string>;
+  granted_workspace_write_types: Record<string, string[]>;
   scope: string | null;
 }
 
@@ -405,16 +405,16 @@ export async function consumeAuthorizationCode(args: {
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
       granted_doco_write_types: Record<string, string[]>;
-      granted_org_ids: string[];
-      granted_org_roles: Record<string, string>;
-      granted_org_write_types: Record<string, string[]>;
+      granted_workspace_ids: string[];
+      granted_workspace_roles: Record<string, string>;
+      granted_workspace_write_types: Record<string, string[]>;
       scope: string | null;
       expires_at: Date;
       consumed_at: Date | null;
     }>(
       `SELECT client_id, user_id, token_name, redirect_uri, code_challenge,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
-              granted_org_ids, granted_org_roles, granted_org_write_types,
+              granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
               scope, expires_at, consumed_at
          FROM oauth_authorization_codes
         WHERE code = $1
@@ -445,9 +445,9 @@ export async function consumeAuthorizationCode(args: {
       granted_doco_ids: row.granted_doco_ids,
       granted_doco_roles: row.granted_doco_roles ?? {},
       granted_doco_write_types: row.granted_doco_write_types ?? {},
-      granted_org_ids: row.granted_org_ids ?? [],
-      granted_org_roles: row.granted_org_roles ?? {},
-      granted_org_write_types: row.granted_org_write_types ?? {},
+      granted_workspace_ids: row.granted_workspace_ids ?? [],
+      granted_workspace_roles: row.granted_workspace_roles ?? {},
+      granted_workspace_write_types: row.granted_workspace_write_types ?? {},
       scope: row.scope,
     };
   });
@@ -457,7 +457,7 @@ export interface PeekedAuthCode {
   client_id: string;
   redirect_uri: string;
   granted_doco_ids: string[];
-  granted_org_ids: string[];
+  granted_workspace_ids: string[];
 }
 
 /**
@@ -476,12 +476,12 @@ export async function peekAuthorizationCode(code: string): Promise<PeekedAuthCod
       client_id: string;
       redirect_uri: string;
       granted_doco_ids: string[];
-      granted_org_ids: string[] | null;
+      granted_workspace_ids: string[] | null;
       expires_at: Date;
       consumed_at: Date | null;
     }>(
       `SELECT client_id, redirect_uri, granted_doco_ids,
-              granted_org_ids, expires_at, consumed_at
+              granted_workspace_ids, expires_at, consumed_at
          FROM oauth_authorization_codes
         WHERE code = $1`,
       [code],
@@ -494,7 +494,7 @@ export async function peekAuthorizationCode(code: string): Promise<PeekedAuthCod
       client_id: row.client_id,
       redirect_uri: row.redirect_uri,
       granted_doco_ids: row.granted_doco_ids,
-      granted_org_ids: row.granted_org_ids ?? [],
+      granted_workspace_ids: row.granted_workspace_ids ?? [],
     };
   });
 }
@@ -511,10 +511,10 @@ export interface IssueTokensInput {
   granted_doco_roles?: Record<string, string>;
   /** Per-type write scope-down keyed by doco_id (decision_per_type_write_grants). */
   granted_doco_write_types?: Record<string, string[]>;
-  granted_org_ids?: string[];
-  granted_org_roles?: Record<string, string>;
-  /** Per-type write scope-down keyed by org_id. */
-  granted_org_write_types?: Record<string, string[]>;
+  granted_workspace_ids?: string[];
+  granted_workspace_roles?: Record<string, string>;
+  /** Per-type write scope-down keyed by workspace_id. */
+  granted_workspace_write_types?: Record<string, string[]>;
   scope: string | null;
 }
 
@@ -533,15 +533,15 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
   const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
   const rolesJson = JSON.stringify(input.granted_doco_roles ?? {});
   const docoWriteTypesJson = JSON.stringify(input.granted_doco_write_types ?? {});
-  const orgIds = input.granted_org_ids ?? [];
-  const orgRolesJson = JSON.stringify(input.granted_org_roles ?? {});
-  const orgWriteTypesJson = JSON.stringify(input.granted_org_write_types ?? {});
+  const workspaceIds = input.granted_workspace_ids ?? [];
+  const workspaceRolesJson = JSON.stringify(input.granted_workspace_roles ?? {});
+  const workspaceWriteTypesJson = JSON.stringify(input.granted_workspace_write_types ?? {});
   await withTransaction(async (c) => {
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
-          granted_org_ids, granted_org_roles, granted_org_write_types,
+          granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
@@ -552,9 +552,9 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         input.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
-        orgIds,
-        orgRolesJson,
-        orgWriteTypesJson,
+        workspaceIds,
+        workspaceRolesJson,
+        workspaceWriteTypesJson,
         input.scope,
         access_expires,
       ],
@@ -563,7 +563,7 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
-          granted_org_ids, granted_org_roles, granted_org_write_types,
+          granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
@@ -574,9 +574,9 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         input.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
-        orgIds,
-        orgRolesJson,
-        orgWriteTypesJson,
+        workspaceIds,
+        workspaceRolesJson,
+        workspaceWriteTypesJson,
         input.scope,
         refresh_expires,
       ],
@@ -601,10 +601,10 @@ export interface ValidAccessToken {
   granted_doco_roles: Record<string, string>;
   /** Per-type write scope-down keyed by doco_id. */
   granted_doco_write_types: Record<string, string[]>;
-  granted_org_ids: string[];
-  granted_org_roles: Record<string, string>;
-  /** Per-type write scope-down keyed by org_id. */
-  granted_org_write_types: Record<string, string[]>;
+  granted_workspace_ids: string[];
+  granted_workspace_roles: Record<string, string>;
+  /** Per-type write scope-down keyed by workspace_id. */
+  granted_workspace_write_types: Record<string, string[]>;
   scope: string | null;
   expires_at: Date;
 }
@@ -621,7 +621,7 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
       `SELECT at.token, at.client_id, c.client_name, at.user_id, at.token_name,
               at.granted_doco_ids,
               at.granted_doco_roles, at.granted_doco_write_types,
-              at.granted_org_ids, at.granted_org_roles, at.granted_org_write_types,
+              at.granted_workspace_ids, at.granted_workspace_roles, at.granted_workspace_write_types,
               at.scope, at.expires_at
          FROM oauth_access_tokens at
          JOIN oauth_clients c ON c.client_id = at.client_id
@@ -634,9 +634,9 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
       ...row,
       granted_doco_roles: row.granted_doco_roles ?? {},
       granted_doco_write_types: row.granted_doco_write_types ?? {},
-      granted_org_ids: row.granted_org_ids ?? [],
-      granted_org_roles: row.granted_org_roles ?? {},
-      granted_org_write_types: row.granted_org_write_types ?? {},
+      granted_workspace_ids: row.granted_workspace_ids ?? [],
+      granted_workspace_roles: row.granted_workspace_roles ?? {},
+      granted_workspace_write_types: row.granted_workspace_write_types ?? {},
     };
   });
 }
@@ -653,16 +653,16 @@ export async function refreshTokens(args: {
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
       granted_doco_write_types: Record<string, string[]>;
-      granted_org_ids: string[];
-      granted_org_roles: Record<string, string>;
-      granted_org_write_types: Record<string, string[]>;
+      granted_workspace_ids: string[];
+      granted_workspace_roles: Record<string, string>;
+      granted_workspace_write_types: Record<string, string[]>;
       scope: string | null;
       expires_at: Date;
       revoked: boolean;
     }>(
       `SELECT client_id, user_id, token_name,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
-              granted_org_ids, granted_org_roles, granted_org_write_types,
+              granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
               scope, expires_at, revoked
          FROM oauth_refresh_tokens
         WHERE token = $1
@@ -686,14 +686,14 @@ export async function refreshTokens(args: {
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
     const rolesJson = JSON.stringify(row.granted_doco_roles ?? {});
     const docoWriteTypesJson = JSON.stringify(row.granted_doco_write_types ?? {});
-    const orgIds = row.granted_org_ids ?? [];
-    const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
-    const orgWriteTypesJson = JSON.stringify(row.granted_org_write_types ?? {});
+    const workspaceIds = row.granted_workspace_ids ?? [];
+    const workspaceRolesJson = JSON.stringify(row.granted_workspace_roles ?? {});
+    const workspaceWriteTypesJson = JSON.stringify(row.granted_workspace_write_types ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
-          granted_org_ids, granted_org_roles, granted_org_write_types,
+          granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
@@ -704,9 +704,9 @@ export async function refreshTokens(args: {
         row.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
-        orgIds,
-        orgRolesJson,
-        orgWriteTypesJson,
+        workspaceIds,
+        workspaceRolesJson,
+        workspaceWriteTypesJson,
         row.scope,
         access_expires,
       ],
@@ -789,9 +789,9 @@ export interface DeviceAuthorizationRow {
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_doco_write_types: Record<string, string[]>;
-  granted_org_ids: string[];
-  granted_org_roles: Record<string, string>;
-  granted_org_write_types: Record<string, string[]>;
+  granted_workspace_ids: string[];
+  granted_workspace_roles: Record<string, string>;
+  granted_workspace_write_types: Record<string, string[]>;
   target_doco_handle: string | null;
   requested_role: string | null;
   expires_at: Date;
@@ -896,7 +896,7 @@ export async function getDeviceAuthorizationByUserCode(
       `SELECT device_code, user_code, client_id, scope, status,
               user_id, token_name, granted_doco_ids, granted_doco_roles,
               granted_doco_write_types,
-              granted_org_ids, granted_org_roles, granted_org_write_types,
+              granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE user_code = $1`,
@@ -908,9 +908,9 @@ export async function getDeviceAuthorizationByUserCode(
       ...row,
       granted_doco_roles: row.granted_doco_roles ?? {},
       granted_doco_write_types: row.granted_doco_write_types ?? {},
-      granted_org_ids: row.granted_org_ids ?? [],
-      granted_org_roles: row.granted_org_roles ?? {},
-      granted_org_write_types: row.granted_org_write_types ?? {},
+      granted_workspace_ids: row.granted_workspace_ids ?? [],
+      granted_workspace_roles: row.granted_workspace_roles ?? {},
+      granted_workspace_write_types: row.granted_workspace_write_types ?? {},
     };
   });
 }
@@ -928,9 +928,9 @@ export async function approveDeviceAuthorization(args: {
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
   granted_doco_write_types?: Record<string, string[]>;
-  granted_org_ids?: string[];
-  granted_org_roles?: Record<string, string>;
-  granted_org_write_types?: Record<string, string[]>;
+  granted_workspace_ids?: string[];
+  granted_workspace_roles?: Record<string, string>;
+  granted_workspace_write_types?: Record<string, string[]>;
 }): Promise<void> {
   await withTransaction(async (c) => {
     const pending = await c.query<{ client_id: string }>(
@@ -955,9 +955,9 @@ export async function approveDeviceAuthorization(args: {
       granted_doco_ids: args.granted_doco_ids,
       granted_doco_roles: args.granted_doco_roles ?? {},
       granted_doco_write_types: args.granted_doco_write_types ?? {},
-      granted_org_ids: args.granted_org_ids ?? [],
-      granted_org_roles: args.granted_org_roles ?? {},
-      granted_org_write_types: args.granted_org_write_types ?? {},
+      granted_workspace_ids: args.granted_workspace_ids ?? [],
+      granted_workspace_roles: args.granted_workspace_roles ?? {},
+      granted_workspace_write_types: args.granted_workspace_write_types ?? {},
     };
 
     await c.query(
@@ -968,9 +968,9 @@ export async function approveDeviceAuthorization(args: {
               granted_doco_ids = $4,
               granted_doco_roles = $5,
               granted_doco_write_types = $6,
-              granted_org_ids = $7,
-              granted_org_roles = $8,
-              granted_org_write_types = $9
+              granted_workspace_ids = $7,
+              granted_workspace_roles = $8,
+              granted_workspace_write_types = $9
         WHERE device_code = $1
           AND status = 'pending'
           AND expires_at > now()`,
@@ -981,9 +981,9 @@ export async function approveDeviceAuthorization(args: {
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
         JSON.stringify(grants.granted_doco_write_types),
-        grants.granted_org_ids,
-        JSON.stringify(grants.granted_org_roles),
-        JSON.stringify(grants.granted_org_write_types),
+        grants.granted_workspace_ids,
+        JSON.stringify(grants.granted_workspace_roles),
+        JSON.stringify(grants.granted_workspace_write_types),
       ],
     );
   });
@@ -1025,7 +1025,7 @@ export async function pollDeviceAuthorization(args: {
       `SELECT device_code, user_code, client_id, scope, status,
               user_id, token_name, granted_doco_ids, granted_doco_roles,
               granted_doco_write_types,
-              granted_org_ids, granted_org_roles, granted_org_write_types,
+              granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE device_code = $1
@@ -1079,14 +1079,14 @@ export async function pollDeviceAuthorization(args: {
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
     const rolesJson = JSON.stringify(row.granted_doco_roles ?? {});
     const docoWriteTypesJson = JSON.stringify(row.granted_doco_write_types ?? {});
-    const orgIds = row.granted_org_ids ?? [];
-    const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
-    const orgWriteTypesJson = JSON.stringify(row.granted_org_write_types ?? {});
+    const workspaceIds = row.granted_workspace_ids ?? [];
+    const workspaceRolesJson = JSON.stringify(row.granted_workspace_roles ?? {});
+    const workspaceWriteTypesJson = JSON.stringify(row.granted_workspace_write_types ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
-          granted_org_ids, granted_org_roles, granted_org_write_types,
+          granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
@@ -1097,9 +1097,9 @@ export async function pollDeviceAuthorization(args: {
         row.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
-        orgIds,
-        orgRolesJson,
-        orgWriteTypesJson,
+        workspaceIds,
+        workspaceRolesJson,
+        workspaceWriteTypesJson,
         row.scope,
         access_expires,
       ],
@@ -1108,7 +1108,7 @@ export async function pollDeviceAuthorization(args: {
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
-          granted_org_ids, granted_org_roles, granted_org_write_types,
+          granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
@@ -1119,9 +1119,9 @@ export async function pollDeviceAuthorization(args: {
         row.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
-        orgIds,
-        orgRolesJson,
-        orgWriteTypesJson,
+        workspaceIds,
+        workspaceRolesJson,
+        workspaceWriteTypesJson,
         row.scope,
         refresh_expires,
       ],

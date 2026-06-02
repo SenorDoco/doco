@@ -109,7 +109,7 @@ export interface SlackInstallationSummary {
 export interface SlackChannelConnectionSummary {
   channelId: string;
   channelName: string;
-  targetLevel: "org" | "doco";
+  targetLevel: "workspace" | "doco";
   targetId: string;
   targetLabel: string;
   role: string;
@@ -218,14 +218,14 @@ interface SlackConnectionInput {
   workspaceId: string;
   channelId: string;
   channelName: string;
-  targetLevel: "org" | "doco";
+  targetLevel: "workspace" | "doco";
   targetId: string;
   role: string;
   createdByUserId: string;
 }
 
 interface SlackConnectionGrantInput {
-  targetLevel: "org" | "doco";
+  targetLevel: "workspace" | "doco";
   targetId: string;
   role: string;
 }
@@ -233,8 +233,8 @@ interface SlackConnectionGrantInput {
 interface SlackAccessibleDoco {
   id: string;
   handle: string;
-  orgId: string;
-  orgHandle: string;
+  workspaceId: string;
+  workspaceHandle: string;
   qualifiedHandle: string;
   role: string;
 }
@@ -654,14 +654,14 @@ async function listSlackPersonalConnections(args: {
           id: string;
           handle: string;
           owner_id: string;
-          org_handle: string | null;
+          workspace_handle: string | null;
         }>(
           `SELECT d.id,
                   d.handle,
                   d.owner_id,
-                  o.handle AS org_handle
+                  o.handle AS workspace_handle
              FROM docos d
-             LEFT JOIN organizations o ON o.id = d.org_id
+             LEFT JOIN workspaces o ON o.id = d.workspace_id
             WHERE d.id = ANY($1::text[])
             ORDER BY COALESCE(o.handle, ''), d.handle`,
           [docoIds],
@@ -674,7 +674,9 @@ async function listSlackPersonalConnections(args: {
             actor.userId,
           );
           if (!role) return null;
-          const targetLabel = row.org_handle ? `${row.org_handle}/${row.handle}` : row.handle;
+          const targetLabel = row.workspace_handle
+            ? `${row.workspace_handle}/${row.handle}`
+            : row.handle;
           return {
             channelId: "*",
             channelName: "personal",
@@ -732,12 +734,12 @@ export async function listSlackChannelConnections(args: {
     c.query<{
       channel_id: string;
       channel_name: string;
-      target_level: "org" | "doco";
+      target_level: "workspace" | "doco";
       target_id: string;
       role: string;
       target_label: string | null;
       doco_handle: string | null;
-      org_handle: string | null;
+      workspace_handle: string | null;
     }>(
       `SELECT gcc.channel_id,
               gcc.channel_name,
@@ -745,18 +747,18 @@ export async function listSlackChannelConnections(args: {
               gcc.target_id,
               gcc.role,
               CASE
-                WHEN gcc.target_level = 'org' THEN o.handle
+                WHEN gcc.target_level = 'workspace' THEN o.handle
                 ELSE COALESCE(dorg.handle, '') || '/' || d.handle
               END AS target_label,
               d.handle AS doco_handle,
-              COALESCE(dorg.handle, '') AS org_handle
+              COALESCE(dorg.handle, '') AS workspace_handle
          FROM group_chat_channel_connections gcc
-         LEFT JOIN organizations o
-           ON gcc.target_level = 'org' AND o.id = gcc.target_id
+         LEFT JOIN workspaces o
+           ON gcc.target_level = 'workspace' AND o.id = gcc.target_id
          LEFT JOIN docos d
            ON gcc.target_level = 'doco' AND d.id = gcc.target_id
-         LEFT JOIN organizations dorg
-           ON d.org_id = dorg.id
+         LEFT JOIN workspaces dorg
+           ON d.workspace_id = dorg.id
         WHERE gcc.provider = 'slack'
           AND gcc.workspace_id = $1
           AND gcc.channel_id IN ($2, '*')
@@ -1197,8 +1199,8 @@ async function executeSlackDocoApiRequest(
       docos: docos.map((doco) => ({
         id: doco.id,
         handle: doco.handle,
-        org_id: doco.orgId,
-        org_handle: doco.orgHandle,
+        workspace_id: doco.workspaceId,
+        workspace_handle: doco.workspaceHandle,
         qualified_handle: doco.qualifiedHandle,
         slack_default_role: doco.role,
       })),
@@ -1329,12 +1331,12 @@ async function listSlackAccessibleDocos(
 async function listSlackConnectionAccessibleDocos(
   connection: SlackChannelConnectionSummary,
 ): Promise<SlackAccessibleDoco[]> {
-  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
+  const where = connection.targetLevel === "workspace" ? "d.workspace_id = $1" : "d.id = $1";
   const result = await withClient((c) =>
-    c.query<{ id: string; handle: string; org_id: string; org_handle: string }>(
-      `SELECT d.id, d.handle, d.org_id, o.handle AS org_handle
+    c.query<{ id: string; handle: string; workspace_id: string; workspace_handle: string }>(
+      `SELECT d.id, d.handle, d.workspace_id, o.handle AS workspace_handle
          FROM docos d
-         JOIN organizations o ON o.id = d.org_id
+         JOIN workspaces o ON o.id = d.workspace_id
         WHERE ${where}
         ORDER BY o.handle ASC, d.handle ASC`,
       [connection.targetId],
@@ -1343,9 +1345,9 @@ async function listSlackConnectionAccessibleDocos(
   return result.rows.map((row) => ({
     id: row.id,
     handle: row.handle,
-    orgId: row.org_id,
-    orgHandle: row.org_handle,
-    qualifiedHandle: `${row.org_handle}/${row.handle}`,
+    workspaceId: row.workspace_id,
+    workspaceHandle: row.workspace_handle,
+    qualifiedHandle: `${row.workspace_handle}/${row.handle}`,
     role: connection.role,
   }));
 }
@@ -1661,8 +1663,8 @@ async function readSlackDocoApiSettings(
     ok: true,
     id: doco.id,
     handle: doco.handle,
-    org_id: doco.orgId,
-    org_handle: doco.orgHandle,
+    workspace_id: doco.workspaceId,
+    workspace_handle: doco.workspaceHandle,
     qualified_handle: doco.qualifiedHandle,
     visibility: row.visibility ?? null,
     goal: row.goal ?? null,
@@ -1957,7 +1959,7 @@ function formatSlackConnectionList(connections: SlackChannelConnectionSummary[])
 }
 
 function slackConnectionAccessLabel(connection: SlackChannelConnectionSummary): string {
-  return connection.targetLevel === "org"
+  return connection.targetLevel === "workspace"
     ? `all ${connection.targetLabel}'s docos`
     : connection.targetLabel;
 }
@@ -1985,7 +1987,7 @@ async function readSlackConnectionSearchHits(
   connection: SlackChannelConnectionSummary,
   queryText: string,
 ): Promise<SlackDocoAnswerHit[]> {
-  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
+  const where = connection.targetLevel === "workspace" ? "d.workspace_id = $1" : "d.id = $1";
   const result = await withClient((c) =>
     c.query<{
       entity_id: string;
@@ -1998,7 +2000,7 @@ async function readSlackConnectionSearchHits(
       `WITH scoped_docos AS (
          SELECT d.id, COALESCE(o.handle, '') || '/' || d.handle AS doco_label
            FROM docos d
-           LEFT JOIN organizations o ON o.id = d.org_id
+           LEFT JOIN workspaces o ON o.id = d.workspace_id
           WHERE ${where}
        ),
        query AS (
@@ -2041,7 +2043,7 @@ async function readSlackDocoOverviewHits(
 async function readSlackConnectionOverviewHits(
   connection: SlackChannelConnectionSummary,
 ): Promise<SlackDocoAnswerHit[]> {
-  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
+  const where = connection.targetLevel === "workspace" ? "d.workspace_id = $1" : "d.id = $1";
   const result = await withClient((c) =>
     c.query<{
       entity_id: string;
@@ -2055,7 +2057,7 @@ async function readSlackConnectionOverviewHits(
       `WITH scoped_docos AS (
          SELECT d.id, COALESCE(o.handle, '') || '/' || d.handle AS doco_label
            FROM docos d
-           LEFT JOIN organizations o ON o.id = d.org_id
+           LEFT JOIN workspaces o ON o.id = d.workspace_id
           WHERE ${where}
        ),
        all_nodes AS (
@@ -2145,7 +2147,7 @@ export function slackLlmSystemPrompt(): string {
         "Do not claim access beyond the listed Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
       ],
     }),
-    "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json; GET /<handle>/api/audit.json (returns total_count, first_event_at, last_event_at, duration_seconds, average_seconds_per_event, and supports limit, before, since, until, entity_type, op, by); GET /<handle>/api/perspectives.json; GET /<handle>/api/authoring-contract.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
+    "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json; GET /<handle>/api/audit.json (returns total_count, first_event_at, last_event_at, duration_seconds, average_seconds_per_event, and supports limit, before, since, until, entity_type, op, by); GET /<handle>/api/perspectives.json; GET /<handle>/api/authoring-contract.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified workspace/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
     "Available Slack doco_api writes when this Slack user has linked personal Doco access: POST /api/v1/docos.json; POST /<handle>/api/<type>.json; PATCH /<handle>/api/<type>/<id>.json; POST /<handle>/api/principals.json; PATCH /<handle>/api/principals/<id>.json; POST /<handle>/api/policies.json; POST /<handle>/api/changesets.json.",
     "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",

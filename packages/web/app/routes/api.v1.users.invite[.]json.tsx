@@ -1,5 +1,5 @@
 // /api/v1/users/invite.json — JSON API for inviting human
-// users to an org or a doco. The companion to
+// users to an workspace or a doco. The companion to
 // /api/v1/api-keys.json (which mints agent / personal API keys).
 //
 // Splitting the two endpoints means API consumers don't have to encode
@@ -9,7 +9,7 @@
 // token shows up under /api/v1/api-keys.json.
 //
 // POST body:
-//   { level: "org" | "doco", target_id: string, role?: DocoRole }
+//   { level: "workspace" | "doco", target_id: string, role?: DocoRole }
 //
 // Returns:
 //   { invite_url, invite_expires_at, role, level, prompt }
@@ -17,7 +17,7 @@
 // Errors:
 //   401 — anonymous caller
 //   400 — invalid level / missing target_id
-//   403 — caller has no access to the org/doco, or tried to grant a
+//   403 — caller has no access to the workspace/doco, or tried to grant a
 //         role higher than their own
 
 import { buildHumanInvitePrompt } from "~/components/collaboration-invite-prompt";
@@ -44,18 +44,18 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "invalid_json_body" }, { status: 400 });
   }
 
-  const level = body.level === "org" || body.level === "doco" ? body.level : null;
+  const level = body.level === "workspace" || body.level === "doco" ? body.level : null;
   const target_id = typeof body.target_id === "string" ? body.target_id.trim() : "";
   const role = typeof body.role === "string" ? body.role : "writer";
   if (!level) {
     return Response.json(
-      { error: "level_required", hint: "Pass level: 'org' or 'doco'." },
+      { error: "level_required", hint: "Pass level: 'workspace' or 'doco'." },
       { status: 400 },
     );
   }
   if (!target_id) {
     return Response.json(
-      { error: "target_id_required", hint: "Pass the org or doco id." },
+      { error: "target_id_required", hint: "Pass the workspace or doco id." },
       { status: 400 },
     );
   }

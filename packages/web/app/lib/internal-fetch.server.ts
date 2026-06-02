@@ -61,7 +61,7 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/api.v1.agent-bootstrap[.]json"),
   },
   { pattern: "/api/v1/docos.json", load: () => import("~/routes/api.v1.docos[.]json") },
-  { pattern: "/api/v1/orgs.json", load: () => import("~/routes/api.v1.orgs[.]json") },
+  { pattern: "/api/v1/workspaces.json", load: () => import("~/routes/api.v1.workspaces[.]json") },
   {
     pattern: "/api/v1/me/preferences.json",
     load: () => import("~/routes/api.v1.me.preferences[.]json"),

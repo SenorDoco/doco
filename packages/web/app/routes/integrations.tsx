@@ -2,10 +2,10 @@
 //
 // Two panes:
 //   Left  — everything wired up: account-level Slack workspaces, plus a
-//           rollup of every org and Doco the user can read that already
+//           rollup of every workspace and Doco the user can read that already
 //           has integrations. Drill-down links jump to that scope's page.
 //   Right — full catalog of available integrations. Cross-scope clicks
-//           land on the relevant picker so the user can pick an org or
+//           land on the relevant picker so the user can pick an workspace or
 //           Doco to install into.
 import {
   ArrowLeft,
@@ -119,7 +119,8 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
         <header className="space-y-2">
           <h1 className="text-2xl font-semibold">Integrations</h1>
           <p className="text-sm text-muted-foreground">
-            Everything connected to your account, plus a rollup of every org and Doco you can reach.
+            Everything connected to your account, plus a rollup of every workspace and Doco you can
+            reach.
           </p>
         </header>
 
@@ -146,8 +147,8 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                       Slack workspaces
                     </CardTitle>
                     <CardDescription>
-                      Account-wide. After install, channel defaults bind a workspace to an org or a
-                      specific Doco.
+                      Account-wide. After install, channel defaults bind a workspace to an workspace
+                      or a specific Doco.
                     </CardDescription>
                   </div>
                   {slackInstallHref ? (
@@ -197,27 +198,27 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               </CardContent>
             </Card>
 
-            <Card id="pick-org">
+            <Card id="pick-workspace">
               <CardHeader>
-                <CardTitle className="text-base">Integrations across your orgs</CardTitle>
+                <CardTitle className="text-base">Integrations across your workspaces</CardTitle>
                 <CardDescription>
-                  Each org rolls up its Docos&apos; connections; open one to manage.
+                  Each workspace rolls up its Docos&apos; connections; open one to manage.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <span id="pick-doco" />
-                {rollup.orgs.length > 0 ? (
+                {rollup.workspaces.length > 0 ? (
                   <ul className="divide-y divide-border">
-                    {rollup.orgs.map((o) => {
+                    {rollup.workspaces.map((o) => {
                       const docosWithIntegrations = rollup.docos.filter(
-                        (d) => d.orgHandle === o.handle,
+                        (d) => d.workspaceHandle === o.handle,
                       );
                       return (
-                        <li key={o.orgId} className="px-4 py-3">
+                        <li key={o.workspaceId} className="px-4 py-3">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="min-w-0">
                               <Link
-                                to={`/orgs/${o.handle}/integrations`}
+                                to={`/workspaces/${o.handle}/integrations`}
                                 className="text-sm font-semibold text-foreground hover:text-primary"
                               >
                                 {o.handle}
@@ -228,7 +229,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                               </p>
                             </div>
                             <Link
-                              to={`/orgs/${o.handle}/integrations`}
+                              to={`/workspaces/${o.handle}/integrations`}
                               className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:text-primary"
                             >
                               Manage
@@ -260,7 +261,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                   </ul>
                 ) : (
                   <p className="px-4 py-3 text-sm text-muted-foreground">
-                    You aren&apos;t a member of any orgs yet.
+                    You aren&apos;t a member of any workspaces yet.
                   </p>
                 )}
               </CardContent>

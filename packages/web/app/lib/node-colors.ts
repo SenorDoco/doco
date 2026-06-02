@@ -77,7 +77,7 @@ export function lifecycleCountParts(
   }));
 }
 
-/** Sum a list of per-stage counts (e.g. an org row = Σ of its docos). */
+/** Sum a list of per-stage counts (e.g. an workspace row = Σ of its docos). */
 export function sumLifecycleCounts(list: readonly LifecycleCounts[]): LifecycleCounts {
   return list.reduce<LifecycleCounts>(
     (acc, c) => ({
@@ -117,7 +117,7 @@ export function lifecycleLabel(lifecycle: string | null | undefined): string {
 const NODE_TYPE_PLURAL: Record<string, string> = {
   doco: "docos",
   principal: "principals",
-  organization: "organizations",
+  workspace: "workspaces",
   intent: "intents",
   idea: "ideas",
   rule: "rules",

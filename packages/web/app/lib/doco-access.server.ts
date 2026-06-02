@@ -2,16 +2,16 @@
 
 import {
   type DocoRole,
-  isOrgUser as dbIsOrgMember,
+  isWorkspaceUser as dbIsWorkspaceMember,
   getAccountGrant,
   getDocoByIdOrHandle,
   getDocoUserGrant,
   getDocoUserRole,
-  getOrgGrant,
-  getOrgRole,
   getPrincipalById,
+  getWorkspaceGrant,
+  getWorkspaceRole,
   listDocoIdsForUser,
-  listOrgOwnerUserIds,
+  listWorkspaceOwnerUserIds,
   maxRole,
   roleAtLeast,
   withClient,
@@ -34,7 +34,7 @@ import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "
 
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
- * org-membership role on the owning org, account grants, explicit
+ * workspace-membership role on the owning workspace, account grants, explicit
  * doco_users row).
  *
  * Returns null when the principal has no doco-level grant.
@@ -44,7 +44,7 @@ export async function getDocoLevelRole(
   principalId: string | null,
 ): Promise<DocoRole | null> {
   // Delegate to getDocoLevelGrant so the role and per-type-write paths
-  // resolve access from exactly the same sources (direct owner, org
+  // resolve access from exactly the same sources (direct owner, workspace
   // membership, account grants, doco membership) — there is no second
   // copy of the source list to drift out of sync.
   const grant = await getDocoLevelGrant(meta, principalId);
@@ -55,7 +55,7 @@ export async function getDocoLevelRole(
  * Like `getDocoLevelRole`, but also resolves the per-type WRITE set
  * (decision_per_type_write_grants). The effective grant is the strongest
  * role across all sources unioned with every source's write-type set: a
- * principal who is a writer-on-decisions via org membership and a
+ * principal who is a writer-on-decisions via workspace membership and a
  * writer-on-actions via a direct doco_users row can write both. An owner
  * from any source writes everything (represented as the wildcard).
  *
@@ -83,13 +83,13 @@ export async function getDocoLevelGrant(
     fold({ role: "owner", writeTypes: [WRITE_ALL] });
   }
 
-  if (meta.ownerId.startsWith("organization_")) {
-    fold(await getOrgGrant(meta.ownerId, principalId));
-    // Account-level grants: if any OWNER of this org has granted their
+  if (meta.ownerId.startsWith("workspace_")) {
+    fold(await getWorkspaceGrant(meta.ownerId, principalId));
+    // Account-level grants: if any OWNER of this workspace has granted their
     // whole account to the principal, the principal inherits that grant
-    // on every org/doco that owner owns — including this one.
-    const orgOwners = await listOrgOwnerUserIds(meta.ownerId);
-    for (const grantor of orgOwners) {
+    // on every workspace/doco that owner owns — including this one.
+    const workspaceOwners = await listWorkspaceOwnerUserIds(meta.ownerId);
+    for (const grantor of workspaceOwners) {
       fold(await getAccountGrant(grantor, principalId));
     }
   }
@@ -149,7 +149,7 @@ export async function canWriteDocoType(
  *
  * A token that granted writer (wildcard) on the target returns ["*"]; a
  * token that granted only specific types returns those; a token scoped
- * to the Doco/org but with no write returns []. Owner grants without a
+ * to the Doco/workspace but with no write returns []. Owner grants without a
  * per-type entry retain the owner wildcard.
  */
 function tokenWriteTypeCap(
@@ -172,12 +172,12 @@ function tokenWriteTypeCap(
       token.granted_doco_write_types?.[meta.docoId],
     );
   }
-  if (meta.ownerId.startsWith("organization_") && token.granted_org_ids.includes(meta.ownerId)) {
+  if (meta.ownerId.startsWith("workspace_") && token.granted_workspace_ids.includes(meta.ownerId)) {
     matched = true;
     addTokenWriteCap(
       caps,
-      token.granted_org_roles?.[meta.ownerId],
-      token.granted_org_write_types?.[meta.ownerId],
+      token.granted_workspace_roles?.[meta.ownerId],
+      token.granted_workspace_write_types?.[meta.ownerId],
     );
   }
 
@@ -285,7 +285,7 @@ export async function getOauthTokenForRequest(request: Request): Promise<ValidAc
   return await validateAccessToken(bearer);
 }
 
-/** True if the OAuth token's grants cover this Doco (per-Doco or per-org). */
+/** True if the OAuth token's grants cover this Doco (per-Doco or per-workspace). */
 export function oauthTokenGrantsDoco(
   token: ValidAccessToken,
   meta: { ownerId: string; docoId: string },
@@ -293,8 +293,8 @@ export function oauthTokenGrantsDoco(
   if (tokenDefersScope(token)) return true;
   if (token.granted_doco_ids.includes(meta.docoId)) return true;
   if (
-    meta.ownerId.startsWith("organization_") &&
-    (token.granted_org_ids ?? []).includes(meta.ownerId)
+    meta.ownerId.startsWith("workspace_") &&
+    (token.granted_workspace_ids ?? []).includes(meta.ownerId)
   ) {
     return true;
   }
@@ -303,7 +303,7 @@ export function oauthTokenGrantsDoco(
 
 /**
  * owner_id for each given Doco id (ids without a row are omitted). The
- * listing gates below use this to learn which org owns each Doco.
+ * listing gates below use this to learn which workspace owns each Doco.
  */
 async function loadDocoOwnerIds(docoIds: readonly string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
@@ -320,54 +320,54 @@ async function loadDocoOwnerIds(docoIds: readonly string[]): Promise<Map<string,
 }
 
 /**
- * Organizations an OAuth token may "touch" for listing purposes: the
- * orgs granted to it directly, unioned with the org that owns any
+ * Workspaces an OAuth token may "touch" for listing purposes: the
+ * workspaces granted to it directly, unioned with the workspace that owns any
  * individually-granted Doco (so a Doco-scoped token still counts as
- * being "in" that Doco's organization). `ownerByGrantedDocoId` maps each
+ * being "in" that Doco's workspace). `ownerByGrantedDocoId` maps each
  * `granted_doco_ids` entry to its owner_id.
  */
-export function tokenReachableOrgIdsFromGrant(
-  token: Pick<ValidAccessToken, "granted_doco_ids" | "granted_org_ids">,
+export function tokenReachableWorkspaceIdsFromGrant(
+  token: Pick<ValidAccessToken, "granted_doco_ids" | "granted_workspace_ids">,
   ownerByGrantedDocoId: ReadonlyMap<string, string>,
 ): Set<string> {
-  const orgs = new Set<string>(
-    (token.granted_org_ids ?? []).filter((id) => id.startsWith("organization_")),
+  const workspaces = new Set<string>(
+    (token.granted_workspace_ids ?? []).filter((id) => id.startsWith("workspace_")),
   );
   for (const docoId of token.granted_doco_ids ?? []) {
     const owner = ownerByGrantedDocoId.get(docoId);
-    if (owner?.startsWith("organization_")) orgs.add(owner);
+    if (owner?.startsWith("workspace_")) workspaces.add(owner);
   }
-  return orgs;
+  return workspaces;
 }
 
 /**
  * Narrow a principal's accessible-Doco set to what an OAuth token may
- * ENUMERATE, enforcing the same organization boundary the read gate
- * (`oauthTokenGrantsDoco`) enforces — widened only to same-org siblings.
+ * ENUMERATE, enforcing the same workspace boundary the read gate
+ * (`oauthTokenGrantsDoco`) enforces — widened only to same-workspace siblings.
  *
- * A Doco survives iff it is individually granted, OR its owning org is
- * one the token can reach (`tokenReachableOrgIdsFromGrant`). This keeps
- * references WITHIN an organization (a token scoped to one Doco can see
+ * A Doco survives iff it is individually granted, OR its owning workspace is
+ * one the token can reach (`tokenReachableWorkspaceIdsFromGrant`). This keeps
+ * references WITHIN an workspace (a token scoped to one Doco can see
  * its siblings) but blocks a token from learning the names of Docos in a
- * DIFFERENT organization it was never granted — the cross-org leak a
+ * DIFFERENT workspace it was never granted — the cross-workspace leak a
  * scoped token would otherwise get from `listAccessibleDocoIdsForPrincipal`,
- * which unions every org the underlying human belongs to. Personal
- * (principal-owned) Docos have no org, so they appear only when granted
+ * which unions every workspace the underlying human belongs to. Personal
+ * (principal-owned) Docos have no workspace, so they appear only when granted
  * directly. Always a subset of the principal set: never widens access.
  */
-export function filterDocosToOrgBoundary(
+export function filterDocosToWorkspaceBoundary(
   accessibleDocoIds: readonly string[],
   ownerByDocoId: ReadonlyMap<string, string>,
-  token: Pick<ValidAccessToken, "granted_doco_ids" | "granted_org_ids">,
+  token: Pick<ValidAccessToken, "granted_doco_ids" | "granted_workspace_ids">,
 ): string[] {
   // Defer-scope tokens enumerate everything the principal can reach.
   if (tokenDefersScope(token)) return [...accessibleDocoIds];
   const grantedDocoIds = new Set(token.granted_doco_ids ?? []);
-  const reachableOrgs = tokenReachableOrgIdsFromGrant(token, ownerByDocoId);
+  const reachableWorkspaces = tokenReachableWorkspaceIdsFromGrant(token, ownerByDocoId);
   return accessibleDocoIds.filter((id) => {
     if (grantedDocoIds.has(id)) return true;
     const ownerId = ownerByDocoId.get(id);
-    return !!ownerId && ownerId.startsWith("organization_") && reachableOrgs.has(ownerId);
+    return !!ownerId && ownerId.startsWith("workspace_") && reachableWorkspaces.has(ownerId);
   });
 }
 
@@ -376,9 +376,9 @@ export function filterDocosToOrgBoundary(
  * listings. Cookie / anonymous requests (no bearer) get the full
  * principal set unchanged — the dashboard and OAuth approve screen want
  * everything the human can reach. A bearer-token request is narrowed to
- * the token's organization boundary (see `filterDocosToOrgBoundary`) so
+ * the token's workspace boundary (see `filterDocosToWorkspaceBoundary`) so
  * a token scoped to one Doco never leaks the names of Docos in another
- * organization.
+ * workspace.
  */
 export async function listVisibleDocoIdsForRequest(
   request: Request,
@@ -388,25 +388,25 @@ export async function listVisibleDocoIdsForRequest(
   const token = await getOauthTokenForRequest(request);
   if (!token || accessible.length === 0) return accessible;
   const ownerByDocoId = await loadDocoOwnerIds([...accessible, ...(token.granted_doco_ids ?? [])]);
-  return filterDocosToOrgBoundary(accessible, ownerByDocoId, token);
+  return filterDocosToWorkspaceBoundary(accessible, ownerByDocoId, token);
 }
 
 /**
- * The organization-id set a bearer-token request may enumerate in
- * `/api/v1/orgs.json`, or `null` for cookie / anonymous requests (which
+ * The workspace-id set a bearer-token request may enumerate in
+ * `/api/v1/workspaces.json`, or `null` for cookie / anonymous requests (which
  * keep their full membership listing). Mirrors the Doco boundary above:
- * a scoped token only sees orgs it can reach, never every org the
+ * a scoped token only sees workspaces it can reach, never every workspace the
  * underlying human belongs to.
  */
-export async function tokenReachableOrgIdsForRequest(
+export async function tokenReachableWorkspaceIdsForRequest(
   request: Request,
 ): Promise<Set<string> | null> {
   const token = await getOauthTokenForRequest(request);
   if (!token) return null;
-  // Defer-scope tokens reach every org the principal does — no narrowing.
+  // Defer-scope tokens reach every workspace the principal does — no narrowing.
   if (tokenDefersScope(token)) return null;
   const ownerByDocoId = await loadDocoOwnerIds(token.granted_doco_ids ?? []);
-  return tokenReachableOrgIdsFromGrant(token, ownerByDocoId);
+  return tokenReachableWorkspaceIdsFromGrant(token, ownerByDocoId);
 }
 
 /**
@@ -415,7 +415,7 @@ export async function tokenReachableOrgIdsForRequest(
  * principal-level `canAccessDoco`:
  *
  *   - No bearer (cookie or anonymous): falls back to `canAccessDoco`.
- *   - Valid bearer that grants this Doco (per-Doco or per-org): falls
+ *   - Valid bearer that grants this Doco (per-Doco or per-workspace): falls
  *     back to `canAccessDoco`.
  *   - Bearer present but invalid, or valid but doesn't grant: returns
  *     false — the caller should respond the same way it would for a
@@ -453,7 +453,7 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
   if (
     !ownerId.startsWith("principal_") &&
     !ownerId.startsWith("user_") &&
-    !ownerId.startsWith("organization_")
+    !ownerId.startsWith("workspace_")
   ) {
     return null;
   }
@@ -465,7 +465,7 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
  * dashboard. Stricter than `canAccessDoco`: ignores `public` visibility
  * and the host-bootstrap exemption. True iff the principal has a
  * personal stake in the Doco: they own it, or they're a member of the
- * owning organization. Invite-redeemed users are handled separately via
+ * owning workspace. Invite-redeemed users are handled separately via
  * `listInvitedDocoIdsForPrincipal` — that path needs the Doco id, not
  * the owner id, so callers union the two sets.
  */
@@ -479,8 +479,8 @@ export async function isMyDoco(
   const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
   if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) return true;
 
-  if (meta.ownerId.startsWith("organization_")) {
-    if (await dbIsOrgMember(meta.ownerId, principalId)) return true;
+  if (meta.ownerId.startsWith("workspace_")) {
+    if (await dbIsWorkspaceMember(meta.ownerId, principalId)) return true;
   }
   return false;
 }
@@ -503,7 +503,7 @@ export async function listInvitedDocoIdsForPrincipal(principalId: string): Promi
  * Every Doco the principal can read or write — the union of three
  * sources:
  *   1. Docos they own directly (`docos.owner_id = user_id`)
- *   2. Docos owned by an org they belong to (any role in `org_users`)
+ *   2. Docos owned by an workspace they belong to (any role in `workspace_users`)
  *   3. Explicit `doco_users` grants
  *
  * Mirrors the /users page logic (single source of truth for "what
@@ -521,13 +521,13 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
     for (const row of direct.rows) {
       ids.add(String(row.id));
     }
-    const viaOrg = await c.query<{ id: string }>(
+    const viaWorkspace = await c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
-         SELECT org_id FROM org_users WHERE user_id = $1
+         SELECT workspace_id FROM workspace_users WHERE user_id = $1
        )`,
       [principalId],
     );
-    for (const row of viaOrg.rows) {
+    for (const row of viaWorkspace.rows) {
       ids.add(String(row.id));
     }
   });
@@ -639,7 +639,7 @@ export function readDocoRouteParam(params: DocoRouteParams): string | null {
  * routes use `params.docoHandle`; id-addressed API routes can pass
  * `params.docoId`. The returned `ownerSlug` and `docoSlug` are
  * synthesized by `mapDocoRow`: `ownerSlug` comes from a JOIN to
- * `users.github_login` / `organizations.handle`, and `docoSlug`
+ * `users.github_login` / `workspaces.handle`, and `docoSlug`
  * mirrors `handle`.
  */
 export async function normalizeDocoParams(params: DocoRouteParams): Promise<{
@@ -877,11 +877,11 @@ export async function loadPostCreateDocoRouteForAdmin(
  * token must grant access to this Doco — either:
  *   (a) `docoId` is in `granted_doco_ids` (with the per-Doco role
  *       at least `minRole`), OR
- *   (b) the Doco's `ownerId` is an organization in `granted_org_ids`
- *       (with the per-org role at least `minRole`).
+ *   (b) the Doco's `ownerId` is an workspace in `granted_workspace_ids`
+ *       (with the per-workspace role at least `minRole`).
  *
- * Org grants are "live": they cover every Doco the org owns now AND
- * any Doco created under the org after the token was minted.
+ * Workspace grants are "live": they cover every Doco the workspace owns now AND
+ * any Doco created under the workspace after the token was minted.
  *
  * No-op for cookie sessions or anonymous reads on public docos.
  *
@@ -894,7 +894,7 @@ export async function loadPostCreateDocoRouteForAdmin(
  *   - Bearer that doesn't even look like an OAuth token → no-op;
  *     unrecognized credentials fall through to the route's normal
  *     anonymous/cookie path.
- *   - Valid bearer but neither doco nor org grant matches → 403.
+ *   - Valid bearer but neither doco nor workspace grant matches → 403.
  *   - Valid bearer with a matching grant but the role scope-down is
  *     below `minRole` (e.g. token grants reader, the route needs
  *     author) → 403 with `insufficient_scope`.
@@ -928,11 +928,11 @@ async function enforceOauthGrant(
   }
 
   const docoGranted = tokenDefersScope(token) || token.granted_doco_ids.includes(doco.docoId);
-  const orgGranted =
-    doco.ownerId.startsWith("organization_") &&
-    (token.granted_org_ids ?? []).includes(doco.ownerId);
+  const workspaceGranted =
+    doco.ownerId.startsWith("workspace_") &&
+    (token.granted_workspace_ids ?? []).includes(doco.ownerId);
 
-  if (!docoGranted && !orgGranted) {
+  if (!docoGranted && !workspaceGranted) {
     throw new Response(
       JSON.stringify({
         kind: "access_denied",
@@ -943,7 +943,7 @@ async function enforceOauthGrant(
   }
 
   // Role scope-down. A grant matches the request only if the granted
-  // role (per-Doco or per-org, whichever applies) is ≥ minRole. If
+  // role (per-Doco or per-workspace, whichever applies) is ≥ minRole. If
   // both grants apply, the operation passes when EITHER meets the
   // threshold — the broader grant wins. Missing entry means "no
   // scope-down" for that path → inherits the principal's actual role,
@@ -951,15 +951,16 @@ async function enforceOauthGrant(
   const docoRole = docoGranted
     ? (token.granted_doco_roles?.[doco.docoId] as DocoRole | undefined)
     : undefined;
-  const orgRole = orgGranted
-    ? (token.granted_org_roles?.[doco.ownerId] as DocoRole | undefined)
+  const workspaceRole = workspaceGranted
+    ? (token.granted_workspace_roles?.[doco.ownerId] as DocoRole | undefined)
     : undefined;
 
   const docoMeets = docoGranted && (!docoRole || roleAtLeast(docoRole, minRole));
-  const orgMeets = orgGranted && (!orgRole || roleAtLeast(orgRole, minRole));
+  const workspaceMeets =
+    workspaceGranted && (!workspaceRole || roleAtLeast(workspaceRole, minRole));
 
-  if (!docoMeets && !orgMeets) {
-    const effective = docoRole ?? orgRole ?? "no role";
+  if (!docoMeets && !workspaceMeets) {
+    const effective = docoRole ?? workspaceRole ?? "no role";
     throw new Response(
       JSON.stringify({
         kind: "insufficient_scope",

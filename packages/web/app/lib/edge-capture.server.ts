@@ -72,8 +72,8 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
   const to = await resolveEndpoint(input.docoId, input.toId);
   if ("error" in to) return { error: `to_id ${to.error}.`, status: 400 };
 
-  // Edges connect graph nodes only. Org/doco containment rides on the
-  // doco_id / org_id columns, never on a graph edge; a policy is governance
+  // Edges connect graph nodes only. Workspace/doco containment rides on the
+  // doco_id / workspace_id columns, never on a graph edge; a policy is governance
   // config, not a node. The `edges.from_id` / `edges.to_id` → nodes(id) FKs
   // enforce this in the DB — this check fails fast with a clear message
   // instead of surfacing a raw FK violation.

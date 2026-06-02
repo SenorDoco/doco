@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  createHostDocoInOrg: vi.fn(),
+  createHostDocoInWorkspace: vi.fn(),
   createConversation: vi.fn(),
   NoopEmbeddingProvider: class NoopEmbeddingProvider {},
   reindexBare: vi.fn(),
 }));
 
 vi.mock("@doco/host", () => ({
-  addOrganizationByHandle: vi.fn(),
-  createDocoInOrg: mocks.createHostDocoInOrg,
-  ensurePersonalOrganization: vi.fn(),
+  addWorkspaceByHandle: vi.fn(),
+  createDocoInWorkspace: mocks.createHostDocoInWorkspace,
+  ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),
-  findAvailableOrgHandle: vi.fn(),
+  findAvailableWorkspaceHandle: vi.fn(),
   findDocoTemplate: vi.fn(),
   renameDocoHandle: vi.fn(),
   softDeleteDoco: vi.fn(),
@@ -29,15 +29,15 @@ vi.mock("../agent-chat.server", () => ({
   createConversation: mocks.createConversation,
 }));
 
-import { createDocoInOrg, reindex } from "../redeem.server";
+import { createDocoInWorkspace, reindex } from "../redeem.server";
 
-describe("createDocoInOrg", () => {
+describe("createDocoInWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createHostDocoInOrg.mockResolvedValue({
+    mocks.createHostDocoInWorkspace.mockResolvedValue({
       docoId: "doco_01",
-      orgId: "org_01",
-      orgHandle: "acme",
+      workspaceId: "workspace_01",
+      workspaceHandle: "acme",
       handle: "acme-onboarding",
       goal: "Onboard customers",
     });
@@ -46,16 +46,16 @@ describe("createDocoInOrg", () => {
   });
 
   it("creates a Doco without eagerly creating a companion chat", async () => {
-    const rec = await createDocoInOrg({
-      orgId: "org_01",
+    const rec = await createDocoInWorkspace({
+      workspaceId: "workspace_01",
       requestedHandle: "acme-onboarding",
       createdByUserId: "user_01",
       visibility: "private",
       templateHandle: null,
     });
 
-    expect(mocks.createHostDocoInOrg).toHaveBeenCalledWith({
-      orgId: "org_01",
+    expect(mocks.createHostDocoInWorkspace).toHaveBeenCalledWith({
+      workspaceId: "workspace_01",
       requestedHandle: "acme-onboarding",
       createdByUserId: "user_01",
       visibility: "private",

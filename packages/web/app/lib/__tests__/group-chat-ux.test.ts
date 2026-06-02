@@ -15,7 +15,7 @@ import {
 
 const channelWriter: ChatAccessTarget = {
   level: "doco",
-  orgHandle: "torre",
+  workspaceHandle: "torre",
   docoHandle: "bpms",
   role: "writer",
   source: "channel_default",
@@ -23,19 +23,19 @@ const channelWriter: ChatAccessTarget = {
 
 const personalOwner: ChatAccessTarget = {
   level: "doco",
-  orgHandle: "torre",
+  workspaceHandle: "torre",
   docoHandle: "bpms",
   role: "owner",
   source: "personal",
 };
 
 describe("group-chat UX helpers", () => {
-  it("qualifies doco targets with the org handle", () => {
+  it("qualifies doco targets with the workspace handle", () => {
     expect(chatTargetLabel(channelWriter)).toBe("torre/bpms");
     expect(
       chatTargetLabel({
-        level: "org",
-        orgHandle: "torre",
+        level: "workspace",
+        workspaceHandle: "torre",
         role: "reader",
         source: "channel_default",
       }),
@@ -48,7 +48,7 @@ describe("group-chat UX helpers", () => {
       personalOwner,
       {
         level: "doco",
-        orgHandle: "acme",
+        workspaceHandle: "acme",
         docoHandle: "launch",
         role: "reader",
         source: "channel_default",
@@ -122,7 +122,7 @@ describe("group-chat UX helpers", () => {
       channelWriter,
       {
         level: "doco",
-        orgHandle: "acme",
+        workspaceHandle: "acme",
         docoHandle: "bpms",
         role: "reader",
         source: "channel_default",

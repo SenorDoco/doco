@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getOrgRole: vi.fn(),
-  listOrganizationsForUser: vi.fn(),
+  getWorkspaceRole: vi.fn(),
+  listWorkspacesForUser: vi.fn(),
   getDocoById: vi.fn(),
   getDocoLevelRole: vi.fn(),
   listAccessibleDocoIdsForPrincipal: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
-  getOrgRole: mocks.getOrgRole,
-  listOrganizationsForUser: mocks.listOrganizationsForUser,
+  getWorkspaceRole: mocks.getWorkspaceRole,
+  listWorkspacesForUser: mocks.listWorkspacesForUser,
 }));
 
 vi.mock("~/lib/db.server", () => ({
@@ -33,12 +33,12 @@ function formWithGrants(grants: unknown[]): FormData {
 describe("readOAuthApprovalGrants", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getOrgRole.mockResolvedValue("owner");
-    mocks.listOrganizationsForUser.mockResolvedValue([{ id: "organization_torre" }]);
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
+    mocks.listWorkspacesForUser.mockResolvedValue([{ id: "workspace_torre" }]);
     mocks.getDocoById.mockResolvedValue({
       id: "doco_bpms",
       handle: "torre-bpms",
-      owner_id: "organization_torre",
+      owner_id: "workspace_torre",
     });
     mocks.getDocoLevelRole.mockResolvedValue("owner");
     mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue(["doco_bpms"]);
@@ -54,8 +54,8 @@ describe("readOAuthApprovalGrants", () => {
           writeTypes: ["decision"],
         },
         {
-          level: "org",
-          targetId: "organization_torre",
+          level: "workspace",
+          targetId: "workspace_torre",
           role: "writer",
           writeTypes: ["*"],
         },
@@ -67,13 +67,13 @@ describe("readOAuthApprovalGrants", () => {
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "reader" },
       granted_doco_write_types: { doco_bpms: ["decision"] },
-      granted_org_ids: ["organization_torre"],
-      granted_org_roles: { organization_torre: "writer" },
-      granted_org_write_types: { organization_torre: ["*"] },
+      granted_workspace_ids: ["workspace_torre"],
+      granted_workspace_roles: { workspace_torre: "writer" },
+      granted_workspace_write_types: { workspace_torre: ["*"] },
     });
   });
 
-  it("expands account grants to the approver's owned organizations", async () => {
+  it("expands account grants to the approver's owned workspaces", async () => {
     const grants = await readOAuthApprovalGrants(
       formWithGrants([
         {
@@ -86,9 +86,9 @@ describe("readOAuthApprovalGrants", () => {
       "user_owner",
     );
 
-    expect(grants.granted_org_ids).toEqual(["organization_torre"]);
-    expect(grants.granted_org_roles).toEqual({ organization_torre: "reader" });
-    expect(grants.granted_org_write_types).toEqual({ organization_torre: ["intent"] });
+    expect(grants.granted_workspace_ids).toEqual(["workspace_torre"]);
+    expect(grants.granted_workspace_roles).toEqual({ workspace_torre: "reader" });
+    expect(grants.granted_workspace_write_types).toEqual({ workspace_torre: ["intent"] });
   });
 
   // The connector grant: "scope to my full live reach, defer the role to the
@@ -101,7 +101,7 @@ describe("readOAuthApprovalGrants", () => {
     // A brand-new user (no reach) can still mint a "*" token so their agent
     // can request access and have it work live, no re-auth. The matrix
     // (min(matrix, *)) is the sole ceiling at access time.
-    mocks.listOrganizationsForUser.mockResolvedValue([]);
+    mocks.listWorkspacesForUser.mockResolvedValue([]);
     mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue([]);
 
     const grants = await readOAuthApprovalGrants(
@@ -113,9 +113,9 @@ describe("readOAuthApprovalGrants", () => {
       granted_doco_ids: ["*"],
       granted_doco_roles: {},
       granted_doco_write_types: { "*": ["*"] },
-      granted_org_ids: [],
-      granted_org_roles: {},
-      granted_org_write_types: {},
+      granted_workspace_ids: [],
+      granted_workspace_roles: {},
+      granted_workspace_write_types: {},
     });
     // No ownership gate and no reach lookup — the matrix gates at access time.
     expect(mocks.getDocoLevelRole).not.toHaveBeenCalled();

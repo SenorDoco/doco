@@ -1,7 +1,7 @@
 // /users — global Collaborators page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
-// Replaces the per-doco / per-org members pages. Top-level link in
+// Replaces the per-doco / per-workspace members pages. Top-level link in
 // the host nav. Lists only accounts with a username — i.e. people —
-// across every org/doco grant the signed-in principal can see. Agents
+// across every workspace/doco grant the signed-in principal can see. Agents
 // are not collaborators: they authenticate through API tokens and are
 // managed on the API Tokens (/api-keys) page, which the invite card
 // links to. Lets owners edit roles inline (auto-save) and mint person
@@ -11,13 +11,13 @@
 import {
   type DocoRole,
   getDocoById,
-  getOrgRole,
+  getWorkspaceRole,
   removeAccountGrant,
   removeDocoUser,
-  removeOrgUser,
+  removeWorkspaceUser,
   upsertAccountGrant,
   upsertDocoUser,
-  upsertOrgUser,
+  upsertWorkspaceUser,
 } from "@doco/db";
 import { normalizeWriteTypes } from "@doco/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -107,7 +107,7 @@ export async function action({
       grants = parsed.map(
         (g: { level?: unknown; targetId?: unknown; role?: unknown; writeTypes?: unknown }) => {
           const level =
-            g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
+            g.level === "account" || g.level === "workspace" || g.level === "doco" ? g.level : null;
           const targetId = typeof g.targetId === "string" ? g.targetId : "";
           const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
           if (!level || (level !== "account" && !targetId) || !ALL_ROLES.includes(role)) {
@@ -133,11 +133,11 @@ export async function action({
           role: grant.role,
           write_types,
         });
-      } else if (grant.level === "org") {
-        const role = await getOrgRole(grant.targetId, me.id);
-        if (role !== "owner") return { error: "Only org owners can change org users." };
-        await upsertOrgUser({
-          org_id: grant.targetId,
+      } else if (grant.level === "workspace") {
+        const role = await getWorkspaceRole(grant.targetId, me.id);
+        if (role !== "owner") return { error: "Only workspace owners can change workspace users." };
+        await upsertWorkspaceUser({
+          workspace_id: grant.targetId,
           user_id: granteeId,
           role: grant.role,
           write_types,
@@ -161,7 +161,7 @@ export async function action({
 
   // Account-level grants: the grantor is the acting user, so there is
   // no target to own-check — you may always grant or revoke access to
-  // your OWN account. The per-type set + role mirror the doco/org cases.
+  // your OWN account. The per-type set + role mirror the doco/workspace cases.
   if ((intent === "update" || intent === "remove") && level === "account") {
     const granteeId = String(form.get("user_id") ?? "").trim();
     if (!granteeId) return { error: "user_id missing." };
@@ -210,12 +210,12 @@ export async function action({
     if (targetIds.length === 0) return { error: "target_ids missing." };
     if (!principalId) return { error: "user_id missing." };
 
-    if (level !== "org" && level !== "doco") return { error: "Invalid level." };
+    if (level !== "workspace" && level !== "doco") return { error: "Invalid level." };
 
     for (const targetId of targetIds) {
-      if (level === "org") {
-        const role = await getOrgRole(targetId, me.id);
-        if (role !== "owner") return { error: "Only org owners can change org users." };
+      if (level === "workspace") {
+        const role = await getWorkspaceRole(targetId, me.id);
+        if (role !== "owner") return { error: "Only workspace owners can change workspace users." };
       } else {
         const doco = await getDocoById(targetId);
         if (!doco) return { error: "Doco not found." };
@@ -242,8 +242,13 @@ export async function action({
                 .filter(Boolean),
             );
       for (const targetId of targetIds) {
-        if (level === "org")
-          await upsertOrgUser({ org_id: targetId, user_id: principalId, role, write_types });
+        if (level === "workspace")
+          await upsertWorkspaceUser({
+            workspace_id: targetId,
+            user_id: principalId,
+            role,
+            write_types,
+          });
         else await upsertDocoUser({ doco_id: targetId, user_id: principalId, role, write_types });
       }
       return {
@@ -257,7 +262,7 @@ export async function action({
       };
     }
     for (const targetId of targetIds) {
-      if (level === "org") await removeOrgUser(targetId, principalId);
+      if (level === "workspace") await removeWorkspaceUser(targetId, principalId);
       else await removeDocoUser(targetId, principalId);
     }
     return {
@@ -325,7 +330,7 @@ export default function UsersPage({
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Scope filter: "all" | "org:<id>" | "doco:<id>".
+  // Scope filter: "all" | "workspace:<id>" | "doco:<id>".
   const scope = searchParams.get("scope") ?? "all";
 
   function applyScope(value: string) {
@@ -341,18 +346,18 @@ export default function UsersPage({
     });
   }
 
-  const orgRows = useMemo(() => {
-    const flat: GroupedRow[] = loaderData.orgSections
-      .filter((s) => scope === "all" || scope === `org:${s.org.id}`)
+  const workspaceRows = useMemo(() => {
+    const flat: GroupedRow[] = loaderData.workspaceSections
+      .filter((s) => scope === "all" || scope === `workspace:${s.workspace.id}`)
       .flatMap((s) =>
         s.users.map<GroupedRow>((u) => ({
-          level: "org",
+          level: "workspace",
           principal: u,
           grants: [
             {
-              target_id: s.org.id,
-              target_label: s.org.handle,
-              target_link: `/orgs/${s.org.handle}`,
+              target_id: s.workspace.id,
+              target_label: s.workspace.handle,
+              target_link: `/workspaces/${s.workspace.handle}`,
               joined_at: u.joined_at,
               role: u.role,
               writeTypes: u.write_types,
@@ -364,7 +369,7 @@ export default function UsersPage({
         })),
       );
     return groupByPrincipal(flat);
-  }, [loaderData.orgSections, scope]);
+  }, [loaderData.workspaceSections, scope]);
 
   const docoRows = useMemo(() => {
     const flat: GroupedRow[] = loaderData.docoSections
@@ -372,9 +377,9 @@ export default function UsersPage({
         (s) =>
           scope === "all" ||
           scope === `doco:${s.doco.id}` ||
-          // When an org is selected, also surface collaborators on the
-          // docos that org owns — not just the org-wide grants.
-          scope === `org:${s.doco.ownerId}`,
+          // When an workspace is selected, also surface collaborators on the
+          // docos that workspace owns — not just the workspace-wide grants.
+          scope === `workspace:${s.doco.ownerId}`,
       )
       .flatMap((s) =>
         s.users.map<GroupedRow>((u) => ({
@@ -398,13 +403,14 @@ export default function UsersPage({
     return groupByPrincipal(flat);
   }, [loaderData.docoSections, scope]);
 
-  // "All" and org scopes show both sections — selecting an org surfaces
-  // its org-wide grants AND the per-doco grants on docos it owns. A doco
+  // "All" and workspace scopes show both sections — selecting an workspace surfaces
+  // its workspace-wide grants AND the per-doco grants on docos it owns. A doco
   // scope shows only the per-doco section.
-  const showOrgSection = scope === "all" || scope.startsWith("org:");
-  const showDocoSection = scope === "all" || scope.startsWith("doco:") || scope.startsWith("org:");
-  const docoSectionEmpty = scope.startsWith("org:")
-    ? "No collaborators on docos in this org yet."
+  const showWorkspaceSection = scope === "all" || scope.startsWith("workspace:");
+  const showDocoSection =
+    scope === "all" || scope.startsWith("doco:") || scope.startsWith("workspace:");
+  const docoSectionEmpty = scope.startsWith("workspace:")
+    ? "No collaborators on docos in this workspace yet."
     : "You don't have any doco grants yet.";
   const grantCatalog = useMemo(() => catalogFromInvite(loaderData.invite), [loaderData.invite]);
   const existingByPrincipal = useMemo(() => existingGrantsByPrincipal(loaderData), [loaderData]);
@@ -434,11 +440,11 @@ export default function UsersPage({
               className="w-auto rounded-md px-3 py-2"
             >
               <option value="all">All collaborators</option>
-              {loaderData.orgSections.length > 0 ? (
-                <optgroup label="By org">
-                  {loaderData.orgSections.map((s) => (
-                    <option key={s.org.id} value={`org:${s.org.id}`}>
-                      {s.org.handle}
+              {loaderData.workspaceSections.length > 0 ? (
+                <optgroup label="By workspace">
+                  {loaderData.workspaceSections.map((s) => (
+                    <option key={s.workspace.id} value={`workspace:${s.workspace.id}`}>
+                      {s.workspace.handle}
                     </option>
                   ))}
                 </optgroup>
@@ -456,11 +462,11 @@ export default function UsersPage({
           </label>
         </div>
 
-        {showOrgSection ? (
+        {showWorkspaceSection ? (
           <Section
-            title="Org-wide collaborators"
-            empty="You don't have any org grants yet."
-            rows={orgRows}
+            title="Workspace-wide collaborators"
+            empty="You don't have any workspace grants yet."
+            rows={workspaceRows}
             myPrincipalId={loaderData.me.id}
             grantCatalog={grantCatalog}
             existingByPrincipal={existingByPrincipal}
@@ -600,7 +606,7 @@ function UserRow({
   const accessSummary =
     grantCount === 1
       ? `${describeRole(row.grants[0]?.role)} on ${row.grants[0]?.target_label}`
-      : `${grantCount} ${row.level === "org" ? "org" : "doco"} grant${grantCount === 1 ? "" : "s"}`;
+      : `${grantCount} ${row.level === "workspace" ? "workspace" : "doco"} grant${grantCount === 1 ? "" : "s"}`;
 
   return (
     <>
@@ -669,7 +675,7 @@ function UserRow({
 }
 
 function catalogFromInvite(invite: UsersPageData["invite"]): GrantCatalog {
-  return catalogFromOptions(invite.orgs, invite.docos);
+  return catalogFromOptions(invite.workspaces, invite.docos);
 }
 
 function existingGrantsByPrincipal(data: UsersPageData): Map<string, ExistingGrant[]> {
@@ -679,12 +685,12 @@ function existingGrantsByPrincipal(data: UsersPageData): Map<string, ExistingGra
     if (current) current.push(grant);
     else out.set(userId, [grant]);
   };
-  for (const section of data.orgSections) {
+  for (const section of data.workspaceSections) {
     for (const user of section.users) {
       push(user.user_id, {
-        level: "org",
-        targetId: section.org.id,
-        label: section.org.handle,
+        level: "workspace",
+        targetId: section.workspace.id,
+        label: section.workspace.handle,
         role: user.role,
         writeTypes: user.write_types,
       });

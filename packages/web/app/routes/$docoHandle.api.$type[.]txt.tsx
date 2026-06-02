@@ -503,7 +503,7 @@ EXAMPLE — create
     ${baseUrl}/${handle}/api/principals.json \\
     -d '{
       "name": "alice",
-      "body_md": "Human director of engineering. Owns roadmap planning and hiring for the engineering org."
+      "body_md": "Human director of engineering. Owns roadmap planning and hiring for the engineering workspace."
     }'
 
 EDIT
@@ -766,10 +766,10 @@ Per-Doco settings endpoint. Two methods:
 
   GET   ${baseUrl}/${handle}/api/settings.json
     Returns the current settings. Read-gated: anonymous on public docos,
-    owner/org-members on private docos, 404 otherwise.
+    owner/workspace-members on private docos, 404 otherwise.
 
   POST  ${baseUrl}/${handle}/api/settings.json
-    (PATCH is also accepted.) Updates fields. Admin-gated (owner or org
+    (PATCH is also accepted.) Updates fields. Admin-gated (owner or workspace
     admin). Only the keys you include are touched.
 
 AUTH
@@ -799,7 +799,7 @@ ERROR RESPONSE
 
   Common errors:
     - HTTP 404 — you can't read this Doco (private + non-member, or doesn't exist).
-    - HTTP 403 — you can read it but you're not its owner / org admin.
+    - HTTP 403 — you can read it but you're not its owner / workspace admin.
     - "Doco \\"<handle>\\" already exists." — pick a different handle.
     - "handle must be lowercase kebab-case ([a-z0-9_-]+)." — fix the name.
 

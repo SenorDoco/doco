@@ -18,7 +18,7 @@
 // value never appears for an OAuth-flow client because the OAuth
 // /authorize endpoint rejects it as a callback target.
 
-import { type DocoRole, getOrgRole, listOrganizationsForUser, withClient } from "@doco/db";
+import { type DocoRole, getWorkspaceRole, listWorkspacesForUser, withClient } from "@doco/db";
 import { WRITE_ALL, normalizeWriteTypes } from "@doco/shared";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
@@ -29,16 +29,16 @@ import { ALL_ROLES, rankOf } from "~/lib/user-invite";
 const PERSONAL_API_KEY_REDIRECT = "urn:ietf:wg:oauth:2.0:oob";
 
 export interface ScopeOption {
-  level: "org" | "doco";
+  level: "workspace" | "doco";
   id: string;
   label: string;
   myRole: DocoRole;
-  /** Owning org id (doco options only) — groups docos under their org. */
-  orgId?: string;
+  /** Owning workspace id (doco options only) — groups docos under their workspace. */
+  workspaceId?: string;
 }
 
 export interface ApiKeyScopeGrant {
-  level: "org" | "doco";
+  level: "workspace" | "doco";
   target_id: string;
   target_label: string;
   target_link: string;
@@ -85,9 +85,9 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
       granted_doco_ids: string[] | null;
       granted_doco_roles: Record<string, string> | null;
       granted_doco_write_types: Record<string, string[]> | null;
-      granted_org_ids: string[] | null;
-      granted_org_roles: Record<string, string> | null;
-      granted_org_write_types: Record<string, string[]> | null;
+      granted_workspace_ids: string[] | null;
+      granted_workspace_roles: Record<string, string> | null;
+      granted_workspace_write_types: Record<string, string[]> | null;
       created_at: Date | string;
       expires_at: Date | string;
       last_seen_at: Date | string | null;
@@ -101,9 +101,9 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
               rt.granted_doco_ids,
               rt.granted_doco_roles,
               rt.granted_doco_write_types,
-              rt.granted_org_ids,
-              rt.granted_org_roles,
-              rt.granted_org_write_types,
+              rt.granted_workspace_ids,
+              rt.granted_workspace_roles,
+              rt.granted_workspace_write_types,
               rt.created_at,
               rt.expires_at,
               (SELECT MAX(at.created_at)
@@ -121,26 +121,26 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
   );
 
   const allDocoIds = new Set<string>();
-  const allOrgIds = new Set<string>();
+  const allWorkspaceIds = new Set<string>();
   for (const row of result.rows) {
     for (const id of row.granted_doco_ids ?? []) allDocoIds.add(id);
-    for (const id of row.granted_org_ids ?? []) allOrgIds.add(id);
+    for (const id of row.granted_workspace_ids ?? []) allWorkspaceIds.add(id);
   }
   const docoLabels = await loadDocoLabels([...allDocoIds]);
-  const orgHandles = await loadOrgHandles([...allOrgIds]);
+  const workspaceHandles = await loadWorkspaceHandles([...allWorkspaceIds]);
 
   const rows = result.rows.map((row): ApiKeyRow => {
     const grants: ApiKeyScopeGrant[] = [];
-    for (const orgId of row.granted_org_ids ?? []) {
-      const handle = orgHandles.get(orgId);
+    for (const workspaceId of row.granted_workspace_ids ?? []) {
+      const handle = workspaceHandles.get(workspaceId);
       if (!handle) continue;
-      const role = (row.granted_org_roles?.[orgId] ?? "reader") as DocoRole;
-      const writeTypes = normalizeWriteTypes(row.granted_org_write_types?.[orgId]);
+      const role = (row.granted_workspace_roles?.[workspaceId] ?? "reader") as DocoRole;
+      const writeTypes = normalizeWriteTypes(row.granted_workspace_write_types?.[workspaceId]);
       grants.push({
-        level: "org",
-        target_id: orgId,
+        level: "workspace",
+        target_id: workspaceId,
         target_label: handle,
-        target_link: `/orgs/${handle}`,
+        target_link: `/workspaces/${handle}`,
         role,
         writeTypes,
       });
@@ -205,7 +205,7 @@ async function loadDocoLabels(
     c.query<{ id: string; handle: string; owner_slug: string }>(
       `SELECT d.id, d.handle, COALESCE(o.handle, c.github_login, '') AS owner_slug
          FROM docos d
-         LEFT JOIN organizations o ON o.id = d.owner_id
+         LEFT JOIN workspaces o ON o.id = d.owner_id
          LEFT JOIN users c ON c.id = d.owner_id
         WHERE d.id = ANY($1)`,
       [ids],
@@ -221,12 +221,12 @@ async function loadDocoLabels(
   return out;
 }
 
-async function loadOrgHandles(ids: string[]): Promise<Map<string, string>> {
+async function loadWorkspaceHandles(ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (ids.length === 0) return out;
   const rows = await withClient((c) =>
     c.query<{ id: string; handle: string }>(
-      "SELECT id, handle FROM organizations WHERE id = ANY($1)",
+      "SELECT id, handle FROM workspaces WHERE id = ANY($1)",
       [ids],
     ),
   );
@@ -235,11 +235,11 @@ async function loadOrgHandles(ids: string[]): Promise<Map<string, string>> {
 }
 
 export async function loadScopeOptions(principalId: string): Promise<ScopeOption[]> {
-  const orgs = await listOrganizationsForUser(principalId);
+  const workspaces = await listWorkspacesForUser(principalId);
   const options: ScopeOption[] = [];
-  for (const o of orgs) {
-    const role = (await getOrgRole(o.id, principalId)) ?? "reader";
-    options.push({ level: "org", id: o.id, label: o.handle, myRole: role });
+  for (const o of workspaces) {
+    const role = (await getWorkspaceRole(o.id, principalId)) ?? "reader";
+    options.push({ level: "workspace", id: o.id, label: o.handle, myRole: role });
   }
 
   const docoIds = await listAccessibleDocoIdsForPrincipal(principalId);
@@ -248,7 +248,7 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
       c.query<{ handle: string; owner_id: string; owner_slug: string }>(
         `SELECT d.handle, d.owner_id, COALESCE(o.handle, c.github_login, '') AS owner_slug
            FROM docos d
-           LEFT JOIN organizations o ON o.id = d.owner_id
+           LEFT JOIN workspaces o ON o.id = d.owner_id
            LEFT JOIN users c ON c.id = d.owner_id
           WHERE d.id = $1`,
         [docoId],
@@ -266,10 +266,10 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
         handle: String(row.handle),
       }),
       myRole: role,
-      orgId: String(row.owner_id),
+      workspaceId: String(row.owner_id),
     });
   }
-  // Sort by label across orgs + docos so the picker reads alphabetically.
+  // Sort by label across workspaces + docos so the picker reads alphabetically.
   options.sort((a, b) => a.label.localeCompare(b.label));
   return options;
 }
@@ -281,7 +281,7 @@ export interface MintApiKeyInput {
 }
 
 export interface ApiKeyGrantInput {
-  level: "account" | "org" | "doco";
+  level: "account" | "workspace" | "doco";
   /** Empty for account-level grants (the minter's account is the scope). */
   target_id: string;
   role: DocoRole;
@@ -295,17 +295,17 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     throw new Error("Label is required.");
   }
   if (input.grants.length === 0) {
-    throw new Error("Pick at least one org or doco to scope this key to.");
+    throw new Error("Pick at least one workspace or doco to scope this key to.");
   }
 
   // An account-level grant on a token expands, AT MINT TIME, to a grant on
-  // every org the minter owns. Unlike the live user→user account grant, a
-  // token is a snapshot credential: orgs created later are NOT auto-added
-  // (mint a fresh token to widen). Non-owned orgs are skipped — you can
-  // only delegate from orgs you own.
+  // every workspace the minter owns. Unlike the live user→user account grant, a
+  // token is a snapshot credential: workspaces created later are NOT auto-added
+  // (mint a fresh token to widen). Non-owned workspaces are skipped — you can
+  // only delegate from workspaces you own.
   const expandedGrants = await expandAccountGrants(input.me, input.grants);
   if (expandedGrants.length === 0) {
-    throw new Error("You don't own any organization to scope an account token to.");
+    throw new Error("You don't own any workspace to scope an account token to.");
   }
   const grants = expandedGrants;
 
@@ -320,9 +320,9 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     granted_doco_ids,
     granted_doco_roles,
     granted_doco_write_types,
-    granted_org_ids,
-    granted_org_roles,
-    granted_org_write_types,
+    granted_workspace_ids,
+    granted_workspace_roles,
+    granted_workspace_write_types,
     scopeGrants,
   } = await serializeApiKeyGrants(grants);
 
@@ -333,9 +333,9 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     granted_doco_ids,
     granted_doco_roles,
     granted_doco_write_types,
-    granted_org_ids,
-    granted_org_roles,
-    granted_org_write_types,
+    granted_workspace_ids,
+    granted_workspace_roles,
+    granted_workspace_write_types,
     scope: null,
   });
 
@@ -356,13 +356,13 @@ async function expandAccountGrants(
   const expandedGrants: ApiKeyGrantInput[] = [];
   for (const grant of inputGrants) {
     if (grant.level === "account") {
-      const orgs = await listOrganizationsForUser(me.id);
-      for (const org of orgs) {
-        const myRole = await getOrgRole(org.id, me.id);
+      const workspaces = await listWorkspacesForUser(me.id);
+      for (const workspace of workspaces) {
+        const myRole = await getWorkspaceRole(workspace.id, me.id);
         if (myRole === "owner") {
           expandedGrants.push({
-            level: "org",
-            target_id: org.id,
+            level: "workspace",
+            target_id: workspace.id,
             role: grant.role,
             write_types: grant.write_types,
           });
@@ -384,8 +384,8 @@ async function assertApiKeyGrantsAllowed(
       throw new Error(`Invalid role: ${grant.role}`);
     }
     const myRole =
-      grant.level === "org"
-        ? await getOrgRole(grant.target_id, me.id)
+      grant.level === "workspace"
+        ? await getWorkspaceRole(grant.target_id, me.id)
         : await getDocoLevelRoleForGrant(grant.target_id, me.id);
     if (!myRole) {
       throw new Error(`You don't have a role on this ${grant.level}.`);
@@ -402,24 +402,24 @@ async function serializeApiKeyGrants(grants: ApiKeyGrantInput[]): Promise<{
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_doco_write_types: Record<string, string[]>;
-  granted_org_ids: string[];
-  granted_org_roles: Record<string, string>;
-  granted_org_write_types: Record<string, string[]>;
+  granted_workspace_ids: string[];
+  granted_workspace_roles: Record<string, string>;
+  granted_workspace_write_types: Record<string, string[]>;
   scopeGrants: ApiKeyScopeGrant[];
 }> {
   const granted_doco_ids: string[] = [];
   const granted_doco_roles: Record<string, string> = {};
   const granted_doco_write_types: Record<string, string[]> = {};
-  const granted_org_ids: string[] = [];
-  const granted_org_roles: Record<string, string> = {};
-  const granted_org_write_types: Record<string, string[]> = {};
+  const granted_workspace_ids: string[] = [];
+  const granted_workspace_roles: Record<string, string> = {};
+  const granted_workspace_write_types: Record<string, string[]> = {};
   const scopeGrants: ApiKeyScopeGrant[] = [];
 
   const docoLabels = await loadDocoLabels(
     grants.filter((g) => g.level === "doco").map((g) => g.target_id),
   );
-  const orgHandles = await loadOrgHandles(
-    grants.filter((g) => g.level === "org").map((g) => g.target_id),
+  const workspaceHandles = await loadWorkspaceHandles(
+    grants.filter((g) => g.level === "workspace").map((g) => g.target_id),
   );
 
   // Effective write-type scope for a grant: owner writes everything
@@ -436,16 +436,16 @@ async function serializeApiKeyGrants(grants: ApiKeyGrantInput[]): Promise<{
 
   for (const grant of grants) {
     const wt = writeTypesFor(grant);
-    if (grant.level === "org") {
-      granted_org_ids.push(grant.target_id);
-      granted_org_roles[grant.target_id] = grant.role;
-      if (wt) granted_org_write_types[grant.target_id] = wt;
-      const handle = orgHandles.get(grant.target_id) ?? grant.target_id;
+    if (grant.level === "workspace") {
+      granted_workspace_ids.push(grant.target_id);
+      granted_workspace_roles[grant.target_id] = grant.role;
+      if (wt) granted_workspace_write_types[grant.target_id] = wt;
+      const handle = workspaceHandles.get(grant.target_id) ?? grant.target_id;
       scopeGrants.push({
-        level: "org",
+        level: "workspace",
         target_id: grant.target_id,
         target_label: handle,
-        target_link: `/orgs/${handle}`,
+        target_link: `/workspaces/${handle}`,
         role: grant.role,
         writeTypes: wt ?? [],
       });
@@ -470,9 +470,9 @@ async function serializeApiKeyGrants(grants: ApiKeyGrantInput[]): Promise<{
     granted_doco_ids,
     granted_doco_roles,
     granted_doco_write_types,
-    granted_org_ids,
-    granted_org_roles,
-    granted_org_write_types,
+    granted_workspace_ids,
+    granted_workspace_roles,
+    granted_workspace_write_types,
     scopeGrants,
   };
 }
@@ -487,7 +487,7 @@ export async function addGrantsToApiKey(input: {
 
   const expandedGrants = await expandAccountGrants(input.me, input.grants);
   if (expandedGrants.length === 0) {
-    throw new Error("You don't own any organization to scope an account token to.");
+    throw new Error("You don't own any workspace to scope an account token to.");
   }
   await assertApiKeyGrantsAllowed(input.me, expandedGrants);
 
@@ -500,13 +500,13 @@ export async function addGrantsToApiKey(input: {
       granted_doco_ids: string[] | null;
       granted_doco_roles: Record<string, string> | null;
       granted_doco_write_types: Record<string, string[]> | null;
-      granted_org_ids: string[] | null;
-      granted_org_roles: Record<string, string> | null;
-      granted_org_write_types: Record<string, string[]> | null;
+      granted_workspace_ids: string[] | null;
+      granted_workspace_roles: Record<string, string> | null;
+      granted_workspace_write_types: Record<string, string[]> | null;
     }>(
       `SELECT rt.client_id, rt.user_id,
               rt.granted_doco_ids, rt.granted_doco_roles, rt.granted_doco_write_types,
-              rt.granted_org_ids, rt.granted_org_roles, rt.granted_org_write_types
+              rt.granted_workspace_ids, rt.granted_workspace_roles, rt.granted_workspace_write_types
          FROM oauth_refresh_tokens rt
         WHERE rt.client_id = $1
           AND rt.user_id = $2
@@ -527,13 +527,13 @@ export async function addGrantsToApiKey(input: {
       incoming.granted_doco_roles,
       incoming.granted_doco_write_types,
     );
-    const mergedOrg = mergeTokenScope(
-      row.granted_org_ids ?? [],
-      row.granted_org_roles ?? {},
-      row.granted_org_write_types ?? {},
-      incoming.granted_org_ids,
-      incoming.granted_org_roles,
-      incoming.granted_org_write_types,
+    const mergedWorkspace = mergeTokenScope(
+      row.granted_workspace_ids ?? [],
+      row.granted_workspace_roles ?? {},
+      row.granted_workspace_write_types ?? {},
+      incoming.granted_workspace_ids,
+      incoming.granted_workspace_roles,
+      incoming.granted_workspace_write_types,
     );
 
     const values = [
@@ -541,9 +541,9 @@ export async function addGrantsToApiKey(input: {
       mergedDoco.ids,
       JSON.stringify(mergedDoco.roles),
       JSON.stringify(mergedDoco.writeTypes),
-      mergedOrg.ids,
-      JSON.stringify(mergedOrg.roles),
-      JSON.stringify(mergedOrg.writeTypes),
+      mergedWorkspace.ids,
+      JSON.stringify(mergedWorkspace.roles),
+      JSON.stringify(mergedWorkspace.writeTypes),
       input.me.id,
     ];
     await c.query(
@@ -551,9 +551,9 @@ export async function addGrantsToApiKey(input: {
           SET granted_doco_ids = $2,
               granted_doco_roles = $3::jsonb,
               granted_doco_write_types = $4::jsonb,
-              granted_org_ids = $5,
-              granted_org_roles = $6::jsonb,
-              granted_org_write_types = $7::jsonb
+              granted_workspace_ids = $5,
+              granted_workspace_roles = $6::jsonb,
+              granted_workspace_write_types = $7::jsonb
         WHERE rt.client_id = $1
           AND rt.user_id = $8
           AND rt.revoked = false
@@ -565,9 +565,9 @@ export async function addGrantsToApiKey(input: {
           SET granted_doco_ids = $2,
               granted_doco_roles = $3::jsonb,
               granted_doco_write_types = $4::jsonb,
-              granted_org_ids = $5,
-              granted_org_roles = $6::jsonb,
-              granted_org_write_types = $7::jsonb
+              granted_workspace_ids = $5,
+              granted_workspace_roles = $6::jsonb,
+              granted_workspace_write_types = $7::jsonb
         WHERE at.client_id = $1
           AND at.user_id = $8
           AND at.revoked = false

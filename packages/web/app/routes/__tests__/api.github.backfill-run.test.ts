@@ -62,7 +62,7 @@ describe("api.github.backfill-run action", () => {
   it("skips (no re-import) when the marker is already done", async () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [],
       backfill: { status: "done", queue: ["acme/a"] },
     });
@@ -77,7 +77,7 @@ describe("api.github.backfill-run action", () => {
     // A marker written before the resumable driver shipped: running, no cursor.
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [
         { repo: "acme/a", installation_id: 7 },
         { repo: "acme/b", installation_id: 7 },
@@ -102,7 +102,7 @@ describe("api.github.backfill-run action", () => {
   it("skips a running marker with no queue AND no connections (nothing to do)", async () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [],
       backfill: { status: "running" },
     });
@@ -116,7 +116,7 @@ describe("api.github.backfill-run action", () => {
   it("runs a slice and does NOT re-kick when the slice finishes", async () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [{ repo: "acme/a", installation_id: 42 }],
       backfill: { status: "running", queue: ["acme/a"], installation_id: 42, page: 1 },
     });
@@ -143,7 +143,7 @@ describe("api.github.backfill-run action", () => {
   it("re-kicks itself when the slice is not done", async () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [],
       backfill: { status: "running", queue: ["acme/a", "acme/b"], installation_id: 7, page: 1 },
     });
@@ -168,7 +168,7 @@ describe("api.github.backfill-run action", () => {
   it("accepts Vercel's cron header in lieu of the bearer secret", async () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [],
       backfill: { status: "done" },
     });
@@ -183,7 +183,7 @@ describe("api.github.backfill-run action", () => {
     // retry_after + the sweep resume it once GitHub's window clears.
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [],
       backfill: { status: "running", queue: ["acme/a", "acme/b"], installation_id: 7, page: 1 },
     });
@@ -201,7 +201,7 @@ describe("api.github.backfill-run action", () => {
     const future = new Date(Date.now() + 30 * 60_000).toISOString();
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [{ repo: "acme/a", installation_id: 7 }],
       backfill: {
         status: "running",
@@ -224,7 +224,7 @@ describe("api.github.backfill-run action", () => {
   it("returns 200 (not a 500) and drops the chain to the sweep if a slice throws", async () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
-      orgHandle: "o",
+      workspaceHandle: "o",
       connections: [],
       backfill: { status: "running", queue: ["acme/a"], installation_id: 7, page: 1 },
     });

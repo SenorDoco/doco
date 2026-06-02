@@ -106,21 +106,21 @@ function PrimaryCtas() {
   return (
     <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
       <Link
-        to="/new-doco"
+        to="/new-workspace"
         className="neu-surface-interactive group rounded-lg border border-primary bg-card px-6 py-8 text-left transition-colors hover:border-primary"
       >
-        <div className="text-base font-semibold">Create a new doco</div>
+        <div className="text-base font-semibold">Create a new workspace</div>
         <div className="mt-2 text-xs text-muted-foreground">
-          Start tracking alignment for a new project.
+          Start a shared memory for your team and its agents.
         </div>
       </Link>
       <Link
         to="/onboarding/join"
         className="neu-surface-interactive group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
       >
-        <div className="text-base font-semibold">Join an existing doco</div>
+        <div className="text-base font-semibold">Join a workspace</div>
         <div className="mt-2 text-xs text-muted-foreground">
-          Collaborate on a project that's already tracked here.
+          Collaborate in a workspace you've been invited to.
         </div>
       </Link>
     </div>

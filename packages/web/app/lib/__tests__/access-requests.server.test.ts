@@ -39,7 +39,7 @@ import {
   requestDocoAccess,
 } from "../access-requests.server";
 
-const DOCO = { id: "doco_1", handle: "acme", owner_id: "organization_acme" };
+const DOCO = { id: "doco_1", handle: "acme", owner_id: "workspace_acme" };
 
 describe("requestDocoAccess", () => {
   beforeEach(() => {
@@ -168,7 +168,7 @@ describe("listAccessRequestsForOwner", () => {
   it("returns pending requests across owned docos, enriched with handle + login", async () => {
     mocks.loadApprovalGrantOptions.mockResolvedValue({
       docos: [{ id: "doco_1", handle: "acme" }],
-      orgs: [],
+      workspaces: [],
     });
     mocks.listPendingAccessRequestsForDocos.mockResolvedValue([
       {
@@ -198,7 +198,7 @@ describe("listAccessRequestsForOwner", () => {
   });
 
   it("short-circuits to empty when the viewer owns nothing", async () => {
-    mocks.loadApprovalGrantOptions.mockResolvedValue({ docos: [], orgs: [] });
+    mocks.loadApprovalGrantOptions.mockResolvedValue({ docos: [], workspaces: [] });
     expect(await listAccessRequestsForOwner("owner")).toEqual([]);
     expect(mocks.listPendingAccessRequestsForDocos).not.toHaveBeenCalled();
   });

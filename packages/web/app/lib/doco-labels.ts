@@ -7,6 +7,6 @@ export function qualifiedDocoLabel(input: {
   return owner ? `${owner}/${handle}` : handle;
 }
 
-export function orgWideLabel(orgHandle: string): string {
-  return `${orgHandle.trim()}/*`;
+export function workspaceWideLabel(workspaceHandle: string): string {
+  return `${workspaceHandle.trim()}/*`;
 }

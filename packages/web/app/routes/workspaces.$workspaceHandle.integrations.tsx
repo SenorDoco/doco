@@ -1,21 +1,21 @@
-// /orgs/:orgHandle/integrations — per-Org integrations management.
+// /workspaces/:workspaceHandle/integrations — per-Workspace integrations management.
 //
 // Two panes:
-//   Left  — integrations configured at the org level, plus a per-Doco
-//           rollup for every Doco the org owns that has any connections.
+//   Left  — integrations configured at the workspace level, plus a per-Doco
+//           rollup for every Doco the workspace owns that has any connections.
 //   Right — full catalog of available integrations; cross-scope clicks
 //           land on the picker for the right target.
 //
 // Above both panes: a scope-nav link back up to the account-wide page.
 //
-// No org-level integrations exist as concrete features yet, so the left
-// pane primarily surfaces the Docos-in-this-org rollup. The card slot
-// for org-level integrations is wired so it lights up automatically the
-// moment we add one (e.g. an org-level Slack channel default).
-import { getOrgRole } from "@doco/db";
+// No workspace-level integrations exist as concrete features yet, so the left
+// pane primarily surfaces the Docos-in-this-workspace rollup. The card slot
+// for workspace-level integrations is wired so it lights up automatically the
+// moment we add one (e.g. an workspace-level Slack channel default).
+import { getWorkspaceRole } from "@doco/db";
 import { ArrowRight } from "lucide-react";
 import { Link, redirect } from "react-router";
-import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
+import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import {
   AvailableIntegrations,
@@ -23,89 +23,100 @@ import {
   ScopePickerBanner,
 } from "~/components/integrations-shell";
 import { SiteHeader } from "~/components/site-header";
-import { loadOrgIntegrationsRollup } from "~/lib/integrations-summary.server";
-import { resolveOrgByHandle } from "~/lib/org-helpers.server";
+import { loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 
 export async function loader({
   request,
   params,
 }: {
   request: Request;
-  params: { orgHandle: string };
+  params: { workspaceHandle: string };
 }) {
   const me = await getCurrentPrincipal(request);
   const url = new URL(request.url);
   if (!me) {
     throw redirect(`/sign-in?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`);
   }
-  const org = await resolveOrgByHandle(params.orgHandle);
-  if (!org) {
-    throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
+  const workspace = await resolveWorkspaceByHandle(params.workspaceHandle);
+  if (!workspace) {
+    throw new Response(`Workspace "${params.workspaceHandle}" not found.`, { status: 404 });
   }
-  const role = await getOrgRole(org.id, me.id);
+  const role = await getWorkspaceRole(workspace.id, me.id);
   if (!role) {
-    throw new Response("You don't have access to this organization.", { status: 403 });
+    throw new Response("You don't have access to this workspace.", { status: 403 });
   }
-  const rollup = await loadOrgIntegrationsRollup({ orgId: org.id, orgHandle: org.handle });
+  const rollup = await loadWorkspaceIntegrationsRollup({
+    workspaceId: workspace.id,
+    workspaceHandle: workspace.handle,
+  });
   return {
     me,
-    org,
+    workspace,
     rollup,
     pickingIntegrationId: url.searchParams.get("integration"),
   };
 }
 
-export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Integrations · ${params.orgHandle} · Doco` }];
+export function meta({ params }: { params: { workspaceHandle: string } }) {
+  return [{ title: `Integrations · ${params.workspaceHandle} · Doco` }];
 }
 
-export default function OrgIntegrations({
+export default function WorkspaceIntegrations({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, org, rollup, pickingIntegrationId } = loaderData;
+  const { me, workspace, rollup, pickingIntegrationId } = loaderData;
   return (
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
-        <Breadcrumb items={orgBreadcrumb({ orgSlug: org.handle, pageLabel: "Integrations" })} />
+        <Breadcrumb
+          items={workspaceBreadcrumb({
+            workspaceSlug: workspace.handle,
+            pageLabel: "Integrations",
+          })}
+        />
         <header className="space-y-3">
           <h1 className="text-2xl font-semibold">Integrations</h1>
           <p className="text-sm text-muted-foreground">
-            Everything wired up under {org.handle}, plus a rollup of each Doco&apos;s connections.
+            Everything wired up under {workspace.handle}, plus a rollup of each Doco&apos;s
+            connections.
           </p>
-          <ScopeNavLinks scope="org" />
+          <ScopeNavLinks scope="workspace" />
         </header>
 
         <ScopePickerBanner
           integrationId={pickingIntegrationId}
-          pageScope="org"
-          orgHandle={org.handle}
+          pageScope="workspace"
+          workspaceHandle={workspace.handle}
         />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-muted-foreground">
-              Connected under {org.handle}
+              Connected under {workspace.handle}
             </h2>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Org-level integrations</CardTitle>
-                <CardDescription>Connections that apply to every Doco in this org.</CardDescription>
+                <CardTitle className="text-base">Workspace-level integrations</CardTitle>
+                <CardDescription>
+                  Connections that apply to every Doco in this workspace.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  No org-wide integrations are configured yet. Channel defaults from Slack and
-                  similar org-scoped features will appear here.
+                  No workspace-wide integrations are configured yet. Channel defaults from Slack and
+                  similar workspace-scoped features will appear here.
                 </p>
               </CardContent>
             </Card>
 
             <Card id="pick-doco">
               <CardHeader>
-                <CardTitle className="text-base">Docos in this org</CardTitle>
+                <CardTitle className="text-base">Docos in this workspace</CardTitle>
                 <CardDescription>
                   Each Doco manages its own connections. Open one to drill in.
                 </CardDescription>
@@ -142,7 +153,7 @@ export default function OrgIntegrations({
                   </ul>
                 ) : (
                   <p className="px-4 py-3 text-sm text-muted-foreground">
-                    No Docos in this org have integrations configured yet.
+                    No Docos in this workspace have integrations configured yet.
                   </p>
                 )}
               </CardContent>
@@ -151,7 +162,7 @@ export default function OrgIntegrations({
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
-            <AvailableIntegrations pageScope="org" orgHandle={org.handle} />
+            <AvailableIntegrations pageScope="workspace" workspaceHandle={workspace.handle} />
           </section>
         </div>
       </main>

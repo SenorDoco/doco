@@ -1,6 +1,6 @@
-// /orgs — host-level "Your orgs" listing: the orgs
+// /workspaces — host-level "Your workspaces" listing: the workspaces
 // the signed-in principal belongs to, ordered by recent activity
-// across each org's docos, plus an activity heatmap + latest-activity
+// across each workspace's docos, plus an activity heatmap + latest-activity
 // feed sidebar.
 
 import { withClient } from "@doco/db";
@@ -23,7 +23,7 @@ import {
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { NODE_TYPES_FOR_STATS_SQL } from "~/lib/doco-stats.server";
-import { listAllDocos, listMyOrgs } from "~/lib/host.server";
+import { listAllDocos, listMyWorkspaces } from "~/lib/host.server";
 import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -31,7 +31,7 @@ import { timeAgo } from "~/lib/time-ago";
 const HEATMAP_WEEKS = 52;
 const FEED_LIMIT = 10;
 
-interface OrgRow {
+interface WorkspaceRow {
   id: string;
   handle: string;
   display_name: string;
@@ -57,42 +57,42 @@ interface FeedEvent {
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) {
-    throw redirect(`/sign-in?next=${encodeURIComponent("/orgs")}`);
+    throw redirect(`/sign-in?next=${encodeURIComponent("/workspaces")}`);
   }
 
-  const orgsRaw = await listMyOrgs(me.id);
+  const workspacesRaw = await listMyWorkspaces(me.id);
 
-  // Per-org aggregates: last activity across owned docos and total node
+  // Per-workspace aggregates: last activity across owned docos and total node
   // count summed across every entity table. Entity timestamps are the
   // fallback for imported/pre-audit content. Separate pooled queries avoid
   // serializing work through a single PoolClient.
-  const orgIds = orgsRaw.map((o) => o.id);
+  const workspaceIds = workspacesRaw.map((o) => o.id);
   // Post-collapse: count rows in the unified `nodes` table (the stats
-  // node types). The outer query scopes by org via the docos join.
+  // node types). The outer query scopes by workspace via the docos join.
   const nodesUnionSql = `SELECT doco_id, lifecycle, updated_at FROM nodes WHERE node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
-  const [orgLastActivity, orgNodeStats] = await Promise.all([
+  const [workspaceLastActivity, workspaceNodeStats] = await Promise.all([
     withClient(async (c) => {
-      if (orgIds.length === 0) return new Map<string, string | null>();
+      if (workspaceIds.length === 0) return new Map<string, string | null>();
       const r = await c.query<{ owner_id: string; last_at: string | null }>(
         `SELECT d.owner_id, MAX(a.at)::text AS last_at
            FROM audit_events a
            JOIN docos d ON d.id = a.doco_id
           WHERE d.owner_id = ANY($1)
           GROUP BY d.owner_id`,
-        [orgIds],
+        [workspaceIds],
       );
       const m = new Map<string, string | null>();
       for (const row of r.rows) m.set(String(row.owner_id), row.last_at);
       return m;
     }),
     withClient(async (c) => {
-      type OrgNodeStat = {
+      type WorkspaceNodeStat = {
         nodeCount: number;
         counts: LifecycleCounts;
         lastUpdatedAt: string | null;
       };
-      if (orgIds.length === 0) {
-        return new Map<string, OrgNodeStat>();
+      if (workspaceIds.length === 0) {
+        return new Map<string, WorkspaceNodeStat>();
       }
       const r = await c.query<{
         owner_id: string;
@@ -112,9 +112,9 @@ export async function loader({ request }: { request: Request }) {
            JOIN docos d ON d.id = t.doco_id
           WHERE d.owner_id = ANY($1)
           GROUP BY d.owner_id`,
-        [orgIds],
+        [workspaceIds],
       );
-      const m = new Map<string, OrgNodeStat>();
+      const m = new Map<string, WorkspaceNodeStat>();
       for (const row of r.rows) {
         m.set(String(row.owner_id), {
           nodeCount: Number(row.n),
@@ -130,16 +130,16 @@ export async function loader({ request }: { request: Request }) {
     }),
   ]);
 
-  const orgs: OrgRow[] = (
+  const workspaces: WorkspaceRow[] = (
     await Promise.all(
-      orgsRaw.map(async (o) => ({
+      workspacesRaw.map(async (o) => ({
         ...o,
         lastUpdatedAt: newestIso(
-          orgLastActivity.get(o.id) ?? null,
-          orgNodeStats.get(o.id)?.lastUpdatedAt ?? null,
+          workspaceLastActivity.get(o.id) ?? null,
+          workspaceNodeStats.get(o.id)?.lastUpdatedAt ?? null,
         ),
-        nodeCount: orgNodeStats.get(o.id)?.nodeCount ?? 0,
-        counts: orgNodeStats.get(o.id)?.counts ?? EMPTY_LIFECYCLE_COUNTS,
+        nodeCount: workspaceNodeStats.get(o.id)?.nodeCount ?? 0,
+        counts: workspaceNodeStats.get(o.id)?.counts ?? EMPTY_LIFECYCLE_COUNTS,
       })),
     )
   ).sort((a, b) => {
@@ -239,7 +239,7 @@ export async function loader({ request }: { request: Request }) {
     return { byDay, feed };
   });
 
-  return { me, orgs, byDay, feed };
+  return { me, workspaces, byDay, feed };
 }
 
 function newestIso(a: string | null, b: string | null): string | null {
@@ -249,18 +249,18 @@ function newestIso(a: string | null, b: string | null): string | null {
 }
 
 export function meta() {
-  return [{ title: "Your orgs · Doco" }];
+  return [{ title: "Your workspaces · Doco" }];
 }
 
-export default function OrgsIndexPage({
+export default function WorkspacesIndexPage({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, orgs, byDay, feed } = loaderData;
-  const orgItems: AccessListItem[] = orgs.map((o) => ({
+  const { me, workspaces, byDay, feed } = loaderData;
+  const workspaceItems: AccessListItem[] = workspaces.map((o) => ({
     id: o.id,
-    href: `/orgs/${o.handle}`,
+    href: `/workspaces/${o.handle}`,
     label: o.display_name || o.handle,
     count: o.nodeCount,
     countLabel: `${o.nodeCount} nodes`,
@@ -271,15 +271,15 @@ export default function OrgsIndexPage({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Orgs" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Workspaces" })} />
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Your orgs</h1>
+          <h1 className="text-2xl font-semibold">Your workspaces</h1>
           <div className="flex flex-wrap gap-2">
             <Link
-              to="/new-org"
+              to="/new-workspace"
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
-              + Org
+              + Workspace
             </Link>
           </div>
         </header>
@@ -287,11 +287,11 @@ export default function OrgsIndexPage({
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
             <AccessListCard
-              items={orgItems}
+              items={workspaceItems}
               empty={
                 <>
-                  You aren't a member of any org yet.{" "}
-                  <Link to="/new-org" className="underline">
+                  You aren't a member of any workspace yet.{" "}
+                  <Link to="/new-workspace" className="underline">
                     Create one
                   </Link>
                   .
@@ -320,7 +320,7 @@ export default function OrgsIndexPage({
                 ) : (
                   <div className="divide-y divide-border">
                     {feed.map((e) => (
-                      <OrgsFeedLine key={e.event_id} event={e} />
+                      <WorkspacesFeedLine key={e.event_id} event={e} />
                     ))}
                   </div>
                 )}
@@ -333,7 +333,7 @@ export default function OrgsIndexPage({
   );
 }
 
-function OrgsFeedLine({ event }: { event: FeedEvent }) {
+function WorkspacesFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
     docoHandle: event.handle,
     entityType: event.entity_type,

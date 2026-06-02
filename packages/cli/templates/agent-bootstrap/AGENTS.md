@@ -112,10 +112,10 @@ finished." Once per turn — not on intermediate progress updates.
 
 **On the first reply of a session that uses the Doco** — render one
 Loading line per source listed in `.doco/connections.md` (use the Doco
-handle, or the organization name if access is granted org-wide).
+handle, or the workspace name if access is granted workspace-wide).
 Render as the very first text, BEFORE any MCP tool call:
 ```
-[🔮 Doco] Loading <doco-or-org-name>...
+[🔮 Doco] Loading <doco-or-workspace-name>...
 ```
 
 (Trailing `...` is required. If this turn doesn't touch Doco at all,
@@ -163,7 +163,7 @@ refresh, or a `[🔮 Doco] Not connected yet:` block is in your context):
 2. Render the block returned by `doco_authenticate` at the top of
    your reply. Shape:
    ```
-   [🔮 Doco] <doco-or-org-name> access not granted yet
+   [🔮 Doco] <doco-or-workspace-name> access not granted yet
 
    To let me read this project's prior decisions and rules, open
    [https://doco.to/device?user_code=XXXX-YYYY](https://doco.to/device?user_code=XXXX-YYYY)
@@ -207,13 +207,13 @@ contain the operation lines.
 ### 3. Tally at the closing line of every turn
 
 Render one line per source the agent has potential access to (each Doco
-or organization listed in `.doco/connections.md`). Render at the very
+or workspace listed in `.doco/connections.md`). Render at the very
 end of the response.
 
 **Connected source** (you queried or wrote to it this turn — even if
 N == 0):
 ```
-[🔮 Doco <token nickname> on behalf of @username] <doco-or-org-name>: **<N>** nodes added/updated
+[🔮 Doco <token nickname> on behalf of @username] <doco-or-workspace-name>: **<N>** nodes added/updated
 ```
 (Use `viewer.indicator_prefix` once known — see "Your Doco credential
 label" in §1. Fall back to `[🔮 Doco @username]` only when no
@@ -222,12 +222,12 @@ first search of a cold session.)
 
 **Source whose access hasn't been granted yet**:
 ```
-[🔮 Doco] ⚠️ <doco-or-org-name> not queried or updated as access hasn't been granted yet.
+[🔮 Doco] ⚠️ <doco-or-workspace-name> not queried or updated as access hasn't been granted yet.
 ```
 
 Use the Doco handle when access is scoped to one Doco, or the
-organization name when access is granted org-wide (covering multiple
-Docos under that org).
+workspace name when access is granted workspace-wide (covering multiple
+Docos under that workspace).
 
 `<N>` MUST be wrapped in markdown bold. Singular when `N == 1`, plural
 otherwise (0 is plural). PATCH-3-fields-of-1-Decision = 1, not 3. A

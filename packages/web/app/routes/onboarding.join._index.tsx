@@ -6,13 +6,13 @@ import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 
 export function meta() {
-  return [{ title: "Join a doco · Doco" }];
+  return [{ title: "Join a workspace · Doco" }];
 }
 
 export default function JoinRoleQuestion() {
   return (
     <RoleSplitPage
-      title="Joining a doco. Choose who is joining."
+      title="Joining a workspace. Choose who is joining."
       humanHref="/onboarding/join/human"
       agentHref="/onboarding/join/agent"
       backHref="/"

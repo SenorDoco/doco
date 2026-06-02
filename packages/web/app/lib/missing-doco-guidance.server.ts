@@ -74,7 +74,7 @@ export function buildMissingDocoGuidance(args: {
     status: 403,
     title: `The Doco "${identifier}" exists on ${host}, but your credentials don't grant access.`,
     summary:
-      "Your access credential resolves to a principal that isn't the Doco's owner or a member of the owning org.",
+      "Your access credential resolves to a principal that isn't the Doco's owner or a member of the owning workspace.",
     actions: [
       {
         label: "Ask the project owner to grant access",
@@ -85,7 +85,7 @@ export function buildMissingDocoGuidance(args: {
         label: "Re-authorize with the right account",
         command: `doco login --host ${host}`,
         explainer:
-          "Mints a fresh access credential. If you have access under a different account or organization, switch to that one in the browser flow.",
+          "Mints a fresh access credential. If you have access under a different account or workspace, switch to that one in the browser flow.",
       },
       {
         label: "Do NOT try to create a second Doco",

@@ -1,7 +1,7 @@
 // Shared template metadata used by the /new-doco wizard step 3 AND
 // the /dashboard "Newly available templates" panel. The handles must
 // match the ones the host package's `findDocoTemplateByName` knows
-// about — they're passed verbatim to `createDocoInOrg`.
+// about — they're passed verbatim to `createDocoInWorkspace`.
 //
 // `updatedAt` is the ISO date the template metadata last changed on
 // the host; the dashboard sorts the panel by this descending and

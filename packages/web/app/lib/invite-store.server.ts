@@ -29,7 +29,7 @@ export interface Invite {
   minted_by_user_id: EntityId<"principal"> | null;
   /** Every grant the redeemer receives on consume. */
   grants: Array<{
-    level: "account" | "org" | "doco";
+    level: "account" | "workspace" | "doco";
     target_id: string;
     role: "owner" | "writer" | "reader";
     write_types: string[];
@@ -120,8 +120,8 @@ export class InviteStore {
     ttlDays = 7,
     role: "owner" | "writer" | "reader" = "writer",
     opts: {
-      level?: "account" | "org" | "doco";
-      org_id?: EntityId<"organization">;
+      level?: "account" | "workspace" | "doco";
+      workspace_id?: EntityId<"workspace">;
       account_grantor_user_id?: EntityId<"principal">;
       write_types?: string[];
       grants?: Invite["grants"];
@@ -148,8 +148,8 @@ export class InviteStore {
                 target_id:
                   level === "account"
                     ? (opts.account_grantor_user_id ?? "")
-                    : level === "org"
-                      ? (opts.org_id ?? "")
+                    : level === "workspace"
+                      ? (opts.workspace_id ?? "")
                       : (docoId ?? ""),
                 role,
                 write_types: opts.write_types ?? defaultWriteTypesForRole(role),

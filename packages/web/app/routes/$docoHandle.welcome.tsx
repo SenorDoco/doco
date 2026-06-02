@@ -80,7 +80,7 @@ export default function NewDocoStep4({
                 AI agents collaborating on a doco are always reminded of its policies — a list
                 telling them how to behave
               </li>
-              <li>An organization can have multiple interconnected docos</li>
+              <li>An workspace can have multiple interconnected docos</li>
             </ul>
           </CardContent>
         </Card>

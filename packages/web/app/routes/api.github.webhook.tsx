@@ -146,7 +146,7 @@ export async function action({ request }: { request: Request }) {
       const r = await backfillInstallationRepos({
         docoDir: docoPath(conn.handle),
         docoId: conn.docoId,
-        ownerSlug: conn.orgHandle,
+        ownerSlug: conn.workspaceHandle,
         docoSlug: conn.handle,
         repos: evt.addedRepos,
         installationId: evt.installationId,
@@ -199,7 +199,7 @@ export async function action({ request }: { request: Request }) {
       const res = await upsertPullRequestReference(evt.pr, {
         docoDir: docoPath(conn.handle),
         docoId: conn.docoId,
-        ownerSlug: conn.orgHandle,
+        ownerSlug: conn.workspaceHandle,
         docoSlug: conn.handle,
         approved: true,
         ...(changedFiles ? { changedFiles } : {}),
@@ -243,7 +243,7 @@ export async function action({ request }: { request: Request }) {
     const res = await upsertPullRequestReference(parsed.pr, {
       docoDir: docoPath(conn.handle),
       docoId: conn.docoId,
-      ownerSlug: conn.orgHandle,
+      ownerSlug: conn.workspaceHandle,
       docoSlug: conn.handle,
       ...(changedFiles ? { changedFiles } : {}),
     });

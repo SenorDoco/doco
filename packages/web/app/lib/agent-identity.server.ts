@@ -16,9 +16,9 @@ import { rankOf } from "~/lib/user-invite";
 import type { ValidAccessToken } from "./oauth-server.server";
 
 export interface IdentityGrant {
-  scope: "org" | "doco";
+  scope: "workspace" | "doco";
   id: string;
-  /** Org handle, or `owner/handle` for a Doco. */
+  /** Workspace handle, or `owner/handle` for a Doco. */
   label: string;
   role: DocoRole;
 }
@@ -69,24 +69,28 @@ export async function loadAgentIdentity(request: Request): Promise<AgentIdentity
   if (!display) return null;
 
   const token = await getOauthTokenForRequest(request);
-  // loadScopeOptions returns every org/doco the principal can reach plus
+  // loadScopeOptions returns every workspace/doco the principal can reach plus
   // the role they hold there — the upper bound on what any of their
   // tokens can grant.
   const options = await loadScopeOptions(display.user_id);
 
   let grants: IdentityGrant[];
   if (token) {
-    const orgIds = new Set(token.granted_org_ids ?? []);
+    const workspaceIds = new Set(token.granted_workspace_ids ?? []);
     const docoIds = new Set(token.granted_doco_ids ?? []);
     grants = options
       .filter(
-        (o) => (o.level === "org" && orgIds.has(o.id)) || (o.level === "doco" && docoIds.has(o.id)),
+        (o) =>
+          (o.level === "workspace" && workspaceIds.has(o.id)) ||
+          (o.level === "doco" && docoIds.has(o.id)),
       )
       .map((o) => {
         // The token may cap the role below the principal's own; show the
         // effective (lower) role so the agent sees what it can actually do.
         const cap = (
-          o.level === "org" ? token.granted_org_roles?.[o.id] : token.granted_doco_roles?.[o.id]
+          o.level === "workspace"
+            ? token.granted_workspace_roles?.[o.id]
+            : token.granted_doco_roles?.[o.id]
         ) as DocoRole | undefined;
         const role = cap && rankOf(cap) < rankOf(o.myRole) ? cap : o.myRole;
         return { scope: o.level, id: o.id, label: o.label, role };

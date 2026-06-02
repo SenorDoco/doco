@@ -5,7 +5,7 @@ relationships between user intent, agent reasoning, and agent actions.
 
 This repository is itself a Doco Host. Durable entities (Intents,
 Decisions, Rules, Actions, Logs, Evals, References, Principals, and
-Organizations) live in Postgres and are reached through the web app and
+Workspaces) live in Postgres and are reached through the web app and
 HTTP API — there are no on-disk per-entity files to read here.
 
 ## Quick links
@@ -31,7 +31,7 @@ kept in [PLANNING.md](PLANNING.md) for historical context.
 ├── packages/
 │   ├── cli/                 # `doco` CLI (login, install-agent-bootstrap)
 │   ├── db/                  # Postgres adapter, schema.sql + numbered migrations
-│   ├── host/                # Host/Doco/Principal/Organization domain layer
+│   ├── host/                # Host/Doco/Principal/Workspace domain layer
 │   ├── index/               # Edge derivation + embedding index helpers
 │   ├── shared/              # TypeScript entity types + URL conventions
 │   └── web/                 # React Router web app (`doco.to`-shaped UI)

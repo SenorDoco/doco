@@ -44,8 +44,8 @@ describe("/<doco>/api/audit.json", () => {
     mocks.readDocoMetadata.mockResolvedValue({
       docoId: "doco_bpms",
       handle: "bpms",
-      ownerId: "organization_torre",
-      orgId: "organization_torre",
+      ownerId: "workspace_torre",
+      workspaceId: "workspace_torre",
       visibility: "private",
       goal: "",
     });

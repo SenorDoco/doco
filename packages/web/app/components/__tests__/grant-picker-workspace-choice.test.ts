@@ -1,12 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GrantDocoChoiceList, GrantOrgChoiceList } from "../grant-picker";
+import { GrantDocoChoiceList, GrantWorkspaceChoiceList } from "../grant-picker";
 
-const orgs = [
-  { id: "organization_alpha", label: "alpha" },
-  { id: "organization_beta", label: "beta" },
-  { id: "organization_gamma", label: "gamma" },
+const workspaces = [
+  { id: "workspace_alpha", label: "alpha" },
+  { id: "workspace_beta", label: "beta" },
+  { id: "workspace_gamma", label: "gamma" },
 ];
 
 const docos = [
@@ -15,13 +15,13 @@ const docos = [
   { id: "doco_gamma", label: "gamma/log" },
 ];
 
-describe("GrantOrgChoiceList", () => {
-  it("collapses to the pressed organization choice when one is selected", () => {
+describe("GrantWorkspaceChoiceList", () => {
+  it("collapses to the pressed workspace choice when one is selected", () => {
     const markup = renderToStaticMarkup(
-      createElement(GrantOrgChoiceList, {
-        orgs,
-        selectedOrgId: "organization_beta",
-        testIdPrefix: "grant-doco-org",
+      createElement(GrantWorkspaceChoiceList, {
+        workspaces,
+        selectedWorkspaceId: "workspace_beta",
+        testIdPrefix: "grant-doco-workspace",
         onSelect: () => {},
         onClear: () => {},
       }),
@@ -31,16 +31,16 @@ describe("GrantOrgChoiceList", () => {
     expect(markup).toContain("beta");
     expect(markup).not.toContain("gamma");
     expect(markup).toContain('aria-pressed="true"');
-    expect(markup).toContain('aria-label="Remove beta organization selection"');
+    expect(markup).toContain('aria-label="Remove beta workspace selection"');
     expect(markup).not.toContain(" w-full ");
   });
 
-  it("shows every compact organization choice before a selection is made", () => {
+  it("shows every compact workspace choice before a selection is made", () => {
     const markup = renderToStaticMarkup(
-      createElement(GrantOrgChoiceList, {
-        orgs,
-        selectedOrgId: null,
-        testIdPrefix: "grant-types-org",
+      createElement(GrantWorkspaceChoiceList, {
+        workspaces,
+        selectedWorkspaceId: null,
+        testIdPrefix: "grant-types-workspace",
         onSelect: () => {},
         onClear: () => {},
       }),

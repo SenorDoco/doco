@@ -359,7 +359,7 @@ export async function loader({
       docoId: ctx.meta.docoId,
       goal: ctx.meta.goal,
       ownerSlug: ctx.canonicalOwnerSlug,
-      ownerIsOrg: ctx.meta.ownerId.startsWith("organization_"),
+      ownerIsWorkspace: ctx.meta.ownerId.startsWith("workspace_"),
       canInviteUsers: await canAdminDoco(ctx.meta, me?.id ?? null),
       githubIntegration,
       host: await loadHostConfig(),
@@ -502,7 +502,7 @@ export default function DocoHome({
     docoId,
     goal,
     ownerSlug,
-    ownerIsOrg,
+    ownerIsWorkspace,
     canInviteUsers,
     githubIntegration,
     me,
@@ -1034,7 +1034,7 @@ export default function DocoHome({
                 ? [
                     {
                       label: ownerSlug,
-                      to: ownerIsOrg ? `/orgs/${ownerSlug}` : `/users/${ownerSlug}`,
+                      to: ownerIsWorkspace ? `/workspaces/${ownerSlug}` : `/users/${ownerSlug}`,
                     },
                   ]
                 : []),

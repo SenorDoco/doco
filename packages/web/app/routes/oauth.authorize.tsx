@@ -5,7 +5,7 @@
 //   2. If user not signed in, redirect through GitHub OAuth (the
 //      return path captures the exact authorize URL so params survive).
 //   3. Render the approve UI: a list of every Doco the user can read
-//      or write (the union of direct ownership, org membership, and
+//      or write (the union of direct ownership, workspace membership, and
 //      doco_users grants), with checkboxes.
 //   4. POST from the form mints an authorization code (with PKCE
 //      challenge + selected docos baked in) and redirects to the
@@ -21,7 +21,7 @@ import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
   type ApprovalDocoOption,
-  type ApprovalOrgOption,
+  type ApprovalWorkspaceOption,
   approvalTargetNotOwnedMessage,
   resolveApprovalGrantView,
 } from "~/lib/approval-grants";
@@ -50,7 +50,7 @@ interface LoaderData {
   client_name: string;
   params: AuthorizeParams;
   docos: ApprovalDocoOption[];
-  orgs: ApprovalOrgOption[];
+  workspaces: ApprovalWorkspaceOption[];
   // When set, the client requested a Doco the user doesn't own — render
   // only the terminal not-owned message instead of the picker.
   blockedTargetHandle: string | null;
@@ -76,19 +76,19 @@ export async function loader({ request }: { request: Request }) {
   }
 
   // The approve picker offers everything the signed-in user can grant —
-  // owner-tier orgs and Docos (the action re-checks owner on submit as a
+  // owner-tier workspaces and Docos (the action re-checks owner on submit as a
   // tamper defense). Targeting a Doco the user owns (or targeting
   // nothing) yields the identical matrix as /device; targeting a Doco
   // they don't own blocks with a terminal message.
-  const { docos, orgs } = await loadApprovalGrantOptions(principal.id);
-  const view = resolveApprovalGrantView(docos, orgs, params.target_doco_handle);
+  const { docos, workspaces } = await loadApprovalGrantOptions(principal.id);
+  const view = resolveApprovalGrantView(docos, workspaces, params.target_doco_handle);
 
   const data: LoaderData = view.blocked
     ? {
         client_name: client.client_name ?? client.client_id.slice(0, 20),
         params,
         docos: [],
-        orgs: [],
+        workspaces: [],
         blockedTargetHandle: view.targetDocoHandle,
         me: principal,
       }
@@ -96,7 +96,7 @@ export async function loader({ request }: { request: Request }) {
         client_name: client.client_name ?? client.client_id.slice(0, 20),
         params,
         docos: view.docos,
-        orgs: view.orgs,
+        workspaces: view.workspaces,
         blockedTargetHandle: null,
         me: principal,
       };
@@ -137,9 +137,9 @@ export async function action({ request }: { request: Request }) {
     granted_doco_ids: grants.granted_doco_ids,
     granted_doco_roles: grants.granted_doco_roles,
     granted_doco_write_types: grants.granted_doco_write_types,
-    granted_org_ids: grants.granted_org_ids,
-    granted_org_roles: grants.granted_org_roles,
-    granted_org_write_types: grants.granted_org_write_types,
+    granted_workspace_ids: grants.granted_workspace_ids,
+    granted_workspace_roles: grants.granted_workspace_roles,
+    granted_workspace_write_types: grants.granted_workspace_write_types,
     scope: params.scope ?? undefined,
   });
   // OAuth 2.1 §4.1.2 expects a 302 straight to redirect_uri with
@@ -186,7 +186,7 @@ export default function AuthorizePage() {
             ) : (
               <OAuthAccessApprovalForm
                 docos={data.docos}
-                orgs={data.orgs}
+                workspaces={data.workspaces}
                 tokenNamePlaceholder="e.g. Claude Code in repo"
                 requestedRole={(data.params.requested_role as DocoRole | null) ?? null}
                 approveLabel="Approve"

@@ -1,10 +1,10 @@
-// Shared chrome for the three Integrations pages (account, org, Doco):
-//   - `ScopeNavLinks` renders the "View org-wide / account-wide" jump links
+// Shared chrome for the three Integrations pages (account, workspace, Doco):
+//   - `ScopeNavLinks` renders the "View workspace-wide / account-wide" jump links
 //     above the panes; which ones appear depends on the current page scope.
 //   - `AvailableIntegrations` renders the right-pane catalog of every
 //     integration we offer, with a "Connect" / "Set up..." action that
 //     either runs the install directly or jumps to the picker for the
-//     correct org/Doco.
+//     correct workspace/Doco.
 //   - `ScopePickerBanner` shows the "pick a target" prompt that appears at
 //     the top of a scope page when the user clicked through from a higher
 //     scope (e.g. picked GitHub on the account page → shown a Doco prompt).
@@ -22,20 +22,20 @@ import {
 
 export function ScopeNavLinks({
   scope,
-  orgHandle,
+  workspaceHandle,
 }: {
   scope: IntegrationScope;
-  orgHandle?: string;
+  workspaceHandle?: string;
 }) {
   if (scope === "account") return null;
   const linkClass =
     "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary";
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {scope === "doco" && orgHandle ? (
-        <Link to={`/orgs/${orgHandle}/integrations`} className={linkClass}>
+      {scope === "doco" && workspaceHandle ? (
+        <Link to={`/workspaces/${workspaceHandle}/integrations`} className={linkClass}>
           <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
-          View org-wide integrations
+          View workspace-wide integrations
         </Link>
       ) : null}
       <Link to="/integrations" className={linkClass}>
@@ -48,12 +48,12 @@ export function ScopeNavLinks({
 
 export function AvailableIntegrations({
   pageScope,
-  orgHandle,
+  workspaceHandle,
   docoHandle,
   docoInstallUrl,
 }: {
   pageScope: IntegrationScope;
-  orgHandle?: string;
+  workspaceHandle?: string;
   docoHandle?: string;
   docoInstallUrl?: string | null;
 }) {
@@ -66,7 +66,7 @@ export function AvailableIntegrations({
               key={integration.id}
               integration={integration}
               pageScope={pageScope}
-              orgHandle={orgHandle}
+              workspaceHandle={workspaceHandle}
               docoHandle={docoHandle}
               docoInstallUrl={docoInstallUrl}
             />
@@ -80,20 +80,20 @@ export function AvailableIntegrations({
 function AvailableIntegrationRow({
   integration,
   pageScope,
-  orgHandle,
+  workspaceHandle,
   docoHandle,
   docoInstallUrl,
 }: {
   integration: IntegrationDefinition;
   pageScope: IntegrationScope;
-  orgHandle?: string;
+  workspaceHandle?: string;
   docoHandle?: string;
   docoInstallUrl?: string | null;
 }) {
   const href = connectHrefFor({
     integration,
     pageScope,
-    ...(orgHandle ? { orgHandle } : {}),
+    ...(workspaceHandle ? { workspaceHandle } : {}),
     ...(docoHandle ? { docoHandle } : {}),
     ...(docoInstallUrl !== undefined ? { docoInstallUrl } : {}),
   });
@@ -131,38 +131,38 @@ function AvailableIntegrationRow({
 
 function scopeLabelFor(scope: IntegrationScope): string {
   if (scope === "account") return "Account-wide";
-  if (scope === "org") return "Org-level";
+  if (scope === "workspace") return "Workspace-level";
   return "Doco-level";
 }
 
 /**
- * Shown at the top of the account or org integrations page when the URL
+ * Shown at the top of the account or workspace integrations page when the URL
  * carries an `?integration=<id>` hint — meaning the user got here from a
- * higher-scope "Connect" click and still needs to point at the org/Doco
+ * higher-scope "Connect" click and still needs to point at the workspace/Doco
  * to install into. The accompanying rollup card below is highlighted by
- * scrolling to the `#pick-doco` or `#pick-org` anchor.
+ * scrolling to the `#pick-doco` or `#pick-workspace` anchor.
  */
 export function ScopePickerBanner({
   integrationId,
   pageScope,
-  orgHandle,
+  workspaceHandle,
 }: {
   integrationId: string | null;
   pageScope: IntegrationScope;
-  orgHandle?: string;
+  workspaceHandle?: string;
 }) {
   if (!integrationId) return null;
   const integration = findIntegration(integrationId);
   if (!integration) return null;
   if (integration.scope === pageScope) return null;
 
-  const targetWord = integration.scope === "doco" ? "Doco" : "org";
+  const targetWord = integration.scope === "doco" ? "Doco" : "workspace";
   const anchorHref =
     integration.scope === "doco"
-      ? pageScope === "org" && orgHandle
-        ? `/orgs/${orgHandle}/integrations#pick-doco`
+      ? pageScope === "workspace" && workspaceHandle
+        ? `/workspaces/${workspaceHandle}/integrations#pick-doco`
         : "/integrations#pick-doco"
-      : "/integrations#pick-org";
+      : "/integrations#pick-workspace";
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 p-4 text-sm">
       <div className="flex items-center gap-3">

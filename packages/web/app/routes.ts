@@ -22,7 +22,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  * Hosted-multi-tenant route table:
  *
  *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
- *   /dashboard                     signed-in host dashboard (docos / users / orgs)
+ *   /dashboard                     signed-in host dashboard (docos / users / workspaces)
  *   /mentor/feedback               mentor-only bug/idea report review page
  *   /users/<username>              signed-in user's tiny profile placeholder
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
@@ -30,9 +30,9 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   /by-id/:docoId                 Stable Doco-id redirect to the current handle
  *   (agent self-service: install the per-Doco MCP connector at /mcp/:handle; OAuth dance kicks off automatically)
- *   /new-doco, /new-org            self-service create flows (ADR-067)
+ *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
- *   /orgs/<org-handle>/settings    per-Org settings (owner only; danger-zone deletion)
+ *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
  *   /<doco-handle>                 per-Doco recent + search input
  *   /<doco-handle>/<type>          per-Doco entity list (short form; ADR-120)
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
@@ -126,16 +126,19 @@ export default [
   // :docoHandle/onboarding/agent.
   route("new-doco", "routes/new-doco.tsx"),
   route("new-doco/template", "routes/new-doco.template.tsx"),
-  route("new-org", "routes/new-org.tsx"),
-  route("orgs", "routes/orgs._index.tsx"),
-  // Per-Org home — mirrors the Doco home page but aggregates across
-  // every Doco the org owns (docos list, node-type/lifecycle facets,
+  route("new-workspace", "routes/new-workspace.tsx"),
+  route("workspaces", "routes/workspaces._index.tsx"),
+  // Per-Workspace home — mirrors the Doco home page but aggregates across
+  // every Doco the workspace owns (docos list, node-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
-  route("orgs/:orgHandle/settings", "routes/orgs.$orgHandle.settings.tsx"),
-  route("orgs/:orgHandle/integrations", "routes/orgs.$orgHandle.integrations.tsx"),
-  route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
-  // Cross-Doco semantic search across every Doco the org owns.
-  route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
+  route("workspaces/:workspaceHandle/settings", "routes/workspaces.$workspaceHandle.settings.tsx"),
+  route(
+    "workspaces/:workspaceHandle/integrations",
+    "routes/workspaces.$workspaceHandle.integrations.tsx",
+  ),
+  route("workspaces/:workspaceHandle", "routes/workspaces.$workspaceHandle._index.tsx"),
+  // Cross-Doco semantic search across every Doco the workspace owns.
+  route("workspaces/:workspaceHandle/search", "routes/workspaces.$workspaceHandle.search.tsx"),
   route("users", "routes/users.tsx"),
   route("integrations", "routes/integrations.tsx"),
   route("integrations/slack/install", "routes/integrations.slack.install.tsx"),
@@ -177,7 +180,7 @@ export default [
   // v15 creation endpoints (decision_01KS3DW9C2KN2X7Z80R18H1RAX).
   // POST-only, auto-suffix on collision, return 201 + the (possibly
   // suffixed) handle.
-  route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
+  route("api/v1/workspaces.json", "routes/api.v1.workspaces[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
   // Per-user UI preferences (graph auto-reorder, future flags). Stored
   // on users.data.preferences; auth-gated to the signed-in user.

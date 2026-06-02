@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 
 const DOCO_ID = "doco_01TEST00000000000000000001";
-const ORG_ID = "organization_01TESTORG000000000000001";
+const ORG_ID = "workspace_01TESTORG000000000000001";
 const PRINCIPAL_ALICE = "principal_01TESTALICE0000000000001";
 const POLICY_ID_PRINCIPAL = "node_authoring_policy_01TESTPRINCIPAL000000001";
 const POLICY_ID_FIELD = "node_authoring_policy_01TESTFIELD000000000001";
@@ -38,16 +38,16 @@ interface SeedOpts {
 
 async function seed(opts: SeedOpts = {}): Promise<void> {
   await withClient(async (c) => {
-    // Insert an organization — required for the FK on docos.org_id.
+    // Insert an workspace — required for the FK on docos.workspace_id.
     await c.query(
-      `INSERT INTO organizations (id, handle, name, data, created_at, updated_at)
-         VALUES ($1, 'test-org', 'Test Org', '{}'::jsonb, now(), now())`,
+      `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
+         VALUES ($1, 'test-workspace', 'Test Workspace', '{}'::jsonb, now(), now())`,
       [ORG_ID],
     );
 
     // Insert a doco — required for the FK on node_authoring_policies.
     await c.query(
-      `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+      `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
          VALUES ($1, 'smoke-test', $2, $2, '{}'::jsonb, now(), now())`,
       [DOCO_ID, ORG_ID],
     );
@@ -476,12 +476,12 @@ describe("authoring runner — integration", () => {
     // invisible to the enforcer.
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO organizations (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'null-life-org', 'Null-Life Org', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
+           VALUES ($1, 'null-life-workspace', 'Null-Life Workspace', '{}'::jsonb, now(), now())`,
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+        `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'null-life', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );
@@ -566,12 +566,12 @@ describe("authoring runner — integration", () => {
     // with the principals filter.
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO organizations (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'gc-org', 'GC Org', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
+           VALUES ($1, 'gc-workspace', 'GC Workspace', '{}'::jsonb, now(), now())`,
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+        `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'gc-test', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );
@@ -686,12 +686,12 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
   async function seedDoco(): Promise<void> {
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO organizations (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'val-org', 'Val Org', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
+           VALUES ($1, 'val-workspace', 'Val Workspace', '{}'::jsonb, now(), now())`,
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+        `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'val-test', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );
@@ -721,7 +721,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({ kind: "requires_edge", edge_type: "intent_ids" }),
     );
@@ -737,7 +737,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({ kind: "forbids_edge", edge_type: "inputs" }),
     );
@@ -753,7 +753,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({ kind: "requires_edge", edge_type: "supports" }),
     );
@@ -765,7 +765,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({ kind: "requires_edge_role", edge_type: "supports", edge_role: "serves" }),
     );
@@ -777,7 +777,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({ kind: "requires_edge_role", edge_type: "supports" }),
     );
@@ -792,7 +792,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({
         kind: "requires_edge_role",
@@ -812,7 +812,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({ kind: "requires_edge", edge_type: "preceded_by" }),
     );
@@ -824,7 +824,7 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     const result = await captureNodeAuthoringPolicy(
       "",
       DOCO_ID,
-      "val-org",
+      "val-workspace",
       "val-test",
       draft({
         kind: "graph-completeness",
@@ -851,12 +851,12 @@ describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
     // data value wins.
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO organizations (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'drift-org', 'Drift Org', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
+           VALUES ($1, 'drift-workspace', 'Drift Workspace', '{}'::jsonb, now(), now())`,
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+        `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'drift-test', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );

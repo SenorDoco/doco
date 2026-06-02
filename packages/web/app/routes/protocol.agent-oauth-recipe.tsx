@@ -376,9 +376,9 @@ You get back:
 - \`canonical_instructions_url\` — link to the same instructions in
   case you want to refetch them later.
 - \`oauth_grant\` — your token's grant set verbatim:
-  \`granted_doco_ids\`, \`granted_org_ids\`, \`granted_doco_roles\`,
-  \`granted_org_roles\`, \`scope\`, \`expires_at\`. Null for cookie
-  callers. Read this to know exactly which Docos and orgs your token
+  \`granted_doco_ids\`, \`granted_workspace_ids\`, \`granted_doco_roles\`,
+  \`granted_workspace_roles\`, \`scope\`, \`expires_at\`. Null for cookie
+  callers. Read this to know exactly which Docos and workspaces your token
   covers without inferring from the policies lists.
 - \`doco_policies[]\` — Policies for every Doco your grants
   cover.
@@ -387,21 +387,21 @@ The policies tell you what's expected when you capture or
 modify nodes in each Doco. Cache the response for the session;
 refetch if the user tells you policies changed mid-session.
 
-### Org grants are live — don't ask for re-auth on new Docos
+### Workspace grants are live — don't ask for re-auth on new Docos
 
-If your token's \`granted_org_ids\` includes an org, that grant
-**automatically covers every Doco the org owns, including ones the
+If your token's \`granted_workspace_ids\` includes an workspace, that grant
+**automatically covers every Doco the workspace owns, including ones the
 user creates after the token was minted**. You do not need to
 re-run the OAuth flow when a new Doco appears under an already-
-granted org — the same Bearer token works on it immediately.
+granted workspace — the same Bearer token works on it immediately.
 
 Concretely: if a user asks you to work on a project that has no
-Doco yet, and \`oauth_grant.granted_org_ids\` already contains the
-org they'd create it under, the right move is:
+Doco yet, and \`oauth_grant.granted_workspace_ids\` already contains the
+workspace they'd create it under, the right move is:
 
 > "I'll wait while you create the Doco at ${baseUrl} (the form starts
-> the name with \`<org-handle>-\`, but you can use any available handle). My existing
-> token has org-level access, so the new Doco will be reachable as
+> the name with \`<workspace-handle>-\`, but you can use any available handle). My existing
+> token has workspace-level access, so the new Doco will be reachable as
 > soon as you finish creating it — no re-authorization needed."
 
 The *wrong* move is to tell the user to grant your token again via
@@ -416,7 +416,7 @@ re-auth ask.)
 ### Be precise about your role — don't downgrade yourself in prose
 
 When you describe your grants to the user, surface the **role cap**
-from \`oauth_grant.granted_org_roles[org_id]\` (or
+from \`oauth_grant.granted_workspace_roles[workspace_id]\` (or
 \`granted_doco_roles[doco_id]\`) — not the generic "I can read X"
 phrasing. The role table:
 
@@ -428,12 +428,12 @@ phrasing. The role table:
   - \`owner\` — Doco settings, invites, role changes, granting agent
     access, editing policies (+ everything writer + reader can do)
 
-Saying "Orgs I can read: doco, torrenegra" when you actually hold
+Saying "Workspaces I can read: doco, torrenegra" when you actually hold
 \`writer\` on both is misleading — the user can't tell how much
 work you're authorized to do without re-checking. Prefer:
 
-> "Orgs I can act on: doco (writer), torrenegra (writer)"
-> "Docos I can act on: doco-bpms (writer, via doco-org grant)"
+> "Workspaces I can act on: doco (writer), torrenegra (writer)"
+> "Docos I can act on: doco-bpms (writer, via doco-workspace grant)"
 
 If the user asks "what can you do?", read out the role from
 \`oauth_grant\` for each grant — don't collapse to the lowest
@@ -462,7 +462,7 @@ Authorization: Bearer doco_at_<your-access-token>
 
 {
   "template_handle": "generic",
-  "org_id": "<organization-id>",
+  "workspace_id": "<workspace-id>",
   "name": "acme-bpms",
   "privacy": "private"
 }
@@ -522,14 +522,14 @@ The token carries **two** grant lists with per-entry role caps:
 
   - \`granted_doco_ids[]\` + \`granted_doco_roles{doco_id: role}\` —
     explicit per-Doco grants.
-  - \`granted_org_ids[]\` + \`granted_org_roles{org_id: role}\` —
-    org-level grants. These are **live**: they cover every Doco the
-    org owns now AND any Doco created under the org after the token
+  - \`granted_workspace_ids[]\` + \`granted_workspace_roles{workspace_id: role}\` —
+    workspace-level grants. These are **live**: they cover every Doco the
+    workspace owns now AND any Doco created under the workspace after the token
     was minted, with no re-auth required.
 
 A request to a Doco is allowed if the Doco's id is in
-\`granted_doco_ids\` OR the Doco's owner org is in
-\`granted_org_ids\`, AND the corresponding role cap meets what the
+\`granted_doco_ids\` OR the Doco's owner workspace is in
+\`granted_workspace_ids\`, AND the corresponding role cap meets what the
 operation requires. Outside that set you get 403 \`access_denied\`;
 inside the set but with insufficient role you get 403
 \`insufficient_scope\` plus \`WWW-Authenticate: Bearer

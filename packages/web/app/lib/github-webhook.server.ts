@@ -195,7 +195,7 @@ export function parseInstallationRepositoriesEvent(
 export interface DocoRepoConnection {
   docoId: string;
   handle: string;
-  orgHandle: string;
+  workspaceHandle: string;
 }
 
 /** Docos connected to "owner/name". */
@@ -203,10 +203,10 @@ export async function findDocoConnectionsByRepo(
   repoFullName: string,
 ): Promise<DocoRepoConnection[]> {
   return withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; org_handle: string }>(
-      `SELECT d.id, d.handle, o.handle AS org_handle
+    const r = await c.query<{ id: string; handle: string; workspace_handle: string }>(
+      `SELECT d.id, d.handle, o.handle AS workspace_handle
         FROM docos d
-         JOIN organizations o ON o.id = d.org_id
+         JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.data->'github_integration'->'connections'
                 @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
       [repoFullName],
@@ -214,7 +214,7 @@ export async function findDocoConnectionsByRepo(
     return r.rows.map((row) => ({
       docoId: row.id,
       handle: row.handle,
-      orgHandle: row.org_handle,
+      workspaceHandle: row.workspace_handle,
     }));
   });
 }
@@ -224,10 +224,10 @@ export async function findDocoByInstallation(
   installationId: number,
 ): Promise<DocoRepoConnection[]> {
   return withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; org_handle: string }>(
-      `SELECT d.id, d.handle, o.handle AS org_handle
+    const r = await c.query<{ id: string; handle: string; workspace_handle: string }>(
+      `SELECT d.id, d.handle, o.handle AS workspace_handle
          FROM docos d
-         JOIN organizations o ON o.id = d.org_id
+         JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.data->'github_integration'->'installations'
                 @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))
         `,
@@ -236,7 +236,7 @@ export async function findDocoByInstallation(
     return r.rows.map((row) => ({
       docoId: row.id,
       handle: row.handle,
-      orgHandle: row.org_handle,
+      workspaceHandle: row.workspace_handle,
     }));
   });
 }
@@ -248,10 +248,10 @@ export async function findDocoTargetsForGitHubRepo(
   repoFullName: string,
 ): Promise<DocoRepoConnection[]> {
   return withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; org_handle: string }>(
-      `SELECT d.id, d.handle, o.handle AS org_handle
+    const r = await c.query<{ id: string; handle: string; workspace_handle: string }>(
+      `SELECT d.id, d.handle, o.handle AS workspace_handle
          FROM docos d
-         JOIN organizations o ON o.id = d.org_id
+         JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.data->'github_integration'->'installations'
                 @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))
            OR d.data->'github_integration'->'connections'
@@ -263,7 +263,7 @@ export async function findDocoTargetsForGitHubRepo(
     return r.rows.map((row) => ({
       docoId: row.id,
       handle: row.handle,
-      orgHandle: row.org_handle,
+      workspaceHandle: row.workspace_handle,
     }));
   });
 }

@@ -41,7 +41,7 @@ function conversationRow(overrides: Record<string, unknown> = {}) {
     archived: false,
     title: "Ask",
     attached_doco_ids: [],
-    attached_org_handles: [],
+    attached_workspace_handles: [],
     created_at: new Date("2026-01-01T00:00:00Z"),
     updated_at: new Date("2026-01-01T00:00:00Z"),
     active_turn_started_at: null,

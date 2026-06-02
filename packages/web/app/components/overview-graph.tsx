@@ -55,7 +55,7 @@ export interface OverviewGraphData {
   /**
    * TRUE total of graph-eligible nodes for this Doco — every node the graph
    * query matches, counted before the slice limit. Optional so other
-   * constructors (the org-level graph, the empty fallback) stay valid; the List
+   * constructors (the workspace-level graph, the empty fallback) stay valid; the List
    * header falls back to `nodes.length` when it's absent.
    */
   totalNodeCount?: number;

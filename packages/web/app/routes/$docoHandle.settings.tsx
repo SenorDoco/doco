@@ -1,4 +1,4 @@
-import { getOrgRole, withClient } from "@doco/db";
+import { getWorkspaceRole, withClient } from "@doco/db";
 import { validateRequestedDocoHandle } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Updates Doco
 // metadata or performs high-risk actions such as renaming/deleting the Doco.
@@ -18,7 +18,7 @@ import {
   friendlyHandleValidationError,
   handleValidityMessage,
 } from "~/lib/handle-format";
-import { listOrgsOwnedOrAdminedBy } from "~/lib/host.server";
+import { listWorkspacesOwnedOrAdminedBy } from "~/lib/host.server";
 import {
   ensureDefaultsAttached,
   listPerspectivesForDoco,
@@ -27,9 +27,9 @@ import {
 import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
 import { isHumanPrincipal } from "~/lib/session.server";
 
-async function transferDocoToOrganization(opts: {
+async function transferDocoToWorkspace(opts: {
   docoId: string;
-  targetOrgId: string;
+  targetWorkspaceId: string;
 }): Promise<void> {
   await withClient(async (c) => {
     const current = await c.query<{ data: Record<string, unknown> | null }>(
@@ -41,16 +41,16 @@ async function transferDocoToOrganization(opts: {
     const yaml: Record<string, unknown> = Object.fromEntries(
       Object.entries(existing).filter(([key]) => key !== "display_name" && key !== "name"),
     );
-    yaml.owner_id = opts.targetOrgId;
-    yaml.org_id = opts.targetOrgId;
+    yaml.owner_id = opts.targetWorkspaceId;
+    yaml.workspace_id = opts.targetWorkspaceId;
     await c.query(
       `UPDATE docos
           SET owner_id = $2,
-              org_id = $2,
+              workspace_id = $2,
               data = $3::jsonb,
               updated_at = now()
         WHERE id = $1`,
-      [opts.docoId, opts.targetOrgId, JSON.stringify(yaml)],
+      [opts.docoId, opts.targetWorkspaceId, JSON.stringify(yaml)],
     );
   });
 }
@@ -70,11 +70,11 @@ export async function loader({
     handle,
     docoId: meta.docoId,
     ownerId: meta.ownerId,
-    orgId: meta.orgId,
+    workspaceId: meta.workspaceId,
     visibility: meta.visibility,
     goal: meta.goal,
     perspectives,
-    availableOwnerOrgs: me ? await listOrgsOwnedOrAdminedBy(me.id) : [],
+    availableOwnerWorkspaces: me ? await listWorkspacesOwnedOrAdminedBy(me.id) : [],
     me,
   };
 }
@@ -171,20 +171,20 @@ export async function action({
     return redirect(`/${newHandle}`);
   }
 
-  // ── Change owning organization (danger zone) ──────────────────────
-  if (intent === "change-organization") {
-    if (!me) return { error: "Sign in to change this Doco's organization." };
-    const targetOrgId = String(form.get("target_org_id") ?? "").trim();
-    if (!targetOrgId) return { error: "Choose an organization." };
-    const targetRole = await getOrgRole(targetOrgId, me.id);
+  // ── Change owning workspace (danger zone) ──────────────────────
+  if (intent === "change-workspace") {
+    if (!me) return { error: "Sign in to change this Doco's workspace." };
+    const targetWorkspaceId = String(form.get("target_workspace_id") ?? "").trim();
+    if (!targetWorkspaceId) return { error: "Choose an workspace." };
+    const targetRole = await getWorkspaceRole(targetWorkspaceId, me.id);
     if (targetRole !== "owner") {
-      return { error: "Only organization owners can move a Doco into that organization." };
+      return { error: "Only workspace owners can move a Doco into that workspace." };
     }
     try {
-      await transferDocoToOrganization({ docoId: meta.docoId, targetOrgId });
+      await transferDocoToWorkspace({ docoId: meta.docoId, targetWorkspaceId });
       await reindex(meta.docoId);
     } catch (e) {
-      return { error: `Failed to change organization: ${(e as Error).message}` };
+      return { error: `Failed to change workspace: ${(e as Error).message}` };
     }
     return redirect(`/${handle}`);
   }
@@ -210,15 +210,15 @@ export default function DocoSettings({
     goal,
     docoId,
     ownerId,
-    orgId,
+    workspaceId,
     perspectives,
-    availableOwnerOrgs,
+    availableOwnerWorkspaces,
     me,
   } = loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
-  const currentOrgOptions = availableOwnerOrgs;
-  const currentOrgId = orgId || ownerId;
+  const currentWorkspaceOptions = availableOwnerWorkspaces;
+  const currentWorkspaceId = workspaceId || ownerId;
 
   return (
     <div>
@@ -287,7 +287,7 @@ export default function DocoSettings({
                       defaultChecked={visibility !== "public"}
                       className="mt-0.5"
                     />
-                    <span>Private — only owner / org members can view</span>
+                    <span>Private — only owner / workspace members can view</span>
                   </label>
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input
@@ -427,25 +427,25 @@ export default function DocoSettings({
 
         <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-base text-destructive">Change organization</CardTitle>
+            <CardTitle className="text-base text-destructive">Change workspace</CardTitle>
             <CardDescription>
-              Move this Doco to an organization you own. This can alter who has access.
+              Move this Doco to an workspace you own. This can alter who has access.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {currentOrgOptions.length > 0 ? (
+            {currentWorkspaceOptions.length > 0 ? (
               <Form method="post" className="flex flex-wrap items-end gap-2">
-                <input type="hidden" name="intent" value="change-organization" />
+                <input type="hidden" name="intent" value="change-workspace" />
                 <label className="inline-flex flex-col gap-1 text-xs">
-                  <span className="font-semibold text-foreground">Organization</span>
+                  <span className="font-semibold text-foreground">Workspace</span>
                   <select
-                    name="target_org_id"
-                    defaultValue={currentOrgId}
+                    name="target_workspace_id"
+                    defaultValue={currentWorkspaceId}
                     className="w-auto max-w-full rounded-md px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
                   >
-                    {currentOrgOptions.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.handle}
+                    {currentWorkspaceOptions.map((workspace) => (
+                      <option key={workspace.id} value={workspace.id}>
+                        {workspace.handle}
                       </option>
                     ))}
                   </select>
@@ -454,12 +454,12 @@ export default function DocoSettings({
                   type="submit"
                   className="rounded-md border border-destructive px-4 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10"
                 >
-                  Change organization
+                  Change workspace
                 </button>
               </Form>
             ) : (
               <p className="text-xs text-muted-foreground">
-                You do not own another organization this Doco can move to.
+                You do not own another workspace this Doco can move to.
               </p>
             )}
           </CardContent>

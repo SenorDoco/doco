@@ -67,7 +67,7 @@ export async function action({ request }: { request: Request }) {
       last_message_preview: null,
       last_message_role: null,
       attached_doco_ids: conv.attached_doco_ids ?? [],
-      attached_org_handles: [],
+      attached_workspace_handles: [],
     },
   });
 }

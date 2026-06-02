@@ -68,9 +68,9 @@ async function handleAuthorizationCode(form: URLSearchParams): Promise<Response>
     granted_doco_ids: claim.granted_doco_ids,
     granted_doco_roles: claim.granted_doco_roles,
     granted_doco_write_types: claim.granted_doco_write_types,
-    granted_org_ids: claim.granted_org_ids,
-    granted_org_roles: claim.granted_org_roles,
-    granted_org_write_types: claim.granted_org_write_types,
+    granted_workspace_ids: claim.granted_workspace_ids,
+    granted_workspace_roles: claim.granted_workspace_roles,
+    granted_workspace_write_types: claim.granted_workspace_write_types,
     scope: claim.scope,
   });
   return Response.json(tokens);

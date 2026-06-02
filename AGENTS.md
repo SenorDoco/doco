@@ -52,9 +52,9 @@ The test user starts with **no Doco grants** — same shape
 as a brand-new GitHub sign-in. To get something to look at:
 
 - **Create a Doco of your own** via `POST /api/v1/docos.json`
-  (body: `{"name": "<suffix>", "org_id": "<org_01...>", "template_handle": "generic"}`).
-  Every Doco lives inside an Org — first list orgs you belong to
-  via `GET /api/v1/orgs.json`, pick one, and pass its `id`. Then
+  (body: `{"name": "<suffix>", "workspace_id": "<workspace_01...>", "template_handle": "generic"}`).
+  Every Doco lives inside an Workspace — first list workspaces you belong to
+  via `GET /api/v1/workspaces.json`, pick one, and pass its `id`. Then
   navigate to `/<your-doco-handle>/...` to exercise the change.
 - **Or have an owner mint an invite** for `doco-test-harness` on
   an existing Doco, then `GET /invite/<code>` while signed in to

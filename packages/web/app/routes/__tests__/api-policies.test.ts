@@ -53,7 +53,7 @@ describe("/<doco>/api/policies.json", () => {
       docoSlug: "bpms",
       ownerSlug: "torre",
       me: { id: "user_alice", username: "alice" },
-      meta: { ownerId: "organization_torre", docoId: "doco_bpms" },
+      meta: { ownerId: "workspace_torre", docoId: "doco_bpms" },
     });
     mocks.listPrincipals.mockResolvedValue([
       {

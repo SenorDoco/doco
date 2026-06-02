@@ -103,7 +103,7 @@ export async function action({ request }: { request: Request }) {
     ({ done, rateLimited } = await runBackfillSlice(working, {
       docoId,
       docoDir: docoPath(ctx.handle),
-      ownerSlug: ctx.orgHandle,
+      ownerSlug: ctx.workspaceHandle,
       docoSlug: ctx.handle,
       installationId,
     }));

@@ -4,13 +4,13 @@ const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
   getDocoById: vi.fn(),
   getDocoLevelRole: vi.fn(),
-  getOrgRole: vi.fn(),
+  getWorkspaceRole: vi.fn(),
   removeAccountGrant: vi.fn(),
   removeDocoUser: vi.fn(),
-  removeOrgUser: vi.fn(),
+  removeWorkspaceUser: vi.fn(),
   upsertAccountGrant: vi.fn(),
   upsertDocoUser: vi.fn(),
-  upsertOrgUser: vi.fn(),
+  upsertWorkspaceUser: vi.fn(),
   handleUserInviteAction: vi.fn(),
   loadUsersPageData: vi.fn(),
   renameAgentCollaborator: vi.fn(),
@@ -18,13 +18,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@doco/db", () => ({
   getDocoById: mocks.getDocoById,
-  getOrgRole: mocks.getOrgRole,
+  getWorkspaceRole: mocks.getWorkspaceRole,
   removeAccountGrant: mocks.removeAccountGrant,
   removeDocoUser: mocks.removeDocoUser,
-  removeOrgUser: mocks.removeOrgUser,
+  removeWorkspaceUser: mocks.removeWorkspaceUser,
   upsertAccountGrant: mocks.upsertAccountGrant,
   upsertDocoUser: mocks.upsertDocoUser,
-  upsertOrgUser: mocks.upsertOrgUser,
+  upsertWorkspaceUser: mocks.upsertWorkspaceUser,
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
@@ -57,15 +57,15 @@ describe("/users add-grants action", () => {
     mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_owner", username: "owner" });
     mocks.getDocoById.mockResolvedValue({
       id: "doco_bpms",
-      owner_id: "organization_torre",
+      owner_id: "workspace_torre",
     });
     mocks.getDocoLevelRole.mockResolvedValue("owner");
-    mocks.getOrgRole.mockResolvedValue("owner");
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
   });
 
   it("adds multiple grants to an existing user", async () => {
     const grants = [
-      { level: "org", targetId: "organization_torre", role: "writer", writeTypes: ["*"] },
+      { level: "workspace", targetId: "workspace_torre", role: "writer", writeTypes: ["*"] },
       { level: "doco", targetId: "doco_bpms", role: "reader", writeTypes: ["decision"] },
     ];
 
@@ -83,8 +83,8 @@ describe("/users add-grants action", () => {
       user_id: "user_bob",
       grants_count: 2,
     });
-    expect(mocks.upsertOrgUser).toHaveBeenCalledWith({
-      org_id: "organization_torre",
+    expect(mocks.upsertWorkspaceUser).toHaveBeenCalledWith({
+      workspace_id: "workspace_torre",
       user_id: "user_bob",
       role: "writer",
       write_types: ["*"],

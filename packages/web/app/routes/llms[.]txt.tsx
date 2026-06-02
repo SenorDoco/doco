@@ -184,7 +184,7 @@ Create a Doco with:
 
     {
       "template_handle": "generic",
-      "org_id": "<organization-id>",
+      "workspace_id": "<workspace-id>",
       "name": "acme-bpms",
       "privacy": "private"
     }
@@ -213,9 +213,9 @@ Once you hold a Bearer token, hit:
     GET ${baseUrl}/api/v1/agent-bootstrap.json
     Authorization: Bearer doco_at_<token>
 
-You'll get the canonical instructions plus the union of every **org**
-and **Doco policies set** you have read-or-above access to. Org
-policies apply to every Doco the org owns, so an agent that
+You'll get the canonical instructions plus the union of every **workspace**
+and **Doco policies set** you have read-or-above access to. Workspace
+policies apply to every Doco the workspace owns, so an agent that
 bootstraps Doco (the tool) sees the full set of authoring rules
 governing its work across every project it can reach.
 
