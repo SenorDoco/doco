@@ -861,6 +861,7 @@ describe("slack.server", () => {
       cookieHeader: "doco_session=user_01ABC",
       body: { name: "Francisco Laso", body_md: "Algorithms Engineer" },
       userAgent: "Doco-Slack-Assistant/1",
+      authoringSurface: "slack",
     });
     expect(String(result.result.content)).toContain("Principal added");
   });
