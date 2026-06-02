@@ -64,7 +64,7 @@ export interface OAuthApprovalGrantSets {
 }
 
 interface ParsedApprovalGrant {
-  level: "account" | "org" | "doco";
+  level: "account" | "org" | "doco" | "identity";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
@@ -76,9 +76,49 @@ export async function readOAuthApprovalGrants(
 ): Promise<OAuthApprovalGrantSets> {
   const rawGrants = String(form.get("grants") ?? "").trim();
   if (rawGrants) {
-    return serializeApprovalGrants(parseGrantPayload(rawGrants), principalId);
+    const parsed = parseGrantPayload(rawGrants);
+    // The "identity" level means "scope to my full live reach, deferring the
+    // role to the matrix" — it wins over any granular entries in the payload.
+    if (parsed.some((g) => g.level === "identity")) {
+      return identityScopedGrants(principalId);
+    }
+    return serializeApprovalGrants(parsed, principalId);
   }
   return serializeLegacyApprovalFields(form, principalId);
+}
+
+/**
+ * The connector grant. Scopes a token to everything the principal can reach
+ * right now — every org they belong to and every Doco they can access — with
+ * NO role cap (granted_*_roles left empty, so the live matrix role is the only
+ * ceiling) and write types left open (["*"], so writes defer to the matrix
+ * too). Effective access is min(matrix, scope); since the scope is "all you
+ * can reach, deferred", effective == your live matrix access, and a
+ * reader->writer grant change applies on the next call with no re-auth. Org
+ * grants are live, so Docos created later under those orgs are covered
+ * automatically. No ownership gate is needed precisely because the matrix —
+ * not the token — is the ceiling.
+ */
+export async function identityScopedGrants(principalId: string): Promise<OAuthApprovalGrantSets> {
+  const grants = emptyGrantSets();
+  for (const org of await listOrganizationsForUser(principalId)) {
+    if (!grants.granted_org_ids.includes(org.id)) {
+      grants.granted_org_ids.push(org.id);
+      grants.granted_org_write_types[org.id] = [WRITE_ALL];
+    }
+  }
+  for (const id of await listAccessibleDocoIdsForPrincipal(principalId)) {
+    if (!grants.granted_doco_ids.includes(id)) {
+      grants.granted_doco_ids.push(id);
+      grants.granted_doco_write_types[id] = [WRITE_ALL];
+    }
+  }
+  if (grants.granted_doco_ids.length === 0 && grants.granted_org_ids.length === 0) {
+    throw approvalError("You don't have access to any Docos or organizations yet.", 400);
+  }
+  grants.granted_doco_ids.sort();
+  grants.granted_org_ids.sort();
+  return grants;
 }
 
 function parseGrantPayload(rawGrants: string): ParsedApprovalGrant[] {
@@ -105,9 +145,16 @@ function parseGrantPayload(rawGrants: string): ParsedApprovalGrant[] {
       write_types?: unknown;
     };
     const level =
-      grant.level === "account" || grant.level === "org" || grant.level === "doco"
+      grant.level === "account" ||
+      grant.level === "org" ||
+      grant.level === "doco" ||
+      grant.level === "identity"
         ? grant.level
         : null;
+    // Full-reach connector grant: no target, role deferred to the live matrix.
+    if (level === "identity") {
+      return { level, targetId: "", role: "reader", writeTypes: [] };
+    }
     const role = readRole(grant.role);
     const targetId = String(grant.targetId ?? grant.target_id ?? "").trim();
     if (!level || (level !== "account" && !targetId)) {

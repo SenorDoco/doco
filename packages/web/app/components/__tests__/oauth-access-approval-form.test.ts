@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { OAuthAccessApprovalForm } from "../oauth-access-approval-form";
 
 describe("OAuthAccessApprovalForm", () => {
-  it("uses the shared grant picker matrix for OAuth approvals", () => {
+  it("defaults to full access (defer to the live matrix), granular picker behind a toggle", () => {
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
         docos: [
@@ -31,12 +31,17 @@ describe("OAuthAccessApprovalForm", () => {
       }),
     );
 
-    expect(markup).toContain('data-testid="grant-picker"');
-    expect(markup).toContain("What do you want to grant access to?");
-    expect(markup).toContain("Specific node or edge types");
+    // Two access modes, "full" selected by default.
+    expect(markup).toContain('name="access_mode"');
+    expect(markup).toContain("Full access");
+    expect(markup).toContain("Specific Docos");
+    // The default submission defers to the matrix — the identity grant — so
+    // the connector follows the user's live permissions with no re-auth.
     expect(markup).toContain('name="grants"');
-    expect(markup).not.toContain("Select all");
-    expect(markup).not.toContain("Deselect all");
+    expect(markup).toContain("identity");
+    // The granular owner-scoped picker (its own markup is tested in
+    // grant-picker.test) stays hidden until "Specific Docos" is chosen.
+    expect(markup).not.toContain('data-testid="grant-picker"');
   });
 
   it("keeps the approve button clickable on an empty form so a click surfaces validation", () => {
