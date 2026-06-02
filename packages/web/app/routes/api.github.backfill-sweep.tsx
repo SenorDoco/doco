@@ -18,6 +18,10 @@ import { waitUntil } from "@vercel/functions";
 import { findStaleRunningBackfills } from "~/lib/github-connection.server";
 import { backfillRunSecret, kickBackfillRun } from "./api.github.backfill-run";
 
+// Match the worker's budget so a sweep that fans out re-kicks to many stranded
+// Docos has room to fire them all before the function ends.
+export const config = { maxDuration: 300 };
+
 /** Minutes a "running" cursor may sit without advancing before it's swept. Far
  *  above the 200s slice budget so only genuinely stranded chains are re-kicked. */
 const STALE_MINUTES = 5;

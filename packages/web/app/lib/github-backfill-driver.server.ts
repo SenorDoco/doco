@@ -114,6 +114,12 @@ export async function runBackfillSlice(
   let retryAfter: string | undefined;
   let rateLimited = false;
 
+  const persist = (done: boolean) =>
+    save(
+      ctx.docoId,
+      markerFrom(state, queue, repoIndex, page, counts, done, { attempts, errors, retryAfter }),
+    );
+
   const start = now();
   while (repoIndex < queue.length && now() - start < budgetMs) {
     const [owner, repo] = queue[repoIndex].split("/");
@@ -144,6 +150,14 @@ export async function runBackfillSlice(
         repoIndex++;
         page = 1;
       }
+      // Persist the advanced cursor after EVERY window — not only at the end of
+      // the slice. The slice's time budget (`budgetMs`) can exceed the Vercel
+      // function's `maxDuration`, which hard-kills the invocation mid-loop,
+      // BEFORE the post-loop save. Without a per-window checkpoint the cursor
+      // never advanced, so each re-kick re-walked from the start and the import
+      // plateaued. Checkpointing here makes forward progress durable: the next
+      // slice (chained or swept) resumes from the last completed window.
+      await persist(repoIndex >= queue.length);
     } catch (err) {
       const c = classify(err);
       if (c.rateLimited) {
@@ -177,9 +191,6 @@ export async function runBackfillSlice(
   }
 
   const done = repoIndex >= queue.length;
-  await save(
-    ctx.docoId,
-    markerFrom(state, queue, repoIndex, page, counts, done, { attempts, errors, retryAfter }),
-  );
+  await persist(done);
   return { done, rateLimited };
 }

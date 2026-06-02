@@ -24,6 +24,7 @@ import {
   recordInstallationAuthorization,
   resumeCursorFromConnections,
   subscribeInstallation,
+  summarizeBackfillForStatus,
 } from "../github-connection.server";
 
 describe("reconcileInstallationConnections", () => {
@@ -320,6 +321,69 @@ describe("githubImportProgress", () => {
   it("is null for a finished or absent backfill", () => {
     expect(githubImportProgress({ status: "done", repos: 4, repo_index: 4 })).toBeNull();
     expect(githubImportProgress(null)).toBeNull();
+  });
+});
+
+describe("summarizeBackfillForStatus", () => {
+  const now = Date.parse("2026-06-02T00:00:00.000Z");
+
+  it("maps a running import and flags a fresh cursor as not stalled", () => {
+    const s = summarizeBackfillForStatus(
+      {
+        status: "running",
+        repos: 10,
+        repo_index: 3,
+        imported: 5000,
+        updated: 2,
+        unchanged: 9,
+        failed: 1,
+        started_at: "2026-06-01T00:00:00.000Z",
+        cursor_at: "2026-06-01T23:59:00.000Z", // one minute before `now`
+      },
+      now,
+    );
+    expect(s).toMatchObject({
+      status: "running",
+      imported: 5000,
+      updated: 2,
+      unchanged: 9,
+      failed: 1,
+      repos: 10,
+      repos_done: 3,
+      stalled: false,
+    });
+  });
+
+  it("flags a running import whose cursor went stale (a stranded chain)", () => {
+    const s = summarizeBackfillForStatus(
+      { status: "running", repos: 4, repo_index: 1, cursor_at: "2026-06-01T00:00:00.000Z" },
+      now, // 24h after the last cursor advance
+    );
+    expect(s?.stalled).toBe(true);
+  });
+
+  it("treats a running import with no cursor heartbeat as stalled", () => {
+    expect(
+      summarizeBackfillForStatus({ status: "running", repos: 4, repo_index: 1 }, now)?.stalled,
+    ).toBe(true);
+  });
+
+  it("never flags a finished import as stalled and clamps repos_done to total", () => {
+    const s = summarizeBackfillForStatus(
+      { status: "done", repos: 4, repo_index: 9, imported: 12, finished_at: "t" },
+      now,
+    );
+    expect(s).toMatchObject({
+      status: "done",
+      repos: 4,
+      repos_done: 4,
+      imported: 12,
+      stalled: false,
+    });
+  });
+
+  it("is null when there is no backfill marker", () => {
+    expect(summarizeBackfillForStatus(null, now)).toBeNull();
   });
 });
 

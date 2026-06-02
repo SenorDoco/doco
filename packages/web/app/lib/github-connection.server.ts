@@ -373,6 +373,68 @@ export function githubImportProgress(
   return { done, total };
 }
 
+/** Minutes a "running" import may sit without its cursor advancing before
+ *  status.json flags it as stalled. Set above the 5-minute sweep interval (the
+ *  worker checkpoints every <200s) so a healthy chain is never falsely flagged
+ *  — only a genuinely stranded one. */
+const IMPORT_STALL_MINUTES = 15;
+
+/** PR-import health surfaced on a Doco's status.json — so a stalled or
+ *  incomplete backfill is observable instead of silent. */
+export interface GitHubImportStatus {
+  status: "running" | "done";
+  /** PR References created so far. */
+  imported: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+  /** Repos in the import queue. */
+  repos: number;
+  /** Repos fully imported (clamped to `[0, repos]`). */
+  repos_done: number;
+  started_at?: string;
+  finished_at?: string;
+  cursor_at?: string;
+  /** True when a "running" import hasn't advanced its cursor in a long time (or
+   *  never had a heartbeat) — the signature of a stranded chain a sweep re-kicks. */
+  stalled: boolean;
+  /** Repos skipped (gone/forbidden, or transient failures past the cap). */
+  errors: BackfillError[];
+}
+
+/**
+ * Condense a backfill marker into the import-health summary status.json
+ * exposes. Null when there's no backfill to report. The `stalled` flag turns
+ * the exact failure mode that stranded large org imports — a "running" marker
+ * whose cursor stopped advancing — into a visible signal. Pure given the clock.
+ */
+export function summarizeBackfillForStatus(
+  backfill: GitHubBackfillState | null,
+  nowMs: number = Date.now(),
+): GitHubImportStatus | null {
+  if (!backfill) return null;
+  const repos = backfill.repos ?? 0;
+  const repos_done = Math.min(Math.max(backfill.repo_index ?? 0, 0), Math.max(repos, 0));
+  const cursorMs = backfill.cursor_at ? Date.parse(backfill.cursor_at) : Number.NaN;
+  const stalled =
+    backfill.status === "running" &&
+    (Number.isNaN(cursorMs) || nowMs - cursorMs > IMPORT_STALL_MINUTES * 60_000);
+  return {
+    status: backfill.status,
+    imported: backfill.imported ?? 0,
+    updated: backfill.updated ?? 0,
+    unchanged: backfill.unchanged ?? 0,
+    failed: backfill.failed ?? 0,
+    repos,
+    repos_done,
+    ...(backfill.started_at ? { started_at: backfill.started_at } : {}),
+    ...(backfill.finished_at ? { finished_at: backfill.finished_at } : {}),
+    ...(backfill.cursor_at ? { cursor_at: backfill.cursor_at } : {}),
+    stalled,
+    errors: backfill.errors ?? [],
+  };
+}
+
 /** View-state for the Doco-home "GitHub integration" box. */
 export interface GitHubIntegrationStatus {
   /** A PR backfill is actively importing this Doco's historical PRs. */
