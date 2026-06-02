@@ -116,6 +116,27 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(mocks.searchLoader).not.toHaveBeenCalled();
   });
 
+  it("surfaces a search-route access-denied (403) as a clean tool error, not a transport status", async () => {
+    mocks.searchLoader.mockRejectedValue(
+      new Response(JSON.stringify({ kind: "access_denied" }), { status: 403 }),
+    );
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 8,
+          method: "tools/call",
+          params: { name: "doco_search", arguments: { query: "x", doco: "torre-bpms" } },
+        },
+        BEARER,
+      ),
+    });
+    expect(res.status).toBe(200);
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("isn't granted access");
+  });
+
   it("tools/call with an unknown tool errors (-32602)", async () => {
     const res = await action({
       request: rpc(
