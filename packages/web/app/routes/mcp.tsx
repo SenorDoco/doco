@@ -18,12 +18,13 @@
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
+import { action as changesetsAction } from "./$docoHandle.api.changesets[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
 import { loader as searchLoader } from "./$docoHandle.search[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
-const SERVER_VERSION = "0.4.0-remote";
+const SERVER_VERSION = "0.5.0-remote";
 
 // Self-sufficient instructions: in a connector context there is no repo
 // AGENTS.md, so the essentials ride here. Full protocol is linked.
@@ -32,7 +33,10 @@ const SERVER_INSTRUCTIONS = [
   "rules, intents, actions, and history. Call doco_search before answering",
   "substantive questions about how the project does things; there is almost",
   "always prior art you'd otherwise miss. Use doco_capture to record",
-  "decisions/rules/etc. as they form, and doco_relate to link them. If a",
+  "decisions/rules/etc. as they form and doco_relate to link them — or",
+  "doco_changeset to create and wire many nodes in one atomic batch (the",
+  "efficient way to import a process or backfill history). Use doco_get to",
+  "read the authoring contract, policies, status, or a node by id. If a",
   "write is denied, your token has read but not write on that Doco — call",
   "doco_request_access to ask an owner for writer; once they approve your",
   "same token works on the next call (a grant change, no re-auth). Full",
@@ -142,7 +146,75 @@ const REQUEST_ACCESS_TOOL = {
   },
 };
 
-const TOOLS = [SEARCH_TOOL, CAPTURE_TOOL, RELATE_TOOL, REQUEST_ACCESS_TOOL];
+const GET_TOOL = {
+  name: "doco_get",
+  description: [
+    "Read any document from a Doco's HTTP API by path — the read surface",
+    "beyond doco_search. Use it for the authoring contract, capture policies,",
+    "a node by id, a type listing, freshness/status, audit, or settings.",
+    "Read-only (needs read access). Common `resource` values:",
+    "  status.json                  — node counts + freshness (root path)",
+    "  api/authoring-contract.json   — node/edge types + changeset op shapes",
+    "  api/policies.json             — capture policies",
+    "  api/decisions.json            — list a type (any plural type)",
+    "  api/decisions/<id>.json       — one node by id",
+    "  api/audit.json | api/settings.json",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      doco: { type: "string", description: "Handle of the Doco to read from." },
+      resource: {
+        type: "string",
+        description:
+          "Path under the Doco: 'status.json' or an 'api/…' path (e.g. 'api/policies.json', 'api/decisions/<id>.json').",
+      },
+    },
+    required: ["doco", "resource"],
+  },
+};
+
+const CHANGESET_TOOL = {
+  name: "doco_changeset",
+  description: [
+    "Apply a batch of graph-authoring operations to a Doco in ONE atomic",
+    "request — create nodes, relate them with typed edges, append steps.",
+    "The efficient way to author many nodes/edges at once (e.g. importing a",
+    "process or backfilling history): one call instead of dozens of",
+    "doco_capture/doco_relate calls. Up to 50 operations. Reference an",
+    'earlier create\'s `alias` as "$alias" in a later op. Read',
+    "/<doco>/api/authoring-contract.json for operation shapes and relation",
+    "kinds. Needs write access to each type touched (same grant model as",
+    "doco_capture).",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      doco: { type: "string", description: "Handle of the Doco to write to." },
+      operations: {
+        type: "array",
+        description:
+          "Ordered ops: {op:'create',entity_type,alias?,body} | {op:'relate',relation_kind,from,to} | {op:'relate_many',relations:[…]} | {op:'append',entity_type,after,relation_kind,body}.",
+        items: { type: "object", additionalProperties: true },
+      },
+      validate_against: {
+        type: "string",
+        description:
+          "Optional perspective to check structural integrity against (e.g. 'bpmn'); returns an integrity summary alongside the results.",
+      },
+    },
+    required: ["doco", "operations"],
+  },
+};
+
+const TOOLS = [
+  SEARCH_TOOL,
+  GET_TOOL,
+  CAPTURE_TOOL,
+  RELATE_TOOL,
+  CHANGESET_TOOL,
+  REQUEST_ACCESS_TOOL,
+];
 
 type Rpc = {
   jsonrpc?: string;
@@ -305,6 +377,64 @@ async function runDocoRelate(request: Request, args: Record<string, unknown>): P
   );
 }
 
+async function runDocoChangeset(
+  request: Request,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const doco = String(args.doco ?? "").trim();
+  const operations = args.operations;
+  if (!doco) return toolError("doco_changeset requires a `doco` handle.");
+  if (!Array.isArray(operations) || operations.length === 0) {
+    return toolError(
+      "doco_changeset requires a non-empty `operations` array. See /<doco>/api/authoring-contract.json for operation shapes.",
+    );
+  }
+  const payload: Record<string, unknown> = { operations };
+  if (typeof args.validate_against === "string" && args.validate_against.trim()) {
+    payload.validate_against = args.validate_against.trim();
+  }
+  const origin = new URL(request.url).origin;
+  const url = `${origin}/${encodeURIComponent(doco)}/api/changesets.json`;
+  const req = new Request(url, {
+    method: "POST",
+    headers: bearerHeaders(request, { "content-type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  return delegate("apply a changeset to", doco, () =>
+    changesetsAction({ request: req, params: { docoHandle: doco } as never }),
+  );
+}
+
+// doco_get is the generic read surface: it GETs any document under the Doco's
+// HTTP API (or the root /status.json) with the caller's bearer replayed, so
+// the target route's own read gate applies. Unlike the write tools it can't
+// import a single route handler — node-by-id lives at a route per type — so it
+// fetches the same origin and lets routing dispatch. The path is constrained
+// to the Doco's own read namespace (no traversal, no absolute URLs).
+async function runDocoGet(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
+  const doco = String(args.doco ?? "").trim();
+  const resource = String(args.resource ?? "")
+    .trim()
+    .replace(/^\/+/, "");
+  if (!doco) return toolError("doco_get requires a `doco` handle.");
+  if (!resource) {
+    return toolError(
+      "doco_get requires a `resource` path, e.g. 'status.json' or 'api/authoring-contract.json'.",
+    );
+  }
+  if (resource.includes("..") || resource.includes("://")) {
+    return toolError("doco_get `resource` must be a path within the Doco (no '..' or URLs).");
+  }
+  if (resource !== "status.json" && !resource.startsWith("api/")) {
+    return toolError(
+      "doco_get `resource` must be 'status.json' or an 'api/…' path (e.g. 'api/policies.json').",
+    );
+  }
+  const origin = new URL(request.url).origin;
+  const url = `${origin}/${encodeURIComponent(doco)}/${resource}`;
+  return delegate("read from", doco, () => fetch(url, { headers: bearerHeaders(request) }));
+}
+
 // Not a delegate: requesting access is a first-party action (no per-doco REST
 // route), so it calls the access-requests lib directly with the token's
 // principal as the requester.
@@ -371,10 +501,14 @@ async function dispatch(message: Rpc, request: Request, principalId: string): Pr
       switch (name) {
         case "doco_search":
           return rpcResult(message.id, await runDocoSearch(request, args));
+        case "doco_get":
+          return rpcResult(message.id, await runDocoGet(request, args));
         case "doco_capture":
           return rpcResult(message.id, await runDocoCapture(request, args));
         case "doco_relate":
           return rpcResult(message.id, await runDocoRelate(request, args));
+        case "doco_changeset":
+          return rpcResult(message.id, await runDocoChangeset(request, args));
         case "doco_request_access":
           return rpcResult(message.id, await runDocoRequestAccess(args, principalId));
         default:

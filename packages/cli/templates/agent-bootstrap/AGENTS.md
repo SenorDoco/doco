@@ -69,11 +69,15 @@ Tools exposed:
 - `doco_search` — query the Doco for relevant prior context (read). It
   refreshes a missing or stale `DOCO_ACCESS` from `DOCO_REFRESH` +
   `DOCO_CLIENT_ID` before falling back to device flow.
+- `doco_get` — read the authoring contract, capture policies, status, a
+  node by id, or a type listing (read). The read surface beyond search.
 - `doco_capture` — record a decision/intent/rule/etc. as it forms
   (write; needs writer). On 403, call `doco_authenticate` with
   `requested_role=writer` to request write access, then retry — a grant
   change, not a different login.
 - `doco_relate` — link two nodes with a typed edge (write).
+- `doco_changeset` — create and wire many nodes in one atomic batch
+  (write; the efficient way to import a process or backfill history).
 - `doco_authenticate` — start OAuth device-flow auth (returns a URL
   immediately, does not block).
 - `doco_complete_authentication` — finalize after user approves
@@ -370,6 +374,6 @@ credential.
 - `.claude/bootstrap-fetch.sh` — SessionStart hook; fetches bootstrap, pre-builds the connection indicator. Bypassed where hooks don't fire.
 - `.claude/user-prompt-fetch.sh` — UserPromptSubmit hook; re-pushes the protocol and pre-fetches search for the user's prompt. Bypassed where hooks don't fire.
 - `.agents/doco-agent-client.mjs` — Doco API HTTP client; `bootstrap` and `search` subcommands callable directly.
-- `.agents/doco-mcp-server.mjs` — MCP server (stdio, JSON-RPC 2.0, zero-dep) exposing `doco_search`, `doco_authenticate`, `doco_complete_authentication`. The discoverability floor where hooks don't fire.
+- `.agents/doco-mcp-server.mjs` — MCP server (stdio, JSON-RPC 2.0, zero-dep) exposing the `doco_*` tools (`doco_search`, `doco_get`, `doco_capture`, `doco_relate`, `doco_changeset`) plus `doco_authenticate` / `doco_complete_authentication`. The discoverability floor where hooks don't fire.
 - `.mcp.json` — MCP server registration; auto-discovered by Claude Code, Cursor, Codex CLI.
 <!-- END DOCO -->
