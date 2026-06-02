@@ -15,8 +15,8 @@
 //     `user_*` id walk through the user → github_login
 //     → matching Principal name path; rows that don't resolve land in
 //     Unassigned.
-//   - Artifacts band (bottom): References, Ideas, plus any Rule/Eval
-//     that didn't re-home onto an Action via constrained_by/supports role edges.
+//   - Artifacts band (bottom): Ideas, plus any Rule/Eval that didn't
+//     re-home onto an Action via constrained_by/supports role edges.
 //
 // Intents themselves are *not* rendered as flow nodes — they're pool
 // headers. The Intent's prose labels its pool.
@@ -34,10 +34,11 @@
 //   action                  → task        (BPMN rounded-rect task)
 //   rule                    → rectangle   (policy box)
 //   state                   → task        (milestone-band task)
-//   eval, reference         → document    (BPMN data object)
+//   eval                    → document    (BPMN data object)
 //   idea                    → rounded     (capsule)
 //
-// Not rendered: Log (instances, not designs).
+// Not rendered: Log (instances, not designs) or Reference (source/
+// background material, not a process step).
 
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
@@ -143,7 +144,6 @@ const BPMN_TABLES: { table: string; entityType: string }[] = [
   { table: "actions", entityType: "action" },
   { table: "rules", entityType: "rule" },
   { table: "evals", entityType: "eval" },
-  { table: "reference_entities", entityType: "reference" },
   { table: "states", entityType: "state" },
   { table: "ideas", entityType: "idea" },
 ];
@@ -159,14 +159,13 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 
 // Non-actor node types: their pool placement comes from a different
 // signal (the host they re-home onto, or the Unassigned pool).
-const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
+const ARTIFACT_TYPES = new Set(["eval", "idea", "rule"]);
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   state: "task", // same glyph as Action — full-sized, readable, not a compact band label
   decision: "diamond",
   action: "task",
   rule: "rectangle",
   eval: "document",
-  reference: "document",
   idea: "rounded",
 };
 
@@ -226,6 +225,7 @@ export async function loadBpmnGraph(
   // retired here would make toggling "Retired" on a no-op, leaving the
   // canvas "So empty" for a retired process. This mirrors the Graph/List
   // loader (full-graph.server), which also returns every lifecycle.
+  const allowedNodeTypes = new Set(BPMN_TABLES.map((entry) => entry.entityType));
   const bpmnTypeList = BPMN_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
   // Flow nodes ("steps") are every BPMN type except Intent — Intents render as
   // pool headers, not steps. The true total is a scalar subquery (immune to the
@@ -287,7 +287,13 @@ export async function loadBpmnGraph(
     userById.set(cr.id, cr);
   }
 
-  const allRows = nodeRows.rows;
+  // BPMN_TABLES is the single source of truth for which node types this
+  // perspective renders. The SQL above already restricts to those types
+  // (so References and other excluded types are never fetched); this guard
+  // keeps the JS in lockstep with that list — a References row that somehow
+  // arrives (e.g. from a query client that ignores the type filter) is
+  // dropped before it can reach the node cap, PageRank, pooling, or layout.
+  const allRows = nodeRows.rows.filter((row) => allowedNodeTypes.has(row.entity_type));
 
   // Index of every Intent row by id — Intents define pools (and don't
   // render as flow nodes themselves).

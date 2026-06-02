@@ -685,6 +685,66 @@ describe("loadBpmnGraph", () => {
     expect(done?.implemented).toBe(true);
     expect(todo?.implemented).toBe(false);
   });
+
+  it("excludes Reference nodes and their citation edges from the BPMN graph", async () => {
+    // References are source/background material, not process steps, so the
+    // BPMN perspective doesn't render them — not as document artifacts, and
+    // not as the gray dashed "see also" links to the steps that cite them.
+    // The loader drops both, so the node cap, PageRank, and layout never see
+    // a Reference. (The `implemented` flag still works — it reads the
+    // implemented_by edge, not the Reference node; covered above.)
+    const intentId = "intent_01PROCESS";
+    const actionId = "action_01STEP";
+    const referenceId = "reference_01DOC";
+
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Process",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: actionId,
+          entity_type: "action",
+          summary: "Do the thing",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {},
+        },
+        {
+          id: referenceId,
+          entity_type: "reference",
+          summary: "Background doc",
+          lifecycle: "asserted",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {},
+        },
+      ],
+      principals: [{ id: "principal_system", name: "System", lifecycle: "asserted" }],
+      users: [],
+      edges: [
+        edge("edge_SERVES", actionId, intentId, "serves"),
+        edge("edge_ACTOR", actionId, "principal_system", "performed_by"),
+        // The action cites the reference — an association edge, not sequence flow.
+        edge("edge_CITES", actionId, referenceId, "relates_to"),
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "proc" });
+
+    // The action still renders; the Reference is gone entirely.
+    expect(graph.nodes.map((n) => n.id)).toContain(actionId);
+    expect(graph.nodes.map((n) => n.entity_type)).not.toContain("reference");
+    expect(graph.nodes.map((n) => n.id)).not.toContain(referenceId);
+    // No edge incident to the Reference survives into the rendered links.
+    expect(graph.links.some((l) => l.source === referenceId || l.target === referenceId)).toBe(
+      false,
+    );
+  });
 });
 
 describe("computeNearestIntentByNode", () => {
