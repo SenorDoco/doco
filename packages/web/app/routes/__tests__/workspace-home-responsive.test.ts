@@ -8,7 +8,7 @@ const searchSource = () =>
 const settingsSource = () =>
   readFileSync(new URL("../workspaces.$workspaceHandle.settings.tsx", import.meta.url), "utf8");
 
-const workspaceTwoColumnGrid = "grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]";
+const workspaceTwoColumnGrid = "grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_420px]";
 
 describe("/workspaces/:workspaceHandle responsive layout", () => {
   it("uses the shared wide page width and desktop sidebar grid", () => {
@@ -42,6 +42,17 @@ describe("/workspaces/:workspaceHandle responsive layout", () => {
     // narrow Doco-page width.
     expect(src).not.toContain("max-w-3xl");
     expect(src).not.toContain("max-w-4xl");
+  });
+
+  it("lists the workspace's Docos by name without the redundant owner prefix", () => {
+    const src = routeSource();
+    const docosCard = src.indexOf('"Docos in this workspace"');
+    const hideOwner = src.indexOf("showOwner={false}");
+
+    // The Docos list lives in this workspace, so prefixing each entry with the
+    // workspace handle ("torre / …") is redundant — show just the Doco name.
+    expect(docosCard).toBeGreaterThan(-1);
+    expect(hideOwner).toBeGreaterThan(docosCard);
   });
 
   it("splits workspace search and settings pages into content and side columns", () => {

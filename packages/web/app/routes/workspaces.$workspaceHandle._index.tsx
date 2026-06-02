@@ -324,7 +324,7 @@ export default function WorkspaceHome({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_420px]">
           {/* Left column — the constitution gets the full available width, with
               the latest activity feed beneath it. */}
           <section className="min-w-0 space-y-4">
@@ -387,6 +387,7 @@ export default function WorkspaceHome({
                 </Link>
               }
               docos={docoItems}
+              showOwner={false}
               empty={
                 <p className="text-xs italic text-muted-foreground">
                   This workspace doesn't own any Docos yet.
