@@ -21,15 +21,7 @@ export default defineConfig({
     // Integration tests (*.integration.test.ts) need a local Postgres —
     // db-isolation spins up a throwaway DB per file — so they run via
     // `pnpm test:integration`, not `pnpm test`/CI (no Postgres there).
-    // slack-response-flow + new-doco are pre-existing STALE tests for
-    // refactored Slack/GitHub features; excluded here with a tracked
-    // follow-up so the rest of the suite can gate CI now.
-    exclude: [
-      ...configDefaults.exclude,
-      "**/*.integration.test.ts",
-      "**/slack-response-flow.server.test.ts",
-      "**/new-doco.test.ts",
-    ],
+    exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
     globals: false,
     testTimeout: 30_000,
   },

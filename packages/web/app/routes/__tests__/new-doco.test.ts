@@ -9,11 +9,6 @@ const mocks = vi.hoisted(() => ({
   isOrgMember: vi.fn(),
   listMyOrgs: vi.fn(),
   lookupOrgHandle: vi.fn(),
-  buildInstallUrl: vi.fn(),
-}));
-
-vi.mock("~/lib/github-connection.server", () => ({
-  buildInstallUrl: mocks.buildInstallUrl,
 }));
 
 vi.mock("~/lib/org-helpers.server", () => ({
@@ -58,9 +53,6 @@ describe("/new-doco", () => {
     mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
     mocks.isOrgMember.mockResolvedValue(true);
     mocks.lookupOrgHandle.mockResolvedValue("acme");
-    mocks.buildInstallUrl.mockReturnValue(
-      "https://github.com/apps/doco/installations/new?state=doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
-    );
   });
 
   it("starts the GitHub connection flow for GitHub pull request docos", async () => {
@@ -85,10 +77,7 @@ describe("/new-doco", () => {
     );
 
     expect(response.status).toBe(302);
-    expect(mocks.buildInstallUrl).toHaveBeenCalledWith("doco_01KSJZ35Y5H6HA7WF75JWMY7J4");
-    expect(response.headers.get("Location")).toBe(
-      "https://github.com/apps/doco/installations/new?state=doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
-    );
+    expect(response.headers.get("Location")).toBe("/prs/integrations/github");
   });
 
   it("redirects regular docos without a created chat id", async () => {
