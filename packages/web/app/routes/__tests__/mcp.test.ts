@@ -1,11 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipalAsync: vi.fn(),
   searchLoader: vi.fn(),
   captureAction: vi.fn(),
   edgesAction: vi.fn(),
+  changesetsAction: vi.fn(),
   requestDocoAccess: vi.fn(),
+  fetchMock: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
@@ -17,6 +19,7 @@ vi.mock("~/lib/access-requests.server", () => ({
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
 vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
 vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction }));
+vi.mock("../$docoHandle.api.changesets[.]json", () => ({ action: mocks.changesetsAction }));
 
 import { action, loader } from "../mcp";
 
@@ -37,6 +40,12 @@ describe("POST /mcp (hosted remote MCP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_alice", username: "alice" });
+    // doco_get reads via a same-origin fetch; stub it so no real network is hit.
+    vi.stubGlobal("fetch", mocks.fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("401 + WWW-Authenticate at the protected-resource metadata when unauthenticated", async () => {
@@ -58,15 +67,17 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.instructions).toContain("doco_capture");
   });
 
-  it("tools/list advertises read + write tools (search, capture, relate)", async () => {
+  it("tools/list advertises read + write tools (search, get, capture, relate, changeset)", async () => {
     const res = await action({
       request: rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" }, BEARER),
     });
     const body: Json = await res.json();
     expect(body.result.tools.map((t: Json) => t.name)).toEqual([
       "doco_search",
+      "doco_get",
       "doco_capture",
       "doco_relate",
+      "doco_changeset",
       "doco_request_access",
     ]);
   });
@@ -192,6 +203,121 @@ describe("POST /mcp (hosted remote MCP)", () => {
       to_id: "intent_1",
     });
     expect(body.result.structuredContent.id).toBe("edge_1");
+  });
+
+  it("doco_changeset delegates a POST to the changesets route with operations + validate_against", async () => {
+    mocks.changesetsAction.mockResolvedValue(
+      Response.json({
+        ok: true,
+        results: [{ op_index: 0, op: "create", ok: true, id: "action_1" }],
+        aliases: { a: "action_1" },
+      }),
+    );
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 20,
+          method: "tools/call",
+          params: {
+            name: "doco_changeset",
+            arguments: {
+              doco: "acme",
+              operations: [
+                { op: "create", entity_type: "action", alias: "a", body: { action: "do" } },
+              ],
+              validate_against: "bpmn",
+            },
+          },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    const callArg: Json = mocks.changesetsAction.mock.calls[0][0];
+    expect(callArg.params).toEqual({ docoHandle: "acme" });
+    expect(callArg.request.method).toBe("POST");
+    expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
+    expect(callArg.request.url).toContain("/acme/api/changesets.json");
+    expect(await callArg.request.json()).toEqual({
+      operations: [{ op: "create", entity_type: "action", alias: "a", body: { action: "do" } }],
+      validate_against: "bpmn",
+    });
+    expect(body.result.structuredContent.aliases).toEqual({ a: "action_1" });
+  });
+
+  it("doco_changeset requires a non-empty operations array", async () => {
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 21,
+          method: "tools/call",
+          params: { name: "doco_changeset", arguments: { doco: "acme", operations: [] } },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(mocks.changesetsAction).not.toHaveBeenCalled();
+  });
+
+  it("doco_get fetches a read path under the doco, replaying the bearer", async () => {
+    mocks.fetchMock.mockResolvedValue(Response.json({ ok: true, relation_kinds: ["flows_to"] }));
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 22,
+          method: "tools/call",
+          params: {
+            name: "doco_get",
+            arguments: { doco: "acme", resource: "api/authoring-contract.json" },
+          },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    expect(mocks.fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = mocks.fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://doco.to/acme/api/authoring-contract.json");
+    expect((init.headers as Headers).get("authorization")).toBe("Bearer doco_at_test");
+    expect(body.result.structuredContent.relation_kinds).toEqual(["flows_to"]);
+  });
+
+  it("doco_get reads the root status.json exception", async () => {
+    mocks.fetchMock.mockResolvedValue(Response.json({ counts: {} }));
+    await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 23,
+          method: "tools/call",
+          params: { name: "doco_get", arguments: { doco: "acme", resource: "status.json" } },
+        },
+        BEARER,
+      ),
+    });
+    expect(String(mocks.fetchMock.mock.calls[0][0])).toBe("https://doco.to/acme/status.json");
+  });
+
+  it("doco_get rejects a path outside the doco read surface without fetching", async () => {
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 24,
+          method: "tools/call",
+          params: { name: "doco_get", arguments: { doco: "acme", resource: "../../etc/passwd" } },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(mocks.fetchMock).not.toHaveBeenCalled();
   });
 
   it("doco_request_access asks an owner for a grant via the access-requests lib", async () => {

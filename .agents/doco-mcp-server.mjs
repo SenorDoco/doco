@@ -27,7 +27,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
-const SERVER_VERSION = "0.3.0";
+const SERVER_VERSION = "0.4.0";
 const DEFAULT_HOST = "https://doco.to";
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -60,8 +60,10 @@ const SERVER_INSTRUCTIONS = [
   "",
   "Available tools:",
   "- doco_search: query the project's Doco for relevant prior context (read).",
+  "- doco_get: read the authoring contract, policies, status, or a node by id (read).",
   "- doco_capture: record a decision/intent/rule/etc. as it forms (write).",
   "- doco_relate: link two nodes with a typed edge (write).",
+  "- doco_changeset: create and wire many nodes in one atomic batch (write).",
   "- doco_authenticate: start OAuth device flow when a call returns 401/403,",
   "  or to step up to writer (requested_role='writer') for capture/relate.",
   "- doco_complete_authentication: finalize OAuth after the user approves.",
@@ -355,7 +357,73 @@ const COMPLETE_AUTH_TOOL = {
   },
 };
 
-const TOOLS = [SEARCH_TOOL, CAPTURE_TOOL, RELATE_TOOL, AUTH_TOOL, COMPLETE_AUTH_TOOL];
+const GET_TOOL = {
+  name: "doco_get",
+  description: [
+    "Read any document from this project's Doco by path — the read surface",
+    "beyond doco_search. Use it for the authoring contract, capture policies,",
+    "a node by id, a type listing, freshness/status, audit, or settings.",
+    "Read-only (needs read access). Common `resource` values:",
+    "  status.json                  — node counts + freshness (root path)",
+    "  api/authoring-contract.json   — node/edge types + changeset op shapes",
+    "  api/policies.json             — capture policies",
+    "  api/decisions.json            — list a type (any plural type)",
+    "  api/decisions/<id>.json       — one node by id",
+    "  api/audit.json | api/settings.json",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      resource: {
+        type: "string",
+        description:
+          "Path under the Doco: 'status.json' or an 'api/…' path (e.g. 'api/policies.json', 'api/decisions/<id>.json').",
+      },
+    },
+    required: ["resource"],
+  },
+};
+
+const CHANGESET_TOOL = {
+  name: "doco_changeset",
+  description: [
+    "Apply a batch of graph-authoring operations to this project's Doco in",
+    "ONE atomic request — create nodes, relate them with typed edges, append",
+    "steps. The efficient way to author many nodes/edges at once (e.g.",
+    "importing a process or backfilling history): one call instead of dozens",
+    "of doco_capture/doco_relate calls. Up to 50 operations. Reference an",
+    'earlier create\'s `alias` as "$alias" in a later op. Read GET',
+    "/<handle>/api/authoring-contract.json for operation shapes and relation",
+    "kinds. Needs write access — same writer step-up as doco_capture if 403.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      operations: {
+        type: "array",
+        description:
+          "Ordered ops: {op:'create',entity_type,alias?,body} | {op:'relate',relation_kind,from,to} | {op:'relate_many',relations:[…]} | {op:'append',entity_type,after,relation_kind,body}.",
+        items: { type: "object", additionalProperties: true },
+      },
+      validate_against: {
+        type: "string",
+        description:
+          "Optional perspective to check structural integrity against (e.g. 'bpmn'); returns an integrity summary alongside the results.",
+      },
+    },
+    required: ["operations"],
+  },
+};
+
+const TOOLS = [
+  SEARCH_TOOL,
+  GET_TOOL,
+  CAPTURE_TOOL,
+  RELATE_TOOL,
+  CHANGESET_TOOL,
+  AUTH_TOOL,
+  COMPLETE_AUTH_TOOL,
+];
 
 const rl = createInterface({ input: stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
@@ -439,10 +507,14 @@ async function handleToolCall(message) {
   switch (params.name) {
     case SEARCH_TOOL.name:
       return handleSearch(message);
+    case GET_TOOL.name:
+      return handleGet(message);
     case CAPTURE_TOOL.name:
       return handleCapture(message);
     case RELATE_TOOL.name:
       return handleRelate(message);
+    case CHANGESET_TOOL.name:
+      return handleChangeset(message);
     case AUTH_TOOL.name:
       return handleAuthenticate(message);
     case COMPLETE_AUTH_TOOL.name:
@@ -612,6 +684,107 @@ async function handleRelate(message) {
       ],
     },
   });
+}
+
+// Batch graph-authoring: POST many create/relate/append ops in one atomic
+// request. Same stored-credential + per-type write gate as handleCapture.
+async function handleChangeset(message) {
+  const args = message.params?.arguments || {};
+  const operations = args.operations;
+  if (!Array.isArray(operations) || operations.length === 0) {
+    return errorResult(
+      message.id,
+      "doco_changeset requires a non-empty `operations` array. Read GET /<handle>/api/authoring-contract.json for operation shapes.",
+    );
+  }
+  const payload = { operations };
+  if (typeof args.validate_against === "string" && args.validate_against.trim()) {
+    payload.validate_against = args.validate_against.trim();
+  }
+  const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
+  if (!handle) {
+    return errorResult(message.id, "No Doco found in .doco/connections.md.");
+  }
+  const host = normalizeHost(readEnv("DOCO_HOST") || DEFAULT_HOST);
+  const url = new URL(`/${encodeURIComponent(handle)}/api/changesets.json`, host);
+  const result = await requestJsonWithStoredCredential(url, host, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!result.ok) {
+    return errorResult(message.id, formatWriteErrorForAgent(result, handle, "changeset"));
+  }
+  return send({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: { content: [{ type: "text", text: formatChangesetResult(result.body, handle) }] },
+  });
+}
+
+// Generic read: GET any document under the Doco's HTTP API (or the root
+// /status.json) with the stored credential. The path is constrained to the
+// Doco's own read namespace (no traversal, no absolute URLs); the route's
+// own read gate still applies.
+async function handleGet(message) {
+  const args = message.params?.arguments || {};
+  const resource = String(args.resource || "")
+    .trim()
+    .replace(/^\/+/, "");
+  if (!resource) {
+    return errorResult(
+      message.id,
+      "doco_get requires a `resource` path, e.g. 'status.json' or 'api/authoring-contract.json'.",
+    );
+  }
+  if (resource.includes("..") || resource.includes("://")) {
+    return errorResult(
+      message.id,
+      "doco_get `resource` must be a path within the Doco (no '..' or URLs).",
+    );
+  }
+  if (resource !== "status.json" && !resource.startsWith("api/")) {
+    return errorResult(
+      message.id,
+      "doco_get `resource` must be 'status.json' or an 'api/…' path (e.g. 'api/policies.json').",
+    );
+  }
+  const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
+  if (!handle) {
+    return errorResult(message.id, "No Doco found in .doco/connections.md.");
+  }
+  const host = normalizeHost(readEnv("DOCO_HOST") || DEFAULT_HOST);
+  const url = new URL(`/${encodeURIComponent(handle)}/${resource}`, host);
+  const result = await requestJsonWithStoredCredential(url, host);
+  if (!result.ok) {
+    return errorResult(message.id, formatErrorForAgent(result, handle, result.hadAccess));
+  }
+  return send({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: { content: [{ type: "text", text: JSON.stringify(result.body, null, 2) }] },
+  });
+}
+
+// Render a changeset response: the protocol's footer lines, the created
+// node ids, and any aliases the author can chain in a follow-up call.
+function formatChangesetResult(body, handle) {
+  if (!body || typeof body !== "object") return `Applied changeset to Doco '${handle}'.`;
+  const lines = [];
+  const footers = Array.isArray(body.footer_lines) ? body.footer_lines : [];
+  for (const f of footers) lines.push(String(f));
+  const results = Array.isArray(body.results) ? body.results : [];
+  const createdIds = results.filter((r) => r?.ok && r.id).map((r) => r.id);
+  if (createdIds.length) lines.push(`Created: ${createdIds.join(", ")}.`);
+  if (body.aliases && typeof body.aliases === "object" && Object.keys(body.aliases).length) {
+    lines.push(`Aliases: ${JSON.stringify(body.aliases)}.`);
+  }
+  if (body.integrity && typeof body.integrity === "object") {
+    lines.push(
+      `Integrity (${body.integrity.checked_against}): ${body.integrity.ok ? "ok" : "issues"}.`,
+    );
+  }
+  return lines.length ? lines.join("\n") : `Applied changeset to Doco '${handle}'.`;
 }
 
 // Render a write response (capture / edge). Prefers the route's

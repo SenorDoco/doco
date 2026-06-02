@@ -52,14 +52,23 @@ There are two access channels — pick the one your runtime supports.
 
 **MCP** (preferred, MCP-aware runtimes). Doco-tracked repos ship
 \`.mcp.json\` registering an MCP server at
-\`.agents/doco-mcp-server.mjs\`. The server exposes three tools:
+\`.agents/doco-mcp-server.mjs\`. The server exposes these tools:
 
   - \`doco_search\` — query the project's Doco for relevant prior
     context. Cheap; call before answering substantive questions. If
     repo-root \`.env\` has \`DOCO_REFRESH\` + \`DOCO_CLIENT_ID\`,
     it refreshes a missing or stale \`DOCO_ACCESS\` locally before
     falling back to device flow.
-  - \`doco_authenticate\` — start OAuth device flow when search
+  - \`doco_get\` — read the authoring contract, capture policies,
+    status, a node by id, or a type listing (read) — the read
+    surface beyond search.
+  - \`doco_capture\` — record a decision/intent/rule/etc. as it
+    forms (write; needs writer).
+  - \`doco_relate\` — link two nodes with a typed edge (write).
+  - \`doco_changeset\` — create and wire many nodes in one atomic
+    batch (write; the efficient way to import a process or backfill
+    history without dozens of single calls).
+  - \`doco_authenticate\` — start OAuth device flow when a call
     returns 401/403. Returns a ready-to-render block with a
     clickable verification URL.
   - \`doco_complete_authentication\` — finalize after the user
