@@ -10,6 +10,14 @@ function renderTrail(items: BreadcrumbItem[]): string {
   );
 }
 
+// Render the trail as if the browser were at `path`, so the component's
+// current-location self-link resolves to that page.
+function renderTrailAt(items: BreadcrumbItem[], path: string): string {
+  return renderToStaticMarkup(
+    createElement(MemoryRouter, { initialEntries: [path] }, createElement(Breadcrumb, { items })),
+  );
+}
+
 describe("docoBreadcrumb", () => {
   it("keeps Home and the owning organization in doco-scoped trails", () => {
     expect(docoBreadcrumb({ ownerSlug: "torre", handle: "meta-pull-requests" })).toEqual([
@@ -55,12 +63,30 @@ describe("Breadcrumb rendering", () => {
     expect(markup).not.toContain('<span aria-current="page">torre</span>');
   });
 
-  it("keeps the current item as plain text when it has no destination", () => {
-    // Leaf page labels (e.g. `Guidance`) carry no `to`, so there is nothing
-    // to link to — they stay a span flagged as the current page.
-    const markup = renderTrail([{ label: "Home", to: "/" }, { label: "Guidance" }]);
-    expect(markup).toMatch(/<span[^>]*aria-current="page"[^>]*>Guidance<\/span>/);
-    expect(markup).not.toMatch(/<a[^>]*>Guidance<\/a>/);
+  it("self-links the current item to the current page when it has no destination", () => {
+    // Leaf page labels (e.g. `Access tokens` on /api-keys) carry no `to`, but
+    // the current crumb must still be clickable everywhere — it self-links to
+    // the page you are already on.
+    const markup = renderTrailAt(
+      [{ label: "Home", to: "/" }, { label: "Access tokens" }],
+      "/api-keys",
+    );
+    const anchor = markup.match(/<a [^>]*>Access tokens<\/a>/)?.[0] ?? "";
+    expect(anchor).toContain('href="/api-keys"');
+    expect(anchor).toContain('aria-current="page"');
+    // It is no longer a bare, unclickable span.
+    expect(markup).not.toContain('<span aria-current="page">Access tokens</span>');
+  });
+
+  it("only self-links the current item — earlier crumbs without a destination stay text", () => {
+    // A middle crumb with no `to` has no natural target, so it stays plain
+    // text; only the trailing (current) crumb gets the current-path fallback.
+    const markup = renderTrailAt(
+      [{ label: "Home", to: "/" }, { label: "Section" }, { label: "Leaf", to: "/leaf" }],
+      "/leaf",
+    );
+    expect(markup).toMatch(/<span[^>]*>Section<\/span>/);
+    expect(markup).not.toMatch(/<a[^>]*>Section<\/a>/);
   });
 
   it("still links every non-current item that has a destination", () => {
