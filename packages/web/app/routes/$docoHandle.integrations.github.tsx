@@ -672,7 +672,7 @@ function InstallationChoiceForm({ choice }: { choice: InstallationPickerChoice }
       }}
     >
       <input type="hidden" name="installation_id" value={choice.installation_id} />
-      <div className="space-y-2 rounded-md border border-border/80 p-3">
+      <div className="space-y-2 rounded-md border border-border p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="font-mono text-sm font-semibold text-foreground">{choice.account}</p>
