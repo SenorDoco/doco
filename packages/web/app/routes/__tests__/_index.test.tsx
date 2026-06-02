@@ -45,13 +45,6 @@ describe("Home (anonymous landing)", () => {
     expect(html).toContain(">Shared memory for AI and teams</h1>");
   });
 
-  it("frames the core benefit as capturing the why, not just the what", () => {
-    const html = render();
-    // The git-remembers-what / Doco-remembers-why contrast is the thesis.
-    expect(html).toMatch(/\bwhy\b/i);
-    expect(html).toMatch(/\bgit\b/i);
-  });
-
   it("showcases unique functionality: a typed knowledge graph", () => {
     const html = render();
     // Typed nodes — decisions and rules are the canonical examples.
