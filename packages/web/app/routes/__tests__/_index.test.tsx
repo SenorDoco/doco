@@ -39,10 +39,10 @@ describe("Home (anonymous landing)", () => {
     expect(html).toContain("Join an existing doco");
   });
 
-  it("leads with the shared-memory positioning and keeps the tagline", () => {
+  it("uses the shared-memory line as the hero headline", () => {
     const html = render();
-    expect(html).toContain("Shared memory for AI and teams");
-    expect(html).toContain("Keep people, agents, and work aligned");
+    // Promoted from the kicker to the <h1>, in normal case (no uppercase).
+    expect(html).toContain(">Shared memory for AI and teams</h1>");
   });
 
   it("frames the core benefit as capturing the why, not just the what", () => {
