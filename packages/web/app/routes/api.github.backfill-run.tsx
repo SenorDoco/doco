@@ -21,6 +21,14 @@ import {
   resumeCursorFromConnections,
 } from "~/lib/github-connection.server";
 
+// Give each slice the full Vercel function budget. The driver's per-slice time
+// budget is 200s (`runBackfillSlice`'s `budgetMs`); without this the function
+// runs at the platform default (well under 200s) and is hard-killed mid-slice —
+// historically before the cursor was persisted, so the import never advanced
+// past its first window. 300s leaves comfortable margin above the 200s budget
+// for the final checkpoint save and the self-chaining re-kick.
+export const config = { maxDuration: 300 };
+
 /** Bearer secret the slices authenticate to each other with. */
 export function backfillRunSecret(): string {
   return process.env.CRON_SECRET || process.env.DOCO_GITHUB_WEBHOOK_SECRET || "";

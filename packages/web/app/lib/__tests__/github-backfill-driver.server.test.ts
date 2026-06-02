@@ -156,6 +156,43 @@ describe("runBackfillSlice", () => {
     expect(saved.imported).toBe(1);
   });
 
+  it("persists the cursor after every window, not just at slice end (durability)", async () => {
+    // One repo spanning three windows. The OLD driver saved the cursor only
+    // AFTER the whole budget loop, so a hard function timeout — Vercel kills the
+    // slice before that final save, because the slice budget (200s) exceeds the
+    // function's maxDuration — stranded the cursor at the start. Every re-kick
+    // then re-walked from page 1 and the import plateaued (the real-world stall
+    // at ~half of a 46k-PR org). The cursor must be persisted after each window
+    // so an interrupted slice still advances.
+    const backfillRepo = vi
+      .fn()
+      .mockResolvedValueOnce(page({ created: 5, nextPage: 6 }))
+      .mockResolvedValueOnce(page({ created: 5, nextPage: 11 }))
+      .mockResolvedValueOnce(page({ created: 5, nextPage: null }));
+    const save = vi.fn(async () => {});
+
+    const res = await runBackfillSlice(
+      baseState({ queue: ["acme/a"] }),
+      ctx,
+      { backfillRepo: backfillRepo as never, save, now: () => 0 },
+      200_000,
+    );
+
+    expect(res.done).toBe(true);
+    // A durable save per processed window (≥3), not one end-of-slice save.
+    expect(save.mock.calls.length).toBeGreaterThanOrEqual(3);
+    // Intermediate cursors were persisted WHILE still running, so a next slice
+    // interrupted by a timeout resumes mid-repo instead of from page 1.
+    const runningPages = (save.mock.calls as unknown as [string, GitHubBackfillState][])
+      .map(([, state]) => state)
+      .filter((s) => s.status === "running")
+      .map((s) => s.page);
+    expect(runningPages).toContain(6);
+    expect(runningPages).toContain(11);
+    expect(lastSaved(save).status).toBe("done");
+    expect(lastSaved(save).imported).toBe(15);
+  });
+
   it("resumes from a mid-queue saved cursor", async () => {
     const backfillRepo = vi.fn().mockResolvedValue(page({ created: 1 }));
     const save = vi.fn(async () => {});

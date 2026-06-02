@@ -2,6 +2,11 @@ import { DOCO_NODE_TABLE_SPECS, withClient } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
+import {
+  type GitHubImportStatus,
+  normalizeBackfillState,
+  summarizeBackfillForStatus,
+} from "~/lib/github-connection.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 /**
@@ -28,6 +33,7 @@ export async function loader({
     return Response.json({ status: "unknown", doco_handle: handle }, { status: 404 });
   }
   const { latest, counts } = await readStatusFromPg(meta.docoId);
+  const githubImport = await readGitHubImportStatus(meta.docoId);
   return Response.json({
     status: "ok" as const,
     doco_id: meta.docoId,
@@ -35,7 +41,30 @@ export async function loader({
     visibility: meta.visibility,
     last_updated_at: latest,
     counts,
+    // Present only when this Doco has a GitHub PR backfill. Lets a poller see a
+    // stalled/incomplete import (e.g. `github_import.stalled`) instead of just
+    // a frozen reference count.
+    ...(githubImport ? { github_import: githubImport } : {}),
   });
+}
+
+/**
+ * Read the Doco's PR-import health from its github_integration backfill marker.
+ * Best-effort: any failure (or no marker) just omits the field rather than
+ * failing the status probe.
+ */
+async function readGitHubImportStatus(docoId: string): Promise<GitHubImportStatus | null> {
+  try {
+    return await withClient(async (c) => {
+      const r = await c.query<{ gh: unknown }>(
+        "SELECT data->'github_integration' AS gh FROM docos WHERE id = $1",
+        [docoId],
+      );
+      return summarizeBackfillForStatus(normalizeBackfillState(r.rows[0]?.gh));
+    });
+  } catch {
+    return null;
+  }
 }
 
 /**
