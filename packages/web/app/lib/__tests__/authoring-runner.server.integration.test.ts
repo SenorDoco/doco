@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 
 const DOCO_ID = "doco_01TEST00000000000000000001";
-const ORG_ID = "workspace_01TESTORG000000000000001";
+const WORKSPACE_ID = "workspace_01TESTWS000000000000001";
 const PRINCIPAL_ALICE = "principal_01TESTALICE0000000000001";
 const POLICY_ID_PRINCIPAL = "node_authoring_policy_01TESTPRINCIPAL000000001";
 const POLICY_ID_FIELD = "node_authoring_policy_01TESTFIELD000000000001";
@@ -42,14 +42,14 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
     await c.query(
       `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
          VALUES ($1, 'test-workspace', 'Test Workspace', '{}'::jsonb, now(), now())`,
-      [ORG_ID],
+      [WORKSPACE_ID],
     );
 
     // Insert a doco — required for the FK on node_authoring_policies.
     await c.query(
       `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
          VALUES ($1, 'smoke-test', $2, $2, '{}'::jsonb, now(), now())`,
-      [DOCO_ID, ORG_ID],
+      [DOCO_ID, WORKSPACE_ID],
     );
 
     // Insert a Principal (Alice) scoped to the test Doco.
@@ -478,12 +478,12 @@ describe("authoring runner — integration", () => {
       await c.query(
         `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
            VALUES ($1, 'null-life-workspace', 'Null-Life Workspace', '{}'::jsonb, now(), now())`,
-        [ORG_ID],
+        [WORKSPACE_ID],
       );
       await c.query(
         `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'null-life', $2, $2, '{}'::jsonb, now(), now())`,
-        [DOCO_ID, ORG_ID],
+        [DOCO_ID, WORKSPACE_ID],
       );
       const yaml = JSON.stringify({
         id: POLICY_ID_FIELD,
@@ -568,12 +568,12 @@ describe("authoring runner — integration", () => {
       await c.query(
         `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
            VALUES ($1, 'gc-workspace', 'GC Workspace', '{}'::jsonb, now(), now())`,
-        [ORG_ID],
+        [WORKSPACE_ID],
       );
       await c.query(
         `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'gc-test', $2, $2, '{}'::jsonb, now(), now())`,
-        [DOCO_ID, ORG_ID],
+        [DOCO_ID, WORKSPACE_ID],
       );
       await c.query(
         `INSERT INTO principals (id, doco_id, name, data, created_at, updated_at)
@@ -688,12 +688,12 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
       await c.query(
         `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
            VALUES ($1, 'val-workspace', 'Val Workspace', '{}'::jsonb, now(), now())`,
-        [ORG_ID],
+        [WORKSPACE_ID],
       );
       await c.query(
         `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'val-test', $2, $2, '{}'::jsonb, now(), now())`,
-        [DOCO_ID, ORG_ID],
+        [DOCO_ID, WORKSPACE_ID],
       );
       await c.query(
         `INSERT INTO principals (id, doco_id, name, data, created_at, updated_at)
@@ -853,12 +853,12 @@ describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
       await c.query(
         `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
            VALUES ($1, 'drift-workspace', 'Drift Workspace', '{}'::jsonb, now(), now())`,
-        [ORG_ID],
+        [WORKSPACE_ID],
       );
       await c.query(
         `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
            VALUES ($1, 'drift-test', $2, $2, '{}'::jsonb, now(), now())`,
-        [DOCO_ID, ORG_ID],
+        [DOCO_ID, WORKSPACE_ID],
       );
     });
 

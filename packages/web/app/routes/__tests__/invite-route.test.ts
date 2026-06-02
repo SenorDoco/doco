@@ -39,7 +39,7 @@ vi.mock("~/lib/session.server", () => ({
 
 import { action, loader } from "../invite.$code";
 
-const ORG_INVITE = {
+const WORKSPACE_INVITE = {
   kind: "invite",
   code: "invite_code",
   level: "workspace",
@@ -76,9 +76,9 @@ describe("/invite/:code", () => {
       id: "user_owner",
       github_login: "owner",
     });
-    mocks.findInvite.mockResolvedValue(ORG_INVITE);
+    mocks.findInvite.mockResolvedValue(WORKSPACE_INVITE);
     mocks.consumeInvite.mockResolvedValue({
-      ...ORG_INVITE,
+      ...WORKSPACE_INVITE,
       status: "consumed",
       redeemed_by_user_id: "user_alice",
       redeemed_at: "2026-05-30T01:00:00.000Z",
@@ -126,7 +126,7 @@ describe("/invite/:code", () => {
 
   it("upgrades legacy writer invites with empty write_types to write-all", async () => {
     const legacyInvite = {
-      ...ORG_INVITE,
+      ...WORKSPACE_INVITE,
       grants: [
         {
           level: "workspace",

@@ -15,7 +15,7 @@ vi.mock("~/lib/redeem.server", () => ({
   findAvailableDocoHandle: vi.fn(),
 }));
 
-import { CREATE_NEW_ORG_VALUE, initialWorkspaceSelection } from "../new-doco";
+import { CREATE_NEW_WORKSPACE_VALUE, initialWorkspaceSelection } from "../new-doco";
 
 describe("/new-doco initial workspace selection", () => {
   it("does not pre-select any workspace on a fresh form", () => {
@@ -33,7 +33,7 @@ describe("/new-doco initial workspace selection", () => {
 
   it("restores create-new-workspace mode when a new handle was entered", () => {
     expect(initialWorkspaceSelection({ workspaceId: "", newWorkspaceHandle: "acme" })).toBe(
-      CREATE_NEW_ORG_VALUE,
+      CREATE_NEW_WORKSPACE_VALUE,
     );
   });
 });
