@@ -64,18 +64,18 @@ describe("Breadcrumb rendering", () => {
   });
 
   it("self-links the current item to the current page when it has no destination", () => {
-    // Leaf page labels (e.g. `Access tokens` on /api-keys) carry no `to`, but
+    // Leaf page labels (e.g. `Tokens/MCP` on /api-keys) carry no `to`, but
     // the current crumb must still be clickable everywhere — it self-links to
     // the page you are already on.
     const markup = renderTrailAt(
-      [{ label: "Home", to: "/" }, { label: "Access tokens" }],
+      [{ label: "Home", to: "/" }, { label: "Tokens/MCP" }],
       "/api-keys",
     );
-    const anchor = markup.match(/<a [^>]*>Access tokens<\/a>/)?.[0] ?? "";
+    const anchor = markup.match(/<a [^>]*>Tokens\/MCP<\/a>/)?.[0] ?? "";
     expect(anchor).toContain('href="/api-keys"');
     expect(anchor).toContain('aria-current="page"');
     // It is no longer a bare, unclickable span.
-    expect(markup).not.toContain('<span aria-current="page">Access tokens</span>');
+    expect(markup).not.toContain('<span aria-current="page">Tokens/MCP</span>');
   });
 
   it("only self-links the current item — earlier crumbs without a destination stay text", () => {

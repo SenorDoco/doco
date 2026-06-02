@@ -68,7 +68,7 @@ export async function loader({ request }: { request: Request }): Promise<Integra
 }
 
 export function meta() {
-  return [{ title: "Integrations · Doco" }];
+  return [{ title: "App integrations · Doco" }];
 }
 
 export default function IntegrationsPage({ loaderData }: { loaderData: IntegrationsPageData }) {
@@ -87,7 +87,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
       <div className="flex min-h-screen flex-col bg-background text-foreground">
         <SiteHeader me={me} />
         <SingleColumnPageMain className="space-y-8 py-8">
-          <Breadcrumb items={hostBreadcrumb({ pageLabel: "Integrations" })} />
+          <Breadcrumb items={hostBreadcrumb({ pageLabel: "App integrations" })} />
           <section className="max-w-2xl space-y-5">
             <CheckCircle2 className="h-8 w-8 text-primary" aria-hidden="true" />
             <div className="space-y-2">
@@ -115,9 +115,9 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SiteHeader me={me} />
       <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Integrations" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "App integrations" })} />
         <header className="space-y-2">
-          <h1 className="text-2xl font-semibold">Integrations</h1>
+          <h1 className="text-2xl font-semibold">App integrations</h1>
           <p className="text-sm text-muted-foreground">
             Everything connected to your account, plus a rollup of every workspace and Doco you can
             reach.
@@ -200,7 +200,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
 
             <Card id="pick-workspace">
               <CardHeader>
-                <CardTitle className="text-base">Integrations across your workspaces</CardTitle>
+                <CardTitle className="text-base">App integrations across your workspaces</CardTitle>
                 <CardDescription>
                   Each workspace rolls up its Docos&apos; connections; open one to manage.
                 </CardDescription>

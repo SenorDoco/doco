@@ -833,7 +833,7 @@ export async function buildSlackAppMentionResponse(args: {
   });
   const { connections, fallbackConnections, personalAccess } = context;
   if (connections.length === 0) {
-    return "I’m installed here, but I don’t have default or personal Doco permissions yet. Open Doco Integrations to choose workspace defaults, or use `/doco connect`.";
+    return "I’m installed here, but I don’t have default or personal Doco permissions yet. Open Doco's App integrations page to choose workspace defaults, or use `/doco connect`.";
   }
 
   const contextConnections = connections;

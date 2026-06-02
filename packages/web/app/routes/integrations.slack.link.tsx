@@ -61,7 +61,7 @@ export default function SlackLinkPage({ loaderData }: { loaderData: SlackLinkPag
       <SiteHeader />
       <SingleColumnPageMain className="space-y-6 py-8">
         <Breadcrumb
-          items={[...hostBreadcrumb({ pageLabel: "Integrations" }), { label: "Slack" }]}
+          items={[...hostBreadcrumb({ pageLabel: "App integrations" }), { label: "Slack" }]}
         />
         <Card className="max-w-2xl">
           <CardHeader>
@@ -82,7 +82,7 @@ export default function SlackLinkPage({ loaderData }: { loaderData: SlackLinkPag
               to="/integrations"
               className="inline-flex rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
             >
-              Back to integrations
+              Back to app integrations
             </Link>
           </CardContent>
         </Card>

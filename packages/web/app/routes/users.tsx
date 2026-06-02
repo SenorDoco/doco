@@ -3,7 +3,7 @@
 // the host nav. Lists only accounts with a username — i.e. people —
 // across every workspace/doco grant the signed-in principal can see. Agents
 // are not collaborators: they authenticate through API tokens and are
-// managed on the API Tokens (/api-keys) page, which the invite card
+// managed on the Tokens/MCP (/api-keys) page, which the invite card
 // links to. Lets owners edit roles inline (auto-save) and mint person
 // invites in-place via the UserInviteCards card at the top — the prior
 // /users/invite standalone page is gone.

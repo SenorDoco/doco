@@ -60,7 +60,7 @@ export async function loader({
 }
 
 export function meta({ params }: { params: { workspaceHandle: string } }) {
-  return [{ title: `Integrations · ${params.workspaceHandle} · Doco` }];
+  return [{ title: `App integrations · ${params.workspaceHandle} · Doco` }];
 }
 
 export default function WorkspaceIntegrations({
@@ -76,11 +76,11 @@ export default function WorkspaceIntegrations({
         <Breadcrumb
           items={workspaceBreadcrumb({
             workspaceSlug: workspace.handle,
-            pageLabel: "Integrations",
+            pageLabel: "App integrations",
           })}
         />
         <header className="space-y-3">
-          <h1 className="text-2xl font-semibold">Integrations</h1>
+          <h1 className="text-2xl font-semibold">App integrations</h1>
           <p className="text-sm text-muted-foreground">
             Everything wired up under {workspace.handle}, plus a rollup of each Doco&apos;s
             connections.

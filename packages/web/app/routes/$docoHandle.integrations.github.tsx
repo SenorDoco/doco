@@ -293,7 +293,7 @@ function SyncSummaryLine({ s }: { s: SyncSummary }) {
 }
 
 export function meta({ params }: { params: { docoHandle: string } }) {
-  return [{ title: `GitHub · Integrations · ${params.docoHandle} · Doco` }];
+  return [{ title: `GitHub · App integrations · ${params.docoHandle} · Doco` }];
 }
 
 export type InstallationPickerChoice = GitHubInstallationChoice & {
@@ -470,7 +470,7 @@ export default function DocoGitHubIntegration() {
           items={docoBreadcrumb({
             ownerSlug,
             handle,
-            parent: { label: "Integrations", to: `/${handle}/integrations` },
+            parent: { label: "App integrations", to: `/${handle}/integrations` },
             pageLabel: "GitHub",
           })}
         />
