@@ -172,8 +172,9 @@ export default function AuthorizePage() {
             <CardTitle>Approve access</CardTitle>
             {data.blockedTargetHandle ? null : (
               <CardDescription>
-                <strong>{data.client_name}</strong> wants access to your docos. Name the token, then
-                pick orgs and docos you own.
+                An agent is requesting access to your docos through{" "}
+                <strong>{data.client_name}</strong>. Name the token, then pick orgs and docos you
+                own.
               </CardDescription>
             )}
           </CardHeader>

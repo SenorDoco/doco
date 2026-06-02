@@ -9,7 +9,7 @@
 // page manages the named credentials used by clients/scripts.
 
 import type { DocoRole } from "@doco/db";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
@@ -30,6 +30,12 @@ import {
   mintApiKey,
   revokeApiKey,
 } from "~/lib/api-keys.server";
+import {
+  GRANT_REQUIRED_MESSAGE,
+  type GrantFormFieldKey,
+  focusFirstError,
+  validateGrantForm,
+} from "~/lib/grant-form-validation";
 import {
   type ComposedGrant,
   type ExistingGrant,
@@ -311,6 +317,34 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const catalog = useMemo(() => scopeOptionsToCatalog(scopeOptions), [scopeOptions]);
   const noScopes = catalog.targets.length === 0;
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
+  const labelRef = useRef<HTMLInputElement>(null);
+  const grantsRef = useRef<HTMLDivElement>(null);
+
+  function clearError(field: GrantFormFieldKey) {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const { [field]: _cleared, ...rest } = prev;
+      return rest;
+    });
+  }
+
+  // Submit is never disabled on validity, so clicking an incomplete form
+  // surfaces the reason instead of doing nothing. Validate here; on failure
+  // block the POST, show the app's error styling, and reveal the first field.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const found = validateGrantForm({
+      name: { value: label, message: "Enter a label for this token." },
+      grantCount: grants.length,
+    });
+    if (found.length === 0) {
+      setErrors({});
+      return;
+    }
+    e.preventDefault();
+    setErrors(Object.fromEntries(found.map((f) => [f.field, f.message])));
+    focusFirstError(found[0].field, { name: labelRef.current, grants: grantsRef.current });
+  }
 
   const grantsPayload = useMemo(
     () =>
@@ -326,25 +360,47 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   );
 
   return (
-    <Form method="post" className="flex flex-col gap-3" data-testid="generate-api-key-form">
+    <Form
+      method="post"
+      noValidate
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-3"
+      data-testid="generate-api-key-form"
+    >
       <input type="hidden" name="intent" value="mint" />
       <input type="hidden" name="grants" value={grantsPayload} />
       <input type="hidden" name="non_rotating" value={cloudEnv ? "true" : "false"} />
 
-      <label className="block text-sm">
-        <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-          Label
-        </span>
-        <input
-          type="text"
-          name="label"
-          value={label}
-          onChange={(e) => setLabel(e.currentTarget.value)}
-          placeholder="e.g. ci-pipeline, my-script, claude-code-laptop"
-          data-testid="api-key-label"
-          className="block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono"
-        />
-      </label>
+      <div>
+        <label className="block text-sm">
+          <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+            Label
+          </span>
+          <input
+            ref={labelRef}
+            type="text"
+            name="label"
+            value={label}
+            onChange={(e) => {
+              const next = e.currentTarget.value;
+              setLabel(next);
+              if (next.trim()) clearError("name");
+            }}
+            placeholder="e.g. ci-pipeline, my-script, claude-code-laptop"
+            data-testid="api-key-label"
+            aria-invalid={errors.name ? true : undefined}
+            aria-describedby={errors.name ? "api-key-label-error" : undefined}
+            className={`block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono${
+              errors.name ? " border border-destructive ring-1 ring-destructive" : ""
+            }`}
+          />
+        </label>
+        {errors.name ? (
+          <p id="api-key-label-error" role="alert" className="mt-1 text-xs text-destructive">
+            {errors.name}
+          </p>
+        ) : null}
+      </div>
 
       {noScopes ? (
         <p className="text-sm text-muted-foreground">
@@ -352,7 +408,21 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
         </p>
       ) : (
         <>
-          <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} />
+          <div ref={grantsRef}>
+            <GrantPicker
+              catalog={catalog}
+              grants={grants}
+              onChange={(next) => {
+                setGrants(next);
+                if (next.length > 0) clearError("grants");
+              }}
+            />
+            {errors.grants ? (
+              <p role="alert" className="mt-2 text-xs text-destructive">
+                {errors.grants}
+              </p>
+            ) : null}
+          </div>
           <label className="flex items-start gap-2 text-sm" data-testid="api-key-cloud-env-label">
             <input
               type="checkbox"
@@ -371,7 +441,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
             <button
               type="submit"
               data-testid="api-key-submit"
-              disabled={submitting || !label.trim() || grants.length === 0}
+              disabled={submitting}
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {submitting ? "Generating…" : cloudEnv ? "Generate cloud token" : "Generate token"}
@@ -593,6 +663,8 @@ function TokenAddAccessForm({
 }) {
   const fetcher = useFetcher<ActionResult>();
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const grantsRef = useRef<HTMLDivElement>(null);
   const done =
     fetcher.state === "idle" &&
     fetcher.data &&
@@ -617,21 +689,51 @@ function TokenAddAccessForm({
       })),
     [apiKey.scope_grants],
   );
+
+  // Submit stays clickable so an empty selection explains itself rather than
+  // doing nothing.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const found = validateGrantForm({ grantCount: grants.length });
+    if (found.length === 0) {
+      setGrantError(null);
+      return;
+    }
+    e.preventDefault();
+    setGrantError(found[0].message);
+    focusFirstError("grants", { grants: grantsRef.current });
+  }
+
   return (
     <fetcher.Form
       method="post"
+      onSubmit={handleSubmit}
       className="mt-3 space-y-3"
       data-testid={`token-add-${apiKey.client_id}`}
     >
       <input type="hidden" name="intent" value="add_grants" />
       <input type="hidden" name="client_id" value={apiKey.client_id} />
       <input type="hidden" name="grants" value={payload} />
-      <GrantPicker catalog={catalog} grants={grants} onChange={setGrants} existing={existing} />
+      <div ref={grantsRef}>
+        <GrantPicker
+          catalog={catalog}
+          grants={grants}
+          onChange={(next) => {
+            setGrants(next);
+            if (next.length > 0) setGrantError(null);
+          }}
+          existing={existing}
+        />
+        {grantError ? (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            {grantError}
+          </p>
+        ) : null}
+      </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={fetcher.state !== "idle" || grants.length === 0}
+          disabled={fetcher.state !== "idle"}
           className="neu-button bg-primary text-primary-foreground rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
         >
           {fetcher.state !== "idle" ? "Saving…" : "Save access changes"}
