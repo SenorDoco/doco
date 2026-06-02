@@ -44,6 +44,7 @@ import {
   resolveWriteTypes,
 } from "~/lib/grant-picker";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { timeAgo } from "~/lib/time-ago";
 
 export async function loader({ request }: { request: Request }): Promise<ApiKeysPageData> {
   const me = await getCurrentPrincipal(request);
@@ -640,9 +641,7 @@ function KeyRow({ apiKey, catalog }: { apiKey: ApiKeyRow; catalog: GrantCatalog 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
             <span>Granted {formatDate(apiKey.granted_at)}</span>
             <span>·</span>
-            <span>
-              {apiKey.last_used_at ? `Last used ${formatDate(apiKey.last_used_at)}` : "Never used"}
-            </span>
+            <span>{formatLastUsedLabel(apiKey.last_used_at)}</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {apiKey.scope_grants.length === 0 ? (
@@ -810,4 +809,9 @@ function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+export function formatLastUsedLabel(iso: string | null, now = new Date()): string {
+  if (!iso) return "Never used";
+  return `Last used ${timeAgo(iso, now)}`;
 }
