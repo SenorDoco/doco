@@ -56,8 +56,13 @@ export function startOAuth(config: OAuthConfig): { url: string; setCookie: strin
   authorizeUrl.searchParams.set("scope", "read:user user:email");
   authorizeUrl.searchParams.set("redirect_uri", config.redirectUri);
   authorizeUrl.searchParams.set("state", state);
-  // Force fresh login flow so a stale session doesn't sneak through.
-  authorizeUrl.searchParams.set("allow_signup", "true");
+  // Make GitHub show the account picker instead of silently bouncing a
+  // still-logged-in user straight back in. Without this, signing out of
+  // Doco feels broken: the cookie is cleared, but the next "Continue with
+  // GitHub" silently re-authorizes the live GitHub session with no prompt,
+  // so the user lands back on the dashboard "right away." prompt=select_account
+  // forces a deliberate step. (allow_signup defaults to true, so it's omitted.)
+  authorizeUrl.searchParams.set("prompt", "select_account");
 
   const setCookie = `${STATE_COOKIE_NAME}=${encodeURIComponent(state)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${STATE_TTL_SECONDS}`;
   return { url: authorizeUrl.toString(), setCookie };
