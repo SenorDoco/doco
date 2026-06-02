@@ -69,6 +69,16 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.instructions).toContain("doco_capture");
   });
 
+  it("initialize tells remote-MCP clients not to paste localhost callback URLs", async () => {
+    const res = await action({
+      request: rpc({ jsonrpc: "2.0", id: 31, method: "initialize" }, BEARER),
+    });
+    const body: Json = await res.json();
+    expect(body.result.instructions).toContain("Do not ask the user to paste");
+    expect(body.result.instructions).toContain("localhost callback");
+    expect(body.result.instructions).toContain("restart the client MCP auth flow");
+  });
+
   it("tools/list advertises whoami + read + write tools", async () => {
     const res = await action({
       request: rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" }, BEARER),

@@ -44,7 +44,11 @@ const SERVER_INSTRUCTIONS = [
   "read the authoring contract, policies, status, or a node by id. If a",
   "write is denied, your token has read but not write on that Doco — call",
   "doco_request_access to ask an owner for writer; once they approve your",
-  "same token works on the next call (a grant change, no re-auth). Full",
+  "same token works on the next call (a grant change, no re-auth).",
+  "Remote MCP auth is the client connector's job: do not hand-drive OAuth.",
+  "Do not ask the user to paste localhost callback URLs back into chat.",
+  "If the callback listener fails, restart the client MCP auth flow; use",
+  "the direct device-flow recipe only outside remote MCP. Full",
   "protocol at /protocol/canonical-instructions.",
 ].join("\n");
 
