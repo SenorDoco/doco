@@ -13,7 +13,7 @@ describe("LifecycleCountsLabel", () => {
     const html = renderToStaticMarkup(
       <LifecycleCountsLabel counts={{ drafting: 1, asserted: 33, retired: 2 }} />,
     );
-    expect(text(html)).toBe("1 / 33 / 2");
+    expect(text(html)).toBe("1/33/2");
     // Each number is painted in its lifecycle color.
     expect(html).toContain(LIFECYCLE_COLOR.drafting);
     expect(html).toContain(LIFECYCLE_COLOR.asserted);
@@ -24,6 +24,6 @@ describe("LifecycleCountsLabel", () => {
     const html = renderToStaticMarkup(
       <LifecycleCountsLabel counts={{ drafting: 0, asserted: 40, retired: 0 }} />,
     );
-    expect(text(html)).toBe("0 / 40 / 0");
+    expect(text(html)).toBe("0/40/0");
   });
 });
