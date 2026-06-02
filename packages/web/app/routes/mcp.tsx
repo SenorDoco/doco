@@ -8,11 +8,14 @@
 // RFC 9728 protected-resource metadata, which a connector follows to
 // discover the OAuth server (RFC 8414) and run the flow.
 //
-// Tools: doco_search (read), doco_capture + doco_relate (write). Each
+// Tools: doco_search (read), doco_capture + doco_relate (write) — each
 // delegates to the matching per-doco REST route with the caller's bearer
-// replayed, so the route's own per-type grant checks gate access — read
-// vs write is a matrix grant, never a different login.
+// replayed, so the route's own per-type grant checks gate access (read vs
+// write is a matrix grant, never a different login) — and doco_request_access,
+// which asks an owner for a grant so a denied call works on the next try with
+// no re-auth.
 
+import { requestDocoAccess } from "~/lib/access-requests.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
@@ -30,9 +33,10 @@ const SERVER_INSTRUCTIONS = [
   "substantive questions about how the project does things; there is almost",
   "always prior art you'd otherwise miss. Use doco_capture to record",
   "decisions/rules/etc. as they form, and doco_relate to link them. If a",
-  "write is denied, your token has read but not write on that Doco — ask an",
-  "owner to grant writer (a grant change, no re-auth). Full protocol at",
-  "/protocol/canonical-instructions.",
+  "write is denied, your token has read but not write on that Doco — call",
+  "doco_request_access to ask an owner for writer; once they approve your",
+  "same token works on the next call (a grant change, no re-auth). Full",
+  "protocol at /protocol/canonical-instructions.",
 ].join("\n");
 
 const SEARCH_TOOL = {
@@ -114,7 +118,31 @@ const RELATE_TOOL = {
   },
 };
 
-const TOOLS = [SEARCH_TOOL, CAPTURE_TOOL, RELATE_TOOL];
+const REQUEST_ACCESS_TOOL = {
+  name: "doco_request_access",
+  description: [
+    "Request access to a Doco you can't (fully) use yet. An owner approves and",
+    "your EXISTING token gains the access on the next call — no re-auth. Use",
+    "this when doco_search/doco_capture is denied, or to step up reader→writer.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      doco: { type: "string", description: "Handle of the Doco to request access to." },
+      role: {
+        type: "string",
+        description: "Role to request: reader | writer | owner.",
+      },
+      reason: {
+        type: "string",
+        description: "Optional note to the owner explaining why you need it.",
+      },
+    },
+    required: ["doco", "role"],
+  },
+};
+
+const TOOLS = [SEARCH_TOOL, CAPTURE_TOOL, RELATE_TOOL, REQUEST_ACCESS_TOOL];
 
 type Rpc = {
   jsonrpc?: string;
@@ -271,7 +299,51 @@ async function runDocoRelate(request: Request, args: Record<string, unknown>): P
   );
 }
 
-async function dispatch(message: Rpc, request: Request): Promise<Response> {
+// Not a delegate: requesting access is a first-party action (no per-doco REST
+// route), so it calls the access-requests lib directly with the token's
+// principal as the requester.
+async function runDocoRequestAccess(
+  args: Record<string, unknown>,
+  requesterId: string,
+): Promise<ToolResult> {
+  const doco = String(args.doco ?? "").trim();
+  const role = String(args.role ?? "")
+    .trim()
+    .toLowerCase();
+  const reason = args.reason == null ? null : String(args.reason);
+  if (!doco) return toolError("doco_request_access requires a `doco` handle.");
+  if (role !== "reader" && role !== "writer" && role !== "owner") {
+    return toolError("doco_request_access `role` must be reader, writer, or owner.");
+  }
+  const result = await requestDocoAccess({
+    docoHandleOrId: doco,
+    requesterId,
+    requestedRole: role,
+    reason,
+  });
+  if (!result.ok) return toolError(result.error);
+  if (result.alreadyHad) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `You already have ${result.role} on "${result.docoHandle}" — nothing to request.`,
+        },
+      ],
+    };
+  }
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Requested ${result.request.requested_role} on "${result.docoHandle}". An owner will see it in their access-requests inbox; once approved, your existing token works on the next call — no reconnect. (Request ${result.request.id}.)`,
+      },
+    ],
+    structuredContent: result.request,
+  };
+}
+
+async function dispatch(message: Rpc, request: Request, principalId: string): Promise<Response> {
   switch (message.method) {
     case "initialize":
       return rpcResult(message.id, {
@@ -297,6 +369,8 @@ async function dispatch(message: Rpc, request: Request): Promise<Response> {
           return rpcResult(message.id, await runDocoCapture(request, args));
         case "doco_relate":
           return rpcResult(message.id, await runDocoRelate(request, args));
+        case "doco_request_access":
+          return rpcResult(message.id, await runDocoRequestAccess(args, principalId));
         default:
           return rpcError(message.id, -32602, `Unknown tool: ${name}`);
       }
@@ -333,5 +407,5 @@ export async function action({ request }: { request: Request }): Promise<Respons
     return rpcError(message.id ?? null, -32600, "Invalid Request", 400);
   // Notifications (no id) expect no response body.
   if (message.id === undefined) return new Response(null, { status: 202 });
-  return dispatch(message, request);
+  return dispatch(message, request, principal.id);
 }

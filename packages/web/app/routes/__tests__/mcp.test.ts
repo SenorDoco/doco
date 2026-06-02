@@ -5,10 +5,14 @@ const mocks = vi.hoisted(() => ({
   searchLoader: vi.fn(),
   captureAction: vi.fn(),
   edgesAction: vi.fn(),
+  requestDocoAccess: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipalAsync: mocks.getCurrentPrincipalAsync,
+}));
+vi.mock("~/lib/access-requests.server", () => ({
+  requestDocoAccess: mocks.requestDocoAccess,
 }));
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
 vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
@@ -63,6 +67,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
       "doco_search",
       "doco_capture",
       "doco_relate",
+      "doco_request_access",
     ]);
   });
 
@@ -161,6 +166,56 @@ describe("POST /mcp (hosted remote MCP)", () => {
       to_id: "intent_1",
     });
     expect(body.result.structuredContent.id).toBe("edge_1");
+  });
+
+  it("doco_request_access asks an owner for a grant via the access-requests lib", async () => {
+    mocks.requestDocoAccess.mockResolvedValue({
+      ok: true,
+      alreadyHad: false,
+      request: { id: "accreq_1", requested_role: "writer" },
+      docoHandle: "acme",
+    });
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 12,
+          method: "tools/call",
+          params: {
+            name: "doco_request_access",
+            arguments: { doco: "acme", role: "writer", reason: "ship" },
+          },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    expect(mocks.requestDocoAccess).toHaveBeenCalledWith({
+      docoHandleOrId: "acme",
+      requesterId: "user_alice",
+      requestedRole: "writer",
+      reason: "ship",
+    });
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.content[0].text).toContain("Requested writer");
+    expect(body.result.structuredContent.id).toBe("accreq_1");
+  });
+
+  it("doco_request_access validates the requested role", async () => {
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 13,
+          method: "tools/call",
+          params: { name: "doco_request_access", arguments: { doco: "acme", role: "superuser" } },
+        },
+        BEARER,
+      ),
+    });
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(mocks.requestDocoAccess).not.toHaveBeenCalled();
   });
 
   it("doco_capture surfaces a write-denial as a clean tool error (grant change, not re-auth)", async () => {
