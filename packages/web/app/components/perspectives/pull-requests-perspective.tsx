@@ -21,6 +21,7 @@ import type {
   PullRequestItem,
   PullRequestsPerspectiveData,
 } from "~/lib/pull-requests-perspective.server";
+import { timeAgo } from "~/lib/time-ago";
 import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
 interface PullRequestsPerspectiveProps {
@@ -90,6 +91,14 @@ function PullRequestRow({ pr, handle }: { pr: PullRequestItem; handle: string })
         <span className="min-w-0 flex-1 truncate" title={pr.title}>
           {pr.title}
         </span>
+        <time
+          dateTime={pr.updatedAt ?? undefined}
+          title={pr.updatedAt ?? undefined}
+          suppressHydrationWarning
+          className="w-16 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground"
+        >
+          {timeAgo(pr.updatedAt)}
+        </time>
         <span
           className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
           style={{ color: lifecycleColor(pr.lifecycle), borderColor: lifecycleColor(pr.lifecycle) }}
