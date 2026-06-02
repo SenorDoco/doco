@@ -52,7 +52,8 @@ export default function ConnectPage() {
               </p>
               <CodeBlock>{mcpUrl}</CodeBlock>
               <p className="mt-2 text-sm text-muted-foreground">
-                Approve the OAuth prompt and choose which Docos to grant.
+                Approve the OAuth prompt — “Full access” follows your live permissions, or pick
+                specific Docos.
               </p>
             </CardContent>
           </Card>
@@ -95,11 +96,14 @@ export default function ConnectPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                The connector exposes <Code>doco_search</Code> — pass a <Code>query</Code> and a
-                Doco <Code>handle</Code>. Auth is OAuth 2.1 (PKCE + dynamic client registration); an
-                unauthenticated request returns a 401 whose <Code>WWW-Authenticate</Code> header
-                points at <Code>{`${baseUrl}/.well-known/oauth-protected-resource`}</Code> so the
-                client discovers the rest. No repo or local files needed.
+                The connector is read <em>and</em> write: <Code>doco_search</Code> (read),{" "}
+                <Code>doco_capture</Code> and <Code>doco_relate</Code> (write), and{" "}
+                <Code>doco_request_access</Code> (ask an owner for access). Read vs write is a live
+                permission on the same token — stepping up never means reconnecting. Auth is OAuth
+                2.1 (PKCE + dynamic client registration); an unauthenticated request returns a 401
+                whose <Code>WWW-Authenticate</Code> header points at{" "}
+                <Code>{`${baseUrl}/.well-known/oauth-protected-resource`}</Code> so the client
+                discovers the rest. No repo or local files needed.
               </p>
             </CardContent>
           </Card>

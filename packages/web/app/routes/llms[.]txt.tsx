@@ -36,8 +36,11 @@ Per client:
     \`npx mcp-remote ${baseUrl}/mcp\`.
   - ChatGPT and other MCP clients: add ${baseUrl}/mcp as a connector.
 
-Tool available now: \`doco_search\` (pass a \`query\` + a \`doco\`
-handle). There are no auth tools here — the bearer token is the auth.
+Tools available now: \`doco_search\` (read), \`doco_capture\` +
+\`doco_relate\` (write), and \`doco_request_access\` (ask an owner for a
+grant). Read vs write is a live matrix grant on the same token, so
+stepping up read→write never needs a re-auth — request it and an owner
+approves. There are no auth tools here — the bearer token is the auth.
 
 If your client cannot speak remote MCP at all, drive the OAuth recipes
 below directly.

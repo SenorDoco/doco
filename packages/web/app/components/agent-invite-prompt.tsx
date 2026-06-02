@@ -1,17 +1,20 @@
 import { useState } from "react";
 
 const AGENT_INVITE_HELP_TEXT =
-  "Doco will teach your agent how to use doco consistently. Copy this prompt and paste it into your AI agent in the project/folder/repo you want to collaborate on. The agent will drive the OAuth flow, and you'll approve in your browser.";
+  "Doco will teach your agent to collaborate consistently. Copy this prompt into your AI agent in the project you want to work on. The easiest path is the hosted MCP connector — your agent connects, you approve in your browser, and read/write access follows the permissions you grant (no re-auth to step up).";
 
 export function buildAgentOAuthPrompt(host: string): string {
+  const connectUrl = `${host}/mcp`;
   const recipeUrl = `${host}/protocol/agent-oauth-recipe`;
   const deviceUrl = `${host}/device`;
   return [
     `Let's collaborate with Doco on this project. The host is ${host}.`,
     "",
-    `To get programmatic access, follow the OAuth recipe at ${recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — you'll show me a short code and I'll approve at ${deviceUrl}.`,
+    `Easiest: add Doco as a custom MCP connector pointing at ${connectUrl} — your client runs the OAuth flow and I approve in my browser. The connector is read + write: doco_search (read), doco_capture + doco_relate (write), and doco_request_access (ask me for more). Read vs write is a permission I grant on the same token, not a re-login.`,
     "",
-    "At the approve screen I'll name the token, pick which orgs and docos you can read/write, and choose a role (reader / writer / owner) per org or doco, so no scoping is needed up front.",
+    `If your runtime can't use a remote MCP connector, drive OAuth directly via the recipe at ${recipeUrl}: Recipe A (localhost-loopback) if you can bind a port and open a browser, otherwise Recipe B (device flow) — you'll show me a short code and I'll approve at ${deviceUrl}.`,
+    "",
+    `At the approve screen I'll pick "Full access" (follows my live permissions — you can read/write whatever I can, and read→write upgrades apply with no reconnect) or scope you to specific docos.`,
   ].join("\n");
 }
 
