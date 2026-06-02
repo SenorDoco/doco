@@ -462,7 +462,7 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
   };
 
   const scopeLine = (
-    <div className="text-xs text-muted-foreground">
+    <div className="text-sm text-muted-foreground">
       Scope:{" "}
       {minted.scope_grants.length === 0 ? (
         <em>none</em>
@@ -482,20 +482,20 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
       className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2"
       data-testid="api-key-minted"
     >
-      <p className="text-sm font-semibold">Token minted — copy it now</p>
-      <p className="text-xs text-muted-foreground">
-        Shown ONCE. Pin these wherever the agent runs — a repo <code>.env</code>, cloud env vars
-        (Claude Code on the web, Codespaces, Replit…), or CI secrets. The refresh token is
-        non-rotating, so every fresh instance mints its own short-lived access token from it (the
-        access token expires in {expiresIn}) — no re-authorizing. The value stays valid until you
-        revoke it below.
+      <p className="text-base font-semibold">Token minted — copy it now</p>
+      <p className="text-sm text-muted-foreground">
+        Shown ONCE. If for an agent, pin these wherever the agent runs — a repo <code>.env</code>,
+        cloud env vars (Claude Code on the web, Codespaces, Replit…), or CI secrets. The refresh
+        token is non-rotating, so every fresh instance mints its own short-lived access token from
+        it (the access token expires in {expiresIn}) — no re-authorizing. The value stays valid
+        until you revoke it below.
       </p>
       <div className="space-y-1">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">
           Environment variables
         </div>
         <pre
-          className="overflow-x-auto whitespace-pre rounded bg-background px-2 py-1 text-xs font-mono"
+          className="overflow-x-auto whitespace-pre rounded bg-background px-2 py-1 text-sm font-mono"
           data-testid="api-key-env-block"
         >
           {envBlock}
@@ -505,7 +505,7 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
         type="button"
         data-testid="api-key-copy-env"
         onClick={() => copy("env", envBlock)}
-        className="neu-button rounded-md px-2 py-1 text-xs"
+        className="neu-button rounded-md px-2 py-1 text-sm"
       >
         {copied === "env" ? "Copied!" : "Copy all three"}
       </button>
