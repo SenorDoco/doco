@@ -14,25 +14,28 @@ function expectMarkerBefore(source: string, earlier: string, later: string): voi
   expect(earlierIndex).toBeLessThan(laterIndex);
 }
 
-describe("management action order", () => {
-  it("puts Doco app integrations before collaborators and policies before settings", () => {
+describe("management actions", () => {
+  it("leaves only policies and settings on the Doco header, in that order", () => {
     const source = routeSource("../$docoHandle._index.tsx");
 
-    expectMarkerBefore(
-      source,
-      "to={`/${handle}/integrations`}",
-      '<UsersLink level="doco" targetId={docoId} />',
-    );
+    // App integrations, collaborators, and tokens/MCP buttons were removed.
+    expect(source).not.toContain("to={`/${handle}/integrations`}");
+    expect(source).not.toContain('<UsersLink level="doco" targetId={docoId} />');
+    expect(source).not.toContain("<ApiKeysLink />");
+
+    // Policies and settings remain, policies before settings.
     expectMarkerBefore(source, "to={`/${handle}/policies`}", "to={`/${handle}/settings`}");
   });
 
-  it("puts workspace app integrations before collaborators", () => {
+  it("leaves only settings on the workspace header", () => {
     const source = routeSource("../workspaces.$workspaceHandle._index.tsx");
 
-    expectMarkerBefore(
-      source,
-      "to={`/workspaces/${workspace.handle}/integrations`}",
-      '<UsersLink level="workspace" targetId={workspace.id} />',
-    );
+    // App integrations, collaborators, and tokens/MCP buttons were removed.
+    expect(source).not.toContain("to={`/workspaces/${workspace.handle}/integrations`}");
+    expect(source).not.toContain('<UsersLink level="workspace" targetId={workspace.id} />');
+    expect(source).not.toContain("<ApiKeysLink />");
+
+    // Settings remains.
+    expect(source).toContain("to={`/workspaces/${workspace.handle}/settings`}");
   });
 });
