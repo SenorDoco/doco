@@ -50,7 +50,7 @@ const GITHUB_PR_TEMPLATE_HANDLE = "github-pull-requests";
  * start with no workspace chosen without implying the create-new
  * flow.
  */
-export const CREATE_NEW_ORG_VALUE = "__new_workspace__";
+export const CREATE_NEW_WORKSPACE_VALUE = "__new_workspace__";
 
 interface CreationState {
   templateHandle: string;
@@ -111,7 +111,7 @@ export function initialWorkspaceSelection(
   formState: Pick<CreationState, "workspaceId" | "newWorkspaceHandle">,
 ): string {
   if (formState.workspaceId) return formState.workspaceId;
-  if (formState.newWorkspaceHandle) return CREATE_NEW_ORG_VALUE;
+  if (formState.newWorkspaceHandle) return CREATE_NEW_WORKSPACE_VALUE;
   return "";
 }
 
@@ -121,7 +121,7 @@ function parseFormState(form: FormData): CreationState {
     templateHandle: normalizeTemplateHandle(String(form.get("template_handle") ?? "").trim()),
     // The create-new sentinel collapses to an empty workspaceId; the action
     // then creates the workspace from new_workspace_handle.
-    workspaceId: rawWorkspaceId === CREATE_NEW_ORG_VALUE ? "" : rawWorkspaceId,
+    workspaceId: rawWorkspaceId === CREATE_NEW_WORKSPACE_VALUE ? "" : rawWorkspaceId,
     newWorkspaceHandle: String(form.get("new_workspace_handle") ?? "")
       .trim()
       .toLowerCase(),
@@ -254,7 +254,7 @@ export default function NewDocoStep1({
   const initialWorkspaceId = initialWorkspaceSelection(formState);
   const initialTemplate = normalizeTemplateHandle(formState.templateHandle);
   const initialWorkspaceHandle =
-    initialWorkspaceId === CREATE_NEW_ORG_VALUE
+    initialWorkspaceId === CREATE_NEW_WORKSPACE_VALUE
       ? formState.newWorkspaceHandle
       : (workspaces.find((o) => o.id === initialWorkspaceId)?.handle ?? "");
   const [templateHandle, setTemplateHandle] = useState(initialTemplate);
@@ -279,7 +279,7 @@ export default function NewDocoStep1({
       setGoal(defaultGoalForTemplate(next));
     }
   };
-  const isCreateNewWorkspace = workspaceId === CREATE_NEW_ORG_VALUE;
+  const isCreateNewWorkspace = workspaceId === CREATE_NEW_WORKSPACE_VALUE;
   const selectedWorkspaceHandle = isCreateNewWorkspace
     ? newWorkspaceHandle || "<workspace>"
     : (workspaces.find((o) => o.id === workspaceId)?.handle ?? "<workspace>");
@@ -287,7 +287,7 @@ export default function NewDocoStep1({
     setWorkspaceId(value);
     if (!nameEdited) {
       const nextWorkspaceHandle =
-        value === CREATE_NEW_ORG_VALUE
+        value === CREATE_NEW_WORKSPACE_VALUE
           ? newWorkspaceHandle
           : (workspaces.find((o) => o.id === value)?.handle ?? "");
       setName(defaultDocoNameForWorkspace(nextWorkspaceHandle));
@@ -296,7 +296,7 @@ export default function NewDocoStep1({
   const updateNewWorkspaceHandle = (value: string) => {
     const next = value.toLowerCase();
     setNewWorkspaceHandle(next);
-    if (!nameEdited && workspaceId === CREATE_NEW_ORG_VALUE) {
+    if (!nameEdited && workspaceId === CREATE_NEW_WORKSPACE_VALUE) {
       setName(defaultDocoNameForWorkspace(next));
     }
   };
@@ -386,7 +386,7 @@ export default function NewDocoStep1({
                       {o.handle === me.username ? " (personal)" : ""}
                     </option>
                   ))}
-                  <option value={CREATE_NEW_ORG_VALUE}>+ Create a new workspace</option>
+                  <option value={CREATE_NEW_WORKSPACE_VALUE}>+ Create a new workspace</option>
                 </select>
                 {isCreateNewWorkspace ? (
                   <>
