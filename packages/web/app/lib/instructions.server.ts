@@ -103,6 +103,13 @@ that, every API call is:
     GET https://doco.to/<handle>/<endpoint>
     Authorization: Bearer doco_at_<token>
 
+The \`<handle>\` is a **Doco** — the unit every endpoint addresses.
+Access is granted to you at one of two levels: a **Workspace** (covers
+every Doco in it — the common case when an owner invites an agent) or a
+**single Doco**. \`GET /api/v1/whoami.json\` returns both — the
+Workspaces you can reach and the Docos inside them, each with your role
+— so you find a project's handle without guessing instead of asking.
+
 ### Repo-local credential sharing
 
 If you are operating inside a Doco-tracked repository, the repository

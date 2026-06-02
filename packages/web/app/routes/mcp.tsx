@@ -32,9 +32,11 @@ const SERVER_VERSION = "0.6.0-remote";
 const SERVER_INSTRUCTIONS = [
   "This project is tracked in a Doco — institutional memory of decisions,",
   "rules, intents, actions, and history. Call doco_whoami to see which",
-  "Workspaces and Docos this token can reach (how to find a project's Doco",
-  "without guessing). Call doco_search before answering substantive questions",
-  "about how the project does things; there is almost",
+  "Workspaces and Docos this token can reach — access is granted per-Workspace",
+  "(covers all its Docos — common for an invited agent) or per-Doco, and whoami",
+  "lists both (find a project's Doco handle without guessing). Call doco_search",
+  "before answering substantive questions about how the project does things;",
+  "there is almost",
   "always prior art you'd otherwise miss. Use doco_capture to record",
   "decisions/rules/etc. as they form and doco_relate to link them — or",
   "doco_changeset to create and wire many nodes in one atomic batch (the",
@@ -131,6 +133,8 @@ const REQUEST_ACCESS_TOOL = {
     "Request access to a Doco you can't (fully) use yet. An owner approves and",
     "your EXISTING token gains the access on the next call — no re-auth. Use",
     "this when doco_search/doco_capture is denied, or to step up reader→writer.",
+    "(Owners often instead invite you to the whole Workspace in the web app,",
+    "which covers all its Docos at once — doco_whoami shows what you already have.)",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -215,6 +219,9 @@ const WHOAMI_TOOL = {
   description: [
     "Identity + reach for the current credential: who you're acting as, and",
     "which Workspaces and Docos this token can reach, with your role in each.",
+    "Access comes at two levels: a WORKSPACE grant (covers every Doco in it —",
+    "the common case for an invited agent) or a single DOCO. This lists both,",
+    "with the Docos inside a reachable Workspace included.",
     "Call this FIRST to orient — it's how you find a project's Doco handle",
     "(the <handle> in /<handle>) without guessing, and which Workspace to",
     "create a new Doco in. No arguments.",
@@ -459,11 +466,27 @@ async function runDocoWhoami(request: Request): Promise<ToolResult> {
   const identity = await loadAgentIdentity(request);
   if (!identity) return toolError("Not authenticated.");
   const grants = identity.grants ?? [];
-  const reach = grants.length
-    ? grants.map((g) => `  • ${g.label} (${g.scope}): ${g.role}`).join("\n")
-    : "  (none yet — ask an owner with doco_request_access, or create one in the Doco web app.)";
-  const text = `Authenticated as ${identity.indicator_prefix}.\nWorkspaces & Docos this token can reach:\n${reach}`;
-  return { content: [{ type: "text", text }], structuredContent: identity };
+  // Surface the two access levels distinctly: a Workspace grant (covers every
+  // Doco in it — the common case for an invited agent) vs a single Doco.
+  const workspaces = grants.filter((g) => g.scope === "workspace");
+  const docos = grants.filter((g) => g.scope === "doco");
+  const lines: string[] = [`Authenticated as ${identity.indicator_prefix}.`];
+  if (workspaces.length > 0) {
+    lines.push(
+      "Workspaces you can reach (a Workspace grant covers all its Docos, and lets you create new ones in it):",
+    );
+    for (const w of workspaces) lines.push(`  • ${w.label} (workspace): ${w.role}`);
+  }
+  if (docos.length > 0) {
+    lines.push("Docos you can reach (the <handle> in /<handle>):");
+    for (const d of docos) lines.push(`  • ${d.label}: ${d.role}`);
+  }
+  if (workspaces.length === 0 && docos.length === 0) {
+    lines.push(
+      "Nothing reachable yet — an owner usually invites you to a Workspace (covering all its Docos), or use doco_request_access for a specific Doco.",
+    );
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: identity };
 }
 
 // Not a delegate: requesting access is a first-party action (no per-doco REST

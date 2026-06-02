@@ -52,8 +52,8 @@ export default function ConnectPage() {
               </p>
               <CodeBlock>{mcpUrl}</CodeBlock>
               <p className="mt-2 text-sm text-muted-foreground">
-                Approve the OAuth prompt — “Full access” follows your live permissions, or pick
-                specific Docos.
+                Approve the OAuth prompt — “Full access” follows your live permissions, or scope it
+                to a whole Workspace (covers all its Docos) or specific Docos.
               </p>
             </CardContent>
           </Card>

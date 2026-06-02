@@ -109,10 +109,15 @@ describe("POST /mcp (hosted remote MCP)", () => {
       ),
     });
     const body: Json = await res.json();
+    const text: string = body.result.content[0].text;
     expect(mocks.loadAgentIdentity).toHaveBeenCalledTimes(1);
     expect(body.result.structuredContent.grants).toHaveLength(2);
-    expect(body.result.content[0].text).toContain("acme/proj1 (doco): writer");
-    expect(body.result.content[0].text).toContain("[🔮 Doco @alice]");
+    expect(text).toContain("[🔮 Doco @alice]");
+    // The two access levels are surfaced distinctly.
+    expect(text).toContain("Workspaces you can reach");
+    expect(text).toContain("acme (workspace): owner");
+    expect(text).toContain("Docos you can reach");
+    expect(text).toContain("acme/proj1: writer");
   });
 
   it("ping returns an empty result", async () => {
