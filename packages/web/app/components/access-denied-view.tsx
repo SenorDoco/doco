@@ -99,10 +99,13 @@ export function AccessDeniedView({
                 Connector clients (claude.ai, ChatGPT, Cursor, Claude Desktop)
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Add Doco as a custom connector pointing at{" "}
-                <code className="rounded bg-input px-1 py-0.5 font-mono">https://doco.to/mcp</code>,
-                approve the OAuth prompt, and grant this doco on the approval screen. Then retry —
-                your client carries the token from then on.
+                Add Doco as a custom connector pointing at this doco's workspace MCP URL,{" "}
+                <code className="rounded bg-input px-1 py-0.5 font-mono">
+                  https://doco.to/&lt;workspace-id&gt;/mcp
+                </code>{" "}
+                (the id is on the workspace's Settings page), approve the OAuth prompt, and grant
+                this doco on the approval screen. Then retry — your client carries the token from
+                then on.
               </p>
               <p className="mt-3 text-xs font-semibold text-muted-foreground">
                 CLI / repo agents (Claude Code, Codex)

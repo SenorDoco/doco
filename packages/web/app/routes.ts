@@ -29,7 +29,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   /by-id/:docoId                 Stable Doco-id redirect to the current handle
- *   (agent self-service: install the per-Doco MCP connector at /mcp/:handle; OAuth dance kicks off automatically)
+ *   (agent self-service: install the per-WORKSPACE MCP connector at /:workspaceId/mcp; OAuth dance kicks off automatically)
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
@@ -93,12 +93,20 @@ export default [
   route("auth/dev-signin", "routes/auth.dev-signin.tsx"),
   // OAuth 2.1 authorization server (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
   // Metadata endpoints are spec'd by RFC 8414 + RFC 9728 and discovered
-  // by every MCP client that lands on /mcp without a valid bearer.
+  // by every MCP client that lands on a workspace MCP endpoint without a valid bearer.
   route(".well-known/oauth-authorization-server", "routes/oauth-metadata-authorization-server.tsx"),
   route(".well-known/oauth-protected-resource", "routes/oauth-metadata-protected-resource.tsx"),
-  // Hosted remote MCP endpoint (Streamable HTTP, JSON-RPC). Connector
-  // clients land here; a 401 points them at the metadata docs above.
-  route("mcp", "routes/mcp.tsx"),
+  // Per-workspace RFC 9728 protected-resource metadata. The per-workspace MCP
+  // 401 points connectors here (path-specific, one resource per workspace).
+  route(
+    ".well-known/oauth-protected-resource/:workspaceId/mcp",
+    "routes/oauth-metadata-protected-resource.$workspaceId.tsx",
+  ),
+  // Per-workspace hosted remote MCP endpoint (Streamable HTTP, JSON-RPC).
+  // There is NO app-wide /mcp (removed for security): a connector binds to one
+  // workspace at /<workspace-id>/mcp and its token reaches no other workspace.
+  // A 401 points clients at this workspace's protected-resource metadata above.
+  route(":workspaceId/mcp", "routes/$workspaceId.mcp.tsx"),
   // OAuth 2.1 authorization server endpoints. The runtime hits these
   // via the metadata document above; the user sees /oauth/authorize
   // in their browser when a runtime requests Doco access.
@@ -158,8 +166,8 @@ export default [
   // doco_request_access MCP tool; humans via the private-doco 403 page.
   route("access-requests", "routes/access-requests.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
-  // install the MCP connector at /mcp/<handle>, no recipe to walk
-  // through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
+  // install the per-workspace MCP connector at /<workspace-id>/mcp, no
+  // recipe to walk through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
   route("onboarding/join", "routes/onboarding.join._index.tsx"),
   route("onboarding/join/human", "routes/onboarding.join.human.tsx"),
   // API

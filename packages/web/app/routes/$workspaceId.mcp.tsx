@@ -1,23 +1,21 @@
-// POST /mcp — hosted remote MCP endpoint (Streamable HTTP, JSON-RPC 2.0).
+// POST /<workspace-id>/mcp — per-workspace hosted remote MCP endpoint
+// (Streamable HTTP, JSON-RPC 2.0).
 //
-// The connector flavor of the bundled stdio server
-// (.agents/doco-mcp-server.mjs): the same MCP protocol, but auth moves
-// into the transport. The caller presents an OAuth 2.1 bearer token
-// (`Authorization: Bearer doco_at_…`); there are no auth tools to call.
-// An unauthenticated request gets 401 + WWW-Authenticate pointing at the
-// RFC 9728 protected-resource metadata, which a connector follows to
-// discover the OAuth server (RFC 8414) and run the flow.
+// There is no app-wide MCP (removed for security): every MCP server is bound
+// to ONE workspace via the `<workspace-id>` in its URL. The caller presents an
+// OAuth 2.1 bearer (`Authorization: Bearer doco_at_…`); a token reaches at most
+// one workspace, and this endpoint refuses any token not bound to the
+// workspace in its path. Every tool is constrained to Docos owned by this
+// workspace — the connector physically cannot read or write another
+// workspace's Docos through this URL.
 //
-// Tools: doco_search (read), doco_capture + doco_relate (write) — each
-// delegates to the matching per-doco REST route with the caller's bearer
-// replayed, so the route's own per-type grant checks gate access (read vs
-// write is a matrix grant, never a different login) — and doco_request_access,
-// which asks an owner for a grant so a denied call works on the next try with
-// no re-auth.
+// An unauthenticated request gets 401 + WWW-Authenticate pointing at this
+// workspace's RFC 9728 protected-resource metadata, which a connector follows
+// to discover the OAuth server (RFC 8414) and run the flow.
 
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
-import { getCurrentPrincipalAsync } from "~/lib/session.server";
+import { gateWorkspaceMcp, resolveDocoInWorkspace } from "~/lib/workspace-mcp.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
 import { action as changesetsAction } from "./$docoHandle.api.changesets[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
@@ -25,19 +23,17 @@ import { loader as searchLoader } from "./$docoHandle.search[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
-const SERVER_VERSION = "0.6.0-remote";
+const SERVER_VERSION = "1.0.0-workspace";
 
 // Self-sufficient instructions: in a connector context there is no repo
 // AGENTS.md, so the essentials ride here. Full protocol is linked.
 const SERVER_INSTRUCTIONS = [
-  "This project is tracked in a Doco — institutional memory of decisions,",
-  "rules, intents, actions, and history. Call doco_whoami to see which",
-  "Workspaces and Docos this token can reach — access is granted per-Workspace",
-  "(covers all its Docos — common for an invited agent) or per-Doco, and whoami",
-  "lists both (find a project's Doco handle without guessing). Call doco_search",
-  "before answering substantive questions about how the project does things;",
-  "there is almost",
-  "always prior art you'd otherwise miss. Use doco_capture to record",
+  "This MCP server is bound to a single Doco Workspace — every tool here",
+  "operates only on the Docos inside THIS workspace, and your token reaches",
+  "no other. Call doco_whoami to see the workspace and which of its Docos",
+  "this token can reach (the <handle> in /<handle>). Call doco_search before",
+  "answering substantive questions about how the project does things; there is",
+  "almost always prior art you'd otherwise miss. Use doco_capture to record",
   "decisions/rules/etc. as they form and doco_relate to link them — or",
   "doco_changeset to create and wire many nodes in one atomic batch (the",
   "efficient way to import a process or backfill history). Use doco_get to",
@@ -55,15 +51,18 @@ const SERVER_INSTRUCTIONS = [
 const SEARCH_TOOL = {
   name: "doco_search",
   description: [
-    "Search a Doco (institutional memory of decisions, rules, intents,",
-    "actions, and history). Returns ranked nodes by vector similarity.",
+    "Search a Doco in this workspace (institutional memory of decisions, rules,",
+    "intents, actions, and history). Returns ranked nodes by vector similarity.",
     "Call this before answering substantive questions about the project.",
   ].join("\n"),
   inputSchema: {
     type: "object",
     properties: {
       query: { type: "string", description: "Free-text query. Vector search; phrasing flexible." },
-      doco: { type: "string", description: "Handle of the Doco to search." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to search (must be in this workspace).",
+      },
       limit: {
         type: "integer",
         minimum: 1,
@@ -87,7 +86,10 @@ const CAPTURE_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to write to." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to write to (must be in this workspace).",
+      },
       type: {
         type: "string",
         description:
@@ -114,7 +116,7 @@ const RELATE_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco." },
+      doco: { type: "string", description: "Handle of the Doco (must be in this workspace)." },
       edge_type: {
         type: "string",
         description: "Edge type, e.g. supports | constrained_by | attributed_to | flows_to.",
@@ -134,16 +136,18 @@ const RELATE_TOOL = {
 const REQUEST_ACCESS_TOOL = {
   name: "doco_request_access",
   description: [
-    "Request access to a Doco you can't (fully) use yet. An owner approves and",
-    "your EXISTING token gains the access on the next call — no re-auth. Use",
-    "this when doco_search/doco_capture is denied, or to step up reader→writer.",
-    "(Owners often instead invite you to the whole Workspace in the web app,",
-    "which covers all its Docos at once — doco_whoami shows what you already have.)",
+    "Request access to a Doco in this workspace you can't (fully) use yet. An",
+    "owner approves and your EXISTING token gains the access on the next call —",
+    "no re-auth. Use this when doco_search/doco_capture is denied, or to step up",
+    "reader→writer.",
   ].join("\n"),
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to request access to." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to request access to (in this workspace).",
+      },
       role: {
         type: "string",
         description: "Role to request: reader | writer | owner.",
@@ -174,7 +178,10 @@ const GET_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to read from." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to read from (must be in this workspace).",
+      },
       resource: {
         type: "string",
         description:
@@ -201,7 +208,10 @@ const CHANGESET_TOOL = {
   inputSchema: {
     type: "object",
     properties: {
-      doco: { type: "string", description: "Handle of the Doco to write to." },
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to write to (must be in this workspace).",
+      },
       operations: {
         type: "array",
         description:
@@ -221,14 +231,11 @@ const CHANGESET_TOOL = {
 const WHOAMI_TOOL = {
   name: "doco_whoami",
   description: [
-    "Identity + reach for the current credential: who you're acting as, and",
-    "which Workspaces and Docos this token can reach, with your role in each.",
-    "Access comes at two levels: a WORKSPACE grant (covers every Doco in it —",
-    "the common case for an invited agent) or a single DOCO. This lists both,",
-    "with the Docos inside a reachable Workspace included.",
-    "Call this FIRST to orient — it's how you find a project's Doco handle",
-    "(the <handle> in /<handle>) without guessing, and which Workspace to",
-    "create a new Doco in. No arguments.",
+    "Identity + reach for the current credential, scoped to THIS workspace: who",
+    "you're acting as, the workspace this MCP is bound to, and which Docos in it",
+    "this token can reach, with your role in each. Call this FIRST to orient —",
+    "it's how you find a project's Doco handle (the <handle> in /<handle>)",
+    "without guessing. No arguments.",
   ].join("\n"),
   inputSchema: { type: "object", properties: {} },
 };
@@ -256,6 +263,12 @@ type ToolResult = {
   isError?: boolean;
 };
 
+interface Ctx {
+  workspaceId: string;
+  workspaceHandle: string;
+  principalId: string;
+}
+
 function rpcResult(id: Rpc["id"], result: unknown): Response {
   return Response.json({ jsonrpc: "2.0", id: id ?? null, result });
 }
@@ -264,15 +277,16 @@ function rpcError(id: Rpc["id"], code: number, message: string, status = 200): R
   return Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status });
 }
 
-function unauthorized(request: Request): Response {
+function unauthorized(request: Request, workspaceId: string): Response {
   const origin = new URL(request.url).origin;
+  const metadata = `${origin}/.well-known/oauth-protected-resource/${workspaceId}/mcp`;
   return new Response(
     JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized" } }),
     {
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+        "WWW-Authenticate": `Bearer resource_metadata="${metadata}"`,
       },
     },
   );
@@ -290,10 +304,10 @@ async function safeJson(r: Response): Promise<unknown> {
   }
 }
 
-// A route denial becomes a clean JSON-RPC tool error — never a raw
-// transport status a connector might misread as an auth failure. A missing
-// write grant is an authorization problem: ask an owner to grant it (a
-// matrix change), not re-authenticate.
+// A route denial becomes a clean JSON-RPC tool error — never a raw transport
+// status a connector might misread as an auth failure. A missing write grant
+// is an authorization problem: ask an owner to grant it (a matrix change), not
+// re-authenticate.
 function delegateError(verb: string, doco: string, status: number, data: unknown): ToolResult {
   if (status === 401 || status === 403) {
     return toolError(
@@ -316,9 +330,7 @@ function bearerHeaders(request: Request, extra?: Record<string, string>): Header
 }
 
 // Delegate a tool to the matching per-doco route handler, replaying the
-// caller's bearer so the route's own auth + per-type grant checks gate
-// access. The route either THROWS a Response (no read access) or RETURNS a
-// non-ok Response (write denied, bad body); both become clean tool errors.
+// caller's bearer so the route's own auth + per-type grant checks gate access.
 async function delegate(
   verb: string,
   doco: string,
@@ -338,11 +350,29 @@ async function delegate(
   return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
 }
 
-async function runDocoSearch(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
+// Resolve a tool's `doco` argument to a Doco owned by THIS workspace. Returns
+// the canonical handle or a tool error — the workspace boundary in one place.
+async function inWorkspace(
+  ctx: Ctx,
+  rawDoco: unknown,
+): Promise<{ handle: string } | { error: ToolResult }> {
+  const doco = String(rawDoco ?? "").trim();
+  if (!doco) return { error: toolError("a `doco` handle is required.") };
+  const resolved = await resolveDocoInWorkspace(doco, ctx.workspaceId);
+  if (!resolved.ok) return { error: toolError(resolved.message) };
+  return { handle: resolved.handle };
+}
+
+async function runDocoSearch(
+  request: Request,
+  ctx: Ctx,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
   const query = String(args.query ?? "").trim();
-  const doco = String(args.doco ?? "").trim();
+  const resolved = await inWorkspace(ctx, args.doco);
+  if ("error" in resolved) return resolved.error;
+  const doco = resolved.handle;
   const limit = Math.min(50, Math.max(1, Number(args.limit) || 10));
-  if (!doco) return toolError("doco_search requires a `doco` handle.");
   const origin = new URL(request.url).origin;
   const url = `${origin}/${encodeURIComponent(doco)}/search.json?q=${encodeURIComponent(query)}&limit=${limit}`;
   const req = new Request(url, { headers: bearerHeaders(request) });
@@ -353,18 +383,20 @@ async function runDocoSearch(request: Request, args: Record<string, unknown>): P
 
 async function runDocoCapture(
   request: Request,
+  ctx: Ctx,
   args: Record<string, unknown>,
 ): Promise<ToolResult> {
-  const doco = String(args.doco ?? "").trim();
-  // The per-type capture routes are keyed by the PLURAL type
-  // (/<doco>/api/decisions.json, …/decisions.txt). Accept singular or plural
-  // from the caller and normalize, so doco_capture works either way.
+  const resolved = await inWorkspace(ctx, args.doco);
+  if ("error" in resolved) return resolved.error;
+  const doco = resolved.handle;
+  // The per-type capture routes are keyed by the PLURAL type. Accept singular
+  // or plural and normalize.
   const rawType = String(args.type ?? "")
     .trim()
     .toLowerCase();
   const type = rawType && !rawType.endsWith("s") ? `${rawType}s` : rawType;
   const body = args.body;
-  if (!doco || !type) return toolError("doco_capture requires `doco` and `type`.");
+  if (!type) return toolError("doco_capture requires `doco` and `type`.");
   if (!body || typeof body !== "object") {
     return toolError(
       "doco_capture requires a `body` object — see /<doco>/api/<type>.txt for the shape.",
@@ -382,12 +414,18 @@ async function runDocoCapture(
   );
 }
 
-async function runDocoRelate(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
-  const doco = String(args.doco ?? "").trim();
+async function runDocoRelate(
+  request: Request,
+  ctx: Ctx,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const resolved = await inWorkspace(ctx, args.doco);
+  if ("error" in resolved) return resolved.error;
+  const doco = resolved.handle;
   const edgeType = String(args.edge_type ?? "").trim();
   const fromId = String(args.from_id ?? "").trim();
   const toId = String(args.to_id ?? "").trim();
-  if (!doco || !edgeType || !fromId || !toId) {
+  if (!edgeType || !fromId || !toId) {
     return toolError("doco_relate requires `doco`, `edge_type`, `from_id`, and `to_id`.");
   }
   const payload: Record<string, unknown> = { edge_type: edgeType, from_id: fromId, to_id: toId };
@@ -406,11 +444,13 @@ async function runDocoRelate(request: Request, args: Record<string, unknown>): P
 
 async function runDocoChangeset(
   request: Request,
+  ctx: Ctx,
   args: Record<string, unknown>,
 ): Promise<ToolResult> {
-  const doco = String(args.doco ?? "").trim();
+  const resolved = await inWorkspace(ctx, args.doco);
+  if ("error" in resolved) return resolved.error;
+  const doco = resolved.handle;
   const operations = args.operations;
-  if (!doco) return toolError("doco_changeset requires a `doco` handle.");
   if (!Array.isArray(operations) || operations.length === 0) {
     return toolError(
       "doco_changeset requires a non-empty `operations` array. See /<doco>/api/authoring-contract.json for operation shapes.",
@@ -433,17 +473,18 @@ async function runDocoChangeset(
 }
 
 // doco_get is the generic read surface: it GETs any document under the Doco's
-// HTTP API (or the root /status.json) with the caller's bearer replayed, so
-// the target route's own read gate applies. Unlike the write tools it can't
-// import a single route handler — node-by-id lives at a route per type — so it
-// fetches the same origin and lets routing dispatch. The path is constrained
-// to the Doco's own read namespace (no traversal, no absolute URLs).
-async function runDocoGet(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
-  const doco = String(args.doco ?? "").trim();
+// HTTP API (or the root /status.json) with the caller's bearer replayed.
+async function runDocoGet(
+  request: Request,
+  ctx: Ctx,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const resolved = await inWorkspace(ctx, args.doco);
+  if ("error" in resolved) return resolved.error;
+  const doco = resolved.handle;
   const resource = String(args.resource ?? "")
     .trim()
     .replace(/^\/+/, "");
-  if (!doco) return toolError("doco_get requires a `doco` handle.");
   if (!resource) {
     return toolError(
       "doco_get requires a `resource` path, e.g. 'status.json' or 'api/authoring-contract.json'.",
@@ -462,56 +503,58 @@ async function runDocoGet(request: Request, args: Record<string, unknown>): Prom
   return delegate("read from", doco, () => fetch(url, { headers: bearerHeaders(request) }));
 }
 
-// doco_whoami: identity + reachable Workspaces/Docos for the calling token.
-// loadAgentIdentity intersects the principal's grants with the token's scope;
-// a defer-to-matrix ("*") token reaches everything the principal can, so the
-// grants list IS the discovery surface (no separate workspaces/docos call).
-async function runDocoWhoami(request: Request): Promise<ToolResult> {
+// doco_whoami: identity + the Docos reachable in THIS workspace. The token is
+// bound to a single workspace, so its grants already live here; we surface the
+// workspace and its Docos, filtering out anything outside it (belt-and-braces
+// for cookie sessions, whose membership listing is broader).
+async function runDocoWhoami(request: Request, ctx: Ctx): Promise<ToolResult> {
   const identity = await loadAgentIdentity(request);
   if (!identity) return toolError("Not authenticated.");
   const grants = identity.grants ?? [];
-  // Surface the two access levels distinctly: a Workspace grant (covers every
-  // Doco in it — the common case for an invited agent) vs a single Doco.
-  const workspaces = grants.filter((g) => g.scope === "workspace");
-  const docos = grants.filter((g) => g.scope === "doco");
-  const lines: string[] = [`Authenticated as ${identity.indicator_prefix}.`];
-  if (workspaces.length > 0) {
-    lines.push(
-      "Workspaces you can reach (a Workspace grant covers all its Docos, and lets you create new ones in it):",
-    );
-    for (const w of workspaces) lines.push(`  • ${w.label} (workspace): ${w.role}`);
-  }
+  const workspace = grants.find((g) => g.scope === "workspace" && g.id === ctx.workspaceId);
+  const docos = grants.filter(
+    (g) => g.scope === "doco" && g.label.startsWith(`${ctx.workspaceHandle}/`),
+  );
+  const lines: string[] = [
+    `Authenticated as ${identity.indicator_prefix}.`,
+    `This MCP is bound to workspace ${ctx.workspaceHandle} (${ctx.workspaceId})${
+      workspace ? `: ${workspace.role}` : ""
+    }.`,
+  ];
   if (docos.length > 0) {
-    lines.push("Docos you can reach (the <handle> in /<handle>):");
+    lines.push("Docos you can reach here (the <handle> in /<handle>):");
     for (const d of docos) lines.push(`  • ${d.label}: ${d.role}`);
-  }
-  if (workspaces.length === 0 && docos.length === 0) {
+  } else {
     lines.push(
-      "Nothing reachable yet — an owner usually invites you to a Workspace (covering all its Docos), or use doco_request_access for a specific Doco.",
+      "No Docos reachable yet in this workspace — use doco_request_access to ask an owner.",
     );
   }
-  return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: identity };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: {
+      ...identity,
+      workspace_id: ctx.workspaceId,
+      grants: [workspace, ...docos].filter(Boolean),
+    },
+  };
 }
 
-// Not a delegate: requesting access is a first-party action (no per-doco REST
-// route), so it calls the access-requests lib directly with the token's
-// principal as the requester.
-async function runDocoRequestAccess(
-  args: Record<string, unknown>,
-  requesterId: string,
-): Promise<ToolResult> {
-  const doco = String(args.doco ?? "").trim();
+// Not a delegate: requesting access is a first-party action. Still constrained
+// to a Doco in this workspace.
+async function runDocoRequestAccess(ctx: Ctx, args: Record<string, unknown>): Promise<ToolResult> {
+  const resolved = await inWorkspace(ctx, args.doco);
+  if ("error" in resolved) return resolved.error;
+  const doco = resolved.handle;
   const role = String(args.role ?? "")
     .trim()
     .toLowerCase();
   const reason = args.reason == null ? null : String(args.reason);
-  if (!doco) return toolError("doco_request_access requires a `doco` handle.");
   if (role !== "reader" && role !== "writer" && role !== "owner") {
     return toolError("doco_request_access `role` must be reader, writer, or owner.");
   }
   const result = await requestDocoAccess({
     docoHandleOrId: doco,
-    requesterId,
+    requesterId: ctx.principalId,
     requestedRole: role,
     reason,
   });
@@ -537,7 +580,7 @@ async function runDocoRequestAccess(
   };
 }
 
-async function dispatch(message: Rpc, request: Request, principalId: string): Promise<Response> {
+async function dispatch(message: Rpc, request: Request, ctx: Ctx): Promise<Response> {
   switch (message.method) {
     case "initialize":
       return rpcResult(message.id, {
@@ -558,19 +601,19 @@ async function dispatch(message: Rpc, request: Request, principalId: string): Pr
       const args = params?.arguments ?? {};
       switch (name) {
         case "doco_whoami":
-          return rpcResult(message.id, await runDocoWhoami(request));
+          return rpcResult(message.id, await runDocoWhoami(request, ctx));
         case "doco_search":
-          return rpcResult(message.id, await runDocoSearch(request, args));
+          return rpcResult(message.id, await runDocoSearch(request, ctx, args));
         case "doco_get":
-          return rpcResult(message.id, await runDocoGet(request, args));
+          return rpcResult(message.id, await runDocoGet(request, ctx, args));
         case "doco_capture":
-          return rpcResult(message.id, await runDocoCapture(request, args));
+          return rpcResult(message.id, await runDocoCapture(request, ctx, args));
         case "doco_relate":
-          return rpcResult(message.id, await runDocoRelate(request, args));
+          return rpcResult(message.id, await runDocoRelate(request, ctx, args));
         case "doco_changeset":
-          return rpcResult(message.id, await runDocoChangeset(request, args));
+          return rpcResult(message.id, await runDocoChangeset(request, ctx, args));
         case "doco_request_access":
-          return rpcResult(message.id, await runDocoRequestAccess(args, principalId));
+          return rpcResult(message.id, await runDocoRequestAccess(ctx, args));
         default:
           return rpcError(message.id, -32602, `Unknown tool: ${name}`);
       }
@@ -590,12 +633,23 @@ export function loader() {
   return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
 }
 
-export async function action({ request }: { request: Request }): Promise<Response> {
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { workspaceId?: string };
+}): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
   }
-  const principal = await getCurrentPrincipalAsync(request);
-  if (!principal) return unauthorized(request);
+  const workspaceId = params.workspaceId ?? "";
+  const gate = await gateWorkspaceMcp(request, workspaceId);
+  if (!gate.ok) {
+    if (gate.kind === "unauthenticated") return unauthorized(request, workspaceId);
+    if (gate.kind === "not_found") return new Response(gate.message, { status: 404 });
+    return rpcError(null, -32001, gate.message, 403);
+  }
 
   let message: Rpc;
   try {
@@ -607,5 +661,5 @@ export async function action({ request }: { request: Request }): Promise<Respons
     return rpcError(message.id ?? null, -32600, "Invalid Request", 400);
   // Notifications (no id) expect no response body.
   if (message.id === undefined) return new Response(null, { status: 202 });
-  return dispatch(message, request, principal.id);
+  return dispatch(message, request, gate.ctx);
 }

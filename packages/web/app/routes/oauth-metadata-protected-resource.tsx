@@ -1,23 +1,23 @@
-// GET /.well-known/oauth-protected-resource — RFC 9728 metadata.
+// GET /.well-known/oauth-protected-resource — RFC 9728 metadata (origin root).
 //
-// Tells MCP clients which authorization server guards the Doco MCP
-// endpoint (/mcp). A connector that gets a 401 from /mcp follows the
-// WWW-Authenticate `resource_metadata` link here, then discovers the
-// authorize / token / registration endpoints via the RFC 8414 sibling
-// (/.well-known/oauth-authorization-server) and runs the OAuth flow.
-//
-// Keep the two metadata documents in lockstep: this advertises the
-// resource + its authorization server(s); the 8414 doc advertises the
-// server's endpoints.
+// There is no app-wide MCP resource anymore: each MCP endpoint is
+// per-workspace (/<workspace-id>/mcp) with its own path-specific metadata at
+// /.well-known/oauth-protected-resource/<workspace-id>/mcp. This root document
+// remains for clients that probe the origin: it advertises the authorization
+// server (same origin; see the RFC 8414 sibling
+// /.well-known/oauth-authorization-server) and names the origin itself as the
+// resource. The 401 from a workspace MCP points connectors at the
+// path-specific doc, which is what actually binds a token to one workspace.
 
 export function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const issuer = `${url.protocol}//${url.host}`;
   const body = {
-    // The protected resource identifier — the hosted MCP endpoint.
-    resource: `${issuer}/mcp`,
-    // The authorization server(s) that issue tokens for this resource.
-    // Same origin: Doco is its own OAuth 2.1 server (see the 8414 doc).
+    // No single MCP resource: MCP is per-workspace. Name the origin so the
+    // document is still well-formed for clients that probe the root.
+    resource: issuer,
+    // The authorization server(s) that issue tokens. Same origin: Doco is its
+    // own OAuth 2.1 server (see the 8414 doc).
     authorization_servers: [issuer],
     scopes_supported: ["doco"],
     // Bearer tokens are presented in the Authorization header only.

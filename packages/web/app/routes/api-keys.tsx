@@ -248,7 +248,12 @@ function TokensTabs({
         className="neu-surface relative z-50 rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card p-6"
       >
         {tab === "add-mcp" ? (
-          <ManualMcpPanel host={host} />
+          <ManualMcpPanel
+            host={host}
+            workspaces={scopeOptions
+              .filter((o) => o.level === "workspace")
+              .map((o) => ({ id: o.id, handle: o.label }))}
+          />
         ) : tab === "generate" ? (
           <div className="space-y-4">
             <GenerateKeyPanel scopeOptions={scopeOptions} />
@@ -342,17 +347,30 @@ function CodeBlock({ children }: { children: string }) {
   );
 }
 
-export function ManualMcpPanel({ host }: { host: string }) {
+export function ManualMcpPanel({
+  host,
+  workspaces = [],
+}: {
+  host: string;
+  workspaces?: { id: string; handle: string }[];
+}) {
   const baseUrl = host.replace(/\/+$/, "");
-  const mcpUrl = `${baseUrl}/mcp`;
+  // MCP is per-workspace: each workspace has its own endpoint at
+  // /<workspace-id>/mcp, and a connector's token reaches only that workspace.
+  // Show the caller's own workspace URLs; fall back to the id placeholder when
+  // they're not in any workspace yet.
+  const placeholder = `${baseUrl}/WORKSPACE_ID/mcp`;
+  const exampleUrl = workspaces[0] ? `${baseUrl}/${workspaces[0].id}/mcp` : placeholder;
   return (
     <section className="space-y-5" data-testid="manual-mcp-panel">
       <div className="space-y-2">
         <h2 className="text-xl font-semibold">Connect a client to Doco</h2>
         <p className="text-sm text-muted-foreground">
-          Doco hosts a remote MCP server at <Code>{mcpUrl}</Code>. Point any MCP-capable client at
-          it — the client runs the OAuth approval for you and carries the token from then on. The
-          machine-readable version of this page is{" "}
+          Doco hosts a remote MCP server <strong>per workspace</strong>, at{" "}
+          <Code>{placeholder}</Code>. Each connector is bound to one workspace and its token reaches
+          no other. Point any MCP-capable client at your workspace's URL — the client runs the OAuth
+          approval for you and carries the token from then on. The machine-readable version of this
+          page is{" "}
           <a href="/llms.txt" className="underline hover:opacity-80">
             /llms.txt
           </a>
@@ -360,15 +378,33 @@ export function ManualMcpPanel({ host }: { host: string }) {
         </p>
       </div>
 
+      {workspaces.length > 0 ? (
+        <section className="space-y-2 border-t border-border pt-4" data-testid="workspace-mcp-urls">
+          <h3 className="text-base font-semibold">Your workspace MCP URLs</h3>
+          <ul className="space-y-1">
+            {workspaces.map((w) => (
+              <li key={w.id} className="text-sm">
+                <span className="text-muted-foreground">{w.handle}: </span>
+                <Code>{`${baseUrl}/${w.id}/mcp`}</Code>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Find a workspace's id on its <strong>Settings</strong> page (it looks like{" "}
+          <Code>workspace_01…</Code>) and substitute it for <Code>WORKSPACE_ID</Code> below.
+        </p>
+      )}
+
       <section className="space-y-2 border-t border-border pt-4">
         <h3 className="text-base font-semibold">claude.ai, Claude mobile, Cursor</h3>
         <p className="text-sm text-muted-foreground">
-          Settings → Connectors → Add custom connector, and paste the URL:
+          Settings → Connectors → Add custom connector, and paste your workspace's URL:
         </p>
-        <CodeBlock>{mcpUrl}</CodeBlock>
+        <CodeBlock>{exampleUrl}</CodeBlock>
         <p className="text-sm text-muted-foreground">
-          Approve the OAuth prompt — “Full access” follows your live permissions, or pick specific
-          Docos.
+          Approve the OAuth prompt — pick the workspace and, optionally, narrow to specific Docos.
         </p>
       </section>
 
@@ -377,13 +413,13 @@ export function ManualMcpPanel({ host }: { host: string }) {
         <p className="text-sm text-muted-foreground">
           These bridge to remote MCP with <Code>mcp-remote</Code>. Claude Code:
         </p>
-        <CodeBlock>{`claude mcp add doco -- npx -y mcp-remote ${mcpUrl}`}</CodeBlock>
+        <CodeBlock>{`claude mcp add doco -- npx -y mcp-remote ${exampleUrl}`}</CodeBlock>
         <p className="text-sm text-muted-foreground">
           Claude Desktop — add to <Code>claude_desktop_config.json</Code>:
         </p>
         <CodeBlock>{`{
   "mcpServers": {
-    "doco": { "command": "npx", "args": ["-y", "mcp-remote", "${mcpUrl}"] }
+    "doco": { "command": "npx", "args": ["-y", "mcp-remote", "${exampleUrl}"] }
   }
 }`}</CodeBlock>
       </section>
@@ -391,9 +427,9 @@ export function ManualMcpPanel({ host }: { host: string }) {
       <section className="space-y-2 border-t border-border pt-4">
         <h3 className="text-base font-semibold">ChatGPT &amp; other MCP clients</h3>
         <p className="text-sm text-muted-foreground">
-          Add a connector / custom MCP server with the URL:
+          Add a connector / custom MCP server with your workspace's URL:
         </p>
-        <CodeBlock>{mcpUrl}</CodeBlock>
+        <CodeBlock>{exampleUrl}</CodeBlock>
       </section>
 
       <section className="space-y-2 border-t border-border pt-4">
@@ -402,11 +438,11 @@ export function ManualMcpPanel({ host }: { host: string }) {
           The connector is read <em>and</em> write: <Code>doco_search</Code> and{" "}
           <Code>doco_get</Code> (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, and{" "}
           <Code>doco_changeset</Code> (batch write), and <Code>doco_request_access</Code> (ask an
-          owner for access). Read vs write is a live permission on the same token — stepping up
-          never means reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration); an
-          unauthenticated request returns a 401 whose <Code>WWW-Authenticate</Code> header points at{" "}
-          <Code>{`${baseUrl}/.well-known/oauth-protected-resource`}</Code> so the client discovers
-          the rest. No repo or local files needed.
+          owner for access) — all scoped to this one workspace. Read vs write is a live permission
+          on the same token — stepping up never means reconnecting. Auth is OAuth 2.1 (PKCE +
+          dynamic client registration); an unauthenticated request returns a 401 whose{" "}
+          <Code>WWW-Authenticate</Code> header points at this workspace's protected-resource
+          metadata so the client discovers the rest. No repo or local files needed.
         </p>
       </section>
     </section>
@@ -457,15 +493,12 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const grantsPayload = useMemo(
     () =>
       JSON.stringify(
-        grants.map((g) => {
-          if (g.level === "identity") throw new Error("Identity grants are connector-only.");
-          return {
-            level: g.level,
-            target_id: g.targetId,
-            role: g.role,
-            write_types: resolveWriteTypes(g.role, g.writeTypes),
-          };
-        }),
+        grants.map((g) => ({
+          level: g.level,
+          target_id: g.targetId,
+          role: g.role,
+          write_types: resolveWriteTypes(g.role, g.writeTypes),
+        })),
       ),
     [grants],
   );
@@ -522,6 +555,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
             <GrantPicker
               catalog={catalog}
               grants={grants}
+              forToken
               onChange={(next) => {
                 setGrants(next);
                 if (next.length > 0) clearError("grants");
@@ -765,6 +799,7 @@ function TokenAddAccessForm({
         <GrantPicker
           catalog={catalog}
           grants={grants}
+          forToken
           onChange={(next) => {
             setGrants(next);
             if (next.length > 0) setGrantError(null);
@@ -792,15 +827,12 @@ function TokenAddAccessForm({
 }
 
 function grantsToPayload(grants: ComposedGrant[]): ApiKeyGrantInput[] {
-  return grants.map((g) => {
-    if (g.level === "identity") throw new Error("Identity grants are connector-only.");
-    return {
-      level: g.level,
-      target_id: g.targetId,
-      role: g.role,
-      write_types: resolveWriteTypes(g.role, g.writeTypes),
-    };
-  });
+  return grants.map((g) => ({
+    level: g.level,
+    target_id: g.targetId,
+    role: g.role,
+    write_types: resolveWriteTypes(g.role, g.writeTypes),
+  }));
 }
 
 function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {

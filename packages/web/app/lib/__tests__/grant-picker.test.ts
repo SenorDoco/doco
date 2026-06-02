@@ -7,6 +7,7 @@ import {
   applyTargetRole,
   availableScopes,
   catalogFromOptions,
+  coerceSingleWorkspace,
   describeExistingGrant,
   describeWriteScope,
   effectiveTypeLevel,
@@ -233,6 +234,73 @@ describe("availableScopes", () => {
   });
   it("offers nothing when there are no targets", () => {
     expect(availableScopes({ workspaces: [], targets: [] })).toEqual([]);
+  });
+  it("withholds the account scope when minting a token (single-workspace cap)", () => {
+    // A token can never reach every workspace, so the account scope is dropped
+    // even for a workspace owner; workspace/doco/types remain.
+    expect(availableScopes(catalog, { forToken: true }).map((s) => s.scope)).toEqual([
+      "workspace",
+      "doco",
+      "types",
+    ]);
+  });
+});
+
+describe("coerceSingleWorkspace (token one-workspace cap)", () => {
+  const catalog: GrantCatalog = {
+    workspaces: [
+      { id: "workspace_A", label: "A" },
+      { id: "workspace_B", label: "B" },
+    ],
+    targets: [
+      {
+        level: "workspace",
+        id: "workspace_A",
+        workspaceId: "workspace_A",
+        label: "A",
+        maxRole: "owner",
+      },
+      {
+        level: "workspace",
+        id: "workspace_B",
+        workspaceId: "workspace_B",
+        label: "B",
+        maxRole: "owner",
+      },
+      { level: "doco", id: "doco_a1", workspaceId: "workspace_A", label: "A/1", maxRole: "owner" },
+      { level: "doco", id: "doco_b1", workspaceId: "workspace_B", label: "B/1", maxRole: "owner" },
+      {
+        level: "doco",
+        id: "doco_personal",
+        workspaceId: "__other__",
+        label: "me/p",
+        maxRole: "owner",
+      },
+    ],
+  };
+  const g = (level: "workspace" | "doco", targetId: string): ComposedGrant => ({
+    level,
+    targetId,
+    role: "reader",
+    writeTypes: [],
+  });
+
+  it("keeps a single workspace's grants unchanged", () => {
+    const next = [g("workspace", "workspace_A"), g("doco", "doco_a1")];
+    expect(coerceSingleWorkspace([], next, catalog)).toEqual(next);
+  });
+
+  it("drops earlier-workspace grants when a second workspace is added", () => {
+    const prev = [g("doco", "doco_a1")];
+    const next = [g("doco", "doco_a1"), g("doco", "doco_b1")];
+    // The just-added doco_b1 wins; doco_a1 (workspace_A) is dropped.
+    expect(coerceSingleWorkspace(prev, next, catalog)).toEqual([g("doco", "doco_b1")]);
+  });
+
+  it("treats personal Docos as workspace-less (they never force a drop)", () => {
+    const prev = [g("doco", "doco_personal")];
+    const next = [g("doco", "doco_personal"), g("workspace", "workspace_A")];
+    expect(coerceSingleWorkspace(prev, next, catalog)).toEqual(next);
   });
 });
 

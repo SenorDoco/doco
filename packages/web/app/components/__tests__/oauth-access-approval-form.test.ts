@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { OAuthAccessApprovalForm } from "../oauth-access-approval-form";
 
 describe("OAuthAccessApprovalForm", () => {
-  it("uses access option cards instead of a redundant radio mode selector", () => {
+  it("offers a single-workspace token picker — no full-access or all-workspaces card", () => {
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
         docos: [
@@ -33,20 +33,19 @@ describe("OAuthAccessApprovalForm", () => {
 
     expect(markup).toContain('data-testid="grant-picker"');
     expect(markup).toContain("What do you want to grant access to?");
-    expect(markup).toContain("Full access");
     expect(markup).toContain("Specific workspace(s)");
     expect(markup).toContain("Specific docos");
     expect(markup).toContain('name="grants"');
-    expect(markup).toContain("identity");
+    // A token is capped at one workspace: the broad grants are gone.
+    expect(markup).not.toContain("Full access");
+    expect(markup).not.toContain("All your workspaces and docos");
+    expect(markup).not.toContain("identity");
     expect(markup).not.toContain('type="radio"');
-    expect(markup).not.toContain('name="access_mode"');
-    expect(markup).not.toContain("Specific Docos");
+    // No default grant is pre-selected (the empty array serializes as []).
+    expect(markup).toContain('name="grants" value="[]"');
   });
 
   it("keeps the approve button clickable on an empty form so a click surfaces validation", () => {
-    // The old form disabled Approve until a token name + a grant existed, so
-    // clicking it did nothing and gave no reason. Now it always submits and
-    // the form raises visible, app-styled errors instead.
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
         docos: [],
@@ -66,12 +65,10 @@ describe("OAuthAccessApprovalForm", () => {
       }),
     );
 
-    // No element carries a `disabled` attribute (the Tailwind `disabled:`
-    // variant would not produce `disabled="` so this only catches the prop).
     expect(markup).not.toContain('disabled="');
   });
 
-  it("still offers the live full-access card when there are no owned targets yet", () => {
+  it("shows the empty-state when there is nothing to grant (no full-access fallback)", () => {
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
         docos: [],
@@ -84,8 +81,8 @@ describe("OAuthAccessApprovalForm", () => {
       }),
     );
 
-    expect(markup).toContain("Full access");
-    expect(markup).toContain("identity");
-    expect(markup).not.toContain("You don&#x27;t have anything you can grant access to yet.");
+    expect(markup).not.toContain("Full access");
+    expect(markup).not.toContain("identity");
+    expect(markup).toContain("You don&#x27;t have anything you can grant access to yet.");
   });
 });

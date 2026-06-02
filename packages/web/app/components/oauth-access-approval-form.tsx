@@ -12,7 +12,6 @@ import {
   type ComposedGrant,
   type GrantCatalog,
   catalogFromOptions,
-  identityGrant,
   resolveWriteTypes,
 } from "~/lib/grant-picker";
 
@@ -42,7 +41,9 @@ export function OAuthAccessApprovalForm({
 }) {
   const catalog = useMemo(() => approvalCatalog(docos, workspaces), [docos, workspaces]);
   const [tokenName, setTokenName] = useState("");
-  const [grants, setGrants] = useState<ComposedGrant[]>(() => [identityGrant()]);
+  // No default grant: the approver picks the one workspace (or Docos within it)
+  // this token may reach. A token is capped at a single workspace.
+  const [grants, setGrants] = useState<ComposedGrant[]>([]);
   const grantsPayload = useMemo(() => JSON.stringify(grants.map(grantPayload)), [grants]);
   const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
 
@@ -133,7 +134,7 @@ export function OAuthAccessApprovalForm({
             setGrants(next);
             if (next.length > 0) clearError("grants");
           }}
-          includeIdentityScope
+          forToken
         />
         {errors.grants ? (
           <p role="alert" className="mt-2 text-xs text-destructive">
@@ -198,9 +199,6 @@ function approvalCatalog(
 }
 
 function grantPayload(g: ComposedGrant) {
-  if (g.level === "identity") {
-    return { level: "identity" };
-  }
   return {
     level: g.level,
     targetId: g.targetId,
