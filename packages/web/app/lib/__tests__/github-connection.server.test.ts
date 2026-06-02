@@ -9,6 +9,7 @@ import {
   type GitHubInstallationSub,
   addConnection,
   buildInstallUrl,
+  githubImportProgress,
   githubOrgAccounts,
   groupKnownGitHubInstallations,
   importInstallationConnections,
@@ -264,6 +265,41 @@ describe("normalizeBackfillState", () => {
     expect(normalizeBackfillState(null)).toBeNull();
     expect(normalizeBackfillState({})).toBeNull();
     expect(normalizeBackfillState({ backfill: { status: "bogus" } })).toBeNull();
+  });
+});
+
+describe("githubImportProgress", () => {
+  it("reports repos done of total for a running backfill", () => {
+    expect(
+      githubImportProgress({ status: "running", repos: 4, repo_index: 2, imported: 137 }),
+    ).toEqual({ done: 2, total: 4 });
+  });
+  it("treats a not-yet-advanced cursor as 0 of total", () => {
+    expect(githubImportProgress({ status: "running", repos: 3, repo_index: 0 })).toEqual({
+      done: 0,
+      total: 3,
+    });
+    expect(githubImportProgress({ status: "running", repos: 3 })).toEqual({ done: 0, total: 3 });
+  });
+  it("clamps a drained cursor (repo_index ≥ total) to total", () => {
+    // A slice that just finished the last repo can leave repo_index === total
+    // (or beyond) for a tick before the marker flips to "done".
+    expect(githubImportProgress({ status: "running", repos: 4, repo_index: 4 })).toEqual({
+      done: 4,
+      total: 4,
+    });
+    expect(githubImportProgress({ status: "running", repos: 4, repo_index: 9 })).toEqual({
+      done: 4,
+      total: 4,
+    });
+  });
+  it("is null when the total repo count is unknown — nothing to count out of", () => {
+    expect(githubImportProgress({ status: "running", repo_index: 1 })).toBeNull();
+    expect(githubImportProgress({ status: "running", repos: 0 })).toBeNull();
+  });
+  it("is null for a finished or absent backfill", () => {
+    expect(githubImportProgress({ status: "done", repos: 4, repo_index: 4 })).toBeNull();
+    expect(githubImportProgress(null)).toBeNull();
   });
 });
 
