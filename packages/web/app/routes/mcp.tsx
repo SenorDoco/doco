@@ -109,12 +109,40 @@ async function runDocoSearch(
   const auth = request.headers.get("authorization");
   if (auth) headers.set("authorization", auth);
   const searchReq = new Request(searchUrl, { headers });
-  const res = await searchLoader({ request: searchReq, params: { docoHandle: doco } as never });
-  const data = await (res as Response).json();
+  let res: Response;
+  try {
+    res = (await searchLoader({
+      request: searchReq,
+      params: { docoHandle: doco } as never,
+    })) as Response;
+  } catch (thrown) {
+    // The search route THROWS a Response for auth/lookup failures (403
+    // access_denied, 404 not found). Surface it as a tool error so the
+    // MCP client gets clean JSON-RPC, not a raw status it might misread
+    // as an authentication failure — a missing grant is an authorization
+    // problem (re-OAuth won't help; the principal needs to be granted).
+    if (thrown instanceof Response) return searchErrorResult(doco, thrown.status);
+    throw thrown;
+  }
+  if (!res.ok) return searchErrorResult(doco, res.status);
+  const data = await res.json();
   return {
     content: [{ type: "text", text: JSON.stringify(data) }],
     structuredContent: data,
   };
+}
+
+function searchErrorResult(
+  doco: string,
+  status: number,
+): { content: Array<{ type: "text"; text: string }>; isError: true } {
+  const text =
+    status === 401 || status === 403
+      ? `Not authorized to search "${doco}". This token isn't granted access to that Doco — ask an owner to grant access, or re-authorize at /oauth/authorize with the right scope.`
+      : status === 404
+        ? `Doco "${doco}" not found. Check the handle.`
+        : `doco_search failed for "${doco}" (status ${status}).`;
+  return { isError: true, content: [{ type: "text", text }] };
 }
 
 async function dispatch(message: Rpc, request: Request): Promise<Response> {
