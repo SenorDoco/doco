@@ -11,9 +11,7 @@
 import type { DocoRole } from "@doco/db";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
-import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { GrantPicker } from "~/components/grant-picker";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -30,6 +28,7 @@ import {
   mintApiKey,
   revokeApiKey,
 } from "~/lib/api-keys.server";
+import { cn } from "~/lib/cn";
 import {
   GRANT_REQUIRED_MESSAGE,
   type GrantFormFieldKey,
@@ -177,110 +176,157 @@ export default function ApiKeysPage({
           <h1 className="text-2xl font-semibold">Tokens/MCP</h1>
         </header>
 
-        <AddAgentCard
+        <TokensTabs
           scopeOptions={scopeOptions}
           host={loaderData.host}
+          keys={keys}
+          catalog={catalog}
           error={error}
           minted={minted}
         />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>All access tokens</CardTitle>
-            <CardDescription>
-              {keys.length === 0
-                ? "No active tokens yet."
-                : `${keys.length} active token${keys.length === 1 ? "" : "s"}.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {keys.map((key) => (
-              <KeyRow key={key.client_id} apiKey={key} catalog={catalog} />
-            ))}
-          </CardContent>
-        </Card>
       </SingleColumnPageMain>
     </div>
   );
 }
 
-type AddAgentMode = "invite" | "manual" | "generate";
+type TokensTab = "add-mcp" | "generate" | "existing";
 
-function AddAgentCard({
+const TOKENS_TABS: { id: TokensTab; label: string; testid: string }[] = [
+  { id: "add-mcp", label: "Add MCP", testid: "tokens-tab-add-mcp" },
+  { id: "generate", label: "Generate tokens", testid: "tokens-tab-generate" },
+  { id: "existing", label: "Existing tokens", testid: "tokens-tab-existing" },
+];
+
+function TokensTabs({
   scopeOptions,
   host,
+  keys,
+  catalog,
   error,
   minted,
 }: {
   scopeOptions: ScopeOption[];
   host: string;
+  keys: ApiKeyRow[];
+  catalog: GrantCatalog;
   error: string | null;
   minted: MintedApiKey | null;
 }) {
-  // Three ways to onboard an agent:
-  //   - "invite":  copy a prompt that leads with the hosted MCP connector
-  //                (read+write; the client runs OAuth itself), with the
-  //                by-hand OAuth recipes as the fallback (see
-  //                agent-invite-prompt.tsx).
-  //   - "manual":  show the client-specific hosted MCP connector setup.
-  //   - "generate": pick scope + role and mint a Bearer token directly.
-  // Default to "invite" because the hosted connector is the path most
-  // agents should use (all MCP clients); the direct mint is the escape
-  // hatch for non-MCP scripts and CI.
-  const [mode, setMode] = useState<AddAgentMode>("invite");
-  // Switching modes after a successful mint shouldn't keep the
-  // just-minted token visible under the wrong tab.
-  const showMinted = mode === "generate" && minted !== null;
-  const showError = error !== null && (mode === "generate" || mode === "invite");
+  // Three sections behind one row of tabs, styled like the perspective
+  // tab strip (etched, open-bottom tabs attached to the panel below) but
+  // with larger titles:
+  //   - "Add MCP":         the hosted MCP connector setup — the path most
+  //                        agents should use (all MCP clients).
+  //   - "Generate tokens": pick scope + role and mint a Bearer token —
+  //                        the escape hatch for non-MCP scripts and CI.
+  //   - "Existing tokens": list and manage what's already been granted.
+  // Default to "Add MCP" since the connector is the recommended onboarding.
+  const [tab, setTab] = useState<TokensTab>("add-mcp");
+  // A successful mint re-renders this same component instance (the route
+  // isn't remounted on a Form POST), so `tab` stays on "generate" and the
+  // reveal lands under the tab the user minted from.
+  const showMinted = tab === "generate" && minted !== null;
+  const showError = error !== null && tab === "generate";
 
   return (
-    <Card>
-      <CardContent className="space-y-4 pt-6">
-        <div
-          role="tablist"
-          aria-label="Onboarding mode"
-          className="flex flex-wrap rounded-md border border-border bg-background p-0.5"
-        >
-          <ModeButton
-            mode="invite"
-            current={mode}
-            onSelect={setMode}
-            label="Invite AI agent (recommended)"
-            testid="add-agent-mode-invite"
+    <div>
+      <nav role="tablist" aria-label="Tokens and MCP" className="flex flex-wrap items-end">
+        {TOKENS_TABS.map((t, i) => (
+          <TokensTabButton
+            key={t.id}
+            label={t.label}
+            testid={t.testid}
+            active={tab === t.id}
+            isFirst={i === 0}
+            isLast={i === TOKENS_TABS.length - 1}
+            onSelect={() => setTab(t.id)}
           />
-          <ModeButton
-            mode="manual"
-            current={mode}
-            onSelect={setMode}
-            label="Add MCP manually"
-            testid="add-agent-mode-manual"
-          />
-          <ModeButton
-            mode="generate"
-            current={mode}
-            onSelect={setMode}
-            label="Generate token"
-            testid="add-agent-mode-generate"
-          />
-        </div>
-
-        {mode === "invite" ? (
-          <AgentInvitePrompt host={host} />
-        ) : mode === "manual" ? (
+        ))}
+      </nav>
+      <div
+        role="tabpanel"
+        className="neu-surface relative z-50 rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card p-6"
+      >
+        {tab === "add-mcp" ? (
           <ManualMcpPanel host={host} />
+        ) : tab === "generate" ? (
+          <div className="space-y-4">
+            <GenerateKeyPanel scopeOptions={scopeOptions} />
+            {showError ? (
+              <p className="text-sm text-destructive" data-testid="api-key-error">
+                {error}
+              </p>
+            ) : null}
+            {showMinted ? <MintedReveal minted={minted} /> : null}
+          </div>
         ) : (
-          <GenerateKeyPanel scopeOptions={scopeOptions} />
+          <ExistingTokensPanel keys={keys} catalog={catalog} />
         )}
+      </div>
+    </div>
+  );
+}
 
-        {showError ? (
-          <p className="text-sm text-destructive" data-testid="api-key-error">
-            {error}
-          </p>
-        ) : null}
+function TokensTabButton({
+  label,
+  testid,
+  active,
+  isFirst,
+  isLast,
+  onSelect,
+}: {
+  label: string;
+  testid: string;
+  active: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  onSelect: () => void;
+}) {
+  // Mirrors the perspective tab strip: adjacent tabs share one 1px line
+  // (`-ml-px first:ml-0`), only the outer corners round, and the
+  // open-bottom etched surface plus a `top-0.5` overlap lets the active
+  // tab read as the top lip of the panel below. Inactive tabs sit under
+  // the panel border (z-40); the active one rises above it (z-[60]) on a
+  // matching `bg-card` so the seam disappears.
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={testid}
+      onClick={onSelect}
+      className={cn(
+        "neu-surface-open-bottom relative top-0.5 -ml-px inline-flex items-center border border-border px-4 py-2 text-base font-semibold text-foreground first:ml-0",
+        isFirst && "rounded-tl-lg",
+        isLast && "rounded-tr-lg",
+        active ? "z-[60] bg-card" : "z-40 bg-input hover:bg-muted",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
-        {showMinted ? <MintedReveal minted={minted} /> : null}
-      </CardContent>
-    </Card>
+export function ExistingTokensPanel({
+  keys,
+  catalog,
+}: {
+  keys: ApiKeyRow[];
+  catalog: GrantCatalog;
+}) {
+  // No "All access tokens" heading — the tab label already says it. The
+  // count line still carries the empty state and the active-token tally.
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground" data-testid="tokens-count">
+        {keys.length === 0
+          ? "No active tokens yet."
+          : `${keys.length} active token${keys.length === 1 ? "" : "s"}.`}
+      </p>
+      {keys.map((key) => (
+        <KeyRow key={key.client_id} apiKey={key} catalog={catalog} />
+      ))}
+    </div>
   );
 }
 
@@ -364,38 +410,6 @@ export function ManualMcpPanel({ host }: { host: string }) {
         </p>
       </section>
     </section>
-  );
-}
-
-function ModeButton({
-  mode,
-  current,
-  onSelect,
-  label,
-  testid,
-}: {
-  mode: AddAgentMode;
-  current: AddAgentMode;
-  onSelect: (m: AddAgentMode) => void;
-  label: string;
-  testid: string;
-}) {
-  const active = mode === current;
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      data-testid={testid}
-      onClick={() => onSelect(mode)}
-      className={
-        active
-          ? "rounded-md bg-primary px-3 py-1.5 text-base font-semibold text-primary-foreground"
-          : "rounded-md px-3 py-1.5 text-base font-semibold text-muted-foreground hover:text-foreground"
-      }
-    >
-      {label}
-    </button>
   );
 }
 
