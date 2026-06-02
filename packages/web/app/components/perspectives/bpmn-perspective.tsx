@@ -32,7 +32,6 @@ import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
-import { referenceEdges } from "~/lib/bpmn-reference-edges";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
 import {
@@ -652,35 +651,6 @@ export function BpmnPerspective({
     return edges;
   }, [renderedNodes, renderedPools]);
 
-  // Reference "see also" links. References render as document artifacts in
-  // a pool's bottom band; the association edges tying them to the steps
-  // that cite them are drawn here as gray dashed lines (not sequence-flow
-  // arrows). Render-gated to on-canvas pairs via renderedNodeIds, the same
-  // way the flow and subprocess edges are, so a link never dangles.
-  const referenceLinkEdges = useMemo<FlowEdge[]>(() => {
-    const referenceNodeIds = new Set<string>();
-    for (const [id, node] of nodeById) {
-      if (node.entity_type === "reference") referenceNodeIds.add(id);
-    }
-    if (referenceNodeIds.size === 0) return [];
-    return referenceEdges(links, referenceNodeIds, renderedNodeIds).map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      // "default" is xyflow's built-in bezier edge; it binds to the id-less
-      // left/right handles every shape renders via commonHandles().
-      type: "default",
-      selectable: false,
-      focusable: false,
-      interactionWidth: 0,
-      style: {
-        stroke: REFERENCE_EDGE_COLOR,
-        strokeWidth: 1.5,
-        strokeDasharray: "6 4",
-      },
-    }));
-  }, [links, nodeById, renderedNodeIds]);
-
   const flowNodes = useMemo<FlowNode[]>(() => {
     const windowed = layout.flowNodes.flatMap<FlowNode>((node) => {
       const laneData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).lane;
@@ -771,7 +741,6 @@ export function BpmnPerspective({
         }),
       ...externalEdgeStubs.edges,
       ...subprocessEdges,
-      ...referenceLinkEdges,
     ],
     [
       layout.flowEdges,
@@ -779,7 +748,6 @@ export function BpmnPerspective({
       renderWindowOpacityById,
       externalEdgeStubs.edges,
       subprocessEdges,
-      referenceLinkEdges,
     ],
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
@@ -1192,10 +1160,6 @@ const POOL_GAP = 16;
 const SUBPROCESS_EDGE_COLOR = "#64748b"; // slate-500
 const SUBPROCESS_SOURCE_HANDLE = "subprocess";
 const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
-// Reference "see also" links: a node's edge to the source material it
-// cites. Drawn as a gray dashed line — arrowless, because the relation is
-// non-directional reference, not process flow.
-const REFERENCE_EDGE_COLOR = "#9ca3af"; // gray-400
 // Vertical room reserved at the bottom of a sub-process Action so the
 // "+" marker sits inside the box without colliding with the label. The
 // layout grows the node by this much; the node component pads its label
