@@ -100,7 +100,7 @@ export interface SlaCommitment {
 export interface SlaPerspectiveData {
   commitments: SlaCommitment[];
   /**
-   * TRUE total of SLA commitments (rule nodes, retired excluded) for this Doco,
+   * TRUE total of SLA commitments (rule nodes, all lifecycles) for this Doco,
    * counted before the page limit. `commitments.length` is the loaded slice;
    * the header reports loaded vs this total.
    */
@@ -249,8 +249,7 @@ export async function loadSlaPerspectiveData(
       `SELECT id, prose AS rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
               created_at::text AS created_at, created_by, data,
               (SELECT COUNT(*) FROM nodes
-                WHERE node_type = 'rule' AND doco_id = $1
-                  AND COALESCE(lifecycle, 'asserted') <> 'retired') AS total_count
+                WHERE node_type = 'rule' AND doco_id = $1) AS total_count
          FROM nodes
         WHERE node_type = 'rule'
           AND doco_id = $1
