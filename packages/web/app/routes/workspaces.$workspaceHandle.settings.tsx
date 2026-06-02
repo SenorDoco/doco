@@ -1,7 +1,7 @@
-import { getOrgRole, withClient } from "@doco/db";
-import { validateRequestedDocoHandle as validateRequestedOrgHandle } from "@doco/shared";
+import { getWorkspaceRole, withClient } from "@doco/db";
+import { validateRequestedDocoHandle as validateRequestedWorkspaceHandle } from "@doco/shared";
 import { Form, Link, redirect, useSearchParams } from "react-router";
-import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
+import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -13,13 +13,15 @@ import {
 } from "~/lib/handle-format";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-interface OrgSettingsRow {
+interface WorkspaceSettingsRow {
   id: string;
   handle: string;
   docoCount: number;
 }
 
-async function loadOrgSettingsRow(orgHandle: string): Promise<OrgSettingsRow | null> {
+async function loadWorkspaceSettingsRow(
+  workspaceHandle: string,
+): Promise<WorkspaceSettingsRow | null> {
   return withClient(async (c) => {
     const { rows } = await c.query<{
       id: string;
@@ -29,12 +31,12 @@ async function loadOrgSettingsRow(orgHandle: string): Promise<OrgSettingsRow | n
       `SELECT id, handle,
               (
                 SELECT COUNT(*)::text FROM docos d
-                 WHERE d.org_id = organizations.id
+                 WHERE d.workspace_id = workspaces.id
               ) AS doco_count
-         FROM organizations
+         FROM workspaces
         WHERE handle = $1
         LIMIT 1`,
-      [orgHandle],
+      [workspaceHandle],
     );
     const row = rows[0];
     if (!row) return null;
@@ -46,65 +48,65 @@ async function loadOrgSettingsRow(orgHandle: string): Promise<OrgSettingsRow | n
   });
 }
 
-async function requireOrgOwner(request: Request, orgHandle: string) {
+async function requireWorkspaceOwner(request: Request, workspaceHandle: string) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect(`/sign-in?next=${encodeURIComponent(new URL(request.url).pathname)}`);
-  const org = await loadOrgSettingsRow(orgHandle);
-  if (!org) throw new Response(`Org "${orgHandle}" not found.`, { status: 404 });
-  const role = await getOrgRole(org.id, me.id);
+  const workspace = await loadWorkspaceSettingsRow(workspaceHandle);
+  if (!workspace) throw new Response(`Workspace "${workspaceHandle}" not found.`, { status: 404 });
+  const role = await getWorkspaceRole(workspace.id, me.id);
   if (role !== "owner") {
-    throw new Response("Only organization owners can manage settings.", { status: 403 });
+    throw new Response("Only workspace owners can manage settings.", { status: 403 });
   }
-  return { me, org };
+  return { me, workspace };
 }
 
-async function renameOrganizationHandle(opts: {
-  orgId: string;
+async function renameWorkspaceHandle(opts: {
+  workspaceId: string;
   currentHandle: string;
   nextHandle: string;
 }): Promise<void> {
-  const handleError = validateRequestedOrgHandle(opts.nextHandle);
+  const handleError = validateRequestedWorkspaceHandle(opts.nextHandle);
   if (handleError) throw new Error(handleError);
   if (opts.currentHandle === opts.nextHandle) return;
 
   await withClient(async (c) => {
     const duplicate = await c.query(
-      `SELECT 1 FROM organizations
+      `SELECT 1 FROM workspaces
         WHERE handle = $1 AND id <> $2
         LIMIT 1`,
-      [opts.nextHandle, opts.orgId],
+      [opts.nextHandle, opts.workspaceId],
     );
     if ((duplicate.rowCount ?? 0) > 0) {
-      throw new Error(`Organization handle "${opts.nextHandle}" is already taken.`);
+      throw new Error(`Workspace handle "${opts.nextHandle}" is already taken.`);
     }
 
     const current = await c.query<{ data: Record<string, unknown> | null }>(
-      "SELECT data FROM organizations WHERE id = $1 LIMIT 1",
-      [opts.orgId],
+      "SELECT data FROM workspaces WHERE id = $1 LIMIT 1",
+      [opts.workspaceId],
     );
     const existing = current.rows[0]?.data;
-    if (!existing) throw new Error(`Organization "${opts.currentHandle}" not found.`);
+    if (!existing) throw new Error(`Workspace "${opts.currentHandle}" not found.`);
     const yaml: Record<string, unknown> = { ...existing };
     yaml.handle = opts.nextHandle;
 
     await c.query(
-      `UPDATE organizations
+      `UPDATE workspaces
           SET handle = $2,
               name = $2,
               data = $3::jsonb,
               updated_at = now()
         WHERE id = $1`,
-      [opts.orgId, opts.nextHandle, JSON.stringify(yaml)],
+      [opts.workspaceId, opts.nextHandle, JSON.stringify(yaml)],
     );
   });
 }
 
-async function deleteOrganizationAndDocos(orgId: string): Promise<void> {
+async function deleteWorkspaceAndDocos(workspaceId: string): Promise<void> {
   await withClient(async (c) => {
     await c.query("BEGIN");
     try {
-      await c.query("DELETE FROM docos WHERE org_id = $1", [orgId]);
-      await c.query("DELETE FROM organizations WHERE id = $1", [orgId]);
+      await c.query("DELETE FROM docos WHERE workspace_id = $1", [workspaceId]);
+      await c.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
       await c.query("COMMIT");
     } catch (error) {
       await c.query("ROLLBACK");
@@ -118,9 +120,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string };
+  params: { workspaceHandle: string };
 }) {
-  return requireOrgOwner(request, params.orgHandle);
+  return requireWorkspaceOwner(request, params.workspaceHandle);
 }
 
 export async function action({
@@ -128,55 +130,55 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string };
+  params: { workspaceHandle: string };
 }) {
-  const { org } = await requireOrgOwner(request, params.orgHandle);
+  const { workspace } = await requireWorkspaceOwner(request, params.workspaceHandle);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "rename");
 
   if (intent === "delete") {
     const confirmHandle = String(form.get("confirm_handle") ?? "").trim();
-    if (confirmHandle !== org.handle) {
-      return { error: `To confirm, type the organization handle exactly: "${org.handle}".` };
+    if (confirmHandle !== workspace.handle) {
+      return { error: `To confirm, type the workspace handle exactly: "${workspace.handle}".` };
     }
-    await deleteOrganizationAndDocos(org.id);
-    return redirect(`/orgs?deleted=${encodeURIComponent(org.handle)}`);
+    await deleteWorkspaceAndDocos(workspace.id);
+    return redirect(`/workspaces?deleted=${encodeURIComponent(workspace.handle)}`);
   }
 
   if (intent !== "rename") return { error: `Unknown intent: ${intent}` };
 
-  const nextHandle = String(form.get("org_handle") ?? "")
+  const nextHandle = String(form.get("workspace_handle") ?? "")
     .trim()
     .toLowerCase();
-  if (!nextHandle) return { error: "Organization handle is required." };
+  if (!nextHandle) return { error: "Workspace handle is required." };
 
   try {
-    await renameOrganizationHandle({
-      orgId: org.id,
-      currentHandle: org.handle,
+    await renameWorkspaceHandle({
+      workspaceId: workspace.id,
+      currentHandle: workspace.handle,
       nextHandle,
     });
   } catch (error) {
     return {
-      error: friendlyHandleValidationError((error as Error).message, "Organization handle"),
+      error: friendlyHandleValidationError((error as Error).message, "Workspace handle"),
     };
   }
 
-  return redirect(`/orgs/${nextHandle}/settings`);
+  return redirect(`/workspaces/${nextHandle}/settings`);
 }
 
-export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Settings · ${params.orgHandle} · Doco` }];
+export function meta({ params }: { params: { workspaceHandle: string } }) {
+  return [{ title: `Settings · ${params.workspaceHandle} · Doco` }];
 }
 
-export default function OrgSettings({
+export default function WorkspaceSettings({
   loaderData,
   actionData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { me, org } = loaderData;
+  const { me, workspace } = loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
 
@@ -184,7 +186,9 @@ export default function OrgSettings({
     <div>
       <SiteHeader me={me} />
       <SingleColumnPageMain className="py-6 space-y-4">
-        <Breadcrumb items={orgBreadcrumb({ orgSlug: org.handle, pageLabel: "Settings" })} />
+        <Breadcrumb
+          items={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Settings" })}
+        />
         {actionData?.error ? (
           <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
             {actionData.error}
@@ -194,31 +198,32 @@ export default function OrgSettings({
         <Card>
           <CardHeader>
             <CardTitle>Rename</CardTitle>
-            <CardDescription>Update the organization handle used in URLs.</CardDescription>
+            <CardDescription>Update the workspace handle used in URLs.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
               <input type="hidden" name="intent" value="rename" />
               <label className="block text-xs">
-                <span className="mb-1 block font-semibold text-foreground">
-                  Organization handle
-                </span>
+                <span className="mb-1 block font-semibold text-foreground">Workspace handle</span>
                 <input
-                  name="org_handle"
+                  name="workspace_handle"
                   required
                   pattern={HANDLE_INPUT_PATTERN}
-                  defaultValue={org.handle}
+                  defaultValue={workspace.handle}
                   title={HANDLE_FORMAT_HELP}
-                  aria-describedby="org-handle-help"
+                  aria-describedby="workspace-handle-help"
                   onInvalid={(event) => {
                     event.currentTarget.setCustomValidity(
-                      handleValidityMessage(event.currentTarget.validity, "Organization handle"),
+                      handleValidityMessage(event.currentTarget.validity, "Workspace handle"),
                     );
                   }}
                   onInput={(event) => event.currentTarget.setCustomValidity("")}
                   className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
                 />
-                <span id="org-handle-help" className="mt-1 block text-[11px] text-muted-foreground">
+                <span
+                  id="workspace-handle-help"
+                  className="mt-1 block text-[11px] text-muted-foreground"
+                >
                   {HANDLE_FORMAT_HELP} Renaming takes effect immediately.
                 </span>
               </label>
@@ -226,7 +231,7 @@ export default function OrgSettings({
                 type="submit"
                 className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
               >
-                Rename organization
+                Rename workspace
               </button>
             </Form>
           </CardContent>
@@ -236,8 +241,8 @@ export default function OrgSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
             <CardDescription>
-              Deleting this organization permanently removes it and its {org.docoCount} doco
-              {org.docoCount === 1 ? "" : "s"}. This cannot be undone.
+              Deleting this workspace permanently removes it and its {workspace.docoCount} doco
+              {workspace.docoCount === 1 ? "" : "s"}. This cannot be undone.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -246,25 +251,25 @@ export default function OrgSettings({
               // into history state for the main-pane restorer) keeps this
               // same-page navigation from yanking the reader to the top.
               <Link
-                to={`/orgs/${org.handle}/settings?confirm=delete`}
+                to={`/workspaces/${workspace.handle}/settings?confirm=delete`}
                 preventScrollReset
                 state={{ preventScrollReset: true }}
                 className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
               >
-                Delete this organization...
+                Delete this workspace...
               </Link>
             ) : (
               <Form method="post" className="space-y-3">
                 <input type="hidden" name="intent" value="delete" />
                 <p className="text-xs">
-                  Type the organization handle{" "}
-                  <span className="font-mono font-semibold">{org.handle}</span> to confirm.
+                  Type the workspace handle{" "}
+                  <span className="font-mono font-semibold">{workspace.handle}</span> to confirm.
                 </p>
                 <input
                   name="confirm_handle"
                   required
                   autoComplete="off"
-                  placeholder={org.handle}
+                  placeholder={workspace.handle}
                   className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
                 />
                 <div className="flex items-center gap-2">
@@ -275,7 +280,7 @@ export default function OrgSettings({
                     Delete permanently
                   </button>
                   <Link
-                    to={`/orgs/${org.handle}/settings`}
+                    to={`/workspaces/${workspace.handle}/settings`}
                     preventScrollReset
                     state={{ preventScrollReset: true }}
                     className="text-xs text-muted-foreground hover:text-foreground"

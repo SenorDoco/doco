@@ -2,11 +2,11 @@
 //
 // Returns the policies the caller has read-or-above access to:
 //   - doco_policies[]: every Doco the agent can read (direct owner,
-//     org-membership-inherited, doco_users grant, public visibility)
-//   - org_constitutions[]: the governing charter of every Org the agent
-//     can reach — orgs it owns Docos in, plus orgs granted directly
-//     (OAuth org grant) or via membership. Always shared with agents that
-//     have access to the org.
+//     workspace-membership-inherited, doco_users grant, public visibility)
+//   - workspace_constitutions[]: the governing charter of every Workspace the agent
+//     can reach — workspaces it owns Docos in, plus workspaces granted directly
+//     (OAuth workspace grant) or via membership. Always shared with agents that
+//     have access to the workspace.
 //
 // Each policy set exposes two arrays: `guidance_policies` (prose, no automated check) and
 // `node_authoring_policies` (rules evaluated at capture time).
@@ -19,24 +19,24 @@
 // policies. Cookie callers receive everything they can read. OAuth-
 // bearer callers receive everything the token's grants cover: Docos in
 // `granted_doco_ids` and Docos owned by an
-// org in `granted_org_ids`). The bootstrap response never exceeds the
-// OAuth grant; an agent authorized for one org cannot enumerate other
-// orgs or their unrelated Docos.
+// workspace in `granted_workspace_ids`). The bootstrap response never exceeds the
+// OAuth grant; an agent authorized for one workspace cannot enumerate other
+// workspaces or their unrelated Docos.
 //
 // Bearer callers also receive an `oauth_grant` object listing the
-// token's grant set verbatim — `granted_doco_ids`, `granted_org_ids`,
-// and the per-Doco / per-org role caps. Agents should read it to know
-// which orgs their token already covers (org grants are "live": any
-// Doco created under a granted org afterwards is automatically
+// token's grant set verbatim — `granted_doco_ids`, `granted_workspace_ids`,
+// and the per-Doco / per-workspace role caps. Agents should read it to know
+// which workspaces their token already covers (workspace grants are "live": any
+// Doco created under a granted workspace afterwards is automatically
 // accessible — no re-auth needed). Cookie callers see `oauth_grant:
 // null`.
 
 import {
-  type OrgConstitution,
+  type WorkspaceConstitution,
   getDocoByIdOrHandle,
-  getOrgConstitutionsByIds,
+  getWorkspaceConstitutionsByIds,
   listAllDocos,
-  listOrganizationsForUser,
+  listWorkspacesForUser,
   withClient,
 } from "@doco/db";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
@@ -84,7 +84,8 @@ export async function loader({ request }: { request: Request }) {
   // committed-credential path — distinct from the per-user OAuth flow.
   const projectToken = await getProjectTokenFromRequest(request);
   if (projectToken) {
-    const { docoPolicies, orgConstitutions } = await loadBootstrapForProjectToken(projectToken);
+    const { docoPolicies, workspaceConstitutions } =
+      await loadBootstrapForProjectToken(projectToken);
     return Response.json({
       principal: null,
       canonical_instructions_url: new URL(
@@ -98,7 +99,7 @@ export async function loader({ request }: { request: Request }) {
         role: "reader",
       },
       doco_policies: docoPolicies,
-      org_constitutions: orgConstitutions,
+      workspace_constitutions: workspaceConstitutions,
     });
   }
 
@@ -106,7 +107,7 @@ export async function loader({ request }: { request: Request }) {
   const principal = me ? await loadAgentDisplayIdentity(request) : null;
   const oauthGrant = await getOauthTokenForRequest(request);
 
-  const { docoPolicies, orgConstitutions } = await loadBootstrapForPrincipal(
+  const { docoPolicies, workspaceConstitutions } = await loadBootstrapForPrincipal(
     me?.id ?? null,
     oauthGrant,
   );
@@ -124,14 +125,14 @@ export async function loader({ request }: { request: Request }) {
           scope: oauthGrant.scope,
           granted_doco_ids: oauthGrant.granted_doco_ids,
           granted_doco_roles: oauthGrant.granted_doco_roles,
-          granted_org_ids: oauthGrant.granted_org_ids,
-          granted_org_roles: oauthGrant.granted_org_roles,
+          granted_workspace_ids: oauthGrant.granted_workspace_ids,
+          granted_workspace_roles: oauthGrant.granted_workspace_roles,
           expires_at: oauthGrant.expires_at.toISOString(),
         }
       : null,
     project_token_grant: null,
     doco_policies: docoPolicies,
-    org_constitutions: orgConstitutions,
+    workspace_constitutions: workspaceConstitutions,
   });
 }
 
@@ -170,15 +171,15 @@ async function loadPolicyArticles(docoId: string): Promise<{
 
 async function loadBootstrapForProjectToken(
   token: ProjectToken,
-): Promise<{ docoPolicies: DocoPolicySet[]; orgConstitutions: OrgConstitution[] }> {
+): Promise<{ docoPolicies: DocoPolicySet[]; workspaceConstitutions: WorkspaceConstitution[] }> {
   const d = await getDocoByIdOrHandle(token.doco_id);
-  if (!d) return { docoPolicies: [], orgConstitutions: [] };
-  // The token is scoped to one Doco; surface that Doco's owning org's
+  if (!d) return { docoPolicies: [], workspaceConstitutions: [] };
+  // The token is scoped to one Doco; surface that Doco's owning workspace's
   // constitution alongside it.
-  const orgConstitutions = await getOrgConstitutionsByIds([d.org_id]);
+  const workspaceConstitutions = await getWorkspaceConstitutionsByIds([d.workspace_id]);
   const { guidance, nodeAuthoring } = await loadPolicyArticles(d.id);
   if (guidance.length === 0 && nodeAuthoring.length === 0 && d.goal.length === 0) {
-    return { docoPolicies: [], orgConstitutions };
+    return { docoPolicies: [], workspaceConstitutions };
   }
   return {
     docoPolicies: [
@@ -191,28 +192,28 @@ async function loadBootstrapForProjectToken(
         node_authoring_policies: nodeAuthoring,
       },
     ],
-    orgConstitutions,
+    workspaceConstitutions,
   };
 }
 
 async function loadBootstrapForPrincipal(
   principalId: string | null,
   oauthGrant: ValidAccessToken | null,
-): Promise<{ docoPolicies: DocoPolicySet[]; orgConstitutions: OrgConstitution[] }> {
+): Promise<{ docoPolicies: DocoPolicySet[]; workspaceConstitutions: WorkspaceConstitution[] }> {
   const all = await listAllDocos();
   const docoPolicies: DocoPolicySet[] = [];
-  // Every org the caller can reach. Seeded from the orgs owning accessible
-  // Docos, then augmented with orgs granted directly (OAuth) or by
-  // membership (cookie) — so an org granted with no Docos yet still shows.
-  const orgIds = new Set<string>();
+  // Every workspace the caller can reach. Seeded from the workspaces owning accessible
+  // Docos, then augmented with workspaces granted directly (OAuth) or by
+  // membership (cookie) — so an workspace granted with no Docos yet still shows.
+  const workspaceIds = new Set<string>();
   for (const d of all) {
     const meta = { ownerId: d.owner_id, visibility: d.visibility, docoId: d.id };
-    // OAuth-bearer callers: token's per-Doco or per-org grant must
+    // OAuth-bearer callers: token's per-Doco or per-workspace grant must
     // cover this Doco. Cookie callers fall through to the principal-
     // level check below.
     if (oauthGrant && !oauthTokenGrantsDoco(oauthGrant, meta)) continue;
     if (!(await canAccessDoco(meta, principalId))) continue;
-    orgIds.add(d.org_id);
+    workspaceIds.add(d.workspace_id);
     const { guidance, nodeAuthoring } = await loadPolicyArticles(d.id);
     // A Doco shows up in bootstrap when it has at least one policy
     // OR a non-empty goal — the goal is itself bootstrap context, not
@@ -231,11 +232,12 @@ async function loadBootstrapForPrincipal(
   }
 
   if (oauthGrant) {
-    for (const orgId of oauthGrant.granted_org_ids) orgIds.add(orgId);
+    for (const workspaceId of oauthGrant.granted_workspace_ids) workspaceIds.add(workspaceId);
   } else if (principalId) {
-    for (const org of await listOrganizationsForUser(principalId)) orgIds.add(org.id);
+    for (const workspace of await listWorkspacesForUser(principalId))
+      workspaceIds.add(workspace.id);
   }
 
-  const orgConstitutions = await getOrgConstitutionsByIds([...orgIds]);
-  return { docoPolicies, orgConstitutions };
+  const workspaceConstitutions = await getWorkspaceConstitutionsByIds([...workspaceIds]);
+  return { docoPolicies, workspaceConstitutions };
 }

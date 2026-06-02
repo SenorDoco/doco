@@ -1,14 +1,14 @@
 // Single source of truth for the token-approval grant matrix shared by
 // the Device-Flow (`/device`) and OAuth (`/oauth/authorize`) approve
 // screens. Both render the SAME GrantPicker over the SAME data: every
-// org and Doco the approver can grant. Grants are owner-tier — the
+// workspace and Doco the approver can grant. Grants are owner-tier — the
 // approval backend (oauth-approval-grants.server.ts `assertOwns*`)
 // rejects anything less on submit, so the picker only offers what the
 // approver owns.
 //
 // A client may name a Doco it wants (`target_doco_handle`). When the
 // approver owns it (or no target was given), the matrix is the full set
-// of scopes (account / org / doco / types) they're entitled to — exactly
+// of scopes (account / workspace / doco / types) they're entitled to — exactly
 // like the collaborators and API-token pages. When the approver does NOT
 // own the requested Doco, the request can't be satisfied (granting some
 // other Doco wouldn't help), so the screen BLOCKS: a terminal "you don't
@@ -21,16 +21,16 @@ export interface ApprovalDocoOption {
   id: string;
   handle: string;
   my_role: DocoRole;
-  /** Owning org id for org-owned Docos, or null when owned directly. */
-  org_id: string | null;
+  /** Owning workspace id for workspace-owned Docos, or null when owned directly. */
+  workspace_id: string | null;
   /**
-   * Owning org handle, so the picker can label its org bucket. The
+   * Owning workspace handle, so the picker can label its workspace bucket. The
    * builder always sets it; optional so callers/tests may omit it.
    */
-  org_label?: string | null;
+  workspace_label?: string | null;
 }
 
-export interface ApprovalOrgOption {
+export interface ApprovalWorkspaceOption {
   id: string;
   handle: string;
   display_name: string;
@@ -38,7 +38,7 @@ export interface ApprovalOrgOption {
 }
 
 export type ApprovalGrantView =
-  | { blocked: false; docos: ApprovalDocoOption[]; orgs: ApprovalOrgOption[] }
+  | { blocked: false; docos: ApprovalDocoOption[]; workspaces: ApprovalWorkspaceOption[] }
   | { blocked: true; targetDocoHandle: string };
 
 /**
@@ -53,13 +53,13 @@ export type ApprovalGrantView =
  */
 export function resolveApprovalGrantView(
   docos: ApprovalDocoOption[],
-  orgs: ApprovalOrgOption[],
+  workspaces: ApprovalWorkspaceOption[],
   targetDocoHandle: string | null | undefined,
 ): ApprovalGrantView {
   if (targetDocoHandle && !docos.some((d) => d.handle === targetDocoHandle)) {
     return { blocked: true, targetDocoHandle };
   }
-  return { blocked: false, docos, orgs };
+  return { blocked: false, docos, workspaces };
 }
 
 /**

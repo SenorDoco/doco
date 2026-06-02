@@ -1,12 +1,12 @@
 // Server-only re-exports. Keeps server-only dependencies (pg, etc.) out of
 // the client bundle.
-import { createDocoInOrg as createHostDocoInOrg } from "@doco/host";
+import { createDocoInWorkspace as createHostDocoInWorkspace } from "@doco/host";
 
 export {
-  addOrganizationByHandle,
-  ensurePersonalOrganization,
+  addWorkspaceByHandle,
+  ensurePersonalWorkspace,
   findAvailableDocoHandle,
-  findAvailableOrgHandle,
+  findAvailableWorkspaceHandle,
   findDocoTemplate,
   renameDocoHandle,
   softDeleteDoco,
@@ -16,11 +16,13 @@ import { type BuildReport, reindex as reindexBare } from "@doco/index";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
 import { recordReindexLoad } from "./telemetry.server";
 
-type CreateDocoInOrgOptions = Parameters<typeof createHostDocoInOrg>[0];
-type CreatedDocoInOrg = Awaited<ReturnType<typeof createHostDocoInOrg>>;
+type CreateDocoInWorkspaceOptions = Parameters<typeof createHostDocoInWorkspace>[0];
+type CreatedDocoInWorkspace = Awaited<ReturnType<typeof createHostDocoInWorkspace>>;
 
-export async function createDocoInOrg(opts: CreateDocoInOrgOptions): Promise<CreatedDocoInOrg> {
-  return await createHostDocoInOrg(opts);
+export async function createDocoInWorkspace(
+  opts: CreateDocoInWorkspaceOptions,
+): Promise<CreatedDocoInWorkspace> {
+  return await createHostDocoInWorkspace(opts);
 }
 
 export interface ReindexExtraOptions {

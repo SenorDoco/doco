@@ -14,9 +14,9 @@ function tokenCap(
     granted_doco_ids: string[];
     granted_doco_roles: Record<string, string>;
     granted_doco_write_types: Record<string, string[]>;
-    granted_org_ids: string[];
-    granted_org_roles: Record<string, string>;
-    granted_org_write_types: Record<string, string[]>;
+    granted_workspace_ids: string[];
+    granted_workspace_roles: Record<string, string>;
+    granted_workspace_write_types: Record<string, string[]>;
   } | null,
 ): string[] | null {
   if (!token) return null;
@@ -34,14 +34,14 @@ function tokenCap(
       caps.add("*");
     }
   }
-  if (meta.ownerId.startsWith("organization_") && token.granted_org_ids.includes(meta.ownerId)) {
+  if (meta.ownerId.startsWith("workspace_") && token.granted_workspace_ids.includes(meta.ownerId)) {
     matched = true;
-    const wt = token.granted_org_write_types[meta.ownerId];
+    const wt = token.granted_workspace_write_types[meta.ownerId];
     if (wt) for (const t of normalizeWriteTypes(wt)) caps.add(t);
     if (
       !wt?.length &&
-      (token.granted_org_roles[meta.ownerId] === "owner" ||
-        token.granted_org_roles[meta.ownerId] === "writer")
+      (token.granted_workspace_roles[meta.ownerId] === "owner" ||
+        token.granted_workspace_roles[meta.ownerId] === "writer")
     ) {
       caps.add("*");
     }
@@ -54,9 +54,9 @@ const emptyToken = {
   granted_doco_ids: [],
   granted_doco_roles: {},
   granted_doco_write_types: {},
-  granted_org_ids: [],
-  granted_org_roles: {},
-  granted_org_write_types: {},
+  granted_workspace_ids: [],
+  granted_workspace_roles: {},
+  granted_workspace_write_types: {},
 };
 
 describe("per-type write gate — membership semantics", () => {
@@ -73,18 +73,18 @@ describe("per-type write gate — membership semantics", () => {
 });
 
 describe("per-type write gate — token cap AND-ing", () => {
-  const orgDoco = { ownerId: "organization_A", docoId: "doco_1" };
+  const workspaceDoco = { ownerId: "workspace_A", docoId: "doco_1" };
 
   it("no token → null cap (cookie session, no scope-down)", () => {
-    expect(tokenCap(orgDoco, null)).toBeNull();
+    expect(tokenCap(workspaceDoco, null)).toBeNull();
   });
 
   it("token not scoped to the target → empty cap (writes nothing)", () => {
-    expect(tokenCap(orgDoco, { ...emptyToken })).toEqual([]);
+    expect(tokenCap(workspaceDoco, { ...emptyToken })).toEqual([]);
   });
 
   it("writer-role token without a per-type map writes everything", () => {
-    const cap = tokenCap(orgDoco, {
+    const cap = tokenCap(workspaceDoco, {
       ...emptyToken,
       granted_doco_ids: ["doco_1"],
       granted_doco_roles: { doco_1: "writer" },
@@ -94,7 +94,7 @@ describe("per-type write gate — token cap AND-ing", () => {
   });
 
   it("writer-role token with an empty per-type map still writes everything", () => {
-    const cap = tokenCap(orgDoco, {
+    const cap = tokenCap(workspaceDoco, {
       ...emptyToken,
       granted_doco_ids: ["doco_1"],
       granted_doco_roles: { doco_1: "writer" },
@@ -105,7 +105,7 @@ describe("per-type write gate — token cap AND-ing", () => {
   });
 
   it("owner-role token (no per-type map) → wildcard cap", () => {
-    const cap = tokenCap(orgDoco, {
+    const cap = tokenCap(workspaceDoco, {
       ...emptyToken,
       granted_doco_ids: ["doco_1"],
       granted_doco_roles: { doco_1: "owner" },
@@ -115,7 +115,7 @@ describe("per-type write gate — token cap AND-ing", () => {
   });
 
   it("per-type token caps to exactly its granted types", () => {
-    const cap = tokenCap(orgDoco, {
+    const cap = tokenCap(workspaceDoco, {
       ...emptyToken,
       granted_doco_ids: ["doco_1"],
       granted_doco_write_types: { doco_1: ["decision"] },
@@ -126,13 +126,13 @@ describe("per-type write gate — token cap AND-ing", () => {
     expect(canWriteType("reader", cap, "decision")).toBe(true);
   });
 
-  it("org-scoped per-type cap unions across doco and org grants", () => {
-    const cap = tokenCap(orgDoco, {
+  it("workspace-scoped per-type cap unions across doco and workspace grants", () => {
+    const cap = tokenCap(workspaceDoco, {
       ...emptyToken,
       granted_doco_ids: ["doco_1"],
       granted_doco_write_types: { doco_1: ["decision"] },
-      granted_org_ids: ["organization_A"],
-      granted_org_write_types: { organization_A: ["intent"] },
+      granted_workspace_ids: ["workspace_A"],
+      granted_workspace_write_types: { workspace_A: ["intent"] },
     });
     expect(new Set(cap)).toEqual(new Set(["decision", "intent"]));
   });
@@ -140,7 +140,7 @@ describe("per-type write gate — token cap AND-ing", () => {
 
 // Account grants fold into the doco-level grant exactly like every
 // other source: the engine takes the MAX role and the UNION of write-type
-// sets across direct/org/account/doco grants (owner ⇒ wildcard).
+// sets across direct/workspace/account/doco grants (owner ⇒ wildcard).
 // This mirrors getDocoLevelGrant#fold without a live DB.
 type Grant = { role: "owner" | "writer" | "reader"; writeTypes: string[] };
 function foldGrants(sources: (Grant | null)[]): Grant | null {

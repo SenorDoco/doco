@@ -38,7 +38,7 @@ export async function loader({
     me,
     handle: meta.handle,
     ownerSlug,
-    orgHandle: ctx?.orgHandle ?? "",
+    workspaceHandle: ctx?.workspaceHandle ?? "",
     docoInstallUrl,
     github: {
       connected: (ctx?.connections.length ?? 0) > 0 || orgAccounts.length > 0,
@@ -87,7 +87,7 @@ export function ImportingNote({ progress }: { progress: GitHubImportProgress | n
 }
 
 export default function DocoIntegrations() {
-  const { me, handle, ownerSlug, orgHandle, docoInstallUrl, github } =
+  const { me, handle, ownerSlug, workspaceHandle, docoInstallUrl, github } =
     useLoaderData<typeof loader>();
 
   // While a PR backfill is running, poll the loader so the "importing X of Y"
@@ -118,7 +118,7 @@ export default function DocoIntegrations() {
           <p className="text-sm text-muted-foreground">
             What&apos;s connected to {handle}, and what else you can wire up at any level.
           </p>
-          <ScopeNavLinks scope="doco" orgHandle={orgHandle} />
+          <ScopeNavLinks scope="doco" workspaceHandle={workspaceHandle} />
         </header>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -174,7 +174,7 @@ export default function DocoIntegrations() {
             <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
             <AvailableIntegrations
               pageScope="doco"
-              orgHandle={orgHandle}
+              workspaceHandle={workspaceHandle}
               docoHandle={handle}
               docoInstallUrl={docoInstallUrl}
             />

@@ -97,7 +97,7 @@ export async function clearGitHubConnection(docoId: string): Promise<void> {
 
 export interface DocoGitHubContext {
   handle: string;
-  orgHandle: string;
+  workspaceHandle: string;
   connection: GitHubConnection | null;
 }
 
@@ -108,10 +108,10 @@ export interface DocoGitHubContext {
  */
 export async function getDocoGitHubContext(docoId: string): Promise<DocoGitHubContext | null> {
   return withClient(async (c) => {
-    const r = await c.query<{ handle: string; org_handle: string; gh: unknown }>(
-      `SELECT d.handle, o.handle AS org_handle, d.data->'github_integration' AS gh
+    const r = await c.query<{ handle: string; workspace_handle: string; gh: unknown }>(
+      `SELECT d.handle, o.handle AS workspace_handle, d.data->'github_integration' AS gh
          FROM docos d
-         JOIN organizations o ON o.id = d.org_id
+         JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.id = $1`,
       [docoId],
     );
@@ -119,7 +119,7 @@ export async function getDocoGitHubContext(docoId: string): Promise<DocoGitHubCo
     return row
       ? {
           handle: row.handle,
-          orgHandle: row.org_handle,
+          workspaceHandle: row.workspace_handle,
           connection: normalizeConnections(row.gh)[0] ?? null,
         }
       : null;
@@ -468,7 +468,7 @@ export async function setBackfillState(docoId: string, state: GitHubBackfillStat
 
 export interface DocoConnectionsContext {
   handle: string;
-  orgHandle: string;
+  workspaceHandle: string;
   connections: GitHubConnection[];
   /** Org/owner installation subscriptions (org-wide auto-sync). */
   installations: GitHubInstallationSub[];
@@ -660,10 +660,10 @@ export async function getDocoConnectionsContext(
   docoId: string,
 ): Promise<DocoConnectionsContext | null> {
   return withClient(async (c) => {
-    const r = await c.query<{ handle: string; org_handle: string; gh: unknown }>(
-      `SELECT d.handle, o.handle AS org_handle, d.data->'github_integration' AS gh
+    const r = await c.query<{ handle: string; workspace_handle: string; gh: unknown }>(
+      `SELECT d.handle, o.handle AS workspace_handle, d.data->'github_integration' AS gh
          FROM docos d
-         JOIN organizations o ON o.id = d.org_id
+         JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.id = $1`,
       [docoId],
     );
@@ -671,7 +671,7 @@ export async function getDocoConnectionsContext(
     return row
       ? {
           handle: row.handle,
-          orgHandle: row.org_handle,
+          workspaceHandle: row.workspace_handle,
           connections: normalizeConnections(row.gh),
           installations: normalizeInstallations(row.gh),
           backfill: normalizeBackfillState(row.gh),

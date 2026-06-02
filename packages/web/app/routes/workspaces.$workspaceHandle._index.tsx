@@ -1,20 +1,20 @@
-// /orgs/:orgHandle — per-Org home. A full-width two-column layout.
-// The header (org handle + ULID, +Agent/User on desktop) spans the top.
+// /workspaces/:workspaceHandle — per-Workspace home. A full-width two-column layout.
+// The header (workspace handle + ULID, +Agent/User on desktop) spans the top.
 // Left column (half the shell once it widens past the breakpoint):
 //   - Constitution (founding-charter presentation, fills the column)
 //   - Latest activity feed (20 events, with per-row Doco context)
 // Right column (the other half — equal 50/50 split):
-//   - Search box (submits to /orgs/:orgHandle/search)
-//   - Docos in this org (with a +Doco button)
+//   - Search box (submits to /workspaces/:workspaceHandle/search)
+//   - Docos in this workspace (with a +Doco button)
 //   - Activity heatmap (52w)
-//   - Top contributors across the org's Docos
+//   - Top contributors across the workspace's Docos
 
-import { getOrgRole, updateOrgConstitution, withClient } from "@doco/db";
+import { getWorkspaceRole, updateWorkspaceConstitution, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
+import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
@@ -31,15 +31,15 @@ import {
 import { cn } from "~/lib/cn";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
-import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
+import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
 
-interface OrgDoco {
+interface WorkspaceDoco {
   docoId: string;
   handle: string;
   nodes: number;
@@ -73,29 +73,29 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string };
+  params: { workspaceHandle: string };
 }) {
-  const org = await resolveOrgByHandle(params.orgHandle);
-  if (!org) {
-    throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
+  const workspace = await resolveWorkspaceByHandle(params.workspaceHandle);
+  if (!workspace) {
+    throw new Response(`Workspace "${params.workspaceHandle}" not found.`, { status: 404 });
   }
   const me = await getCurrentPrincipal(request);
-  const myRole = me ? await getOrgRole(org.id, me.id) : null;
+  const myRole = me ? await getWorkspaceRole(workspace.id, me.id) : null;
   const canInviteUsers = myRole === "owner";
 
   return withClient(async (c) => {
-    // Docos owned by this org.
+    // Docos owned by this workspace.
     const docoRows = (
       await c.query<{ id: string; handle: string }>(
-        "SELECT id, handle FROM docos WHERE org_id = $1 ORDER BY handle",
-        [org.id],
+        "SELECT id, handle FROM docos WHERE workspace_id = $1 ORDER BY handle",
+        [workspace.id],
       )
     ).rows;
     const docoIds = docoRows.map((r) => String(r.id));
     const statsByDocoId = await listDocoStats(docoIds);
 
-    const docos: OrgDoco[] = docoRows
-      .map((r): OrgDoco => {
+    const docos: WorkspaceDoco[] = docoRows
+      .map((r): WorkspaceDoco => {
         const id = String(r.id);
         const stats = statsByDocoId.get(id) ?? {
           nodes: 0,
@@ -234,7 +234,7 @@ export async function loader({
     }
 
     return {
-      org,
+      workspace,
       me,
       canInviteUsers,
       canEditConstitution: canInviteUsers,
@@ -251,44 +251,53 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string };
+  params: { workspaceHandle: string };
 }) {
-  const org = await resolveOrgByHandle(params.orgHandle);
-  if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
+  const workspace = await resolveWorkspaceByHandle(params.workspaceHandle);
+  if (!workspace)
+    throw new Response(`Workspace "${params.workspaceHandle}" not found.`, { status: 404 });
   const me = await getCurrentPrincipal(request);
   if (!me) {
-    throw redirect(`/sign-in?next=${encodeURIComponent(`/orgs/${params.orgHandle}`)}`);
+    throw redirect(`/sign-in?next=${encodeURIComponent(`/workspaces/${params.workspaceHandle}`)}`);
   }
-  const role = await getOrgRole(org.id, me.id);
+  const role = await getWorkspaceRole(workspace.id, me.id);
   if (role !== "owner") {
-    return { error: "Only organization owners can edit the constitution." };
+    return { error: "Only workspace owners can edit the constitution." };
   }
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   if (intent === "update-constitution") {
-    await updateOrgConstitution(org.id, String(form.get("constitution") ?? ""));
+    await updateWorkspaceConstitution(workspace.id, String(form.get("constitution") ?? ""));
     return { ok: true };
   }
   return { error: `Unknown intent: ${intent}` };
 }
 
-export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `${params.orgHandle} · Doco` }];
+export function meta({ params }: { params: { workspaceHandle: string } }) {
+  return [{ title: `${params.workspaceHandle} · Doco` }];
 }
 
-export default function OrgHome({
+export default function WorkspaceHome({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, canInviteUsers, canEditConstitution, docos, byDay, topContributors, items } =
-    loaderData;
+  const {
+    workspace,
+    me,
+    canInviteUsers,
+    canEditConstitution,
+    docos,
+    byDay,
+    topContributors,
+    items,
+  } = loaderData;
   const docoItems: DocoListEntry[] = docos.map((d) => ({
     id: d.docoId,
     href: `/${d.handle}`,
     handle: d.handle,
-    ownerHandle: org.handle,
+    ownerHandle: workspace.handle,
     nodeCount: d.nodes,
     counts: d.counts,
     lastUpdatedAt: d.lastUpdatedAt,
@@ -300,22 +309,22 @@ export default function OrgHome({
       <main className="space-y-6 px-6 py-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <Breadcrumb items={orgBreadcrumb({ orgSlug: org.handle })} />
-            <h1 className="text-2xl font-semibold">{org.handle}</h1>
-            <p className="font-mono text-xs text-muted-foreground">{org.id}</p>
+            <Breadcrumb items={workspaceBreadcrumb({ workspaceSlug: workspace.handle })} />
+            <h1 className="text-2xl font-semibold">{workspace.handle}</h1>
+            <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {canInviteUsers ? <UsersLink level="org" targetId={org.id} /> : null}
+            {canInviteUsers ? <UsersLink level="workspace" targetId={workspace.id} /> : null}
             {canInviteUsers ? <ApiKeysLink /> : null}
             <Link
-              to={`/orgs/${org.handle}/integrations`}
+              to={`/workspaces/${workspace.handle}/integrations`}
               className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               Integrations
             </Link>
             {canInviteUsers ? (
               <Link
-                to={`/orgs/${org.handle}/settings`}
+                to={`/workspaces/${workspace.handle}/settings`}
                 className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
               >
                 Settings
@@ -324,15 +333,15 @@ export default function OrgHome({
           </div>
         </div>
 
-        <div className="org-home-layout-shell">
-          <div className="org-home-layout-grid grid gap-6">
+        <div className="workspace-home-layout-shell">
+          <div className="workspace-home-layout-grid grid gap-6">
             {/* Left column — the constitution gets the full available width
                 (mirroring how perspectives render on the Doco overview), with
                 the latest activity feed beneath it. */}
             <section className="min-w-0 space-y-4">
-              <OrgConstitutionCard
-                orgHandle={org.handle}
-                constitution={org.constitution}
+              <WorkspaceConstitutionCard
+                workspaceHandle={workspace.handle}
+                constitution={workspace.constitution}
                 canEdit={canEditConstitution}
               />
 
@@ -343,12 +352,12 @@ export default function OrgHome({
                 <CardContent className="p-0">
                   {items.length === 0 ? (
                     <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                      No recorded activity yet across this org's Docos.
+                      No recorded activity yet across this workspace's Docos.
                     </div>
                   ) : (
                     <div className="divide-y divide-border">
                       {items.map((it) => (
-                        <OrgFeedLine key={it.event_id} event={it} />
+                        <WorkspaceFeedLine key={it.event_id} event={it} />
                       ))}
                     </div>
                   )}
@@ -356,10 +365,14 @@ export default function OrgHome({
               </Card>
             </section>
 
-            {/* Right column — search, the org's Docos, then the activity
+            {/* Right column — search, the workspace's Docos, then the activity
                 matrix and top contributors. */}
             <aside className="min-w-0 space-y-4">
-              <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
+              <Form
+                method="get"
+                action={`/workspaces/${workspace.handle}/search`}
+                className="flex gap-2"
+              >
                 <input
                   name="q"
                   type="search"
@@ -375,10 +388,10 @@ export default function OrgHome({
               </Form>
 
               <DocoListCard
-                title="Docos in this org"
+                title="Docos in this workspace"
                 headerAction={
                   <Link
-                    to={`/new-doco?org_id=${encodeURIComponent(org.id)}`}
+                    to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
                     className="neu-button rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
                   >
                     + Doco
@@ -387,7 +400,7 @@ export default function OrgHome({
                 docos={docoItems}
                 empty={
                   <p className="text-xs italic text-muted-foreground">
-                    This org doesn't own any Docos yet.
+                    This workspace doesn't own any Docos yet.
                   </p>
                 }
               />
@@ -447,8 +460,8 @@ export default function OrgHome({
 
 // Cross-Doco feed line: same shape as the dashboard's DashboardFeedLine.
 // Each event carries its own Doco context (handle + cross-Doco entity URL)
-// because an org's feed spans every Doco it owns.
-function OrgFeedLine({ event }: { event: FeedItem }) {
+// because an workspace's feed spans every Doco it owns.
+function WorkspaceFeedLine({ event }: { event: FeedItem }) {
   const url = entityUrl({
     docoHandle: event.handle,
     entityType: event.entity_type,
@@ -509,18 +522,18 @@ function splitConstitutionParagraphs(text: string): string[] {
 }
 
 const CONSTITUTION_SHARING_DISCLAIMER =
-  "This constitution is always shared with agents that have access to this organization.";
+  "This constitution is always shared with agents that have access to this workspace.";
 
-// Org constitution, presented like a founding charter: a centered serif
+// Workspace constitution, presented like a founding charter: a centered serif
 // title, a rule, and a justified body with a drop-cap opening. Owners get
 // inline editing — an Edit button swaps the charter for a textarea + Save;
 // the save posts via a fetcher so the page revalidates in place.
-function OrgConstitutionCard({
-  orgHandle,
+function WorkspaceConstitutionCard({
+  workspaceHandle,
   constitution,
   canEdit,
 }: {
-  orgHandle: string;
+  workspaceHandle: string;
   constitution: string;
   canEdit: boolean;
 }) {
@@ -582,7 +595,7 @@ function OrgConstitutionCard({
             Constitution
           </h2>
           <p className="mt-1 text-center font-serif text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            of {orgHandle}
+            of {workspaceHandle}
           </p>
           <div className="mx-auto mt-4 h-px w-24 bg-border" />
           {paragraphs.length > 0 ? (

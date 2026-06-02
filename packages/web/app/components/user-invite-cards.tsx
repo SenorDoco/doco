@@ -24,7 +24,7 @@ export function UserInviteCards({
         Invite a person
       </h2>
       <InviteHumanCard
-        orgs={invite.orgs}
+        workspaces={invite.workspaces}
         docos={invite.docos}
         defaultSelection={invite.defaultSelection}
       />
@@ -43,12 +43,12 @@ export function UserInviteCards({
 }
 
 function InviteHumanCard({
-  orgs,
+  workspaces,
   docos,
   defaultSelection,
 }: {
-  orgs: { id: string; label: string; maxRole: DocoRole }[];
-  docos: { id: string; label: string; maxRole: DocoRole; orgId?: string }[];
+  workspaces: { id: string; label: string; maxRole: DocoRole }[];
+  docos: { id: string; label: string; maxRole: DocoRole; workspaceId?: string }[];
   defaultSelection: InviteDefaultSelection;
 }) {
   const fetcher = useFetcher<UserInviteActionResult>();
@@ -56,7 +56,7 @@ function InviteHumanCard({
   const inviteResult = result && "intent" in result && result.intent === "invite" ? result : null;
   const error = result && "error" in result ? result.error : undefined;
 
-  const catalog = useMemo(() => catalogFromOptions(orgs, docos), [orgs, docos]);
+  const catalog = useMemo(() => catalogFromOptions(workspaces, docos), [workspaces, docos]);
   // The deep-link (?scope=level:id) is now just a hint; the wizard starts
   // empty and the granter builds up one or more grants.
   void defaultSelection;

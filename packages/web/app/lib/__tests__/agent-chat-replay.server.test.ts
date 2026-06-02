@@ -9,7 +9,7 @@ import {
 } from "../agent-chat.server";
 
 vi.mock("@doco/db", () => ({
-  listOrganizationsForUser: vi.fn(),
+  listWorkspacesForUser: vi.fn(),
   withClient: vi.fn(),
 }));
 
@@ -88,7 +88,7 @@ describe("operation memory", () => {
             path: "/api/v1/docos.json",
             body: {
               name: "meta-glossary",
-              org_id: "org_01",
+              workspace_id: "workspace_01",
               template_handle: "generic",
             },
           },
@@ -104,7 +104,7 @@ describe("operation memory", () => {
             body: {
               id: "doco_01KT20KM0120ZXRVMX58K85YNF",
               handle: "meta-glossary",
-              org_handle: "meta-doco",
+              workspace_handle: "meta-doco",
               qualified_handle: "meta-doco/meta-glossary",
             },
           }),
@@ -134,7 +134,7 @@ describe("operation memory", () => {
             path: "/api/v1/docos.json",
             body: {
               name: "glossary",
-              org_id: "org_01",
+              workspace_id: "workspace_01",
               template: "glossaries",
             },
           },
@@ -150,7 +150,7 @@ describe("operation memory", () => {
             body: {
               id: "doco_01KT20KM0120ZXRVMX58K85YNF",
               handle: "glossary",
-              org_handle: "meta-doco",
+              workspace_handle: "meta-doco",
               qualified_handle: "meta-doco/glossary",
               template_handle: "glossaries",
             },

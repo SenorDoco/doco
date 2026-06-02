@@ -116,14 +116,14 @@ describe("/:docoHandle/integrations/github", () => {
       me: { id: "user_1", username: "alice" },
       meta: {
         docoId: "doco_1",
-        ownerId: "organization_1",
+        ownerId: "workspace_1",
         handle: "meta-pull-requests",
       },
     });
     mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "meta-pull-requests",
-      orgHandle: "meta",
+      workspaceHandle: "meta",
       connections: [],
       installations: [],
       backfill: null,
@@ -376,7 +376,7 @@ describe("/:docoHandle/integrations/github", () => {
   it("surfaces the connected org's repositories through the loader", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "meta-pull-requests",
-      orgHandle: "meta",
+      workspaceHandle: "meta",
       connections: [],
       installations: [{ installation_id: 42, account: "Doco-to" }],
       backfill: null,
@@ -412,7 +412,7 @@ describe("/:docoHandle/integrations/github", () => {
   it("turns a failed per-repo Re-import into a friendly message, not a 500", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "meta-pull-requests",
-      orgHandle: "meta",
+      workspaceHandle: "meta",
       connections: [{ repo: "acme/web", installation_id: 42 }],
       installations: [],
       backfill: null,

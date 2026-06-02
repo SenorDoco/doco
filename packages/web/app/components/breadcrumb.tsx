@@ -62,7 +62,7 @@ export function Breadcrumb({
  * Trail: `Home › [owner?] › [docoHandle] › [parent?] › [pageLabel?]`.
  *
  * Every non-current segment is a link. The owner segment points to the
- * owning organization home when the loader provides it.
+ * owning workspace home when the loader provides it.
  *
  * Pass `parent` for subpages like `.../policies/guidance/new`:
  * `parent: { label: "Policies", to: "/<handle>/policies" }`.
@@ -79,7 +79,7 @@ export function docoBreadcrumb({
   pageLabel?: string;
 }): BreadcrumbItem[] {
   const items: BreadcrumbItem[] = [{ label: "Home", to: "/" }];
-  if (ownerSlug) items.push({ label: ownerSlug, to: `/orgs/${ownerSlug}` });
+  if (ownerSlug) items.push({ label: ownerSlug, to: `/workspaces/${ownerSlug}` });
   items.push({ label: handle, to: `/${handle}` });
   if (parent) items.push(parent);
   if (pageLabel) items.push({ label: pageLabel });
@@ -87,24 +87,24 @@ export function docoBreadcrumb({
 }
 
 /**
- * Build the breadcrumb trail for an org-scoped page.
- * Trail: `Orgs › [orgSlug] › [parent?] › [pageLabel?]`.
+ * Build the breadcrumb trail for an workspace-scoped page.
+ * Trail: `Workspaces › [workspaceSlug] › [parent?] › [pageLabel?]`.
  *
- * Every non-current segment is a link. `orgSlug` points to the org
- * home page (`/orgs/<slug>`).
+ * Every non-current segment is a link. `workspaceSlug` points to the workspace
+ * home page (`/workspaces/<slug>`).
  */
-export function orgBreadcrumb({
-  orgSlug,
+export function workspaceBreadcrumb({
+  workspaceSlug,
   parent,
   pageLabel,
 }: {
-  orgSlug: string;
+  workspaceSlug: string;
   parent?: BreadcrumbItem;
   pageLabel?: string;
 }): BreadcrumbItem[] {
   const items: BreadcrumbItem[] = [
-    { label: "Orgs", to: "/orgs" },
-    { label: orgSlug, to: `/orgs/${orgSlug}` },
+    { label: "Workspaces", to: "/workspaces" },
+    { label: workspaceSlug, to: `/workspaces/${workspaceSlug}` },
   ];
   if (parent) items.push(parent);
   if (pageLabel) items.push({ label: pageLabel });

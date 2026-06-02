@@ -1,9 +1,9 @@
 // /dashboard — signed-in welcome page.
 //
 // Two evenly-split columns:
-//   - Header: "Good <verb>, <username>" with +Doco / +Org buttons
+//   - Header: "Good <verb>, <username>" with +Doco / +Workspace buttons
 //     on the right (desktop)
-//   - Left column: nested org/Doco access list and newly available
+//   - Left column: nested workspace/Doco access list and newly available
 //     templates
 //   - Right column: Activity heatmap + Latest activity feed (10 items)
 //     across every doco the user has a stake in
@@ -30,7 +30,7 @@ import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.serv
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { pickGreetingVerb } from "~/lib/greeting";
-import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host.server";
+import { listAllDocos, listMyWorkspaces, loadHostConfig } from "~/lib/host.server";
 import { EMPTY_LIFECYCLE_COUNTS, lifecycleColor, sumLifecycleCounts } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -69,14 +69,17 @@ export async function loader({ request }: { request: Request }) {
   const docos = allDocos.filter((d, i) => mine[i] || invitedDocoIds.has(d.docoId));
   const myDocoIds = docos.map((d) => d.docoId);
 
-  const [docoStats, orgsRaw] = await Promise.all([listDocoStats(myDocoIds), listMyOrgs(me.id)]);
+  const [docoStats, workspacesRaw] = await Promise.all([
+    listDocoStats(myDocoIds),
+    listMyWorkspaces(me.id),
+  ]);
 
   const accessGroupsByOwner = new Map<string, AccessListItem>();
-  for (const org of orgsRaw) {
-    accessGroupsByOwner.set(org.id, {
-      id: org.id,
-      href: `/orgs/${org.handle}`,
-      label: org.display_name || org.handle,
+  for (const workspace of workspacesRaw) {
+    accessGroupsByOwner.set(workspace.id, {
+      id: workspace.id,
+      href: `/workspaces/${workspace.handle}`,
+      label: workspace.display_name || workspace.handle,
       count: 0,
       counts: { ...EMPTY_LIFECYCLE_COUNTS },
       lastUpdatedAt: null,
@@ -99,7 +102,8 @@ export async function loader({ request }: { request: Request }) {
     if (!group) {
       group = {
         id: d.ownerId,
-        href: d.ownerKind === "organization" ? `/orgs/${d.ownerUsername}` : `/${d.ownerUsername}`,
+        href:
+          d.ownerKind === "workspace" ? `/workspaces/${d.ownerUsername}` : `/${d.ownerUsername}`,
         label: d.ownerId === me.id ? "Personal" : d.ownerUsername,
         count: 0,
         counts: { ...EMPTY_LIFECYCLE_COUNTS },
@@ -253,10 +257,16 @@ export default function Dashboard({
               + Doco
             </Link>
             <Link
-              to="/new-org"
+              to="/new-workspace"
               className="neu-button rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
             >
-              + Org
+              + Workspace
+            </Link>
+            <Link
+              to="/onboarding/join"
+              className="neu-button rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
+            >
+              Join
             </Link>
           </div>
         </header>
@@ -264,9 +274,9 @@ export default function Dashboard({
         <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-6">
           <section className="space-y-4">
             <AccessListCard
-              title="Your orgs and docos"
+              title="Your workspaces and docos"
               items={accessGroups}
-              empty="No orgs or docos yet."
+              empty="No workspaces or docos yet."
             />
 
             <Card>

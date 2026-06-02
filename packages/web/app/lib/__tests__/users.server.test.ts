@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
   getDocoById: vi.fn(),
   getDocoLevelRole: vi.fn(),
-  getOrgRole: vi.fn(),
+  getWorkspaceRole: vi.fn(),
   issueInvite: vi.fn(),
   withClient: vi.fn(),
 }));
@@ -12,10 +12,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@doco/db", () => ({
   getUserById: vi.fn(),
   getDocoById: mocks.getDocoById,
-  getOrgRole: mocks.getOrgRole,
+  getWorkspaceRole: mocks.getWorkspaceRole,
   listDocoIdsForUser: vi.fn(),
   listDocoUsers: vi.fn(),
-  listOrganizationsForUser: vi.fn(),
+  listWorkspacesForUser: vi.fn(),
   withClient: mocks.withClient,
 }));
 
@@ -58,7 +58,7 @@ describe("handleUserInviteAction", () => {
     mocks.getDocoById.mockResolvedValue({
       id: "doco_bpms",
       handle: "bpms",
-      owner_id: "organization_torre",
+      owner_id: "workspace_torre",
     });
     mocks.issueInvite.mockResolvedValue({
       code: "invite_code",
@@ -124,12 +124,12 @@ describe("handleUserInviteAction", () => {
     });
   });
 
-  it("mints org invites even when the org has no doco anchor yet", async () => {
-    mocks.getOrgRole.mockResolvedValue("writer");
+  it("mints workspace invites even when the workspace has no doco anchor yet", async () => {
+    mocks.getWorkspaceRole.mockResolvedValue("writer");
     mocks.withClient.mockImplementation(async (callback) =>
       callback({
         query: vi.fn().mockResolvedValue({
-          rows: [{ id: "organization_torre", handle: "torre", doco_id: null }],
+          rows: [{ id: "workspace_torre", handle: "torre", doco_id: null }],
         }),
       }),
     );
@@ -137,8 +137,8 @@ describe("handleUserInviteAction", () => {
     const result = await handleUserInviteAction(
       formRequest({
         intent: "invite",
-        level: "org",
-        target_id: "organization_torre",
+        level: "workspace",
+        target_id: "workspace_torre",
         role: "writer",
       }),
     );
@@ -146,13 +146,13 @@ describe("handleUserInviteAction", () => {
     expect(result).toMatchObject({
       ok: true,
       invite_url: "https://doco.test/invite/invite_code",
-      doco_url: "https://doco.test/orgs/torre/",
-      level: "org",
+      doco_url: "https://doco.test/workspaces/torre/",
+      level: "workspace",
       role: "writer",
     });
     expect(mocks.issueInvite).toHaveBeenCalledWith(null, "user_alice", 3, "writer", {
-      level: "org",
-      org_id: "organization_torre",
+      level: "workspace",
+      workspace_id: "workspace_torre",
     });
   });
 });

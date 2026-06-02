@@ -1,5 +1,5 @@
 import type { DocoRole } from "@doco/db";
-import { orgWideLabel, qualifiedDocoLabel } from "./doco-labels";
+import { qualifiedDocoLabel, workspaceWideLabel } from "./doco-labels";
 
 export type ChatGrantSource = "channel_default" | "personal";
 
@@ -9,18 +9,18 @@ export interface BaseChatAccessTarget {
   actorLabel?: string;
 }
 
-export interface OrgChatAccessTarget extends BaseChatAccessTarget {
-  level: "org";
-  orgHandle: string;
+export interface WorkspaceChatAccessTarget extends BaseChatAccessTarget {
+  level: "workspace";
+  workspaceHandle: string;
 }
 
 export interface DocoChatAccessTarget extends BaseChatAccessTarget {
   level: "doco";
-  orgHandle: string;
+  workspaceHandle: string;
   docoHandle: string;
 }
 
-export type ChatAccessTarget = OrgChatAccessTarget | DocoChatAccessTarget;
+export type ChatAccessTarget = WorkspaceChatAccessTarget | DocoChatAccessTarget;
 
 export interface InviteCapability {
   ok: boolean;
@@ -43,21 +43,21 @@ const ROLE_RANK: Record<DocoRole, number> = {
 };
 
 export function chatTargetKey(target: ChatAccessTarget): string {
-  if (target.level === "org") return `org:${target.orgHandle}`;
-  return `doco:${target.orgHandle}/${target.docoHandle}`;
+  if (target.level === "workspace") return `workspace:${target.workspaceHandle}`;
+  return `doco:${target.workspaceHandle}/${target.docoHandle}`;
 }
 
 export function chatTargetLabel(target: ChatAccessTarget): string {
-  if (target.level === "org") return orgWideLabel(target.orgHandle);
-  return qualifiedDocoLabel({ ownerSlug: target.orgHandle, handle: target.docoHandle });
+  if (target.level === "workspace") return workspaceWideLabel(target.workspaceHandle);
+  return qualifiedDocoLabel({ ownerSlug: target.workspaceHandle, handle: target.docoHandle });
 }
 
 export function grantSourceLabel(source: ChatGrantSource): string {
   return source === "personal" ? "your Doco account" : "shared default";
 }
 
-export function canCreateDocoFromChat(orgRole: DocoRole | null | undefined): boolean {
-  return orgRole === "owner";
+export function canCreateDocoFromChat(workspaceRole: DocoRole | null | undefined): boolean {
+  return workspaceRole === "owner";
 }
 
 export function canChangePoliciesFromChat(docoRole: DocoRole | null | undefined): boolean {
@@ -171,7 +171,7 @@ export function formatAmbiguousTargetPrompt(targets: ChatAccessTarget[]): string
         )}`,
     ),
     "",
-    'Reply with the number or say "use org/doco".',
+    'Reply with the number or say "use workspace/doco".',
   ].join("\n");
 }
 

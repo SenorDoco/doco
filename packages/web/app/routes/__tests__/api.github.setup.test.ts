@@ -63,13 +63,13 @@ describe("api.github.setup loader", () => {
     mocks.getDocoByIdOrHandle.mockResolvedValue({
       id: "doco_1",
       handle: "prs",
-      owner_id: "organization_1",
+      owner_id: "workspace_1",
     });
     mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_1" });
     mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "prs",
-      orgHandle: "doco",
+      workspaceHandle: "doco",
       connections: [],
       installations: [],
       backfill: null,

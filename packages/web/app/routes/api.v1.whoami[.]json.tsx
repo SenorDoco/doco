@@ -7,7 +7,7 @@
 //
 //   [🔮 Doco] Authenticated as <token nickname> on behalf of @username.
 //   I've got the following levels of access:
-//     * <org/doco>: <role>
+//     * <workspace/doco>: <role>
 //
 // Auth: requires a signed-in principal (cookie session or OAuth
 // bearer). 401 when neither resolves.

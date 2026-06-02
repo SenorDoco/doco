@@ -33,10 +33,10 @@ afterAll(() => {
 describe("Home (anonymous landing)", () => {
   it("preserves both primary CTAs (create + join) with their destinations", () => {
     const html = render();
-    expect(html).toContain('href="/new-doco"');
+    expect(html).toContain('href="/new-workspace"');
     expect(html).toContain('href="/onboarding/join"');
-    expect(html).toContain("Create a new doco");
-    expect(html).toContain("Join an existing doco");
+    expect(html).toContain("Create a new workspace");
+    expect(html).toContain("Join a workspace");
   });
 
   it("uses the shared-memory line as the hero headline", () => {

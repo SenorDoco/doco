@@ -66,7 +66,7 @@ export async function loader({
     me,
     handle: meta.handle,
     ownerSlug,
-    orgHandle: ctx?.orgHandle ?? "",
+    workspaceHandle: ctx?.workspaceHandle ?? "",
     canManage,
     docoInstallUrl,
     connections: ctx?.connections ?? [],
@@ -220,7 +220,7 @@ export async function action({
       const result = await backfillRepoPullRequests({
         docoDir: docoPath(ctx.handle),
         docoId: meta.docoId,
-        ownerSlug: ctx.orgHandle,
+        ownerSlug: ctx.workspaceHandle,
         docoSlug: ctx.handle,
         owner: parsed.owner,
         repo: parsed.name,

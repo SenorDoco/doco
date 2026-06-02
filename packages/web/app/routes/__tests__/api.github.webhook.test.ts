@@ -33,10 +33,10 @@ const {
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
-    { docoId: "doco_1", handle: "store", orgHandle: "acme" },
+    { docoId: "doco_1", handle: "store", workspaceHandle: "acme" },
   ]),
   findDocoTargetsForGitHubRepo: vi.fn(async () => [
-    { docoId: "doco_1", handle: "store", orgHandle: "acme" },
+    { docoId: "doco_1", handle: "store", workspaceHandle: "acme" },
   ]),
 }));
 

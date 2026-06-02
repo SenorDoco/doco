@@ -26,7 +26,7 @@ function iconPath(entityType: string) {
           <path d="M10.2 10.8l3.4-.6M9.9 12l2.3 2.2" />
         </>
       );
-    case "organization":
+    case "workspace":
       return (
         <>
           <circle cx="12" cy="5.8" r="2" />

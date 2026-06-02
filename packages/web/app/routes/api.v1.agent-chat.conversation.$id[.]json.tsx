@@ -5,8 +5,8 @@
 //     archived?: boolean,
 //     attach_doco_id?: string,
 //     detach_doco_id?: string,
-//     attach_org?: string,
-//     detach_org?: string,
+//     attach_workspace?: string,
+//     detach_workspace?: string,
 //     stop_active_turn?: boolean }
 //
 // title / archived go through `patchConversation`; attach/detach go
@@ -30,8 +30,8 @@ interface PatchBody {
   archived?: unknown;
   attach_doco_id?: unknown;
   detach_doco_id?: unknown;
-  attach_org?: unknown;
-  detach_org?: unknown;
+  attach_workspace?: unknown;
+  detach_workspace?: unknown;
   stop_active_turn?: unknown;
 }
 
@@ -88,10 +88,11 @@ export async function action({
   const ops = {
     attachDocoId: cleanHandle(body.attach_doco_id),
     detachDocoId: cleanHandle(body.detach_doco_id),
-    attachOrg: cleanHandle(body.attach_org),
-    detachOrg: cleanHandle(body.detach_org),
+    attachWorkspace: cleanHandle(body.attach_workspace),
+    detachWorkspace: cleanHandle(body.detach_workspace),
   };
-  const hasAttachmentOp = ops.attachDocoId || ops.detachDocoId || ops.attachOrg || ops.detachOrg;
+  const hasAttachmentOp =
+    ops.attachDocoId || ops.detachDocoId || ops.attachWorkspace || ops.detachWorkspace;
   const hasPatch = Object.keys(patch).length > 0;
   // Run stop first, then patch (title/archived), then attachments.
   // All return the updated row; we take the last non-null and bail
@@ -134,7 +135,7 @@ export async function action({
       updated_at: row.updated_at.toISOString(),
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
       attached_doco_ids: row.attached_doco_ids ?? [],
-      attached_org_handles: row.attached_org_handles ?? [],
+      attached_workspace_handles: row.attached_workspace_handles ?? [],
     },
   });
 }

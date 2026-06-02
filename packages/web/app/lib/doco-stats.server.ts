@@ -40,7 +40,7 @@ export const NODE_TYPES_FOR_STATS = [
 ] as const;
 
 // SQL fragment listing the stats node types, e.g. "'decision', 'intent', …".
-// Exported so the org-tree / org-index aggregate queries can build the
+// Exported so the org-tree / workspace-index aggregate queries can build the
 // same `FROM nodes WHERE node_type IN (...)` union without duplicating
 // the list.
 export const NODE_TYPES_FOR_STATS_SQL = NODE_TYPES_FOR_STATS.map((t) => `'${t}'`).join(", ");

@@ -31,8 +31,8 @@ describe("/integrations/slack/setup", () => {
     });
     mocks.loadScopeOptions.mockResolvedValue([
       {
-        level: "org",
-        id: "org_torre",
+        level: "workspace",
+        id: "workspace_torre",
         label: "torre",
         myRole: "owner",
       },
@@ -73,19 +73,19 @@ describe("/integrations/slack/setup", () => {
     );
   });
 
-  it("loads org-first permission groups for the selected Slack installation", async () => {
+  it("loads workspace-first permission groups for the selected Slack installation", async () => {
     const data = await loader({
       request: new Request("https://doco.test/integrations/slack/setup?team_id=T123"),
     });
 
     expect(data.installation.workspaceName).toBe("Doco");
-    expect(data.orgGroups).toEqual([
+    expect(data.workspaceGroups).toEqual([
       {
         key: "torre",
         handle: "torre",
-        orgOption: {
-          level: "org",
-          id: "org_torre",
+        workspaceOption: {
+          level: "workspace",
+          id: "workspace_torre",
           label: "torre",
           myRole: "owner",
         },
@@ -116,12 +116,12 @@ describe("/integrations/slack/setup", () => {
     expect(response.headers.get("Location")).toBe("/integrations?slack_not_installed=1");
   });
 
-  it("saves workspace-wide organization defaults up to the user's org role", async () => {
+  it("saves workspace-wide workspace defaults up to the user's workspace role", async () => {
     const body = new URLSearchParams({
       workspace_id: "T123",
-      org_key: "torre",
-      "org_mode:torre": "all",
-      "org_role:torre": "writer",
+      workspace_key: "torre",
+      "workspace_mode:torre": "all",
+      "workspace_role:torre": "writer",
     });
 
     const response = (await action({
@@ -139,8 +139,8 @@ describe("/integrations/slack/setup", () => {
       channelName: "workspace",
       grants: [
         {
-          targetLevel: "org",
-          targetId: "org_torre",
+          targetLevel: "workspace",
+          targetId: "workspace_torre",
           role: "writer",
         },
       ],
@@ -148,10 +148,10 @@ describe("/integrations/slack/setup", () => {
     });
   });
 
-  it("defaults a selected organization to reader if the role control did not submit", async () => {
+  it("defaults a selected workspace to reader if the role control did not submit", async () => {
     const body = new URLSearchParams({
       workspace_id: "T123",
-      org_key: "torre",
+      workspace_key: "torre",
     });
 
     const response = (await action({
@@ -167,8 +167,8 @@ describe("/integrations/slack/setup", () => {
         channelId: "*",
         grants: [
           {
-            targetLevel: "org",
-            targetId: "org_torre",
+            targetLevel: "workspace",
+            targetId: "workspace_torre",
             role: "reader",
           },
         ],
@@ -179,8 +179,8 @@ describe("/integrations/slack/setup", () => {
   it("saves specific Doco defaults while leaving no-access Docos out", async () => {
     const body = new URLSearchParams({
       workspace_id: "T123",
-      org_key: "torre",
-      "org_mode:torre": "specific",
+      workspace_key: "torre",
+      "workspace_mode:torre": "specific",
       "doco_role:doco_bpms": "reader",
       "doco_role:doco_sales": "none",
     });
@@ -220,8 +220,8 @@ describe("/integrations/slack/setup", () => {
     ]);
     const body = new URLSearchParams({
       workspace_id: "T123",
-      org_key: "torre",
-      "org_mode:torre": "specific",
+      workspace_key: "torre",
+      "workspace_mode:torre": "specific",
       "doco_role:doco_bpms": "writer",
     });
 
@@ -242,9 +242,9 @@ describe("/integrations/slack/setup", () => {
   it("does not allow owner as a shared workspace default role", async () => {
     const body = new URLSearchParams({
       workspace_id: "T123",
-      org_key: "torre",
-      "org_mode:torre": "all",
-      "org_role:torre": "owner",
+      workspace_key: "torre",
+      "workspace_mode:torre": "all",
+      "workspace_role:torre": "owner",
     });
 
     const response = (await action({

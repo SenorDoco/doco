@@ -36,13 +36,13 @@ describe("integrations-catalog", () => {
     });
 
     it("is false for account-scope integrations regardless of page", () => {
-      expect(needsScopePrompt({ integration: slack, pageScope: "org" })).toBe(false);
+      expect(needsScopePrompt({ integration: slack, pageScope: "workspace" })).toBe(false);
       expect(needsScopePrompt({ integration: slack, pageScope: "doco" })).toBe(false);
     });
 
-    it("is true when an org/Doco integration is clicked from a higher scope", () => {
+    it("is true when an workspace/Doco integration is clicked from a higher scope", () => {
       expect(needsScopePrompt({ integration: github, pageScope: "account" })).toBe(true);
-      expect(needsScopePrompt({ integration: github, pageScope: "org" })).toBe(true);
+      expect(needsScopePrompt({ integration: github, pageScope: "workspace" })).toBe(true);
     });
   });
 
@@ -51,9 +51,9 @@ describe("integrations-catalog", () => {
       expect(connectHrefFor({ integration: slack, pageScope: "account" })).toBe(
         "/integrations/slack/install",
       );
-      expect(connectHrefFor({ integration: slack, pageScope: "org", orgHandle: "acme" })).toBe(
-        "/integrations/slack/install",
-      );
+      expect(
+        connectHrefFor({ integration: slack, pageScope: "workspace", workspaceHandle: "acme" }),
+      ).toBe("/integrations/slack/install");
       expect(connectHrefFor({ integration: slack, pageScope: "doco", docoHandle: "test" })).toBe(
         "/integrations/slack/install",
       );
@@ -74,13 +74,13 @@ describe("integrations-catalog", () => {
       expect(href).toBe("/integrations?integration=github#pick-doco");
     });
 
-    it("routes GitHub clicks from an org page to that org's pick-doco prompt", () => {
+    it("routes GitHub clicks from an workspace page to that workspace's pick-doco prompt", () => {
       const href = connectHrefFor({
         integration: github,
-        pageScope: "org",
-        orgHandle: "acme",
+        pageScope: "workspace",
+        workspaceHandle: "acme",
       });
-      expect(href).toBe("/orgs/acme/integrations?integration=github#pick-doco");
+      expect(href).toBe("/workspaces/acme/integrations?integration=github#pick-doco");
     });
   });
 });

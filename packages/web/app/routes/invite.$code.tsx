@@ -8,7 +8,7 @@
 // "Accept" only after they are signed in:
 //
 //   - If signed in: the invite is redeemed, the human Principal is
-//     joined to the Doco or Organization. The success card is intentionally minimal —
+//     joined to the Doco or Workspace. The success card is intentionally minimal —
 //     just a "Continue" button to /<handle>/.
 //   - If not signed in: ask whether the visitor is human or agent. Humans
 //     sign in and come back here to accept; agents get the plain-text
@@ -19,7 +19,7 @@ import {
   getUserById,
   upsertAccountGrant,
   upsertDocoUser,
-  upsertOrgUser,
+  upsertWorkspaceUser,
   withClient,
 } from "@doco/db";
 import { type EntityId, WRITE_ALL } from "@doco/shared";
@@ -39,21 +39,21 @@ type LoaderError =
   | { error: "consumed" }
   | { error: "revoked" }
   | { error: "doco_not_found" }
-  | { error: "org_not_found" };
+  | { error: "workspace_not_found" };
 
 type LoaderOk = {
   ok: true;
   code: string;
-  target: { level: "account" | "doco" | "org"; label: string };
+  target: { level: "account" | "doco" | "workspace"; label: string };
   inviter: { username: string } | null;
   expires_at: string;
   signedIn: { id: string; username: string } | null;
 };
 
-async function getOrganizationById(id: string): Promise<{ id: string; handle: string } | null> {
+async function getWorkspaceById(id: string): Promise<{ id: string; handle: string } | null> {
   const result = await withClient(async (c) =>
     c.query<{ id: string; handle: string }>(
-      "SELECT id, handle FROM organizations WHERE id = $1 LIMIT 1",
+      "SELECT id, handle FROM workspaces WHERE id = $1 LIMIT 1",
       [id],
     ),
   );
@@ -81,9 +81,9 @@ async function inviteTargetForDisplay(invite: Invite): Promise<LoaderOk["target"
   if (grant.level === "account") {
     return { level: "account", label: "an entire account" };
   }
-  if (grant.level === "org") {
-    const org = await getOrganizationById(grant.target_id);
-    return org ? { level: "org", label: org.handle } : null;
+  if (grant.level === "workspace") {
+    const workspace = await getWorkspaceById(grant.target_id);
+    return workspace ? { level: "workspace", label: workspace.handle } : null;
   }
   const doco = await getDocoById(grant.target_id);
   return doco ? { level: "doco", label: doco.handle } : null;
@@ -101,9 +101,9 @@ async function inviteContinueTarget(invite: Invite): Promise<{ to: string; label
           : "the account you were invited to",
     };
   }
-  if (grant.level === "org") {
-    const org = await getOrganizationById(grant.target_id);
-    return org ? { to: `/orgs/${org.handle}`, label: org.handle } : null;
+  if (grant.level === "workspace") {
+    const workspace = await getWorkspaceById(grant.target_id);
+    return workspace ? { to: `/workspaces/${workspace.handle}`, label: workspace.handle } : null;
   }
   const doco = await getDocoById(grant.target_id);
   return doco ? { to: `/${doco.handle}`, label: doco.handle } : null;
@@ -189,9 +189,9 @@ export async function action({
         role: g.role,
         write_types: writeTypesForRedeemedGrant(g),
       });
-    } else if (g.level === "org") {
-      await upsertOrgUser({
-        org_id: g.target_id,
+    } else if (g.level === "workspace") {
+      await upsertWorkspaceUser({
+        workspace_id: g.target_id,
         user_id: principal.id,
         role: g.role,
         write_types: writeTypesForRedeemedGrant(g),
@@ -263,8 +263,8 @@ export default function InviteLanding({
         <CardHeader>
           <CardTitle>
             You've been invited to{" "}
-            {loaderData.target.level === "org"
-              ? "organization"
+            {loaderData.target.level === "workspace"
+              ? "workspace"
               : loaderData.target.level === "account"
                 ? "account"
                 : "doco"}{" "}
@@ -341,7 +341,7 @@ function errorTitle(err: LoaderError["error"]): string {
   if (err === "expired") return "Invite expired";
   if (err === "consumed") return "Invite already redeemed";
   if (err === "revoked") return "Invite revoked";
-  if (err === "org_not_found") return "The organization this invite pointed at no longer exists";
+  if (err === "workspace_not_found") return "The workspace this invite pointed at no longer exists";
   return "The Doco this invite pointed at no longer exists";
 }
 
@@ -352,7 +352,7 @@ function errorDescription(err: LoaderError["error"]): string {
   if (err === "consumed")
     return "This invite was used. Each invite URL is single-use; ask for a new one.";
   if (err === "revoked") return "The minter revoked this invite. Ask them for a fresh one.";
-  if (err === "org_not_found") return "The organization it pointed at has been deleted.";
+  if (err === "workspace_not_found") return "The workspace it pointed at has been deleted.";
   return "The Doco it pointed at has been deleted.";
 }
 

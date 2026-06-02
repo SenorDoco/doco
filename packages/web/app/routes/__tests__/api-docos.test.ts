@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  createDocoInOrg: vi.fn(),
+  createDocoInWorkspace: vi.fn(),
   getCurrentPrincipalAsync: vi.fn(),
-  getOrgRole: vi.fn(),
+  getWorkspaceRole: vi.fn(),
   listVisibleDocoIdsForRequest: vi.fn(),
   query: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
-  getOrgRole: mocks.getOrgRole,
+  getWorkspaceRole: mocks.getWorkspaceRole,
   roleAtLeast: (role: string | null, threshold: string) => {
     const rank: Record<string, number> = { reader: 0, author: 1, approver: 2, owner: 3 };
     return role !== null && rank[role] >= rank[threshold];
@@ -23,7 +23,7 @@ vi.mock("~/lib/doco-access.server", () => ({
 }));
 
 vi.mock("~/lib/redeem.server", () => ({
-  createDocoInOrg: mocks.createDocoInOrg,
+  createDocoInWorkspace: mocks.createDocoInWorkspace,
 }));
 
 vi.mock("~/lib/session.server", () => ({
@@ -49,15 +49,15 @@ describe("/api/v1/docos.json", () => {
     });
   });
 
-  it("lists qualified org/doco handles", async () => {
+  it("lists qualified workspace/doco handles", async () => {
     mocks.listVisibleDocoIdsForRequest.mockResolvedValue(["doco_bpms"]);
     mocks.query.mockResolvedValue({
       rows: [
         {
           id: "doco_bpms",
           handle: "bpms",
-          org_id: "organization_torre",
-          org_handle: "torre",
+          workspace_id: "workspace_torre",
+          workspace_handle: "torre",
         },
       ],
     });
@@ -69,56 +69,56 @@ describe("/api/v1/docos.json", () => {
         {
           id: "doco_bpms",
           handle: "bpms",
-          org_id: "organization_torre",
-          org_handle: "torre",
+          workspace_id: "workspace_torre",
+          workspace_handle: "torre",
           qualified_handle: "torre/bpms",
         },
       ],
     });
   });
 
-  it("requires owner on the target org to create a doco", async () => {
-    mocks.getOrgRole.mockResolvedValue("writer");
+  it("requires owner on the target workspace to create a doco", async () => {
+    mocks.getWorkspaceRole.mockResolvedValue("writer");
 
     const response = await action({
-      request: jsonRequest({ org_id: "organization_torre", name: "bpms" }),
+      request: jsonRequest({ workspace_id: "workspace_torre", name: "bpms" }),
     } as never);
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
-      error: "Only org owners can create docos -- you hold 'writer' on this org.",
+      error: "Only workspace owners can create docos -- you hold 'writer' on this workspace.",
     });
-    expect(mocks.createDocoInOrg).not.toHaveBeenCalled();
+    expect(mocks.createDocoInWorkspace).not.toHaveBeenCalled();
   });
 
-  it("creates a doco for org owners and returns the qualified handle", async () => {
-    mocks.getOrgRole.mockResolvedValue("owner");
-    mocks.createDocoInOrg.mockResolvedValue({
+  it("creates a doco for workspace owners and returns the qualified handle", async () => {
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
+    mocks.createDocoInWorkspace.mockResolvedValue({
       docoId: "doco_bpms",
       handle: "bpms",
-      orgId: "organization_torre",
-      orgHandle: "torre",
+      workspaceId: "workspace_torre",
+      workspaceHandle: "torre",
       goal: "Process memory.",
     });
 
     const response = await action({
-      request: jsonRequest({ org_id: "organization_torre", name: "BPMS", privacy: "public" }),
+      request: jsonRequest({ workspace_id: "workspace_torre", name: "BPMS", privacy: "public" }),
     } as never);
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
       id: "doco_bpms",
       handle: "bpms",
-      org_handle: "torre",
-      org_id: "organization_torre",
+      workspace_handle: "torre",
+      workspace_id: "workspace_torre",
       qualified_handle: "torre/bpms",
       template_handle: "generic",
       visibility: "public",
       goal: "Process memory.",
     });
-    expect(mocks.createDocoInOrg).toHaveBeenCalledWith(
+    expect(mocks.createDocoInWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({
-        orgId: "organization_torre",
+        workspaceId: "workspace_torre",
         requestedHandle: "bpms",
         createdByUserId: "user_alice",
       }),
@@ -126,18 +126,18 @@ describe("/api/v1/docos.json", () => {
   });
 
   it("accepts the common template alias and returns the applied template handle", async () => {
-    mocks.getOrgRole.mockResolvedValue("owner");
-    mocks.createDocoInOrg.mockResolvedValue({
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
+    mocks.createDocoInWorkspace.mockResolvedValue({
       docoId: "doco_glossary",
       handle: "glossary",
-      orgId: "organization_torre",
-      orgHandle: "torre",
+      workspaceId: "workspace_torre",
+      workspaceHandle: "torre",
       goal: "Glossary memory.",
     });
 
     const response = await action({
       request: jsonRequest({
-        org_id: "organization_torre",
+        workspace_id: "workspace_torre",
         name: "Glossary",
         template: "glossaries",
       }),
@@ -147,16 +147,16 @@ describe("/api/v1/docos.json", () => {
     await expect(response.json()).resolves.toEqual({
       id: "doco_glossary",
       handle: "glossary",
-      org_handle: "torre",
-      org_id: "organization_torre",
+      workspace_handle: "torre",
+      workspace_id: "workspace_torre",
       qualified_handle: "torre/glossary",
       template_handle: "glossaries",
       visibility: "private",
       goal: "Glossary memory.",
     });
-    expect(mocks.createDocoInOrg).toHaveBeenCalledWith(
+    expect(mocks.createDocoInWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({
-        orgId: "organization_torre",
+        workspaceId: "workspace_torre",
         requestedHandle: "glossary",
         createdByUserId: "user_alice",
         templateHandle: "glossaries",

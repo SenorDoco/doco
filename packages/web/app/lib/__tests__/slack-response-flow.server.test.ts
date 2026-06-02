@@ -46,12 +46,12 @@ describe("Slack response flow", () => {
           {
             channel_id: "*",
             channel_name: "workspace",
-            target_level: "org",
-            target_id: "organization_doco",
+            target_level: "workspace",
+            target_id: "workspace_doco",
             role: "reader",
             target_label: "doco",
             doco_handle: null,
-            org_handle: null,
+            workspace_handle: null,
           },
         ],
       })
@@ -85,12 +85,12 @@ describe("Slack response flow", () => {
           {
             channel_id: "*",
             channel_name: "workspace",
-            target_level: "org",
-            target_id: "organization_doco",
+            target_level: "workspace",
+            target_id: "workspace_doco",
             role: "reader",
             target_label: "doco",
             doco_handle: null,
-            org_handle: null,
+            workspace_handle: null,
           },
         ],
       })

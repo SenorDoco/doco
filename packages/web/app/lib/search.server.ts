@@ -17,11 +17,11 @@ export interface SearchHit {
 
 export interface SearchTypeSpec {
   // The relation each spec reads from. Node types read from the unified
-  // `nodes` table filtered by `nodeType`; host-level types (organization)
+  // `nodes` table filtered by `nodeType`; host-level types (workspace)
   // read from their own table named here.
   table: string;
   // `node_type` discriminator on `nodes`, or null for host-level types
-  // that don't live in `nodes` (organization).
+  // that don't live in `nodes` (workspace).
   nodeType: string | null;
   entityType: string;
   selectExtra: string;
@@ -73,14 +73,14 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
     }),
   },
   {
-    table: "organizations",
+    table: "workspaces",
     nodeType: null,
-    entityType: "organization",
+    entityType: "workspace",
     selectExtra: "handle, name, created_at",
     hostLevel: true,
     toHit: (row, score) => ({
       id: String(row.id),
-      entity_type: "organization",
+      entity_type: "workspace",
       summary: (row.name as string) ?? "",
       name: (row.handle as string) ?? null,
       lifecycle: null,
@@ -143,7 +143,7 @@ export async function hydrateSearchHits(
   if (ids.length === 0) return [];
   const hits: SearchHit[] = [];
   for (const spec of SEARCH_TYPE_SPECS) {
-    // Host-level types (organization) keep their own table; node types
+    // Host-level types (workspace) keep their own table; node types
     // read from the unified `nodes` table, scoped by node_type.
     const sql = spec.hostLevel
       ? `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[])`

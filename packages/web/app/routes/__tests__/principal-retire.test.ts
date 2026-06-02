@@ -74,7 +74,7 @@ describe("principal retire API", () => {
     mocks.withTransaction.mockImplementation((fn) => fn({ query: mocks.query }));
     mocks.loadDocoRouteForRead.mockResolvedValue({
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
-      meta: { ownerId: "organization_acme", docoId: "doco_acme" },
+      meta: { ownerId: "workspace_acme", docoId: "doco_acme" },
     });
     mocks.requireDocoTypeWriteForRequest.mockResolvedValue(null);
     mocks.getEntity.mockResolvedValue({

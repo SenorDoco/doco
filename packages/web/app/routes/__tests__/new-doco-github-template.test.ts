@@ -2,25 +2,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
-  isOrgMember: vi.fn(),
-  lookupOrgHandle: vi.fn(),
-  createDocoInOrg: vi.fn(),
+  isWorkspaceMember: vi.fn(),
+  lookupWorkspaceHandle: vi.fn(),
+  createDocoInWorkspace: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: mocks.getCurrentPrincipal,
 }));
 
-vi.mock("~/lib/org-helpers.server", () => ({
-  isOrgMember: mocks.isOrgMember,
-  listMyOrgs: vi.fn(),
-  lookupOrgHandle: mocks.lookupOrgHandle,
+vi.mock("~/lib/workspace-helpers.server", () => ({
+  isWorkspaceMember: mocks.isWorkspaceMember,
+  listMyWorkspaces: vi.fn(),
+  lookupWorkspaceHandle: mocks.lookupWorkspaceHandle,
 }));
 
 vi.mock("~/lib/redeem.server", () => ({
-  addOrganizationByHandle: vi.fn(),
-  createDocoInOrg: mocks.createDocoInOrg,
-  ensurePersonalOrganization: vi.fn(),
+  addWorkspaceByHandle: vi.fn(),
+  createDocoInWorkspace: mocks.createDocoInWorkspace,
+  ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),
 }));
 
@@ -38,9 +38,9 @@ describe("/new-doco GitHub PR template", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_1", username: "alice" });
-    mocks.isOrgMember.mockResolvedValue(true);
-    mocks.lookupOrgHandle.mockResolvedValue("acme");
-    mocks.createDocoInOrg.mockResolvedValue({
+    mocks.isWorkspaceMember.mockResolvedValue(true);
+    mocks.lookupWorkspaceHandle.mockResolvedValue("acme");
+    mocks.createDocoInWorkspace.mockResolvedValue({
       docoId: "doco_1",
       handle: "acme-prs",
     });
@@ -50,7 +50,7 @@ describe("/new-doco GitHub PR template", () => {
     const response = (await action({
       request: postNewDoco({
         template_handle: "github-pull-requests",
-        org_id: "organization_1",
+        workspace_id: "workspace_1",
         name: "acme-prs",
       }),
     }).catch((error: Response) => error)) as Response;

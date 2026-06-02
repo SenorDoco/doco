@@ -13,7 +13,7 @@ function conversation(overrides: Record<string, unknown> = {}) {
     last_message_preview: "Hello",
     last_message_role: "user" as const,
     attached_doco_ids: [],
-    attached_org_handles: [],
+    attached_workspace_handles: [],
     ...overrides,
   };
 }

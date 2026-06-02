@@ -2,18 +2,18 @@ import type { DocoRole } from "@doco/db";
 
 export const ALL_ROLES: DocoRole[] = ["owner", "writer", "reader"];
 
-export type InviteLevel = "account" | "org" | "doco";
+export type InviteLevel = "account" | "workspace" | "doco";
 export type InviteOption = {
   id: string;
   label: string;
   maxRole: DocoRole;
-  /** Owning org id (doco options only) — groups docos under their org. */
-  orgId?: string;
+  /** Owning workspace id (doco options only) — groups docos under their workspace. */
+  workspaceId?: string;
 };
 export type InviteDefaultSelection = { level: InviteLevel; targetId: string };
 
 export interface UserInviteData {
-  orgs: InviteOption[];
+  workspaces: InviteOption[];
   docos: InviteOption[];
   defaultSelection: InviteDefaultSelection;
 }
@@ -37,36 +37,37 @@ export function rankOf(role: DocoRole): number {
 }
 
 export function parseInviteLevel(value: string | null): InviteLevel | null {
-  return value === "org" || value === "doco" ? value : null;
+  return value === "workspace" || value === "doco" ? value : null;
 }
 
 export function optionsForInviteLevel(
   level: InviteLevel,
   options: {
-    orgs: InviteOption[];
+    workspaces: InviteOption[];
     docos: InviteOption[];
   },
 ): InviteOption[] {
-  if (level === "org") return options.orgs;
+  if (level === "workspace") return options.workspaces;
   return options.docos;
 }
 
 export function firstAvailableInviteLevel(options: {
-  orgs: InviteOption[];
+  workspaces: InviteOption[];
   docos: InviteOption[];
 }): InviteLevel {
   if (options.docos.length > 0) return "doco";
-  return "org";
+  return "workspace";
 }
 
 export function resolveInviteDefaultSelection(args: {
   requestedLevel: InviteLevel | null;
   requestedTargetId: string;
-  orgs: InviteOption[];
+  workspaces: InviteOption[];
   docos: InviteOption[];
 }): InviteDefaultSelection {
   const level =
-    args.requestedLevel ?? firstAvailableInviteLevel({ orgs: args.orgs, docos: args.docos });
+    args.requestedLevel ??
+    firstAvailableInviteLevel({ workspaces: args.workspaces, docos: args.docos });
   const options = optionsForInviteLevel(level, args);
   const targetId = options.some((opt) => opt.id === args.requestedTargetId)
     ? args.requestedTargetId
@@ -80,7 +81,7 @@ export function resolveInviteDefaultSelection(args: {
  * only on account-level specs (whose account the redeemer joins).
  */
 export interface InviteGrantSpec {
-  level: "account" | "org" | "doco";
+  level: "account" | "workspace" | "doco";
   target_id: string;
   role: DocoRole;
   write_types: string[];

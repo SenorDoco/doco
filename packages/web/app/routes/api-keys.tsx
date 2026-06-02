@@ -83,7 +83,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   if (intent === "mint") {
     const label = String(form.get("label") ?? "").trim();
     const rawGrants = String(form.get("grants") ?? "").trim();
-    if (!rawGrants) return { error: "Pick at least one org or doco to scope this key to." };
+    if (!rawGrants) return { error: "Pick at least one workspace or doco to scope this key to." };
 
     let grants: ApiKeyGrantInput[] = [];
     try {
@@ -135,7 +135,7 @@ function parseGrantPayload(rawGrants: string): ApiKeyGrantInput[] {
   return parsed.map(
     (g: { level?: unknown; target_id?: unknown; role?: unknown; write_types?: unknown }) => {
       const level =
-        g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
+        g.level === "account" || g.level === "workspace" || g.level === "doco" ? g.level : null;
       const target_id = typeof g.target_id === "string" ? g.target_id : "";
       const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
       // Account grants carry no target_id (the minter's account is the scope).
@@ -313,7 +313,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const [label, setLabel] = useState("");
 
   // Same drill-down grant picker the collaborators page uses
-  // (decision_per_type_write_grants): org → docos → read/write + per-type.
+  // (decision_per_type_write_grants): workspace → docos → read/write + per-type.
   const catalog = useMemo(() => scopeOptionsToCatalog(scopeOptions), [scopeOptions]);
   const noScopes = catalog.targets.length === 0;
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
@@ -403,7 +403,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
 
       {noScopes ? (
         <p className="text-sm text-muted-foreground">
-          You aren't a member of any org or doco yet. Join or create one to mint a key.
+          You aren't a member of any workspace or doco yet. Join or create one to mint a key.
         </p>
       ) : (
         <>
@@ -441,11 +441,11 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
 function scopeOptionsToCatalog(scopeOptions: ScopeOption[]): GrantCatalog {
   return catalogFromOptions(
     scopeOptions
-      .filter((o) => o.level === "org")
+      .filter((o) => o.level === "workspace")
       .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole })),
     scopeOptions
       .filter((o) => o.level === "doco")
-      .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole, orgId: o.orgId })),
+      .map((o) => ({ id: o.id, label: o.label, maxRole: o.myRole, workspaceId: o.workspaceId })),
   );
 }
 

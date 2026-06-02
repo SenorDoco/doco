@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   withClient: vi.fn(),
-  getOrgRole: vi.fn(),
-  listOrganizationsForUser: vi.fn(),
+  getWorkspaceRole: vi.fn(),
+  listWorkspacesForUser: vi.fn(),
   getDocoLevelRole: vi.fn(),
   listAccessibleDocoIdsForPrincipal: vi.fn(),
   issueTokens: vi.fn(),
@@ -12,8 +12,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@doco/db", () => ({
   withClient: mocks.withClient,
-  getOrgRole: mocks.getOrgRole,
-  listOrganizationsForUser: mocks.listOrganizationsForUser,
+  getWorkspaceRole: mocks.getWorkspaceRole,
+  listWorkspacesForUser: mocks.listWorkspacesForUser,
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
@@ -60,8 +60,8 @@ describe("listApiKeysForUser", () => {
               redirect_uris: ["http://127.0.0.1:4321/callback"],
               granted_doco_ids: [],
               granted_doco_roles: {},
-              granted_org_ids: [],
-              granted_org_roles: {},
+              granted_workspace_ids: [],
+              granted_workspace_roles: {},
               created_at: new Date("2026-05-27T12:00:00Z"),
               expires_at: new Date("2026-07-27T12:00:00Z"),
               last_seen_at: null,
@@ -87,13 +87,13 @@ describe("addGrantsToApiKey", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getDocoLevelRole.mockResolvedValue("owner");
-    mocks.getOrgRole.mockResolvedValue("owner");
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
   });
 
   it("preserves untouched grants while replacing the target being modified", async () => {
     const queries = vi.fn(async (sql: string, _values?: unknown[]) => {
       if (sql.includes("SELECT owner_id FROM docos")) {
-        return { rows: [{ owner_id: "organization_torre" }] };
+        return { rows: [{ owner_id: "workspace_torre" }] };
       }
       if (sql.includes("FROM oauth_refresh_tokens")) {
         return {
@@ -107,9 +107,9 @@ describe("addGrantsToApiKey", () => {
                 doco_existing: ["decision"],
                 doco_untouched: ["rule"],
               },
-              granted_org_ids: [],
-              granted_org_roles: {},
-              granted_org_write_types: {},
+              granted_workspace_ids: [],
+              granted_workspace_roles: {},
+              granted_workspace_write_types: {},
             },
           ],
         };

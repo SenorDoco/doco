@@ -1,6 +1,6 @@
-// /orgs/:orgHandle/search — org-level semantic search.
+// /workspaces/:workspaceHandle/search — workspace-level semantic search.
 //
-// Aggregates embeddings across every Doco the org owns, scores against
+// Aggregates embeddings across every Doco the workspace owns, scores against
 // the query embedding, and hydrates the top results with their per-Doco
 // context (handle + entity URL). Vector-only ranking — no facet
 // filtering yet (a follow-up to the doco-level search, which carries
@@ -15,16 +15,16 @@ import {
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
-import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
+import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { nodeTypePlural } from "~/lib/node-colors";
-import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
+import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 
 const RESULTS_LIMIT = 50;
 
@@ -112,11 +112,11 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string };
+  params: { workspaceHandle: string };
 }) {
-  const org = await resolveOrgByHandle(params.orgHandle);
-  if (!org) {
-    throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
+  const workspace = await resolveWorkspaceByHandle(params.workspaceHandle);
+  if (!workspace) {
+    throw new Response(`Workspace "${params.workspaceHandle}" not found.`, { status: 404 });
   }
   const me = await getCurrentPrincipal(request);
   const host = await loadHostConfig();
@@ -126,8 +126,8 @@ export async function loader({
   return withClient(async (c) => {
     const docoRows = (
       await c.query<{ id: string; handle: string }>(
-        "SELECT id, handle FROM docos WHERE org_id = $1",
-        [org.id],
+        "SELECT id, handle FROM docos WHERE workspace_id = $1",
+        [workspace.id],
       )
     ).rows;
     const docoIds = docoRows.map((r) => String(r.id));
@@ -135,7 +135,7 @@ export async function loader({
 
     if (!q || docoIds.length === 0) {
       return {
-        org,
+        workspace,
         me,
         host,
         q,
@@ -147,7 +147,7 @@ export async function loader({
     const provider = getDocoEmbeddingProvider();
     if (!provider) {
       return {
-        org,
+        workspace,
         me,
         host,
         q,
@@ -161,7 +161,7 @@ export async function loader({
       const [v] = await provider.embed([q], "query");
       if (!v || v.length === 0) {
         return {
-          org,
+          workspace,
           me,
           host,
           q,
@@ -172,7 +172,7 @@ export async function loader({
       queryEmbedding = v;
     } catch (e) {
       return {
-        org,
+        workspace,
         me,
         host,
         q,
@@ -184,12 +184,12 @@ export async function loader({
     const all = await getEmbeddingsForDocos(c, docoIds);
     if (all.length === 0) {
       return {
-        org,
+        workspace,
         me,
         host,
         q,
         hits: [] as Hit[],
-        warning: "No embeddings across this org's Docos yet — reindex first.",
+        warning: "No embeddings across this workspace's Docos yet — reindex first.",
       };
     }
     const scored = all.map((e) => ({
@@ -204,30 +204,30 @@ export async function loader({
     const ids = top.map((t) => t.entity_id);
 
     const hits = await hydrateHits(c, ids, scoreById, docoIdByEntity, docoHandleById);
-    return { org, me, host, q, hits, warning: null };
+    return { workspace, me, host, q, hits, warning: null };
   });
 }
 
-export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Search · ${params.orgHandle} · Doco` }];
+export function meta({ params }: { params: { workspaceHandle: string } }) {
+  return [{ title: `Search · ${params.workspaceHandle} · Doco` }];
 }
 
-export default function OrgSearch({
+export default function WorkspaceSearch({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, q, hits, warning } = loaderData;
+  const { workspace, me, q, hits, warning } = loaderData;
   return (
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-5">
         <header className="space-y-1">
           <Breadcrumb
-            items={orgBreadcrumb({ orgSlug: org.handle, pageLabel: "Search" })}
+            items={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Search" })}
             className="mb-1"
           />
-          <h1 className="text-xl font-semibold">Search across {org.handle}</h1>
+          <h1 className="text-xl font-semibold">Search across {workspace.handle}</h1>
         </header>
 
         <Form method="get" className="flex gap-2">
@@ -235,7 +235,7 @@ export default function OrgSearch({
             type="search"
             name="q"
             defaultValue={q}
-            placeholder={`Search across this org's Docos…`}
+            placeholder={`Search across this workspace's Docos…`}
             className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
           />
           <button

@@ -34,9 +34,9 @@ const emptyGrants: GrantSets = {
   granted_doco_ids: [],
   granted_doco_roles: {},
   granted_doco_write_types: {},
-  granted_org_ids: [],
-  granted_org_roles: {},
-  granted_org_write_types: {},
+  granted_workspace_ids: [],
+  granted_workspace_roles: {},
+  granted_workspace_write_types: {},
 };
 
 describe("OAuth token authorization", () => {
@@ -102,16 +102,16 @@ describe("OAuth token authorization", () => {
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "writer" },
       granted_doco_write_types: { doco_bpms: ["decision"] },
-      granted_org_ids: ["organization_torre"],
-      granted_org_roles: { organization_torre: "reader" },
-      granted_org_write_types: { organization_torre: ["intent"] },
+      granted_workspace_ids: ["workspace_torre"],
+      granted_workspace_roles: { workspace_torre: "reader" },
+      granted_workspace_write_types: { workspace_torre: ["intent"] },
       scope: "doco",
     });
 
     expect(callsTo("kind = 'agent'")).toHaveLength(0);
     expect(callsTo("INSERT INTO users")).toHaveLength(0);
     expect(callsTo("INSERT INTO doco_users")).toHaveLength(0);
-    expect(callsTo("INSERT INTO org_users")).toHaveLength(0);
+    expect(callsTo("INSERT INTO workspace_users")).toHaveLength(0);
 
     // The minted code carries the approving human id, token name, and the approved grants.
     const codeInsert = callsTo("INSERT INTO oauth_authorization_codes")[0];
@@ -122,7 +122,7 @@ describe("OAuth token authorization", () => {
       doco_bpms: ["decision"],
     });
     expect(JSON.parse((codeInsert?.[1] as unknown[])[11] as string)).toEqual({
-      organization_torre: ["intent"],
+      workspace_torre: ["intent"],
     });
   });
 
@@ -141,9 +141,9 @@ describe("OAuth token authorization", () => {
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "writer" },
       granted_doco_write_types: { doco_bpms: ["decision"] },
-      granted_org_ids: [],
-      granted_org_roles: {},
-      granted_org_write_types: {},
+      granted_workspace_ids: [],
+      granted_workspace_roles: {},
+      granted_workspace_write_types: {},
     });
 
     expect(callsTo("INSERT INTO users")).toHaveLength(0);
@@ -168,9 +168,9 @@ describe("OAuth token authorization", () => {
       granted_doco_ids: ["doco_new"],
       granted_doco_roles: { doco_new: "writer" },
       granted_doco_write_types: { doco_new: ["intent"] },
-      granted_org_ids: [],
-      granted_org_roles: {},
-      granted_org_write_types: {},
+      granted_workspace_ids: [],
+      granted_workspace_roles: {},
+      granted_workspace_write_types: {},
     });
 
     // Tokens do not create or reuse agent users.
@@ -190,7 +190,7 @@ describe("OAuth token authorization", () => {
 });
 
 describe("mergeGrantSets", () => {
-  it("unions disjoint Doco and org grants", () => {
+  it("unions disjoint Doco and workspace grants", () => {
     const merged = mergeGrantSets(
       { ...emptyGrants, granted_doco_ids: ["a"], granted_doco_roles: { a: "reader" } },
       {
@@ -198,15 +198,15 @@ describe("mergeGrantSets", () => {
         granted_doco_ids: ["b"],
         granted_doco_roles: { b: "writer" },
         granted_doco_write_types: { b: ["decision"] },
-        granted_org_ids: ["organization_x"],
-        granted_org_roles: { organization_x: "owner" },
+        granted_workspace_ids: ["workspace_x"],
+        granted_workspace_roles: { workspace_x: "owner" },
       },
     );
     expect(merged.granted_doco_ids).toEqual(["a", "b"]);
     expect(merged.granted_doco_roles).toEqual({ a: "reader", b: "writer" });
     expect(merged.granted_doco_write_types).toEqual({ b: ["decision"] });
-    expect(merged.granted_org_ids).toEqual(["organization_x"]);
-    expect(merged.granted_org_roles).toEqual({ organization_x: "owner" });
+    expect(merged.granted_workspace_ids).toEqual(["workspace_x"]);
+    expect(merged.granted_workspace_roles).toEqual({ workspace_x: "owner" });
   });
 
   it("keeps the STRONGER role when an id appears in both sets", () => {
@@ -227,12 +227,12 @@ describe("mergeGrantSets", () => {
     const merged = mergeGrantSets(
       {
         ...emptyGrants,
-        granted_org_ids: ["organization_x"],
-        granted_org_roles: { organization_x: "writer" },
+        granted_workspace_ids: ["workspace_x"],
+        granted_workspace_roles: { workspace_x: "writer" },
       },
       emptyGrants,
     );
-    expect(merged.granted_org_ids).toEqual(["organization_x"]);
-    expect(merged.granted_org_roles.organization_x).toBe("writer");
+    expect(merged.granted_workspace_ids).toEqual(["workspace_x"]);
+    expect(merged.granted_workspace_roles.workspace_x).toBe("writer");
   });
 });

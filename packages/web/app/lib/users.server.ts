@@ -1,11 +1,11 @@
 import {
   type DocoRole,
   getDocoById,
-  getOrgRole,
   getUserById,
+  getWorkspaceRole,
   listDocoIdsForUser,
   listDocoUsers,
-  listOrganizationsForUser,
+  listWorkspacesForUser,
   withClient,
 } from "@doco/db";
 import { type EntityId, normalizeWriteTypes } from "@doco/shared";
@@ -43,8 +43,8 @@ export interface GrantRow extends UserCell {
   joined_at: string;
 }
 
-export interface OrgSection {
-  org: { id: string; handle: string; name: string };
+export interface WorkspaceSection {
+  workspace: { id: string; handle: string; name: string };
   myRole: DocoRole;
   users: GrantRow[];
 }
@@ -57,7 +57,7 @@ export interface DocoSection {
 
 export interface UsersPageData {
   me: CurrentPrincipal;
-  orgSections: OrgSection[];
+  workspaceSections: WorkspaceSection[];
   docoSections: DocoSection[];
   invite: UserInviteData;
 }
@@ -103,22 +103,22 @@ async function requireCurrentPrincipal(request: Request): Promise<CurrentPrincip
 }
 
 export async function loadUserSections(principalId: string): Promise<{
-  orgSections: OrgSection[];
+  workspaceSections: WorkspaceSection[];
   docoSections: DocoSection[];
 }> {
-  const myOrgs = await listOrganizationsForUser(principalId);
-  const orgRoleRows: Array<{
-    org: { id: string; handle: string; name: string };
+  const myWorkspaces = await listWorkspacesForUser(principalId);
+  const workspaceRoleRows: Array<{
+    workspace: { id: string; handle: string; name: string };
     myRole: DocoRole;
     rows: Array<{ user_id: string; role: DocoRole; write_types: string[]; joined_at: string }>;
   }> = [];
   const allPrincipalIds = new Set<string>();
-  for (const org of myOrgs) {
-    const myRole = (await getOrgRole(org.id, principalId)) ?? "reader";
+  for (const workspace of myWorkspaces) {
+    const myRole = (await getWorkspaceRole(workspace.id, principalId)) ?? "reader";
     const result = await withClient(async (c) =>
       c.query<{ user_id: string; role: string; write_types: string[]; joined_at: string | Date }>(
-        "SELECT user_id, role, write_types, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
-        [org.id],
+        "SELECT user_id, role, write_types, joined_at FROM workspace_users WHERE workspace_id = $1 ORDER BY joined_at",
+        [workspace.id],
       ),
     );
     const rows = result.rows.map((row) => {
@@ -131,29 +131,29 @@ export async function loadUserSections(principalId: string): Promise<{
           row.joined_at instanceof Date ? row.joined_at.toISOString() : String(row.joined_at),
       };
     });
-    orgRoleRows.push({
-      org: { id: org.id, handle: org.handle, name: org.name },
+    workspaceRoleRows.push({
+      workspace: { id: workspace.id, handle: workspace.handle, name: workspace.name },
       myRole,
       rows,
     });
   }
 
-  // Union of three sources: direct owner_id match, owning org membership,
+  // Union of three sources: direct owner_id match, owning workspace membership,
   // and explicit doco_users rows.
   const accessibleDocoIds = new Set<string>();
   const directDocos = await withClient((c) =>
     c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1", [principalId]),
   );
   for (const r of directDocos.rows) accessibleDocoIds.add(String(r.id));
-  const orgDocos = await withClient((c) =>
+  const workspaceDocos = await withClient((c) =>
     c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
-         SELECT org_id FROM org_users WHERE user_id = $1
+         SELECT workspace_id FROM workspace_users WHERE user_id = $1
        )`,
       [principalId],
     ),
   );
-  for (const r of orgDocos.rows) accessibleDocoIds.add(String(r.id));
+  for (const r of workspaceDocos.rows) accessibleDocoIds.add(String(r.id));
   const myDocoUsersIds = await listDocoIdsForUser(principalId);
   for (const id of myDocoUsersIds) accessibleDocoIds.add(id);
 
@@ -194,8 +194,8 @@ export async function loadUserSections(principalId: string): Promise<{
 
   const lastActivity = await loadLastActivity([...allPrincipalIds]);
 
-  const orgSections: OrgSection[] = [];
-  for (const entry of orgRoleRows) {
+  const workspaceSections: WorkspaceSection[] = [];
+  for (const entry of workspaceRoleRows) {
     const users: GrantRow[] = await Promise.all(
       entry.rows.map(async (row) => ({
         ...(await enrichPrincipal(row.user_id, lastActivity)),
@@ -204,7 +204,7 @@ export async function loadUserSections(principalId: string): Promise<{
         joined_at: row.joined_at,
       })),
     );
-    orgSections.push({ org: entry.org, myRole: entry.myRole, users });
+    workspaceSections.push({ workspace: entry.workspace, myRole: entry.myRole, users });
   }
 
   const docoSections: DocoSection[] = [];
@@ -231,38 +231,38 @@ export async function loadUserSections(principalId: string): Promise<{
   }
   docoSections.sort((a, b) => a.doco.label.localeCompare(b.doco.label));
 
-  return { orgSections, docoSections };
+  return { workspaceSections, docoSections };
 }
 
 export async function loadUsersPageData(request: Request): Promise<UsersPageData> {
   const me = await requireCurrentPrincipal(request);
-  const { orgSections, docoSections } = await loadUserSections(me.id);
-  const invite = buildUserInviteData({ request, orgSections, docoSections });
-  return { me, orgSections, docoSections, invite };
+  const { workspaceSections, docoSections } = await loadUserSections(me.id);
+  const invite = buildUserInviteData({ request, workspaceSections, docoSections });
+  return { me, workspaceSections, docoSections, invite };
 }
 
 function buildUserInviteData({
   request,
-  orgSections,
+  workspaceSections,
   docoSections,
 }: {
   request: Request;
-  orgSections: OrgSection[];
+  workspaceSections: WorkspaceSection[];
   docoSections: DocoSection[];
 }): UserInviteData {
   const url = new URL(request.url);
-  const inviteOrgs = orgSections.map((s) => ({
-    id: s.org.id,
-    label: s.org.handle,
+  const inviteWorkspaces = workspaceSections.map((s) => ({
+    id: s.workspace.id,
+    label: s.workspace.handle,
     maxRole: s.myRole,
   }));
   const inviteDocos = docoSections.map((s) => ({
     id: s.doco.id,
     label: s.doco.label,
     maxRole: s.myRole,
-    // ownerId is the org id for org-owned docos; lets the grant picker
-    // group docos under the org the user selects first.
-    orgId: s.doco.ownerId,
+    // ownerId is the workspace id for workspace-owned docos; lets the grant picker
+    // group docos under the workspace the user selects first.
+    workspaceId: s.doco.ownerId,
   }));
 
   // Pre-select the invite target from the URL. The page (and the Doco's
@@ -281,43 +281,43 @@ function buildUserInviteData({
   }
 
   return {
-    orgs: inviteOrgs,
+    workspaces: inviteWorkspaces,
     docos: inviteDocos,
     defaultSelection: resolveInviteDefaultSelection({
       requestedLevel,
       requestedTargetId,
-      orgs: inviteOrgs,
+      workspaces: inviteWorkspaces,
       docos: inviteDocos,
     }),
   };
 }
 
-async function loadOrgInviteTarget(orgId: string): Promise<{
-  orgId: string;
-  orgHandle: string;
+async function loadWorkspaceInviteTarget(workspaceId: string): Promise<{
+  workspaceId: string;
+  workspaceHandle: string;
   anchorDocoId: string | null;
 } | null> {
   const result = await withClient(async (c) =>
     c.query<{ id: string; handle: string; doco_id: string | null }>(
       `SELECT o.id, o.handle, d.id AS doco_id
-         FROM organizations o
+         FROM workspaces o
          LEFT JOIN LATERAL (
            SELECT id
              FROM docos
-            WHERE org_id = o.id
+            WHERE workspace_id = o.id
             ORDER BY handle ASC
             LIMIT 1
          ) d ON true
         WHERE o.id = $1
         LIMIT 1`,
-      [orgId],
+      [workspaceId],
     ),
   );
   const row = result.rows[0];
   if (!row) return null;
   return {
-    orgId: String(row.id),
-    orgHandle: String(row.handle),
+    workspaceId: String(row.id),
+    workspaceHandle: String(row.handle),
     anchorDocoId: row.doco_id ? String(row.doco_id) : null,
   };
 }
@@ -386,15 +386,15 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
 
   let inviterRole: DocoRole | null = null;
   let docoId: string | null = null;
-  let orgId: string | null = null;
-  let orgHandle: string | null = null;
+  let workspaceId: string | null = null;
+  let workspaceHandle: string | null = null;
 
-  if (level === "org") {
-    inviterRole = await getOrgRole(targetId, me.id);
-    const target = await loadOrgInviteTarget(targetId);
-    if (!target) return { error: "Organization not found." };
-    orgId = target.orgId;
-    orgHandle = target.orgHandle;
+  if (level === "workspace") {
+    inviterRole = await getWorkspaceRole(targetId, me.id);
+    const target = await loadWorkspaceInviteTarget(targetId);
+    if (!target) return { error: "Workspace not found." };
+    workspaceId = target.workspaceId;
+    workspaceHandle = target.workspaceHandle;
     docoId = target.anchorDocoId;
   } else if (level === "doco") {
     const doco = await getDocoById(targetId);
@@ -428,7 +428,7 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
     role,
     {
       level,
-      ...(orgId ? { org_id: orgId as EntityId<"organization"> } : {}),
+      ...(workspaceId ? { workspace_id: workspaceId as EntityId<"workspace"> } : {}),
       ...(writeTypes ? { write_types: writeTypes } : {}),
     },
   );
@@ -440,7 +440,11 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
     intent: "invite",
     ok: true,
     invite_url: `${origin}/invite/${invite.code}`,
-    doco_url: handle ? `${origin}/${handle}/` : orgHandle ? `${origin}/orgs/${orgHandle}/` : "",
+    doco_url: handle
+      ? `${origin}/${handle}/`
+      : workspaceHandle
+        ? `${origin}/workspaces/${workspaceHandle}/`
+        : "",
     recipe_url: `${origin}/protocol/agent-oauth-recipe`,
     device_url: `${origin}/device`,
     invite_expires_at: invite.expires_at,
@@ -452,18 +456,18 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
 /** The inviter's own role on a grant target, for the role-cap check. */
 async function inviterRoleOnTarget(
   meId: string,
-  level: "account" | "org" | "doco",
+  level: "account" | "workspace" | "doco",
   targetId: string,
 ): Promise<DocoRole | null> {
   if (level === "account") {
-    // You can mint an account invite only if you own at least one org.
-    const orgs = await listOrganizationsForUser(meId);
-    for (const o of orgs) {
-      if ((await getOrgRole(o.id, meId)) === "owner") return "owner";
+    // You can mint an account invite only if you own at least one workspace.
+    const workspaces = await listWorkspacesForUser(meId);
+    for (const o of workspaces) {
+      if ((await getWorkspaceRole(o.id, meId)) === "owner") return "owner";
     }
     return null;
   }
-  if (level === "org") return getOrgRole(targetId, meId);
+  if (level === "workspace") return getWorkspaceRole(targetId, meId);
   const doco = await getDocoById(targetId);
   if (!doco) return null;
   return getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, meId);
@@ -493,7 +497,8 @@ async function handleMultiGrantInvite(
   for (const raw of parsed) {
     if (!raw || typeof raw !== "object") return { error: "Malformed grant entry." };
     const g = raw as { level?: unknown; targetId?: unknown; role?: unknown; writeTypes?: unknown };
-    const level = g.level === "account" || g.level === "org" || g.level === "doco" ? g.level : null;
+    const level =
+      g.level === "account" || g.level === "workspace" || g.level === "doco" ? g.level : null;
     const role = typeof g.role === "string" ? (g.role as DocoRole) : null;
     const targetId = typeof g.targetId === "string" ? g.targetId : "";
     if (!level || !role || !ALL_ROLES.includes(role)) return { error: "Invalid grant." };

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-export type InviteUserLevel = "org" | "doco";
+export type InviteUserLevel = "workspace" | "doco";
 
 export function usersHref(level: InviteUserLevel, targetId: string): string {
   const params = new URLSearchParams();
@@ -34,7 +34,7 @@ export function UsersLink({
 
 /**
  * Convenience link to the host-level /api-keys page. Access tokens
- * are owned per-user, not per-org or per-doco, so there's no
+ * are owned per-user, not per-workspace or per-doco, so there's no
  * scope filter to set — clicking just goes to the user's full list.
  */
 export function ApiKeysLink({

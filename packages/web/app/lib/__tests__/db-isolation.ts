@@ -67,7 +67,7 @@ beforeEach(async () => {
     await client.query(
       `TRUNCATE
         principals,
-        organizations,
+        workspaces,
         docos,
         node_authoring_policies,
         actions,

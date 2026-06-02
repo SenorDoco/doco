@@ -74,7 +74,7 @@ describe("generic eval capture API", () => {
       dir: "/tmp/docos/acme",
       docoSlug: "acme",
       me: { id: "user_author", username: "alice", type: "person", isHuman: true },
-      meta: { ownerId: "organization_acme", docoId: "doco_acme" },
+      meta: { ownerId: "workspace_acme", docoId: "doco_acme" },
       ownerSlug: "acme",
     });
     mocks.reindex.mockResolvedValue(undefined);

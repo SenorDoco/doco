@@ -3,9 +3,9 @@
 // The catalog drives both the right-pane "available integrations" list and the
 // scope-prompt logic — when an integration's `scope` doesn't match the page
 // you're viewing it from, the action button routes to a picker that asks which
-// org or Doco to install into.
+// workspace or Doco to install into.
 
-export type IntegrationScope = "account" | "org" | "doco";
+export type IntegrationScope = "account" | "workspace" | "doco";
 
 export interface IntegrationDefinition {
   id: string;
@@ -19,7 +19,7 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
     id: "slack",
     name: "Slack",
     description:
-      "Install Señor Doco into a Slack workspace. Channels can be wired to an org or Doco after the workspace install.",
+      "Install Señor Doco into a Slack workspace. Channels can be wired to an workspace or Doco after the workspace install.",
     scope: "account",
   },
   {
@@ -50,7 +50,7 @@ export function needsScopePrompt(opts: {
  * Returns either:
  *  - a direct install path/URL (when the page scope already matches the
  *    integration's home scope), or
- *  - a picker path that prompts the user to choose an org/Doco to install
+ *  - a picker path that prompts the user to choose an workspace/Doco to install
  *    into (when scopes differ).
  *
  * GitHub's terminal install URL is the GitHub App install page itself, which
@@ -60,11 +60,11 @@ export function needsScopePrompt(opts: {
 export function connectHrefFor(opts: {
   integration: IntegrationDefinition;
   pageScope: IntegrationScope;
-  orgHandle?: string;
+  workspaceHandle?: string;
   docoHandle?: string;
   docoInstallUrl?: string | null;
 }): string {
-  const { integration, pageScope, orgHandle, docoHandle, docoInstallUrl } = opts;
+  const { integration, pageScope, workspaceHandle, docoHandle, docoInstallUrl } = opts;
 
   if (integration.scope === "account") {
     if (integration.id === "slack") return "/integrations/slack/install";
@@ -76,18 +76,19 @@ export function connectHrefFor(opts: {
       if (integration.id === "github") return `/${docoHandle}/integrations/github`;
       return `/${docoHandle}/integrations`;
     }
-    // Cross-scope from account/org → pick a Doco.
+    // Cross-scope from account/workspace → pick a Doco.
     const params = new URLSearchParams({ integration: integration.id });
-    if (pageScope === "org" && orgHandle) {
-      return `/orgs/${orgHandle}/integrations?${params.toString()}#pick-doco`;
+    if (pageScope === "workspace" && workspaceHandle) {
+      return `/workspaces/${workspaceHandle}/integrations?${params.toString()}#pick-doco`;
     }
     return `/integrations?${params.toString()}#pick-doco`;
   }
 
-  if (integration.scope === "org") {
-    if (pageScope === "org" && orgHandle) return `/orgs/${orgHandle}/integrations`;
+  if (integration.scope === "workspace") {
+    if (pageScope === "workspace" && workspaceHandle)
+      return `/workspaces/${workspaceHandle}/integrations`;
     const params = new URLSearchParams({ integration: integration.id });
-    return `/integrations?${params.toString()}#pick-org`;
+    return `/integrations?${params.toString()}#pick-workspace`;
   }
 
   return "/integrations";

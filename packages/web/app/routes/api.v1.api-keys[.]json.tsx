@@ -67,14 +67,14 @@ export async function action({ request }: { request: Request }) {
       return Response.json(
         {
           error: "grants_required",
-          hint: "Pass { grants: [{ level: 'org'|'doco', target_id, role }] }.",
+          hint: "Pass { grants: [{ level: 'workspace'|'doco', target_id, role }] }.",
         },
         { status: 400 },
       );
     }
 
     const grants: Array<{
-      level: "account" | "org" | "doco";
+      level: "account" | "workspace" | "doco";
       target_id: string;
       role: DocoRole;
       write_types?: string[];
@@ -90,7 +90,7 @@ export async function action({ request }: { request: Request }) {
         write_types?: unknown;
       };
       const level =
-        r.level === "account" || r.level === "org" || r.level === "doco" ? r.level : null;
+        r.level === "account" || r.level === "workspace" || r.level === "doco" ? r.level : null;
       const target_id = typeof r.target_id === "string" ? r.target_id : null;
       const role = typeof r.role === "string" ? (r.role as DocoRole) : null;
       // Account grants carry no target_id (the minter's whole account).
@@ -98,7 +98,7 @@ export async function action({ request }: { request: Request }) {
         return Response.json(
           {
             error: "invalid_grant_entry",
-            hint: "Each grant needs level + role; org/doco grants also need target_id.",
+            hint: "Each grant needs level + role; workspace/doco grants also need target_id.",
           },
           { status: 400 },
         );

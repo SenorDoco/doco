@@ -3,9 +3,9 @@
 import {
   listAllDocos as _dbListAllDocos,
   getHostConfig,
-  listOrganizations,
-  listOrganizationsForUser,
   listUsers as listUserRows,
+  listWorkspaces as listWorkspaceRows,
+  listWorkspacesForUser,
 } from "@doco/db";
 
 export interface HostConfig {
@@ -20,7 +20,7 @@ export interface HostUser {
   email?: string;
 }
 
-export interface HostOrg {
+export interface HostWorkspace {
   id: string;
   handle: string;
   display_name: string;
@@ -31,10 +31,10 @@ export interface HostOrg {
 export interface HostDoco {
   /** Public globally-unique URL identifier. */
   handle: string;
-  /** Owner's user username or org handle, derived via
+  /** Owner's user username or workspace handle, derived via
    *  JOIN in mapDocoRow. Useful for "owned by alice" labels. */
   ownerUsername: string;
-  ownerKind: "principal" | "organization";
+  ownerKind: "principal" | "workspace";
   ownerId: string;
   /** Internal ULID — FK target for every entity table. */
   docoId: string;
@@ -62,11 +62,11 @@ export async function listUsers(): Promise<HostUser[]> {
   });
 }
 
-export async function listOrgs(): Promise<HostOrg[]> {
-  const rows = await listOrganizations();
+export async function listWorkspaces(): Promise<HostWorkspace[]> {
+  const rows = await listWorkspaceRows();
   return rows.map((r) => {
     const fm = r.data;
-    const out: HostOrg = {
+    const out: HostWorkspace = {
       id: r.id,
       handle: r.handle,
       display_name: (fm.display_name as string) ?? r.name,
@@ -77,11 +77,11 @@ export async function listOrgs(): Promise<HostOrg[]> {
   });
 }
 
-export async function listMyOrgs(userId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForUser(userId);
+export async function listMyWorkspaces(userId: string): Promise<HostWorkspace[]> {
+  const rows = await listWorkspacesForUser(userId);
   return rows.map((r) => {
     const fm = r.data;
-    const out: HostOrg = {
+    const out: HostWorkspace = {
       id: r.id,
       handle: r.handle,
       display_name: (fm.display_name as string) ?? r.name,
@@ -92,11 +92,11 @@ export async function listMyOrgs(userId: string): Promise<HostOrg[]> {
   });
 }
 
-export async function listOrgsOwnedOrAdminedBy(userId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForUser(userId, ["owner"]);
+export async function listWorkspacesOwnedOrAdminedBy(userId: string): Promise<HostWorkspace[]> {
+  const rows = await listWorkspacesForUser(userId, ["owner"]);
   return rows.map((r) => {
     const fm = r.data;
-    const out: HostOrg = {
+    const out: HostWorkspace = {
       id: r.id,
       handle: r.handle,
       display_name: (fm.display_name as string) ?? r.name,
@@ -110,8 +110,8 @@ export async function listOrgsOwnedOrAdminedBy(userId: string): Promise<HostOrg[
 export async function listAllDocos(): Promise<HostDoco[]> {
   const rows = await _dbListAllDocos();
   return rows.map((r) => {
-    const ownerKind: "principal" | "organization" = r.owner_id.startsWith("organization_")
-      ? "organization"
+    const ownerKind: "principal" | "workspace" = r.owner_id.startsWith("workspace_")
+      ? "workspace"
       : "principal";
     return {
       handle: r.handle,

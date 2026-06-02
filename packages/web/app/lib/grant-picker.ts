@@ -1,6 +1,6 @@
 // Shared grant model for the collaborators and API-tokens pages
 // (decision_per_type_write_grants). Both pages grant access the same way:
-// pick an organization, drill into one of its Docos (or the org itself),
+// pick an workspace, drill into one of its Docos (or the workspace itself),
 // then choose read / write and — for write — which node and edge
 // TYPES. This module is the framework-free core: the data shapes and the
 // pure selection/normalization logic, unit-tested independently of React.
@@ -22,35 +22,35 @@ export type { DocoRole };
 export type GrantLevel = "reader" | "writer" | "owner";
 
 /**
- * A target the current user can grant into: an organization, or a Doco
- * within one. `orgId` ties a Doco back to its organization so the picker
- * can group Docos under the org the user selected first. `maxRole` caps
+ * A target the current user can grant into: an workspace, or a Doco
+ * within one. `workspaceId` ties a Doco back to its workspace so the picker
+ * can group Docos under the workspace the user selected first. `maxRole` caps
  * what the user may grant here (their own role on the target).
  */
 export interface GrantTarget {
-  level: "org" | "doco";
+  level: "workspace" | "doco";
   id: string;
-  /** Owning organization id for a doco target; the org's own id for an org target. */
-  orgId: string;
+  /** Owning workspace id for a doco target; the workspace's own id for an workspace target. */
+  workspaceId: string;
   label: string;
   maxRole: DocoRole;
 }
 
-/** The picker's catalog: every grantable target, plus org display labels. */
+/** The picker's catalog: every grantable target, plus workspace display labels. */
 export interface GrantCatalog {
-  orgs: { id: string; label: string }[];
+  workspaces: { id: string; label: string }[];
   targets: GrantTarget[];
 }
 
 /**
  * The four scope levels the grant wizard offers, in breadth order. The
  * first wizard question picks one of these; the flow then adapts:
- *   - account: grant on the grantor's whole account (every org they own).
- *   - org:     grant on one organization (and its Docos).
+ *   - account: grant on the grantor's whole account (every workspace they own).
+ *   - workspace:     grant on one workspace (and its Docos).
  *   - doco:    grant role on one Doco.
  *   - types:   grant write on specific node/edge types within one Doco.
  */
-export type GrantScope = "account" | "org" | "doco" | "types";
+export type GrantScope = "account" | "workspace" | "doco" | "types";
 
 /**
  * A grant the user is composing or has saved. `writeTypes` is meaningful
@@ -59,13 +59,13 @@ export type GrantScope = "account" | "org" | "doco" | "types";
  * "editor"; the wildcard means write-all (a classic writer).
  *
  * `level` is the persistence level: "account" writes account_grants;
- * "org" writes org_users; "doco" writes doco_users. The wizard's "types"
+ * "workspace" writes workspace_users; "doco" writes doco_users. The wizard's "types"
  * scope persists as a doco-level grant with a non-wildcard write set.
  * `targetId` is empty for account-level grants (the grantor IS the
  * scope).
  */
 export interface ComposedGrant {
-  level: "account" | "org" | "doco";
+  level: "account" | "workspace" | "doco";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
@@ -73,58 +73,75 @@ export interface ComposedGrant {
 
 /**
  * Build a GrantCatalog from the invite/scope option lists both pages
- * already load: org options ({id,label,maxRole}) and doco options
- * (same plus `orgId` linking each doco to its org, and optional
- * `orgLabel` naming that org). Every doco gets a grouping bucket so it
+ * already load: workspace options ({id,label,maxRole}) and doco options
+ * (same plus `workspaceId` linking each doco to its workspace, and optional
+ * `workspaceLabel` naming that workspace). Every doco gets a grouping bucket so it
  * stays grantable: personally-owned docos share a "Personal / other"
- * bucket; a doco under an org that isn't in the org list — you own the
- * Doco but not its org — gets its own bucket, labeled from `orgLabel`
+ * bucket; a doco under an workspace that isn't in the workspace list — you own the
+ * Doco but not its workspace — gets its own bucket, labeled from `workspaceLabel`
  * when the caller knows the name.
  */
 export function catalogFromOptions(
-  orgs: { id: string; label: string; maxRole: DocoRole }[],
-  docos: { id: string; label: string; maxRole: DocoRole; orgId?: string; orgLabel?: string }[],
+  workspaces: { id: string; label: string; maxRole: DocoRole }[],
+  docos: {
+    id: string;
+    label: string;
+    maxRole: DocoRole;
+    workspaceId?: string;
+    workspaceLabel?: string;
+  }[],
 ): GrantCatalog {
-  const orgEntries = orgs.map((o) => ({ id: o.id, label: o.label }));
-  const knownOrgIds = new Set(orgEntries.map((o) => o.id));
+  const workspaceEntries = workspaces.map((o) => ({ id: o.id, label: o.label }));
+  const knownWorkspaceIds = new Set(workspaceEntries.map((o) => o.id));
   const targets: GrantTarget[] = [];
 
-  for (const o of orgs) {
-    targets.push({ level: "org", id: o.id, orgId: o.id, label: o.label, maxRole: o.maxRole });
+  for (const o of workspaces) {
+    targets.push({
+      level: "workspace",
+      id: o.id,
+      workspaceId: o.id,
+      label: o.label,
+      maxRole: o.maxRole,
+    });
   }
   for (const d of docos) {
-    const orgId = d.orgId ?? "__other__";
-    targets.push({ level: "doco", id: d.id, orgId, label: d.label, maxRole: d.maxRole });
-    // Every doco needs a grouping bucket in `orgEntries`, or the org
-    // drill-down (targetsByOrg) silently drops it while the "Specific
+    const workspaceId = d.workspaceId ?? "__other__";
+    targets.push({ level: "doco", id: d.id, workspaceId, label: d.label, maxRole: d.maxRole });
+    // Every doco needs a grouping bucket in `workspaceEntries`, or the workspace
+    // drill-down (targetsByWorkspace) silently drops it while the "Specific
     // docos" scope still counts it — the orphaning that made an
-    // owner-grantable Doco under an org you don't own show up as "No
+    // owner-grantable Doco under an workspace you don't own show up as "No
     // docos you can grant". Mint the missing bucket: "Personal / other"
-    // for the personal sentinel, otherwise the org's own (from
-    // `orgLabel` when known).
-    if (!knownOrgIds.has(orgId)) {
-      orgEntries.push({
-        id: orgId,
-        label: orgId === "__other__" ? "Personal / other" : (d.orgLabel ?? "Other organization"),
+    // for the personal sentinel, otherwise the workspace's own (from
+    // `workspaceLabel` when known).
+    if (!knownWorkspaceIds.has(workspaceId)) {
+      workspaceEntries.push({
+        id: workspaceId,
+        label:
+          workspaceId === "__other__"
+            ? "Personal / other"
+            : (d.workspaceLabel ?? "Other workspace"),
       });
-      knownOrgIds.add(orgId);
+      knownWorkspaceIds.add(workspaceId);
     }
   }
-  return { orgs: orgEntries, targets };
+  return { workspaces: workspaceEntries, targets };
 }
 
-/** Group the catalog's targets by organization for the drill-down UI. */
-export function targetsByOrg(catalog: GrantCatalog): {
-  org: { id: string; label: string };
-  orgTarget: GrantTarget | null;
+/** Group the catalog's targets by workspace for the drill-down UI. */
+export function targetsByWorkspace(catalog: GrantCatalog): {
+  workspace: { id: string; label: string };
+  workspaceTarget: GrantTarget | null;
   docos: GrantTarget[];
 }[] {
-  return catalog.orgs.map((org) => {
-    const inOrg = catalog.targets.filter((t) => t.orgId === org.id);
+  return catalog.workspaces.map((workspace) => {
+    const inWorkspace = catalog.targets.filter((t) => t.workspaceId === workspace.id);
     return {
-      org,
-      orgTarget: inOrg.find((t) => t.level === "org") ?? null,
-      docos: inOrg.filter((t) => t.level === "doco").sort((a, b) => a.label.localeCompare(b.label)),
+      workspace,
+      workspaceTarget: inWorkspace.find((t) => t.level === "workspace") ?? null,
+      docos: inWorkspace
+        .filter((t) => t.level === "doco")
+        .sort((a, b) => a.label.localeCompare(b.label)),
     };
   });
 }
@@ -263,27 +280,29 @@ export interface ScopeChoice {
 
 /**
  * Which scope choices the wizard should offer, given what the granting
- * user can reach. "All your orgs and docos" only makes sense if the user OWNS
- * at least one org (an account grant cascades through owned orgs); org
+ * user can reach. "All your workspaces and docos" only makes sense if the user OWNS
+ * at least one workspace (an account grant cascades through owned workspaces); workspace
  * and doco/types require at least one grantable target of that kind.
  */
 export function availableScopes(catalog: GrantCatalog): ScopeChoice[] {
-  const ownsAnOrg = catalog.targets.some((t) => t.level === "org" && t.maxRole === "owner");
-  const hasOrg = catalog.targets.some((t) => t.level === "org");
+  const ownsAnWorkspace = catalog.targets.some(
+    (t) => t.level === "workspace" && t.maxRole === "owner",
+  );
+  const hasWorkspace = catalog.targets.some((t) => t.level === "workspace");
   const hasDoco = catalog.targets.some((t) => t.level === "doco");
   const out: ScopeChoice[] = [];
-  if (ownsAnOrg) {
+  if (ownsAnWorkspace) {
     out.push({
       scope: "account",
-      title: "All your orgs and docos",
-      blurb: "Every organization you own, and every doco under them — now and in the future.",
+      title: "All your workspaces and docos",
+      blurb: "Every workspace you own, and every doco under them — now and in the future.",
     });
   }
-  if (hasOrg) {
+  if (hasWorkspace) {
     out.push({
-      scope: "org",
-      title: "Specific organization(s)",
-      blurb: "One or more organizations and all of their docos.",
+      scope: "workspace",
+      title: "Specific workspace(s)",
+      blurb: "One or more workspaces and all of their docos.",
     });
   }
   if (hasDoco) {
@@ -303,7 +322,7 @@ export function availableScopes(catalog: GrantCatalog): ScopeChoice[] {
 
 /**
  * Whether a scope choice surfaces the per-node/edge-type write grid. Only the
- * dedicated "types" scope does; account / org / doco are role-only (read /
+ * dedicated "types" scope does; account / workspace / doco are role-only (read /
  * write / own), with the per-type grid reachable solely through "types".
  */
 export function scopeShowsPerTypeControls(scope: GrantScope): boolean {
@@ -312,7 +331,7 @@ export function scopeShowsPerTypeControls(scope: GrantScope): boolean {
 
 /** A grant the grantee/token already holds, for the "current access" panel. */
 export interface ExistingGrant {
-  level: "account" | "org" | "doco";
+  level: "account" | "workspace" | "doco";
   targetId: string;
   label: string;
   role: DocoRole;
@@ -321,14 +340,15 @@ export interface ExistingGrant {
 
 /** One-line summary of an existing grant for the current-access panel. */
 export function describeExistingGrant(g: ExistingGrant): string {
-  const scopeWord = g.level === "account" ? "Entire account" : g.level === "org" ? "Org" : "Doco";
+  const scopeWord =
+    g.level === "account" ? "Entire account" : g.level === "workspace" ? "Workspace" : "Doco";
   return `${scopeWord}: ${g.label} — ${describeWriteScope(g.role, g.writeTypes)}`;
 }
 
 // ── Multi-grant selection ───────────────────────────────────────────────────
 //
 // The wizard accumulates a LIST of grants: a person/token can be granted
-// several orgs at once, several docos, or a per-type doco grant — all in one
+// several workspaces at once, several docos, or a per-type doco grant — all in one
 // pass. These pure helpers maintain that list keyed by (level, targetId) so a
 // thin component just renders rows and calls them.
 
@@ -394,13 +414,13 @@ export function targetRoleValue(
 }
 
 /**
- * Apply a per-target ACCESS choice (org / doco multi-select rows). "none"
+ * Apply a per-target ACCESS choice (workspace / doco multi-select rows). "none"
  * removes the grant; a role adds/updates it. A writer persists the wildcard
  * write set (writes everything); reader/owner carry no per-type set.
  */
 export function applyTargetRole(
   list: ComposedGrant[],
-  level: "org" | "doco",
+  level: "workspace" | "doco",
   targetId: string,
   choice: TargetRoleChoice,
 ): ComposedGrant[] {

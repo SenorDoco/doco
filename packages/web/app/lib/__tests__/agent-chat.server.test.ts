@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
-  listOrganizationsForUser: vi.fn(),
+  listWorkspacesForUser: vi.fn(),
   canAccessDoco: vi.fn(),
   runDocoApiToolRequest: vi.fn(),
   listAllDocos: vi.fn(),
@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@doco/db", () => ({
-  listOrganizationsForUser: mocks.listOrganizationsForUser,
+  listWorkspacesForUser: mocks.listWorkspacesForUser,
   withClient: (fn: (client: { query: typeof mocks.query }) => unknown) =>
     fn({ query: mocks.query }),
 }));

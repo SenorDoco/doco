@@ -1,26 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  addOrganizationByHandle: vi.fn(),
-  createDocoInOrg: vi.fn(),
-  ensurePersonalOrganization: vi.fn(),
+  addWorkspaceByHandle: vi.fn(),
+  createDocoInWorkspace: vi.fn(),
+  ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),
   getCurrentPrincipal: vi.fn(),
-  isOrgMember: vi.fn(),
-  listMyOrgs: vi.fn(),
-  lookupOrgHandle: vi.fn(),
+  isWorkspaceMember: vi.fn(),
+  listMyWorkspaces: vi.fn(),
+  lookupWorkspaceHandle: vi.fn(),
 }));
 
-vi.mock("~/lib/org-helpers.server", () => ({
-  isOrgMember: mocks.isOrgMember,
-  listMyOrgs: mocks.listMyOrgs,
-  lookupOrgHandle: mocks.lookupOrgHandle,
+vi.mock("~/lib/workspace-helpers.server", () => ({
+  isWorkspaceMember: mocks.isWorkspaceMember,
+  listMyWorkspaces: mocks.listMyWorkspaces,
+  lookupWorkspaceHandle: mocks.lookupWorkspaceHandle,
 }));
 
 vi.mock("~/lib/redeem.server", () => ({
-  addOrganizationByHandle: mocks.addOrganizationByHandle,
-  createDocoInOrg: mocks.createDocoInOrg,
-  ensurePersonalOrganization: mocks.ensurePersonalOrganization,
+  addWorkspaceByHandle: mocks.addWorkspaceByHandle,
+  createDocoInWorkspace: mocks.createDocoInWorkspace,
+  ensurePersonalWorkspace: mocks.ensurePersonalWorkspace,
   findAvailableDocoHandle: mocks.findAvailableDocoHandle,
 }));
 
@@ -51,16 +51,16 @@ describe("/new-doco", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
-    mocks.isOrgMember.mockResolvedValue(true);
-    mocks.lookupOrgHandle.mockResolvedValue("acme");
+    mocks.isWorkspaceMember.mockResolvedValue(true);
+    mocks.lookupWorkspaceHandle.mockResolvedValue("acme");
   });
 
   it("starts the GitHub connection flow for GitHub pull request docos", async () => {
-    mocks.createDocoInOrg.mockResolvedValue({
+    mocks.createDocoInWorkspace.mockResolvedValue({
       docoId: "doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
       handle: "prs",
-      orgId: "org_acme",
-      orgHandle: "acme",
+      workspaceId: "workspace_acme",
+      workspaceHandle: "acme",
       goal: "Track pull requests.",
     });
 
@@ -68,7 +68,7 @@ describe("/new-doco", () => {
       action({
         request: formRequest({
           template_handle: "github-pull-requests",
-          org_id: "org_acme",
+          workspace_id: "workspace_acme",
           name: "prs",
           visibility: "private",
           goal: "Track pull requests.",
@@ -81,11 +81,11 @@ describe("/new-doco", () => {
   });
 
   it("redirects regular docos without a created chat id", async () => {
-    mocks.createDocoInOrg.mockResolvedValue({
+    mocks.createDocoInWorkspace.mockResolvedValue({
       docoId: "doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
       handle: "bpms",
-      orgId: "org_acme",
-      orgHandle: "acme",
+      workspaceId: "workspace_acme",
+      workspaceHandle: "acme",
       goal: "Track process work.",
     });
 
@@ -93,7 +93,7 @@ describe("/new-doco", () => {
       action({
         request: formRequest({
           template_handle: "generic",
-          org_id: "org_acme",
+          workspace_id: "workspace_acme",
           name: "bpms",
           visibility: "private",
           goal: "Track process work.",

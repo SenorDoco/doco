@@ -39,7 +39,7 @@ import type {
   ToolUseBlock,
   Usage,
 } from "@anthropic-ai/sdk/resources/messages";
-import { listOrganizationsForUser, withClient } from "@doco/db";
+import { listWorkspacesForUser, withClient } from "@doco/db";
 import { generateUlid, renderCaptureCheatsheet } from "@doco/shared";
 import {
   SENOR_DOCO_DEFAULT_MAX_TOKENS,
@@ -132,7 +132,7 @@ export interface ChatConversationRow {
   archived: boolean;
   title: string | null;
   attached_doco_ids: string[];
-  attached_org_handles: string[];
+  attached_workspace_handles: string[];
   created_at: Date;
   updated_at: Date;
   active_turn_started_at: Date | null;
@@ -265,7 +265,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, user_id, archived, title, attached_doco_ids, attached_org_handles, created_at, updated_at, active_turn_started_at";
+  "id, user_id, archived, title, attached_doco_ids, attached_workspace_handles, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -341,20 +341,20 @@ export async function createConversation(
   opts: {
     title?: string | null;
     attachedDocoIds?: string[];
-    attachedOrgHandles?: string[];
+    attachedWorkspaceHandles?: string[];
   } = {},
 ): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const id = `conv_${generateUlid()}`;
     const title = typeof opts.title === "string" && opts.title.trim() ? opts.title.trim() : null;
     const attachedDocoIds = uniqueNonEmptyStrings(opts.attachedDocoIds ?? []);
-    const attachedOrgHandles = uniqueNonEmptyStrings(opts.attachedOrgHandles ?? []);
+    const attachedWorkspaceHandles = uniqueNonEmptyStrings(opts.attachedWorkspaceHandles ?? []);
     const r = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations
-         (id, user_id, title, attached_doco_ids, attached_org_handles)
+         (id, user_id, title, attached_doco_ids, attached_workspace_handles)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING ${CONV_COLS}`,
-      [id, principalId, title, attachedDocoIds, attachedOrgHandles],
+      [id, principalId, title, attachedDocoIds, attachedWorkspaceHandles],
     );
     const row = r.rows[0];
     if (!row) throw new Error("failed to create conversation row");
@@ -380,11 +380,11 @@ export interface ConversationListItem {
   /**
    * Stable Doco ids so the client can decide what to do on row-click
    * without a second snapshot fetch:
-   * exactly one attachment between docos + orgs → jump straight to
+   * exactly one attachment between docos + workspaces → jump straight to
    * that page; otherwise just open the chat.
    */
   attached_doco_ids: string[];
-  attached_org_handles: string[];
+  attached_workspace_handles: string[];
 }
 
 /**
@@ -434,11 +434,11 @@ export async function listConversationsForPrincipal(
       last_message_content: unknown;
       last_message_role: "user" | "assistant" | null;
       attached_doco_ids: string[] | null;
-      attached_org_handles: string[] | null;
+      attached_workspace_handles: string[] | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
               c.attached_doco_ids,
-              c.attached_org_handles,
+              c.attached_workspace_handles,
               COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
               (SELECT m.content
                  FROM chat_messages m
@@ -467,7 +467,7 @@ export async function listConversationsForPrincipal(
       last_message_preview: extractMessagePreview(row.last_message_content),
       last_message_role: row.last_message_role,
       attached_doco_ids: row.attached_doco_ids ?? [],
-      attached_org_handles: row.attached_org_handles ?? [],
+      attached_workspace_handles: row.attached_workspace_handles ?? [],
     }));
   });
 }
@@ -566,8 +566,8 @@ export async function attachDocoToConversation(
   }
 }
 
-/** Same shape as attachDocoToConversation but targets `attached_org_handles`. */
-export async function attachOrgToConversation(
+/** Same shape as attachDocoToConversation but targets `attached_workspace_handles`. */
+export async function attachWorkspaceToConversation(
   conversationId: string,
   handle: string,
 ): Promise<void> {
@@ -576,9 +576,9 @@ export async function attachOrgToConversation(
     await withClient(async (c) => {
       await c.query(
         `UPDATE chat_conversations
-            SET attached_org_handles = attached_org_handles || ARRAY[$2::text]
+            SET attached_workspace_handles = attached_workspace_handles || ARRAY[$2::text]
           WHERE id = $1
-            AND NOT ($2 = ANY(attached_org_handles))`,
+            AND NOT ($2 = ANY(attached_workspace_handles))`,
         [conversationId, handle],
       );
     });
@@ -600,8 +600,8 @@ export async function mutateConversationAttachments(
   ops: {
     attachDocoId?: string;
     detachDocoId?: string;
-    attachOrg?: string;
-    detachOrg?: string;
+    attachWorkspace?: string;
+    detachWorkspace?: string;
   },
 ): Promise<ChatConversationRow | null> {
   return await withClient(async (c) => {
@@ -615,13 +615,15 @@ export async function mutateConversationAttachments(
       values.push(ops.detachDocoId);
       updates.push(`attached_doco_ids = array_remove(attached_doco_ids, $${values.length})`);
     }
-    if (ops.attachOrg) {
-      values.push(ops.attachOrg);
-      updates.push(appendUniqueSql("attached_org_handles", values.length));
+    if (ops.attachWorkspace) {
+      values.push(ops.attachWorkspace);
+      updates.push(appendUniqueSql("attached_workspace_handles", values.length));
     }
-    if (ops.detachOrg) {
-      values.push(ops.detachOrg);
-      updates.push(`attached_org_handles = array_remove(attached_org_handles, $${values.length})`);
+    if (ops.detachWorkspace) {
+      values.push(ops.detachWorkspace);
+      updates.push(
+        `attached_workspace_handles = array_remove(attached_workspace_handles, $${values.length})`,
+      );
     }
     if (updates.length === 0) {
       return await loadConversationByIdForPrincipal(conversationId, principalId);
@@ -943,7 +945,7 @@ function summarizeCreatedDoco(
   const id = stringField(response, "id");
   const qualified =
     stringField(response, "qualified_handle") ||
-    [stringField(response, "org_handle"), stringField(response, "handle")]
+    [stringField(response, "workspace_handle"), stringField(response, "handle")]
       .filter(Boolean)
       .join("/");
   const label = qualified || stringField(response, "handle") || id;
@@ -1008,7 +1010,7 @@ This section overrides the "tool first" speed rule below.
 - If the user explicitly says "blank", "from scratch", "generic", or names a
   template handle, use that choice without asking.
 - The create body field is \`template_handle\`, for example
-  \`{"name":"terms","org_id":"org_...","template_handle":"glossaries"}\`.
+  \`{"name":"terms","workspace_id":"workspace_...","template_handle":"glossaries"}\`.
   Do not send \`template\`; \`template_handle\` is the contract field.
 - POST /api/v1/docos.json creates a new doco. A 201 response is authoritative.
   Use the returned id, handle, qualified_handle, template_handle, goal, and
@@ -1302,7 +1304,7 @@ async function hydrateMessageContent(
 
 interface BootstrapContext {
   docoLines: string[];
-  orgLines: string[];
+  workspaceLines: string[];
   policySnippets: string[];
 }
 
@@ -1326,9 +1328,9 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     return cached.value;
   }
 
-  const [allDocos, orgs] = await Promise.all([
+  const [allDocos, workspaces] = await Promise.all([
     listAllDocos(),
-    listOrganizationsForUser(principalId),
+    listWorkspacesForUser(principalId),
   ]);
 
   // Access checks in parallel: the original code awaited them in a
@@ -1351,7 +1353,9 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     const label = qualifiedDocoLabel({ ownerSlug: d.ownerUsername, handle: d.handle });
     return `- ${label} (path=/${d.handle}, id=${d.docoId}, visibility ${d.visibility})`;
   });
-  const orgLines: string[] = orgs.map((o) => `- /orgs/${o.handle} (id=${o.id}, ${o.name})`);
+  const workspaceLines: string[] = workspaces.map(
+    (o) => `- /workspaces/${o.handle} (id=${o.id}, ${o.name})`,
+  );
 
   // ONE batched query for every active policy across every accessible
   // Doco, replacing the prior 2*N per-doco queries. Group in-memory.
@@ -1388,7 +1392,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     policySnippets.push(lines.join("\n"));
   }
 
-  const value: BootstrapContext = { docoLines, orgLines, policySnippets };
+  const value: BootstrapContext = { docoLines, workspaceLines, policySnippets };
   bootstrapMemo.set(principalId, { builtAt: Date.now(), value });
   // Opportunistic cleanup: drop expired entries so the Map doesn't grow
   // forever in long-lived processes. Cheap because the Map is small —
@@ -1425,9 +1429,9 @@ function buildSystemBlocks(
   const docoList = bootstrap.docoLines.length
     ? bootstrap.docoLines.join("\n")
     : "(none yet — the user can create one at /new-doco)";
-  const orgList = bootstrap.orgLines.length
-    ? bootstrap.orgLines.join("\n")
-    : "(no orgs — the user can create one at /new-org)";
+  const workspaceList = bootstrap.workspaceLines.length
+    ? bootstrap.workspaceLines.join("\n")
+    : "(no workspaces — the user can create one at /new-workspace)";
   const policySections = bootstrap.policySnippets.length
     ? bootstrap.policySnippets.join("\n\n")
     : "(no policies authored in the visible docos)";
@@ -1437,7 +1441,7 @@ function buildSystemBlocks(
       "the in-page assistant embedded as a 320-px left-rail sidebar on every page",
     accessDescription: `You act AS ${principal.username} — the signed-in human reading the page. Every doco_api call is authenticated as them; there is no separate agent identity.`,
     capabilityDescription:
-      "read, write, navigate inside Doco — docos, orgs, nodes (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), policies (Guidance + Node-authoring), edges, users, audit history.",
+      "read, write, navigate inside Doco — docos, workspaces, nodes (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), policies (Guidance + Node-authoring), edges, users, audit history.",
     inScopePrefix: `${principal.username}'s`,
   })}
 
@@ -1475,9 +1479,9 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   POST  /<handle>/api/changesets.json            — generic graph-authoring batch: create nodes and add relations in one request; prefer this for BPMN/process/org-tree style structures
   GET   /<handle>/api/settings.json              — doco settings (handle, visibility, goal)
   GET   /<handle>/search.json?q=<query>          — full-text search across this doco's nodes + policies
-  GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like org/doco
-  POST  /api/v1/docos.json                       — create a doco; owner role on the target org required
-  POST  /api/v1/orgs.json                        — create an org (NO GET — to list the user's orgs, see the "Your orgs" section below)
+  GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like workspace/doco
+  POST  /api/v1/docos.json                       — create a doco; owner role on the target workspace required
+  POST  /api/v1/workspaces.json                        — create an workspace (NO GET — to list the user's workspaces, see the "Your workspaces" section below)
   GET   /api/v1/agent-bootstrap.json             — re-read policies
 
 ${buildDocoCreationContractPrompt()}
@@ -1554,7 +1558,7 @@ Then navigate to the page that visibly proves the change:
 | Captured a new node | /<handle>/<type>/<id>?dialog=skip — focus the graph/list on the node without opening the detail dialog |
 | Added/changed an edge | /<handle>/edges/<edge-id> — show the edge detail, or /<handle>/<type>/<from-id>?dialog=skip to focus the source node |
 | Browsing edges in general | /<handle>/edges (list) or /<handle>/edges/<edge-key> (detail with two-node graph) |
-| Created a new doco / org | /<new-handle> |
+| Created a new doco / workspace | /<new-handle> |
 | User asked "show me X" | the page that lists or details X |
 
 Never paste the URL on a separate line — the footer-line's link covers it, and the navigate already moved them there. If the response also returns \`warnings[]\`, those are model-facing hints, not user-facing; do not paste them.
@@ -1603,19 +1607,19 @@ When sibling relations must become valid together, use \`op: "relate_many"\` in 
 - Deduplicate. Before a new node, scan for one already covering the territory; patch beats create.
 - Honor the policies below — they govern your captures.
 
-## Your docos and orgs — canonical
+## Your docos and workspaces — canonical
 
-The two lists below are computed server-side at the start of each turn from the same access-control checks ${principal.username} sees in the UI. They are COMPLETE and AUTHORITATIVE — every doco / org the user can read or write is here. When asked "how many docos do I have?" or "what's my org?", answer from these lists directly. Never hedge with "if there are others not visible…" — there aren't. Don't probe with HTTP GETs to discover docos/orgs; there is no listing endpoint for those.
+The two lists below are computed server-side at the start of each turn from the same access-control checks ${principal.username} sees in the UI. They are COMPLETE and AUTHORITATIVE — every doco / workspace the user can read or write is here. When asked "how many docos do I have?" or "what's my workspace?", answer from these lists directly. Never hedge with "if there are others not visible…" — there aren't. Don't probe with HTTP GETs to discover docos/workspaces; there is no listing endpoint for those.
 
-Doco labels in these lists are qualified as org/doco (for example, torre/bpms) to avoid ambiguity. Use the \`path=/...\` value when calling doco_api routes, because Doco's public route namespace is still the global doco handle.
+Doco labels in these lists are qualified as workspace/doco (for example, torre/bpms) to avoid ambiguity. Use the \`path=/...\` value when calling doco_api routes, because Doco's public route namespace is still the global doco handle.
 
 ### Your docos
 
 ${docoList}
 
-### Your orgs
+### Your workspaces
 
-${orgList}
+${workspaceList}
 
 ## Policies — canonical
 
@@ -2678,7 +2682,7 @@ async function* streamAssistantTurn(args: {
 
 /**
  * Resolved Doco attachment. The handle is the global route handle;
- * label is the human-facing org/doco name used where ambiguity matters.
+ * label is the human-facing workspace/doco name used where ambiguity matters.
  * `id` is kept for stable links/correlation.
  */
 export interface DocoAttachmentInfo {
@@ -2687,7 +2691,7 @@ export interface DocoAttachmentInfo {
   label?: string;
 }
 
-export interface OrgAttachmentInfo {
+export interface WorkspaceAttachmentInfo {
   handle: string;
   name: string | null;
 }
@@ -2699,8 +2703,8 @@ export interface ConversationSnapshot {
   archived: boolean;
   /** Docos the agent has touched in this thread. Auto-populated by `doco_api`. */
   attached_docos: DocoAttachmentInfo[];
-  /** Orgs the agent has touched in this thread. Reserved; not yet populated. */
-  attached_orgs: OrgAttachmentInfo[];
+  /** Workspaces the agent has touched in this thread. Reserved; not yet populated. */
+  attached_workspaces: WorkspaceAttachmentInfo[];
   messages: {
     id: string;
     role: "user" | "assistant";
@@ -2733,7 +2737,7 @@ async function resolveDocoAttachments(ids: string[]): Promise<DocoAttachmentInfo
     const r = await c.query<{ id: string; handle: string; owner_slug: string }>(
       `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
          FROM docos d
-         LEFT JOIN organizations o ON o.id = d.owner_id
+         LEFT JOIN workspaces o ON o.id = d.owner_id
          LEFT JOIN users co ON co.id = d.owner_id
         WHERE d.id = ANY($1::text[])`,
       [docoIds],
@@ -2752,11 +2756,11 @@ async function resolveDocoAttachments(ids: string[]): Promise<DocoAttachmentInfo
   });
 }
 
-async function resolveOrgAttachments(handles: string[]): Promise<OrgAttachmentInfo[]> {
+async function resolveWorkspaceAttachments(handles: string[]): Promise<WorkspaceAttachmentInfo[]> {
   if (handles.length === 0) return [];
   return await withClient(async (c) => {
     const r = await c.query<{ handle: string; name: string | null }>(
-      "SELECT handle, name FROM organizations WHERE handle = ANY($1::text[])",
+      "SELECT handle, name FROM workspaces WHERE handle = ANY($1::text[])",
       [handles],
     );
     const byHandle = new Map(r.rows.map((row) => [row.handle, row.name]));
@@ -2786,21 +2790,22 @@ export async function loadSnapshotForPrincipal(
     conv = await loadActiveConversation(principalId);
     if (!conv) return null;
   }
-  const [{ messages: rows, hasMore }, events, attachedDocos, attachedOrgs] = await Promise.all([
-    loadMessagesPage(conv.id, {
-      before: opts.before ?? null,
-      limit: CHAT_MESSAGES_PAGE_SIZE,
-    }),
-    loadActiveTurnEvents(conv.id),
-    resolveDocoAttachments(conv.attached_doco_ids ?? []),
-    resolveOrgAttachments(conv.attached_org_handles ?? []),
-  ]);
+  const [{ messages: rows, hasMore }, events, attachedDocos, attachedWorkspaces] =
+    await Promise.all([
+      loadMessagesPage(conv.id, {
+        before: opts.before ?? null,
+        limit: CHAT_MESSAGES_PAGE_SIZE,
+      }),
+      loadActiveTurnEvents(conv.id),
+      resolveDocoAttachments(conv.attached_doco_ids ?? []),
+      resolveWorkspaceAttachments(conv.attached_workspace_handles ?? []),
+    ]);
   return {
     conversation_id: conv.id,
     title: conv.title,
     archived: conv.archived,
     attached_docos: attachedDocos,
-    attached_orgs: attachedOrgs,
+    attached_workspaces: attachedWorkspaces,
     messages: rows.map((r) => ({
       id: r.id,
       role: r.role,

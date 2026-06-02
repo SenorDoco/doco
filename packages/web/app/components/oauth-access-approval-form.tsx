@@ -1,7 +1,7 @@
 import type { DocoRole } from "@doco/db";
 import { useMemo, useRef, useState } from "react";
 import { GrantPicker } from "~/components/grant-picker";
-import type { ApprovalDocoOption, ApprovalOrgOption } from "~/lib/approval-grants";
+import type { ApprovalDocoOption, ApprovalWorkspaceOption } from "~/lib/approval-grants";
 import {
   GRANT_REQUIRED_MESSAGE,
   type GrantFormFieldKey,
@@ -18,11 +18,11 @@ import {
 // The picker's data shapes live in ~/lib/approval-grants — the single
 // source shared with the device + OAuth approve loaders.
 export type OAuthApprovalDoco = ApprovalDocoOption;
-export type OAuthApprovalOrg = ApprovalOrgOption;
+export type OAuthApprovalWorkspace = ApprovalWorkspaceOption;
 
 export function OAuthAccessApprovalForm({
   docos,
-  orgs,
+  workspaces,
   tokenNamePlaceholder,
   requestedRole,
   approveLabel,
@@ -31,7 +31,7 @@ export function OAuthAccessApprovalForm({
   hiddenFields,
 }: {
   docos: OAuthApprovalDoco[];
-  orgs: OAuthApprovalOrg[];
+  workspaces: OAuthApprovalWorkspace[];
   tokenNamePlaceholder: string;
   requestedRole: DocoRole | null;
   approveLabel: string;
@@ -39,7 +39,7 @@ export function OAuthAccessApprovalForm({
   cancelDecisionValue: "cancel" | "deny";
   hiddenFields?: Record<string, string>;
 }) {
-  const catalog = useMemo(() => approvalCatalog(docos, orgs), [docos, orgs]);
+  const catalog = useMemo(() => approvalCatalog(docos, workspaces), [docos, workspaces]);
   const [tokenName, setTokenName] = useState("");
   // "full" → defer to the live matrix (every Doco you can reach, at your
   // current role); "specific" → the granular owner-scoped picker.
@@ -164,7 +164,7 @@ export function OAuthAccessApprovalForm({
           <span>
             <span className="font-medium">Specific Docos</span>
             <span className="block text-xs text-muted-foreground">
-              Pick individual orgs and Docos you own, each at a chosen role.
+              Pick individual workspaces and Docos you own, each at a chosen role.
             </span>
           </span>
         </label>
@@ -220,9 +220,12 @@ export function OAuthAccessApprovalForm({
   );
 }
 
-function approvalCatalog(docos: OAuthApprovalDoco[], orgs: OAuthApprovalOrg[]): GrantCatalog {
+function approvalCatalog(
+  docos: OAuthApprovalDoco[],
+  workspaces: OAuthApprovalWorkspace[],
+): GrantCatalog {
   return catalogFromOptions(
-    orgs.map((o) => ({
+    workspaces.map((o) => ({
       id: o.id,
       label:
         o.display_name && o.display_name !== o.handle
@@ -234,8 +237,8 @@ function approvalCatalog(docos: OAuthApprovalDoco[], orgs: OAuthApprovalOrg[]): 
       id: d.id,
       label: d.handle,
       maxRole: d.my_role,
-      orgId: d.org_id ?? undefined,
-      orgLabel: d.org_label ?? undefined,
+      workspaceId: d.workspace_id ?? undefined,
+      workspaceLabel: d.workspace_label ?? undefined,
     })),
   );
 }

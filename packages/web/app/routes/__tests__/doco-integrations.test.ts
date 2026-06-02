@@ -46,7 +46,7 @@ describe("/:docoHandle/integrations (index)", () => {
     vi.clearAllMocks();
     mocks.loadDocoRouteForRead.mockResolvedValue({
       me: { id: "user_1", username: "alice" },
-      meta: { docoId: "doco_1", ownerId: "organization_1", handle: "torre-prs" },
+      meta: { docoId: "doco_1", ownerId: "workspace_1", handle: "torre-prs" },
       ownerSlug: "torre",
     });
     mocks.buildInstallUrl.mockReturnValue(null);
@@ -55,7 +55,7 @@ describe("/:docoHandle/integrations (index)", () => {
   it("surfaces repo import progress while a backfill is running", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "torre-prs",
-      orgHandle: "torre",
+      workspaceHandle: "torre",
       connections: [
         { repo: "torre-labs/a", installation_id: 1 },
         { repo: "torre-labs/b", installation_id: 1 },
@@ -75,7 +75,7 @@ describe("/:docoHandle/integrations (index)", () => {
   it("exposes no progress when nothing is importing", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "torre-prs",
-      orgHandle: "torre",
+      workspaceHandle: "torre",
       connections: [{ repo: "torre-labs/a", installation_id: 1 }],
       installations: [],
       backfill: null,

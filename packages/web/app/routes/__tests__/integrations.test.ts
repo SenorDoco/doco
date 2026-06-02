@@ -29,7 +29,7 @@ describe("/integrations", () => {
     mocks.listSlackInstallations.mockResolvedValue([]);
     mocks.loadAccountIntegrationsRollup.mockResolvedValue({
       slack: [],
-      orgs: [],
+      workspaces: [],
       docos: [],
     });
   });
@@ -62,12 +62,12 @@ describe("/integrations", () => {
     mocks.listSlackInstallations.mockResolvedValue(slackInstallations);
     mocks.loadAccountIntegrationsRollup.mockResolvedValue({
       slack: [],
-      orgs: [{ orgId: "organization_acme", handle: "acme", installCount: 0 }],
+      workspaces: [{ workspaceId: "workspace_acme", handle: "acme", installCount: 0 }],
       docos: [
         {
           docoId: "doco_one",
           handle: "acme-doco",
-          orgHandle: "acme",
+          workspaceHandle: "acme",
           githubRepoCount: 2,
         },
       ],
@@ -79,7 +79,7 @@ describe("/integrations", () => {
     expect(data.slackInstallHref).toBe("/integrations/slack/install");
     expect(data.slackInstallations).toEqual(slackInstallations);
     expect(data.rollup.slack).toEqual(slackInstallations);
-    expect(data.rollup.orgs).toHaveLength(1);
+    expect(data.rollup.workspaces).toHaveLength(1);
     expect(data.rollup.docos).toHaveLength(1);
     expect(mocks.loadAccountIntegrationsRollup).toHaveBeenCalledWith({ userId: "user_alice" });
   });

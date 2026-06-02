@@ -18,7 +18,7 @@ import {
   inheritedTypeLevel,
   targetRoleOptions,
   targetRoleValue,
-  targetsByOrg,
+  targetsByWorkspace,
   typeDropdownValue,
   writableTypeGroups,
 } from "~/lib/grant-picker";
@@ -26,15 +26,15 @@ import {
 // Shared GRANT WIZARD (collaborators + API-tokens).
 //
 //   Step 1 — pick the scope (raised buttons; the chosen one sits pressed):
-//            all orgs and docos / specific organizations / specific docos /
+//            all workspaces and docos / specific workspaces / specific docos /
 //            specific node or edge types.
 //   Then, per scope:
 //     account — one ACCESS dropdown (read/write/own) over the whole account.
-//     org     — every organization listed, each with its own ACCESS dropdown
+//     workspace     — every workspace listed, each with its own ACCESS dropdown
 //               on the right; grant several at once.
-//     doco    — first choose ONE organization (pressed/removable); then its
+//     doco    — first choose ONE workspace (pressed/removable); then its
 //               docos, each with an ACCESS dropdown; grant several.
-//     types   — choose an organization, then a doco, then every node type and
+//     types   — choose an workspace, then a doco, then every node type and
 //               edge type listed, each with its own level dropdown.
 //
 // The picker accumulates a LIST of grants and reports it via onChange; the
@@ -110,8 +110,13 @@ export function GrantPicker({
 
       {scope === "account" ? (
         <AccountStep catalog={catalog} grants={grants} onChange={onChange} />
-      ) : scope === "org" ? (
-        <OrgMultiStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
+      ) : scope === "workspace" ? (
+        <WorkspaceMultiStep
+          catalog={catalog}
+          grants={grants}
+          onChange={onChange}
+          existing={existing}
+        />
       ) : scope === "doco" ? (
         <DocoMultiStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
       ) : scope === "types" ? (
@@ -169,7 +174,7 @@ function TargetRow({
   onChange,
 }: {
   target: GrantTarget;
-  level: "org" | "doco";
+  level: "workspace" | "doco";
   grants: ComposedGrant[];
   existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
@@ -195,24 +200,24 @@ function TargetRow({
   );
 }
 
-export function GrantOrgChoiceList({
-  orgs,
-  selectedOrgId,
+export function GrantWorkspaceChoiceList({
+  workspaces,
+  selectedWorkspaceId,
   testIdPrefix,
   onSelect,
   onClear,
 }: {
-  orgs: { id: string; label: string }[];
-  selectedOrgId: string | null;
+  workspaces: { id: string; label: string }[];
+  selectedWorkspaceId: string | null;
   testIdPrefix: string;
-  onSelect: (orgId: string) => void;
+  onSelect: (workspaceId: string) => void;
   onClear: () => void;
 }) {
   return (
     <GrantChoiceList
-      items={orgs}
-      itemKind="organization"
-      selectedItemId={selectedOrgId}
+      items={workspaces}
+      itemKind="workspace"
+      selectedItemId={selectedWorkspaceId}
       testIdPrefix={testIdPrefix}
       onSelect={onSelect}
       onClear={onClear}
@@ -254,7 +259,7 @@ function GrantChoiceList({
   onClear,
 }: {
   items: { id: string; label: string }[];
-  itemKind: "organization" | "doco";
+  itemKind: "workspace" | "doco";
   selectedItemId: string | null;
   testIdPrefix: string;
   onSelect: (id: string) => void;
@@ -303,7 +308,9 @@ function AccountStep({
   grants: ComposedGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
-  const maxRole: DocoRole = catalog.targets.some((t) => t.level === "org" && t.maxRole === "owner")
+  const maxRole: DocoRole = catalog.targets.some(
+    (t) => t.level === "workspace" && t.maxRole === "owner",
+  )
     ? "owner"
     : "reader";
   const current = grants.find((g) => g.level === "account");
@@ -321,7 +328,7 @@ function AccountStep({
   return (
     <div className="rounded-md border border-border px-3 py-3" data-testid="grant-account-step">
       <p className="mb-2 text-sm text-muted-foreground">
-        Grants this access on <strong>every organization you own</strong> and all their docos —
+        Grants this access on <strong>every workspace you own</strong> and all their docos —
         including ones created later.
       </p>
       <div className="flex items-center gap-2 text-sm">
@@ -337,8 +344,8 @@ function AccountStep({
   );
 }
 
-// Org: list every organization, each with its own ACCESS dropdown.
-function OrgMultiStep({
+// Workspace: list every workspace, each with its own ACCESS dropdown.
+function WorkspaceMultiStep({
   catalog,
   grants,
   existing,
@@ -349,32 +356,32 @@ function OrgMultiStep({
   existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
-  const orgs = catalog.targets.filter((t) => t.level === "org");
+  const workspaces = catalog.targets.filter((t) => t.level === "workspace");
   return (
-    <div className="space-y-2" data-testid="grant-org-step">
+    <div className="space-y-2" data-testid="grant-workspace-step">
       <div className="text-xs uppercase tracking-wide text-muted-foreground">
-        Choose organizations — set an access level for each
+        Choose workspaces — set an access level for each
       </div>
       <ul className="space-y-1">
-        {orgs.map((t) => (
+        {workspaces.map((t) => (
           <TargetRow
             key={t.id}
             target={t}
-            level="org"
+            level="workspace"
             grants={grants}
             existing={existing}
             onChange={onChange}
           />
         ))}
-        {orgs.length === 0 ? (
-          <li className="text-sm text-muted-foreground">No organizations you can grant.</li>
+        {workspaces.length === 0 ? (
+          <li className="text-sm text-muted-foreground">No workspaces you can grant.</li>
         ) : null}
       </ul>
     </div>
   );
 }
 
-// Doco: choose one organization (removable), then its docos with dropdowns.
+// Doco: choose one workspace (removable), then its docos with dropdowns.
 function DocoMultiStep({
   catalog,
   grants,
@@ -386,25 +393,25 @@ function DocoMultiStep({
   existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
-  const groups = useMemo(() => targetsByOrg(catalog), [catalog]);
-  const orgsWithDocos = groups.filter((g) => g.docos.length > 0);
-  const [orgId, setOrgId] = useState<string | null>(null);
-  const active = orgsWithDocos.find((g) => g.org.id === orgId) ?? null;
+  const groups = useMemo(() => targetsByWorkspace(catalog), [catalog]);
+  const workspacesWithDocos = groups.filter((g) => g.docos.length > 0);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const active = workspacesWithDocos.find((g) => g.workspace.id === workspaceId) ?? null;
 
   return (
     <div className="space-y-4" data-testid="grant-doco-step">
-      <div className="space-y-2" data-testid="grant-doco-org-step">
+      <div className="space-y-2" data-testid="grant-doco-workspace-step">
         <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Which organization is the doco in?
+          Which workspace is the doco in?
         </div>
-        <GrantOrgChoiceList
-          orgs={orgsWithDocos.map((g) => g.org)}
-          selectedOrgId={active?.org.id ?? null}
-          testIdPrefix="grant-doco-org"
-          onSelect={setOrgId}
-          onClear={() => setOrgId(null)}
+        <GrantWorkspaceChoiceList
+          workspaces={workspacesWithDocos.map((g) => g.workspace)}
+          selectedWorkspaceId={active?.workspace.id ?? null}
+          testIdPrefix="grant-doco-workspace"
+          onSelect={setWorkspaceId}
+          onClear={() => setWorkspaceId(null)}
         />
-        {orgsWithDocos.length === 0 ? (
+        {workspacesWithDocos.length === 0 ? (
           <p className="text-sm text-muted-foreground">No docos you can grant.</p>
         ) : null}
       </div>
@@ -412,7 +419,7 @@ function DocoMultiStep({
       {active ? (
         <div className="space-y-2" data-testid="grant-doco-docos-step">
           <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Which docos in {active.org.label}?
+            Which docos in {active.workspace.label}?
           </div>
           <ul className="space-y-1">
             {active.docos.map((t) => (
@@ -432,7 +439,7 @@ function DocoMultiStep({
   );
 }
 
-// Types: org → doco → per-type level dropdowns for that doco.
+// Types: workspace → doco → per-type level dropdowns for that doco.
 function TypesStep({
   catalog,
   grants,
@@ -444,29 +451,29 @@ function TypesStep({
   existing?: ExistingGrant[];
   onChange: (grants: ComposedGrant[]) => void;
 }) {
-  const groups = useMemo(() => targetsByOrg(catalog), [catalog]);
-  const orgsWithDocos = groups.filter((g) => g.docos.length > 0);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const groups = useMemo(() => targetsByWorkspace(catalog), [catalog]);
+  const workspacesWithDocos = groups.filter((g) => g.docos.length > 0);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [docoId, setDocoId] = useState<string | null>(null);
-  const active = orgsWithDocos.find((g) => g.org.id === orgId) ?? null;
+  const active = workspacesWithDocos.find((g) => g.workspace.id === workspaceId) ?? null;
   const doco = active?.docos.find((d) => d.id === docoId) ?? null;
 
   return (
     <div className="space-y-4" data-testid="grant-types-step">
-      <div className="space-y-2" data-testid="grant-types-org-step">
+      <div className="space-y-2" data-testid="grant-types-workspace-step">
         <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Which organization is the doco in?
+          Which workspace is the doco in?
         </div>
-        <GrantOrgChoiceList
-          orgs={orgsWithDocos.map((g) => g.org)}
-          selectedOrgId={active?.org.id ?? null}
-          testIdPrefix="grant-types-org"
-          onSelect={(nextOrgId) => {
-            setOrgId(nextOrgId);
+        <GrantWorkspaceChoiceList
+          workspaces={workspacesWithDocos.map((g) => g.workspace)}
+          selectedWorkspaceId={active?.workspace.id ?? null}
+          testIdPrefix="grant-types-workspace"
+          onSelect={(nextWorkspaceId) => {
+            setWorkspaceId(nextWorkspaceId);
             setDocoId(null);
           }}
           onClear={() => {
-            setOrgId(null);
+            setWorkspaceId(null);
             setDocoId(null);
           }}
         />
@@ -475,7 +482,7 @@ function TypesStep({
       {active ? (
         <div className="space-y-2" data-testid="grant-types-doco-step">
           <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Which doco in {active.org.label}?
+            Which doco in {active.workspace.label}?
           </div>
           <GrantDocoChoiceList
             docos={active.docos.map((d) => ({ id: d.id, label: d.label }))}
