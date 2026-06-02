@@ -39,11 +39,22 @@ export function usePerspectiveFocusScroll(focusId: string | null | undefined): v
     const target = document.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(focusId)}"]`);
     if (!target) return;
     appliedRef.current = focusId;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-    target.classList.add("doco-perspective-focus-flash");
-    const timer = window.setTimeout(() => {
-      target.classList.remove("doco-perspective-focus-flash");
-    }, 1600);
-    return () => window.clearTimeout(timer);
+    let timer: number | undefined;
+    // Defer one frame before scrolling. The focus id changes in the same React
+    // commit as the dialog swap and the lifecycle-filter update, and that
+    // commit's reflow cancels a smooth scroll fired synchronously here before
+    // it moves (an instant scroll on the next frame lands and stays). The
+    // pulse draws the eye in lieu of the animation.
+    const frame = requestAnimationFrame(() => {
+      target.scrollIntoView({ block: "center" });
+      target.classList.add("doco-perspective-focus-flash");
+      timer = window.setTimeout(() => {
+        target.classList.remove("doco-perspective-focus-flash");
+      }, 1600);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [focusId]);
 }
