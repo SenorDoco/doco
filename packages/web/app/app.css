@@ -604,14 +604,31 @@ button[class*="bg-primary"]:active {
   }
 }
 
-/* Morphic styling for React Flow's bottom-right MiniMap and the
-   top-right zoom-controls stack. True neumorphism — the panel uses
-   the SAME colour as the page background and gets its "raised" feel
-   entirely from the shadow + highlight pair, not from being a
-   different-coloured card. !important defeats React Flow's defaults
-   (which paint a near-white `#fefefe` background and a tiny `0 0 2px`
-   shadow that drowns out the neumorphic look). */
-.react-flow__minimap,
+/* Fade node/edge opacity changes (focal-depth dimming and render-window
+   enter/exit) through a stable class instead of an inline `transition`,
+   so the declaration isn't rebuilt into every node/edge style object on
+   each render. Placed after `.react-flow__node` so it wins the cascade
+   for nodes that carry both classes (opacity-only, matching the former
+   inline style — which had clobbered the transform transition anyway). */
+.doco-graph-fade {
+  transition: opacity 500ms ease;
+}
+.react-flow__edge.doco-graph-fade-edge .react-flow__edge-path {
+  transition: opacity 500ms ease, stroke-opacity 500ms ease, stroke-width 150ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .doco-graph-fade,
+  .react-flow__edge.doco-graph-fade-edge .react-flow__edge-path {
+    transition: none;
+  }
+}
+
+/* Morphic styling for React Flow's top-right zoom-controls stack. True
+   neumorphism — the panel uses the SAME colour as the page background
+   and gets its "raised" feel entirely from the shadow + highlight pair,
+   not from being a different-coloured card. !important defeats React
+   Flow's defaults (which paint a near-white `#fefefe` background and a
+   tiny `0 0 2px` shadow that drowns out the neumorphic look). */
 .react-flow__controls {
   background: var(--color-background) !important;
   border: 1px solid var(--neu-border) !important;

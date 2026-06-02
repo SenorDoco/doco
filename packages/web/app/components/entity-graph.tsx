@@ -10,7 +10,7 @@
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
 import dagre from "@dagrejs/dagre";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import {
@@ -85,21 +85,6 @@ interface EntityGraphProps {
    * non-scrollable node view.
    */
   fillHeight?: boolean;
-}
-
-interface MiniMapNodeProps {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  style?: CSSProperties;
-  selected?: boolean;
-  className?: string;
-  color?: string;
-  strokeColor?: string;
-  borderRadius?: number;
-  shapeRendering?: string;
 }
 
 interface GraphLane {
@@ -802,14 +787,6 @@ export function EntityGraph({
     };
   }, []);
 
-  // Round the viewport-window corners inside the MiniMap. React Flow
-  // renders the mask as an SVG <path> with two subpaths — an outer rect
-  // covering the panel bounds, and the inner viewport rect cut out via
-  // `fill-rule: evenodd`. The inner subpath uses sharp `h`/`v` commands
-  // (square corners), which read as a square window inside an otherwise-
-  // rounded panel. Patch `d` to substitute arc commands so the viewport
-  // matches the panel radius. `d` is recomputed on every pan/zoom, so a
-  // MutationObserver keeps the rounding applied.
   const graphRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = graphRef.current;
@@ -824,60 +801,6 @@ export function EntityGraph({
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
-
-  useEffect(() => {
-    if (!Flow) return;
-    let canceled = false;
-    let lastAppliedD = "";
-
-    const roundInner = (path: SVGPathElement) => {
-      if (canceled) return;
-      const d = path.getAttribute("d") ?? "";
-      if (d === lastAppliedD) return;
-      // Second `M` starts the inner viewport subpath.
-      const innerIdx = d.indexOf("M", 1);
-      if (innerIdx < 0) return;
-      const inner = d.slice(innerIdx);
-      // Parse `M x,y h w v h h -w z` — the rectangular viewport.
-      const m = inner.match(/^M([-\d.]+),([-\d.]+)h([-\d.]+)v([-\d.]+)h/);
-      if (!m) return;
-      const x = Number.parseFloat(m[1]);
-      const y = Number.parseFloat(m[2]);
-      const w = Number.parseFloat(m[3]);
-      const h = Number.parseFloat(m[4]);
-      if (!Number.isFinite(x + y + w + h) || w < 12 || h < 12) return;
-      const r = Math.min(6, w / 4, h / 4);
-      const r2 = r * 2;
-      const rounded =
-        `M${x + r},${y}` +
-        `h${w - r2}a${r},${r} 0 0 1 ${r},${r}` +
-        `v${h - r2}a${r},${r} 0 0 1 ${-r},${r}` +
-        `h${-(w - r2)}a${r},${r} 0 0 1 ${-r},${-r}` +
-        `v${-(h - r2)}a${r},${r} 0 0 1 ${r},${-r}z`;
-      const newD = d.slice(0, innerIdx) + rounded;
-      if (newD === d) return;
-      lastAppliedD = newD;
-      path.setAttribute("d", newD);
-    };
-
-    let obs: MutationObserver | null = null;
-    const attach = () => {
-      if (canceled || !graphRef.current) return;
-      const path = graphRef.current.querySelector<SVGPathElement>(".react-flow__minimap-mask");
-      if (!path) {
-        requestAnimationFrame(attach);
-        return;
-      }
-      roundInner(path);
-      obs = new MutationObserver(() => roundInner(path));
-      obs.observe(path, { attributes: true, attributeFilter: ["d"] });
-    };
-    attach();
-    return () => {
-      canceled = true;
-      obs?.disconnect();
-    };
-  }, [Flow]);
 
   const graphReferences = useMemo<GraphReferenceItem[]>(() => {
     if (viewport.zoom < GRAPH_REFERENCE_ZOOM) return [];
@@ -971,11 +894,9 @@ export function EntityGraph({
         id: n.id,
         position: pos,
         // `initialWidth`/`initialHeight` (not `width`/`height`) so the
-        // MiniMap has valid dimensions on first render — ResizeObserver
-        // still refines them once the DOM measures. With `width`/`height`,
-        // height stayed `undefined` until measurement and the MiniMap's
-        // `getInternalNodesBounds` collapsed to 0-height, leaving the
-        // mini-map blank.
+        // node has valid bounds on first render — `fitView` needs them to
+        // frame the graph before the DOM measures the cards. ResizeObserver
+        // refines them once measured.
         initialWidth: NODE_WIDTH,
         initialHeight: cardHeight,
         data: {
@@ -1110,72 +1031,6 @@ export function EntityGraph({
     [visible.links, depthByNodeId, focalActive, visibleNodeById],
   );
 
-  const MiniMapNode = useMemo(
-    () =>
-      function DocoMiniMapNode({
-        id,
-        x,
-        y,
-        width,
-        height,
-        style,
-        selected,
-        className,
-        color,
-        strokeColor,
-        borderRadius = 5,
-        shapeRendering,
-      }: MiniMapNodeProps) {
-        const graphNode = visibleNodeById.get(id);
-        if (!graphNode) return null;
-        const fill =
-          color ??
-          (typeof style?.background === "string" ? style.background : undefined) ??
-          (typeof style?.backgroundColor === "string" ? style.backgroundColor : undefined) ??
-          "rgb(255,255,255)";
-        const stripeColor = lifecycleColor(graphNode?.lifecycle);
-        const radius = Math.min(borderRadius, width / 4, height / 4);
-        const stripeWidth = Math.min(34, Math.max(18, width * 0.16));
-        const stripeRight = x + stripeWidth;
-        const bottom = y + height;
-        const stripeRadius = Math.min(radius, stripeWidth, height / 2);
-        const stripePath = [
-          `M${x + stripeRadius},${y}`,
-          `L${stripeRight},${y}`,
-          `L${stripeRight},${bottom}`,
-          `L${x + stripeRadius},${bottom}`,
-          `Q${x},${bottom} ${x},${bottom - stripeRadius}`,
-          `L${x},${y + stripeRadius}`,
-          `Q${x},${y} ${x + stripeRadius},${y}`,
-          "Z",
-        ].join(" ");
-        const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
-          .filter(Boolean)
-          .join(" ");
-
-        return (
-          <g className={classes} shapeRendering={shapeRendering}>
-            <rect
-              x={x}
-              y={y}
-              width={width}
-              height={height}
-              rx={radius}
-              ry={radius}
-              style={{
-                fill,
-                stroke: strokeColor ?? "var(--color-border)",
-                strokeWidth: graphNode?.is_center ? 4 : 1,
-                vectorEffect: "non-scaling-stroke",
-              }}
-            />
-            <path d={stripePath} style={{ fill: stripeColor }} />
-          </g>
-        );
-      },
-    [visibleNodeById],
-  );
-
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "flex flex-col gap-2"}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
@@ -1261,25 +1116,6 @@ export function EntityGraph({
                 position="top-right"
                 showInteractive={false}
                 fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
-              />
-              <Flow.MiniMap
-                nodeComponent={MiniMapNode}
-                pannable
-                zoomable
-                maskColor="rgba(0, 0, 0, 0.35)"
-                style={{
-                  width: 120,
-                  height: 90,
-                  border: "1px solid var(--color-border)",
-                  // Match the parent graph container's `rounded-md` so the
-                  // MiniMap nests cleanly inside Doco's component radii.
-                  borderRadius: "var(--radius)",
-                  // The inner SVG mask path is a rectangle — without
-                  // clipping, the dark mask-fill corners poke past the
-                  // rounded panel border. `overflow: hidden` clips the SVG
-                  // to the rounded panel shape.
-                  overflow: "hidden",
-                }}
               />
             </Flow.ReactFlow>
             <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 overflow-hidden">
