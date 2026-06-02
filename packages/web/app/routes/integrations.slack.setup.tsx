@@ -162,7 +162,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
       <SiteHeader me={me} />
       <SingleColumnPageMain className="space-y-6 py-8">
         <Breadcrumb
-          items={[...hostBreadcrumb({ pageLabel: "Integrations" }), { label: "Slack setup" }]}
+          items={[...hostBreadcrumb({ pageLabel: "App integrations" }), { label: "Slack setup" }]}
         />
         <header className="space-y-3">
           <h1 className="text-2xl font-semibold">Set up Slack</h1>

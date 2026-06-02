@@ -33,13 +33,13 @@ export function UsersLink({
 }
 
 /**
- * Convenience link to the host-level /api-keys page. Access tokens
+ * Convenience link to the host-level /api-keys page. Tokens/MCP credentials
  * are owned per-user, not per-workspace or per-doco, so there's no
  * scope filter to set — clicking just goes to the user's full list.
  */
 export function ApiKeysLink({
   className,
-  children = "Access tokens",
+  children = "Tokens/MCP",
 }: {
   className?: string;
   children?: ReactNode;

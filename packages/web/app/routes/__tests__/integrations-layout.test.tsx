@@ -66,9 +66,11 @@ vi.mock("~/components/site-header", () => ({
   SiteHeader: () => null,
 }));
 
-import DocoIntegrations from "../$docoHandle.integrations";
-import IntegrationsPage from "../integrations";
-import WorkspaceIntegrations from "../workspaces.$workspaceHandle.integrations";
+import DocoIntegrations, { meta as docoIntegrationsMeta } from "../$docoHandle.integrations";
+import IntegrationsPage, { meta as accountIntegrationsMeta } from "../integrations";
+import WorkspaceIntegrations, {
+  meta as workspaceIntegrationsMeta,
+} from "../workspaces.$workspaceHandle.integrations";
 
 const expectedMainWidthClass = "mx-auto w-full max-w-6xl";
 
@@ -111,6 +113,49 @@ describe("integrations page layout", () => {
 
     for (const page of pages) {
       expect(mainClassName(renderRoute(page))).toContain(expectedMainWidthClass);
+    }
+  });
+
+  it("labels every integrations page as app integrations", () => {
+    const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
+
+    const pages = [
+      {
+        element: createElement(IntegrationsPage, {
+          loaderData: {
+            me,
+            notice: null,
+            slackConfirmation: null,
+            slackInstallHref: null,
+            slackInstallations: [],
+            rollup: { slack: [], workspaces: [], docos: [] },
+            pickingIntegrationId: null,
+          },
+        }),
+        title: accountIntegrationsMeta()[0]?.title,
+      },
+      {
+        element: createElement(WorkspaceIntegrations, {
+          loaderData: {
+            me,
+            workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
+            rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
+            pickingIntegrationId: null,
+          },
+        }),
+        title: workspaceIntegrationsMeta({ params: { workspaceHandle: "acme" } })[0]?.title,
+      },
+      {
+        element: createElement(DocoIntegrations),
+        title: docoIntegrationsMeta({ params: { docoHandle: "runbook" } })[0]?.title,
+      },
+    ];
+
+    for (const page of pages) {
+      const markup = renderRoute(page.element);
+      expect(markup).toContain("App integrations");
+      expect(markup).not.toContain(">Integrations</h1>");
+      expect(page.title).toContain("App integrations");
     }
   });
 });

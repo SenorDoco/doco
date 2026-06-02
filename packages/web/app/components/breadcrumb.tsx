@@ -15,7 +15,7 @@ export function Breadcrumb({
   className?: string;
 }) {
   // The current page's path, used to keep the trailing (current) crumb
-  // clickable on every page — even leaf labels like "Access tokens" that
+  // clickable on every page — even leaf labels like "Tokens/MCP" that
   // carry no explicit `to`. It self-links to the page you are already on.
   const { pathname } = useLocation();
   if (items.length === 0) return null;

@@ -76,7 +76,7 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
         Workspaces
       </NavLink>
       <NavLink to="/integrations" className={linkClass} onClick={onNavigate}>
-        Integrations
+        App integrations
       </NavLink>
       <NavLink to="/users" className={linkClass} onClick={onNavigate}>
         Collaborators
@@ -85,7 +85,7 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
         Connect
       </NavLink>
       <NavLink to="/api-keys" className={linkClass} onClick={onNavigate}>
-        Access tokens
+        Tokens/MCP
       </NavLink>
       {me.username === "torrenegra" ? (
         <NavLink to="/mentor/feedback" className={linkClass} onClick={onNavigate}>

@@ -320,7 +320,7 @@ export default function WorkspaceHome({
               to={`/workspaces/${workspace.handle}/integrations`}
               className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
             >
-              Integrations
+              App integrations
             </Link>
             {canInviteUsers ? (
               <Link

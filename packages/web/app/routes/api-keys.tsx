@@ -2,7 +2,7 @@
 //
 // Lists every active OAuth refresh token bound to the signed-in user,
 // plus access tokens minted from this page. (URL kept as /api-keys to preserve existing
-// links and the navbar shortcut; the page is labelled "Access tokens"
+// links and the navbar shortcut; the page is labelled "Tokens/MCP"
 // everywhere user-facing.)
 //
 // Distinct from /users: that page lists who has access; this
@@ -151,7 +151,7 @@ function parseGrantPayload(rawGrants: string): ApiKeyGrantInput[] {
 }
 
 export function meta() {
-  return [{ title: "Access tokens · Doco" }];
+  return [{ title: "Tokens/MCP · Doco" }];
 }
 
 export default function ApiKeysPage({
@@ -171,9 +171,9 @@ export default function ApiKeysPage({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader me={me} />
       <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Access tokens" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Tokens/MCP" })} />
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Access tokens</h1>
+          <h1 className="text-2xl font-semibold">Tokens/MCP</h1>
         </header>
 
         <AddAgentCard

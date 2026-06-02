@@ -1060,7 +1060,7 @@ export default function DocoHome({
                 to={`/${handle}/integrations`}
                 className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
-                Integrations
+                App integrations
               </Link>
               {canInviteUsers ? (
                 <Link

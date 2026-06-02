@@ -15,13 +15,12 @@ export function UserInviteCards({
 }: {
   invite: UserInviteData;
 }) {
-  // Collaborators are people. Agents are not invited from here: they
-  // authenticate through API tokens, so this card only mints person
-  // invites and points owners at the API Tokens page for agents.
+  // Collaborators have their own digital identity. Traditional agents
+  // authenticate through tokens/MCP, so this card points owners there.
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold" data-testid="invite-person-title">
-        Invite a person
+        Invite a person or agent with their own digital identity
       </h2>
       <InviteHumanCard
         workspaces={invite.workspaces}
@@ -29,13 +28,13 @@ export function UserInviteCards({
         defaultSelection={invite.defaultSelection}
       />
       <p className="text-sm text-muted-foreground">
-        Adding an AI agent instead?{" "}
+        Adding a traditional AI agent instead?{" "}
         <a
           href="/api-keys"
           data-testid="invite-agent-link"
           className="font-semibold text-primary underline-offset-4 hover:underline"
         >
-          Invite an agent from the API Tokens page →
+          Connect to Doco&apos;s MCP →
         </a>
       </p>
     </div>

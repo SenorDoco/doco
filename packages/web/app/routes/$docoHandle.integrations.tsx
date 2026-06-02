@@ -51,7 +51,7 @@ export async function loader({
 }
 
 export function meta({ params }: { params: { docoHandle: string } }) {
-  return [{ title: `Integrations · ${params.docoHandle} · Doco` }];
+  return [{ title: `App integrations · ${params.docoHandle} · Doco` }];
 }
 
 const MANAGE_BTN =
@@ -112,9 +112,9 @@ export default function DocoIntegrations() {
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto w-full max-w-6xl space-y-6 px-6 py-6">
-        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Integrations" })} />
+        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "App integrations" })} />
         <header className="space-y-3">
-          <h1 className="text-2xl font-semibold">Integrations</h1>
+          <h1 className="text-2xl font-semibold">App integrations</h1>
           <p className="text-sm text-muted-foreground">
             What&apos;s connected to {handle}, and what else you can wire up at any level.
           </p>
