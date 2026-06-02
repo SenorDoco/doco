@@ -6,6 +6,7 @@ import {
   authoringEntry,
 } from "~/lib/authoring-provenance";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
+import { getGitHubRepoSlug } from "~/lib/github-connection.server";
 import { NODE_TYPE_META } from "~/lib/node-types";
 
 type QueryClient = {
@@ -69,6 +70,12 @@ export interface NodeDialogDetail {
   updated_at: string | null;
   authoring: AuthoringPair;
   body_md: string | null;
+  // Reference `locator` — the code/source permalink, promoted out of `data`.
+  // Linked to GitHub (or the source URL) in the dialog. Null for non-references.
+  locator: string | null;
+  // The Doco's connected GitHub repo ("owner/name"), used to resolve a bare
+  // `path:line` locator into a blob permalink. Null when no repo is connected.
+  github_repo: string | null;
   doco: NodeDialogDocoRef;
   frontmatter: Record<string, unknown>;
   raw_json: string;
@@ -445,6 +452,7 @@ export async function loadNodeDialogDetail(
       body_text: string | null;
       lifecycle: string | null;
       raw_json: string;
+      locator: string | null;
       created_at: Date | string | null;
       updated_at: Date | string | null;
       created_by: string | null;
@@ -455,6 +463,7 @@ export async function loadNodeDialogDetail(
               ${bodySelect},
               COALESCE(lifecycle, 'asserted') AS lifecycle,
               data::text AS raw_json,
+              locator,
               created_at,
               updated_at,
               created_by,
@@ -612,6 +621,7 @@ export async function loadNodeDialogDetail(
   const updateUrl = cfg.updateSegment
     ? `/${options.handle}/api/${cfg.updateSegment}/${row.id}.json`
     : null;
+  const githubRepo = await getGitHubRepoSlug(c, meta.docoId);
 
   return {
     id: row.id,
@@ -630,6 +640,8 @@ export async function loadNodeDialogDetail(
       updated: updatedAuthoring,
     },
     body_md: bodyMdCompat,
+    locator: row.locator ?? null,
+    github_repo: githubRepo,
     doco: {
       handle: options.handle,
       href: `/${options.handle}`,

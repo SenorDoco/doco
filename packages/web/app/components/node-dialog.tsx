@@ -1,5 +1,6 @@
 import { Loader2, X } from "lucide-react";
 import { Link } from "react-router";
+import { LinkedProse, LinkedValue } from "~/components/linked-text";
 import { LifecycleBadge, TypeBadge } from "~/components/node-badges";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { lifecycleColor } from "~/lib/node-colors";
@@ -197,7 +198,7 @@ export function NodeDialog({
             {detail.primary_text ? (
               <section>
                 <div className="whitespace-pre-wrap break-words text-sm font-bold leading-6 text-foreground">
-                  {detail.primary_text}
+                  <LinkedProse text={detail.primary_text} />
                 </div>
                 <DocoSourceLine doco={detail.doco} />
               </section>
@@ -207,6 +208,14 @@ export function NodeDialog({
               <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-2">
                 <dt className="text-muted-foreground">Id</dt>
                 <dd className="break-all font-mono">{detail.id}</dd>
+                {detail.locator ? (
+                  <>
+                    <dt className="text-muted-foreground">Source</dt>
+                    <dd className="min-w-0 break-all">
+                      <LinkedValue value={detail.locator} githubRepo={detail.github_repo} />
+                    </dd>
+                  </>
+                ) : null}
                 <dt className="text-muted-foreground">Lifecycle</dt>
                 <dd className="font-mono" style={{ color: lifecycleColor(detail.lifecycle) }}>
                   {detail.lifecycle}
@@ -241,7 +250,9 @@ export function NodeDialog({
                 <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
                   {detail.body_field ?? "body_md"}
                 </h3>
-                <div className="whitespace-pre-wrap break-words leading-5">{detail.body_text}</div>
+                <div className="whitespace-pre-wrap break-words leading-5">
+                  <LinkedProse text={detail.body_text} />
+                </div>
                 {detail.primary_text ? null : <DocoSourceLine doco={detail.doco} />}
               </section>
             ) : null}
@@ -316,7 +327,11 @@ export function NodeDialog({
                     <dt className="font-mono text-muted-foreground">{key}</dt>
                     <dd className="min-w-0">
                       <code className="block whitespace-pre-wrap break-words font-mono text-[11px]">
-                        {formatValue(value)}
+                        {typeof value === "string" ? (
+                          <LinkedValue value={value} githubRepo={detail.github_repo} />
+                        ) : (
+                          formatValue(value)
+                        )}
                       </code>
                     </dd>
                   </div>

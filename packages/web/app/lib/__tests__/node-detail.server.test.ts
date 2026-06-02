@@ -408,4 +408,46 @@ describe("loadNodeDialogDetail", () => {
       at: "2026-05-26T17:04:00.000Z",
     });
   });
+
+  it("surfaces the node locator and connected github repo for permalinking", async () => {
+    const client = {
+      query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        if (sql.includes("github_integration")) {
+          return {
+            rows: [
+              { gh: { connections: [{ repo: "torrenegra/Doco", installation_id: 1 }] } },
+            ] as T[],
+          };
+        }
+        if (sql.includes("WITH input(actor_id)")) return { rows: [] };
+        if (sql.includes("FROM edges")) return { rows: [] };
+        if (sql.includes("FROM audit_events")) return { rows: [] };
+        if (sql.includes("FROM node_versions")) return { rows: [] };
+        return {
+          rows: [
+            {
+              id: "decision_01TEST",
+              primary_text: "Implementing code",
+              body_text: null,
+              lifecycle: "asserted",
+              locator: "packages/web/app/lib/foo.ts:42",
+              raw_json: JSON.stringify({}),
+              created_at: "2026-05-26T17:01:00.000Z",
+              updated_at: "2026-05-26T17:01:00.000Z",
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const detail = await loadNodeDialogDetail(client, meta, {
+      handle: "test-doco",
+      entityType: "decision",
+      id: "decision_01TEST",
+      principalId: "principal_owner",
+    });
+
+    expect(detail?.locator).toBe("packages/web/app/lib/foo.ts:42");
+    expect(detail?.github_repo).toBe("torrenegra/Doco");
+  });
 });

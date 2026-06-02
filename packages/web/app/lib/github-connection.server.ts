@@ -43,6 +43,30 @@ export async function getGitHubConnection(docoId: string): Promise<GitHubConnect
   });
 }
 
+type DocoQueryClient = {
+  query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+};
+
+/**
+ * The Doco's connected GitHub repo as an "owner/name" slug, or null when the
+ * Doco isn't connected to a repo. Takes a query client so dialog loaders can
+ * resolve it on their existing connection. Used to turn a Reference's bare
+ * `path:line` locator into a GitHub blob permalink.
+ */
+export async function getGitHubRepoSlug(
+  c: DocoQueryClient,
+  docoId: string,
+): Promise<string | null> {
+  const r = await c.query<{ gh: unknown }>(
+    `SELECT data->'github_integration' AS gh FROM docos WHERE id = $1`,
+    [docoId],
+  );
+  const conn = normalizeConnections(r.rows[0]?.gh)[0];
+  if (!conn) return null;
+  const slug = parseRepoSlug(conn.repo);
+  return slug ? `${slug.owner}/${slug.name}` : null;
+}
+
 /** Write (upsert) the Doco's GitHub connection into docos.data.github_integration. */
 export async function setGitHubConnection(docoId: string, conn: GitHubConnection): Promise<void> {
   await withClient(async (c) => {

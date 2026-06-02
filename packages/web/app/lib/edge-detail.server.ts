@@ -1,4 +1,5 @@
 import { type AuthoringPair, authoringEntry } from "./authoring-provenance";
+import { getGitHubRepoSlug } from "./github-connection.server";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -75,6 +76,9 @@ export interface EdgeDialogDetail {
   retired_at: string | null;
   authoring: AuthoringPair;
   href: string;
+  // The Doco's connected GitHub repo ("owner/name"), for resolving bare
+  // `path:line` code locators in props to blob permalinks. Null if unconnected.
+  github_repo: string | null;
   doco: EdgeDialogDocoRef;
   from: EdgeDialogEndpoint;
   to: EdgeDialogEndpoint;
@@ -196,6 +200,7 @@ export async function loadEdgeDialogDetail(
   ]);
   const createdVersion = versions[0];
   const updatedVersion = versions.at(-1);
+  const githubRepo = await getGitHubRepoSlug(c, meta.docoId);
 
   return {
     id: edge.id,
@@ -224,6 +229,7 @@ export async function loadEdgeDialogDetail(
       }),
     },
     href: `/${options.handle}/edges/${edge.id}`,
+    github_repo: githubRepo,
     doco: {
       handle: options.handle,
       href: `/${options.handle}`,

@@ -106,6 +106,7 @@ describe("loadEdgeDialogDetail", () => {
       id: "edge_01TEST",
       edge_type: "supports",
       lifecycle: "asserted",
+      github_repo: null,
       href: "/test-doco/edges/edge_01TEST",
       from: {
         id: "decision_01FROM",

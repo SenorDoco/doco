@@ -20,12 +20,16 @@ import {
   captureReference,
   updateEntity,
 } from "./capture.server";
+import { normalizePath, parseCodeReferenceLocator } from "./code-locator";
 import {
   type CaptureEdgeInput,
   type EdgeCaptureResult,
   captureEdge,
   edgeExists,
 } from "./edge-capture.server";
+
+export type { CodeReferenceLocator } from "./code-locator";
+export { parseCodeReferenceLocator };
 
 /** The subset of the GitHub `pull_request` payload Doco maps to a Reference. */
 export interface GitHubPullRequest {
@@ -230,15 +234,7 @@ export interface ChangedFileLineRanges {
   ranges: ChangedLineRange[];
 }
 
-export interface CodeReferenceLocator {
-  path: string;
-  start: number;
-  end: number;
-}
-
 const HUNK_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
-const LINE_ANCHOR_RE = /#L(\d+)(?:C\d+)?(?:-L?(\d+)(?:C\d+)?)?/i;
-const COLON_LINE_RE = /^(.*):(\d+)(?:-(\d+))?$/;
 
 /** Parse the added/changed new-file line ranges out of GitHub's unified patch. */
 export function changedRangesFromPullRequestFiles(
@@ -284,61 +280,8 @@ export function changedRangesFromPullRequestFiles(
   return out;
 }
 
-/** Parse a repository code locator that includes an explicit line or line range. */
-export function parseCodeReferenceLocator(
-  locator: string | null | undefined,
-): CodeReferenceLocator | null {
-  const raw = (locator ?? "").trim();
-  if (!raw) return null;
-
-  let start: number | null = null;
-  let end: number | null = null;
-  let pathPart = raw;
-
-  const anchor = LINE_ANCHOR_RE.exec(raw);
-  if (anchor) {
-    start = Number(anchor[1]);
-    end = Number(anchor[2] ?? anchor[1]);
-    pathPart = raw.slice(0, anchor.index);
-  } else {
-    pathPart = raw.replace(/[?#].*$/, "");
-    const colon = COLON_LINE_RE.exec(pathPart);
-    if (colon && !colon[1].match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+$/i)) {
-      pathPart = colon[1];
-      start = Number(colon[2]);
-      end = Number(colon[3] ?? colon[2]);
-    }
-  }
-
-  if (!start || !end) return null;
-  return {
-    path: normalizeReferencePath(pathPart),
-    start: Math.min(start, end),
-    end: Math.max(start, end),
-  };
-}
-
-function normalizeReferencePath(raw: string): string {
-  const withoutQuery = raw.replace(/[?#].*$/, "");
-  try {
-    const url = new URL(withoutQuery);
-    return normalizePath(`${url.hostname}${decodePath(url.pathname)}`);
-  } catch {
-    return normalizePath(withoutQuery);
-  }
-}
-
-function decodePath(path: string): string {
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
-}
-
-function normalizePath(path: string): string {
-  return decodePath(path).replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/").trim();
-}
+// `parseCodeReferenceLocator` and the path-normalization helpers now live in
+// ./code-locator so the note/edge dialogs can share them client-side.
 
 function pathsMatch(referencePath: string, changedPath: string): boolean {
   const ref = normalizePath(referencePath);

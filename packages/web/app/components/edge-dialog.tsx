@@ -1,5 +1,6 @@
 import { Loader2, X } from "lucide-react";
 import { Link } from "react-router";
+import { LinkedProse, LinkedValue } from "~/components/linked-text";
 import { LifecycleBadge, TypeBadge } from "~/components/node-badges";
 import type { EdgeDialogDetail, EdgeDialogEndpoint } from "~/lib/edge-detail.server";
 import { lifecycleColor } from "~/lib/node-colors";
@@ -220,7 +221,11 @@ export function EdgeDialog({ detail, loading, error, onClose, onOpenNode }: Edge
                       <dt className="font-mono text-muted-foreground">{key}</dt>
                       <dd className="min-w-0">
                         <code className="block whitespace-pre-wrap break-words font-mono text-[11px]">
-                          {formatValue(value)}
+                          {typeof value === "string" ? (
+                            <LinkedValue value={value} githubRepo={detail.github_repo} />
+                          ) : (
+                            formatValue(value)
+                          )}
                         </code>
                       </dd>
                     </div>
@@ -245,7 +250,11 @@ export function EdgeDialog({ detail, loading, error, onClose, onOpenNode }: Edge
                         {event.mechanism ? ` via ${event.mechanism}` : ""} ·{" "}
                         <span className="text-foreground">{event.op}</span>
                       </div>
-                      {event.reason ? <p className="mt-1 leading-5">{event.reason}</p> : null}
+                      {event.reason ? (
+                        <p className="mt-1 leading-5">
+                          <LinkedProse text={event.reason} />
+                        </p>
+                      ) : null}
                     </li>
                   ))}
                 </ol>
