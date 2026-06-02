@@ -32,6 +32,10 @@ and run the flow for you. The connector is read + write —
 same token, never a different login. Setup per client lives in Tokens/MCP:
 open ${baseUrl}/api-keys and choose the "Add MCP manually" tab.
 
+When using this hosted MCP connector, auth belongs to the connector
+client. Do not ask the user to paste localhost callback URLs back into
+chat; if the callback listener fails, restart the client MCP auth flow.
+
 The recipes below are the **fallback** for runtimes that can't speak
 remote MCP — they drive the same OAuth flow by hand.
 

@@ -80,6 +80,12 @@ field in clean framing (no claudeMd-style "may not be relevant"
 wrapper), so this is the channel that survives sandboxed agent
 runtimes where project-scope hooks are filtered.
 
+For the hosted remote MCP connector at \`/mcp\`, authentication belongs
+to the MCP client transport. Do not hand-drive OAuth or ask the user to
+paste localhost callback URLs back into chat; if the callback listener
+fails, restart the client MCP auth flow. Use the direct OAuth recipes
+only when you are not connected through remote MCP.
+
 **Direct HTTP** (any runtime, or when MCP isn't available). You
 drive OAuth directly. Two recipes, full step-by-step at:
 

@@ -46,6 +46,11 @@ write is a live matrix grant on the same token, so stepping up
 read→write never needs a re-auth — request it and an owner approves.
 There are no auth tools here — the bearer token is the auth.
 
+Remote MCP auth is the connector client's job. Do not ask the user to
+paste localhost callback URLs back into chat; if the callback listener
+fails, restart the client MCP auth flow. Use the direct OAuth recipes
+below only when you are not connecting through ${baseUrl}/mcp.
+
 If your client cannot speak remote MCP at all, drive the OAuth recipes
 below directly.
 
