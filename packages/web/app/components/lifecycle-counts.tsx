@@ -25,7 +25,7 @@ export function LifecycleCountsLabel({
     >
       {parts.map((part, i) => (
         <Fragment key={part.lifecycle}>
-          {i > 0 ? <span className="text-muted-foreground">{" / "}</span> : null}
+          {i > 0 ? <span className="text-muted-foreground">{"/"}</span> : null}
           <span style={{ color: part.color }}>{part.count}</span>
         </Fragment>
       ))}
