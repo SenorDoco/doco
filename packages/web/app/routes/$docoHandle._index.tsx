@@ -22,7 +22,6 @@ import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { GithubIntegrationCard } from "~/components/github-integration-card";
-import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
 import { NodeTypeIcon } from "~/components/node-type-icon";
@@ -1048,14 +1047,6 @@ export default function DocoHome({
               </Link>
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to={`/${handle}/integrations`}
-                className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
-              >
-                App integrations
-              </Link>
-              {canInviteUsers ? <UsersLink level="doco" targetId={docoId} /> : null}
-              {canInviteUsers ? <ApiKeysLink /> : null}
               <Link
                 to={`/${handle}/policies`}
                 className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"

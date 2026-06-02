@@ -17,7 +17,6 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
-import { ApiKeysLink, UsersLink } from "~/components/invite-users-link";
 import { SiteHeader } from "~/components/site-header";
 import {
   activityRowLifecycle,
@@ -314,14 +313,6 @@ export default function WorkspaceHome({
             <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={`/workspaces/${workspace.handle}/integrations`}
-              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
-            >
-              App integrations
-            </Link>
-            {canInviteUsers ? <UsersLink level="workspace" targetId={workspace.id} /> : null}
-            {canInviteUsers ? <ApiKeysLink /> : null}
             {canInviteUsers ? (
               <Link
                 to={`/workspaces/${workspace.handle}/settings`}
