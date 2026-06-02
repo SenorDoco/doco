@@ -125,7 +125,9 @@ export async function getDocoLevelGrant(
  * principal's live access, so a new grant (a new Doco, or reader→writer)
  * applies on the next call with no re-auth.
  */
-function tokenDefersScope(token: { granted_doco_ids?: readonly string[] | null }): boolean {
+export function tokenDefersScope(token: {
+  granted_doco_ids?: readonly string[] | null;
+}): boolean {
   return (token.granted_doco_ids ?? []).includes("*");
 }
 

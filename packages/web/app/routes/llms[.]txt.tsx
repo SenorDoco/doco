@@ -36,7 +36,8 @@ Per client:
     \`npx mcp-remote ${baseUrl}/mcp\`.
   - ChatGPT and other MCP clients: add ${baseUrl}/mcp as a connector.
 
-Tools available now: \`doco_search\` + \`doco_get\` (read), \`doco_capture\`,
+Tools available now: \`doco_whoami\` (identity + reachable Workspaces/Docos),
+\`doco_search\` + \`doco_get\` (read), \`doco_capture\`,
 \`doco_relate\` + \`doco_changeset\` (write), and \`doco_request_access\` (ask an owner for a
 grant). Read vs write is a live matrix grant on the same token, so
 stepping up read→write never needs a re-auth — request it and an owner

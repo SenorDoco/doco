@@ -27,7 +27,7 @@ It speaks MCP over Streamable HTTP. An unauthenticated request returns
 \`${baseUrl}/.well-known/oauth-protected-resource\` (RFC 9728); a
 connector client follows that to discover the OAuth server (RFC 8414)
 and run the flow for you. The connector is read + write —
-\`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
+\`doco_whoami\`, \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
 same token, never a different login. Setup per client: ${baseUrl}/connect.
 
