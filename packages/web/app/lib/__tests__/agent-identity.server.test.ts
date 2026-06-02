@@ -154,4 +154,48 @@ describe("loadAgentIdentity", () => {
       { scope: "doco", id: "doco_1", label: "acme/proj1", role: "reader" },
     ]);
   });
+
+  it("a Workspace-scoped token lists the Workspace AND the Docos it owns (role-capped)", async () => {
+    mocks.getCurrentPrincipalAsync.mockResolvedValue({
+      id: "user_alice",
+      username: "alice",
+      type: "person",
+      isHuman: true,
+    });
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "workspace", id: "workspace_acme", label: "acme", myRole: "owner" },
+      {
+        level: "doco",
+        id: "doco_1",
+        label: "acme/proj1",
+        myRole: "owner",
+        workspaceId: "workspace_acme",
+      },
+      {
+        level: "doco",
+        id: "doco_other",
+        label: "z/other",
+        myRole: "owner",
+        workspaceId: "workspace_z",
+      },
+    ]);
+    // Grants the whole Workspace as writer, with NO explicit doco ids — the
+    // common shape when a human approves the connector for one Workspace.
+    mocks.getOauthTokenForRequest.mockResolvedValue(
+      accessToken({
+        granted_workspace_ids: ["workspace_acme"],
+        granted_workspace_roles: { workspace_acme: "writer" },
+      }),
+    );
+
+    const identity = await loadAgentIdentity(new Request("https://doco.test/api/v1/whoami.json"));
+
+    // The Workspace AND its Docos appear (Docos reached via the Workspace
+    // grant, role-capped to the Workspace's writer); a Doco in a different,
+    // un-granted Workspace does not.
+    expect(identity?.grants).toEqual([
+      { scope: "workspace", id: "workspace_acme", label: "acme", role: "writer" },
+      { scope: "doco", id: "doco_1", label: "acme/proj1", role: "writer" },
+    ]);
+  });
 });
