@@ -16,7 +16,6 @@ export type PerspectiveKind =
   | "bpmn"
   | "org-tree"
   | "sla"
-  | "approval"
   | "glossary"
   | "pull-requests";
 
@@ -94,7 +93,7 @@ export async function listPerspectivesForDoco(docoId: string): Promise<AttachedP
 }
 
 /**
- * Idempotent: attach graph + list + approval defaults if this Doco has no
+ * Idempotent: attach graph + list defaults if this Doco has no
  * perspectives attached yet. Called from the index route loader so every
  * Doco has tabs.
  */
@@ -114,12 +113,6 @@ export async function ensureDefaultsAttached(docoId: string): Promise<void> {
     await c.query(
       `INSERT INTO doco_perspectives (doco_id, perspective_id, position, is_default)
             VALUES ($1, 'perspective_list', 1, false)
-       ON CONFLICT (doco_id, perspective_id) DO NOTHING`,
-      [docoId],
-    );
-    await c.query(
-      `INSERT INTO doco_perspectives (doco_id, perspective_id, position, is_default)
-            VALUES ($1, 'perspective_approval', 2, false)
        ON CONFLICT (doco_id, perspective_id) DO NOTHING`,
       [docoId],
     );

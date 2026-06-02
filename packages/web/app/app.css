@@ -498,8 +498,8 @@ button[class*="bg-primary"]:active {
   }
 }
 
-/* One-shot focus pulse for list-style perspectives (glossary, approval,
-   list, pull requests). When a node is opened from a dialog edge — or
+/* One-shot focus pulse for list-style perspectives (glossary, list,
+   pull requests). When a node is opened from a dialog edge — or
    straight from its URL — the matching row scrolls into view and pulses
    this ring so the eye lands on it: the list-view analogue of the canvas
    perspectives panning their camera. usePerspectiveFocusScroll adds the
