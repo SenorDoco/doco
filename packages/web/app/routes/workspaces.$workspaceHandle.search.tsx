@@ -18,6 +18,7 @@ import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -221,7 +222,7 @@ export default function WorkspaceSearch({
   return (
     <div>
       <SiteHeader me={me} />
-      <main className="mx-auto max-w-5xl px-6 py-6 space-y-5">
+      <SingleColumnPageMain className="py-6 space-y-5">
         <header className="space-y-1">
           <Breadcrumb
             items={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Search" })}
@@ -230,85 +231,111 @@ export default function WorkspaceSearch({
           <h1 className="text-xl font-semibold">Search across {workspace.handle}</h1>
         </header>
 
-        <Form method="get" className="flex gap-2">
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder={`Search across this workspace's Docos…`}
-            className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-          />
-          <button
-            type="submit"
-            className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
-          >
-            Search
-          </button>
-        </Form>
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="min-w-0 space-y-4">
+            <Form method="get" className="flex gap-2">
+              <input
+                type="search"
+                name="q"
+                defaultValue={q}
+                placeholder={`Search across this workspace's Docos...`}
+                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+              >
+                Search
+              </button>
+            </Form>
 
-        {warning ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {warning}
-          </div>
-        ) : null}
+            {warning ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {warning}
+              </div>
+            ) : null}
 
-        {q ? (
-          <Card>
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="text-sm">
-                {hits.length} {hits.length === 1 ? "result" : "results"} for "{q}"
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {hits.length === 0 ? (
-                <p className="px-5 pb-5 text-xs italic text-muted-foreground">No matches.</p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {hits.map((h) => (
-                    <li key={h.id} className="px-5 py-3 text-sm">
-                      <div className="flex flex-wrap items-baseline justify-between gap-3">
-                        <Link
-                          to={`/${h.docoHandle}/${h.entity_type}/${h.id}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          <span aria-hidden className="mr-1.5">
-                            <NodeTypeIcon entityType={h.entity_type} />
-                          </span>
-                          {h.summary || h.id}
-                        </Link>
-                        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                          {h.vector_score.toFixed(3)}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                        <NodeTypeBadge entityType={h.entity_type}>
-                          {nodeTypePlural(h.entity_type)}
-                        </NodeTypeBadge>
-                        {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
-                        <Link
-                          to={`/${h.docoHandle}`}
-                          className="hover:text-foreground hover:underline"
-                        >
-                          {h.docoHandle}
-                        </Link>
-                        {h.created_at ? (
-                          <time
-                            dateTime={h.created_at}
-                            title={h.created_at}
-                            suppressHydrationWarning
-                          >
-                            {timeAgo(h.created_at)}
-                          </time>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        ) : null}
-      </main>
+            {q ? (
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">
+                    {hits.length} {hits.length === 1 ? "result" : "results"} for "{q}"
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {hits.length === 0 ? (
+                    <p className="px-5 pb-5 text-xs italic text-muted-foreground">No matches.</p>
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {hits.map((h) => (
+                        <li key={h.id} className="px-5 py-3 text-sm">
+                          <div className="flex flex-wrap items-baseline justify-between gap-3">
+                            <Link
+                              to={`/${h.docoHandle}/${h.entity_type}/${h.id}`}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              <span aria-hidden className="mr-1.5">
+                                <NodeTypeIcon entityType={h.entity_type} />
+                              </span>
+                              {h.summary || h.id}
+                            </Link>
+                            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                              {h.vector_score.toFixed(3)}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                            <NodeTypeBadge entityType={h.entity_type}>
+                              {nodeTypePlural(h.entity_type)}
+                            </NodeTypeBadge>
+                            {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
+                            <Link
+                              to={`/${h.docoHandle}`}
+                              className="hover:text-foreground hover:underline"
+                            >
+                              {h.docoHandle}
+                            </Link>
+                            {h.created_at ? (
+                              <time
+                                dateTime={h.created_at}
+                                title={h.created_at}
+                                suppressHydrationWarning
+                              >
+                                {timeAgo(h.created_at)}
+                              </time>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+          </section>
+
+          <aside className="min-w-0 space-y-4">
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Workspace</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Link
+                  to={`/workspaces/${workspace.handle}`}
+                  className="block font-semibold text-foreground hover:text-primary"
+                >
+                  {workspace.handle}
+                </Link>
+                <Link
+                  to={`/workspaces/${workspace.handle}/integrations`}
+                  className="block text-xs text-muted-foreground hover:text-foreground"
+                >
+                  App integrations
+                </Link>
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
+      </SingleColumnPageMain>
     </div>
   );
 }
