@@ -517,7 +517,7 @@ export default function DocoGitHubIntegration() {
               </p>
             ) : null}
             {connections.length > 0 ? (
-              <ul className="divide-y rounded border">
+              <ul className="divide-y divide-border rounded border border-border">
                 {connections.map((c) => (
                   <li key={c.repo} className="flex items-center justify-between gap-2 px-3 py-2">
                     <span className="font-mono text-sm">{c.repo}</span>
@@ -636,14 +636,14 @@ function AddMoreRepositories({
                 name="repo"
                 placeholder="owner/name"
                 required
-                className="block w-full rounded border px-2 py-1 text-sm"
+                className="block w-full rounded border border-border px-2 py-1 text-sm"
               />
               <input
                 name="installation_id"
                 type="number"
                 placeholder="App installation ID"
                 required
-                className="block w-full rounded border px-2 py-1 text-sm"
+                className="block w-full rounded border border-border px-2 py-1 text-sm"
               />
               <button type="submit" className={PRIMARY_BTN}>
                 Connect
