@@ -442,12 +442,15 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const grantsPayload = useMemo(
     () =>
       JSON.stringify(
-        grants.map((g) => ({
-          level: g.level,
-          target_id: g.targetId,
-          role: g.role,
-          write_types: resolveWriteTypes(g.role, g.writeTypes),
-        })),
+        grants.map((g) => {
+          if (g.level === "identity") throw new Error("Identity grants are connector-only.");
+          return {
+            level: g.level,
+            target_id: g.targetId,
+            role: g.role,
+            write_types: resolveWriteTypes(g.role, g.writeTypes),
+          };
+        }),
       ),
     [grants],
   );
@@ -776,12 +779,15 @@ function TokenAddAccessForm({
 }
 
 function grantsToPayload(grants: ComposedGrant[]): ApiKeyGrantInput[] {
-  return grants.map((g) => ({
-    level: g.level,
-    target_id: g.targetId,
-    role: g.role,
-    write_types: resolveWriteTypes(g.role, g.writeTypes),
-  }));
+  return grants.map((g) => {
+    if (g.level === "identity") throw new Error("Identity grants are connector-only.");
+    return {
+      level: g.level,
+      target_id: g.targetId,
+      role: g.role,
+      write_types: resolveWriteTypes(g.role, g.writeTypes),
+    };
+  });
 }
 
 function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {
