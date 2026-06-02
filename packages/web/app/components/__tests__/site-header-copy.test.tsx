@@ -35,5 +35,7 @@ describe("SiteHeader copy", () => {
     expect(markup).toContain("Tokens/MCP");
     expect(markup).not.toContain(">Integrations</a>");
     expect(markup).not.toContain(">Access tokens</a>");
+    expect(markup).not.toContain(">Connect</a>");
+    expect(markup).not.toContain('href="/connect"');
   });
 });

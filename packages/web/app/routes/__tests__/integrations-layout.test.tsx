@@ -67,12 +67,11 @@ vi.mock("~/components/site-header", () => ({
 }));
 
 import DocoIntegrations, { meta as docoIntegrationsMeta } from "../$docoHandle.integrations";
+import { singleColumnPageMainWidth } from "../../components/page-main";
 import IntegrationsPage, { meta as accountIntegrationsMeta } from "../integrations";
 import WorkspaceIntegrations, {
   meta as workspaceIntegrationsMeta,
 } from "../workspaces.$workspaceHandle.integrations";
-
-const expectedMainWidthClass = "mx-auto w-full max-w-6xl";
 
 function renderRoute(element: ReactElement): string {
   return renderToStaticMarkup(createElement(MemoryRouter, null, element));
@@ -112,7 +111,7 @@ describe("integrations page layout", () => {
     ];
 
     for (const page of pages) {
-      expect(mainClassName(renderRoute(page))).toContain(expectedMainWidthClass);
+      expect(mainClassName(renderRoute(page))).toContain(singleColumnPageMainWidth);
     }
   });
 
