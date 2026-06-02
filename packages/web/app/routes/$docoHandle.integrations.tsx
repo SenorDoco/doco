@@ -6,15 +6,18 @@
 //           index; the per-integration detail (repos, import status, actions)
 //           lives on the standalone page.
 //   Right — the catalog of integrations you can wire up at any level.
-import { Link, useLoaderData } from "react-router";
+import { useEffect, useRef } from "react";
+import { Link, useLoaderData, useRevalidator } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { AvailableIntegrations, ScopeNavLinks } from "~/components/integrations-shell";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
+  type GitHubImportProgress,
   buildInstallUrl,
   getDocoConnectionsContext,
+  githubImportProgress,
   githubOrgAccounts,
 } from "~/lib/github-connection.server";
 
@@ -42,6 +45,7 @@ export async function loader({
       orgAccounts,
       repoCount: ctx?.connections.length ?? 0,
       importing: ctx?.backfill?.status === "running",
+      importProgress: githubImportProgress(ctx?.backfill ?? null),
     },
   };
 }
@@ -53,9 +57,56 @@ export function meta({ params }: { params: { docoHandle: string } }) {
 const MANAGE_BTN =
   "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
 
+/**
+ * Animated "importing X of Y…" note shown on the GitHub card while a PR
+ * backfill runs: the running repo count plus a spinner. Falls back to a plain
+ * "importing…" with just the spinner when the repo total isn't known yet.
+ */
+export function ImportingNote({ progress }: { progress: GitHubImportProgress | null }) {
+  return (
+    <>
+      , importing
+      {progress ? (
+        <>
+          {" "}
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {progress.done}
+          </span>
+          {" of "}
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {progress.total}
+          </span>
+        </>
+      ) : null}{" "}
+      <span
+        aria-hidden
+        className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-current border-t-transparent align-middle"
+      />
+    </>
+  );
+}
+
 export default function DocoIntegrations() {
   const { me, handle, ownerSlug, orgHandle, docoInstallUrl, github } =
     useLoaderData<typeof loader>();
+
+  // While a PR backfill is running, poll the loader so the "importing X of Y"
+  // count climbs on its own — mirrors the live-feed polling on the Doco home
+  // (ADR-089). The ref keeps a fresh revalidator without re-arming the interval
+  // every render; the interval exists only while importing and tears down once
+  // the import finishes (importing flips false → effect cleanup).
+  const revalidator = useRevalidator();
+  const revalidatorRef = useRef(revalidator);
+  revalidatorRef.current = revalidator;
+  useEffect(() => {
+    if (!github.importing) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible" && revalidatorRef.current.state === "idle") {
+        revalidatorRef.current.revalidate();
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [github.importing]);
 
   return (
     <div>
@@ -89,7 +140,6 @@ export default function DocoIntegrations() {
                         ))}{" "}
                         — {github.repoCount}{" "}
                         {github.repoCount === 1 ? "repository" : "repositories"}
-                        {github.importing ? ", importing…" : ""}.
                       </>
                     ) : (
                       <>
@@ -97,9 +147,9 @@ export default function DocoIntegrations() {
                           {github.repoCount}
                         </span>{" "}
                         {github.repoCount === 1 ? "repository" : "repositories"} connected
-                        {github.importing ? ", importing…" : ""}.
                       </>
                     )}
+                    {github.importing ? <ImportingNote progress={github.importProgress} /> : "."}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex items-center justify-between gap-3">

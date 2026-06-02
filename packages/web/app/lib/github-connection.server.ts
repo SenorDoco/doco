@@ -295,6 +295,32 @@ export function normalizeBackfillState(raw: unknown): GitHubBackfillState | null
   };
 }
 
+export interface GitHubImportProgress {
+  /** Repositories whose PR import has fully finished. */
+  done: number;
+  /** Total repositories in this import. */
+  total: number;
+}
+
+/**
+ * Repo-level progress for an in-flight PR backfill: how many of the import's
+ * repos have finished, out of the total — the data behind an "importing 2 of
+ * 4…" indicator. Null unless a backfill is actively running with a known repo
+ * total, so callers fall back to a plain "importing…" when there's no count to
+ * show. `done` is clamped to `[0, total]`: a slice that just drained the last
+ * repo can leave `repo_index === total` (or beyond) for a tick before the
+ * marker flips to "done". Pure.
+ */
+export function githubImportProgress(
+  backfill: GitHubBackfillState | null,
+): GitHubImportProgress | null {
+  if (!backfill || backfill.status !== "running") return null;
+  const total = backfill.repos ?? 0;
+  if (total <= 0) return null;
+  const done = Math.min(Math.max(backfill.repo_index ?? 0, 0), total);
+  return { done, total };
+}
+
 /**
  * Build a fresh resumable cursor from a Doco's current connections — the work
  * queue is every connected repo's full-name. Used to (re)start or recover a
