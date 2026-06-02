@@ -35,7 +35,7 @@ interface NodeRow {
   locator: string | null;
   citation: string | null;
   title: string | null;
-  /** Windowed `COUNT(*) OVER()` total glossary entries (bigint → string from pg). */
+  /** Scalar-subquery total glossary entries (bigint → string from pg). */
   total_count?: number | string | null;
 }
 
@@ -317,7 +317,10 @@ export async function loadGlossaryPerspectiveData(
            COALESCE(lifecycle, 'asserted') AS lifecycle,
            data,
            ref_type, locator, citation, title,
-           COUNT(*) OVER() AS total_count
+           (SELECT COUNT(*) FROM nodes
+             WHERE doco_id = $1
+               AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
+               AND COALESCE(lifecycle, 'asserted') <> 'retired') AS total_count
       FROM nodes
      WHERE doco_id = $1
        AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')

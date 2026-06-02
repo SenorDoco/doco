@@ -71,11 +71,11 @@ describe("loadOrgTreeData", () => {
     expect(querySpy).toHaveBeenCalledOnce();
   });
 
-  it("reports the true principal total via COUNT(*) OVER()", async () => {
+  it("reports the true principal total via a scalar COUNT subquery", async () => {
     const client: Parameters<typeof loadOrgTreeData>[0] = {
       async query<T>(sql: string): Promise<{ rows: T[] }> {
         if (/FROM edges/i.test(sql)) return { rows: [] as T[] };
-        expect(sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+        expect(sql).toMatch(/\(SELECT COUNT\(\*\)/);
         return {
           rows: [
             {

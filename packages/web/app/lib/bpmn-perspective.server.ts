@@ -174,6 +174,9 @@ interface NodeRow {
   lifecycle: string | null;
   created_at: string | null;
   data: Record<string, unknown> | null;
+  /** Scalar-subquery count of flow nodes ("steps") — the true total, immune to
+   *  the result-row cap that truncates the returned rows (bigint → string). */
+  total_count?: number | string | null;
 }
 
 interface PrincipalRow {
@@ -217,6 +220,13 @@ export async function loadBpmnGraph(
   // canvas "So empty" for a retired process. This mirrors the Graph/List
   // loader (full-graph.server), which also returns every lifecycle.
   const bpmnTypeList = BPMN_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
+  // Flow nodes ("steps") are every BPMN type except Intent — Intents render as
+  // pool headers, not steps. The true total is a scalar subquery (immune to the
+  // result-row cap that truncates the node query's returned rows), matching the
+  // same all-lifecycle domain the node query loads.
+  const bpmnStepTypeList = BPMN_TABLES.filter((entry) => entry.entityType !== "intent")
+    .map((entry) => `'${entry.entityType}'`)
+    .join(", ");
   const windowIds = windowNodeIds(opts.window);
   const nodeParams: unknown[] = [docoId];
   if (windowIds.length > 0) nodeParams.push(windowIds);
@@ -225,7 +235,9 @@ export async function loadBpmnGraph(
               split_part(t.prose, E'\n', 1) AS summary,
               COALESCE(t.lifecycle, 'asserted') AS lifecycle,
               t.created_at::text AS created_at,
-              t.data
+              t.data,
+              (SELECT COUNT(*) FROM nodes
+                WHERE doco_id = $1 AND node_type IN (${bpmnStepTypeList})) AS total_count
          FROM nodes t
         WHERE t.doco_id = $1
           AND t.node_type IN (${bpmnTypeList})
@@ -585,10 +597,12 @@ export async function loadBpmnGraph(
   const globalPagerank: Record<string, number> = {};
   for (const [id, score] of pr) globalPagerank[id] = score;
 
+  const stepTotal = Number(nodeRows.rows[0]?.total_count ?? nodes.length);
   return limitBpmnGraph(
     { pools, lanes, nodes, links, global_pagerank: globalPagerank },
     opts.nodeLimit,
     opts.focusId,
+    stepTotal,
   );
 }
 
@@ -596,10 +610,12 @@ function limitBpmnGraph(
   graph: BpmnGraphData,
   nodeLimit: number | undefined,
   focusId: string | undefined,
+  totalCountOverride?: number,
 ): BpmnGraphData {
-  // The full built graph holds every flow node ("step"); capture that as the
-  // true total before any cap so the header can say "Showing the latest N of M".
-  const totalCount = graph.nodes.length;
+  // The true total of flow nodes ("steps"), counted via a scalar subquery in
+  // the loader. The node query's returned rows hit a result-row cap, so
+  // graph.nodes.length can undercount the real total — prefer the override.
+  const totalCount = totalCountOverride ?? graph.nodes.length;
   if (!nodeLimit || graph.nodes.length <= nodeLimit) return { ...graph, totalCount };
 
   const limit = Math.max(1, Math.floor(nodeLimit));

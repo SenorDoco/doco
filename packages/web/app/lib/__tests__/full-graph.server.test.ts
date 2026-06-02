@@ -232,7 +232,7 @@ describe("loadOverviewGraph", () => {
     const graph = await loadOverviewGraph(client, "doco_large", { handle: "large", limit: 1 });
 
     const entityQuery = captured.find((c) => /FROM nodes t/i.test(c.sql));
-    expect(entityQuery?.sql).toMatch(/COUNT\(\*\) OVER\(\)/);
+    expect(entityQuery?.sql).toMatch(/\(SELECT COUNT\(\*\)/);
     expect(graph.nodes).toHaveLength(1);
     expect(graph.totalNodeCount).toBe(750);
     expect(graph.hasMore).toBe(true);

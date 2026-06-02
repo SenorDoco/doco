@@ -188,7 +188,7 @@ describe("loadSlaPerspectiveData", () => {
     }
   });
 
-  it("reports the true commitment total via COUNT(*) OVER() on the rule query", async () => {
+  it("reports the true commitment total via a scalar COUNT subquery on the rule query", async () => {
     const { client, query } = makeQueryClient({
       rules: [
         {
@@ -198,7 +198,7 @@ describe("loadSlaPerspectiveData", () => {
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: {},
-          // pg returns the windowed bigint as a string.
+          // pg returns the scalar-subquery bigint as a string.
           total_count: "920",
         },
       ],
@@ -215,7 +215,7 @@ describe("loadSlaPerspectiveData", () => {
     expect(data.totalCount).toBe(920);
     expect(data.stats.commitments).toBe(1);
     const ruleCall = query.mock.calls.find(([sql]) => /node_type = 'rule'/i.test(String(sql)));
-    expect(String(ruleCall?.[0])).toMatch(/COUNT\(\*\) OVER\(\)/);
+    expect(String(ruleCall?.[0])).toMatch(/\(SELECT COUNT\(\*\)/);
   });
 
   it("loads every lifecycle so the client filter can reveal a retired register", async () => {
