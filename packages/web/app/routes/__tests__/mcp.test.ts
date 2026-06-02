@@ -103,7 +103,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.structuredContent.count).toBe(1);
   });
 
-  it("doco_capture delegates a POST to the per-type capture route with the bearer + body", async () => {
+  it("doco_capture normalizes a singular type to the plural route and delegates the POST", async () => {
     mocks.captureAction.mockResolvedValue(
       Response.json({ ok: true, id: "decision_1" }, { status: 201 }),
     );
@@ -127,12 +127,38 @@ describe("POST /mcp (hosted remote MCP)", () => {
     });
     const body: Json = await res.json();
     const callArg: Json = mocks.captureAction.mock.calls[0][0];
-    expect(callArg.params).toEqual({ docoHandle: "acme", type: "decision" });
+    // The per-type routes are keyed by the PLURAL type (/acme/api/decisions.json,
+    // …/decisions.txt); singular input is normalized so agents can use either.
+    expect(callArg.params).toEqual({ docoHandle: "acme", type: "decisions" });
     expect(callArg.request.method).toBe("POST");
     expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
-    expect(callArg.request.url).toContain("/acme/api/decision.json");
+    expect(callArg.request.url).toContain("/acme/api/decisions.json");
     expect(await callArg.request.json()).toEqual({ decision: "Use X", question: "X or Y?" });
     expect(body.result.structuredContent.id).toBe("decision_1");
+  });
+
+  it("doco_capture passes an already-plural type through unchanged", async () => {
+    mocks.captureAction.mockResolvedValue(
+      Response.json({ ok: true, id: "rule_1" }, { status: 201 }),
+    );
+    await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 14,
+          method: "tools/call",
+          params: {
+            name: "doco_capture",
+            arguments: { doco: "acme", type: "rules", body: { rule: "x" } },
+          },
+        },
+        BEARER,
+      ),
+    });
+    expect(mocks.captureAction.mock.calls[0][0].params).toEqual({
+      docoHandle: "acme",
+      type: "rules",
+    });
   });
 
   it("doco_relate delegates a POST to the edges route with the edge body", async () => {
