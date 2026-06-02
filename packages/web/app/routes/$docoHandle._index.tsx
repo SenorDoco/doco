@@ -1130,7 +1130,6 @@ export default function DocoHome({
                   <PullRequestsPerspective
                     data={pullRequestsData}
                     handle={handle}
-                    visibleLifecycles={visibleLifecycles}
                     focusId={perspectiveFocusId}
                   />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
