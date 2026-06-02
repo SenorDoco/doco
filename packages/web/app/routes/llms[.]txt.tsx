@@ -15,6 +15,33 @@ export function loader({ request }: { request: Request }) {
 If a user just told you something like "let's start using Doco" or
 "visit doco.to and follow the wizard", you're at the right page.
 
+## Connect via the hosted MCP server (easiest)
+
+Doco hosts a remote MCP server at:
+
+    ${baseUrl}/mcp
+
+It speaks MCP over Streamable HTTP (JSON-RPC 2.0), gated by the same
+OAuth 2.1 server described below. An unauthenticated request gets a 401
+with a \`WWW-Authenticate\` header pointing at
+\`${baseUrl}/.well-known/oauth-protected-resource\` (RFC 9728); a
+connector client follows that to discover the authorization server
+(RFC 8414) and run the flow — no repo, no local files.
+
+Per client:
+
+  - claude.ai / Claude mobile / Cursor: add a custom connector with the
+    URL ${baseUrl}/mcp — the client runs OAuth for you.
+  - Claude Desktop / Claude Code (no native remote MCP yet): bridge with
+    \`npx mcp-remote ${baseUrl}/mcp\`.
+  - ChatGPT and other MCP clients: add ${baseUrl}/mcp as a connector.
+
+Tool available now: \`doco_search\` (pass a \`query\` + a \`doco\`
+handle). There are no auth tools here — the bearer token is the auth.
+
+If your client cannot speak remote MCP at all, drive the OAuth recipes
+below directly.
+
 ## Agent auth in one sentence
 
 Doco runs a standard OAuth 2.1 authorization server (RFC 8414 +
@@ -193,7 +220,9 @@ governing its work across every project it can reach.
 
     ${baseUrl}/sign-in
     ${baseUrl}/new-doco
+    ${baseUrl}/mcp
     ${baseUrl}/.well-known/oauth-authorization-server
+    ${baseUrl}/.well-known/oauth-protected-resource
     ${baseUrl}/protocol/canonical-instructions
     ${baseUrl}/protocol/agent-oauth-recipe
     ${baseUrl}/api/v1/agent-bootstrap.json
