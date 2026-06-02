@@ -700,6 +700,84 @@ CREATE INDEX IF NOT EXISTS oauth_device_authorizations_user_code_idx
 CREATE INDEX IF NOT EXISTS oauth_device_authorizations_expires_idx
   ON oauth_device_authorizations (expires_at);
 
+-- Heal: revoke "broad" tokens (the single-workspace token rule). A token is
+-- broad if it carries the legacy defer-scope '*' (old "Full access" token) or
+-- it touches more than one workspace — its own granted_workspace_ids unioned
+-- with the owning workspace of every granted Doco (personal, user-owned Docos
+-- don't count). Issuance now refuses to mint such tokens; this is the deploy
+-- cutover that cuts off any that already exist, plus a permanent backstop
+-- (idempotent: only unrevoked rows match, and a fresh DB has none). Pending
+-- device-authorizations carrying the same breadth are deleted so they can't
+-- mint a broad token on their next poll.
+DO $$
+DECLARE
+  workspace_prefix CONSTANT text := 'workspace_';
+BEGIN
+  PERFORM pg_advisory_xact_lock(704932187);
+
+  WITH broad AS (
+    SELECT t.token
+      FROM oauth_access_tokens t
+     WHERE t.revoked = false
+       AND (
+         '*' = ANY(t.granted_doco_ids)
+         OR (
+           SELECT count(DISTINCT w)
+             FROM (
+               SELECT unnest(t.granted_workspace_ids) AS w
+               UNION
+               SELECT d.owner_id
+                 FROM docos d
+                WHERE d.id = ANY(t.granted_doco_ids)
+                  AND starts_with(d.owner_id, workspace_prefix)
+             ) s
+            WHERE starts_with(w, workspace_prefix)
+         ) > 1
+       )
+  )
+  UPDATE oauth_access_tokens SET revoked = true WHERE token IN (SELECT token FROM broad);
+
+  WITH broad AS (
+    SELECT t.token
+      FROM oauth_refresh_tokens t
+     WHERE t.revoked = false
+       AND (
+         '*' = ANY(t.granted_doco_ids)
+         OR (
+           SELECT count(DISTINCT w)
+             FROM (
+               SELECT unnest(t.granted_workspace_ids) AS w
+               UNION
+               SELECT d.owner_id
+                 FROM docos d
+                WHERE d.id = ANY(t.granted_doco_ids)
+                  AND starts_with(d.owner_id, workspace_prefix)
+             ) s
+            WHERE starts_with(w, workspace_prefix)
+         ) > 1
+       )
+  )
+  UPDATE oauth_refresh_tokens SET revoked = true WHERE token IN (SELECT token FROM broad);
+
+  DELETE FROM oauth_device_authorizations da
+   WHERE da.status = 'pending'
+     AND (
+       '*' = ANY(da.granted_doco_ids)
+       OR (
+         SELECT count(DISTINCT w)
+           FROM (
+             SELECT unnest(da.granted_workspace_ids) AS w
+             UNION
+             SELECT d.owner_id
+               FROM docos d
+              WHERE d.id = ANY(da.granted_doco_ids)
+                AND starts_with(d.owner_id, workspace_prefix)
+           ) s
+          WHERE starts_with(w, workspace_prefix)
+       ) > 1
+     );
+END $$;
+
 -- Access requests. Someone who can't (fully) use a Doco asks its owners
 -- for a role; an owner approves (writing a doco_users grant — see the
 -- access engine) or denies. The PUSH counterpart to invites (which are
