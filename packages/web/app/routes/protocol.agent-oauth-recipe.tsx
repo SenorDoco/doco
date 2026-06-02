@@ -18,15 +18,18 @@ export function loader({ request }: { request: Request }) {
 ## Use the hosted MCP connector first (recommended)
 
 The simplest path is the hosted MCP connector — no OAuth code to write.
-Point any MCP-capable client at:
+MCP is per-workspace (no app-wide endpoint): point any MCP-capable client
+at your workspace's URL (a workspace id looks like \`workspace_01…\`; find
+it on the workspace's Settings page):
 
-    ${baseUrl}/mcp
+    ${baseUrl}/<workspace-id>/mcp
 
 It speaks MCP over Streamable HTTP. An unauthenticated request returns
 401 + a \`WWW-Authenticate\` header pointing at
-\`${baseUrl}/.well-known/oauth-protected-resource\` (RFC 9728); a
-connector client follows that to discover the OAuth server (RFC 8414)
-and run the flow for you. The connector is read + write —
+\`${baseUrl}/.well-known/oauth-protected-resource/<workspace-id>/mcp\`
+(RFC 9728); a connector client follows that to discover the OAuth server
+(RFC 8414) and run the flow for you. The resulting token is bound to that
+one workspace. The connector is read + write —
 \`doco_whoami\`, \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
 same token, never a different login. Setup per client lives in Tokens/MCP:

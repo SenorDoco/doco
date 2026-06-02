@@ -80,7 +80,8 @@ field in clean framing (no claudeMd-style "may not be relevant"
 wrapper), so this is the channel that survives sandboxed agent
 runtimes where project-scope hooks are filtered.
 
-For the hosted remote MCP connector at \`/mcp\`, authentication belongs
+For the hosted remote MCP connector at \`/<workspace-id>/mcp\` (one per
+workspace; the token is bound to that workspace), authentication belongs
 to the MCP client transport. Do not hand-drive OAuth or ask the user to
 paste localhost callback URLs back into chat; if the callback listener
 fails, restart the client MCP auth flow. Use the direct OAuth recipes

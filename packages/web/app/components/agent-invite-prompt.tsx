@@ -3,22 +3,29 @@ import { useState } from "react";
 const AGENT_INVITE_HELP_TEXT =
   "Copy this into your AI agent, in the project you want it to work on.";
 
-export function buildAgentOAuthPrompt(host: string): string {
-  return `Let's use Doco on this project. Add a custom MCP connector pointing at ${host}/mcp and run its OAuth flow — I'll approve in my browser.`;
+export function buildAgentOAuthPrompt(host: string, workspaceId?: string): string {
+  const url = `${host}/${workspaceId ?? "<workspace-id>"}/mcp`;
+  const hint = workspaceId
+    ? ""
+    : " (replace <workspace-id> with the id from the workspace's Settings page)";
+  return `Let's use Doco on this project. Add a custom MCP connector pointing at ${url}${hint} and run its OAuth flow — I'll approve in my browser. The connector is bound to that one workspace.`;
 }
 
 export function AgentInvitePrompt({
   host,
+  workspaceId,
   promptTestId = "invite-agent-prompt",
   copyButtonTestId = "invite-agent-copy",
 }: {
   host: string;
+  /** When the user has exactly one workspace, bake its id into the URL. */
+  workspaceId?: string;
   promptTestId?: string;
   copyButtonTestId?: string;
 }) {
   return (
     <AgentPromptBlock
-      body={buildAgentOAuthPrompt(host)}
+      body={buildAgentOAuthPrompt(host, workspaceId)}
       promptTestId={promptTestId}
       copyButtonTestId={copyButtonTestId}
     />

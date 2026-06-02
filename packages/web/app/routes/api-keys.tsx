@@ -265,7 +265,7 @@ function AddAgentCard({
         </div>
 
         {mode === "invite" ? (
-          <AgentInvitePrompt host={host} />
+          <AgentInvitePrompt host={host} workspaceId={soleWorkspaceId(scopeOptions)} />
         ) : mode === "manual" ? (
           <ManualMcpPanel
             host={host}
@@ -567,6 +567,13 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
       )}
     </Form>
   );
+}
+
+// When the user belongs to exactly one workspace, bake its id into the invite
+// prompt's MCP URL; otherwise leave the <workspace-id> placeholder so they pick.
+function soleWorkspaceId(scopeOptions: ScopeOption[]): string | undefined {
+  const workspaces = scopeOptions.filter((o) => o.level === "workspace");
+  return workspaces.length === 1 ? workspaces[0].id : undefined;
 }
 
 function scopeOptionsToCatalog(scopeOptions: ScopeOption[]): GrantCatalog {

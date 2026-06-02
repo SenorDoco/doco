@@ -3,10 +3,11 @@
 //
 // OAuth-backed DOCO_ACCESS tokens for programmatic clients. An MCP runtime registers
 // itself (RFC 7591), opens the authorize URL in the user's browser, the
-// user signs in with GitHub + approves which Docos this runtime can
-// touch, the runtime exchanges the resulting code for an access +
-// refresh token, and attaches `Authorization: Bearer <token>` on
-// every subsequent /mcp + /<handle>/api/* request.
+// user signs in with GitHub + approves which workspace (and, within it,
+// which Docos) this runtime can touch — at most one workspace per token —
+// the runtime exchanges the resulting code for an access + refresh token,
+// and attaches `Authorization: Bearer <token>` on every subsequent
+// /<workspace-id>/mcp + /<handle>/api/* request.
 //
 // What lives here:
 //   - Client registration (dynamic, RFC 7591).
