@@ -36,6 +36,7 @@ import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspec
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
 import {
+  bpmnFocusCandidates,
   highestRankedNodeId,
   selectMeasuredPersonalizedNodeIds,
   summarizeExternalConnections,
@@ -306,13 +307,8 @@ export function BpmnPerspective({
     [filteredNodes],
   );
   const focusCandidates = useMemo(
-    () => [
-      ...filteredNodes,
-      ...pools.flatMap((pool) =>
-        pool.intent_id ? [{ id: pool.intent_id, lifecycle: pool.lifecycle, created_at: null }] : [],
-      ),
-    ],
-    [filteredNodes, pools],
+    () => bpmnFocusCandidates(filteredNodes, pools, visibleLifecycles),
+    [filteredNodes, pools, visibleLifecycles],
   );
   const focusCenterId = useMemo(() => {
     if (
