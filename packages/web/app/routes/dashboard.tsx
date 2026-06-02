@@ -1,8 +1,7 @@
 // /dashboard — signed-in welcome page.
 //
 // Two evenly-split columns:
-//   - Header: "Good <verb>, <username>" with +Doco / +Workspace buttons
-//     on the right (desktop)
+//   - Header: "Good <verb>, <username>"
 //   - Left column: nested workspace/Doco access list and newly available
 //     templates
 //   - Right column: Activity heatmap + Latest activity feed (10 items)
@@ -245,30 +244,10 @@ export default function Dashboard({
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Dashboard" })} />
-        <header className="flex flex-wrap items-center justify-between gap-3">
+        <header>
           <h1 className="text-2xl font-semibold">
             Good {greetingVerb}, {me.username}
           </h1>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              to="/new-doco"
-              className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-3 py-1.5 text-sm font-semibold"
-            >
-              + Doco
-            </Link>
-            <Link
-              to="/new-workspace"
-              className="neu-button rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
-            >
-              + Workspace
-            </Link>
-            <Link
-              to="/onboarding/join"
-              className="neu-button rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
-            >
-              Join
-            </Link>
-          </div>
         </header>
 
         <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-6">
