@@ -7,12 +7,10 @@
 //
 // GET    — list active access tokens for the signed-in user.
 // POST   — mint a new access token. Body shape:
-//            { label: string, grants: [{ level, target_id, role }],
-//              non_rotating?: boolean }
-//          Set non_rotating for a cloud-environment token: the refresh
-//          token won't rotate, so DOCO_REFRESH + DOCO_CLIENT_ID can be
-//          pinned as env vars. Returns the token bodies + client_id
-//          ONCE. Subsequent GETs return only metadata.
+//            { label: string, grants: [{ level, target_id, role }] }
+//          Returns the token bodies + client_id ONCE; subsequent GETs
+//          return only metadata. Refresh tokens are non-rotating, so
+//          DOCO_REFRESH + DOCO_CLIENT_ID can be pinned as env vars.
 // DELETE — revoke a token by client_id. Pass ?client_id=... in the URL.
 //
 // Auth: signed-in cookie OR Authorization: Bearer (with `owner` role
@@ -47,13 +45,11 @@ export async function action({ request }: { request: Request }) {
     let body: {
       label?: unknown;
       grants?: unknown;
-      non_rotating?: unknown;
     } = {};
     try {
       body = (await request.json()) as {
         label?: unknown;
         grants?: unknown;
-        non_rotating?: unknown;
       };
     } catch {
       return Response.json({ error: "invalid_json_body" }, { status: 400 });
@@ -115,9 +111,8 @@ export async function action({ request }: { request: Request }) {
       grants.push({ level, target_id: target_id ?? "", role, write_types });
     }
 
-    const nonRotating = body.non_rotating === true;
     try {
-      const minted = await mintApiKey({ me, label, grants, non_rotating: nonRotating });
+      const minted = await mintApiKey({ me, label, grants });
       return Response.json(
         {
           access_token: minted.access_token,
@@ -127,7 +122,6 @@ export async function action({ request }: { request: Request }) {
           token_type: "Bearer",
           client_name: minted.client_name,
           scope_grants: minted.scope_grants,
-          non_rotating: minted.non_rotating,
         },
         { status: 201 },
       );

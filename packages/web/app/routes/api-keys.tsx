@@ -94,9 +94,8 @@ export async function action({ request }: { request: Request }): Promise<ActionR
       };
     }
 
-    const nonRotating = String(form.get("non_rotating") ?? "") === "true";
     try {
-      const minted = await mintApiKey({ me, label, grants, non_rotating: nonRotating });
+      const minted = await mintApiKey({ me, label, grants });
       return { intent: "mint", ok: true, minted };
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Failed to mint token." };
@@ -312,7 +311,6 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
     navigation.state === "submitting" && navigation.formData?.get("intent") === "mint";
 
   const [label, setLabel] = useState("");
-  const [cloudEnv, setCloudEnv] = useState(false);
 
   // Same drill-down grant picker the collaborators page uses
   // (decision_per_type_write_grants): org → docos → read/write + per-type.
@@ -371,7 +369,6 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
     >
       <input type="hidden" name="intent" value="mint" />
       <input type="hidden" name="grants" value={grantsPayload} />
-      <input type="hidden" name="non_rotating" value={cloudEnv ? "true" : "false"} />
 
       <div>
         <label className="block text-sm">
@@ -425,20 +422,6 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
               </p>
             ) : null}
           </div>
-          <label className="flex items-start gap-2 text-sm" data-testid="api-key-cloud-env-label">
-            <input
-              type="checkbox"
-              checked={cloudEnv}
-              onChange={(e) => setCloudEnv(e.currentTarget.checked)}
-              data-testid="api-key-cloud-env"
-              className="mt-0.5"
-            />
-            <span className="text-muted-foreground">
-              This agent runs in a <strong>cloud environment</strong> (Claude Code on the web,
-              Codespaces, Replit…). Mint a non-rotating token to paste into the environment's
-              variable config, so fresh instances inherit access without re-authorizing.
-            </span>
-          </label>
           <div className="flex justify-end">
             <button
               type="submit"
@@ -446,7 +429,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
               disabled={submitting}
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
-              {submitting ? "Generating…" : cloudEnv ? "Generate cloud token" : "Generate token"}
+              {submitting ? "Generating…" : "Generate token"}
             </button>
           </div>
         </>
@@ -493,84 +476,38 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
     </div>
   );
 
-  if (minted.non_rotating) {
-    const envBlock = `DOCO_ACCESS=${minted.access_token}\nDOCO_REFRESH=${minted.refresh_token}\nDOCO_CLIENT_ID=${minted.client_id}`;
-    return (
-      <div
-        className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2"
-        data-testid="api-key-minted"
-      >
-        <p className="text-sm font-semibold">Cloud token minted — copy it now</p>
-        <p className="text-xs text-muted-foreground">
-          Shown ONCE. Add these to your cloud environment's variable configuration (Claude Code on
-          the web env vars, Codespaces / Replit secrets, …). Every fresh instance mints its own
-          short-lived access token from this <strong>non-rotating</strong> refresh token — no
-          re-authorizing. The pinned value stays valid until you revoke it below.
-        </p>
-        <div className="space-y-1">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Environment variables
-          </div>
-          <pre
-            className="overflow-x-auto whitespace-pre rounded bg-background px-2 py-1 text-xs font-mono"
-            data-testid="api-key-env-block"
-          >
-            {envBlock}
-          </pre>
-        </div>
-        <button
-          type="button"
-          data-testid="api-key-copy-env"
-          onClick={() => copy("env", envBlock)}
-          className="neu-button rounded-md px-2 py-1 text-xs"
-        >
-          {copied === "env" ? "Copied!" : "Copy all three"}
-        </button>
-        {scopeLine}
-      </div>
-    );
-  }
-
+  const envBlock = `DOCO_ACCESS=${minted.access_token}\nDOCO_REFRESH=${minted.refresh_token}\nDOCO_CLIENT_ID=${minted.client_id}`;
   return (
     <div
       className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2"
       data-testid="api-key-minted"
     >
-      <p className="text-sm font-semibold">Access token minted — copy it now</p>
+      <p className="text-sm font-semibold">Token minted — copy it now</p>
       <p className="text-xs text-muted-foreground">
-        This access token body is shown ONCE. Save it in your script's secret store; if you lose it,
-        revoke the token and mint a new one. The access token expires in {expiresIn}; the refresh
-        token below mints a fresh one (rotating each time) when it does.
+        Shown ONCE. Pin these wherever the agent runs — a repo <code>.env</code>, cloud env vars
+        (Claude Code on the web, Codespaces, Replit…), or CI secrets. The refresh token is
+        non-rotating, so every fresh instance mints its own short-lived access token from it (the
+        access token expires in {expiresIn}) — no re-authorizing. The value stays valid until you
+        revoke it below.
       </p>
       <div className="space-y-1">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          Access token
+          Environment variables
         </div>
         <pre
-          className="overflow-x-auto rounded bg-background px-2 py-1 text-xs font-mono"
-          data-testid="api-key-access-token"
+          className="overflow-x-auto whitespace-pre rounded bg-background px-2 py-1 text-xs font-mono"
+          data-testid="api-key-env-block"
         >
-          {minted.access_token}
-        </pre>
-      </div>
-      <div className="space-y-1">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          Refresh token
-        </div>
-        <pre
-          className="overflow-x-auto rounded bg-background px-2 py-1 text-xs font-mono"
-          data-testid="api-key-refresh-token"
-        >
-          {minted.refresh_token}
+          {envBlock}
         </pre>
       </div>
       <button
         type="button"
-        data-testid="api-key-copy"
-        onClick={() => copy("access", minted.access_token)}
+        data-testid="api-key-copy-env"
+        onClick={() => copy("env", envBlock)}
         className="neu-button rounded-md px-2 py-1 text-xs"
       >
-        {copied === "access" ? "Copied!" : "Copy access token"}
+        {copied === "env" ? "Copied!" : "Copy all three"}
       </button>
       {scopeLine}
     </div>

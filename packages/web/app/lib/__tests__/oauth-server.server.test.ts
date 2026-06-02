@@ -22,6 +22,7 @@ import {
   issueAuthorizationCode,
   mergeGrantSets,
   normalizeTokenName,
+  refreshTokens,
 } from "../oauth-server.server";
 
 /** Calls whose SQL contains `fragment`, in invocation order. */
@@ -53,6 +54,42 @@ describe("OAuth token authorization", () => {
   it("normalizes and requires a token name", () => {
     expect(normalizeTokenName("  Codex   in repo  ")).toBe("Codex in repo");
     expect(() => normalizeTokenName("   ")).toThrow(/token_name required/);
+  });
+
+  it("refreshTokens reissues the access token but keeps the same refresh token (non-rotating)", async () => {
+    const refreshRow = {
+      client_id: "doco_client_x",
+      user_id: "user_a",
+      token_name: "t",
+      granted_doco_ids: ["doco_1"],
+      granted_doco_roles: {},
+      granted_doco_write_types: {},
+      granted_org_ids: [],
+      granted_org_roles: {},
+      granted_org_write_types: {},
+      scope: "doco",
+      expires_at: new Date(Date.now() + 10_000_000),
+      revoked: false,
+    };
+    mocks.query.mockImplementation(async (sql: string) =>
+      String(sql).includes("FROM oauth_refresh_tokens")
+        ? { rows: [refreshRow], rowCount: 1 }
+        : { rows: [], rowCount: 1 },
+    );
+
+    const result = await refreshTokens({
+      client_id: "doco_client_x",
+      refresh_token: "doco_rt_original",
+    });
+
+    // Non-rotating: the same refresh token comes back, a fresh access token
+    // is minted, no new refresh row is created, the old one is not revoked —
+    // only its expiry slides forward.
+    expect(result.refresh_token).toBe("doco_rt_original");
+    expect(result.access_token).toMatch(/^doco_at_/);
+    expect(callsTo("INSERT INTO oauth_refresh_tokens")).toHaveLength(0);
+    expect(callsTo("SET revoked = true")).toHaveLength(0);
+    expect(callsTo("UPDATE oauth_refresh_tokens SET expires_at")).toHaveLength(1);
   });
 
   it("issues browser OAuth codes for the approving user and stores the token name", async () => {
