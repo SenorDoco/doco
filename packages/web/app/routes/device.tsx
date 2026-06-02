@@ -307,39 +307,10 @@ function renderStage(data: LoaderData) {
         >
           {data.message}
         </p>
-        {data.stage === "done" ? <CloudEnvNote /> : null}
         <a href="/device" className="text-sm text-primary hover:underline">
           Enter a different code
         </a>
       </CardContent>
     </>
-  );
-}
-
-/**
- * After a device approval, clients that run in ephemeral cloud sandboxes
- * (Claude Code on the web, Codespaces, …) would re-prompt on every fresh
- * container. Point the user at a non-rotating cloud token they can pin in
- * the environment's variable config so new instances inherit access.
- */
-function CloudEnvNote() {
-  return (
-    <div
-      className="rounded-md border border-border bg-muted/40 p-3 text-sm space-y-1.5"
-      data-testid="device-cloud-env-note"
-    >
-      <p className="font-semibold">Is this client running in a cloud environment?</p>
-      <p className="text-muted-foreground">
-        If it runs in an ephemeral cloud sandbox (Claude Code on the web, Codespaces, Replit…), each
-        fresh instance would otherwise ask you to approve it again. To grant access once and have
-        new instances inherit it automatically, mint a non-rotating{" "}
-        <a href="/api-keys" className="font-semibold text-primary hover:underline">
-          cloud access token
-        </a>{" "}
-        and add <code className="rounded bg-input px-1 py-0.5 text-xs">DOCO_REFRESH</code> +{" "}
-        <code className="rounded bg-input px-1 py-0.5 text-xs">DOCO_CLIENT_ID</code> to the
-        environment's variable configuration.
-      </p>
-    </div>
   );
 }

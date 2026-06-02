@@ -13,7 +13,8 @@
 //   - Authorization-code mint + consume (with PKCE S256).
 //   - Access + refresh token issuance.
 //   - Bearer-token validation (called from every authenticated route).
-//   - Refresh-token rotation.
+//   - Refresh-token exchange (non-rotating: reissues the access token,
+//     keeps the same refresh token).
 //   - Token revocation (RFC 7009).
 //
 // What does NOT live here: the HTTP routes themselves (those compose
@@ -515,10 +516,6 @@ export interface IssueTokensInput {
   /** Per-type write scope-down keyed by org_id. */
   granted_org_write_types?: Record<string, string[]>;
   scope: string | null;
-  // When true the refresh token does not rotate on use — /oauth/token
-  // reissues only the access token and keeps this refresh token valid,
-  // so it can be pinned into a cloud environment's variable config.
-  non_rotating?: boolean;
 }
 
 export interface IssuedTokens {
@@ -567,8 +564,8 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_org_ids, granted_org_roles, granted_org_write_types,
-          scope, expires_at, non_rotating)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         refresh_token,
         input.client_id,
@@ -582,7 +579,6 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         orgWriteTypesJson,
         input.scope,
         refresh_expires,
-        input.non_rotating ?? false,
       ],
     );
   });
@@ -663,12 +659,11 @@ export async function refreshTokens(args: {
       scope: string | null;
       expires_at: Date;
       revoked: boolean;
-      non_rotating: boolean;
     }>(
       `SELECT client_id, user_id, token_name,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
               granted_org_ids, granted_org_roles, granted_org_write_types,
-              scope, expires_at, revoked, non_rotating
+              scope, expires_at, revoked
          FROM oauth_refresh_tokens
         WHERE token = $1
         FOR UPDATE`,
@@ -717,56 +712,18 @@ export async function refreshTokens(args: {
       ],
     );
 
-    if (row.non_rotating) {
-      // Cloud-environment credential: keep the same refresh token so the
-      // value pinned in the environment config stays valid across fresh
-      // instances. Slide its expiry forward so active use keeps it alive.
-      await c.query("UPDATE oauth_refresh_tokens SET expires_at = $1 WHERE token = $2", [
-        refresh_expires,
-        args.refresh_token,
-      ]);
-      return {
-        access_token,
-        refresh_token: args.refresh_token,
-        token_type: "Bearer",
-        expires_in: ACCESS_TOKEN_TTL_SECONDS,
-        scope: row.scope,
-      };
-    }
-
-    // Rotation: mint a fresh refresh token, mark the old one revoked, to
-    // limit blast radius if a refresh token leaks.
-    const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
-    await c.query(
-      `INSERT INTO oauth_refresh_tokens
-         (token, client_id, user_id, token_name, granted_doco_ids,
-          granted_doco_roles, granted_doco_write_types,
-          granted_org_ids, granted_org_roles, granted_org_write_types,
-          scope, expires_at, non_rotating)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-      [
-        refresh_token,
-        row.client_id,
-        row.user_id,
-        row.token_name,
-        row.granted_doco_ids,
-        rolesJson,
-        docoWriteTypesJson,
-        orgIds,
-        orgRolesJson,
-        orgWriteTypesJson,
-        row.scope,
-        refresh_expires,
-        false,
-      ],
-    );
-    await c.query(
-      "UPDATE oauth_refresh_tokens SET revoked = true, superseded_by = $1 WHERE token = $2",
-      [refresh_token, args.refresh_token],
-    );
+    // Refresh tokens are non-rotating: reissue only the access token and
+    // keep the same refresh token, sliding its expiry forward so active use
+    // keeps it alive. This lets DOCO_REFRESH be pinned anywhere — a repo
+    // .env, cloud env vars, CI secrets — without going stale. Revocation
+    // (from /api-keys) is how a token is cut off.
+    await c.query("UPDATE oauth_refresh_tokens SET expires_at = $1 WHERE token = $2", [
+      refresh_expires,
+      args.refresh_token,
+    ]);
     return {
       access_token,
-      refresh_token,
+      refresh_token: args.refresh_token,
       token_type: "Bearer",
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
       scope: row.scope,

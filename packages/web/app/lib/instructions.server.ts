@@ -111,7 +111,7 @@ that **same local checkout**:
   created the credential moments ago.
 - If \`DOCO_ACCESS\` is missing or expired but \`.env\` has
   \`DOCO_REFRESH\` and \`DOCO_CLIENT_ID\`, exchange the refresh token
-  at \`/oauth/token\`, write the rotated credential back to \`.env\`,
+  at \`/oauth/token\`, write the new access token back to \`.env\`,
   and retry the Doco call before asking the user to authorize again.
 - Never commit \`.env\` or token values. Separate clones, worktrees,
   machines, and remote sandboxes need their own local \`.env\` because
@@ -133,16 +133,15 @@ they persist the credential — the repo-root \`.env\` is per-checkout and
 does not travel to a fresh cloud container. Pick by what the agent
 needs:
 
-1. **Cloud environment, write access (recommended for ephemeral
-   runtimes).** Mint a *non-rotating* access token: open
-   \`/api-keys\`, scope it, tick "runs in a cloud environment", and set
-   the revealed \`DOCO_REFRESH\` + \`DOCO_CLIENT_ID\` (and optionally
+1. **Pin the credential as env vars (recommended for ephemeral
+   runtimes).** Mint a token at \`/api-keys\`, scope it, and set the
+   revealed \`DOCO_REFRESH\` + \`DOCO_CLIENT_ID\` (and optionally
    \`DOCO_ACCESS\`) as environment variables on the runtime (Claude Code
-   on the Web env vars, Codespaces / Replit secrets, etc.). Every fresh
-   instance mints its own short-lived access token from the shared,
-   non-rotating refresh token — no re-approving. A normal refresh token
-   would rotate and break the pinned value; the non-rotating one does
-   not. Private to the user; never commit. Revoke from the same page.
+   on the Web env vars, Codespaces / Replit secrets, etc.). Refresh
+   tokens are non-rotating, so every fresh instance mints its own
+   short-lived access token from the same pinned refresh token — no
+   re-approving, and the pinned value never goes stale. Private to the
+   user; never commit. Revoke from the same page.
 
 2. **Read-only, shareable with the repo.** The Doco owner mints a
    read-only token at \`/<handle>/project-tokens\` (owner-only) and

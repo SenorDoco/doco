@@ -72,9 +72,6 @@ export interface MintedApiKey {
   expires_in: number;
   client_name: string;
   scope_grants: ApiKeyScopeGrant[];
-  // True when minted for a cloud environment: the refresh token does not
-  // rotate, so DOCO_REFRESH + DOCO_CLIENT_ID can be pinned as env vars.
-  non_rotating: boolean;
 }
 
 export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow[]> {
@@ -281,9 +278,6 @@ export interface MintApiKeyInput {
   me: CurrentPrincipal;
   label: string;
   grants: ApiKeyGrantInput[];
-  // When the key is for a cloud dev environment, mint a non-rotating
-  // refresh token so it survives as a pinned environment variable.
-  non_rotating?: boolean;
 }
 
 export interface ApiKeyGrantInput {
@@ -343,7 +337,6 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     granted_org_roles,
     granted_org_write_types,
     scope: null,
-    non_rotating: input.non_rotating ?? false,
   });
 
   return {
@@ -353,7 +346,6 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     expires_in: tokens.expires_in,
     client_name: trimmedLabel,
     scope_grants: scopeGrants,
-    non_rotating: input.non_rotating ?? false,
   };
 }
 

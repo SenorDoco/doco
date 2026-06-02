@@ -96,33 +96,7 @@ describe("/api/v1/api-keys.json", () => {
       me: expect.objectContaining({ id: "user_alice" }),
       label: "my-script",
       grants: [{ level: "doco", target_id: "doco_acme", role: "owner" }],
-      non_rotating: false,
     });
-  });
-
-  it("mints a non-rotating cloud token and returns client_id", async () => {
-    mocks.mintApiKey.mockResolvedValue({
-      access_token: "doco_at_test",
-      refresh_token: "doco_rt_test",
-      client_id: "doco_client_cloud",
-      expires_in: 86400,
-      client_name: "cloud-agent",
-      scope_grants: [],
-      non_rotating: true,
-    });
-    const response = await action({
-      request: jsonRequest({
-        label: "cloud-agent",
-        grants: [{ level: "doco", target_id: "doco_acme", role: "owner" }],
-        non_rotating: true,
-      }),
-    } as never);
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
-      client_id: "doco_client_cloud",
-      non_rotating: true,
-    });
-    expect(mocks.mintApiKey).toHaveBeenCalledWith(expect.objectContaining({ non_rotating: true }));
   });
 
   it("rejects mint without a label", async () => {
