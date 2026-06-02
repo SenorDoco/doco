@@ -96,6 +96,10 @@ export default [
   // Metadata endpoints are spec'd by RFC 8414 + RFC 9728 and discovered
   // by every MCP client that lands on /mcp without a valid bearer.
   route(".well-known/oauth-authorization-server", "routes/oauth-metadata-authorization-server.tsx"),
+  route(".well-known/oauth-protected-resource", "routes/oauth-metadata-protected-resource.tsx"),
+  // Hosted remote MCP endpoint (Streamable HTTP, JSON-RPC). Connector
+  // clients land here; a 401 points them at the metadata docs above.
+  route("mcp", "routes/mcp.tsx"),
   // OAuth 2.1 authorization server endpoints. The runtime hits these
   // via the metadata document above; the user sees /oauth/authorize
   // in their browser when a runtime requests Doco access.
