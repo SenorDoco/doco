@@ -30,6 +30,7 @@ import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
+import { bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
 import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
@@ -774,6 +775,25 @@ export function BpmnPerspective({
     return null;
   }, [flowNodes, initialFocusId, selectionCenterId, pools, renderedLanes]);
 
+  // Apply the one-shot initial/default camera focus. A pool target fits the
+  // WHOLE pool (header + its lanes) so the camera frames the entire process
+  // instead of centering on the pool's full-width header band; any other
+  // target zooms to that single node at 100%.
+  const fitInitialFocus = useCallback(
+    (instance: FlowInstance, targetId: string) => {
+      const flowNodeIds = new Set(flowNodes.map((node) => node.id));
+      const poolFit = bpmnPoolFitNodeIds(targetId, renderedLanes, laneNodeId, flowNodeIds);
+      instance.fitView?.(
+        poolFit && poolFit.length > 0
+          ? { nodes: poolFit.map((id) => ({ id })), padding: 0.15, maxZoom: 1, duration: 0 }
+          : { nodes: [{ id: targetId }], padding: 0, minZoom: 1, maxZoom: 1, duration: 0 },
+      );
+      const current = instance.getViewport?.();
+      if (current) updateViewport(current);
+    },
+    [flowNodes, renderedLanes, updateViewport],
+  );
+
   useEffect(() => {
     if (!initialFocusFlowNodeId) return;
     const hasExplicitFocus = Boolean(initialFocusId);
@@ -785,20 +805,12 @@ export function BpmnPerspective({
     const instance = flowInstanceRef.current;
     if (!instance?.fitView) return;
     const frame = requestAnimationFrame(() => {
-      instance.fitView?.({
-        nodes: [{ id: initialFocusFlowNodeId }],
-        padding: 0,
-        minZoom: 1,
-        maxZoom: 1,
-        duration: 0,
-      });
-      const current = instance.getViewport?.();
-      if (current) updateViewport(current);
+      fitInitialFocus(instance, initialFocusFlowNodeId);
       if (hasExplicitFocus) initialFocusAppliedRef.current = initialFocusFlowNodeId;
       else defaultFocusAppliedRef.current = true;
     });
     return () => cancelAnimationFrame(frame);
-  }, [initialFocusFlowNodeId, initialFocusId, updateViewport]);
+  }, [initialFocusFlowNodeId, initialFocusId, fitInitialFocus]);
 
   if (filteredLanes.length === 0 && pools.length === 0) {
     return (
@@ -959,13 +971,7 @@ export function BpmnPerspective({
             flowInstanceRef.current = instance;
             if (!hasFitRef.current) {
               if (initialFocusFlowNodeId) {
-                instance.fitView?.({
-                  nodes: [{ id: initialFocusFlowNodeId }],
-                  padding: 0,
-                  minZoom: 1,
-                  maxZoom: 1,
-                  duration: 0,
-                });
+                fitInitialFocus(instance, initialFocusFlowNodeId);
                 if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
                 else defaultFocusAppliedRef.current = true;
               } else {
