@@ -96,9 +96,17 @@ export default [
   // by every MCP client that lands on /mcp without a valid bearer.
   route(".well-known/oauth-authorization-server", "routes/oauth-metadata-authorization-server.tsx"),
   route(".well-known/oauth-protected-resource", "routes/oauth-metadata-protected-resource.tsx"),
-  // Hosted remote MCP endpoint (Streamable HTTP, JSON-RPC). Connector
-  // clients land here; a 401 points them at the metadata docs above.
-  route("mcp", "routes/mcp.tsx"),
+  // Per-workspace RFC 9728 protected-resource metadata. The per-workspace MCP
+  // 401 points connectors here (path-specific, one resource per workspace).
+  route(
+    ".well-known/oauth-protected-resource/:workspaceId/mcp",
+    "routes/oauth-metadata-protected-resource.$workspaceId.tsx",
+  ),
+  // Per-workspace hosted remote MCP endpoint (Streamable HTTP, JSON-RPC).
+  // There is NO app-wide /mcp (removed for security): a connector binds to one
+  // workspace at /<workspace-id>/mcp and its token reaches no other workspace.
+  // A 401 points clients at this workspace's protected-resource metadata above.
+  route(":workspaceId/mcp", "routes/$workspaceId.mcp.tsx"),
   // OAuth 2.1 authorization server endpoints. The runtime hits these
   // via the metadata document above; the user sees /oauth/authorize
   // in their browser when a runtime requests Doco access.
