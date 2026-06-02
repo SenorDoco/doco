@@ -202,6 +202,13 @@ export async function loadBpmnGraph(
   // (BPMN_TABLES deliberately excludes logs and principals — principals
   // are loaded separately below as actor lanes). `summary` is the first
   // line of `prose`.
+  //
+  // Every lifecycle is loaded — including retired. Hiding a lifecycle is
+  // the client's job: the page-level lifecycle filter (`visibleLifecycles`,
+  // retired hidden by default) is applied in BpmnPerspective. Pre-filtering
+  // retired here would make toggling "Retired" on a no-op, leaving the
+  // canvas "So empty" for a retired process. This mirrors the Graph/List
+  // loader (full-graph.server), which also returns every lifecycle.
   const bpmnTypeList = BPMN_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
   const windowIds = windowNodeIds(opts.window);
   const nodeParams: unknown[] = [docoId];
@@ -215,17 +222,21 @@ export async function loadBpmnGraph(
          FROM nodes t
         WHERE t.doco_id = $1
           AND t.node_type IN (${bpmnTypeList})
-          AND COALESCE(t.lifecycle, 'asserted') <> 'retired'
           ${windowIds.length > 0 ? "AND t.id = ANY($2::text[])" : ""}`;
 
   const [nodeRows, principalRows, userRows] = await Promise.all([
     c.query<NodeRow>(nodeSql, nodeParams),
     c.query<PrincipalRow>(
+      // Load Principals of every lifecycle (including retired). In BPMN a
+      // Principal is a swim *lane*, not a flow node, and a lane only renders
+      // when a lifecycle-visible node sits in it (render-gated client-side).
+      // So loading a retired Principal adds no noise on its own — it ensures
+      // retired nodes land in a correctly-named lane (rather than an
+      // `__unresolved__:<id>` fallback) once "Retired" is toggled on.
       `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
           ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}`,
       nodeParams,
     ),
@@ -267,11 +278,15 @@ export async function loadBpmnGraph(
   let links: OverviewGraphLink[] = [];
   if (nodeIdSet.size > 0) {
     const edgeRows = await c.query<EdgeRow>(
+      // Edges of every lifecycle, too: a retired process's `flows_to`
+      // sequence edges are themselves retired, and the client only draws an
+      // edge when both endpoints are visible. Excluding retired edges here
+      // would leave revealed retired nodes disconnected. Matches the
+      // Graph/List loader, which applies no lifecycle filter to edges.
       `SELECT id, from_id, to_id, edge_type, props AS edge_props_json
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
         LIMIT 5000`,
       [docoId, Array.from(nodeIdSet)],
     );
