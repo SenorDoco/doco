@@ -32,6 +32,7 @@ import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
+import { referenceAnchorColumns, referenceEdges } from "~/lib/bpmn-references";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
 import {
@@ -651,6 +652,36 @@ export function BpmnPerspective({
     return edges;
   }, [renderedNodes, renderedPools]);
 
+  // Reference "see also" links. References now sit in the column of the
+  // step they cite (see referenceAnchorColumns in layOutBpmn), so the
+  // association edges tying them to that step render here as short gray
+  // dashed lines — not sequence-flow arrows. Render-gated to on-canvas
+  // pairs via renderedNodeIds, the same way the flow and subprocess edges
+  // are, so a link never dangles.
+  const referenceLinkEdges = useMemo<FlowEdge[]>(() => {
+    const referenceNodeIds = new Set<string>();
+    for (const [id, node] of nodeById) {
+      if (node.entity_type === "reference") referenceNodeIds.add(id);
+    }
+    if (referenceNodeIds.size === 0) return [];
+    return referenceEdges(links, referenceNodeIds, renderedNodeIds).map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      // "default" is xyflow's built-in bezier edge; it binds to the id-less
+      // left/right handles every shape renders via commonHandles().
+      type: "default",
+      selectable: false,
+      focusable: false,
+      interactionWidth: 0,
+      style: {
+        stroke: REFERENCE_EDGE_COLOR,
+        strokeWidth: 1.5,
+        strokeDasharray: "6 4",
+      },
+    }));
+  }, [links, nodeById, renderedNodeIds]);
+
   const flowNodes = useMemo<FlowNode[]>(() => {
     const windowed = layout.flowNodes.flatMap<FlowNode>((node) => {
       const laneData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).lane;
@@ -741,6 +772,7 @@ export function BpmnPerspective({
         }),
       ...externalEdgeStubs.edges,
       ...subprocessEdges,
+      ...referenceLinkEdges,
     ],
     [
       layout.flowEdges,
@@ -748,6 +780,7 @@ export function BpmnPerspective({
       renderWindowOpacityById,
       externalEdgeStubs.edges,
       subprocessEdges,
+      referenceLinkEdges,
     ],
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
@@ -1160,6 +1193,10 @@ const POOL_GAP = 16;
 const SUBPROCESS_EDGE_COLOR = "#64748b"; // slate-500
 const SUBPROCESS_SOURCE_HANDLE = "subprocess";
 const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
+// Reference "see also" links: a node's edge to the source material it
+// cites. Drawn as a gray dashed line — arrowless, because the relation is
+// non-directional reference, not process flow.
+const REFERENCE_EDGE_COLOR = "#9ca3af"; // gray-400
 // Vertical room reserved at the bottom of a sub-process Action so the
 // "+" marker sits inside the box without colliding with the label. The
 // layout grows the node by this much; the node component pads its label
@@ -1212,6 +1249,16 @@ function layOutBpmn(
   // being allowed to pull earlier nodes backward.
   const depthByNode = computeForwardSequenceDepths(nodes, links);
 
+  // References carry no sequence flow, so by depth alone they'd all pile
+  // into column 0 (far left of the artifacts band). Instead place each
+  // reference in the column of the step it cites, so it sits directly under
+  // that node and its dashed "see also" link stays short. Only the column
+  // input to packing changes; sequence depth itself is untouched.
+  const columnDepthByNode = new Map(depthByNode);
+  for (const [refId, column] of referenceAnchorColumns(nodes, links, depthByNode)) {
+    columnDepthByNode.set(refId, column);
+  }
+
   // Within each lane, sequence depth remains the x column. Nodes that
   // share a lane and a depth stack top-to-bottom instead of stealing
   // extra horizontal columns; linear sequence chains still advance
@@ -1220,7 +1267,7 @@ function layOutBpmn(
     packBpmnLaneColumns(
       lanes.map((lane) => lane.id),
       nodes,
-      depthByNode,
+      columnDepthByNode,
     );
 
   // Per-node sizes. Compute first so column step and lane height can
