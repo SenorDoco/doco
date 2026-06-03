@@ -31,7 +31,7 @@
 //    visibility, goal }`.
 
 import { getWorkspaceRole, roleAtLeast, withClient } from "@doco/db";
-import { listVisibleDocoIdsForRequest } from "~/lib/doco-access.server";
+import { isSenorDocoRequest, listVisibleDocoIdsForRequest } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { createDocoInWorkspace } from "~/lib/redeem.server";
@@ -135,6 +135,18 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
+  // Señor Doco never holds owner access, and creating a Doco requires the
+  // workspace owner role — so the agent is refused even when the underlying
+  // human owns the workspace. A human owner must create it on the web.
+  if (isSenorDocoRequest(request)) {
+    return Response.json(
+      {
+        error:
+          "Señor Doco cannot create docos — that is an owner-tier operation. A human workspace owner must create it.",
+      },
+      { status: 403 },
+    );
+  }
   const workspaceRole = await getWorkspaceRole(workspaceId, me.id);
   if (!roleAtLeast(workspaceRole, "owner")) {
     return Response.json(

@@ -20,7 +20,7 @@ import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { type PolicyDraft, capturePolicy } from "~/lib/capture.server";
 import {
   type DocoRouteParams,
-  getDocoLevelRole,
+  getDocoLevelRoleForRequest,
   loadDocoRouteForRead,
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
@@ -123,7 +123,13 @@ export async function action({
       );
     }
 
-    const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
+    // Capped for Señor Doco: the agent never resolves to owner, so it can
+    // never write policies even when the underlying human is the owner.
+    const docoRole = await getDocoLevelRoleForRequest(
+      request,
+      { ownerId: meta.ownerId, docoId: meta.docoId },
+      me.id,
+    );
     if (docoRole !== "owner") {
       return Response.json(
         { error: "Forbidden: owner role required to write policies." },

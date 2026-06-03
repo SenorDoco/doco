@@ -25,12 +25,49 @@ import {
   normalizeWriteTypes,
 } from "@doco/shared";
 import { redirect } from "react-router";
+import { AUTHORING_SURFACE_HEADER } from "./authoring-source.server";
 import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
 import { readCreatedDocoIdSearchParam } from "./post-create-doco-route";
 import { type ProjectToken, isProjectToken, validateProjectToken } from "./project-tokens.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session.server";
+
+/**
+ * Señor Doco — the in-page web assistant and the Slack bot — runs every
+ * `doco_api` call as the signed-in / linked HUMAN's session, so without a
+ * ceiling it would inherit that human's full role, `owner` included.
+ * Product rule: the agent must never exceed this. Owner-tier operations
+ * (editing policies, changing settings, deleting Docos, owner-level invites,
+ * managing project tokens, and creating Docos/workspaces) stay human-only on
+ * both surfaces.
+ */
+export const SENOR_DOCO_ROLE_CEILING: DocoRole = "writer";
+
+/**
+ * True when the request originates from Señor Doco (web in-page assistant or
+ * Slack). Both surfaces stamp an authoring-surface header on their `doco_api`
+ * tool calls; the user-agent is a belt-and-suspenders fallback. Spoofing the
+ * header can only LOWER a caller's effective role — it never widens access —
+ * so trusting these client-supplied signals here is safe.
+ */
+export function isSenorDocoRequest(request: Request): boolean {
+  const surface = request.headers.get(AUTHORING_SURFACE_HEADER)?.trim().toLowerCase();
+  if (surface === "senor-doco-web" || surface === "slack") return true;
+  const ua = request.headers.get("user-agent") ?? "";
+  return /Doco-In-Page-Assistant|Doco-Slack-Assistant/i.test(ua);
+}
+
+/**
+ * Cap a resolved role to the Señor Doco ceiling when the request is the
+ * agent. Owner is the only role above the ceiling, so anything ≥ owner
+ * collapses to `writer`; reader / writer (and null) pass through unchanged.
+ * Non-agent requests are never capped.
+ */
+export function capRoleForRequest(role: DocoRole | null, request: Request): DocoRole | null {
+  if (!role || !isSenorDocoRequest(request)) return role;
+  return roleAtLeast(role, "owner") ? SENOR_DOCO_ROLE_CEILING : role;
+}
 
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
@@ -49,6 +86,20 @@ export async function getDocoLevelRole(
   // copy of the source list to drift out of sync.
   const grant = await getDocoLevelGrant(meta, principalId);
   return grant?.role ?? null;
+}
+
+/**
+ * `getDocoLevelRole`, capped to the Señor Doco ceiling for agent requests
+ * (see `capRoleForRequest`). Owner-gated routes that resolve a role directly —
+ * policy capture, invites — call this so the agent can never present as owner
+ * even when the underlying human is one.
+ */
+export async function getDocoLevelRoleForRequest(
+  request: Request,
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+): Promise<DocoRole | null> {
+  return capRoleForRequest(await getDocoLevelRole(meta, principalId), request);
 }
 
 /**
@@ -193,8 +244,10 @@ export async function canWriteDocoTypeForRequest(
 ): Promise<boolean> {
   if (!(await canWriteDocoType(meta, principalId, type))) return false;
   // Policy types are owner-only and not token-scopeable per type; the
-  // membership check above already required owner, so allow.
-  if (!isWritableType(type)) return true;
+  // membership check above already required owner. Señor Doco is capped
+  // below owner, so deny those types for the agent even when the underlying
+  // human is an owner.
+  if (!isWritableType(type)) return !isSenorDocoRequest(request);
 
   const token = await getOauthTokenForRequest(request);
   const cap = tokenWriteTypeCap(token, meta);
@@ -555,6 +608,21 @@ export async function canAdminDoco(
   if (!principalId) return false;
   const role = await getDocoLevelRole(meta, principalId);
   return role === "owner";
+}
+
+/**
+ * Admin gate that also enforces the Señor Doco ceiling: the agent never
+ * administers a Doco — even an unclaimed host-bootstrap one — regardless of
+ * the underlying human's role. Owner-gated admin routes (project tokens, and
+ * settings via `loadDocoForAdmin`) call this instead of `canAdminDoco`.
+ */
+export async function canAdminDocoForRequest(
+  request: Request,
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+): Promise<boolean> {
+  if (isSenorDocoRequest(request)) return false;
+  return canAdminDoco(meta, principalId);
 }
 
 /**
@@ -997,7 +1065,9 @@ export async function loadDocoForAdmin(
   // this Doco — admin operations refuse a scoped-down token even if
   // the underlying principal is an admin.
   const ctx = await loadDocoForRead(request, handleOrId, "owner");
-  if (!(await canAdminDoco(ctx.meta, ctx.me?.id ?? null))) {
+  // Señor Doco never administers a Doco — even on host-bootstrap (unclaimed)
+  // Docos, where `canAdminDoco` would otherwise wave any caller through.
+  if (isSenorDocoRequest(request) || !(await canAdminDoco(ctx.meta, ctx.me?.id ?? null))) {
     throw new Response("Forbidden: only the Doco's owner can edit this.", { status: 403 });
   }
   return ctx;

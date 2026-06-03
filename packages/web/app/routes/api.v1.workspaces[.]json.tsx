@@ -20,7 +20,7 @@
 // bearer). Rate-limiting is out of scope.
 
 import { listWorkspacesForUser } from "@doco/db";
-import { tokenReachableWorkspaceIdsForRequest } from "~/lib/doco-access.server";
+import { isSenorDocoRequest, tokenReachableWorkspaceIdsForRequest } from "~/lib/doco-access.server";
 import { addWorkspaceByHandle } from "~/lib/redeem.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
@@ -53,6 +53,15 @@ export async function action({ request }: { request: Request }) {
   const me = await getCurrentPrincipalAsync(request);
   if (!me) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
+  }
+  // Creating a workspace makes the caller its owner. Señor Doco never holds
+  // owner access, so the agent cannot create workspaces — even on behalf of a
+  // human (the human can do it themselves on the web, outside the agent).
+  if (isSenorDocoRequest(request)) {
+    return Response.json(
+      { error: "Señor Doco cannot create workspaces — that is an owner-tier operation." },
+      { status: 403 },
+    );
   }
   const ct = (request.headers.get("content-type") ?? "").toLowerCase();
   if (!ct.includes("application/json")) {

@@ -19,6 +19,9 @@ vi.mock("@doco/db", () => ({
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
+  // Non-agent requests here; the Señor Doco guard is covered separately by
+  // doco-access.server.test and docos-create.senor-doco-cap.test.
+  isSenorDocoRequest: () => false,
   listVisibleDocoIdsForRequest: mocks.listVisibleDocoIdsForRequest,
 }));
 
