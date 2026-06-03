@@ -59,6 +59,7 @@ vi.mock("../dotenv.server", () => ({ ensureEnvLoaded: vi.fn() }));
 vi.mock("../telemetry.server", () => ({ upsertAgentTurn: vi.fn(async () => {}) }));
 
 import {
+  applySetThreadWorkspace,
   autoAssignThreadWorkspaceIfObvious,
   createConversation,
   loadConversationByIdForPrincipal,
@@ -138,5 +139,44 @@ describe("autoAssignThreadWorkspaceIfObvious", () => {
     await autoAssignThreadWorkspaceIfObvious(conv, USER, "/workspaces/beta");
 
     expect(conv.workspace_id).toBe(WS_A);
+  });
+});
+
+describe("applySetThreadWorkspace (the set_thread_workspace tool)", () => {
+  beforeEach(async () => {
+    dbm.db = new PGlite();
+    dbm.docoWorkspace = {};
+    await dbm.db.exec(schemaSql);
+    await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
+    await member(WS_A, "alpha");
+    await member(WS_B, "beta");
+  });
+
+  it("scopes the thread when the user names a workspace by id", async () => {
+    const conv = await createConversation(USER);
+    const out = await applySetThreadWorkspace(conv.id, USER, WS_A);
+    expect(out.ok).toBe(true);
+    expect((await loadConversationByIdForPrincipal(conv.id, USER))?.workspace_id).toBe(WS_A);
+  });
+
+  it("accepts a workspace handle too", async () => {
+    const conv = await createConversation(USER);
+    const out = await applySetThreadWorkspace(conv.id, USER, "beta");
+    expect(out.ok).toBe(true);
+    expect((await loadConversationByIdForPrincipal(conv.id, USER))?.workspace_id).toBe(WS_B);
+  });
+
+  it("refuses a workspace the user does not belong to, leaving the thread unchanged", async () => {
+    const conv = await createConversation(USER);
+    const out = await applySetThreadWorkspace(conv.id, USER, "workspace_outsider0000000000");
+    expect(out.ok).toBe(false);
+    expect((await loadConversationByIdForPrincipal(conv.id, USER))?.workspace_id).toBeNull();
+  });
+
+  it("can re-scope an already-assigned thread (explicit choice has no NULL guard)", async () => {
+    const conv = await createConversation(USER, { workspaceId: WS_A });
+    const out = await applySetThreadWorkspace(conv.id, USER, WS_B);
+    expect(out.ok).toBe(true);
+    expect((await loadConversationByIdForPrincipal(conv.id, USER))?.workspace_id).toBe(WS_B);
   });
 });

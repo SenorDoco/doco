@@ -474,6 +474,69 @@ export async function autoAssignThreadWorkspaceIfObvious(
   conversation.workspace_id = candidate;
 }
 
+/**
+ * Set a thread's Workspace outright (assign OR re-assign), owner-guarded.
+ * Unlike {@link assignConversationWorkspace} this has no IS-NULL guard — it's
+ * the explicit-choice path (the set_thread_workspace tool), where the user
+ * deliberately picked a Workspace.
+ */
+export async function setConversationWorkspace(
+  conversationId: string,
+  principalId: string,
+  workspaceId: string,
+): Promise<void> {
+  await withClient((c) =>
+    c.query("UPDATE chat_conversations SET workspace_id = $3 WHERE id = $1 AND user_id = $2", [
+      conversationId,
+      principalId,
+      workspaceId,
+    ]),
+  );
+}
+
+interface SetThreadWorkspaceOutcome {
+  ok: boolean;
+  message: string;
+  preview: string;
+}
+
+/**
+ * Back the set_thread_workspace tool: validate the caller belongs to the named
+ * Workspace (accepting an id or a handle), then scope the thread to it. Refuses
+ * — rather than leaking existence — when the user isn't a member.
+ */
+export async function applySetThreadWorkspace(
+  conversationId: string,
+  principalId: string,
+  workspaceRef: string,
+): Promise<SetThreadWorkspaceOutcome> {
+  const ref = workspaceRef.trim();
+  if (!ref) {
+    return {
+      ok: false,
+      message: "error: workspace_id is required",
+      preview: "set_thread_workspace — missing workspace_id",
+    };
+  }
+  const memberships = await listWorkspacesForUser(principalId);
+  const match = memberships.find((w) => w.id === ref || w.handle === ref);
+  if (!match) {
+    return {
+      ok: false,
+      message: `error: you are not a member of a workspace "${ref}" (use one of: ${
+        memberships.map((w) => `${w.handle} (${w.id})`).join(", ") || "none"
+      })`,
+      preview: `set_thread_workspace — not a member of ${ref}`,
+    };
+  }
+  await setConversationWorkspace(conversationId, principalId, match.id);
+  return {
+    ok: true,
+    message: `Scoped this thread to workspace ${match.handle} (${match.id}). From the next turn on you'll see only ${match.handle}'s docos, policies, and constitution.`,
+    preview: `set_thread_workspace → ${match.handle}`,
+  };
+}
+
 export interface ConversationListItem {
   id: string;
   title: string | null;
@@ -1405,6 +1468,12 @@ interface BootstrapContext {
   workspaceLines: string[];
   policySnippets: string[];
   constitutionSections: string[];
+  /**
+   * The thread is unassigned AND the user belongs to more than one Workspace —
+   * so the scope is genuinely ambiguous and Señor Doco should ask which one
+   * (then call set_thread_workspace) before doing scoped work.
+   */
+  needsWorkspaceChoice: boolean;
 }
 
 // Per-principal bootstrap memo. The original implementation paid an
@@ -1521,6 +1590,9 @@ export async function buildBootstrapContext(
     workspaceLines,
     policySnippets,
     constitutionSections,
+    // Unassigned thread + more than one Workspace to choose from → ambiguous.
+    // (A single-Workspace user is auto-scoped upstream, so never lands here.)
+    needsWorkspaceChoice: !workspaceId && scopedWorkspaces.length > 1,
   };
   bootstrapMemo.set(memoKey, { builtAt: Date.now(), value });
   // Opportunistic cleanup: drop expired entries so the Map doesn't grow
@@ -1551,6 +1623,9 @@ export function buildSystemBlocks(
   const workspaceList = bootstrap.workspaceLines.length
     ? bootstrap.workspaceLines.join("\n")
     : "(no workspaces — the user can create one at /new-workspace)";
+  const workspaceChoiceNote = bootstrap.needsWorkspaceChoice
+    ? `\n\n**This chat isn't scoped to a workspace yet, and ${principal.username} belongs to more than one (listed above).** Before you create or edit anything, ASK which workspace this chat is about, then call set_thread_workspace({workspace_id}) with their choice. Answering read-only questions is fine meanwhile — just say which workspace you're assuming. Once set, you're scoped to only that workspace from the next turn on.`
+    : "";
   const policySections = bootstrap.policySnippets.length
     ? bootstrap.policySnippets.join("\n\n")
     : "(no policies authored in the visible docos)";
@@ -1742,7 +1817,7 @@ ${docoList}
 
 ### Your workspaces
 
-${workspaceList}
+${workspaceList}${workspaceChoiceNote}
 
 ## Workspace constitution — canonical
 
@@ -1787,6 +1862,21 @@ const TOOLS: Tool[] = [
         },
       },
       required: ["url"],
+    },
+  },
+  {
+    name: "set_thread_workspace",
+    description:
+      "Scope THIS chat thread to one of the user's workspaces. Call it after the user tells you which workspace an unscoped chat belongs to (you'll see a note when the choice is needed). Accepts the workspace id (workspace_…) or its handle. Takes effect from the next turn: you then see only that workspace's docos, policies, and constitution.",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace_id: {
+          type: "string",
+          description: "The workspace id (workspace_…) or handle to scope this thread to.",
+        },
+      },
+      required: ["workspace_id"],
     },
   },
 ];
@@ -1949,6 +2039,21 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
       navigateUrl: url,
       preview: `navigate → ${url}`,
       ok: true,
+    };
+  }
+  if (block.name === "set_thread_workspace") {
+    const input = block.input as { workspace_id?: unknown };
+    const ref = typeof input?.workspace_id === "string" ? input.workspace_id : "";
+    const outcome = await applySetThreadWorkspace(ctx.conversationId, ctx.principal.id, ref);
+    return {
+      result: {
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: outcome.message,
+        is_error: !outcome.ok,
+      },
+      preview: outcome.preview,
+      ok: outcome.ok,
     };
   }
   if (block.name === "doco_api") {

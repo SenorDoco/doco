@@ -204,4 +204,24 @@ describe("Señor Doco bootstrap — workspace constitution", () => {
     const plain = await createConversation(USER);
     expect(plain.workspace_id).toBeNull();
   });
+
+  it("flags an ambiguous unassigned thread and nudges Señor Doco to ask", async () => {
+    // USER belongs to acme + beta (2 workspaces), so an unassigned thread is
+    // ambiguous → the prompt must tell the agent to ask + set_thread_workspace.
+    const broad = await buildBootstrapContext(USER);
+    expect(broad.needsWorkspaceChoice).toBe(true);
+    const broadText = buildSystemBlocks(principal, broad)
+      .map((b) => b.text)
+      .join("\n");
+    expect(broadText).toContain("set_thread_workspace");
+    expect(broadText).toMatch(/isn't scoped to a workspace yet/i);
+
+    // A scoped thread carries no such nudge.
+    const scoped = await buildBootstrapContext(USER, WS_REACHABLE);
+    expect(scoped.needsWorkspaceChoice).toBe(false);
+    const scopedText = buildSystemBlocks(principal, scoped)
+      .map((b) => b.text)
+      .join("\n");
+    expect(scopedText).not.toContain("set_thread_workspace");
+  });
 });
