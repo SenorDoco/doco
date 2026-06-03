@@ -6,8 +6,8 @@
 // page, both of which funnel into the same access_requests table.
 
 import { redirect, useLoaderData } from "react-router";
-import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -73,8 +73,11 @@ export default function AccessRequestsPage() {
   return (
     <div>
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-8 space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Access requests" }]} />
+      <SingleColumnPageMain className="py-6 space-y-4">
+        <PageHeader
+          breadcrumb={[{ label: "Home", to: "/" }, { label: "Access requests" }]}
+          title="Access requests"
+        />
         {sent ? (
           <Card>
             <CardContent>

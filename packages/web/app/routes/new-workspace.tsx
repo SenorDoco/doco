@@ -1,6 +1,7 @@
 import { Form, Link, redirect } from "react-router";
-import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
+import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -85,19 +86,18 @@ export default function NewWorkspace({
   return (
     <div>
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-8 space-y-4">
-        <Breadcrumb
-          items={hostBreadcrumb({
+      <SingleColumnPageMain className="py-6 space-y-4">
+        <PageHeader
+          breadcrumb={hostBreadcrumb({
             section: { label: "Workspaces", to: "/workspaces" },
             pageLabel: "New workspace",
           })}
-        />
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">New workspace</h1>
+          title="New workspace"
+        >
           <p className="text-xs text-muted-foreground">
             You become the owner. The handle is the workspace's only public identifier.
           </p>
-        </header>
+        </PageHeader>
         <Card>
           <CardContent className="pt-4">
             <Form method="post" className="space-y-3">

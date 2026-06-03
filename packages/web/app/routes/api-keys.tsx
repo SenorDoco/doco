@@ -11,8 +11,9 @@
 import type { DocoRole } from "@doco/db";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
-import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
+import { hostBreadcrumb } from "~/components/breadcrumb";
 import { GrantPicker } from "~/components/grant-picker";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -170,11 +171,8 @@ export default function ApiKeysPage({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Tokens/MCP" })} />
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Tokens/MCP</h1>
-        </header>
+      <SingleColumnPageMain className="py-6 space-y-6">
+        <PageHeader breadcrumb={hostBreadcrumb({ pageLabel: "Tokens/MCP" })} title="Tokens/MCP" />
 
         <TokensTabs
           scopeOptions={scopeOptions}

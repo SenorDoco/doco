@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
-import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
+import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
@@ -304,16 +305,14 @@ export default function NewDocoStep1({
   return (
     <div>
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-8 space-y-4">
-        <Breadcrumb
-          items={hostBreadcrumb({
+      <SingleColumnPageMain className="py-6 space-y-4">
+        <PageHeader
+          breadcrumb={hostBreadcrumb({
             section: { label: "Docos", to: "/dashboard" },
             pageLabel: "New doco",
           })}
+          title="New doco"
         />
-        <header>
-          <h1 className="text-2xl font-semibold">New doco</h1>
-        </header>
         <Card>
           <CardContent className="pt-4">
             <Form method="post" className="space-y-5">
