@@ -49,7 +49,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Architectural Decisions",
     description:
       "Document architectural decision records — system structure, interfaces, infrastructure, quality attributes, constraints, alternatives, and consequences.",
-    updatedAt: "2026-05-31",
+    updatedAt: "2026-06-03",
     owner: TEMPLATE_OWNER,
   },
   {
@@ -57,7 +57,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Product Decisions",
     description:
       "Document product decision records — user/customer evidence, scope, positioning, pricing, roadmap choices, success metrics, alternatives, and revisit triggers.",
-    updatedAt: "2026-05-31",
+    updatedAt: "2026-06-03",
     owner: TEMPLATE_OWNER,
   },
   {
@@ -65,7 +65,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Design Decisions",
     description:
       "Document design decision records — UX, service, interaction, content, accessibility, design-system, and research-backed trade-offs.",
-    updatedAt: "2026-05-31",
+    updatedAt: "2026-06-03",
     owner: TEMPLATE_OWNER,
   },
   {
@@ -73,7 +73,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Data Decisions",
     description:
       "Document data decision records — source-of-truth choices, schemas, contracts, metric definitions, governance, quality, lineage, retention, privacy, and access.",
-    updatedAt: "2026-05-31",
+    updatedAt: "2026-06-03",
     owner: TEMPLATE_OWNER,
   },
   {

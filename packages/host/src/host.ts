@@ -8,7 +8,11 @@ import {
   nowIso,
   validateRequestedDocoHandle,
 } from "@doco/shared";
-import { DEFAULT_DOCO_TEMPLATES, type DocoTemplate } from "./doco-templates.js";
+import {
+  DEFAULT_DOCO_TEMPLATES,
+  type DocoTemplate,
+  templatePolicyToSeededPolicy,
+} from "./doco-templates.js";
 
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
@@ -384,40 +388,21 @@ export async function createDocoInWorkspace(opts: {
 
     if (template && template.policies.length > 0) {
       for (const policy of template.policies) {
-        const firesWhen = Array.isArray(policy.fires_when_node_lifecycle)
-          ? policy.fires_when_node_lifecycle
-          : [];
-        // Translate the (still old-shape) TemplatePolicy into the unified
-        // policy row: a standalone `kind` plus a predicate that is either a
-        // single `agent_instruction` (suggestion / probabilistic) or a
-        // structured deterministic check keyed by `sub_kind`. The template
-        // definitions themselves are migrated separately.
-        const pred = policy.predicate;
-        let kind: "suggestion" | "deterministic" | "probabilistic";
-        let predicate: Record<string, unknown>;
-        if (!pred) {
-          kind = "suggestion";
-          predicate = { agent_instruction: policy.policy };
-        } else if (pred.kind === "probabilistic" || pred.kind === "descriptive") {
-          // `descriptive` was recorded-but-not-enforced → folds into suggestion.
-          kind = pred.kind === "probabilistic" ? "probabilistic" : "suggestion";
-          predicate = {
-            agent_instruction: pred.spec,
-            ...(pred.when_node_type ? { when_node_type: pred.when_node_type } : {}),
-          };
-        } else {
-          kind = "deterministic";
-          const { kind: subKind, ...rest } = pred;
-          predicate = { sub_kind: subKind, ...rest };
-        }
+        // Derive the unified policy row's `kind` + shaped `predicate` (plus
+        // enforcement modifiers) from the kind-less TemplatePolicy. The
+        // translation lives beside the templates (`templatePolicyToSeededPolicy`)
+        // so the seeder and the authoring tests share one source of truth.
+        const seeded = templatePolicyToSeededPolicy(policy);
         const policyId = `policy_${generateUlid()}`;
         const policyData: Record<string, unknown> = {
           id: policyId,
           doco_id: docoId,
-          kind,
-          predicate,
-          ...(kind !== "suggestion" ? { on_violation: policy.on_violation ?? "block" } : {}),
-          ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
+          kind: seeded.kind,
+          predicate: seeded.predicate,
+          ...(seeded.on_violation ? { on_violation: seeded.on_violation } : {}),
+          ...(seeded.fires_when_node_lifecycle
+            ? { fires_when_node_lifecycle: seeded.fires_when_node_lifecycle }
+            : {}),
           template_seeded: true,
           template_handle: opts.templateHandle ?? null,
           created_at: created,
@@ -431,7 +416,7 @@ export async function createDocoInWorkspace(opts: {
           [
             policyId,
             docoId,
-            kind,
+            seeded.kind,
             JSON.stringify(policyData),
             policy.body_md ?? "",
             created,
