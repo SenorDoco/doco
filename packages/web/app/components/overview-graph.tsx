@@ -731,9 +731,10 @@ export function OverviewGraph({
         renderWindowOpacityById.get(link.source) ?? 1,
         renderWindowOpacityById.get(link.target) ?? 1,
       );
-      // Edge inherits the origin node's lifecycle colour. 0.5 is
-      // the baseline stroke alpha so coloured lines stay readable on
-      // the pale canvas without competing with the node strokes.
+      // Edge inherits the origin node's lifecycle colour and is painted
+      // straight at its depth-ramp opacity — opacityForEdge already fades
+      // far edges, so no second baseline alpha is layered on. transitionOpacity
+      // is the orthogonal render-window fade, not a second depth layer.
       const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "active";
       const isFocused = Boolean(focusedEdgeId && link.id === focusedEdgeId);
       const clickable = Boolean(link.id && (link.href || onEdgeClick));
@@ -751,7 +752,7 @@ export function OverviewGraph({
         style: {
           stroke: lifecycleColor(sourceLifecycle),
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 4) : baseStrokeWidth,
-          strokeOpacity: isFocused ? 0.95 : 0.5 * edgeOpacity * transitionOpacity,
+          strokeOpacity: isFocused ? 0.95 : edgeOpacity * transitionOpacity,
           cursor: clickable ? "pointer" : undefined,
         },
       };

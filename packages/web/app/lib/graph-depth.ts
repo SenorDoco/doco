@@ -1,14 +1,27 @@
-// Per-node BFS depth from a focused node, plus an opacity ramp that
-// fades nodes further from the focus. Used by every graph perspective
-// (overview, BPMN, entity-detail) so the rule stays the same wherever
-// a focal node is shown:
+// Per-node BFS depth from a focused node, plus the opacity ramps that
+// fade nodes and edges further from the focus. Used by every graph
+// perspective (overview, BPMN, entity-detail) so the rule stays the
+// same wherever a focal node is shown.
+//
+// Nodes fade by their own depth:
 //
 //   • focus                 → 100% opacity
 //   • 1 hop                 → 75%
 //   • 2 hops                → 50%
 //   • 3+ hops / unreachable → 25%
 //
-// Edges fade with whichever endpoint sits further from the focus.
+// Edges fade by their deeper endpoint, but one ring brighter than that
+// node — the arrows leaving the focus stay solid, and each outward ring
+// of arrows leads the nodes it links by one step:
+//
+//   • 1st-degree edge       → 100%
+//   • 2nd-degree edge       → 75%
+//   • 3rd-degree edge       → 50%
+//   • 4th+ / unreachable    → 25%
+//
+// These functions are the single source of truth for graph fade:
+// renderers apply the returned value directly (times any orthogonal
+// transition fade), never re-scaling it by a second baseline constant.
 //
 // BFS is undirected — "first-degree neighbour" matches the social-graph
 // meaning, independent of edge arrow direction (BPMN sequenceFlow
@@ -86,14 +99,26 @@ export function opacityForDepth(depth: number | undefined): number {
 
 /**
  * The opacity to apply to an edge whose endpoints are at `from` and
- * `to` hops from the focal node. We pick the deeper of the two so
- * the edge to a faded node fades along with that node — an edge
- * never visually outshines its dimmer endpoint.
+ * `to` hops from the focal node.
+ *
+ * The deeper of the two endpoints sets the edge's degree (an edge is no
+ * brighter than the dimmer ring it reaches), and the edge renders one
+ * ring brighter than a node at that depth — so the arrows leaving the
+ * focus stay fully solid and each outward ring of arrows leads the nodes
+ * it links by one step:
+ *
+ *   • deeper endpoint 1 hop  → 100%  (1st-degree edge)
+ *   • deeper endpoint 2 hops → 75%   (2nd-degree edge)
+ *   • deeper endpoint 3 hops → 50%   (3rd-degree edge)
+ *   • 4+ hops / unreachable  → 25%
+ *
+ * `undefined` means "unreachable" and floors the whole edge at 25%.
  */
 export function opacityForEdge(from: number | undefined, to: number | undefined): number {
-  const a = opacityForDepth(from);
-  const b = opacityForDepth(to);
-  return Math.min(a, b);
+  if (from === undefined || to === undefined) return 0.25;
+  // Degree is the deeper endpoint; render it one ring brighter so the
+  // edge leads the node it points at by a single fade step.
+  return opacityForDepth(Math.max(from, to) - 1);
 }
 
 // Doubles the stroke weight of the focal node's incident edges to match
