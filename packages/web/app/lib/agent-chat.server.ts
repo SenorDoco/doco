@@ -46,6 +46,7 @@ import {
   renderCaptureCheatsheet,
   summarizePredicate,
 } from "@doco/shared";
+import { type ThreadUsage, type ThreadUsageModelRow, aggregateThreadUsage } from "./agent-cost";
 import {
   SENOR_DOCO_DEFAULT_MAX_TOKENS,
   getSenorDocoModel,
@@ -2743,6 +2744,13 @@ export interface ConversationSnapshot {
    * the Thinking column.
    */
   active_turn_events: Array<Record<string, unknown>>;
+  /**
+   * Whole-thread token totals (summed across every recorded turn) plus a
+   * turn count and the derived USD estimate. Drives the meter at the top
+   * of the Thinking panel. All-zero for a thread that has never run a
+   * turn.
+   */
+  thread_usage: ThreadUsage;
 }
 
 async function resolveDocoAttachments(ids: string[]): Promise<DocoAttachmentInfo[]> {
@@ -2805,7 +2813,7 @@ export async function loadSnapshotForPrincipal(
     conv = await loadActiveConversation(principalId);
     if (!conv) return null;
   }
-  const [{ messages: rows, hasMore }, events, attachedDocos, attachedWorkspaces] =
+  const [{ messages: rows, hasMore }, events, attachedDocos, attachedWorkspaces, threadUsage] =
     await Promise.all([
       loadMessagesPage(conv.id, {
         before: opts.before ?? null,
@@ -2814,6 +2822,7 @@ export async function loadSnapshotForPrincipal(
       loadActiveTurnEvents(conv.id),
       resolveDocoAttachments(conv.attached_doco_ids ?? []),
       resolveWorkspaceAttachments(conv.attached_workspace_handles ?? []),
+      loadThreadUsage(conv.id),
     ]);
   return {
     conversation_id: conv.id,
@@ -2830,7 +2839,47 @@ export async function loadSnapshotForPrincipal(
     has_more: hasMore,
     active_turn_started_at: conv.active_turn_started_at?.toISOString() ?? null,
     active_turn_events: events,
+    thread_usage: threadUsage,
   };
+}
+
+/**
+ * Sum every recorded turn for a thread into a single usage total. Groups
+ * by model so each bucket is priced with its own rate card (a thread can
+ * span models if the configured model changed between turns); SUM is cast
+ * to text and parsed in JS to dodge bigint precision surprises.
+ */
+export async function loadThreadUsage(conversationId: string): Promise<ThreadUsage> {
+  return await withClient(async (c) => {
+    const r = await c.query<{
+      model: string;
+      input_tokens: string;
+      output_tokens: string;
+      cache_read_tokens: string;
+      cache_creation_tokens: string;
+      turn_count: string;
+    }>(
+      `SELECT model,
+              COALESCE(SUM(input_tokens), 0)::text          AS input_tokens,
+              COALESCE(SUM(output_tokens), 0)::text         AS output_tokens,
+              COALESCE(SUM(cache_read_tokens), 0)::text     AS cache_read_tokens,
+              COALESCE(SUM(cache_creation_tokens), 0)::text AS cache_creation_tokens,
+              COUNT(*)::text                                AS turn_count
+         FROM agent_turn_metrics
+        WHERE conversation_id = $1
+        GROUP BY model`,
+      [conversationId],
+    );
+    const rows: ThreadUsageModelRow[] = r.rows.map((row) => ({
+      model: row.model,
+      input_tokens: Number(row.input_tokens),
+      output_tokens: Number(row.output_tokens),
+      cache_read_tokens: Number(row.cache_read_tokens),
+      cache_creation_tokens: Number(row.cache_creation_tokens),
+      turn_count: Number(row.turn_count),
+    }));
+    return aggregateThreadUsage(rows);
+  });
 }
 
 async function loadActiveTurnEvents(
