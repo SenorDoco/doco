@@ -42,7 +42,7 @@ describe("loadNodeDialogDetail", () => {
         id: "principal_01TEST",
         primary_text: "Renan Peixoto",
         body_text: "Person. Head of Engineering. Reports to Alexander Torrenegra (CEO).",
-        lifecycle: "asserted",
+        lifecycle: "active",
         raw_json: JSON.stringify({ name: "Renan Peixoto" }),
         created_at: "2026-05-26T17:01:00.000Z",
         updated_at: "2026-05-26T17:01:00.000Z",
@@ -74,7 +74,7 @@ describe("loadNodeDialogDetail", () => {
         id: "decision_01TEST",
         primary_text: "Use display labels\n\nRationale follows.",
         body_text: null,
-        lifecycle: "asserted",
+        lifecycle: "active",
         raw_json: JSON.stringify({}),
         created_at: "2026-05-26T17:01:00.000Z",
         updated_at: "2026-05-26T17:01:00.000Z",
@@ -98,7 +98,7 @@ describe("loadNodeDialogDetail", () => {
     });
   });
 
-  it("labels the asserted lifecycle stage with the 'assert' verb", async () => {
+  it("labels the active stage 'activate' and the queued stage 'queue'", async () => {
     const detail = await loadNodeDialogDetail(
       clientWithRow({
         id: "decision_01TEST",
@@ -118,12 +118,13 @@ describe("loadNodeDialogDetail", () => {
       },
     );
 
-    // The clickable stage transitions read as verbs; "asserted" must read as
-    // "assert" (not the leftover "activate", nor the bare state noun).
+    // The clickable stage transitions read as verbs. After the rename, "active"
+    // reads as "activate" (not the retired "assert"), and the new "queued"
+    // stage reads as "queue".
     const options = detail?.lifecycle_options ?? [];
-    const asserted = options.find((o) => o.value === "asserted");
-    expect(asserted?.label).toBe("assert");
-    expect(options.map((o) => o.label)).not.toContain("activate");
+    expect(options.find((o) => o.value === "active")?.label).toBe("activate");
+    expect(options.find((o) => o.value === "queued")?.label).toBe("queue");
+    expect(options.map((o) => o.label)).not.toContain("assert");
     // The current stage still reads as its state name, not a verb.
     const drafting = options.find((o) => o.value === "drafting");
     expect(drafting?.current).toBe(true);
@@ -163,7 +164,7 @@ describe("loadNodeDialogDetail", () => {
                 entity_type: "action",
                 summary: "Live action",
                 name: null,
-                lifecycle: "asserted",
+                lifecycle: "active",
               },
               {
                 id: "action_01RETIRED",
@@ -183,7 +184,7 @@ describe("loadNodeDialogDetail", () => {
               id: "decision_01TEST",
               primary_text: "Use lifecycle badges",
               body_text: null,
-              lifecycle: "asserted",
+              lifecycle: "active",
               raw_json: JSON.stringify({}),
               created_at: "2026-05-26T17:01:00.000Z",
               updated_at: "2026-05-26T17:01:00.000Z",
@@ -202,7 +203,7 @@ describe("loadNodeDialogDetail", () => {
 
     expect(detail?.outgoing[0]).toMatchObject({
       other_id: "action_01ACTIVE",
-      other_lifecycle: "asserted",
+      other_lifecycle: "active",
     });
     expect(detail?.incoming[0]).toMatchObject({
       other_id: "action_01RETIRED",
@@ -240,35 +241,35 @@ describe("loadNodeDialogDetail", () => {
                 entity_type: "action",
                 summary: "Prior step",
                 name: null,
-                lifecycle: "asserted",
+                lifecycle: "active",
               },
               {
                 id: flexibleId,
                 entity_type: "action",
                 summary: "Flexible path",
                 name: null,
-                lifecycle: "asserted",
+                lifecycle: "active",
               },
               {
                 id: internshipId,
                 entity_type: "action",
                 summary: "Internship path",
                 name: null,
-                lifecycle: "asserted",
+                lifecycle: "active",
               },
               {
                 id: fullTimeId,
                 entity_type: "action",
                 summary: "Full-time path",
                 name: null,
-                lifecycle: "asserted",
+                lifecycle: "active",
               },
               {
                 id: principalId,
                 entity_type: "principal",
                 summary: "User",
                 name: "User",
-                lifecycle: "asserted",
+                lifecycle: "active",
               },
             ] as T[],
           };
@@ -282,7 +283,7 @@ describe("loadNodeDialogDetail", () => {
               id: decisionId,
               primary_text: "BPMN gateway\nin lane User",
               body_text: null,
-              lifecycle: "asserted",
+              lifecycle: "active",
               raw_json: JSON.stringify({
                 sequence_to: [
                   { target: flexibleId, label: "Flexible" },
@@ -402,7 +403,7 @@ describe("loadNodeDialogDetail", () => {
               id: "decision_01TEST",
               primary_text: "Show provenance in dialogs",
               body_text: null,
-              lifecycle: "asserted",
+              lifecycle: "active",
               raw_json: JSON.stringify({
                 created_by: "user_alice",
                 updated_by: "user_agent",
@@ -461,7 +462,7 @@ describe("loadNodeDialogDetail", () => {
               id: "decision_01TEST",
               primary_text: "Implementing code",
               body_text: null,
-              lifecycle: "asserted",
+              lifecycle: "active",
               locator: "packages/web/app/lib/foo.ts:42",
               raw_json: JSON.stringify({}),
               created_at: "2026-05-26T17:01:00.000Z",

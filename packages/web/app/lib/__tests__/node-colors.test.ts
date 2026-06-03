@@ -10,7 +10,7 @@ import {
 
 describe("lifecycleCountParts", () => {
   it("returns each stage in canonical order with its color and hover title", () => {
-    expect(lifecycleCountParts({ drafting: 1, asserted: 33, retired: 2 })).toEqual([
+    expect(lifecycleCountParts({ drafting: 1, queued: 7, active: 33, retired: 2 })).toEqual([
       {
         lifecycle: "drafting",
         count: 1,
@@ -18,10 +18,16 @@ describe("lifecycleCountParts", () => {
         title: LIFECYCLE_DESCRIPTION.drafting,
       },
       {
-        lifecycle: "asserted",
+        lifecycle: "queued",
+        count: 7,
+        color: LIFECYCLE_COLOR.queued,
+        title: LIFECYCLE_DESCRIPTION.queued,
+      },
+      {
+        lifecycle: "active",
         count: 33,
-        color: LIFECYCLE_COLOR.asserted,
-        title: LIFECYCLE_DESCRIPTION.asserted,
+        color: LIFECYCLE_COLOR.active,
+        title: LIFECYCLE_DESCRIPTION.active,
       },
       {
         lifecycle: "retired",
@@ -32,10 +38,10 @@ describe("lifecycleCountParts", () => {
     ]);
   });
 
-  it("always represents all three stages, even when a count is zero", () => {
-    const parts = lifecycleCountParts({ drafting: 0, asserted: 0, retired: 0 });
-    expect(parts.map((p) => p.lifecycle)).toEqual(["drafting", "asserted", "retired"]);
-    expect(parts.map((p) => p.count)).toEqual([0, 0, 0]);
+  it("always represents all four stages, even when a count is zero", () => {
+    const parts = lifecycleCountParts({ drafting: 0, queued: 0, active: 0, retired: 0 });
+    expect(parts.map((p) => p.lifecycle)).toEqual(["drafting", "queued", "active", "retired"]);
+    expect(parts.map((p) => p.count)).toEqual([0, 0, 0, 0]);
   });
 });
 
@@ -43,10 +49,10 @@ describe("sumLifecycleCounts", () => {
   it("sums each lifecycle stage independently across entries", () => {
     expect(
       sumLifecycleCounts([
-        { drafting: 1, asserted: 2, retired: 3 },
-        { drafting: 10, asserted: 20, retired: 30 },
+        { drafting: 1, queued: 4, active: 2, retired: 3 },
+        { drafting: 10, queued: 40, active: 20, retired: 30 },
       ]),
-    ).toEqual({ drafting: 11, asserted: 22, retired: 33 });
+    ).toEqual({ drafting: 11, queued: 44, active: 22, retired: 33 });
   });
 
   it("returns an all-zero total for an empty list", () => {
@@ -57,12 +63,13 @@ describe("sumLifecycleCounts", () => {
 describe("lifecycleDescription", () => {
   it("explains each stage by name", () => {
     expect(lifecycleDescription("drafting")).toMatch(/^Drafting\b/);
-    expect(lifecycleDescription("asserted")).toMatch(/^Asserted\b/);
+    expect(lifecycleDescription("queued")).toMatch(/^Queued\b/);
+    expect(lifecycleDescription("active")).toMatch(/^Active\b/);
     expect(lifecycleDescription("retired")).toMatch(/^Retired\b/);
   });
 
-  it("defaults a null/undefined lifecycle to the asserted description", () => {
-    expect(lifecycleDescription(null)).toBe(LIFECYCLE_DESCRIPTION.asserted);
-    expect(lifecycleDescription(undefined)).toBe(LIFECYCLE_DESCRIPTION.asserted);
+  it("defaults a null/undefined lifecycle to the active description", () => {
+    expect(lifecycleDescription(null)).toBe(LIFECYCLE_DESCRIPTION.active);
+    expect(lifecycleDescription(undefined)).toBe(LIFECYCLE_DESCRIPTION.active);
   });
 });

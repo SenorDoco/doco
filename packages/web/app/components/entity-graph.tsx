@@ -116,7 +116,7 @@ interface GraphSize {
 
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
 // order.
-const LIFECYCLE_ORDER = ["drafting", "asserted", "retired"];
+const LIFECYCLE_ORDER = ["drafting", "queued", "active", "retired"];
 
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 
@@ -125,7 +125,7 @@ function lifecycleLabel(lifecycle: string): string {
 }
 
 function nodeLifecycle(node: GraphNode): string {
-  return node.lifecycle ?? "asserted";
+  return node.lifecycle ?? "active";
 }
 
 const UNKNOWN_PRINCIPAL_KEY = "__unknown_principal__";
@@ -683,7 +683,7 @@ export function EntityGraph({
   const graphReferenceIdRef = useRef(`entity-${Math.random().toString(36).slice(2)}`);
 
   const allLifecycles = useMemo(() => {
-    const set = new Set<string>(["asserted"]);
+    const set = new Set<string>(["active"]);
     for (const n of nodes) {
       if (n.entity_type === "principal") continue;
       set.add(nodeLifecycle(n));
@@ -834,7 +834,7 @@ export function EntityGraph({
         id: entry.node.id,
         entity_type: entry.node.entity_type,
         label: entry.node.name ?? entry.node.summary ?? entry.node.id,
-        lifecycle: entry.node.lifecycle ?? "asserted",
+        lifecycle: entry.node.lifecycle ?? "active",
         href: entry.href,
       }));
   }, [visible.nodes, positions, viewport, graphSize, hrefFor]);
@@ -994,7 +994,7 @@ export function EntityGraph({
           : 1;
         // Edge inherits its origin node's lifecycle colour so the
         // arrow visually carries the state of its source.
-        const sourceLifecycle = visibleNodeById.get(src)?.lifecycle ?? "asserted";
+        const sourceLifecycle = visibleNodeById.get(src)?.lifecycle ?? "active";
         const baseStroke = lifecycleColor(sourceLifecycle);
         return {
           id: `${src}-${tgt}-${l.edge_type}-${i}`,

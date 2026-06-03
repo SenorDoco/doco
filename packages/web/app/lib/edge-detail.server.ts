@@ -131,7 +131,7 @@ function endpointFallback(handle: string, id: string, entityType: string): EdgeD
     entity_type: entityType,
     summary: id,
     name: null,
-    lifecycle: "asserted",
+    lifecycle: "active",
     created_at: null,
     href: `/${handle}/${entityType}/${id}`,
   };
@@ -143,7 +143,7 @@ function endpointFromRow(handle: string, row: EdgeEndpointRow): EdgeDialogEndpoi
     entity_type: row.entity_type,
     summary: row.summary ?? row.name ?? row.id,
     name: row.name,
-    lifecycle: row.lifecycle ?? "asserted",
+    lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     href: `/${handle}/${row.entity_type}/${row.id}`,
   };
@@ -171,7 +171,7 @@ export async function loadEdgeDialogDetail(
               node_type AS entity_type,
               NULLIF(split_part(COALESCE(NULLIF(prose, ''), name, '')::text, E'\n', 1), '') AS summary,
               name,
-              COALESCE(lifecycle, 'asserted') AS lifecycle,
+              COALESCE(lifecycle, 'active') AS lifecycle,
               created_at
          FROM nodes
         WHERE doco_id = $1
@@ -205,7 +205,7 @@ export async function loadEdgeDialogDetail(
   return {
     id: edge.id,
     edge_type: edge.edge_type,
-    lifecycle: edge.lifecycle ?? "asserted",
+    lifecycle: edge.lifecycle ?? "active",
     props: edge.props ?? null,
     created_at: toIso(edge.created_at),
     created_by: edge.created_by,

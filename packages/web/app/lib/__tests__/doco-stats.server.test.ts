@@ -42,7 +42,7 @@ describe("dashboard doco stats", () => {
 });
 
 describe("listDocoStats lifecycle breakdown", () => {
-  it("splits a Doco's node count into drafting / asserted / retired", async () => {
+  it("splits a Doco's node count into drafting / queued / active / retired", async () => {
     const query = async (sql: string) => {
       if (/FROM edges/i.test(sql)) return { rows: [{ doco_id: "doco_1", n: "4" }] };
       if (/FROM audit_events/i.test(sql))
@@ -51,9 +51,10 @@ describe("listDocoStats lifecycle breakdown", () => {
         rows: [
           {
             doco_id: "doco_1",
-            n: "6",
+            n: "8",
             drafting_n: "1",
-            asserted_n: "4",
+            queued_n: "2",
+            active_n: "4",
             retired_n: "1",
             last_entity_at: "2026-05-30T10:00:00.000Z",
           },
@@ -63,8 +64,8 @@ describe("listDocoStats lifecycle breakdown", () => {
     vi.mocked(withClient).mockImplementation(async (callback) => callback({ query } as never));
 
     const stats = await listDocoStats(["doco_1"]);
-    expect(stats.get("doco_1")?.counts).toEqual({ drafting: 1, asserted: 4, retired: 1 });
-    expect(stats.get("doco_1")?.nodes).toBe(6);
+    expect(stats.get("doco_1")?.counts).toEqual({ drafting: 1, queued: 2, active: 4, retired: 1 });
+    expect(stats.get("doco_1")?.nodes).toBe(8);
   });
 
   it("defaults every requested Doco to all-zero counts", async () => {
@@ -72,6 +73,6 @@ describe("listDocoStats lifecycle breakdown", () => {
     vi.mocked(withClient).mockImplementation(async (callback) => callback({ query } as never));
 
     const stats = await listDocoStats(["doco_x"]);
-    expect(stats.get("doco_x")?.counts).toEqual({ drafting: 0, asserted: 0, retired: 0 });
+    expect(stats.get("doco_x")?.counts).toEqual({ drafting: 0, queued: 0, active: 0, retired: 0 });
   });
 });

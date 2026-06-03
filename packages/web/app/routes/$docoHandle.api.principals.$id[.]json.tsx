@@ -62,21 +62,21 @@ async function findActiveReferencesToPrincipal(
         JOIN edges s
           ON s.from_id = a.id
          AND s.from_node_type = 'action'
-       WHERE a.node_type = 'action' AND s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'asserted'
+       WHERE a.node_type = 'action' AND s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'active'
       UNION ALL
       SELECT l.id, 'log'::text, split_part(l.prose, E'\n', 1), s.edge_type
         FROM nodes l
         JOIN edges s
           ON s.from_id = l.id
          AND s.from_node_type = 'log'
-       WHERE l.node_type = 'log' AND s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'asserted'
+       WHERE l.node_type = 'log' AND s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'active'
       UNION ALL
       SELECT i.id, 'intent'::text, split_part(i.prose, E'\n', 1), s.edge_type
         FROM nodes i
         JOIN edges s
           ON s.from_id = i.id
          AND s.from_node_type = 'intent'
-       WHERE i.node_type = 'intent' AND s.doco_id = $1 AND s.to_id = $2 AND i.lifecycle = 'asserted'
+       WHERE i.node_type = 'intent' AND s.doco_id = $1 AND s.to_id = $2 AND i.lifecycle = 'active'
       ORDER BY node_type, id`;
     const r = await c.query<ActiveReference>(sql, [docoId, principalId]);
     return r.rows;
@@ -230,7 +230,7 @@ export async function action({
   // creates/updates/retirements, not by patching Principal JSON.
   const oldData = (existing.data ?? {}) as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...oldData };
-  const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "asserted";
+  const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "active";
   merged.lifecycle = nextLifecycle;
   if (patch.name !== undefined) {
     merged.name = patch.name.trim();
@@ -288,7 +288,7 @@ export async function action({
     after.body_md = nextBodyMd ?? "";
   }
   if (patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle) {
-    before.lifecycle = existing.lifecycle ?? "asserted";
+    before.lifecycle = existing.lifecycle ?? "active";
     after.lifecycle = nextLifecycle;
   }
   if (patch.name !== undefined) {

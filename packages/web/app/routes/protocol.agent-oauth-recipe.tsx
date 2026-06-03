@@ -430,7 +430,7 @@ phrasing. The role table:
 
   - \`reader\` — list + read nodes
   - \`writer\` — capture, patch, retire, and change a node's
-    \`lifecycle\` (drafting → asserted → retired) (+ everything reader
+    \`lifecycle\` (drafting → queued → active → retired) (+ everything reader
     can do). What a writer may or may not do is governed by the Doco's
     own policies, not a built-in role ladder.
   - \`owner\` — Doco settings, invites, role changes, granting agent

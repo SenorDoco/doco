@@ -17,7 +17,7 @@ function principal(
     name: id,
     role: null,
     type: "person",
-    lifecycle: "asserted",
+    lifecycle: "active",
     reports_to: reportsTo,
     dotted_reports_to: dottedReportsTo,
     href: `/acme/principal/${id}`,

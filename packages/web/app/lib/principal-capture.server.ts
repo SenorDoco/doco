@@ -27,7 +27,7 @@ export interface PrincipalDraft {
   created_by?: string | null;
 }
 
-const VALID_PRINCIPAL_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
+const VALID_PRINCIPAL_LIFECYCLES = new Set(["drafting", "queued", "active", "retired"]);
 
 function principalLinkLabel(name: string): string {
   return name.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
@@ -73,14 +73,17 @@ export async function capturePrincipal(
   if (!name) return { error: "name is required.", status: 400 };
 
   // Resolve lifecycle: explicit value wins, then the Doco's template default,
-  // then `asserted`. EXCEPTION — business-processes lane actors must be
+  // then `active`. EXCEPTION — business-processes lane actors must be
   // resolvable the moment they're created (active flow policies only accept
-  // non-retired/asserted principals), so they ignore a `drafting` template
+  // non-retired/active principals), so they ignore a `drafting` template
   // default. (Unchanged from the original route logic.)
-  let lifecycle = "asserted";
+  let lifecycle = "active";
   if (draft.lifecycle !== undefined) {
     if (typeof draft.lifecycle !== "string" || !VALID_PRINCIPAL_LIFECYCLES.has(draft.lifecycle)) {
-      return { error: "lifecycle must be one of: drafting, asserted, retired.", status: 400 };
+      return {
+        error: `lifecycle must be one of: ${[...VALID_PRINCIPAL_LIFECYCLES].join(", ")}.`,
+        status: 400,
+      };
     }
     lifecycle = draft.lifecycle;
   } else {

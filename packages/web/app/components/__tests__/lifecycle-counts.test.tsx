@@ -9,25 +9,27 @@ function text(html: string): string {
 }
 
 describe("LifecycleCountsLabel", () => {
-  it("renders the three counts as 'drafting / asserted / retired'", () => {
+  it("renders the four counts as 'drafting / queued / active / retired'", () => {
     const html = renderToStaticMarkup(
-      <LifecycleCountsLabel counts={{ drafting: 1, asserted: 33, retired: 2 }} />,
+      <LifecycleCountsLabel counts={{ drafting: 1, queued: 7, active: 33, retired: 2 }} />,
     );
-    expect(text(html)).toBe("1/33/2");
+    expect(text(html)).toBe("1/7/33/2");
     // Each number is painted in its lifecycle color.
     expect(html).toContain(LIFECYCLE_COLOR.drafting);
-    expect(html).toContain(LIFECYCLE_COLOR.asserted);
+    expect(html).toContain(LIFECYCLE_COLOR.queued);
+    expect(html).toContain(LIFECYCLE_COLOR.active);
     expect(html).toContain(LIFECYCLE_COLOR.retired);
     // ...and carries a hover title explaining what that color means.
     expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.drafting}"`);
-    expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.asserted}"`);
+    expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.queued}"`);
+    expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.active}"`);
     expect(html).toContain(`title="${LIFECYCLE_DESCRIPTION.retired}"`);
   });
 
-  it("always shows all three stages, even the zeros", () => {
+  it("always shows all four stages, even the zeros", () => {
     const html = renderToStaticMarkup(
-      <LifecycleCountsLabel counts={{ drafting: 0, asserted: 40, retired: 0 }} />,
+      <LifecycleCountsLabel counts={{ drafting: 0, queued: 0, active: 40, retired: 0 }} />,
     );
-    expect(text(html)).toBe("0/40/0");
+    expect(text(html)).toBe("0/0/40/0");
   });
 });

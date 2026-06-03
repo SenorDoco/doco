@@ -147,7 +147,7 @@ export async function loadOrgTreeData(
       // Migration 037 dropped `summary` from principals; the
       // description shown under the label is now the first non-blank
       // line of `body_md`.
-      `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle, body_md, data,
+      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle, body_md, data,
               (SELECT COUNT(*) FROM nodes
                 WHERE node_type = 'principal' AND doco_id = $1) AS total_count
          FROM nodes
@@ -206,7 +206,7 @@ export async function loadOrgTreeData(
       name: r.name,
       role,
       type,
-      lifecycle: r.lifecycle ?? "asserted",
+      lifecycle: r.lifecycle ?? "active",
       reports_to,
       dotted_reports_to,
       href: `/${handle}/principal/${r.id}`,

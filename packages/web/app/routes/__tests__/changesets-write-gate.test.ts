@@ -81,10 +81,10 @@ describe("changesets write gate", () => {
     });
   });
 
-  it("assert transitions a node to asserted via updateEntity", async () => {
+  it("activate transitions a node to active via updateEntity", async () => {
     const response = await action({
       request: changesetRequest({
-        operations: [{ op: "assert", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+        operations: [{ op: "activate", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
       }),
       params: { docoHandle: "acme" },
     });
@@ -101,22 +101,40 @@ describe("changesets write gate", () => {
         entityType: "decision",
         pluralDir: "decisions",
         id: "decision_0123456789ABCDEFGHJKMNPQRS",
-        patch: { lifecycle: "asserted" },
+        patch: { lifecycle: "active" },
       }),
     );
   });
 
-  it("rejects the former 'activate' op — renamed to 'assert', no backwards compat", async () => {
+  it("queue transitions a node to queued via updateEntity", async () => {
     const response = await action({
       request: changesetRequest({
-        operations: [{ op: "activate", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+        operations: [{ op: "queue", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.updateEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: "decision",
+        pluralDir: "decisions",
+        id: "decision_0123456789ABCDEFGHJKMNPQRS",
+        patch: { lifecycle: "queued" },
+      }),
+    );
+  });
+
+  it("rejects the former 'assert' op — renamed to 'activate', no backwards compat", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [{ op: "assert", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
       }),
       params: { docoHandle: "acme" },
     });
     expect(response.status).toBe(400);
     const body = (await response.json()) as { ok: boolean; error?: string };
     expect(body.ok).toBe(false);
-    expect(body.error).toContain('Unknown operation "activate"');
+    expect(body.error).toContain('Unknown operation "assert"');
     expect(mocks.updateEntity).not.toHaveBeenCalled();
   });
 

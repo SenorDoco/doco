@@ -44,12 +44,12 @@ async function main(): Promise<void> {
       );
       await c.query(
         `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data, created_by)
-         VALUES ($1,$2,'decision','asserted','Adopt first-class edges','{}',$3)`,
+         VALUES ($1,$2,'decision','active','Adopt first-class edges','{}',$3)`,
         [decisionId, docoId, userId],
       );
       await c.query(
         `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data, created_by)
-         VALUES ($1,$2,'reference','asserted','PR #634','{}',$3)`,
+         VALUES ($1,$2,'reference','active','PR #634','{}',$3)`,
         [refId, docoId, userId],
       );
     } finally {
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
 
   // --- read + history ---
   const read = await getEdgeById(docoId, edgeId);
-  check("getEdgeById returns the live edge", read?.lifecycle === "asserted");
+  check("getEdgeById returns the live edge", read?.lifecycle === "active");
   let versions = await withClient((c) => getVersions(c, "edge", edgeId));
   check("history has create version", versions.length === 1 && versions[0].op === "create");
 

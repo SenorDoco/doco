@@ -6,7 +6,7 @@
 // Doco's principals. Policies are not nodes and are deliberately
 // excluded — they are surfaced via /<handle>/api/policies.json.
 // `counts` is that same total split by lifecycle stage
-// (drafting / asserted / retired) for the colored count display.
+// (drafting / queued / active / retired) for the colored count display.
 // `edges` reads the persisted `edges` table.
 // `lastUpdatedAt` prefers the max `at` from `audit_events`, and falls
 // back to entity `updated_at` for imported/pre-audit Docos.
@@ -67,15 +67,17 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
         doco_id: string;
         n: string;
         drafting_n: string;
-        asserted_n: string;
+        queued_n: string;
+        active_n: string;
         retired_n: string;
         last_entity_at: string | null;
       }>(
         `SELECT doco_id,
                 COUNT(*)::text AS n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'drafting')::text AS drafting_n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted')::text AS asserted_n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'retired')::text AS retired_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'drafting')::text AS drafting_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'queued')::text AS queued_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active')::text AS active_n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'retired')::text AS retired_n,
                 MAX(updated_at)::text AS last_entity_at
            FROM (${nodesSql}) t
           GROUP BY doco_id`,
@@ -98,7 +100,8 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
         s.nodes = Number(r.n);
         s.counts = {
           drafting: Number(r.drafting_n),
-          asserted: Number(r.asserted_n),
+          queued: Number(r.queued_n),
+          active: Number(r.active_n),
           retired: Number(r.retired_n),
         };
         s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_entity_at);

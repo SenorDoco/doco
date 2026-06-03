@@ -64,7 +64,7 @@ const NODE_TYPE_ORDER = new Map(
 // Used here as a tiebreaker sort within a node type so lists agree with
 // the lifecycle filter row and the doco-stats card on render order.
 const LIFECYCLE_RANK = new Map(
-  ["drafting", "asserted", "retired"].map((lifecycle, index) => [lifecycle, index]),
+  ["drafting", "queued", "active", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
 const POLICY_TYPES = new Set(["guidance_policy", "node_authoring_policy"]);
@@ -116,7 +116,7 @@ export function ListPerspective({
 
   const filtered = useMemo(() => {
     if (!visibleLifecycles) return nodes;
-    return nodes.filter((node) => visibleLifecycles.has(node.lifecycle ?? "asserted"));
+    return nodes.filter((node) => visibleLifecycles.has(node.lifecycle ?? "active"));
   }, [nodes, visibleLifecycles]);
 
   const sorted = useMemo(() => sortNodes(filtered, sort, pageRanks), [filtered, sort, pageRanks]);
@@ -128,7 +128,7 @@ export function ListPerspective({
         id: node.id,
         entity_type: node.entity_type,
         label: node.name ?? node.id,
-        lifecycle: node.lifecycle ?? "asserted",
+        lifecycle: node.lifecycle ?? "active",
         href: node.href ?? null,
       })),
     [sorted],
@@ -218,7 +218,7 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
       data-node-href={node.href ?? undefined}
       data-node-id={node.id}
       data-node-label={node.name ?? node.id}
-      data-node-lifecycle={node.lifecycle ?? "asserted"}
+      data-node-lifecycle={node.lifecycle ?? "active"}
       data-node-type={node.entity_type}
     >
       {referenceNumber ? (
@@ -353,7 +353,7 @@ function nodeTypeRank(type: string): number {
 }
 
 function lifecycleRank(lifecycle: string | null): number {
-  return LIFECYCLE_RANK.get(lifecycle ?? "asserted") ?? LIFECYCLE_RANK.size + 1;
+  return LIFECYCLE_RANK.get(lifecycle ?? "active") ?? LIFECYCLE_RANK.size + 1;
 }
 
 function policyPin(node: ListPerspectiveNode): number {

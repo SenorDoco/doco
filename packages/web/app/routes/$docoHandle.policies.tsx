@@ -52,7 +52,7 @@ export async function loader({
       `SELECT id, policy, lifecycle, created_at, body_md, data
          FROM guidance_policies
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') = 'asserted'
+          AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
       [ctx.meta.docoId],
     );
@@ -60,7 +60,7 @@ export async function loader({
       `SELECT id, policy, lifecycle, created_at, body_md, data
          FROM node_authoring_policies
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') = 'asserted'
+          AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
       [ctx.meta.docoId],
     );
@@ -189,7 +189,7 @@ export function ArticleSection({
                     ) : null}
                   </div>
                   <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
-                    {item.lifecycle ?? "asserted"}
+                    {item.lifecycle ?? "active"}
                   </span>
                   {editHrefBase ? (
                     <Link

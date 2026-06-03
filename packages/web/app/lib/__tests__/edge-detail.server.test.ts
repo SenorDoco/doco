@@ -30,7 +30,7 @@ describe("loadEdgeDialogDetail", () => {
                 to_node_type: "intent",
                 edge_type: "supports",
                 props: { note: "critical", role: "serves" },
-                lifecycle: "asserted",
+                lifecycle: "active",
                 created_at: "2026-05-30T10:00:00.000Z",
                 created_by: "user_alice",
                 updated_at: "2026-05-30T10:01:00.000Z",
@@ -48,7 +48,7 @@ describe("loadEdgeDialogDetail", () => {
                 entity_type: "decision",
                 summary: "Pick the runtime",
                 name: null,
-                lifecycle: "asserted",
+                lifecycle: "active",
                 created_at: "2026-05-30T09:00:00.000Z",
               },
               {
@@ -105,14 +105,14 @@ describe("loadEdgeDialogDetail", () => {
     expect(detail).toMatchObject({
       id: "edge_01TEST",
       edge_type: "supports",
-      lifecycle: "asserted",
+      lifecycle: "active",
       github_repo: null,
       href: "/test-doco/edges/edge_01TEST",
       from: {
         id: "decision_01FROM",
         entity_type: "decision",
         summary: "Pick the runtime",
-        lifecycle: "asserted",
+        lifecycle: "active",
         href: "/test-doco/decision/decision_01FROM",
       },
       to: {

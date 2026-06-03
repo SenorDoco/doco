@@ -31,11 +31,12 @@ const RELATION_API_NOTE = `RELATIONSHIPS
   authenticated session or token. Never send created_by.
 
   LIFECYCLE NOTE
-  A node has three life stages: drafting -> asserted -> retired.
-  Before you capture, ask your client whether they are DRAFTING or
-  ASSERTING this node:
+  A node has four life stages: drafting -> queued -> active -> retired.
+  Before you capture, ask your client which stage this node is in:
     - drafting  — tentative, a work in progress that may still change.
-    - asserted  — committed as fact, the settled state (the default).
+    - queued    — ready, awaiting activation (e.g. an open PR under review).
+    - active    — committed as fact, the settled state in force (the default).
+    - retired   — no longer in use.
   Removal is never a hard delete; transition lifecycle to "retired"
   instead — the full history is preserved in the audit trail.
 `;
@@ -524,7 +525,7 @@ SUCCESS RESPONSE — edit (HTTP 200, application/json)
   {
     "ok": true,
     "id": "principal_<ULID>",
-    "lifecycle": "asserted",
+    "lifecycle": "active",
     "footer_lines": ["[🔮 Doco] 👤 Principal updated: [<name>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
@@ -639,7 +640,7 @@ ENDPOINT (list)
         "policy_kind": "guidance",
         "id": "guidance_policy_<ULID>",
         "policy": "...",
-        "lifecycle": "asserted",
+        "lifecycle": "active",
         "body_md": "...",
         "created_at": "...",
         "updated_at": "..."
@@ -662,7 +663,7 @@ BODY — policy_kind = "guidance"
   policy                required   one-line policy rule
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
-  lifecycle             optional   one of "drafting" | "asserted" | "retired"; default "asserted"
+  lifecycle             optional   one of "drafting" | "active" | "retired"; default "active"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
 
@@ -675,11 +676,11 @@ BODY — policy_kind = "node_authoring"
                                   kind="probabilistic".
   spec                  required*  probabilistic spec; stored as
                                   {kind:"probabilistic", spec}
-  fires_when_node_lifecycle optional ["asserted", ...]
+  fires_when_node_lifecycle optional ["active", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block"
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
-  lifecycle             optional   one of "drafting" | "asserted" | "retired"; default "asserted"
+  lifecycle             optional   one of "drafting" | "active" | "retired"; default "active"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
 
@@ -732,7 +733,7 @@ EXAMPLE — node_authoring (unique field)
         "case_fold": true,
         "when_node_type": ["decision"]
       },
-      "fires_when_node_lifecycle": ["asserted"]
+      "fires_when_node_lifecycle": ["active"]
     }'
 
 EXAMPLE — node_authoring (probabilistic)

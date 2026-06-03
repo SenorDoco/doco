@@ -152,7 +152,7 @@ async function loadPolicyArticles(docoId: string): Promise<{
         `SELECT id, policy, lifecycle, body_md
            FROM guidance_policies
           WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'asserted') = 'asserted'
+            AND COALESCE(lifecycle, 'active') = 'active'
           ORDER BY created_at DESC`,
         [docoId],
       ),
@@ -160,7 +160,7 @@ async function loadPolicyArticles(docoId: string): Promise<{
         `SELECT id, policy, lifecycle, body_md
            FROM node_authoring_policies
           WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'asserted') = 'asserted'
+            AND COALESCE(lifecycle, 'active') = 'active'
           ORDER BY created_at DESC`,
         [docoId],
       ),

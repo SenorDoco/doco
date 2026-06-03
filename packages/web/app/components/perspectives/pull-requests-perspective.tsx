@@ -82,7 +82,7 @@ function PullRequestRow({ pr, handle }: { pr: PullRequestItem; handle: string })
           perspective. The PR URL is reached via the explicit button. */}
       <Link to={`/${handle}/reference/${pr.id}`} className="flex min-w-0 flex-1 items-center gap-3">
         <span aria-hidden className="shrink-0 text-muted-foreground">
-          {pr.lifecycle === "asserted" ? (
+          {pr.lifecycle === "active" ? (
             <GitMerge className="h-3.5 w-3.5" />
           ) : (
             <GitPullRequest className="h-3.5 w-3.5" />

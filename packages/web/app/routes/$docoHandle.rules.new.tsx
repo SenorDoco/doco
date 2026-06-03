@@ -33,7 +33,7 @@ export async function loader({
         `SELECT id, split_part(prose, E'\n', 1) AS label FROM nodes
           WHERE node_type = 'intent'
             AND doco_id = $1
-            AND COALESCE(lifecycle, 'asserted') = 'asserted'
+            AND COALESCE(lifecycle, 'active') = 'active'
           ORDER BY created_at DESC`,
         [meta.docoId],
       )

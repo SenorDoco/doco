@@ -96,7 +96,7 @@ export async function resolveFilteredCandidates(
       const r = await c.query<{ id: string }>(
         `SELECT id FROM nodes
           WHERE node_type = $3 AND doco_id = $1
-            AND COALESCE(lifecycle, 'asserted') = ANY($2::text[])`,
+            AND COALESCE(lifecycle, 'active') = ANY($2::text[])`,
         [docoId, filters.lifecycle, entityType],
       );
       for (const row of r.rows) lifecycleIds.add(row.id);
@@ -133,7 +133,7 @@ export interface FilterFacets {
   entityType: {
     value: string;
     count: number;
-    // Per-lifecycle breakdown (drafting / asserted / retired) of `count`.
+    // Per-lifecycle breakdown (drafting / queued / active / retired) of `count`.
     // `computeFilterFacets` always populates it; the search surface
     // rebuilds hit-scoped counts via `withHitDerivedCounts` and omits it
     // (the search UI shows only the total per type), so it is optional.
@@ -159,7 +159,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       updated_at: Date | string | null;
     }>(
       `SELECT node_type,
-              COALESCE(lifecycle, 'asserted') AS value,
+              COALESCE(lifecycle, 'active') AS value,
               COUNT(*)::text AS n,
               MAX(updated_at) AS updated_at
          FROM nodes
@@ -188,14 +188,16 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       node_type: string;
       n: string;
       drafting_n: string;
-      asserted_n: string;
+      queued_n: string;
+      active_n: string;
       retired_n: string;
       updated_at: Date | string | null;
     }>(
       `SELECT COUNT(*)::text AS n,
-              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'drafting'))::text AS drafting_n,
-              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'asserted'))::text AS asserted_n,
-              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'asserted') = 'retired'))::text AS retired_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'drafting'))::text AS drafting_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'queued'))::text AS queued_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active'))::text AS active_n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'retired'))::text AS retired_n,
               MAX(updated_at) AS updated_at,
               node_type
          FROM nodes
@@ -210,7 +212,8 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     count: Number(row.n),
     counts: {
       drafting: Number(row.drafting_n),
-      asserted: Number(row.asserted_n),
+      queued: Number(row.queued_n),
+      active: Number(row.active_n),
       retired: Number(row.retired_n),
     },
     updatedAt: toIso(row.updated_at),
@@ -224,7 +227,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
               MAX(updated_at) AS updated_at
          FROM edges
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'asserted') <> 'retired'
+          AND COALESCE(lifecycle, 'active') <> 'retired'
         GROUP BY edge_type
         ORDER BY COUNT(*) DESC, edge_type`,
       [docoId],
@@ -242,7 +245,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
         // Canonical lifecycle progression — render in the same order
         // everywhere so the stats card, the filter row, and the audit
         // panel agree.
-        const order = ["drafting", "asserted", "retired"];
+        const order = ["drafting", "queued", "active", "retired"];
         const ai = order.indexOf(a.value);
         const bi = order.indexOf(b.value);
         if (ai !== -1 && bi !== -1) return ai - bi;

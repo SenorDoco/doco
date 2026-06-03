@@ -20,7 +20,7 @@ function row(over: Partial<PullRequestRefRow>): PullRequestRefRow {
     id: "reference_01TEST",
     reference: "Some title\n\nbody",
     locator: "https://github.com/acme/web/pull/1",
-    lifecycle: "asserted",
+    lifecycle: "active",
     updated_at: "2026-06-02T16:00:00.000Z",
     ...over,
   };
@@ -30,8 +30,8 @@ describe("pullRequestItemsFromRows", () => {
   it("returns a flat list preserving input (newest-first) order across all lifecycles", () => {
     const items = pullRequestItemsFromRows([
       row({ id: "reference_closed", lifecycle: "retired" }),
-      row({ id: "reference_open", lifecycle: "drafting" }),
-      row({ id: "reference_merged", lifecycle: "asserted" }),
+      row({ id: "reference_open", lifecycle: "queued" }),
+      row({ id: "reference_merged", lifecycle: "active" }),
     ]);
 
     expect(items.map((i) => i.id)).toEqual([
@@ -40,7 +40,7 @@ describe("pullRequestItemsFromRows", () => {
       "reference_merged",
     ]);
     // No grouping/reordering — every stage stays in query order.
-    expect(items.map((i) => i.lifecycle)).toEqual(["retired", "drafting", "asserted"]);
+    expect(items.map((i) => i.lifecycle)).toEqual(["retired", "queued", "active"]);
   });
 
   it("derives the title from the first line of the reference prose", () => {
@@ -59,10 +59,10 @@ describe("pullRequestItemsFromRows", () => {
     expect(items[0].title).toBe("https://github.com/acme/web/pull/42");
   });
 
-  it("normalizes an unknown/null lifecycle to drafting", () => {
+  it("normalizes an unknown/null lifecycle to queued", () => {
     const items = pullRequestItemsFromRows([row({ id: "reference_null", lifecycle: null })]);
 
-    expect(items[0].lifecycle).toBe("drafting");
+    expect(items[0].lifecycle).toBe("queued");
   });
 
   it("carries the locator through as the PR url", () => {
@@ -84,8 +84,8 @@ describe("pullRequestItemsFromRows", () => {
 
 describe("pullRequestLabel", () => {
   it("maps lifecycle stages to Merged / Open / Closed (unknown → Open)", () => {
-    expect(pullRequestLabel("asserted")).toBe("Merged");
-    expect(pullRequestLabel("drafting")).toBe("Open");
+    expect(pullRequestLabel("active")).toBe("Merged");
+    expect(pullRequestLabel("queued")).toBe("Open");
     expect(pullRequestLabel("retired")).toBe("Closed");
     expect(pullRequestLabel("whatever")).toBe("Open");
   });
@@ -115,7 +115,7 @@ describe("loadPullRequestsPerspective", () => {
       id: "reference_1",
       reference: "Merged PR",
       locator: "https://github.com/acme/web/pull/1",
-      lifecycle: "asserted",
+      lifecycle: "active",
       total_count: "2",
       ...over,
     };
@@ -150,8 +150,8 @@ describe("loadPullRequestsPerspective", () => {
 
   it("returns a flat newest-first list without grouping by lifecycle", async () => {
     const { client } = makeClient([
-      prRow({ id: "reference_merged", lifecycle: "asserted", total_count: "3" }),
-      prRow({ id: "reference_open", lifecycle: "drafting", total_count: "3" }),
+      prRow({ id: "reference_merged", lifecycle: "active", total_count: "3" }),
+      prRow({ id: "reference_open", lifecycle: "queued", total_count: "3" }),
       prRow({ id: "reference_closed", lifecycle: "retired", total_count: "3" }),
     ]);
 

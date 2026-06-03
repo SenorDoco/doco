@@ -38,7 +38,7 @@ describe("selectPerspectiveWindow", () => {
         {
           id: "intent_neighbor",
           node_type: "intent",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-02T00:00:00.000Z",
           degree: "3",
         },
@@ -47,7 +47,7 @@ describe("selectPerspectiveWindow", () => {
         {
           id: "decision_fresh",
           node_type: "decision",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-03T00:00:00.000Z",
           degree: "10",
         },
@@ -61,7 +61,7 @@ describe("selectPerspectiveWindow", () => {
         {
           id: "decision_extra",
           node_type: "decision",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-01T00:00:00.000Z",
           degree: "1",
         },
@@ -92,7 +92,7 @@ describe("selectPerspectiveWindow", () => {
       focus: {
         id: "decision_central",
         node_type: "decision",
-        lifecycle: "asserted",
+        lifecycle: "active",
         created_at: "2026-05-01T00:00:00.000Z",
         degree: "12",
       },
@@ -101,14 +101,14 @@ describe("selectPerspectiveWindow", () => {
         {
           id: "decision_central",
           node_type: "decision",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-01T00:00:00.000Z",
           degree: "12",
         },
         {
           id: "decision_newer",
           node_type: "decision",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-03T00:00:00.000Z",
           degree: "1",
         },
@@ -145,7 +145,7 @@ describe("selectPerspectiveWindow", () => {
       });
       for (const { sql } of calls) {
         expect(sql, `${key} window must not pre-exclude retired nodes`).not.toMatch(
-          /COALESCE\(n\.lifecycle, 'asserted'\) <> 'retired'/,
+          /COALESCE\(n\.lifecycle, 'active'\) <> 'retired'/,
         );
       }
     }

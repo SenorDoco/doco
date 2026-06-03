@@ -4,7 +4,7 @@ import { type LifecycleCounts, lifecycleCountParts } from "~/lib/node-colors";
 
 /**
  * Renders a node count split by lifecycle stage:
- *   drafting / asserted / retired   (blue / black / red)
+ *   drafting / queued / active / retired   (blue / amber / black / red)
  *
  * All three are always shown — even zeros — so each color keeps a
  * stable position. Color is the only thing that distinguishes the

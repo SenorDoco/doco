@@ -338,7 +338,7 @@ export interface DecisionDraft {
   alternatives?: { name: string; rejected_because: string }[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** Optional: defaults to "asserted". */
+  /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -384,7 +384,9 @@ export type Op =
 
 const TRUNC = 120;
 const STRUCK_LIFECYCLES = new Set(["retired"]);
-const VALID_LIFECYCLES = new Set(["drafting", "asserted", "retired"]);
+const VALID_LIFECYCLES = new Set(["drafting", "queued", "active", "retired"]);
+// Policies occupy only two stages — never the node-only `drafting`/`queued`.
+const POLICY_LIFECYCLES = new Set(["active", "retired"]);
 const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
 
 /**
@@ -447,12 +449,30 @@ function lifecycleAttrs(
 }
 
 /**
+ * Lifecycle resolution for policies. Unlike nodes, a policy only ever
+ * occupies two stages — `active` (in force) or `retired` (superseded /
+ * withdrawn) — and defaults to `active`. The node-only `drafting`/`queued`
+ * stages are rejected so a policy can never silently land outside the
+ * `{active, retired}` pair the DB CHECK also enforces.
+ */
+function policyLifecycleAttrs(draft: LifecycleAttrs): ResolvedLifecycleAttrs | CaptureError {
+  const attrs = lifecycleAttrs(draft, "active");
+  if ("error" in attrs) return attrs;
+  if (!POLICY_LIFECYCLES.has(attrs.lifecycle)) {
+    return {
+      error: `Policies only support lifecycle "active" or "retired"; got "${attrs.lifecycle}".`,
+    };
+  }
+  return attrs;
+}
+
+/**
  * Resolve the lifecycle fallback for a capture: the Doco's
  * template-seeded `default_node_lifecycle` when set, otherwise the
  * node type's built-in default. Wires up the `defaultNodeLifecycle`
  * the templates already declare — it was stored on the Doco but never
  * consulted at capture time, so e.g. `org-chart`'s `drafting` default
- * (and the asserted-only completeness gates it implies) didn't take
+ * (and the active-only completeness gates it implies) didn't take
  * effect through the capture API. A per-process memo keeps this to one
  * Doco read even across a multi-node changeset.
  */
@@ -887,7 +907,7 @@ export async function captureDecision(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -992,7 +1012,7 @@ export async function updateDecision(
     });
   }
   if (patch.lifecycle !== undefined) {
-    const lifecycle = normalizeLifecycle(patch.lifecycle, "asserted");
+    const lifecycle = normalizeLifecycle(patch.lifecycle, "active");
     if (typeof lifecycle !== "string") return lifecycle;
     setScalar("lifecycle", lifecycle);
   }
@@ -1169,7 +1189,7 @@ export async function updateEntity(opts: {
     );
   }
   if (normalizedPatch.lifecycle !== undefined) {
-    const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "asserted");
+    const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "active");
     if (typeof lifecycle !== "string") return lifecycle;
     setScalar("lifecycle", lifecycle);
   }
@@ -1309,7 +1329,7 @@ export interface IntentDraft {
 
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** Optional: defaults to "asserted". */
+  /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -1335,7 +1355,7 @@ export async function captureIntent(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1448,7 +1468,7 @@ export interface EvalDraft {
   expected?: unknown;
   /** Internal route-filled user id that created this Eval. */
   created_by_user_id?: string;
-  /** Optional default: lifecycle = "asserted". */
+  /** Optional default: lifecycle = "active". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -1488,7 +1508,7 @@ export async function captureEval(
   const label = firstLine(evalText);
 
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
@@ -1716,7 +1736,7 @@ export interface RuleDraft {
   severity?: "hard" | "soft";
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** Optional: defaults to "asserted". */
+  /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -1756,7 +1776,7 @@ export async function captureRule(
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
   if ("error" in status) return status;
 
   // Empty selector — matches everything by having nothing to filter
@@ -1808,7 +1828,7 @@ export interface GuidancePolicyDraft {
   authored_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** Optional: defaults to "asserted". */
+  /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -1965,7 +1985,7 @@ async function buildGuidancePolicyPayload(
   const id = `guidance_policy_${generateUlid()}`;
   const policy = draft.policy.trim();
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = policyLifecycleAttrs(draft);
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
   const createdById = userCreatorId(draft);
@@ -2011,7 +2031,7 @@ async function buildNodeAuthoringPolicyPayload(
   const id = `node_authoring_policy_${generateUlid()}`;
   const policy = draft.policy.trim();
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "asserted");
+  const status = policyLifecycleAttrs(draft);
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
   const createdById = userCreatorId(draft);
@@ -2181,7 +2201,7 @@ export async function transitionPolicyLifecycle(opts: {
   scopeId: string;
   entityType: "guidance_policy" | "node_authoring_policy";
   policyId: string;
-  newLifecycle: "asserted" | "retired";
+  newLifecycle: "active" | "retired";
   supersededBy?: string;
   actorId: string | null;
   reason?: string;
@@ -2232,7 +2252,7 @@ export async function transitionPolicyLifecycle(opts: {
     entity_type: opts.entityType,
     entity_id: opts.policyId,
     op: "lifecycle.transition",
-    before: { lifecycle: before.lifecycle ?? "asserted" },
+    before: { lifecycle: before.lifecycle ?? "active" },
     after: {
       lifecycle: opts.newLifecycle,
       ...(opts.supersededBy ? { superseded_by: opts.supersededBy } : {}),
@@ -2285,7 +2305,7 @@ export async function loadPolicyForEdit(opts: {
     ok: true,
     policy: row.policy ?? "",
     body_md: row.body_md ?? "",
-    lifecycle: row.lifecycle ?? "asserted",
+    lifecycle: row.lifecycle ?? "active",
     data: row.data ?? {},
   };
 }
@@ -2330,7 +2350,7 @@ export async function captureReference(
   const referenceText = draft.reference.trim();
   const label = firstLine(referenceText);
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
@@ -2377,7 +2397,7 @@ export interface StateDraft {
   invariants?: string[];
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
-  /** Optional: explicit lifecycle override. Defaults to "asserted". */
+  /** Optional: explicit lifecycle override. Defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -2410,7 +2430,7 @@ export async function captureState(
   const label = firstLine(stateText);
   const now = new Date().toISOString();
 
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "asserted"));
+  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
   if ("error" in status) return status;
 
   const invariants: string[] = Array.isArray(draft.invariants)

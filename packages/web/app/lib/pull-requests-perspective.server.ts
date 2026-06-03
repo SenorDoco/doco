@@ -24,7 +24,7 @@ export interface PullRequestRefRow {
   reference: string | null;
   /** Promoted `locator` column — the canonical PR URL. */
   locator: string | null;
-  /** Canonical lifecycle stage (drafting/asserted/retired); null defaults to drafting. */
+  /** Canonical lifecycle stage (queued/active/retired); null defaults to queued. */
   lifecycle: string | null;
   /** Last time the imported PR Reference changed in Doco. */
   updated_at: string | null;
@@ -67,16 +67,17 @@ type PullRequestRefRowWithTotal = PullRequestRefRow & {
 };
 
 // Human labels for the PR lifecycle stages, shown as a per-row chip.
+//   active (merged or approved) → Merged, queued (open) → Open, retired → Closed.
 const LIFECYCLE_LABELS: Record<string, string> = {
-  asserted: "Merged",
-  drafting: "Open",
+  active: "Merged",
+  queued: "Open",
   retired: "Closed",
 };
 const DEFAULT_PULL_REQUEST_LIMIT = 500;
 
 /** Display label for a PR's lifecycle chip (Merged / Open / Closed). */
 export function pullRequestLabel(lifecycle: string): string {
-  return LIFECYCLE_LABELS[lifecycle] ?? LIFECYCLE_LABELS.drafting;
+  return LIFECYCLE_LABELS[lifecycle] ?? LIFECYCLE_LABELS.queued;
 }
 
 function firstLine(value: string | null | undefined): string {
@@ -89,12 +90,12 @@ function firstLine(value: string | null | undefined): string {
  * Map PR-shaped Reference rows to a flat list of items, preserving input order
  * (newest first from the query) regardless of stage. The PR title is the first
  * line of the Reference prose, falling back to the locator (PR URL) when the
- * prose is empty. An unknown/null lifecycle is normalized to `drafting`. Pure.
+ * prose is empty. An unknown/null lifecycle is normalized to `queued`. Pure.
  */
 export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequestItem[] {
   return rows.map((row) => {
     const url = row.locator ?? "";
-    const lifecycle = row.lifecycle && LIFECYCLE_LABELS[row.lifecycle] ? row.lifecycle : "drafting";
+    const lifecycle = row.lifecycle && LIFECYCLE_LABELS[row.lifecycle] ? row.lifecycle : "queued";
     return {
       id: row.id,
       title: firstLine(row.reference) || url,

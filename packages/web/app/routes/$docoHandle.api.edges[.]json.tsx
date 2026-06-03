@@ -76,7 +76,7 @@ export async function action({ request, params }: { request: Request; params: Pa
     fromId,
     toId,
     props: (body.props as Record<string, unknown> | undefined) ?? null,
-    lifecycle: body.lifecycle === "drafting" ? "drafting" : "asserted",
+    lifecycle: body.lifecycle === "drafting" ? "drafting" : "active",
     reason: typeof body.reason === "string" ? body.reason : null,
     ...(await authoringContextForRequest(request)),
   });

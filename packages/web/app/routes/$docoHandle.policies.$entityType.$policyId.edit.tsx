@@ -311,7 +311,7 @@ export default function EditPolicy({
                       <input
                         name="fires_when_node_lifecycle"
                         defaultValue={initialFiresOn}
-                        placeholder="asserted"
+                        placeholder="active"
                         className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                       />
                     </label>

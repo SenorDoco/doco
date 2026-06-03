@@ -225,7 +225,7 @@ function collectPopulationNodeTypes(policies: LoadedPolicy[]): Set<string> {
 type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 
 async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]> {
-  // COALESCE so a NULL lifecycle column behaves as "asserted" — the rest of
+  // COALESCE so a NULL lifecycle column behaves as "active" — the rest of
   // the codebase treats NULL that way (search-filters, doco-stats,
   // full-graph, bpmn-perspective, agent-chat). Without it, a policy
   // whose lifecycle column is NULL is silently invisible to the enforcer
@@ -233,7 +233,7 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
   const r = await c.query<{ id: string; policy: string; data: Record<string, unknown> | null }>(
     `SELECT id, policy, data
        FROM node_authoring_policies
-       WHERE doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'`,
+       WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'`,
     [docoId],
   );
   const out: LoadedPolicy[] = [];
@@ -278,7 +278,7 @@ async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalInd
   // doesn't accept a retired actor. COALESCE matches the rest of the
   // codebase's NULL-as-active convention.
   const r = await c.query<{ id: string }>(
-    "SELECT id FROM nodes WHERE node_type = 'principal' AND doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'",
+    "SELECT id FROM nodes WHERE node_type = 'principal' AND doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'",
     [docoId],
   );
   return new Set(r.rows.map((row) => row.id));
@@ -291,7 +291,7 @@ async function loadEdges(c: PgClient, docoId: string): Promise<EngineEdge[]> {
     edge_type: string;
     edge_props_json: Record<string, unknown> | null;
   }>(
-    "SELECT from_id, to_id, edge_type, props AS edge_props_json FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'asserted') = 'asserted'",
+    "SELECT from_id, to_id, edge_type, props AS edge_props_json FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'",
     [docoId],
   );
   return r.rows;
@@ -312,7 +312,7 @@ async function loadPopulation(
   const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
     `SELECT id, data FROM nodes
        WHERE doco_id = $1 AND node_type = ANY($2::text[]) AND id <> $3
-         AND COALESCE(lifecycle, 'asserted') = 'asserted'`,
+         AND COALESCE(lifecycle, 'active') = 'active'`,
     [docoId, [...nodeTypes], excludeId],
   );
   for (const row of r.rows) {
