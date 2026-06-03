@@ -32,53 +32,18 @@
 // null`.
 
 import {
-  type WorkspaceConstitution,
-  getDocoByIdOrHandle,
-  getWorkspaceConstitutionsByIds,
-  listAllDocos,
-  listWorkspacesForUser,
-  withClient,
-} from "@doco/db";
-import { type PolicyPredicate, agentInstructionOf } from "@doco/shared";
+  loadBootstrapForPrincipal,
+  loadBootstrapForProjectToken,
+} from "~/lib/agent-bootstrap.server";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
-import {
-  canAccessDoco,
-  getOauthTokenForRequest,
-  oauthTokenGrantsDoco,
-} from "~/lib/doco-access.server";
+import { getOauthTokenForRequest } from "~/lib/doco-access.server";
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
-import type { ValidAccessToken } from "~/lib/oauth-server.server";
 import {
   type ProjectToken,
   isProjectToken,
   validateProjectToken,
 } from "~/lib/project-tokens.server";
 import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
-
-interface PolicyArticle {
-  id: string;
-  /** suggestion | deterministic | probabilistic. */
-  kind: string;
-  /** suggestion / probabilistic: the natural-language instruction (else null). */
-  agent_instruction: string | null;
-  /** deterministic: the structured check (else the agent-instruction predicate). */
-  predicate: PolicyPredicate | null;
-  lifecycle: string | null;
-}
-
-interface DocoPolicySet {
-  doco_id: string;
-  doco_handle: string;
-  /**
-   * Project-owner-authored sentence (or template-seeded default)
-   * describing what this Doco is for. Rendered at the top of the
-   * Doco's policy set so agents read the goal before the rules.
-   * Empty string when unset.
-   */
-  goal: string;
-  owner_id: string;
-  policies: PolicyArticle[];
-}
 
 export async function loader({ request }: { request: Request }) {
   // Project-token bearers get a focused bootstrap: principal=null,
@@ -143,103 +108,4 @@ async function getProjectTokenFromRequest(request: Request): Promise<ProjectToke
   const bearer = extractBearer(request);
   if (!bearer || !isProjectToken(bearer)) return null;
   return await validateProjectToken(bearer);
-}
-
-async function loadPolicyArticles(docoId: string): Promise<PolicyArticle[]> {
-  const rows = await withClient((c) =>
-    c.query<{
-      id: string;
-      kind: string | null;
-      data: Record<string, unknown> | null;
-      lifecycle: string | null;
-    }>(
-      `SELECT id, kind, data, lifecycle
-         FROM policies
-        WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'active') = 'active'
-        ORDER BY created_at DESC`,
-      [docoId],
-    ),
-  );
-  return rows.rows.map((row) => {
-    const predicate = (row.data?.predicate ?? null) as PolicyPredicate | null;
-    return {
-      id: row.id,
-      kind: row.kind ?? (typeof row.data?.kind === "string" ? row.data.kind : "suggestion"),
-      agent_instruction: predicate ? agentInstructionOf(predicate) : null,
-      predicate,
-      lifecycle: row.lifecycle,
-    };
-  });
-}
-
-async function loadBootstrapForProjectToken(
-  token: ProjectToken,
-): Promise<{ docoPolicies: DocoPolicySet[]; workspaceConstitutions: WorkspaceConstitution[] }> {
-  const d = await getDocoByIdOrHandle(token.doco_id);
-  if (!d) return { docoPolicies: [], workspaceConstitutions: [] };
-  // The token is scoped to one Doco; surface that Doco's owning workspace's
-  // constitution alongside it.
-  const workspaceConstitutions = await getWorkspaceConstitutionsByIds([d.workspace_id]);
-  const policies = await loadPolicyArticles(d.id);
-  if (policies.length === 0 && d.goal.length === 0) {
-    return { docoPolicies: [], workspaceConstitutions };
-  }
-  return {
-    docoPolicies: [
-      {
-        doco_id: d.id,
-        doco_handle: d.handle,
-        goal: d.goal,
-        owner_id: d.owner_id,
-        policies,
-      },
-    ],
-    workspaceConstitutions,
-  };
-}
-
-async function loadBootstrapForPrincipal(
-  principalId: string | null,
-  oauthGrant: ValidAccessToken | null,
-): Promise<{ docoPolicies: DocoPolicySet[]; workspaceConstitutions: WorkspaceConstitution[] }> {
-  const all = await listAllDocos();
-  const docoPolicies: DocoPolicySet[] = [];
-  // Every workspace the caller can reach. Seeded from the workspaces owning accessible
-  // Docos, then augmented with workspaces granted directly (OAuth) or by
-  // membership (cookie) — so an workspace granted with no Docos yet still shows.
-  const workspaceIds = new Set<string>();
-  for (const d of all) {
-    const meta = { ownerId: d.owner_id, visibility: d.visibility, docoId: d.id };
-    // OAuth-bearer callers: token's per-Doco or per-workspace grant must
-    // cover this Doco. Cookie callers fall through to the principal-
-    // level check below.
-    if (oauthGrant && !oauthTokenGrantsDoco(oauthGrant, meta)) continue;
-    if (!(await canAccessDoco(meta, principalId))) continue;
-    workspaceIds.add(d.workspace_id);
-    const policies = await loadPolicyArticles(d.id);
-    // A Doco shows up in bootstrap when it has at least one policy
-    // OR a non-empty goal — the goal is itself bootstrap context, not
-    // just decoration on top of policies.
-    if (policies.length === 0 && d.goal.length === 0) {
-      continue;
-    }
-    docoPolicies.push({
-      doco_id: d.id,
-      doco_handle: d.handle,
-      goal: d.goal,
-      owner_id: d.owner_id,
-      policies,
-    });
-  }
-
-  if (oauthGrant) {
-    for (const workspaceId of oauthGrant.granted_workspace_ids) workspaceIds.add(workspaceId);
-  } else if (principalId) {
-    for (const workspace of await listWorkspacesForUser(principalId))
-      workspaceIds.add(workspace.id);
-  }
-
-  const workspaceConstitutions = await getWorkspaceConstitutionsByIds([...workspaceIds]);
-  return { docoPolicies, workspaceConstitutions };
 }
