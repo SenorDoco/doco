@@ -27,3 +27,23 @@ export function effectivePerspectiveFocusId(
 ): string | null {
   return clientFocusId ?? routeFocusId;
 }
+
+/**
+ * The node the active perspective should re-center on — its render
+ * window, depth-fade, and camera — given the loader's *focus* fields.
+ *
+ * Crucially this reads the focus fields (`focusedNodeId`, and an edge's
+ * source node via `focusedEdgeFromId`), NOT the dialog-detail fields
+ * (`selectedNode` / `selectedEdge`). The detail is nulled under
+ * `?dialog=skip` — the URL Señor Doco's auto-focus uses to move the
+ * camera without popping the overlay over the chat — but the focus
+ * fields survive, so the perspective keeps following the node/edge the
+ * agent just touched instead of staying parked on the previous one.
+ * Returns null when nothing is focused.
+ */
+export function perspectiveCenterId(focus: {
+  focusedNodeId: string | null;
+  focusedEdgeFromId: string | null;
+}): string | null {
+  return focus.focusedNodeId ?? focus.focusedEdgeFromId ?? null;
+}
