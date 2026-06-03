@@ -5,14 +5,14 @@
 // POST   → mint a new token. Requires `confirm_repo_readable: true`
 //          in the JSON body so the owner explicitly acknowledges
 //          that anyone with read access to the repository where this
-//          token is committed will be able to read the Doco.
+//          token is committed will be able to read the doco.
 // DELETE → revoke a token by its 8-char suffix id (passed in the
 //          ?id=... query string). Idempotent: a no-op on tokens
 //          that don't exist or are already revoked.
 //
 // Errors:
 //   401 — anonymous caller
-//   403 — caller is not the Doco's owner
+//   403 — caller is not the doco's owner
 //   400 — POST without the confirmation flag, or DELETE without ?id=
 
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -34,7 +34,7 @@ export async function loader({
   const ok = await canAdminDoco({ ownerId: meta.ownerId, docoId: meta.docoId }, me?.id ?? null);
   if (!ok) {
     return Response.json(
-      { error: "Only the Doco's owner can list project tokens." },
+      { error: "Only the doco's owner can list project tokens." },
       { status: 403 },
     );
   }
@@ -62,7 +62,7 @@ export async function action({
   const ok = await canAdminDoco({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
   if (!ok) {
     return Response.json(
-      { error: "Only the Doco's owner can manage project tokens." },
+      { error: "Only the doco's owner can manage project tokens." },
       { status: 403 },
     );
   }
@@ -78,7 +78,7 @@ export async function action({
       return Response.json(
         {
           error: "confirmation_required",
-          hint: "Pass { confirm_repo_readable: true } in the request body. The owner must acknowledge that anyone with read access to the repository this token is committed to will be able to read the Doco.",
+          hint: "Pass { confirm_repo_readable: true } in the request body. The owner must acknowledge that anyone with read access to the repository this token is committed to will be able to read the doco.",
         },
         { status: 400 },
       );

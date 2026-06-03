@@ -1,7 +1,7 @@
 // /<doco-handle>/invites — web management UI for Doco invites.
 //
 // Lists all invites (pending / consumed / expired / revoked) and lets
-// any user with access to this Doco mint a new one with one click.
+// any user with access to this doco mint a new one with one click.
 // The just-minted invite's URL is highlighted at the top with a
 // copy-friendly text field.
 
@@ -154,7 +154,7 @@ export default function Invites({
           }
         >
           <p className="text-sm text-muted-foreground">
-            Share an invite URL with a person to grant them access to this Doco. Each invite is
+            Share an invite URL with a person to grant them access to this doco. Each invite is
             single-use and expires after the chosen window. For agent access, mint an{" "}
             <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
               API key

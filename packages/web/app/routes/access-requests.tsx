@@ -95,7 +95,7 @@ export default function AccessRequestsPage() {
           <CardContent>
             {inbox.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No one is waiting on access to your Docos.
+                No one is waiting on access to your docos.
               </p>
             ) : (
               <ul className="space-y-3">

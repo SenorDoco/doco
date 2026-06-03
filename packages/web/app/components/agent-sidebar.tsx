@@ -445,7 +445,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     readInitialConversationId(),
   );
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
-  // Resolved {handle, name} for the Docos/Workspaces the agent has touched
+  // Resolved {handle, name} for the docos/Workspaces the agent has touched
   // in this thread. Rendered as clickable chips below the thread
   // title in chat view. Populated from the snapshot endpoint each
   // reload; the server-side auto-attach happens in runTool.
@@ -2275,8 +2275,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     ) : null}
                     {allMessages.length === 0 && !loadError && bootstrapped ? (
                       <div className="text-[11px] text-muted-foreground">
-                        Ask me anything about your Docos — I can search, capture decisions, create
-                        new Docos or workspaces, invite users, and take you to any page.
+                        Ask me anything about your docos — I can search, capture decisions, create
+                        new docos or workspaces, invite users, and take you to any page.
                       </div>
                     ) : null}
                     {allMessages.map((rm, index) => (
@@ -2541,7 +2541,7 @@ function AttachmentsRow({
         <button
           type="button"
           onClick={() => setPickerOpen((p) => !p)}
-          aria-label="Attach a Doco or Workspace"
+          aria-label="Attach a doco or Workspace"
           aria-expanded={pickerOpen}
           className="neu-button inline-flex h-5 w-5 items-center justify-center rounded-full border border-border text-[10px] leading-none text-muted-foreground hover:text-foreground"
         >

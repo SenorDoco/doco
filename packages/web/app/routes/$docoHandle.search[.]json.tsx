@@ -134,7 +134,7 @@ export async function loader({
         viewer,
         warning:
           ranked.candidateIds === null
-            ? "No embeddings in this Doco yet — reindex first."
+            ? "No embeddings in this doco yet — reindex first."
             : "No entities match the active filters.",
       });
     }

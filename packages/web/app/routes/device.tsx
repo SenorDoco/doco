@@ -112,7 +112,7 @@ export async function loader({ request }: { request: Request }) {
   const { docos, workspaces } = await loadApprovalGrantOptions(me.id);
   const view = resolveApprovalGrantView(docos, workspaces, row.target_doco_handle);
 
-  // The client asked for a Doco the user doesn't own — nothing here can
+  // The client asked for a doco the user doesn't own — nothing here can
   // satisfy that (granting a different Doco wouldn't help), so show only
   // the terminal not-owned message, no picker.
   if (view.blocked) {
@@ -252,15 +252,15 @@ function renderStage(data: LoaderData) {
         <CardHeader>
           <CardTitle>Authorize token access</CardTitle>
           <CardDescription>
-            An agent is requesting access to your Docos through <strong>{data.client_name}</strong>.
-            Name the token, then pick individual Docos or grant access to an entire workspace — code{" "}
+            An agent is requesting access to your docos through <strong>{data.client_name}</strong>.
+            Name the token, then pick individual docos or grant access to an entire workspace — code{" "}
             <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {docos.length === 0 && workspaces.length === 0 ? (
             <p className="text-sm text-destructive">
-              You don't own any Docos or workspaces. Only owners can grant token access — create one
+              You don't own any docos or workspaces. Only owners can grant token access — create one
               first, then re-enter this code.
             </p>
           ) : (
@@ -280,7 +280,7 @@ function renderStage(data: LoaderData) {
     );
   }
   if (data.stage === "target-not-owned") {
-    // Terminal: the client asked for a Doco the user doesn't own. Show
+    // Terminal: the client asked for a doco the user doesn't own. Show
     // only the explanation + call to action — no token field, no picker.
     return (
       <>

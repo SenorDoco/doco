@@ -4,12 +4,12 @@ import { Link } from "react-router";
 
 /**
  * Build the prompt to share with a human user. Clicking the
- * invite URL in a signed-in browser adds the recipient to the Doco's
+ * invite URL in a signed-in browser adds the recipient to the doco's
  * users.
  */
 export function buildHumanInvitePrompt(inviteUrl: string): string {
   return [
-    "You're invited to collaborate on a Doco. Open this URL in your browser, sign in, and click Accept:",
+    "You're invited to collaborate on a doco. Open this URL in your browser, sign in, and click Accept:",
     "",
     inviteUrl,
   ].join("\n");
@@ -26,11 +26,11 @@ export function buildAgentInvitePrompt(args: {
   deviceUrl: string;
 }): string {
   return [
-    `Let's collaborate with Doco on this project. The Doco is at ${args.docoUrl}.`,
+    `Let's collaborate with Doco on this project. The doco is at ${args.docoUrl}.`,
     "",
     `To get programmatic access, follow the OAuth recipe at ${args.recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — you'll show me a short code and I'll approve at ${args.deviceUrl}.`,
     "",
-    `At the approve screen I'll name you and choose your Doco role. Either way you end up with a Bearer token you can use against ${args.docoUrl}.`,
+    `At the approve screen I'll name you and choose your doco role. Either way you end up with a Bearer token you can use against ${args.docoUrl}.`,
   ].join("\n");
 }
 

@@ -102,7 +102,7 @@ export async function action({
     const ctx = await getDocoConnectionsContext(meta.docoId);
     const conn = ctx?.connections.find((c) => c.repo === repo);
     if (!ctx || !conn) {
-      return Response.json({ error: "That repo isn't connected to this Doco." }, { status: 400 });
+      return Response.json({ error: "That repo isn't connected to this doco." }, { status: 400 });
     }
     const startPage = Number(body.page ?? 1);
     const result = await backfillRepoPullRequests({

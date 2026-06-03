@@ -61,7 +61,7 @@ export default function JoinHuman({
             <CardTitle className="text-base">1. Tell your agent to start using Doco</CardTitle>
             <CardDescription>
               Paste this into your chat with the agent. Your agent's onboarding will guide them
-              through requesting an invitation from the Doco's admin.
+              through requesting an invitation from the doco's admin.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -86,7 +86,7 @@ export default function JoinHuman({
           <CardHeader>
             <CardTitle className="text-base">2. Ask the doco's admin to invite you</CardTitle>
             <CardDescription>
-              Contact whoever owns the Doco you want to join. They'll add you as a member and you
+              Contact whoever owns the doco you want to join. They'll add you as a member and you
               can sign in here once you have an account.
             </CardDescription>
           </CardHeader>
