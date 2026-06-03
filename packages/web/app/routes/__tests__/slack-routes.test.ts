@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getSlackConfig: vi.fn(),
   upsertSlackInstallation: vi.fn(),
   verifySlackState: vi.fn(),
+  loadScopeOptions: vi.fn(),
+  getWorkspaceRole: vi.fn(),
   verifySlackRequest: vi.fn(),
   parseSlackCommandPayload: vi.fn(),
   buildSlackConnectCommandResponse: vi.fn(),
@@ -19,6 +21,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: mocks.getCurrentPrincipal,
+}));
+
+vi.mock("~/lib/api-keys.server", () => ({
+  loadScopeOptions: mocks.loadScopeOptions,
+}));
+
+vi.mock("@doco/db", () => ({
+  getWorkspaceRole: mocks.getWorkspaceRole,
 }));
 
 vi.mock("~/lib/slack.server", () => ({
@@ -72,28 +82,73 @@ describe("Slack integration routes", () => {
     mocks.verifySlackRequest.mockResolvedValue(true);
     mocks.fetchSlackConversationContext.mockResolvedValue([]);
     mocks.getSlackBotIdentity.mockResolvedValue({ userId: "U999", botId: "B999" });
+    mocks.loadScopeOptions.mockResolvedValue([]);
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
   });
 
-  it("redirects a signed-in user to Slack OAuth installation", async () => {
-    mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "user_alice",
-      username: "alice",
+  it("renders the workspace picker when no workspace is chosen yet", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "workspace", id: "workspace_acme", label: "acme", myRole: "owner" },
+      { level: "doco", id: "doco_x", label: "acme/x", myRole: "owner" },
+    ]);
+
+    const data = await installLoader({
+      request: new Request("https://doco.test/integrations/slack/install"),
     });
+
+    // Only owner-level workspaces are offered for binding (no docos).
+    expect(data).toEqual({ workspaces: [{ id: "workspace_acme", label: "acme" }] });
+    expect(mocks.buildSlackInstallUrl).not.toHaveBeenCalled();
+  });
+
+  it("redirects to Slack OAuth once an owned workspace is chosen, binding it", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "workspace", id: "workspace_acme", label: "acme", myRole: "owner" },
+    ]);
     mocks.buildSlackInstallUrl.mockReturnValue("https://slack.com/oauth/v2/authorize?client_id=x");
 
     const response = (await installLoader({
-      request: new Request("https://doco.test/integrations/slack/install"),
+      request: new Request(
+        "https://doco.test/integrations/slack/install?workspace_id=workspace_acme",
+      ),
     }).catch((error: Response) => error)) as Response;
 
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe(
       "https://slack.com/oauth/v2/authorize?client_id=x",
     );
-    expect(mocks.buildSlackInstallUrl).toHaveBeenCalledWith(expect.any(Request), "user_alice");
+    expect(mocks.buildSlackInstallUrl).toHaveBeenCalledWith(
+      expect.any(Request),
+      "user_alice",
+      "workspace_acme",
+    );
   });
 
-  it("stores a Slack installation after OAuth callback", async () => {
-    mocks.verifySlackState.mockReturnValue({ installerId: "user_alice" });
+  it("refuses to start install for a workspace the user does not own", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "workspace", id: "workspace_acme", label: "acme", myRole: "owner" },
+    ]);
+
+    const response = (await installLoader({
+      request: new Request(
+        "https://doco.test/integrations/slack/install?workspace_id=workspace_other",
+      ),
+    }).catch((error: Response) => error)) as Response;
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/integrations/slack/install?error=not_owner");
+    expect(mocks.buildSlackInstallUrl).not.toHaveBeenCalled();
+  });
+
+  it("stores a Slack installation after OAuth callback, bound to the chosen workspace", async () => {
+    mocks.verifySlackState.mockReturnValue({
+      installerId: "user_alice",
+      docoWorkspaceId: "workspace_acme",
+    });
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
     mocks.exchangeSlackOAuthCode.mockResolvedValue({
       ok: true,
       team: { id: "T123", name: "Acme" },
@@ -109,10 +164,30 @@ describe("Slack integration routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe("/integrations/slack/setup?team_id=T123");
+    expect(mocks.getWorkspaceRole).toHaveBeenCalledWith("workspace_acme", "user_alice");
     expect(mocks.upsertSlackInstallation).toHaveBeenCalledWith({
       response: expect.objectContaining({ team: { id: "T123", name: "Acme" } }),
       installedByUserId: "user_alice",
+      docoWorkspaceId: "workspace_acme",
     });
+  });
+
+  it("rejects the callback when the installer no longer owns the chosen workspace", async () => {
+    mocks.verifySlackState.mockReturnValue({
+      installerId: "user_alice",
+      docoWorkspaceId: "workspace_acme",
+    });
+    mocks.getWorkspaceRole.mockResolvedValue("reader");
+
+    const response = (await callbackLoader({
+      request: new Request(
+        "https://doco.test/integrations/slack/callback?code=abc&state=signed-state",
+      ),
+    }).catch((error: Response) => error)) as Response;
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/integrations?slack_error=not_workspace_owner");
+    expect(mocks.upsertSlackInstallation).not.toHaveBeenCalled();
   });
 
   it("returns a Doco configuration link for /doco connect", async () => {

@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { getWorkspaceById } from "@doco/db";
-import { CheckCircle2, ShieldAlert } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -69,7 +69,9 @@ export function meta() {
 
 export default function SlackLinkPage({ loaderData }: { loaderData: SlackLinkPageData }) {
   const { username, boundWorkspaceHandle } = loaderData;
-  const bound = boundWorkspaceHandle !== null;
+  // A Slack team is bound to its Doco workspace at install time, so by the time
+  // anyone links there is always a workspace; name it when we have the handle.
+  const workspaceLabel = boundWorkspaceHandle ? `${boundWorkspaceHandle} workspace` : "workspace";
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SiteHeader />
@@ -80,39 +82,18 @@ export default function SlackLinkPage({ loaderData }: { loaderData: SlackLinkPag
         <Card className="max-w-2xl">
           <CardHeader>
             <div className="flex items-center gap-3">
-              {bound ? (
-                <CheckCircle2 className="h-6 w-6 text-primary" aria-hidden="true" />
-              ) : (
-                <ShieldAlert className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-              )}
-              <CardTitle>
-                {bound
-                  ? `Slack can use your access in the ${boundWorkspaceHandle} workspace`
-                  : "Linked — but this Slack team has no Doco workspace yet"}
-              </CardTitle>
+              <CheckCircle2 className="h-6 w-6 text-primary" aria-hidden="true" />
+              <CardTitle>Slack can use your access in the {workspaceLabel}</CardTitle>
             </div>
             <CardDescription>
-              {bound ? (
-                <>
-                  Señor Doco will use @{username}'s access for Slack requests from this Slack team,
-                  but <strong>only within the {boundWorkspaceHandle} workspace</strong> this team is
-                  connected to — never any other workspace, and never more than the role you already
-                  hold there.
-                </>
-              ) : (
-                <>
-                  This Slack team isn't connected to a Doco workspace, so Señor Doco can't use your
-                  access yet. A workspace owner connects the team to exactly one Doco workspace on
-                  the Slack setup page; after that, your access is limited to that one workspace.
-                </>
-              )}
+              Señor Doco will use @{username}'s access for Slack requests from this Slack team, but{" "}
+              <strong>only within the {workspaceLabel}</strong> this team is connected to — never
+              any other workspace, and never more than the role you already hold there.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {bound
-                ? "Return to Slack and ask Señor Doco to try the action again."
-                : "Ask a workspace owner to connect this Slack team to a Doco workspace, then return to Slack and try again."}
+              Return to Slack and ask Señor Doco to try the action again.
             </p>
             <Link
               to="/integrations"
