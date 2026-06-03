@@ -36,10 +36,10 @@ server (RFC 8414) and run the flow — no repo, no local files.
 
 Per client:
 
-  - claude.ai / Claude mobile / Cursor: add a custom connector with the
-    URL ${baseUrl}/<workspace-id>/mcp — the client runs OAuth for you.
-  - Claude Desktop / Claude Code (no native remote MCP yet): bridge with
-    \`npx mcp-remote ${baseUrl}/<workspace-id>/mcp\`.
+  - claude.ai / Claude Desktop / Claude mobile / Cursor: add a custom
+    connector with the URL ${baseUrl}/<workspace-id>/mcp — the client runs
+    OAuth for you.
+  - Claude Code: bridge with \`npx mcp-remote ${baseUrl}/<workspace-id>/mcp\`.
   - ChatGPT and other MCP clients: add the same URL as a connector.
 
 Tools available now: \`doco_whoami\` (identity + the Docos you can reach in
