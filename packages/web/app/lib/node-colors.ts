@@ -9,14 +9,13 @@
 
 // Canonical lifecycle has four stages: drafting, queued, active, retired.
 // Per project owner the color mapping is, in that order:
-//   drafting → blue   (provisional / work in motion)
-//   queued   → amber  (ready, waiting to take effect)
+//   drafting → yellow (provisional / work in motion)
+//   queued   → blue   (ready, waiting to take effect)
 //   active   → black  (settled, in force) — formerly `asserted`
 //   retired  → red    (no longer in use)
 export const LIFECYCLE_COLOR: Record<string, string> = {
-  // Same blue the now-removed `proposed` stage used, re-used for drafting.
-  drafting: "#2563eb", // blue-600 — provisional
-  queued: "#f59e0b", // amber-500 — ready, awaiting activation
+  drafting: "#eab308", // yellow-500 — provisional
+  queued: "#2563eb", // blue-600 — ready, awaiting activation
   active: "#171717", // gray-900 — settled and in force
   retired: "#dc2626", // red-600 — no longer in use
 };
