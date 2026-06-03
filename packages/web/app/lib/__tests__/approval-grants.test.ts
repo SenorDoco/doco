@@ -3,7 +3,10 @@ import {
   type ApprovalDocoOption,
   type ApprovalWorkspaceOption,
   approvalTargetNotOwnedMessage,
+  boundWorkspaceNotOwnedMessage,
+  parseWorkspaceFromResource,
   resolveApprovalGrantView,
+  scopeApprovalToBoundWorkspace,
 } from "../approval-grants";
 
 const docos: ApprovalDocoOption[] = [
@@ -56,5 +59,51 @@ describe("approvalTargetNotOwnedMessage", () => {
     expect(m).toContain("agent");
     expect(m).not.toMatch(/client/i);
     expect(m).not.toMatch(/pick from/i);
+  });
+});
+
+describe("parseWorkspaceFromResource", () => {
+  it("extracts the workspace id from a per-workspace MCP resource", () => {
+    expect(parseWorkspaceFromResource("https://doco.to/workspace_01ABC/mcp")).toBe(
+      "workspace_01ABC",
+    );
+    expect(parseWorkspaceFromResource("https://doco.to/workspace_01ABC/mcp/")).toBe(
+      "workspace_01ABC",
+    );
+  });
+
+  it("returns null when the resource isn't a workspace MCP endpoint", () => {
+    expect(parseWorkspaceFromResource(null)).toBeNull();
+    expect(parseWorkspaceFromResource("")).toBeNull();
+    expect(parseWorkspaceFromResource("https://doco.to/mcp")).toBeNull();
+    expect(parseWorkspaceFromResource("https://doco.to/torre-bpms")).toBeNull();
+  });
+});
+
+describe("scopeApprovalToBoundWorkspace", () => {
+  // An MCP connector is bound to one workspace, so the consent must offer
+  // ONLY that workspace (and its docos) — never the approver's others.
+  it("narrows to just the bound workspace and its docos when the approver owns it", () => {
+    const v = scopeApprovalToBoundWorkspace(docos, workspaces, "workspace_torre");
+    expect(v.blocked).toBe(false);
+    if (!v.blocked) {
+      expect(v.boundWorkspace.id).toBe("workspace_torre");
+      expect(v.workspaces).toEqual([workspaces[0]]);
+      // doco_2 is personal (different workspace) and must not leak in.
+      expect(v.docos.map((d) => d.id)).toEqual(["doco_1"]);
+    }
+  });
+
+  it("blocks when the approver doesn't own the bound workspace", () => {
+    const v = scopeApprovalToBoundWorkspace(docos, workspaces, "workspace_other");
+    expect(v.blocked).toBe(true);
+    if (v.blocked) expect(v.workspaceId).toBe("workspace_other");
+  });
+});
+
+describe("boundWorkspaceNotOwnedMessage", () => {
+  it("names the workspace it can't authorize", () => {
+    const m = boundWorkspaceNotOwnedMessage("workspace_other");
+    expect(m).toContain("workspace_other");
   });
 });

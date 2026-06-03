@@ -68,6 +68,35 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).not.toContain('disabled="');
   });
 
+  it("scopes to a single bound workspace: an access level only, no other workspaces or picker", () => {
+    const markup = renderToStaticMarkup(
+      createElement(OAuthAccessApprovalForm, {
+        docos: [],
+        workspaces: [],
+        boundWorkspace: { id: "workspace_torre", label: "torre", maxRole: "owner" },
+        tokenNamePlaceholder: "e.g. Claude Code in repo",
+        requestedRole: null,
+        approveLabel: "Approve",
+        cancelLabel: "Cancel",
+        cancelDecisionValue: "cancel",
+      }),
+    );
+
+    // No multi-workspace scope chooser / picker when the connector is bound.
+    expect(markup).not.toContain("What do you want to grant access to?");
+    expect(markup).not.toContain('data-testid="grant-picker"');
+    // Leads with the bound workspace and an access-level selector.
+    expect(markup).toContain("torre");
+    expect(markup).toContain('data-testid="bound-workspace-access"');
+    expect(markup).toContain("Read only");
+    expect(markup).toContain("Can write");
+    // The workspace grant is pre-composed (writer by default), not the empty [].
+    expect(markup).toContain("workspace_torre");
+    expect(markup).not.toContain('name="grants" value="[]"');
+    // …with an optional path to narrow within that workspace.
+    expect(markup).toContain('data-testid="bound-narrow"');
+  });
+
   it("shows the empty-state when there is nothing to grant (no full-access fallback)", () => {
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
