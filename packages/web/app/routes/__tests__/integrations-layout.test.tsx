@@ -1,4 +1,4 @@
-import { type ReactElement, createElement } from "react";
+import { type ReactElement, type ReactNode, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -24,6 +24,9 @@ vi.mock("react-router", async () => {
   const actual = await vi.importActual<typeof import("react-router")>("react-router");
   return {
     ...actual,
+    // Render the route's <Form> as a plain form — static markup has no data
+    // router for useSubmit. (Same shim the GitHub render test uses.)
+    Form: ({ children }: { children?: ReactNode }) => <form>{children}</form>,
     useLoaderData: () => mocks.docoLoaderData,
     useRevalidator: () => ({ state: "idle", revalidate: vi.fn() }),
   };
@@ -67,7 +70,10 @@ vi.mock("~/components/site-header", () => ({
 }));
 
 import DocoIntegrations, { meta as docoIntegrationsMeta } from "../$docoHandle.integrations";
-import { CONNECTION_ACTION_SECONDARY } from "../../components/integrations-shell";
+import {
+  CONNECTION_ACTION_DESTRUCTIVE,
+  CONNECTION_ACTION_SECONDARY,
+} from "../../components/integrations-shell";
 import { singleColumnPageMainWidth } from "../../components/page-main";
 import IntegrationsPage, { meta as accountIntegrationsMeta } from "../integrations";
 import WorkspaceIntegrations, {
@@ -95,6 +101,7 @@ describe("integrations page layout", () => {
           slackConfirmation: null,
           slackInstallHref: null,
           slackInstallations: [],
+          removableTeamIds: [],
           rollup: { slack: [], workspaces: [], docos: [] },
           pickingIntegrationId: null,
         },
@@ -128,6 +135,7 @@ describe("integrations page layout", () => {
             slackConfirmation: null,
             slackInstallHref: null,
             slackInstallations: [],
+            removableTeamIds: [],
             rollup: { slack: [], workspaces: [], docos: [] },
             pickingIntegrationId: null,
           },
@@ -169,7 +177,7 @@ describe("integrations connected-pane standardization", () => {
     githubRepoCount: 4,
   };
 
-  function renderAccountPage(): string {
+  function renderAccountPage(removableTeamIds: string[] = []): string {
     return renderRoute(
       createElement(IntegrationsPage, {
         loaderData: {
@@ -186,6 +194,7 @@ describe("integrations connected-pane standardization", () => {
               docoWorkspaceId: null,
             },
           ],
+          removableTeamIds,
           rollup: {
             slack: [],
             workspaces: [{ workspaceId: "workspace_acme", handle: "acme", installCount: 0 }],
@@ -236,5 +245,22 @@ describe("integrations connected-pane standardization", () => {
     expect(markup).toContain("Manage");
     expect(markup).toContain(CONNECTION_ACTION_SECONDARY);
     expect(markup).toContain("4 GitHub repos connected");
+  });
+
+  it("shows the Remove control beside Set defaults only for removable teams", () => {
+    // Removable (T1 is in the set) → a remove_slack form posts alongside the
+    // standardized "Set defaults" action, styled with the shared destructive pill.
+    const removable = renderAccountPage(["T1"]);
+    expect(removable).toContain("Set defaults");
+    expect(removable).toContain("Remove");
+    expect(removable).toContain('value="remove_slack"');
+    expect(removable).toContain('value="T1"');
+    expect(removable).toContain(CONNECTION_ACTION_DESTRUCTIVE);
+
+    // Not removable (empty set) → no remove form at all, just Set defaults.
+    const locked = renderAccountPage([]);
+    expect(locked).toContain("Set defaults");
+    expect(locked).not.toContain("Remove");
+    expect(locked).not.toContain('value="remove_slack"');
   });
 });

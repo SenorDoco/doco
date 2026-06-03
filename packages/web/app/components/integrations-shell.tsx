@@ -30,6 +30,10 @@ export const CONNECTION_ACTION_SECONDARY =
   "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary";
 export const CONNECTION_ACTION_PRIMARY =
   "neu-button inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
+// Same pill geometry as the secondary action, in the destructive tint — for a
+// row's "Remove"/"Disconnect" control so it lines up with "Set defaults".
+export const CONNECTION_ACTION_DESTRUCTIVE =
+  "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-input";
 
 export interface ConnectionAction {
   label: string;
@@ -53,20 +57,24 @@ export function ConnectionList({ children }: { children: ReactNode }) {
  * workspace install, a workspace in the account rollup, a Doco in a
  * workspace's rollup): an identity on the left — a `title` that optionally
  * links to its own manage page, plus a muted `detail` status line — and a
- * single standardized action on the right. `children` hangs extra content
- * (e.g. a nested per-Doco sub-list) beneath the row.
+ * single standardized action on the right, with room for an optional
+ * `secondaryAction` (e.g. a destructive "Remove" form button) beside it.
+ * `children` hangs extra content (e.g. a nested per-Doco sub-list) beneath the
+ * row.
  */
 export function ConnectionRow({
   title,
   titleHref,
   detail,
   action,
+  secondaryAction,
   children,
 }: {
   title: ReactNode;
   titleHref?: string;
   detail?: ReactNode;
   action?: ConnectionAction;
+  secondaryAction?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -85,7 +93,12 @@ export function ConnectionRow({
           )}
           {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
         </div>
-        {action ? <ConnectionActionButton action={action} /> : null}
+        {action || secondaryAction ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {action ? <ConnectionActionButton action={action} /> : null}
+            {secondaryAction}
+          </div>
+        ) : null}
       </div>
       {children}
     </li>
