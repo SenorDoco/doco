@@ -483,7 +483,7 @@ export default function DocoGitHubIntegration() {
 
         {flash === "forbidden" ? (
           <p className="rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive">
-            You need write access to connect this Doco.
+            You need write access to connect this doco.
           </p>
         ) : null}
         {flash === "setup_failed" ? (
@@ -499,7 +499,7 @@ export default function DocoGitHubIntegration() {
         ) : null}
         {flash === "connected" ? (
           <p className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
-            GitHub is connected. Choose the repositories to track on this Doco below.
+            GitHub is connected. Choose the repositories to track on this doco below.
           </p>
         ) : null}
         {actionData && "error" in actionData ? (
@@ -518,12 +518,12 @@ export default function DocoGitHubIntegration() {
           </p>
         ) : null}
 
-        {/* Section 1 — the repositories this Doco is connected to on GitHub. */}
+        {/* Section 1 — the repositories this doco is connected to on GitHub. */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Connected repositories</CardTitle>
             <CardDescription>
-              Repositories on GitHub this Doco tracks pull requests from.
+              Repositories on GitHub this doco tracks pull requests from.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -648,7 +648,7 @@ function AddMoreRepositories({
               Add more repositories
             </CardTitle>
             <CardDescription>
-              Repositories you&apos;ve granted Doco access to. Pick the ones to track on this Doco.
+              Repositories you&apos;ve granted Doco access to. Pick the ones to track on this doco.
             </CardDescription>
           </div>
           {docoInstallUrl ? (
