@@ -7,18 +7,16 @@
 //   Right — full catalog of available integrations. Cross-scope clicks
 //           land on the relevant picker so the user can pick an workspace or
 //           Doco to install into.
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  ExternalLink,
-  MessageSquare,
-  Settings,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, MessageSquare } from "lucide-react";
 import { Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { AvailableIntegrations, ScopePickerBanner } from "~/components/integrations-shell";
+import {
+  AvailableIntegrations,
+  ConnectionList,
+  ConnectionRow,
+  ScopePickerBanner,
+} from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -172,27 +170,31 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="p-0">
                 {slackInstallHref ? (
                   slackInstallations.length > 0 ? (
-                    <div className="space-y-3">
-                      <div className="divide-y divide-border rounded-md border border-border">
-                        {slackInstallations.map((installation) => (
-                          <SlackInstallationRow
-                            key={installation.workspaceId}
-                            installation={installation}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                    <ConnectionList>
+                      {slackInstallations.map((installation) => (
+                        <ConnectionRow
+                          key={installation.workspaceId}
+                          title={installation.workspaceName}
+                          detail={`Installed ${formatDate(installation.installedAt)}`}
+                          action={{
+                            label: "Set defaults",
+                            href: slackSetupHref(installation),
+                            icon: ArrowRight,
+                          }}
+                        />
+                      ))}
+                    </ConnectionList>
                   ) : (
-                    <p className="text-sm leading-relaxed text-muted-foreground">
+                    <p className="px-4 py-3 text-sm leading-relaxed text-muted-foreground">
                       No Slack workspace has installed Señor Doco yet. After Slack approves the app,
                       the next screen asks which default Doco permissions Señor Doco should receive.
                     </p>
                   )
                 ) : (
-                  <p className="text-sm leading-relaxed text-muted-foreground">
+                  <p className="px-4 py-3 text-sm leading-relaxed text-muted-foreground">
                     Slack is not ready for this Doco deployment yet. Once the Slack app is
                     configured, this screen will show the Connect Slack button.
                   </p>
@@ -210,34 +212,25 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               <CardContent className="p-0">
                 <span id="pick-doco" />
                 {rollup.workspaces.length > 0 ? (
-                  <ul className="divide-y divide-border">
+                  <ConnectionList>
                     {rollup.workspaces.map((o) => {
                       const docosWithIntegrations = rollup.docos.filter(
                         (d) => d.workspaceHandle === o.handle,
                       );
                       return (
-                        <li key={o.workspaceId} className="px-4 py-3">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <Link
-                                to={`/workspaces/${o.handle}/integrations`}
-                                className="text-sm font-semibold text-foreground hover:text-primary"
-                              >
-                                {o.handle}
-                              </Link>
-                              <p className="text-xs text-muted-foreground">
-                                {docosWithIntegrations.length} Doco
-                                {docosWithIntegrations.length === 1 ? "" : "s"} with connections
-                              </p>
-                            </div>
-                            <Link
-                              to={`/workspaces/${o.handle}/integrations`}
-                              className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:text-primary"
-                            >
-                              Manage
-                              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                            </Link>
-                          </div>
+                        <ConnectionRow
+                          key={o.workspaceId}
+                          title={o.handle}
+                          titleHref={`/workspaces/${o.handle}/integrations`}
+                          detail={`${docosWithIntegrations.length} Doco${
+                            docosWithIntegrations.length === 1 ? "" : "s"
+                          } with connections`}
+                          action={{
+                            label: "Manage",
+                            href: `/workspaces/${o.handle}/integrations`,
+                            icon: ArrowRight,
+                          }}
+                        >
                           {docosWithIntegrations.length > 0 ? (
                             <ul className="mt-2 space-y-1 pl-3 text-xs">
                               {docosWithIntegrations.map((d) => (
@@ -257,10 +250,10 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                               ))}
                             </ul>
                           ) : null}
-                        </li>
+                        </ConnectionRow>
                       );
                     })}
-                  </ul>
+                  </ConnectionList>
                 ) : (
                   <p className="px-4 py-3 text-sm text-muted-foreground">
                     You aren&apos;t a member of any workspaces yet.
@@ -276,28 +269,6 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
           </section>
         </div>
       </SingleColumnPageMain>
-    </div>
-  );
-}
-
-function SlackInstallationRow({ installation }: { installation: SlackInstallationSummary }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 p-3">
-      <div>
-        <span className="block text-sm font-semibold text-foreground">
-          {installation.workspaceName}
-        </span>
-        <span className="block text-xs text-muted-foreground">
-          Installed {formatDate(installation.installedAt)}
-        </span>
-      </div>
-      <a
-        href={slackSetupHref(installation)}
-        className="neu-button inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:text-primary"
-      >
-        <Settings className="h-4 w-4" aria-hidden="true" />
-        Set defaults
-      </a>
     </div>
   );
 }
