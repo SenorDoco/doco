@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolvePublishedRailWidth, resolveThinkingActive } from "../senor-doco-shell";
+import {
+  resolvePublishedRailWidth,
+  resolveThinkingActive,
+  viewOnExpand,
+} from "../senor-doco-shell";
 
 describe("resolveThinkingActive", () => {
   it("is on when thinking is enabled, in chat view, on a wide shell", () => {
@@ -43,5 +47,36 @@ describe("resolvePublishedRailWidth", () => {
     expect(resolvePublishedRailWidth({ narrow: false, collapsed: false, railWidth: "320px" })).toBe(
       "320px",
     );
+  });
+});
+
+describe("viewOnExpand", () => {
+  it("restores the open thread when the collapse happened on the same page", () => {
+    // The user collapsed Señor Doco a moment ago and is reopening it in
+    // place on the same page — keep them in the thread they were reading.
+    expect(
+      viewOnExpand({
+        collapseOriginPath: "/acme/decision/decision_01",
+        currentPath: "/acme/decision/decision_01",
+      }),
+    ).toBe("restore");
+  });
+
+  it("resets to the thread list when no same-page collapse was recorded", () => {
+    // A null origin means the collapsed state was inherited from
+    // localStorage on a fresh load (a previous page/session), so expanding
+    // shows the list rather than dropping into a possibly-stale thread.
+    expect(viewOnExpand({ collapseOriginPath: null, currentPath: "/dashboard" })).toBe("list");
+  });
+
+  it("resets to the thread list when the collapse happened on a different page", () => {
+    // Collapsed on one page, navigated elsewhere, then expanded — that is
+    // not "the same page", so show the list.
+    expect(
+      viewOnExpand({
+        collapseOriginPath: "/acme/decision/decision_01",
+        currentPath: "/dashboard",
+      }),
+    ).toBe("list");
   });
 });

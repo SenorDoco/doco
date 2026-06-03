@@ -39,6 +39,34 @@ export function resolvePublishedRailWidth(opts: {
 }
 
 /**
+ * When the user expands Señor Doco, decide whether to restore the thread
+ * they had open or reset to the thread list.
+ *
+ * We only restore the in-thread view when the collapse being undone
+ * happened on the *same page* the user is expanding on — i.e. they
+ * collapsed it a moment ago and are reopening it in place. A collapse
+ * carried in from somewhere else resets to the list so the user gets a
+ * clean overview of their threads instead of being dropped back into a
+ * possibly-stale conversation. "Carried in from somewhere else" covers
+ * both a collapsed state inherited from localStorage on a fresh load
+ * (no origin recorded — `null`) and a collapse performed before
+ * navigating to a different page (origin pathname differs).
+ *
+ * @param collapseOriginPath pathname where the in-session collapse
+ *   happened, or `null` when no same-mount collapse was recorded (fresh
+ *   load, or already consumed by a previous expand).
+ * @param currentPath the pathname the user is expanding on.
+ */
+export function viewOnExpand(opts: {
+  collapseOriginPath: string | null;
+  currentPath: string;
+}): "restore" | "list" {
+  return opts.collapseOriginPath !== null && opts.collapseOriginPath === opts.currentPath
+    ? "restore"
+    : "list";
+}
+
+/**
  * Tracks whether the shell is below the overlay breakpoint. SSR can't
  * know the viewport width, so it starts at `false` (side rail) and
  * corrects on mount to avoid a hydration mismatch.
