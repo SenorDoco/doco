@@ -22,6 +22,8 @@ function conversation(overrides: Record<string, unknown> = {}) {
     last_message_role: "user" as const,
     attached_doco_ids: [],
     attached_workspace_handles: [],
+    workspace_id: null,
+    workspace_handle: null,
     ...overrides,
   };
 }

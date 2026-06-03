@@ -161,6 +161,10 @@ export interface ConversationListItem {
   last_message_role: "user" | "assistant" | null;
   attached_doco_ids: string[];
   attached_workspace_handles: string[];
+  /** Workspace this thread is scoped to; null = unassigned. */
+  workspace_id: string | null;
+  /** Handle of {@link workspace_id}, shown as a tag left of the title. */
+  workspace_handle: string | null;
 }
 
 export function mergeCreatedConversationListItem(
@@ -2829,14 +2833,24 @@ function ThreadRow({
             className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2 text-left"
           >
             <span className="flex items-baseline justify-between gap-2">
-              <span
-                className={cn(
-                  "min-w-0 truncate text-xs font-semibold",
-                  conv.title ? "text-foreground" : "text-muted-foreground",
-                  unread > 0 ? "font-bold" : "",
-                )}
-              >
-                {displayThreadTitle(conv.title)}
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                {conv.workspace_handle ? (
+                  <span
+                    className="max-w-[45%] shrink-0 truncate rounded bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground"
+                    title={`Workspace: ${conv.workspace_handle}`}
+                  >
+                    {conv.workspace_handle}
+                  </span>
+                ) : null}
+                <span
+                  className={cn(
+                    "min-w-0 truncate text-xs font-semibold",
+                    conv.title ? "text-foreground" : "text-muted-foreground",
+                    unread > 0 ? "font-bold" : "",
+                  )}
+                >
+                  {displayThreadTitle(conv.title)}
+                </span>
               </span>
               <span className="shrink-0 text-[10px] text-muted-foreground">
                 {formatRelativeTime(conv.updated_at)}

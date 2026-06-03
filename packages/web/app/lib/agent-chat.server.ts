@@ -156,6 +156,8 @@ export interface ChatConversationRow {
   user_id: string;
   archived: boolean;
   title: string | null;
+  /** Workspace this thread is hard-scoped to; null = unassigned (broad context). */
+  workspace_id: string | null;
   attached_doco_ids: string[];
   attached_workspace_handles: string[];
   created_at: Date;
@@ -296,7 +298,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, user_id, archived, title, attached_doco_ids, attached_workspace_handles, created_at, updated_at, active_turn_started_at";
+  "id, user_id, archived, title, workspace_id, attached_doco_ids, attached_workspace_handles, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -371,6 +373,7 @@ export async function createConversation(
   principalId: string,
   opts: {
     title?: string | null;
+    workspaceId?: string | null;
     attachedDocoIds?: string[];
     attachedWorkspaceHandles?: string[];
   } = {},
@@ -378,14 +381,18 @@ export async function createConversation(
   return await withClient(async (c) => {
     const id = `conv_${generateUlid()}`;
     const title = typeof opts.title === "string" && opts.title.trim() ? opts.title.trim() : null;
+    const workspaceId =
+      typeof opts.workspaceId === "string" && opts.workspaceId.trim()
+        ? opts.workspaceId.trim()
+        : null;
     const attachedDocoIds = uniqueNonEmptyStrings(opts.attachedDocoIds ?? []);
     const attachedWorkspaceHandles = uniqueNonEmptyStrings(opts.attachedWorkspaceHandles ?? []);
     const r = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations
-         (id, user_id, title, attached_doco_ids, attached_workspace_handles)
-       VALUES ($1, $2, $3, $4, $5)
+         (id, user_id, title, workspace_id, attached_doco_ids, attached_workspace_handles)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING ${CONV_COLS}`,
-      [id, principalId, title, attachedDocoIds, attachedWorkspaceHandles],
+      [id, principalId, title, workspaceId, attachedDocoIds, attachedWorkspaceHandles],
     );
     const row = r.rows[0];
     if (!row) throw new Error("failed to create conversation row");
@@ -416,6 +423,10 @@ export interface ConversationListItem {
    */
   attached_doco_ids: string[];
   attached_workspace_handles: string[];
+  /** The Workspace this thread is scoped to; null = unassigned. */
+  workspace_id: string | null;
+  /** Handle of {@link workspace_id}, for the row's tag; null = unassigned. */
+  workspace_handle: string | null;
 }
 
 /**
@@ -466,10 +477,14 @@ export async function listConversationsForPrincipal(
       last_message_role: "user" | "assistant" | null;
       attached_doco_ids: string[] | null;
       attached_workspace_handles: string[] | null;
+      workspace_id: string | null;
+      workspace_handle: string | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
               c.attached_doco_ids,
               c.attached_workspace_handles,
+              c.workspace_id,
+              w.handle AS workspace_handle,
               COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
               (SELECT m.content
                  FROM chat_messages m
@@ -482,6 +497,7 @@ export async function listConversationsForPrincipal(
                 ORDER BY m.created_at DESC
                 LIMIT 1) AS last_message_role
          FROM chat_conversations c
+         LEFT JOIN workspaces w ON w.id = c.workspace_id
         WHERE c.user_id = $1
           ${opts.includeArchived ? "" : "AND c.archived = false"}
         ORDER BY c.updated_at DESC
@@ -499,6 +515,8 @@ export async function listConversationsForPrincipal(
       last_message_role: row.last_message_role,
       attached_doco_ids: row.attached_doco_ids ?? [],
       attached_workspace_handles: row.attached_workspace_handles ?? [],
+      workspace_id: row.workspace_id,
+      workspace_handle: row.workspace_handle,
     }));
   });
 }
@@ -1333,8 +1351,16 @@ interface BootstrapMemoEntry {
 const BOOTSTRAP_TTL_MS = 10_000;
 const bootstrapMemo = new Map<string, BootstrapMemoEntry>();
 
-export async function buildBootstrapContext(principalId: string): Promise<BootstrapContext> {
-  const cached = bootstrapMemo.get(principalId);
+export async function buildBootstrapContext(
+  principalId: string,
+  workspaceId: string | null = null,
+): Promise<BootstrapContext> {
+  // Memo per (principal, workspace): a thread scoped to Workspace A and one
+  // scoped to Workspace B must never share a cached context, or hard-scoping
+  // would leak across workspaces. Unassigned threads (workspaceId = null) get
+  // their own broad-context entry.
+  const memoKey = `${principalId} ${workspaceId ?? ""}`;
+  const cached = bootstrapMemo.get(memoKey);
   if (cached && Date.now() - cached.builtAt < BOOTSTRAP_TTL_MS) {
     return cached.value;
   }
@@ -1353,7 +1379,12 @@ export async function buildBootstrapContext(principalId: string): Promise<Bootst
       return ok ? d : null;
     }),
   );
-  const accessibleDocos = accessChecks.filter((d): d is (typeof allDocos)[number] => d !== null);
+  // When the thread is scoped to a Workspace, hard-scope to that Workspace's
+  // Docos only — the agent should not see (or act on) Docos in other
+  // workspaces from inside this thread.
+  const accessibleDocos = accessChecks
+    .filter((d): d is (typeof allDocos)[number] => d !== null)
+    .filter((d) => !workspaceId || d.workspaceId === workspaceId);
 
   // Listing `id=<doco_id>` next to the handle gives the agent a
   // stable anchor — handles can be renamed at /settings, but the
@@ -1364,7 +1395,10 @@ export async function buildBootstrapContext(principalId: string): Promise<Bootst
     const label = qualifiedDocoLabel({ ownerSlug: d.ownerUsername, handle: d.handle });
     return `- ${label} (path=/${d.handle}, id=${d.docoId}, visibility ${d.visibility})`;
   });
-  const workspaceLines: string[] = workspaces.map(
+  const scopedWorkspaces = workspaceId
+    ? workspaces.filter((o) => o.id === workspaceId)
+    : workspaces;
+  const workspaceLines: string[] = scopedWorkspaces.map(
     (o) => `- /workspaces/${o.handle} (id=${o.id}, ${o.name})`,
   );
 
@@ -1405,7 +1439,9 @@ export async function buildBootstrapContext(principalId: string): Promise<Bootst
   // bootstrap source the external agent-bootstrap manifest renders from — so
   // Señor Doco and a connected agent can never disagree on the constitution
   // set. (Resolves to the identical workspace scope as the manifest.)
-  const constitutions = await loadWorkspaceConstitutionsForPrincipal(principalId);
+  const constitutions = (await loadWorkspaceConstitutionsForPrincipal(principalId)).filter(
+    (w) => !workspaceId || w.workspace_id === workspaceId,
+  );
   const constitutionSections = constitutions.map(
     (w) => `Constitution — workspace ${w.workspace_handle}:\n${w.constitution}`,
   );
@@ -1416,7 +1452,7 @@ export async function buildBootstrapContext(principalId: string): Promise<Bootst
     policySnippets,
     constitutionSections,
   };
-  bootstrapMemo.set(principalId, { builtAt: Date.now(), value });
+  bootstrapMemo.set(memoKey, { builtAt: Date.now(), value });
   // Opportunistic cleanup: drop expired entries so the Map doesn't grow
   // forever in long-lived processes. Cheap because the Map is small —
   // one entry per active principal.
@@ -2352,7 +2388,10 @@ async function* streamAssistantTurn(args: {
 
     const bootstrapStart = performance.now();
     yield { kind: "status", phase: "loading_bootstrap" };
-    const bootstrap = await buildBootstrapContext(args.ctx.principal.id);
+    const bootstrap = await buildBootstrapContext(
+      args.ctx.principal.id,
+      args.conversation.workspace_id,
+    );
     bootstrapMs = performance.now() - bootstrapStart;
     const systemBlocks = buildSystemBlocks(args.ctx.principal, bootstrap);
     if (await activeTurnWasStopped(true)) {

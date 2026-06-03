@@ -86,7 +86,12 @@ import {
   loadBootstrapForPrincipal,
   loadWorkspaceConstitutionsForPrincipal,
 } from "../agent-bootstrap.server";
-import { buildBootstrapContext, buildSystemBlocks } from "../agent-chat.server";
+import {
+  buildBootstrapContext,
+  buildSystemBlocks,
+  createConversation,
+  listConversationsForPrincipal,
+} from "../agent-chat.server";
 
 const USER = "user_constitution000000000000";
 const WS_REACHABLE = "workspace_reachable0000000000";
@@ -156,5 +161,47 @@ describe("Señor Doco bootstrap — workspace constitution", () => {
     const manifest = await loadBootstrapForPrincipal(USER, null);
     expect(sidebar).toEqual(manifest.workspaceConstitutions);
     expect(sidebar.map((w) => w.workspace_handle)).toEqual(["acme"]);
+  });
+
+  it("hard-scopes a thread to its workspace's charter — no cross-workspace leak", async () => {
+    // A second reachable workspace with its own charter. A thread scoped to
+    // one must see only that one's constitution, never the other's.
+    const WS_DELTA = "workspace_deltacharter0000000";
+    const DELTA_CHARTER = "Delta charter: write an ADR before you build.";
+    await dbm.db.query(
+      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,'delta','Delta',$2,'{}')",
+      [WS_DELTA, DELTA_CHARTER],
+    );
+    await dbm.db.query(
+      "INSERT INTO workspace_users (workspace_id, user_id, role) VALUES ($1,$2,'owner')",
+      [WS_DELTA, USER],
+    );
+
+    const scopedToAcme = (
+      await buildBootstrapContext(USER, WS_REACHABLE)
+    ).constitutionSections.join("\n");
+    expect(scopedToAcme).toContain(CHARTER);
+    expect(scopedToAcme).not.toContain(DELTA_CHARTER);
+
+    // Different memo key, fresh build — proves the per-workspace cache does not
+    // leak Acme's charter into a Delta-scoped thread.
+    const scopedToDelta = (await buildBootstrapContext(USER, WS_DELTA)).constitutionSections.join(
+      "\n",
+    );
+    expect(scopedToDelta).toContain(DELTA_CHARTER);
+    expect(scopedToDelta).not.toContain(CHARTER);
+  });
+
+  it("surfaces a thread's workspace handle for the sidebar tag", async () => {
+    const conv = await createConversation(USER, { workspaceId: WS_REACHABLE });
+    expect(conv.workspace_id).toBe(WS_REACHABLE);
+
+    const [listed] = await listConversationsForPrincipal(USER);
+    expect(listed.workspace_id).toBe(WS_REACHABLE);
+    expect(listed.workspace_handle).toBe("acme");
+
+    // An unassigned thread reports no workspace.
+    const plain = await createConversation(USER);
+    expect(plain.workspace_id).toBeNull();
   });
 });
