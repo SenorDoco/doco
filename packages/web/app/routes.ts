@@ -81,6 +81,9 @@ export default [
   // Returns the actual agent_turn_metrics / capture_timings rows
   // behind the aggregated health signals.
   route("admin/agent-debug.json", "routes/admin.agent-debug[.]json.tsx"),
+  // TEMPORARY: secret-gated probe for the torre-prs PR-import recovery.
+  // Remove once verified.
+  route("admin/import-probe.json", "routes/admin.import-probe[.]json.tsx"),
   route("mentor/feedback", "routes/mentor.feedback.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
