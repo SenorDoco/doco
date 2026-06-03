@@ -149,8 +149,8 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                       Slack workspaces
                     </CardTitle>
                     <CardDescription>
-                      Account-wide. After install, channel defaults bind a workspace to an workspace
-                      or a specific Doco.
+                      Each Slack team is connected to one Doco workspace. After install, channel
+                      defaults wire individual channels to specific Docos within that workspace.
                     </CardDescription>
                   </div>
                   {slackInstallHref ? (

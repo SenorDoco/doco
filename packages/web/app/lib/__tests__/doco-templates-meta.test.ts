@@ -16,7 +16,7 @@ describe("doco template metadata", () => {
       const meta = findDocoTemplateMeta(handle);
       expect(meta?.label).toMatch(/Decisions/);
       expect(meta?.description).toMatch(/decision records/i);
-      expect(meta?.updatedAt).toBe("2026-05-31");
+      expect(meta?.updatedAt).toBe("2026-06-03");
     }
   });
 
