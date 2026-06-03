@@ -13,6 +13,7 @@
 // workspace's RFC 9728 protected-resource metadata, which a connector follows
 // to discover the OAuth server (RFC 8414) and run the flow.
 
+import { getWorkspaceConstitutionsByIds } from "@doco/db";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
 import { gateWorkspaceMcp, resolveDocoInWorkspace } from "~/lib/workspace-mcp.server";
@@ -30,8 +31,9 @@ const SERVER_VERSION = "1.0.0-workspace";
 const SERVER_INSTRUCTIONS = [
   "This MCP server is bound to a single Doco Workspace — every tool here",
   "operates only on the Docos inside THIS workspace, and your token reaches",
-  "no other. Call doco_whoami to see the workspace and which of its Docos",
-  "this token can reach (the <handle> in /<handle>). Call doco_search before",
+  "no other. Call doco_whoami to see the workspace, its constitution (the",
+  "charter your captures must honor), and which of its Docos this token can",
+  "reach (the <handle> in /<handle>). Call doco_search before",
   "answering substantive questions about how the project does things; there is",
   "almost always prior art you'd otherwise miss. Use doco_capture to record",
   "decisions/rules/etc. as they form and doco_relate to link them — or",
@@ -529,11 +531,24 @@ async function runDocoWhoami(request: Request, ctx: Ctx): Promise<ToolResult> {
       "No Docos reachable yet in this workspace — use doco_request_access to ask an owner.",
     );
   }
+  // The workspace constitution — the same charter the in-page Señor Doco and the
+  // agent-bootstrap manifest surface. Scoped to THIS workspace (the only one
+  // this MCP reaches), so a connected agent honors the same top-level intent.
+  const [charter] = await getWorkspaceConstitutionsByIds([ctx.workspaceId]);
+  const constitution = charter?.constitution ?? null;
+  if (constitution) {
+    lines.push(
+      "",
+      `Workspace constitution — the charter your work in ${ctx.workspaceHandle} must honor:`,
+      constitution,
+    );
+  }
   return {
     content: [{ type: "text", text: lines.join("\n") }],
     structuredContent: {
       ...identity,
       workspace_id: ctx.workspaceId,
+      workspace_constitution: constitution,
       grants: [workspace, ...docos].filter(Boolean),
     },
   };

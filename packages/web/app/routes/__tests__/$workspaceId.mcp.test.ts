@@ -9,9 +9,13 @@ const mocks = vi.hoisted(() => ({
   changesetsAction: vi.fn(),
   requestDocoAccess: vi.fn(),
   loadAgentIdentity: vi.fn(),
+  getWorkspaceConstitutionsByIds: vi.fn(),
   fetchMock: vi.fn(),
 }));
 
+vi.mock("@doco/db", () => ({
+  getWorkspaceConstitutionsByIds: mocks.getWorkspaceConstitutionsByIds,
+}));
 vi.mock("~/lib/workspace-mcp.server", () => ({
   gateWorkspaceMcp: mocks.gateWorkspaceMcp,
   resolveDocoInWorkspace: mocks.resolveDocoInWorkspace,
@@ -54,6 +58,8 @@ describe("POST /<workspace-id>/mcp (per-workspace remote MCP)", () => {
       ok: true,
       handle: handleOrId,
     }));
+    // Default: workspace has no constitution unless a test sets one.
+    mocks.getWorkspaceConstitutionsByIds.mockResolvedValue([]);
     vi.stubGlobal("fetch", mocks.fetchMock);
   });
 
@@ -160,6 +166,58 @@ describe("POST /<workspace-id>/mcp (per-workspace remote MCP)", () => {
     expect(text).toContain("bound to workspace acme");
     expect(text).toContain("acme/proj1: writer");
     expect(text).not.toContain("other/proj2");
+  });
+
+  it("doco_whoami surfaces the workspace constitution (scoped to this workspace)", async () => {
+    mocks.loadAgentIdentity.mockResolvedValue({
+      user_id: "user_alice",
+      username: "alice",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @alice]",
+      grants: [{ scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" }],
+    });
+    mocks.getWorkspaceConstitutionsByIds.mockResolvedValue([
+      {
+        workspace_id: WORKSPACE,
+        workspace_handle: "acme",
+        constitution: "Ship behind flags. Write the decision down.",
+      },
+    ]);
+    const res = await action({
+      request: rpc(
+        { jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "doco_whoami" } },
+        BEARER,
+      ),
+      params: PARAMS,
+    });
+    const body: Json = await res.json();
+    expect(mocks.getWorkspaceConstitutionsByIds).toHaveBeenCalledWith([WORKSPACE]);
+    expect(body.result.content[0].text).toContain("Workspace constitution");
+    expect(body.result.content[0].text).toContain("Ship behind flags. Write the decision down.");
+    expect(body.result.structuredContent.workspace_constitution).toContain("Ship behind flags");
+  });
+
+  it("doco_whoami omits the constitution section when the workspace has none", async () => {
+    mocks.loadAgentIdentity.mockResolvedValue({
+      user_id: "user_alice",
+      username: "alice",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @alice]",
+      grants: [{ scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" }],
+    });
+    mocks.getWorkspaceConstitutionsByIds.mockResolvedValue([]);
+    const res = await action({
+      request: rpc(
+        { jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "doco_whoami" } },
+        BEARER,
+      ),
+      params: PARAMS,
+    });
+    const body: Json = await res.json();
+    expect(body.result.content[0].text).not.toContain("Workspace constitution");
+    expect(body.result.structuredContent.workspace_constitution).toBeNull();
   });
 
   it("doco_search delegates to the search loader, replaying the bearer", async () => {
