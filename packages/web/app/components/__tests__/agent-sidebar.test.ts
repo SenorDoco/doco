@@ -77,6 +77,17 @@ describe("SenorDocoExplainer", () => {
     const anchor = html.match(/<a [^>]*>Connect the MCP<\/a>/)?.[0] ?? "";
     expect(anchor).toContain('href="/tokens"');
   });
+
+  it("separates from the header with a neumorphic-eligible divider, not a hard line", () => {
+    // app.css auto-rewrites `border-b border-border` into a soft etched
+    // highlight, but its `[class~="border-border"]` selector only matches the
+    // exact token — an opacity modifier like `border-border/70` slips past and
+    // renders as a raw 1px stroke, which is off-style for the neumorphic rail.
+    const className = markup().match(/<div class="([^"]*border-b[^"]*)"/)?.[1] ?? "";
+    expect(className).toContain("border-b");
+    expect(className).toContain("border-border");
+    expect(className).not.toMatch(/border-border\//);
+  });
 });
 
 describe("chatBubbleBlocks", () => {
