@@ -11,7 +11,7 @@ import {
 import {
   DEFAULT_DOCO_TEMPLATES,
   type DocoTemplate,
-  templatePolicyToSeededPolicy,
+  templatePolicyToPolicyRow,
 } from "./doco-templates.js";
 
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
@@ -388,20 +388,20 @@ export async function createDocoInWorkspace(opts: {
 
     if (template && template.policies.length > 0) {
       for (const policy of template.policies) {
-        // Derive the unified policy row's `kind` + shaped `predicate` (plus
-        // enforcement modifiers) from the kind-less TemplatePolicy. The
-        // translation lives beside the templates (`templatePolicyToSeededPolicy`)
-        // so the seeder and the authoring tests share one source of truth.
-        const seeded = templatePolicyToSeededPolicy(policy);
+        // Translate the (still old-shape) TemplatePolicy into the unified
+        // policy row (a standalone `kind` plus an evaluator predicate). The
+        // pure translation lives in `templatePolicyToPolicyRow` so the
+        // template scenario tests seed the exact same rows we enforce here.
+        const row = templatePolicyToPolicyRow(policy);
         const policyId = `policy_${generateUlid()}`;
         const policyData: Record<string, unknown> = {
           id: policyId,
           doco_id: docoId,
-          kind: seeded.kind,
-          predicate: seeded.predicate,
-          ...(seeded.on_violation ? { on_violation: seeded.on_violation } : {}),
-          ...(seeded.fires_when_node_lifecycle
-            ? { fires_when_node_lifecycle: seeded.fires_when_node_lifecycle }
+          kind: row.kind,
+          predicate: row.predicate,
+          ...(row.on_violation !== undefined ? { on_violation: row.on_violation } : {}),
+          ...(row.fires_when_node_lifecycle
+            ? { fires_when_node_lifecycle: row.fires_when_node_lifecycle }
             : {}),
           template_seeded: true,
           template_handle: opts.templateHandle ?? null,
@@ -416,7 +416,7 @@ export async function createDocoInWorkspace(opts: {
           [
             policyId,
             docoId,
-            seeded.kind,
+            row.kind,
             JSON.stringify(policyData),
             policy.body_md ?? "",
             created,

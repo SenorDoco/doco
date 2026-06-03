@@ -12,7 +12,7 @@
  *   bootstrap manifest.
  * - `policies` — at install time each entry seeds one row in the unified
  *   `policies` table. A standalone `kind` is *derived* from the entry by
- *   `templatePolicyToSeededPolicy` (see host.ts): a prose-only entry
+ *   `templatePolicyToPolicyRow` (see host.ts): a prose-only entry
  *   becomes a `suggestion`; a probabilistic predicate becomes a
  *   `probabilistic` policy carrying its spec as the `agent_instruction`;
  *   any other predicate becomes a `deterministic` policy keyed by
@@ -27,7 +27,7 @@
  * guidance_policies / node_authoring_policies split has collapsed into the
  * single `policies` table classified by the standalone `kind` (#909).
  */
-import type { AuthoringPredicate, Lifecycle, PolicyKind, PolicyPredicate } from "@doco/shared";
+import type { AuthoringPredicate, Lifecycle } from "@doco/shared";
 
 export interface TemplatePolicy {
   /** The one-line rule statement. Renamed from `summary` to `policy`
@@ -243,6 +243,26 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
     ...opts.guidance.map((policy) => ({ policy })),
   ];
 }
+
+/**
+ * Business-processes fires its completeness + shape policies on the two
+ * *committed* lifecycle stages — `queued` (ready, awaiting activation) and
+ * `active` (in force) — and exempts only `drafting`.
+ *
+ * Rationale (the `queued` stage): the node lifecycle is now
+ * `drafting → queued → active → retired`. A node an author has explicitly
+ * `queue`d is asserting it is ready to go live, so it must already satisfy
+ * the same actor (`performed_by`), Intent (`serves`), and forward
+ * `flows_to` wiring an `active` node does — otherwise "ready" is a lie the
+ * BPMN renderer can't draw. Only a `drafting` sketch may be incomplete.
+ *
+ * This is scoped to business-processes on purpose: it is the one template
+ * that defaults new nodes to `drafting` and carries a real
+ * draft → queue → activate authoring story. Templates that default new
+ * nodes straight to `active` (decision-records, glossaries, org-chart)
+ * rarely pass through `queued`, so they still fire on `["active"]`.
+ */
+const BUSINESS_PROCESS_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
 
 export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   {
@@ -583,6 +603,10 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // rework loops may route back through a gateway. Generic Doco
     // dependency / rationale edges remain associations and are not
     // treated as BPMN arrows.
+    //
+    // Lifecycle: nodes default to `drafting` so a process can be sketched
+    // freely; completeness + shape rules fire on the committed stages
+    // (`queued` and `active`) only — see BUSINESS_PROCESS_COMMITTED_LIFECYCLES.
     name: "business-processes",
     label: "business-processes",
     icon: "🏭",
@@ -661,7 +685,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: 'Check the candidate\'s visible user-facing text fields, including name, body_md, intent, action, decision, question, chosen, state, rule, and eval text. PASS when the text reads as business-process language for an operator or process reader, and any BPMN/source/import/code-evidence details are absent from visible prose or kept only in structured metadata, References, or audit/history. FAIL when visible text contains raw import scaffolding or implementation/source metadata, including phrases or patterns like "BPMN gateway", "BPMN task", "Gateway_...", "Implementation status", "Code evidence", "Source type", "exclusiveGateway", "user asks:", raw BPMN ids, generated object ids, or notes about code evidence discovered during import. Do not fail merely because a real business term happens to mention a job type, gateway, source, or implementation in ordinary process language; fail only when the prose exposes importer/debug/source metadata instead of the process meaning.',
           when_node_type: ["intent", "action", "decision", "state", "eval", "rule", "principal"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Principal shape ──────────────────────────────────────────
@@ -693,7 +717,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Check the Intent's `intent` field. PASS only when BOTH hold: (a) the FIRST LINE is a brief process name — a short verb + object phrase, optionally with an adjective or adverb, roughly two to six words (e.g. `Publish a job`), and NOT a full run-on sentence that buries the name; and (b) the remaining text lets the reader discern (1) the trigger that starts the process, (2) the terminal business outcome that ends it, and (3) what is explicitly out of scope. FAIL with what is wrong — say `first line is not a brief headline` when line one crams the whole description into one sentence, or name the missing trigger / outcome / out-of-scope element.",
           when_node_type: ["intent"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Action shape ────────────────────────────────────────────
@@ -707,7 +731,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           target_node_type: "principal",
           when_node_type: ["action"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
         // One rule for all three flow-node types. The role-aware edge
@@ -724,7 +748,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           target_node_type: "intent",
           when_node_type: ["action", "decision", "state"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
         // Atomic activity prose — surface umbrella phases and
@@ -744,7 +768,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Check the Action's `action` and `verb`. PASS when the text names a single business activity the named actor performs — an ordinary single-verb step like `review the legal terms`, `approve the invoice`, or `pack the order` PASSES. FAIL with reason only if the text (a) is a vague umbrella phase covering many steps (e.g. `handle request`, `do the thing`, `process order`), (b) bundles two distinct activities joined by `and` (e.g. `examine and treat the patient`), or (c) is an implementation chore divorced from business meaning (e.g. `call API`, `update row`, `write to DB`).",
           when_node_type: ["action"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       // ── Decision shape ──────────────────────────────────────────
       {
@@ -758,18 +782,18 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Check the Decision's `question`, `alternatives`, and any outgoing `flows_to` branch labels/conditions. PASS when the question reads as yes/no or an enumeration, AND the alternatives / outgoing branches either include an explicit default/else branch or name every enumerated value. FAIL with reason if the question has uncovered cases or if a default/else is missing where enum coverage isn't visibly complete.",
           when_node_type: ["decision"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── State shape & sequence wiring (graph invariants kept as
       //    guidance until the evaluator can express subgraph shape) ──
       {
         policy:
-          "A business process has ≥1 active initial State and ≥1 active terminal State, with each `state` name unique within the process. Every process starts somewhere, ends at a business outcome (or an explicitly cancelled outcome), and names its milestones unambiguously.",
+          "A business process has ≥1 committed (`queued` or `active`) initial State and ≥1 committed terminal State, with each `state` name unique within the process. Every process starts somewhere, ends at a business outcome (or an explicitly cancelled outcome), and names its milestones unambiguously.",
       },
       {
         policy:
-          "Flow runs forward from the initial State: each active initial State has ≥1 outgoing `flows_to` edge, every non-initial flow node is reachable from an earlier flow node through forward `flows_to`, and every non-terminal flow node has ≥1 outgoing `flows_to` target in the same process Intent. Terminal States have no outgoing `flows_to` — they end the process path.",
+          "Flow runs forward from the initial State: each committed (`queued` or `active`) initial State has ≥1 outgoing `flows_to` edge, every non-initial flow node is reachable from an earlier flow node through forward `flows_to`, and every non-terminal flow node has ≥1 outgoing `flows_to` target in the same process Intent. Terminal States have no outgoing `flows_to` — they end the process path.",
       },
       {
         // State summary as milestone/condition — noun or past-participle
@@ -781,7 +805,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           when_node_type: ["state"],
           spec: "Check ONLY the State's `state`. PASS when the text reads as a milestone or entry/exit condition — a noun or past-participle (`invoice approved`, `payment captured`, `cart`, `awaiting-review`). FAIL with reason if it reads as an imperative verb naming an Action (`Approve invoice`, `Process the order`).",
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Coverage ────────────────────────────────────────────────
@@ -793,7 +817,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Review actor coverage by following `attributed_to` role `performed_by` and `supports` role `serves` edges.",
           when_node_type: ["intent"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Eval ────────────────────────────────────────────────────
@@ -806,7 +830,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           edge_role: "tests",
           when_node_type: ["eval"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Guidance (prose-only) ───────────────────────────────────
@@ -860,7 +884,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Drafting nodes may be incomplete while the process is being sketched. Move flow nodes and the purpose Intent to `active` only after actor (`performed_by`), Intent (`serves`), and forward `flows_to` wiring are coherent.",
+          "Walk a process node through the four-stage lifecycle drafting → queued → active → retired. Sketch it in `drafting`, where it may be incomplete — completeness and shape rules are suspended. `queue` it (changeset op `queue`) once its actor (`performed_by`), Intent (`serves`), and forward `flows_to` wiring are coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules; only a `drafting` sketch is exempt. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).",
+      },
+      {
+        policy:
+          "Use `queued` for a process — or a single step, gateway, or milestone — that is fully wired and ready but not yet in force: a redesign awaiting sign-off, a step pending a scheduled go-live, or an approved-but-not-yet-rolled-out change. A `queued` node asserts readiness, so it must already satisfy the same actor, `serves`, and forward-flow wiring an `active` node does. If it is still being sketched and that wiring is incomplete, leave it `drafting` instead of queuing it.",
       },
       {
         policy:
@@ -923,11 +951,15 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       "Map the people and AI agents in an organization — reporting lines, teams, roles, and appointments. Every seat declares in its `body_md` prose whether it's filled by a person, filled by an AI agent, or currently vacant.",
     // No `defaultNodeLifecycle` override: a seat, team, or appointment
     // is live the moment it's created, so a captured node lands
-    // `active` (and the active-gated completeness rules — e.g. a
-    // team Intent's roster — apply right away). To sketch a tentative
-    // seat or a roster-less team, pass `lifecycle: "drafting"`
-    // explicitly. (Business-processes keeps a `drafting` default so a
-    // flow can be wired up incrementally.)
+    // `active` (and the completeness rules — e.g. a team Intent's
+    // roster, a seat's reporting line — apply right away). Two explicit
+    // overrides cover the rest of the four-stage lifecycle: capture a
+    // committed-but-not-yet-effective change (a signed hire, an
+    // announced reorg) as `queued` — it meets the same completeness bar
+    // as active but isn't in force yet — and sketch a tentative seat or
+    // roster-less team as `drafting`, where the occupant or reporting
+    // line may still be unknown. (Business-processes keeps a `drafting`
+    // default so a flow can be wired up incrementally.)
     perspectives: [{ slug: "org-tree", isDefault: true }],
     policies: [
       // ── Membership ──────────────────────────────────────────────
@@ -976,27 +1008,38 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // valid root Principal (CEO/founder/root agent/external
         // authority) should not receive an unavoidable "missing
         // reports_to" warning once its body_md explains the absence.
+        //
+        // Fires on `queued` AND `active`: a queued seat is a committed,
+        // ready-to-go-live org fact (a signed hire, an announced
+        // appointment) — as complete as an in-force one, so its reporting
+        // line should already be wired. Only `drafting` — the
+        // still-being-sketched stage — is exempt, so a member can be
+        // captured before its manager exists.
         on_violation: "warn",
         policy:
-          "Every active Principal in an org chart either has a `has_parent` reporting edge or explains in `body_md` why it is top-of-chain (founder, board-reporting, root agent, external authority).",
+          "Every in-force or queued Principal in an org chart either has a `has_parent` reporting edge or explains in `body_md` why it is top-of-chain (founder, board-reporting, root agent, external authority).",
         predicate: {
           kind: "probabilistic",
           when_node_type: ["principal"],
           spec: "Read the Principal candidate. PASS if its prose explains why this Principal has no manager above it (founder, board-reporting, root agent, external authority, etc.). Otherwise, expect a has_parent edge with role `reports_to` in the graph; if it is absent, WARN that the reporting edge is missing.",
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: ["queued", "active"],
       },
 
       // ── Team Intents declare members ───────────────────────────
       {
+        // Fires on `queued` and `active` for the same reason the reporting
+        // nudge does: a team that's queued to stand up (an announced
+        // reorg) should already name its roster, while a `drafting` team
+        // can be sketched before its members are assigned.
         policy:
-          "Every active team/unit Intent in an org chart should be linked to member Principals with `attributed_to` edges.",
+          "Every in-force or queued team/unit Intent in an org chart should be linked to member Principals with `attributed_to` edges.",
         predicate: {
           kind: "descriptive",
           spec: "Review team membership through `attributed_to` edges with membership roles.",
           when_node_type: ["intent"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: ["queued", "active"],
       },
 
       // ── Guidance (prose-only) ───────────────────────────────────
@@ -1005,8 +1048,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           "An org chart describes who reports to whom and which teams exist — not what those people do. Activities, processes, and workflows belong in business-processes Docos linked via Reference.",
       },
       {
+        // The `queued` lifecycle stage is org charting's "future-effective"
+        // tool: it lets the chart hold a committed change before its
+        // effective date without pretending it's already in force. This is
+        // the org-chart analogue of the canonical `queued` example (an open
+        // PR that's ready but not yet merged).
         policy:
-          "Reporting chains must not be circular. A cycle (A reports to B, B reports to C, C reports to A) usually means a refactor in progress; resolve it before asserting the affected Principals. The framework evaluator can't check this yet — it's a manual review.",
+          "Stage a future-effective org change as `queued`: a signed hire who hasn't started, an announced promotion or appointment with a later effective date, a decided-but-unexecuted reorg, or a named successor. A queued seat or reporting line is fully specified — occupant declared, reporting edge wired — it just isn't in force yet, so it shows as pending on the chart. Activate it (the `activate` op) on the effective date. Reserve `drafting` for an org change you're still sketching, where the occupant or reporting line may still be unknown; retire a seat or line that's been vacated or rerouted.",
+      },
+      {
+        policy:
+          "Reporting chains must not be circular. A cycle (A reports to B, B reports to C, C reports to A) usually means a refactor in progress; resolve it before activating the affected Principals. The framework evaluator can't check this yet — it's a manual review.",
       },
       {
         policy:
@@ -1014,7 +1066,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Capture reorgs, hires, departures, and role changes as Decisions, and link the affected Principals with `supports` or provenance edges. Org charts churn; without Decisions, the history of WHY a reporting line moved is lost.",
+          "Capture reorgs, hires, departures, and role changes as Decisions, and link the affected Principals with `supports` or provenance edges. Org charts churn; without Decisions, the history of WHY a reporting line moved is lost. When the change is decided but takes effect later, `queue` the Decision (and the seats and reporting edges it moves) and `activate` them on the effective date.",
       },
       {
         policy:
@@ -1052,6 +1104,16 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         policy:
           "Seats persist across routine turnover: when one person leaves and another fills the same seat — or a seat goes vacant and is later refilled by the same kind of occupant — keep the Principal, update `body_md`, and record the change as a Decision, so reporting and membership edges stay intact and the seat's history reads continuously. Only when the seat's nature flips between person and AI agent do you retire the old Principal and create a new one.",
       },
+      {
+        // Mirrors the business-processes authoring rule. Org charts are
+        // frequently bulk-imported or backfilled by agents (from an HRIS, a
+        // Slack roster, a headcount sheet), so the changeset batch — create a
+        // seat and wire its reporting edge atomically — is exactly right.
+        // This also re-points agents at the CURRENT changeset ops after the
+        // `assert`→`activate` rename and the new `queue` op.
+        policy:
+          "Agents author org changes through `GET /<handle>/api/authoring-contract.json` and `POST /<handle>/api/changesets.json`: create a seat and its `reports_to` edge in one changeset so the tree is never transiently rootless, and use `relate_many` for sibling edges that must hold together — a primary `reports_to` plus its `dotted_reports_to` matrix lines, or the `same_occupant_as` links across one person's seats. Stage a future-effective change with the `queue` op and put it in force with `activate`.",
+      },
     ],
   },
 ];
@@ -1068,40 +1130,45 @@ export function findDocoTemplateByName(name: string): DocoTemplate | undefined {
 }
 
 /**
- * The subset of a seeded `policies` row that a (kind-less) template entry
- * determines: the derived `kind`, the shaped `predicate`, and the optional
- * enforcement modifiers. host.ts wraps this with row identity + audit columns
- * to write the row; the authoring tests wrap it with a `policy_id` to get an
- * evaluator `LoadedPolicy`.
+ * The essence of a seeded policy row — a standalone `kind` plus the
+ * predicate the evaluator dispatches on. This is the pure translation
+ * from the (still old-shape) `TemplatePolicy` into the unified policies
+ * table introduced in #909; `host.ts` wraps it with the DB-row metadata
+ * (ids, timestamps, `template_seeded`) at Doco-creation time.
  */
-export interface SeededPolicyShape {
-  kind: PolicyKind;
-  predicate: PolicyPredicate;
+export interface SeededPolicyRow {
+  kind: "suggestion" | "deterministic" | "probabilistic";
+  /**
+   * suggestion / probabilistic → `{ agent_instruction, when_node_type? }`
+   * deterministic              → `{ sub_kind, ...check params }`
+   */
+  predicate: Record<string, unknown>;
+  /** Set for deterministic / probabilistic policies (defaults to "block"); omitted for suggestions. */
   on_violation?: "block" | "warn" | "log";
   fires_when_node_lifecycle?: Lifecycle[];
 }
 
 /**
- * Translate a `TemplatePolicy` into the unified policy row's derived shape.
- * The `kind` is inferred from the predicate, mirroring the unified `policies`
- * model (#909):
- *   - no predicate            → `suggestion`    ({ agent_instruction })
- *   - `probabilistic` spec    → `probabilistic` (spec → agent_instruction)
- *   - `descriptive` spec      → `suggestion`    (recorded, never enforced)
- *   - any other predicate     → `deterministic` ({ sub_kind, ...params })
+ * Translate one `TemplatePolicy` into the unified policy row the evaluator
+ * consumes. Split purely by predicate shape:
+ *   - no predicate                    → `suggestion` (the prose is the instruction)
+ *   - `probabilistic`                 → `probabilistic` (LLM-judged at write time)
+ *   - `descriptive`                   → `suggestion` (recorded, not enforced)
+ *   - any other (structured) predicate → `deterministic`, keyed by `sub_kind`
  *
- * This is the single source of truth for the template → policy bridge, so the
- * seeder (host.ts) and the authoring evaluator's tests can never drift apart.
+ * Shared by `host.ts` (which seeds these rows) and the template scenario
+ * tests (which run them through the real evaluator), so the two can never
+ * drift apart.
  */
-export function templatePolicyToSeededPolicy(policy: TemplatePolicy): SeededPolicyShape {
+export function templatePolicyToPolicyRow(policy: TemplatePolicy): SeededPolicyRow {
   const pred = policy.predicate;
-  let kind: PolicyKind;
-  let predicate: PolicyPredicate;
+  let kind: SeededPolicyRow["kind"];
+  let predicate: Record<string, unknown>;
   if (!pred) {
     kind = "suggestion";
     predicate = { agent_instruction: policy.policy };
   } else if (pred.kind === "probabilistic" || pred.kind === "descriptive") {
-    // `descriptive` is recorded-but-not-enforced → folds into suggestion.
+    // `descriptive` was recorded-but-not-enforced → folds into suggestion.
     kind = pred.kind === "probabilistic" ? "probabilistic" : "suggestion";
     predicate = {
       agent_instruction: pred.spec,
@@ -1110,7 +1177,7 @@ export function templatePolicyToSeededPolicy(policy: TemplatePolicy): SeededPoli
   } else {
     kind = "deterministic";
     const { kind: subKind, ...rest } = pred;
-    predicate = { sub_kind: subKind, ...rest } as PolicyPredicate;
+    predicate = { sub_kind: subKind, ...rest };
   }
   const firesWhen = Array.isArray(policy.fires_when_node_lifecycle)
     ? policy.fires_when_node_lifecycle

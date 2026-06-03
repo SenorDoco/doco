@@ -25,9 +25,14 @@
  * candidate's type and stage; the verdict a real judge would return is noted
  * inline and exercised against production in the PR's verification report.
  */
-import { type CandidateFields, type Violation, evaluatePolicies } from "@doco/shared";
+import {
+  type CandidateFields,
+  type LoadedPolicy,
+  type Violation,
+  evaluatePolicies,
+} from "@doco/shared";
 import { describe, expect, it } from "vitest";
-import { findDocoTemplateByName, templatePolicyToSeededPolicy } from "../doco-templates.js";
+import { findDocoTemplateByName, templatePolicyToPolicyRow } from "../doco-templates.js";
 
 type DecisionHandle =
   | "architectural-decisions"
@@ -44,13 +49,19 @@ const DECISION_HANDLES: DecisionHandle[] = [
 
 /** Seed a template's policies into the evaluator's `LoadedPolicy` shape, using
  *  the exact translation the host runs at install time. */
-function loadedFor(handle: DecisionHandle) {
+function loadedFor(handle: DecisionHandle): LoadedPolicy[] {
   const template = findDocoTemplateByName(handle);
   if (!template) throw new Error(`${handle} not registered`);
-  return template.policies.map((p, i) => ({
-    policy_id: `policy_${handle}_${i}`,
-    ...templatePolicyToSeededPolicy(p),
-  }));
+  return template.policies.map((p, i) => {
+    const row = templatePolicyToPolicyRow(p);
+    return {
+      policy_id: `policy_${handle}_${i}`,
+      kind: row.kind,
+      predicate: row.predicate,
+      on_violation: row.on_violation,
+      fires_when_node_lifecycle: row.fires_when_node_lifecycle,
+    } as LoadedPolicy;
+  });
 }
 
 function evaluate(

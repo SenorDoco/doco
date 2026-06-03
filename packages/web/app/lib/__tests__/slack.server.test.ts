@@ -29,9 +29,10 @@ import {
 } from "../slack.server";
 
 describe("slack.server", () => {
-  it("signs and verifies Slack OAuth state", () => {
+  it("signs and verifies Slack OAuth state (carrying the bound workspace)", () => {
     const state = {
       installerId: "user_alice",
+      docoWorkspaceId: "workspace_acme",
       nonce: "nonce",
       issuedAt: 1_000,
     };
@@ -43,6 +44,16 @@ describe("slack.server", () => {
     );
     expect(() => verifySlackState(encoded, "secret", 16 * 60 * 1000)).toThrow(
       "Expired Slack OAuth state.",
+    );
+  });
+
+  it("rejects OAuth state missing the bound workspace (install must choose one)", () => {
+    const encoded = signSlackState(
+      { installerId: "user_alice", nonce: "n", issuedAt: 1_000 } as never,
+      "secret",
+    );
+    expect(() => verifySlackState(encoded, "secret", 1_500)).toThrow(
+      "Invalid Slack OAuth state payload.",
     );
   });
 

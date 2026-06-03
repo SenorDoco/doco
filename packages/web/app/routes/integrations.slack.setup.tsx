@@ -14,7 +14,6 @@ import {
   type SlackInstallationSummary,
   listSlackInstallations,
   replaceSlackChannelConnections,
-  setSlackBoundWorkspace,
 } from "~/lib/slack.server";
 import { rankOf } from "~/lib/user-invite";
 
@@ -70,13 +69,30 @@ export async function loader({ request }: { request: Request }): Promise<SlackSe
   const requestedTeamId = url.searchParams.get("team_id")?.trim();
   const installation =
     installations.find((item) => item.workspaceId === requestedTeamId) ?? installations[0];
-  const workspaceGroups = buildWorkspacePermissionGroups(await loadScopeOptions(me.id));
+  // The team is bound to one Doco workspace at install. Setup configures the
+  // DEFAULT access within that workspace — it never re-picks the workspace.
+  if (!installation.docoWorkspaceId) {
+    throw redirect("/integrations/slack/install");
+  }
+  const workspaceGroups = buildWorkspacePermissionGroups(
+    scopedToWorkspace(await loadScopeOptions(me.id), installation.docoWorkspaceId),
+  );
 
   return {
     me,
     installation,
     workspaceGroups,
   };
+}
+
+/** Scope-options limited to one Doco workspace (the workspace itself + its
+ * Docos) — setup only ever configures defaults inside the team's bound one. */
+function scopedToWorkspace(options: ScopeOption[], workspaceId: string): ScopeOption[] {
+  return options.filter(
+    (o) =>
+      (o.level === "workspace" && o.id === workspaceId) ||
+      (o.level === "doco" && o.workspaceId === workspaceId),
+  );
 }
 
 export async function action({ request }: { request: Request }) {
@@ -100,8 +116,15 @@ export async function action({ request }: { request: Request }) {
   if (!installation) {
     return Response.json({ error: "slack_workspace_not_installed" }, { status: 403 });
   }
-
-  const scopeOptions = await loadScopeOptions(me.id);
+  // The bound workspace is fixed at install; setup only sets defaults within
+  // it. Scoping the options here confines every grant to that one workspace.
+  if (!installation.docoWorkspaceId) {
+    return Response.json({ error: "slack_workspace_not_bound" }, { status: 409 });
+  }
+  const scopeOptions = scopedToWorkspace(
+    await loadScopeOptions(me.id),
+    installation.docoWorkspaceId,
+  );
   const workspaceGroups = buildWorkspacePermissionGroups(scopeOptions);
   const grants = collectGrantsFromForm(form, workspaceGroups);
   if (grants.length === 0) {
@@ -112,18 +135,6 @@ export async function action({ request }: { request: Request }) {
   if (validationError) {
     return Response.json({ error: validationError }, { status: 403 });
   }
-
-  // A Slack team is bound to AT MOST one Doco workspace: every chosen default
-  // must live in the same workspace. Reject a cross-workspace selection, then
-  // persist the binding so personal + channel access resolve against it.
-  const bound = resolveBoundWorkspace(grants, scopeOptions);
-  if ("error" in bound) {
-    return Response.json({ error: bound.error }, { status: 403 });
-  }
-  await setSlackBoundWorkspace({
-    slackTeamId: workspaceId,
-    docoWorkspaceId: bound.workspaceId,
-  });
 
   await replaceSlackChannelConnections({
     workspaceId,
@@ -183,11 +194,10 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
           title="Set up Slack"
         >
           <p className="max-w-4xl text-sm leading-relaxed text-muted-foreground">
-            A Slack team is bound to a single Doco workspace — pick defaults in one workspace only.
-            Señor Doco then reaches only that workspace's Docos for this Slack team (it can never
-            use a person's access in any other workspace). People can still link their own Doco
-            account; their personal access is likewise capped to this one workspace and never
-            exceeds the role they already hold.
+            This Slack team is connected to one Doco workspace (chosen when it was installed) — set
+            Señor Doco's default access there below. It can never use a person's access in any other
+            workspace. People can still link their own Doco account; their personal access is
+            likewise capped to this workspace and never exceeds the role they already hold.
           </p>
         </PageHeader>
 
@@ -196,16 +206,19 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
 
           <Card>
             <CardHeader>
-              <CardTitle>Workspaces</CardTitle>
+              <CardTitle>Default access</CardTitle>
               <CardDescription>
-                Slack workspace: {installation.workspaceName}. Choose the one Doco workspace this
-                Slack team should use (defaults in more than one workspace are rejected).
+                Slack workspace: {installation.workspaceName}. Set what Señor Doco can do by default
+                for everyone in this Slack team — limited to the
+                {workspaceGroups[0] ? ` ${workspaceGroups[0].handle}` : ""} Doco workspace this team
+                is connected to.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {workspaceGroups.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  You do not have access to any workspace or Doco that can be shared with Slack.
+                  You don't have access to the Doco workspace this Slack team is connected to, so
+                  you can't set its defaults. Ask one of its owners.
                 </p>
               ) : null}
 
@@ -217,25 +230,15 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                     key={group.key}
                     className="rounded-md border border-border bg-background p-4"
                   >
-                    <label className="flex items-start gap-3 text-sm font-semibold text-foreground">
-                      <input
-                        type="checkbox"
-                        name="workspace_key"
-                        value={group.key}
-                        checked={state.selected}
-                        onChange={(event) =>
-                          updateWorkspace(group.key, { selected: event.target.checked })
-                        }
-                        className="mt-1 h-4 w-4"
-                      />
-                      <span>
-                        <span className="block">{group.handle}</span>
-                        <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground">
-                          {group.docos.length} accessible{" "}
-                          {group.docos.length === 1 ? "Doco" : "Docos"}
-                        </span>
+                    {/* The workspace is fixed (chosen at install); not a choice here. */}
+                    <input type="hidden" name="workspace_key" value={group.key} />
+                    <div className="text-sm font-semibold text-foreground">
+                      <span className="block">{group.handle} workspace</span>
+                      <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground">
+                        {group.docos.length} accessible{" "}
+                        {group.docos.length === 1 ? "Doco" : "Docos"}
                       </span>
-                    </label>
+                    </div>
 
                     {state.selected ? (
                       <div className="mt-4 space-y-4 border-t border-border pt-4">
@@ -391,7 +394,9 @@ function buildWorkspacePermissionGroups(options: ScopeOption[]): WorkspacePermis
 
 function initialWorkspaceState(group: WorkspacePermissionGroup): DraftWorkspaceState {
   return {
-    selected: false,
+    // The bound workspace is fixed at install; its default-access controls are
+    // always shown (there is no workspace to select here).
+    selected: true,
     mode: group.workspaceOption ? "all" : "specific",
     workspaceRole: "reader",
     docoRoles: Object.fromEntries(group.docos.map((doco) => [doco.id, "none"])),
@@ -439,32 +444,6 @@ function validateGrants(grants: SlackGrantInput[], options: ScopeOption[]): stri
     if (!capability.ok) return capability.error ?? "role_not_allowed";
   }
   return null;
-}
-
-/**
- * The single Doco workspace a Slack team's chosen defaults all live in. A
- * workspace grant IS its workspace; a Doco grant inherits its workspace from
- * the scope options. Returns an error when the selection spans more than one
- * workspace (a team binds to exactly one) or none can be resolved.
- */
-function resolveBoundWorkspace(
-  grants: SlackGrantInput[],
-  options: ScopeOption[],
-): { workspaceId: string } | { error: string } {
-  const workspaces = new Set<string>();
-  for (const grant of grants) {
-    if (grant.targetLevel === "workspace") {
-      workspaces.add(grant.targetId);
-      continue;
-    }
-    const docoOption = options.find((o) => o.level === "doco" && o.id === grant.targetId);
-    const ws = docoOption?.workspaceId;
-    if (!ws) return { error: "target_not_available" };
-    workspaces.add(ws);
-  }
-  if (workspaces.size === 0) return { error: "pick_at_least_one_default_permission" };
-  if (workspaces.size > 1) return { error: "slack_one_workspace_per_team" };
-  return { workspaceId: [...workspaces][0] };
 }
 
 function rolesFor(personalRole: DocoRole | undefined): DocoRole[] {
