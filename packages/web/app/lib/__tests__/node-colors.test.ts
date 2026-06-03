@@ -3,10 +3,28 @@ import {
   EMPTY_LIFECYCLE_COUNTS,
   LIFECYCLE_COLOR,
   LIFECYCLE_DESCRIPTION,
+  lifecycleColor,
   lifecycleCountParts,
   lifecycleDescription,
   sumLifecycleCounts,
 } from "../node-colors";
+
+describe("LIFECYCLE_COLOR", () => {
+  it("paints queued blue and drafting yellow", () => {
+    expect(LIFECYCLE_COLOR.queued).toBe("#2563eb"); // blue-600
+    expect(LIFECYCLE_COLOR.drafting).toBe("#eab308"); // yellow-500
+  });
+
+  it("keeps active black and retired red", () => {
+    expect(LIFECYCLE_COLOR.active).toBe("#171717"); // gray-900
+    expect(LIFECYCLE_COLOR.retired).toBe("#dc2626"); // red-600
+  });
+
+  it("resolves the same colors through lifecycleColor()", () => {
+    expect(lifecycleColor("queued")).toBe("#2563eb");
+    expect(lifecycleColor("drafting")).toBe("#eab308");
+  });
+});
 
 describe("lifecycleCountParts", () => {
   it("returns each stage in canonical order with its color and hover title", () => {
