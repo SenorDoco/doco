@@ -3054,6 +3054,34 @@ function visibleChatBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
   return blocks.filter((b) => b.type !== "tool_use" && b.type !== "tool_result");
 }
 
+/**
+ * Blocks for the rendered chat bubble. Like `visibleChatBlocks`, but
+ * softens the dangling colon on a text block that immediately precedes a
+ * `tool_use`. That text is a spoken preamble ("Let me update both fields:")
+ * to an action the bubble doesn't show — it lives in the Thinking column —
+ * so rendered verbatim it reads as a sentence cut off mid-thought. Turning
+ * the trailing colon into an ellipsis makes it read as work in progress.
+ * Only the preamble immediately before a tool call is touched; a genuine
+ * trailing colon with no stripped action (and user messages) is left alone.
+ */
+export function chatBubbleBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
+  const out: AnyBlock[] = [];
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i];
+    if (block.type === "tool_use" || block.type === "tool_result") continue;
+    const followedByTool = i + 1 < blocks.length && blocks[i + 1].type === "tool_use";
+    if (block.type === "text" && followedByTool) {
+      const softened = block.text.replace(/:+\s*$/, "…");
+      if (softened !== block.text) {
+        out.push({ type: "text", text: softened });
+        continue;
+      }
+    }
+    out.push(block);
+  }
+  return out;
+}
+
 function SavedMessage({
   message,
   compactAfter,
@@ -3062,7 +3090,7 @@ function SavedMessage({
   compactAfter: boolean;
 }) {
   const isAssistant = message.role === "assistant";
-  const visible = visibleChatBlocks(message.content);
+  const visible = chatBubbleBlocks(message.content);
   // Whole message was tool-call noise → skip the bubble. Detailed
   // tool activity is still in the Thinking column.
   if (visible.length === 0) return null;
@@ -3108,7 +3136,7 @@ function InFlightMessageView({
 }) {
   // tool_use / tool_result chips live in the Thinking column; the
   // main chat only sees text + attachments.
-  const visible = visibleChatBlocks(msg.content);
+  const visible = chatBubbleBlocks(msg.content);
   // Pre-text "thinking" state: the shared status icon below the
   // current message stack carries the only working animation.
   if (visible.length === 0) {
