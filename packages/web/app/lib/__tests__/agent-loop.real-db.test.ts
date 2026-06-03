@@ -26,6 +26,10 @@ const tool = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
   listWorkspacesForUser: async () => [],
+  // The bootstrap step now reads the workspace constitution set; this turn
+  // loop has no workspaces, so empty is correct.
+  listAllDocos: async () => [],
+  getWorkspaceConstitutionsByIds: async () => [],
 }));
 vi.mock("../assistant-runtime.server", () => ({
   SENOR_DOCO_DEFAULT_MAX_TOKENS: 8192,

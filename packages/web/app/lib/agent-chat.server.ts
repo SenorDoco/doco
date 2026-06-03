@@ -46,6 +46,7 @@ import {
   renderCaptureCheatsheet,
   summarizePredicate,
 } from "@doco/shared";
+import { loadWorkspaceConstitutionsForPrincipal } from "./agent-bootstrap.server";
 import { type ThreadUsage, type ThreadUsageModelRow, aggregateThreadUsage } from "./agent-cost";
 import {
   SENOR_DOCO_DEFAULT_MAX_TOKENS,
@@ -1315,6 +1316,7 @@ interface BootstrapContext {
   docoLines: string[];
   workspaceLines: string[];
   policySnippets: string[];
+  constitutionSections: string[];
 }
 
 // Per-principal bootstrap memo. The original implementation paid an
@@ -1331,7 +1333,7 @@ interface BootstrapMemoEntry {
 const BOOTSTRAP_TTL_MS = 10_000;
 const bootstrapMemo = new Map<string, BootstrapMemoEntry>();
 
-async function buildBootstrapContext(principalId: string): Promise<BootstrapContext> {
+export async function buildBootstrapContext(principalId: string): Promise<BootstrapContext> {
   const cached = bootstrapMemo.get(principalId);
   if (cached && Date.now() - cached.builtAt < BOOTSTRAP_TTL_MS) {
     return cached.value;
@@ -1399,7 +1401,21 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     policySnippets.push(lines.join("\n"));
   }
 
-  const value: BootstrapContext = { docoLines, workspaceLines, policySnippets };
+  // The workspace charter(s) the user can reach, pulled from the SAME shared
+  // bootstrap source the external agent-bootstrap manifest renders from — so
+  // Señor Doco and a connected agent can never disagree on the constitution
+  // set. (Resolves to the identical workspace scope as the manifest.)
+  const constitutions = await loadWorkspaceConstitutionsForPrincipal(principalId);
+  const constitutionSections = constitutions.map(
+    (w) => `Constitution — workspace ${w.workspace_handle}:\n${w.constitution}`,
+  );
+
+  const value: BootstrapContext = {
+    docoLines,
+    workspaceLines,
+    policySnippets,
+    constitutionSections,
+  };
   bootstrapMemo.set(principalId, { builtAt: Date.now(), value });
   // Opportunistic cleanup: drop expired entries so the Map doesn't grow
   // forever in long-lived processes. Cheap because the Map is small —
@@ -1419,7 +1435,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
  * across turns. The dynamic tail (today + current page) goes in the
  * user message instead — that keeps every cache key identical.
  */
-function buildSystemBlocks(
+export function buildSystemBlocks(
   principal: CurrentPrincipal,
   bootstrap: BootstrapContext,
 ): TextBlockParam[] {
@@ -1432,6 +1448,9 @@ function buildSystemBlocks(
   const policySections = bootstrap.policySnippets.length
     ? bootstrap.policySnippets.join("\n\n")
     : "(no policies authored in the visible docos)";
+  const constitutionText = bootstrap.constitutionSections.length
+    ? bootstrap.constitutionSections.join("\n\n")
+    : "(no workspace the user can reach has authored a constitution yet)";
 
   const text = `${buildSenorDocoCorePrompt({
     surfaceDescription:
@@ -1618,6 +1637,12 @@ ${docoList}
 ### Your workspaces
 
 ${workspaceList}
+
+## Workspace constitution — canonical
+
+The governing charter of every workspace ${principal.username} can reach, fetched server-side at the start of each turn — the SAME set the agent-bootstrap manifest hands any connected agent, so you and an external agent never disagree on it. The constitution sits ABOVE policies: it is the workspace's top-level intent, and your captures and policy checks must honor it. When the user asks about a workspace's charter or rules, answer from this directly. (User-facing, keep calling it the workspace's guidance/charter — house vocabulary avoids the word "constitution" in replies.)
+
+${constitutionText}
 
 ## Policies — canonical
 

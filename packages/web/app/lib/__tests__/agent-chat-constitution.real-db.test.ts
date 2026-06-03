@@ -1,0 +1,160 @@
+// Real-database exercise of the constitution making it into Señor Doco's
+// system prompt. Points `@doco/db`'s `withClient` (and the
+// constitution/workspace repo reads) at an in-process PGlite loaded with the
+// REAL schema, so the reachability + scoping run against actual Postgres
+// semantics (ANY($1::text[]), constitution <> '', the membership JOIN).
+//
+// This is the regression guard for the bug this whole change fixes: the
+// sidebar agent used to omit the workspace constitution entirely. The model
+// boundaries agent-chat.server pulls in are stubbed — no turn is driven.
+
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CurrentPrincipal } from "../session.server";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
+
+const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
+
+vi.mock("@doco/db", () => ({
+  withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
+  listAllDocos: async () => [],
+  getDocoByIdOrHandle: async () => null,
+  listWorkspacesForUser: async (userId: string, roles = ["owner", "writer", "reader"]) => {
+    const r = await dbm.db.query<{
+      id: string;
+      handle: string;
+      name: string;
+      constitution: string;
+      data: Record<string, unknown>;
+    }>(
+      `SELECT o.id, o.handle, o.name, o.constitution, o.data
+         FROM workspaces o
+         JOIN workspace_users m ON m.workspace_id = o.id
+        WHERE m.user_id = $1 AND m.role = ANY($2::text[])
+        ORDER BY o.handle`,
+      [userId, roles],
+    );
+    return r.rows.map((row) => ({ ...row, member_count: 1 }));
+  },
+  getWorkspaceConstitutionsByIds: async (ids: string[]) => {
+    const unique = Array.from(new Set(ids));
+    if (unique.length === 0) return [];
+    const r = await dbm.db.query<{ id: string; handle: string; constitution: string }>(
+      `SELECT id, handle, constitution
+         FROM workspaces
+        WHERE id = ANY($1::text[]) AND constitution <> ''
+        ORDER BY handle`,
+      [unique],
+    );
+    return r.rows.map((row) => ({
+      workspace_id: String(row.id),
+      workspace_handle: String(row.handle),
+      constitution: String(row.constitution),
+    }));
+  },
+}));
+vi.mock("../doco-access.server", () => ({
+  canAccessDoco: async () => true,
+  oauthTokenGrantsDoco: () => true,
+}));
+vi.mock("../assistant-runtime.server", () => ({
+  SENOR_DOCO_DEFAULT_MAX_TOKENS: 8192,
+  getSenorDocoModel: () => "claude-test",
+  missingSenorDocoAnthropicMessage: () => null,
+  streamSenorDocoMessage: vi.fn(),
+}));
+vi.mock("../doco-api-tool.server", () => ({
+  DOCO_API_TOOL: {
+    name: "doco_api",
+    description: "Call a Doco API route",
+    input_schema: { type: "object", properties: {} },
+  },
+  runDocoApiToolRequest: vi.fn(),
+}));
+vi.mock("../senor-doco-prompt.server", () => ({ buildSenorDocoCorePrompt: () => "SYSTEM PROMPT" }));
+vi.mock("../host.server", () => ({ listAllDocos: async () => [] }));
+vi.mock("../internal-fetch.server", () => ({ internalFetch: vi.fn(async () => null) }));
+vi.mock("../dotenv.server", () => ({ ensureEnvLoaded: vi.fn() }));
+vi.mock("../telemetry.server", () => ({ upsertAgentTurn: vi.fn(async () => {}) }));
+
+import {
+  loadBootstrapForPrincipal,
+  loadWorkspaceConstitutionsForPrincipal,
+} from "../agent-bootstrap.server";
+import { buildBootstrapContext, buildSystemBlocks } from "../agent-chat.server";
+
+const USER = "user_constitution000000000000";
+const WS_REACHABLE = "workspace_reachable0000000000";
+const WS_EMPTY = "workspace_emptyconst000000000";
+const WS_UNREACHABLE = "workspace_unreachable000000000";
+
+const CHARTER = "Ship small, reversible changes; write the decision down.";
+
+const principal: CurrentPrincipal = {
+  id: USER,
+  username: "harness",
+  type: "person",
+  isHuman: true,
+};
+
+describe("Señor Doco bootstrap — workspace constitution", () => {
+  beforeEach(async () => {
+    dbm.db = new PGlite();
+    await dbm.db.exec(schemaSql);
+    await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
+    // A workspace the user belongs to, with a non-empty charter.
+    await dbm.db.query(
+      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,$2,$3,$4,'{}')",
+      [WS_REACHABLE, "acme", "Acme", CHARTER],
+    );
+    // A workspace the user belongs to but with NO charter — must not surface.
+    await dbm.db.query(
+      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,$2,$3,$4,'{}')",
+      [WS_EMPTY, "beta", "Beta", ""],
+    );
+    // A workspace with a charter the user is NOT a member of — must not leak.
+    await dbm.db.query(
+      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,$2,$3,$4,'{}')",
+      [WS_UNREACHABLE, "ghost", "Ghost", "Members only: never show this to outsiders."],
+    );
+    for (const ws of [WS_REACHABLE, WS_EMPTY]) {
+      await dbm.db.query(
+        "INSERT INTO workspace_users (workspace_id, user_id, role) VALUES ($1,$2,'owner')",
+        [ws, USER],
+      );
+    }
+  });
+
+  it("includes the reachable workspace's charter, scoped to membership and non-empty", async () => {
+    const bootstrap = await buildBootstrapContext(USER);
+    const joined = bootstrap.constitutionSections.join("\n\n");
+    expect(joined).toContain(CHARTER);
+    expect(joined).toContain("acme");
+    // Empty-charter membership and non-member workspaces never appear.
+    expect(joined).not.toContain("Members only");
+    expect(joined).not.toContain("beta");
+  });
+
+  it("renders the charter into the system prompt blocks", async () => {
+    const bootstrap = await buildBootstrapContext(USER);
+    const text = buildSystemBlocks(principal, bootstrap)
+      .map((b) => b.text)
+      .join("\n");
+    expect(text).toContain(CHARTER);
+    expect(text).not.toContain("Members only: never show this to outsiders.");
+  });
+
+  it("hands the sidebar the EXACT constitution set the external bootstrap manifest returns", async () => {
+    // The whole point of the shared abstraction: Señor Doco and a connected
+    // agent must never disagree on which constitutions apply.
+    const sidebar = await loadWorkspaceConstitutionsForPrincipal(USER, null);
+    const manifest = await loadBootstrapForPrincipal(USER, null);
+    expect(sidebar).toEqual(manifest.workspaceConstitutions);
+    expect(sidebar.map((w) => w.workspace_handle)).toEqual(["acme"]);
+  });
+});
