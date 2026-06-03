@@ -10,9 +10,10 @@ import { cn } from "~/lib/cn";
  * are deliberately uniform across every page that uses it:
  *
  * - the title renders at one shared, large size (`text-2xl`), and
- * - action buttons (Policies, Settings, …) sit on the title's row, to its
- *   right — vertically centered with the title rather than floating up to
- *   the breadcrumb.
+ * - action buttons (Policies, Settings, …) sit on the title's row, packed
+ *   immediately to its right and vertically centered with it — right beside
+ *   the title rather than floated to the far edge of the page or up to the
+ *   breadcrumb.
  */
 export function PageHeader({
   breadcrumb,
@@ -34,7 +35,7 @@ export function PageHeader({
   return (
     <div className={cn("space-y-1", className)}>
       {breadcrumb && breadcrumb.length > 0 ? <Breadcrumb items={breadcrumb} /> : null}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
