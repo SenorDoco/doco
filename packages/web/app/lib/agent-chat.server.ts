@@ -1452,7 +1452,7 @@ function buildSystemBlocks(
 
 ## Visible graph references
 
-When the per-turn user header includes "Visible graph node references", the purple numbered circles currently attached to graph nodes map to those listed ids. Treat shorthand commands like "assert 5", "activate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered node. "assert" and "activate" mean PATCH lifecycle to "asserted"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
+When the per-turn user header includes "Visible graph node references", the purple numbered circles currently attached to graph nodes map to those listed ids. Treat shorthand commands like "assert 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered node. "assert" means PATCH lifecycle to "asserted"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
 
 ## Attachments
 
