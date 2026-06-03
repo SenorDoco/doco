@@ -22,6 +22,25 @@ authorized it directly.
 
 ---
 
+## You can't wait for CI across turns — auto-merge or watch in-turn
+
+You can't be woken by webhooks or block on async events across turns.
+Once a turn ends, nothing resumes it when CI goes green — so "I'll
+squash-merge once CI passes" followed by ending the turn never merges.
+The PR just sits there.
+
+When the squash-merge in step 3 is gated on CI, do one of these before
+you end the turn:
+
+- **Enable auto-merge** — `gh pr merge --auto --squash`. The merge
+  fires by itself once checks pass; no further turn required.
+- **Block on the checks in-turn** — `gh pr checks --watch` (or
+  `gh run watch`), then squash-merge once it returns green.
+
+Never say you'll merge "when CI passes" and then end the turn.
+
+---
+
 ## Visually verify UI changes against the live app
 
 Sandboxed agent runtimes (no local Postgres, no headless browser
