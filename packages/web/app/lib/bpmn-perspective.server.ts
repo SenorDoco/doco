@@ -811,7 +811,14 @@ function laneReferenceFor(
     case "log":
       return firstEdgeTarget(outgoing, rowId, "performed_by");
     case "decision": {
-      const ref = firstEdgeTarget(outgoing, rowId, "decided_by");
+      // Prefer the decision's own `decided_by` decider, but fall back to a
+      // `performed_by` actor so a Decision attributed with the activity role
+      // (as Señor Doco and legacy imports sometimes emit) still resolves to a
+      // lane instead of "Unassigned" — mirroring intent's performed_by ??
+      // owned_by fallback below.
+      const ref =
+        firstEdgeTarget(outgoing, rowId, "decided_by") ??
+        firstEdgeTarget(outgoing, rowId, "performed_by");
       if (!ref) return null;
       if (ref.startsWith("user_")) {
         const collab = userById.get(ref);
