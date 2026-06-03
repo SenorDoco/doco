@@ -47,6 +47,7 @@ vi.mock("../oauth-server.server", () => ({
 import {
   canWriteDocoTypeForRequest,
   filterDocosToWorkspaceBoundary,
+  listAccessibleDocoIdsInWorkspace,
   listVisibleDocoIdsForRequest,
   oauthTokenGrantsDoco,
   tokenReachableWorkspaceIdsForRequest,
@@ -284,6 +285,34 @@ describe("tokenReachableWorkspaceIdsForRequest", () => {
     });
     const reachable = await tokenReachableWorkspaceIdsForRequest(request);
     expect(reachable && [...reachable].sort()).toEqual(["workspace_meta", "workspace_torre"]);
+  });
+});
+
+describe("listAccessibleDocoIdsInWorkspace (Slack team→workspace binding)", () => {
+  it("fails closed: empty workspace id returns [] and runs no query", async () => {
+    mocks.query.mockClear();
+    await expect(listAccessibleDocoIdsInWorkspace("user_a", "")).resolves.toEqual([]);
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it("narrows the principal's accessible Docos to the given workspace", async () => {
+    mocks.listDocoIdsForUser.mockResolvedValue(["doco_b"]);
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("owner_id = $1")) return { rows: [{ id: "doco_a" }] };
+      if (sql.includes("owner_id IN")) return { rows: [] };
+      // The workspace filter keeps only doco_a (doco_b is in another workspace).
+      if (sql.includes("workspace_id = $2")) return { rows: [{ id: "doco_a" }] };
+      return { rows: [] };
+    });
+    await expect(listAccessibleDocoIdsInWorkspace("user_a", "workspace_x")).resolves.toEqual([
+      "doco_a",
+    ]);
+  });
+
+  it("returns [] when the principal can reach nothing", async () => {
+    mocks.listDocoIdsForUser.mockResolvedValue([]);
+    mocks.query.mockResolvedValue({ rows: [] });
+    await expect(listAccessibleDocoIdsInWorkspace("user_a", "workspace_x")).resolves.toEqual([]);
   });
 });
 

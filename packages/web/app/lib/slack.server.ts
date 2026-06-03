@@ -26,7 +26,7 @@ import {
   type ReadAuditFilters,
   readAuditEvents,
 } from "./audit-log.server";
-import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "./doco-access.server";
+import { getDocoLevelRole, listAccessibleDocoIdsInWorkspace } from "./doco-access.server";
 import {
   DOCO_API_TOOL,
   type DocoApiToolEnvelope,
@@ -109,6 +109,12 @@ export interface SlackInstallationSummary {
   workspaceName: string;
   botUserId: string | null;
   installedAt: string;
+  /**
+   * The Doco workspace this Slack team is bound to, or null when unbound. A
+   * Slack team reaches AT MOST this one Doco workspace; an unbound team grants
+   * no Doco access at all (fail closed).
+   */
+  docoWorkspaceId: string | null;
 }
 
 export interface SlackChannelConnectionSummary {
@@ -492,9 +498,10 @@ export async function listSlackInstallations(): Promise<SlackInstallationSummary
       workspace_id: string;
       workspace_name: string;
       bot_user_id: string | null;
+      doco_workspace_id: string | null;
       created_at: Date | string;
     }>(
-      `SELECT workspace_id, workspace_name, bot_user_id, created_at
+      `SELECT workspace_id, workspace_name, bot_user_id, doco_workspace_id, created_at
          FROM group_chat_installations
         WHERE provider = 'slack'
         ORDER BY workspace_name, workspace_id`,
@@ -504,9 +511,47 @@ export async function listSlackInstallations(): Promise<SlackInstallationSummary
     workspaceId: row.workspace_id,
     workspaceName: row.workspace_name || row.workspace_id,
     botUserId: row.bot_user_id,
+    docoWorkspaceId: row.doco_workspace_id,
     installedAt:
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }));
+}
+
+/**
+ * The Doco workspace a Slack team is bound to (or null when unbound). The
+ * single source of truth the request-time access resolution consults — an
+ * unbound team resolves to no Doco access.
+ */
+export async function getSlackBoundWorkspaceId(slackTeamId: string): Promise<string | null> {
+  if (!slackTeamId) return null;
+  const result = await withClient((c) =>
+    c.query<{ doco_workspace_id: string | null }>(
+      `SELECT doco_workspace_id FROM group_chat_installations
+        WHERE provider = 'slack' AND workspace_id = $1`,
+      [slackTeamId],
+    ),
+  );
+  return result.rows[0]?.doco_workspace_id ?? null;
+}
+
+/**
+ * Bind (or rebind, or with null unbind) a Slack team to a single Doco
+ * workspace. Callers must have already checked the actor owns the target
+ * workspace. Returns false when the Slack team has no installation row.
+ */
+export async function setSlackBoundWorkspace(args: {
+  slackTeamId: string;
+  docoWorkspaceId: string | null;
+}): Promise<boolean> {
+  const result = await withClient((c) =>
+    c.query(
+      `UPDATE group_chat_installations
+          SET doco_workspace_id = $2, updated_at = now()
+        WHERE provider = 'slack' AND workspace_id = $1`,
+      [args.slackTeamId, args.docoWorkspaceId],
+    ),
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function saveSlackChannelConnection(input: SlackConnectionInput): Promise<void> {
@@ -643,16 +688,24 @@ async function listSlackLinkedUsers(args: {
   });
 }
 
-async function listSlackPersonalConnections(args: {
+export async function listSlackPersonalConnections(args: {
   workspaceId: string;
   chatUserId?: string | null;
+  /** The Doco workspace this Slack team is bound to. Null/absent → no access. */
+  boundWorkspaceId: string | null;
 }): Promise<SlackPersonalAccessSummary> {
+  // Fail closed: a Slack team that isn't bound to a Doco workspace grants NO
+  // personal access — a linked user's account-wide reach never leaks here.
+  if (!args.boundWorkspaceId) return { actors: [], connections: [] };
   const actors = await listSlackLinkedUsers(args);
   if (actors.length === 0) return { actors, connections: [] };
 
+  const boundWorkspaceId = args.boundWorkspaceId;
   const groups = await Promise.all(
     actors.map(async (actor) => {
-      const docoIds = await listAccessibleDocoIdsForPrincipal(actor.userId);
+      // Only the linked user's Docos INSIDE the bound workspace — capped, per
+      // Doco, by their real role below. Never their whole account.
+      const docoIds = await listAccessibleDocoIdsInWorkspace(actor.userId, boundWorkspaceId);
       if (docoIds.length === 0) return [];
       const result = await withClient((c) =>
         c.query<{
@@ -734,7 +787,11 @@ function slackConnectionSourceRank(connection: SlackChannelConnectionSummary): n
 export async function listSlackChannelConnections(args: {
   workspaceId: string;
   channelId: string;
+  /** The Doco workspace this Slack team is bound to. Null/absent → no access. */
+  boundWorkspaceId: string | null;
 }): Promise<SlackChannelConnectionSummary[]> {
+  // Fail closed: an unbound Slack team reaches no Doco, so it has no defaults.
+  if (!args.boundWorkspaceId) return [];
   const result = await withClient((c) =>
     c.query<{
       channel_id: string;
@@ -767,8 +824,15 @@ export async function listSlackChannelConnections(args: {
         WHERE gcc.provider = 'slack'
           AND gcc.workspace_id = $1
           AND gcc.channel_id IN ($2, '*')
+          -- Stay inside the team's bound Doco workspace: a workspace default
+          -- must BE that workspace; a doco default must live in it. Any default
+          -- pointing elsewhere (e.g. set before rebinding) is inert.
+          AND (
+            (gcc.target_level = 'workspace' AND gcc.target_id = $3)
+            OR (gcc.target_level = 'doco' AND d.workspace_id = $3)
+          )
         ORDER BY CASE WHEN gcc.channel_id = $2 THEN 0 ELSE 1 END, target_label, gcc.role`,
-      [args.workspaceId, args.channelId],
+      [args.workspaceId, args.channelId, args.boundWorkspaceId],
     ),
   );
   return result.rows.map((row) => ({
@@ -797,14 +861,20 @@ async function loadSlackIntegrationContext(args: {
     actorId: args.chatUserId ?? null,
   });
   const result = await slackIntegrationContextCache.getOrLoad(key, async () => {
+    // One source of truth for the team's reach: the bound Doco workspace.
+    // Both shared defaults and personal access are scoped to it (and empty
+    // when the team is unbound).
+    const boundWorkspaceId = await getSlackBoundWorkspaceId(args.workspaceId);
     const [sharedConnections, personalAccess] = await Promise.all([
       listSlackChannelConnections({
         workspaceId: args.workspaceId,
         channelId: args.channelId,
+        boundWorkspaceId,
       }),
       listSlackPersonalConnections({
         workspaceId: args.workspaceId,
         chatUserId: args.chatUserId,
+        boundWorkspaceId,
       }),
     ]);
     const connections = mergeSlackConnections([

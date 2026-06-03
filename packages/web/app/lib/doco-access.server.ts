@@ -517,6 +517,30 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
 }
 
 /**
+ * The principal's accessible Docos, narrowed to a single workspace. Used by
+ * the Slack integration: a Slack team is bound to one Doco workspace, so
+ * Señor Doco may only reach the linked user's Docos INSIDE that workspace —
+ * never their whole account. Always a subset of
+ * `listAccessibleDocoIdsForPrincipal`; returns [] for an empty workspace id
+ * (fail closed — an unbound team grants no personal access).
+ */
+export async function listAccessibleDocoIdsInWorkspace(
+  principalId: string,
+  workspaceId: string,
+): Promise<string[]> {
+  if (!workspaceId) return [];
+  const all = await listAccessibleDocoIdsForPrincipal(principalId);
+  if (all.length === 0) return [];
+  return withClient(async (c) => {
+    const r = await c.query<{ id: string }>(
+      "SELECT id FROM docos WHERE id = ANY($1::text[]) AND workspace_id = $2",
+      [all, workspaceId],
+    );
+    return r.rows.map((row) => String(row.id));
+  });
+}
+
+/**
  * Same as `canAccessDoco` but for write/admin operations — the
  * owner-tier gate. Per decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, owner-tier
  * is the only role that can add users, delete the doco, or edit
