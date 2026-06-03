@@ -1022,7 +1022,9 @@ export function EntityGraph({
           interactionWidth: 0,
           style: {
             stroke: baseStroke,
-            strokeOpacity: 0.7 * edgeOpacity,
+            // Painted straight at the depth-ramp opacity — opacityForEdge
+            // already fades far edges, so no second baseline alpha is layered on.
+            strokeOpacity: edgeOpacity,
             pointerEvents: "none" as const,
           },
         };
