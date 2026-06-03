@@ -39,7 +39,7 @@ import type {
   ToolUseBlock,
   Usage,
 } from "@anthropic-ai/sdk/resources/messages";
-import { getDocoByIdOrHandle, listWorkspacesForUser, withClient } from "@doco/db";
+import { getDocoByIdOrHandle, getWorkspaceById, listWorkspacesForUser, withClient } from "@doco/db";
 import {
   type PolicyPredicate,
   generateUlid,
@@ -2965,6 +2965,11 @@ export interface ConversationSnapshot {
   /** User-visible thread name. Null until the first user message is sent. */
   title: string | null;
   archived: boolean;
+  /**
+   * Handle of the Workspace this thread is scoped to; null = unassigned.
+   * Drives the in-thread workspace tag (mirrors the inbox list's tag).
+   */
+  workspace_handle: string | null;
   /** Docos the agent has touched in this thread. Auto-populated by `doco_api`. */
   attached_docos: DocoAttachmentInfo[];
   /** Workspaces the agent has touched in this thread. Reserved; not yet populated. */
@@ -3061,21 +3066,29 @@ export async function loadSnapshotForPrincipal(
     conv = await loadActiveConversation(principalId);
     if (!conv) return null;
   }
-  const [{ messages: rows, hasMore }, events, attachedDocos, attachedWorkspaces, threadUsage] =
-    await Promise.all([
-      loadMessagesPage(conv.id, {
-        before: opts.before ?? null,
-        limit: CHAT_MESSAGES_PAGE_SIZE,
-      }),
-      loadActiveTurnEvents(conv.id),
-      resolveDocoAttachments(conv.attached_doco_ids ?? []),
-      resolveWorkspaceAttachments(conv.attached_workspace_handles ?? []),
-      loadThreadUsage(conv.id),
-    ]);
+  const [
+    { messages: rows, hasMore },
+    events,
+    attachedDocos,
+    attachedWorkspaces,
+    threadUsage,
+    workspace,
+  ] = await Promise.all([
+    loadMessagesPage(conv.id, {
+      before: opts.before ?? null,
+      limit: CHAT_MESSAGES_PAGE_SIZE,
+    }),
+    loadActiveTurnEvents(conv.id),
+    resolveDocoAttachments(conv.attached_doco_ids ?? []),
+    resolveWorkspaceAttachments(conv.attached_workspace_handles ?? []),
+    loadThreadUsage(conv.id),
+    conv.workspace_id ? getWorkspaceById(conv.workspace_id) : Promise.resolve(null),
+  ]);
   return {
     conversation_id: conv.id,
     title: conv.title,
     archived: conv.archived,
+    workspace_handle: workspace?.handle ?? null,
     attached_docos: attachedDocos,
     attached_workspaces: attachedWorkspaces,
     messages: rows.map((r) => ({
