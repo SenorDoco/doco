@@ -137,7 +137,7 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
       <NavLink to="/users" className={linkClass} onClick={onNavigate}>
         Collaborators
       </NavLink>
-      <NavLink to="/api-keys" className={linkClass} onClick={onNavigate}>
+      <NavLink to="/tokens" className={linkClass} onClick={onNavigate}>
         Tokens/MCP
       </NavLink>
       {me.username === "torrenegra" ? (

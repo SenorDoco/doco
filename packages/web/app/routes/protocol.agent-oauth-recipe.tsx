@@ -33,7 +33,7 @@ one workspace. The connector is read + write —
 \`doco_whoami\`, \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
 same token, never a different login. Setup per client lives in Tokens/MCP:
-open ${baseUrl}/api-keys and choose the "Add MCP" tab.
+open ${baseUrl}/tokens and choose the "Add MCP" tab.
 
 When using this hosted MCP connector, auth belongs to the connector
 client. Do not ask the user to paste localhost callback URLs back into

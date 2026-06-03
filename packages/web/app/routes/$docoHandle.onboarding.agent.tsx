@@ -1,7 +1,7 @@
 // Onboarding page: bootstrap and collaborate.
 //
 // Mints a fresh 7-day human-invite URL for the signed-in admin and
-// points them at /api-keys for the agent path. Per the
+// points them at /tokens for the agent path. Per the
 // users / API-keys split: human invites and agent tokens
 // live on separate surfaces.
 
@@ -81,7 +81,7 @@ export default function OnboardingAgent({
           </CardHeader>
           <CardContent>
             <Link
-              to="/api-keys"
+              to="/tokens"
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               Go to API keys →

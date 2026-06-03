@@ -215,7 +215,7 @@ export function mergeGrantSets(base: GrantSets, incoming: GrantSets): GrantSets 
  *
  * Enforced at every mint chokepoint (authorization code, direct token
  * issuance, device approval, and personal-API-key widening) so no path —
- * OAuth, device flow, or the /api-keys page — can mint a broader credential.
+ * OAuth, device flow, or the /tokens page — can mint a broader credential.
  */
 export async function assertSingleWorkspaceGrant(grants: {
   granted_doco_ids?: string[];
@@ -776,7 +776,7 @@ export async function refreshTokens(args: {
     // keep the same refresh token, sliding its expiry forward so active use
     // keeps it alive. This lets DOCO_REFRESH be pinned anywhere — a repo
     // .env, cloud env vars, CI secrets — without going stale. Revocation
-    // (from /api-keys) is how a token is cut off.
+    // (from /tokens) is how a token is cut off.
     await c.query("UPDATE oauth_refresh_tokens SET expires_at = $1 WHERE token = $2", [
       refresh_expires,
       args.refresh_token,

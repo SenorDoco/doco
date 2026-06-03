@@ -11,7 +11,7 @@ describe("/protocol/agent-oauth-recipe", () => {
     expect(body).toContain("Tokens/MCP");
     expect(body).toContain('"Add MCP" tab');
     expect(body).not.toContain("Add MCP manually");
-    expect(body).toContain("https://doco.test/api-keys");
+    expect(body).toContain("https://doco.test/tokens");
     expect(body).not.toContain("https://doco.test/connect");
   });
 });

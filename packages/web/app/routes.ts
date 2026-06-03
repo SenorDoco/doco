@@ -159,10 +159,12 @@ export default [
   route("integrations/slack/commands", "routes/integrations.slack.commands.tsx"),
   route("integrations/slack/interactions", "routes/integrations.slack.interactions.tsx"),
   route("users/:username", "routes/users.$username.tsx"),
-  // /api-keys — host-level page listing every active OAuth refresh
-  // token bound to the signed-in user (both agent-OAuth-flow tokens
-  // and personal API keys minted here). The matching JSON endpoint
-  // mints + lists + revokes keys for API consumers.
+  // /tokens — host-level page listing every active OAuth refresh token
+  // bound to the signed-in user (both agent-OAuth-flow tokens and personal
+  // API keys minted here). Labelled "Tokens/MCP". The matching JSON endpoint
+  // (/api/v1/api-keys.json, kept under its old name for API consumers) mints
+  // + lists + revokes keys. /api-keys is a legacy 302-redirect to /tokens.
+  route("tokens", "routes/tokens.tsx"),
   route("api-keys", "routes/api-keys.tsx"),
   // The owner's access-request inbox (approve/deny → writes a doco_users
   // grant) + the landing for a just-sent request. Agents request via the

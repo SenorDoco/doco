@@ -32,8 +32,9 @@ interface ModelRates {
 
 // USD per million tokens, from Anthropic's published pricing. Keep these
 // near the rate selector so a model swap is a one-line edit. Señor Doco's
-// default model is Sonnet (see SENOR_DOCO_DEFAULT_MODEL in
-// assistant-runtime.server.ts), so unknown models price as Sonnet.
+// default model is Haiku (see SENOR_DOCO_DEFAULT_MODEL in
+// assistant-runtime.server.ts), but an unknown/unrecognized model id prices
+// as Sonnet — the conservative middle of the three rate cards.
 const SONNET_RATES: ModelRates = {
   inputPerM: 3,
   outputPerM: 15,

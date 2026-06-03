@@ -6,7 +6,7 @@
 //      scopes, and a refresh token gets minted for the approving user.
 //
 //   2. Personal API keys (new). The user clicks "Generate API key" on
-//      /api-keys, picks a scope, and we register a synthetic OAuth
+//      /tokens, picks a scope, and we register a synthetic OAuth
 //      client + mint tokens directly — no PKCE, no redirect dance.
 //
 // Both shapes land in the same `oauth_refresh_tokens` row format, so
