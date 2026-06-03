@@ -47,6 +47,27 @@ describe("PolicyRow (policies list)", () => {
     expect(html).toContain('href="/runbook/policies/policy_01HZARTICLE/edit"');
   });
 
+  it("renders the agent instruction without wrapping curly quotation marks", () => {
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZQUOTE",
+        kind: "suggestion",
+        predicate: { agent_instruction: "Import nodes as active by default." },
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        body: "",
+      },
+    });
+
+    // The text is already labeled "Agent instruction:" above it, so the row
+    // shows the instruction bare — no decorative curly quotes wrapping it.
+    expect(html).toContain("Import nodes as active by default.");
+    expect(html).not.toContain("“"); // left double quotation mark
+    expect(html).not.toContain("”"); // right double quotation mark
+  });
+
   it("renders the kind label and, for deterministic, the structured parts", () => {
     const html = renderRow({
       handle: "runbook",
