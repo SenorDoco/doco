@@ -111,7 +111,6 @@ export default function Policies({
           addHref={canEdit ? `/${handle}/policies/guidance/new` : null}
           editHrefBase={canEdit ? `/${handle}/policies/guidance` : null}
           items={guidanceArticles}
-          handle={handle}
           empty="No guidance policies yet."
         />
 
@@ -122,7 +121,6 @@ export default function Policies({
           addHref={canEdit ? `/${handle}/policies/node-authoring/new` : null}
           editHrefBase={canEdit ? `/${handle}/policies/node-authoring` : null}
           items={nodeAuthoringArticles}
-          handle={handle}
           empty="No node-authoring policies yet."
         />
       </main>
@@ -130,14 +128,13 @@ export default function Policies({
   );
 }
 
-function ArticleSection({
+export function ArticleSection({
   title,
   entityType,
   description,
   addHref,
   editHrefBase,
   items,
-  handle,
   empty,
 }: {
   title: string;
@@ -146,7 +143,6 @@ function ArticleSection({
   addHref: string | null;
   editHrefBase: string | null;
   items: (GuidanceArticleItem | NodeAuthoringArticleItem)[];
-  handle: string;
   empty: string;
 }) {
   return (
@@ -181,10 +177,7 @@ function ArticleSection({
             {items.map((item) => (
               <li key={item.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-start gap-3">
-                  <Link
-                    to={`/${handle}/${entityType}/${item.id}`}
-                    className="min-w-0 flex-1 hover:text-primary"
-                  >
+                  <div className="min-w-0 flex-1">
                     <p className="whitespace-pre-wrap text-sm leading-6">
                       {policyFullText({ policy: item.policy, body: item.body })}
                     </p>
@@ -194,7 +187,7 @@ function ArticleSection({
                         <span>{item.predicateKind}</span>
                       </div>
                     ) : null}
-                  </Link>
+                  </div>
                   <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
                     {item.lifecycle ?? "asserted"}
                   </span>
