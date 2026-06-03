@@ -121,7 +121,7 @@ export default function WorkspaceIntegrations({
               <CardHeader>
                 <CardTitle className="text-base">Docos in this workspace</CardTitle>
                 <CardDescription>
-                  Each Doco manages its own connections. Open one to drill in.
+                  Each doco manages its own connections. Open one to drill in.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">

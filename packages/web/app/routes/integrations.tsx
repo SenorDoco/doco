@@ -121,7 +121,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
           title="App integrations"
         >
           <p className="text-sm text-muted-foreground">
-            Everything connected to your account, plus a rollup of every workspace and Doco you can
+            Everything connected to your account, plus a rollup of every workspace and doco you can
             reach.
           </p>
         </PageHeader>
@@ -149,8 +149,8 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                       Slack workspaces
                     </CardTitle>
                     <CardDescription>
-                      Each Slack team is connected to one Doco workspace. After install, channel
-                      defaults wire individual channels to specific Docos within that workspace.
+                      Each Slack team is connected to one doco workspace. After install, channel
+                      defaults wire individual channels to specific docos within that workspace.
                     </CardDescription>
                   </div>
                   {slackInstallHref ? (
@@ -188,12 +188,12 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                   ) : (
                     <p className="text-sm leading-relaxed text-muted-foreground">
                       No Slack workspace has installed Señor Doco yet. After Slack approves the app,
-                      the next screen asks which default Doco permissions Señor Doco should receive.
+                      the next screen asks which default doco permissions Señor Doco should receive.
                     </p>
                   )
                 ) : (
                   <p className="text-sm leading-relaxed text-muted-foreground">
-                    Slack is not ready for this Doco deployment yet. Once the Slack app is
+                    Slack is not ready for this doco deployment yet. Once the Slack app is
                     configured, this screen will show the Connect Slack button.
                   </p>
                 )}
@@ -204,7 +204,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               <CardHeader>
                 <CardTitle className="text-base">App integrations across your workspaces</CardTitle>
                 <CardDescription>
-                  Each workspace rolls up its Docos&apos; connections; open one to manage.
+                  Each workspace rolls up its docos&apos; connections; open one to manage.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
@@ -226,7 +226,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                                 {o.handle}
                               </Link>
                               <p className="text-xs text-muted-foreground">
-                                {docosWithIntegrations.length} Doco
+                                {docosWithIntegrations.length} doco
                                 {docosWithIntegrations.length === 1 ? "" : "s"} with connections
                               </p>
                             </div>
@@ -328,7 +328,7 @@ function readNotice(url: URL): string | null {
     return "Install Señor Doco in Slack before setting default permissions.";
   }
   if (url.searchParams.get("slack_unavailable")) {
-    return "Slack is not available yet for this Doco deployment.";
+    return "Slack is not available yet for this doco deployment.";
   }
   if (url.searchParams.get("slack_error")) {
     return "Slack installation did not complete. Try connecting Slack again.";

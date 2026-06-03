@@ -156,7 +156,7 @@ export function ScopePickerBanner({
   if (!integration) return null;
   if (integration.scope === pageScope) return null;
 
-  const targetWord = integration.scope === "doco" ? "Doco" : "workspace";
+  const targetWord = integration.scope === "doco" ? "doco" : "workspace";
   const anchorHref =
     integration.scope === "doco"
       ? pageScope === "workspace" && workspaceHandle
