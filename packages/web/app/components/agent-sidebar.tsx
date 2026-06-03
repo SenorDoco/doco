@@ -123,6 +123,8 @@ interface ConversationSnapshot {
   /** User-visible thread name. Null until the first user message lands. */
   title: string | null;
   archived: boolean;
+  /** Handle of the Workspace this thread is scoped to; null = unassigned. */
+  workspace_handle: string | null;
   attached_docos: DocoAttachmentInfo[];
   attached_workspaces: WorkspaceAttachmentInfo[];
   messages: ChatMessage[];
@@ -474,6 +476,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // reload; the server-side auto-attach happens in runTool.
   const [attachedDocos, setAttachedDocos] = useState<DocoAttachmentInfo[]>([]);
   const [attachedWorkspaces, setAttachedWorkspaces] = useState<WorkspaceAttachmentInfo[]>([]);
+  // Handle of the Workspace the open thread is scoped to; drives the in-thread
+  // tag in the chat header (mirrors the inbox list's tag). Null = unassigned.
+  const [currentWorkspaceHandle, setCurrentWorkspaceHandle] = useState<string | null>(null);
   // WhatsApp-style default — when nothing's open, the user lands on
   // the thread list. Picking a thread switches into chat view; the
   // back button in the chat header returns here.
@@ -666,6 +671,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         writeStringFlag(ACTIVE_CONV_KEY, null);
         setMessages([]);
         setLoadError(null);
+        setCurrentWorkspaceHandle(null);
         return;
       }
       if (!res.ok) {
@@ -687,6 +693,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setAttachedWorkspaces(
         Array.isArray(data.attached_workspaces) ? data.attached_workspaces : [],
       );
+      setCurrentWorkspaceHandle(data.workspace_handle ?? null);
       // Merge — don't overwrite. Two classes of message can sit
       // outside the snapshot's window:
       //
@@ -2213,6 +2220,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     ) : null}
                   </button>
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    {currentWorkspaceHandle ? (
+                      <span
+                        className="max-w-[60%] shrink-0 self-start truncate rounded bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground"
+                        title={`Workspace: ${currentWorkspaceHandle}`}
+                      >
+                        {currentWorkspaceHandle}
+                      </span>
+                    ) : null}
                     {renamingId === conversationId && conversationId ? (
                       <input
                         // biome-ignore lint/a11y/noAutofocus: Inline rename should focus immediately when the user starts renaming.

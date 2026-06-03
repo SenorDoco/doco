@@ -36,6 +36,13 @@ vi.mock("@doco/db", () => ({
     const workspace_id = dbm.docoWorkspace[handle];
     return workspace_id ? { id: `doco_${handle}`, handle, workspace_id } : null;
   },
+  getWorkspaceById: async (id: string) => {
+    const r = await dbm.db.query<{ id: string; handle: string; name: string }>(
+      "SELECT id, handle, name FROM workspaces WHERE id = $1",
+      [id],
+    );
+    return r.rows[0] ? { ...r.rows[0], constitution: "", data: {}, member_count: 1 } : null;
+  },
 }));
 vi.mock("../assistant-runtime.server", () => ({
   SENOR_DOCO_DEFAULT_MAX_TOKENS: 8192,
@@ -63,6 +70,7 @@ import {
   autoAssignThreadWorkspaceIfObvious,
   createConversation,
   loadConversationByIdForPrincipal,
+  loadSnapshotForPrincipal,
 } from "../agent-chat.server";
 
 const USER = "user_assign000000000000000000";
@@ -178,5 +186,27 @@ describe("applySetThreadWorkspace (the set_thread_workspace tool)", () => {
     const out = await applySetThreadWorkspace(conv.id, USER, WS_B);
     expect(out.ok).toBe(true);
     expect((await loadConversationByIdForPrincipal(conv.id, USER))?.workspace_id).toBe(WS_B);
+  });
+});
+
+describe("loadSnapshotForPrincipal — in-thread workspace tag", () => {
+  beforeEach(async () => {
+    dbm.db = new PGlite();
+    dbm.docoWorkspace = {};
+    await dbm.db.exec(schemaSql);
+    await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
+    await member(WS_A, "alpha");
+  });
+
+  it("carries the owning workspace handle so the chat header can tag it", async () => {
+    const conv = await createConversation(USER, { workspaceId: WS_A });
+    const snap = await loadSnapshotForPrincipal(USER, { conversationId: conv.id });
+    expect(snap?.workspace_handle).toBe("alpha");
+  });
+
+  it("carries null for an unassigned thread (no tag)", async () => {
+    const conv = await createConversation(USER);
+    const snap = await loadSnapshotForPrincipal(USER, { conversationId: conv.id });
+    expect(snap?.workspace_handle).toBeNull();
   });
 });
