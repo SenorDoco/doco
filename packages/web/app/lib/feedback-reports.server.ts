@@ -137,6 +137,66 @@ export async function createFeedbackReport(args: {
   };
 }
 
+export interface FeedbackPendingCounts {
+  bugs: number;
+  ideas: number;
+}
+
+/**
+ * Count uncleared (non-archived) bug and idea reports. "Cleared" maps to the
+ * `archived` status — a report stays pending until Torrenegra clears it from
+ * the feedback page. Drives the bug / lightbulb flags shown beside the version
+ * pill in the header, so it runs on every page load for that one account and
+ * stays a single grouped aggregate over the whole table (never the truncated
+ * list view).
+ */
+export async function countPendingFeedback(): Promise<FeedbackPendingCounts> {
+  const result = await withClient((c) =>
+    c.query<{ report_type: FeedbackReportType; n: number | string }>(
+      `SELECT report_type, count(*)::int AS n
+         FROM feedback_reports
+        WHERE status <> 'archived'
+        GROUP BY report_type`,
+    ),
+  );
+  const counts: FeedbackPendingCounts = { bugs: 0, ideas: 0 };
+  for (const row of result.rows) {
+    const n = typeof row.n === "number" ? row.n : Number(row.n);
+    if (row.report_type === "bug") counts.bugs = n;
+    else if (row.report_type === "idea") counts.ideas = n;
+  }
+  return counts;
+}
+
+/**
+ * Clear (archive) the uncleared reports of a type — or every type when passed
+ * `"all"`. This is what the feedback page's "Clear bugs" / "Clear ideas"
+ * buttons call; once a type has nothing pending its header flag disappears.
+ * Already-archived rows are left untouched so re-clearing is a no-op. Returns
+ * the number of rows cleared.
+ */
+export async function clearFeedbackReports(
+  reportType: FeedbackReportType | "all",
+  reviewedBy: string | null,
+): Promise<number> {
+  const result = await withClient((c) => {
+    // RETURNING + rows.length so the count is portable across node-postgres
+    // (`rowCount`) and PGlite (`affectedRows`) — both expose `rows`.
+    const set = `SET status = 'archived', reviewed_at = now(), reviewed_by = $1, updated_at = now()`;
+    if (reportType === "all") {
+      return c.query<{ id: string }>(
+        `UPDATE feedback_reports ${set} WHERE status <> 'archived' RETURNING id`,
+        [reviewedBy],
+      );
+    }
+    return c.query<{ id: string }>(
+      `UPDATE feedback_reports ${set} WHERE status <> 'archived' AND report_type = $2 RETURNING id`,
+      [reviewedBy, reportType],
+    );
+  });
+  return result.rows.length;
+}
+
 export async function listFeedbackReports(limit = 100): Promise<FeedbackReportRow[]> {
   const result = await withClient((c) =>
     c.query<

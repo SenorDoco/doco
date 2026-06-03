@@ -1,4 +1,4 @@
-import { Menu } from "lucide-react";
+import { Bug, Lightbulb, Menu } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Form, NavLink } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
@@ -6,11 +6,22 @@ import { VersionPill } from "~/components/version-pill";
 import { cn } from "~/lib/cn";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
+/** Uncleared bug / idea tallies that drive the owner-only header flags. */
+export interface FeedbackPending {
+  bugs: number;
+  ideas: number;
+}
+
 interface SiteHeaderProps {
   /** Currently signed-in Principal. */
   me?: CurrentPrincipal | null;
   /** Root shell headers stay visible while route-level headers are suppressed. */
   shellOwner?: boolean;
+  /**
+   * Uncleared bug/idea counts. Only the owner's root loader supplies this;
+   * it renders the bug/lightbulb flags beside the version pill.
+   */
+  feedbackPending?: FeedbackPending | null;
 }
 
 const SiteHeaderSuppressionContext = createContext(false);
@@ -23,7 +34,7 @@ export function SiteHeaderSuppressionProvider({ children }: { children: React.Re
   );
 }
 
-export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
+export function SiteHeader({ me, shellOwner = false, feedbackPending }: SiteHeaderProps) {
   const suppressed = useContext(SiteHeaderSuppressionContext);
   if (suppressed && !shellOwner) return null;
 
@@ -39,6 +50,7 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
             <DocoMark height={28} />
           </NavLink>
           <VersionPill />
+          <FeedbackFlags feedbackPending={feedbackPending} />
         </h1>
         <div className="ml-auto flex shrink-0 items-center gap-3 text-xs">
           {me ? (
@@ -65,6 +77,47 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
   );
 }
 
+/**
+ * Owner-only flags beside the version pill: a bug icon while any bug report
+ * is uncleared, a lightbulb while any idea is. Both link to /feedback, where
+ * they're cleared. Renders nothing when there's nothing pending (or for
+ * anyone but the owner, whose loader passes no counts).
+ */
+export function FeedbackFlags({ feedbackPending }: { feedbackPending?: FeedbackPending | null }) {
+  const bugs = feedbackPending?.bugs ?? 0;
+  const ideas = feedbackPending?.ideas ?? 0;
+  if (bugs === 0 && ideas === 0) return null;
+
+  const title = [
+    bugs > 0 ? `${bugs} uncleared bug${bugs === 1 ? "" : "s"}` : "",
+    ideas > 0 ? `${ideas} uncleared idea${ideas === 1 ? "" : "s"}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <NavLink
+      to="/feedback"
+      title={title}
+      aria-label={`Feedback: ${title}`}
+      className="flex shrink-0 items-center gap-2 text-xs font-semibold leading-none hover:opacity-80"
+    >
+      {bugs > 0 ? (
+        <span className="inline-flex items-center gap-0.5 text-destructive">
+          <Bug className="h-4 w-4" aria-hidden="true" />
+          {bugs}
+        </span>
+      ) : null}
+      {ideas > 0 ? (
+        <span className="inline-flex items-center gap-0.5 text-primary">
+          <Lightbulb className="h-4 w-4" aria-hidden="true" />
+          {ideas}
+        </span>
+      ) : null}
+    </NavLink>
+  );
+}
+
 function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () => void }) {
   // `text-left` keeps the lone <button> (Sign out) from inheriting the
   // UA-default centered text, so it lines up with the anchor items in the
@@ -88,7 +141,7 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
         Tokens/MCP
       </NavLink>
       {me.username === "torrenegra" ? (
-        <NavLink to="/mentor/feedback" className={linkClass} onClick={onNavigate}>
+        <NavLink to="/feedback" className={linkClass} onClick={onNavigate}>
           Feedback
         </NavLink>
       ) : null}
