@@ -30,7 +30,7 @@ export interface DocoHomePerspectiveBudget {
 }
 
 export const DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET: DocoHomePerspectiveBudget = {
-  nodeLimit: 750,
+  nodeLimit: 375,
   rowLimit: 500,
 };
 

@@ -19,6 +19,13 @@ export interface PersonalizedSelectionMeasurementContext {
 
 export interface PersonalizedSelectionOptions {
   minFirstDegree?: number;
+  /**
+   * Nodes to admit ahead of generic PageRank filler (after the focus and
+   * the first-degree quota). Lets a caller guarantee specific nodes render
+   * when they otherwise rank too low to survive the budget — e.g. the
+   * entry points of every rendered intent. Still capped by `limit`.
+   */
+  priorityIds?: ReadonlySet<string>;
 }
 
 export interface ExternalConnectionSummary {
@@ -209,6 +216,15 @@ export function selectPersonalizedNodeIds(
     if (!directIds.has(node.id)) continue;
     selected.add(node.id);
     firstDegreeCount++;
+  }
+
+  const priorityIds = options.priorityIds;
+  if (priorityIds && priorityIds.size > 0) {
+    for (const node of ordered) {
+      if (selected.size >= max) break;
+      if (!priorityIds.has(node.id) || selected.has(node.id)) continue;
+      selected.add(node.id);
+    }
   }
 
   for (const node of ordered) {

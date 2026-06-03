@@ -116,6 +116,59 @@ describe("focused render selection", () => {
     expect(selected).toContain("outside");
   });
 
+  it("includes priority ids ahead of generic rank filler, capped by budget", () => {
+    const priorityNodes = [
+      { id: "focus", lifecycle: "active", created_at: "2026-01-01T00:00:00Z" },
+      { id: "entry", lifecycle: "active", created_at: "2026-01-02T00:00:00Z" },
+      { id: "filler-high", lifecycle: "active", created_at: "2026-01-03T00:00:00Z" },
+      { id: "filler-low", lifecycle: "active", created_at: "2026-01-04T00:00:00Z" },
+    ];
+    const priorityLinks = [{ source: "focus", target: "filler-high" }];
+    const globalRanks = new Map([
+      ["filler-high", 10],
+      ["filler-low", 5],
+      ["entry", 0.1], // low rank — would normally be crowded out
+      ["focus", 0.01],
+    ]);
+
+    // Budget 3: focus + one of the high-rank fillers would normally win,
+    // but a low-rank entry point marked priority must still make the cut.
+    const selected = selectPersonalizedNodeIds(
+      priorityNodes,
+      priorityLinks,
+      "focus",
+      globalRanks,
+      3,
+      { priorityIds: new Set(["entry"]) },
+    );
+
+    expect(selected.has("focus")).toBe(true);
+    expect(selected.has("entry")).toBe(true);
+    expect(selected.size).toBe(3);
+  });
+
+  it("never exceeds the budget even when priority ids do not all fit", () => {
+    const priorityNodes = [
+      { id: "focus", lifecycle: "active", created_at: "2026-01-01T00:00:00Z" },
+      { id: "p1", lifecycle: "active", created_at: "2026-01-02T00:00:00Z" },
+      { id: "p2", lifecycle: "active", created_at: "2026-01-03T00:00:00Z" },
+      { id: "p3", lifecycle: "active", created_at: "2026-01-04T00:00:00Z" },
+    ];
+    const globalRanks = new Map([
+      ["p1", 3],
+      ["p2", 2],
+      ["p3", 1],
+      ["focus", 0.01],
+    ]);
+
+    const selected = selectPersonalizedNodeIds(priorityNodes, [], "focus", globalRanks, 2, {
+      priorityIds: new Set(["p1", "p2", "p3"]),
+    });
+
+    expect(selected.size).toBe(2);
+    expect(selected.has("focus")).toBe(true);
+  });
+
   it("summarizes links that leave the rendered working set", () => {
     expect(summarizeExternalConnections(links, new Set(["b", "d"]))).toEqual([
       { id: "b", incoming: 0, outgoing: 1 },

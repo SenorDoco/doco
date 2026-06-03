@@ -30,6 +30,7 @@ import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
+import { computeIntentEntryPointIds } from "~/lib/bpmn-entry-points";
 import { bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
 import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
@@ -159,8 +160,8 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
-const BPMN_RENDER_NODE_BUDGET = 100;
-const BPMN_RENDER_FIRST_DEGREE_MIN = 50;
+const BPMN_RENDER_NODE_BUDGET = 50;
+const BPMN_RENDER_FIRST_DEGREE_MIN = 25;
 const BPMN_RENDER_EDGE_BUDGET = 700;
 const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
 
@@ -373,6 +374,10 @@ export function BpmnPerspective({
       poolFromIntent ?? (selectionCenterId ? nodeByFullId.get(selectionCenterId)?.pool_id : null)
     );
   }, [pools, selectionCenterId, nodeByFullId]);
+  const entryPointIds = useMemo(
+    () => computeIntentEntryPointIds(filteredNodes, links),
+    [filteredNodes, links],
+  );
   const targetRenderedNodeIds = useMemo(() => {
     const selectionLinks = linksWithFocusedPoolMembership(
       pools,
@@ -380,7 +385,7 @@ export function BpmnPerspective({
       links,
       selectionCenterId,
     );
-    return selectMeasuredPersonalizedNodeIds(
+    const baseSelection = selectMeasuredPersonalizedNodeIds(
       filteredNodes,
       selectionLinks,
       selectionCenterId,
@@ -389,7 +394,34 @@ export function BpmnPerspective({
       { docoHandle, perspective: "bpmn" },
       { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN },
     );
-  }, [pools, filteredNodes, links, selectionCenterId, pageRankMap, docoHandle]);
+    // An intent is "rendered" once any of its nodes survives the budget.
+    // Whenever it is, every entry point of that intent must render too — so
+    // a process is never shown starting mid-stream. Re-run the selection
+    // with those entry points prioritized ahead of generic PageRank filler;
+    // the budget still caps the total, so over-budget entry points are the
+    // only ones dropped.
+    const renderedPools = new Set<string>();
+    for (const node of filteredNodes) {
+      if (baseSelection.has(node.id)) renderedPools.add(node.pool_id);
+    }
+    const priorityIds = new Set<string>();
+    let allAlreadyRendered = true;
+    for (const node of filteredNodes) {
+      if (!entryPointIds.has(node.id) || !renderedPools.has(node.pool_id)) continue;
+      priorityIds.add(node.id);
+      if (!baseSelection.has(node.id)) allAlreadyRendered = false;
+    }
+    if (allAlreadyRendered) return baseSelection;
+    return selectMeasuredPersonalizedNodeIds(
+      filteredNodes,
+      selectionLinks,
+      selectionCenterId,
+      pageRankMap,
+      BPMN_RENDER_NODE_BUDGET,
+      { docoHandle, perspective: "bpmn" },
+      { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN, priorityIds },
+    );
+  }, [pools, filteredNodes, links, selectionCenterId, pageRankMap, docoHandle, entryPointIds]);
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
