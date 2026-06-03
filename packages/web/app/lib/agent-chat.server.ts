@@ -58,6 +58,11 @@ import { DOCO_TEMPLATES } from "./doco-templates-meta";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
 import { internalFetch } from "./internal-fetch.server";
+import {
+  type AgentLoopEvent,
+  type AgentLoopModelResult,
+  runSenorDocoAgentLoop,
+} from "./senor-doco-agent-loop.server";
 import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
 import type { CurrentPrincipal } from "./session.server";
 import { upsertAgentTurn } from "./telemetry.server";
@@ -2337,279 +2342,242 @@ async function* streamAssistantTurn(args: {
       return;
     }
 
-    for (let turn = 0; turn < MAX_TURNS_PER_REPLY; turn++) {
-      if (await activeTurnWasStopped()) {
-        yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
-        return;
-      }
-      const callStart = performance.now();
-      let ttfbMs: number | null = null;
-      let streamConstructedMs: number | null = null;
-      let streamConnectedMs: number | null = null;
-      let firstStreamEventMs: number | null = null;
-      let firstStreamEventType: MessageStreamEvent["type"] | null = null;
-      let messageStartMs: number | null = null;
-      let messageStartUsage: Record<string, number> | null = null;
-      let responseRequestId: string | null | undefined;
-      let responseHeaders: Record<string, string> = {};
-      let streamConnectError: Record<string, unknown> | null = null;
-      let responseTelemetryPromise: Promise<void> | null = null;
-      // One retry per turn iteration when we hit a 429. Stream
-      // creation AND per-chunk reads can both throw the rate-limit
-      // error, so the flag is checked in the catch below.
+    const callModel = async function* (
+      turn: number,
+    ): AsyncGenerator<AgentLoopEvent, AgentLoopModelResult> {
+      // One 429 retry re-runs the model call without advancing the
+      // driver's turn counter; the flag persists across the retry.
       let retriedThisTurn = false;
-      numAnthropicCalls++;
-      yield {
-        kind: "status",
-        phase: "calling_anthropic",
-        detail: `call ${numAnthropicCalls}`,
-      };
-      let stream: MessageStream;
-      try {
-        stream = streamSenorDocoMessage({
-          model,
-          max_tokens: MAX_TOKENS,
-          system: systemBlocks,
-          tools: TOOLS,
-          messages,
-        });
-        streamConstructedMs = performance.now() - callStart;
-        responseTelemetryPromise = stream
-          .withResponse()
-          .then(({ response, request_id }) => {
-            streamConnectedMs = performance.now() - callStart;
-            responseRequestId = request_id;
-            responseHeaders = pickAnthropicHeaders(response.headers);
-          })
-          .catch((err) => {
-            streamConnectError = summarizeAnthropicError(err);
-          });
-      } catch (err) {
-        // Rare — most 429s surface from the async iteration below.
-        if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
-          retriedThisTurn = true;
-          const waitMs = parseAnthropicRetryAfterMs(err);
-          anthropicCallStats.push({
-            turn,
-            elapsed_ms: Math.round(performance.now() - callStart),
-            ttfb_ms: null,
-            stream_constructed_ms:
-              streamConstructedMs === null ? null : Math.round(streamConstructedMs),
-            stop_reason: "rate_limited_retry",
-            retry_wait_ms: waitMs,
-            error: summarizeAnthropicError(err, waitMs),
-          });
-          await checkpointMetrics();
-          await new Promise((resolve) => setTimeout(resolve, waitMs));
-          turn--;
-          continue;
-        }
-        const friendly = friendlyAnthropicError(err);
-        turnError = `anthropic stream: ${friendly}`;
-        yield { kind: "error", message: friendly };
-        return;
-      }
-
-      const collectedBlocks: StoredAssistantBlock[] = [];
-      let activeToolUse: { id: string; name: string; partialJson: string } | null = null;
-
-      try {
-        for await (const event of stream) {
-          if (await activeTurnWasStopped()) {
-            yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
-            return;
-          }
-          if (firstStreamEventMs === null) {
-            firstStreamEventMs = performance.now() - callStart;
-            firstStreamEventType = event.type;
-          }
-          if (event.type === "message_start" && messageStartMs === null) {
-            messageStartMs = performance.now() - callStart;
-            messageStartUsage = usageSnapshot(event.message.usage);
-          }
-          if (event.type === "content_block_start") {
-            if (event.content_block.type === "tool_use") {
-              activeToolUse = {
-                id: event.content_block.id,
-                name: event.content_block.name,
-                partialJson: "",
-              };
-              if (ttfbMs === null) ttfbMs = performance.now() - callStart;
-              if (firstTextTokenMs === null) firstTextTokenMs = performance.now();
-              yield {
-                kind: "tool_use_start",
-                tool_use_id: event.content_block.id,
-                name: event.content_block.name,
-              };
-            }
-          } else if (event.type === "content_block_delta") {
-            if (event.delta.type === "text_delta") {
-              if (ttfbMs === null) ttfbMs = performance.now() - callStart;
-              if (firstTextTokenMs === null) firstTextTokenMs = performance.now();
-              yield { kind: "text_delta", text: event.delta.text };
-            } else if (event.delta.type === "input_json_delta" && activeToolUse) {
-              activeToolUse.partialJson += event.delta.partial_json;
-            }
-          } else if (event.type === "content_block_stop") {
-            activeToolUse = null;
-          }
-        }
-      } catch (err) {
-        if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
-          retriedThisTurn = true;
-          const waitMs = parseAnthropicRetryAfterMs(err);
-          if (responseTelemetryPromise) await responseTelemetryPromise;
-          anthropicCallStats.push({
-            turn,
-            elapsed_ms: Math.round(performance.now() - callStart),
-            ttfb_ms: ttfbMs === null ? null : Math.round(ttfbMs),
-            stream_constructed_ms:
-              streamConstructedMs === null ? null : Math.round(streamConstructedMs),
-            stream_connected_ms: streamConnectedMs === null ? null : Math.round(streamConnectedMs),
-            first_stream_event_ms:
-              firstStreamEventMs === null ? null : Math.round(firstStreamEventMs),
-            first_stream_event_type: firstStreamEventType,
-            message_start_ms: messageStartMs === null ? null : Math.round(messageStartMs),
-            message_start_usage: messageStartUsage,
-            request_id: responseRequestId ?? null,
-            response_headers: responseHeaders,
-            stop_reason: "rate_limited_retry",
-            retry_wait_ms: waitMs,
-            error: summarizeAnthropicError(err, waitMs),
-          });
-          await checkpointMetrics();
-          yield {
-            kind: "status",
-            phase: "rate_limited_retrying",
-            detail: `retry in ${Math.round(waitMs / 1000)}s`,
-          };
-          // Tell the user we're holding rather than going silent for a
-          // potentially-long sleep.
-          yield {
-            kind: "text_delta",
-            text: `\n_(Anthropic rate-limited; retrying in ${Math.round(waitMs / 1000)}s…)_\n`,
-          };
-          await new Promise((resolve) => setTimeout(resolve, waitMs));
-          turn--;
-          continue;
-        }
-        const friendly = friendlyAnthropicError(err);
-        turnError = `anthropic stream: ${friendly}`;
-        yield { kind: "error", message: friendly };
-        return;
-      }
-
-      const finalMessage = await stream.finalMessage();
-      if (responseTelemetryPromise) await responseTelemetryPromise;
-      yield {
-        kind: "status",
-        phase: "anthropic_returned",
-        detail: `stop=${finalMessage.stop_reason ?? "unknown"}`,
-      };
-      stopReason = finalMessage.stop_reason ?? stopReason;
-      const usage = finalMessage.usage;
-      inputTokens += usage.input_tokens ?? 0;
-      outputTokens += usage.output_tokens ?? 0;
-      cacheReadTokens += usage.cache_read_input_tokens ?? 0;
-      cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
-      // Tell the client the running totals for this turn so the
-      // sidebar can show "1,234 in · 56 out" while the user waits.
-      yield {
-        kind: "usage_update",
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cache_read_tokens: cacheReadTokens,
-        cache_creation_tokens: cacheCreationTokens,
-      };
-      anthropicCallStats.push({
-        turn,
-        elapsed_ms: Math.round(performance.now() - callStart),
-        ttfb_ms: ttfbMs === null ? null : Math.round(ttfbMs),
-        stream_constructed_ms:
-          streamConstructedMs === null ? null : Math.round(streamConstructedMs),
-        stream_connected_ms: streamConnectedMs === null ? null : Math.round(streamConnectedMs),
-        first_stream_event_ms: firstStreamEventMs === null ? null : Math.round(firstStreamEventMs),
-        first_stream_event_type: firstStreamEventType,
-        message_start_ms: messageStartMs === null ? null : Math.round(messageStartMs),
-        message_start_usage: messageStartUsage,
-        request_id: responseRequestId ?? null,
-        response_headers: responseHeaders,
-        stream_connect_error: streamConnectError,
-        message_id: finalMessage.id,
-        input_tokens: usage.input_tokens ?? 0,
-        output_tokens: usage.output_tokens ?? 0,
-        cache_read_tokens: usage.cache_read_input_tokens ?? 0,
-        cache_creation_tokens: usage.cache_creation_input_tokens ?? 0,
-        stop_reason: finalMessage.stop_reason ?? null,
-      });
-      // Checkpoint after each Anthropic call so a kill on the NEXT
-      // call still leaves a row pointing at the last completed one.
-      turnError = "(in_flight)";
-      await checkpointMetrics();
-      turnError = null;
-      for (const block of finalMessage.content) {
-        if (block.type === "text" || block.type === "tool_use") {
-          collectedBlocks.push(block);
-        }
-      }
-
-      // Emit assembled input for each tool_use block (so the UI can show
-      // what the model is about to do before we run the tool).
-      for (const block of collectedBlocks) {
-        if (block.type === "tool_use") {
-          yield { kind: "tool_use_input", tool_use_id: block.id, input: block.input };
-        }
-      }
-
-      messages.push({ role: "assistant", content: collectedBlocks as ContentBlockParam[] });
-
-      if (finalMessage.stop_reason !== "tool_use") {
-        // max_tokens means the model was cut off mid-output (could be
-        // mid-text or mid-tool-JSON). Without a visible signal the
-        // user thinks the agent just stopped early. Surface a short
-        // note so they know to ask me to continue.
-        const persistedAssistantBlocks = collectedBlocks as ContentBlockParam[];
-        if (finalMessage.stop_reason === "max_tokens") {
-          const note = `\n\n_(hit the per-call output cap mid-reply — ask me to continue and I'll pick up where I left off)_`;
-          yield {
-            kind: "text_delta",
-            text: note,
-          };
-          persistedAssistantBlocks.push({ type: "text", text: note });
-        }
-        // Save assistant turn (text-only) and finish.
-        const saved = await appendMessage(
-          args.conversation.id,
-          "assistant",
-          persistedAssistantBlocks,
-        );
-        yield { kind: "message_saved", message_id: saved.id, role: "assistant" };
-        yield { kind: "done" };
-        return;
-      }
-
-      // Tool use turn — run each tool, append a single user-role message
-      // containing all the tool_result blocks (Anthropic API contract).
-      const toolUseBlocks = collectedBlocks.filter((b): b is ToolUseBlock => b.type === "tool_use");
-      const toolResults: ToolResultBlockParam[] = [];
-      for (const block of toolUseBlocks) {
-        if (await activeTurnWasStopped(true)) {
-          yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
-          return;
-        }
-        yield { kind: "status", phase: "running_tool", detail: block.name };
-        const toolStart = performance.now();
-        const tr = await runTool(block, args.ctx);
-        if (await activeTurnWasStopped(true)) {
-          yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
-          return;
-        }
-        const toolElapsed = Math.round(performance.now() - toolStart);
+      for (;;) {
+        const callStart = performance.now();
+        let ttfbMs: number | null = null;
+        let streamConstructedMs: number | null = null;
+        let streamConnectedMs: number | null = null;
+        let firstStreamEventMs: number | null = null;
+        let firstStreamEventType: MessageStreamEvent["type"] | null = null;
+        let messageStartMs: number | null = null;
+        let messageStartUsage: Record<string, number> | null = null;
+        let responseRequestId: string | null | undefined;
+        let responseHeaders: Record<string, string> = {};
+        let streamConnectError: Record<string, unknown> | null = null;
+        let responseTelemetryPromise: Promise<void> | null = null;
+        numAnthropicCalls++;
         yield {
           kind: "status",
-          phase: "tool_returned",
-          detail: `${block.name} ${tr.ok ? "ok" : "err"} ${toolElapsed}ms`,
+          phase: "calling_anthropic",
+          detail: `call ${numAnthropicCalls}`,
         };
+        let stream: MessageStream;
+        try {
+          stream = streamSenorDocoMessage({
+            model,
+            max_tokens: MAX_TOKENS,
+            system: systemBlocks,
+            tools: TOOLS,
+            messages,
+          });
+          streamConstructedMs = performance.now() - callStart;
+          responseTelemetryPromise = stream
+            .withResponse()
+            .then(({ response, request_id }) => {
+              streamConnectedMs = performance.now() - callStart;
+              responseRequestId = request_id;
+              responseHeaders = pickAnthropicHeaders(response.headers);
+            })
+            .catch((err) => {
+              streamConnectError = summarizeAnthropicError(err);
+            });
+        } catch (err) {
+          // Rare — most 429s surface from the async iteration below.
+          if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
+            retriedThisTurn = true;
+            const waitMs = parseAnthropicRetryAfterMs(err);
+            anthropicCallStats.push({
+              turn,
+              elapsed_ms: Math.round(performance.now() - callStart),
+              ttfb_ms: null,
+              stream_constructed_ms:
+                streamConstructedMs === null ? null : Math.round(streamConstructedMs),
+              stop_reason: "rate_limited_retry",
+              retry_wait_ms: waitMs,
+              error: summarizeAnthropicError(err, waitMs),
+            });
+            await checkpointMetrics();
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+            continue;
+          }
+          const friendly = friendlyAnthropicError(err);
+          turnError = `anthropic stream: ${friendly}`;
+          yield { kind: "error", message: friendly };
+          return { finalBlocks: [], toolUseBlocks: [], stopReason: null, aborted: true };
+        }
+
+        const collectedBlocks: StoredAssistantBlock[] = [];
+        let activeToolUse: { id: string; name: string; partialJson: string } | null = null;
+
+        try {
+          for await (const event of stream) {
+            if (await activeTurnWasStopped()) {
+              yield { kind: "aborted" };
+              return { finalBlocks: [], toolUseBlocks: [], stopReason: null, aborted: true };
+            }
+            if (firstStreamEventMs === null) {
+              firstStreamEventMs = performance.now() - callStart;
+              firstStreamEventType = event.type;
+            }
+            if (event.type === "message_start" && messageStartMs === null) {
+              messageStartMs = performance.now() - callStart;
+              messageStartUsage = usageSnapshot(event.message.usage);
+            }
+            if (event.type === "content_block_start") {
+              if (event.content_block.type === "tool_use") {
+                activeToolUse = {
+                  id: event.content_block.id,
+                  name: event.content_block.name,
+                  partialJson: "",
+                };
+                if (ttfbMs === null) ttfbMs = performance.now() - callStart;
+                if (firstTextTokenMs === null) firstTextTokenMs = performance.now();
+                yield {
+                  kind: "tool_use_start",
+                  tool_use_id: event.content_block.id,
+                  name: event.content_block.name,
+                };
+              }
+            } else if (event.type === "content_block_delta") {
+              if (event.delta.type === "text_delta") {
+                if (ttfbMs === null) ttfbMs = performance.now() - callStart;
+                if (firstTextTokenMs === null) firstTextTokenMs = performance.now();
+                yield { kind: "text_delta", text: event.delta.text };
+              } else if (event.delta.type === "input_json_delta" && activeToolUse) {
+                activeToolUse.partialJson += event.delta.partial_json;
+              }
+            } else if (event.type === "content_block_stop") {
+              activeToolUse = null;
+            }
+          }
+        } catch (err) {
+          if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
+            retriedThisTurn = true;
+            const waitMs = parseAnthropicRetryAfterMs(err);
+            if (responseTelemetryPromise) await responseTelemetryPromise;
+            anthropicCallStats.push({
+              turn,
+              elapsed_ms: Math.round(performance.now() - callStart),
+              ttfb_ms: ttfbMs === null ? null : Math.round(ttfbMs),
+              stream_constructed_ms:
+                streamConstructedMs === null ? null : Math.round(streamConstructedMs),
+              stream_connected_ms:
+                streamConnectedMs === null ? null : Math.round(streamConnectedMs),
+              first_stream_event_ms:
+                firstStreamEventMs === null ? null : Math.round(firstStreamEventMs),
+              first_stream_event_type: firstStreamEventType,
+              message_start_ms: messageStartMs === null ? null : Math.round(messageStartMs),
+              message_start_usage: messageStartUsage,
+              request_id: responseRequestId ?? null,
+              response_headers: responseHeaders,
+              stop_reason: "rate_limited_retry",
+              retry_wait_ms: waitMs,
+              error: summarizeAnthropicError(err, waitMs),
+            });
+            await checkpointMetrics();
+            yield {
+              kind: "status",
+              phase: "rate_limited_retrying",
+              detail: `retry in ${Math.round(waitMs / 1000)}s`,
+            };
+            // Tell the user we're holding rather than going silent for a
+            // potentially-long sleep.
+            yield {
+              kind: "text_delta",
+              text: `\n_(Anthropic rate-limited; retrying in ${Math.round(waitMs / 1000)}s…)_\n`,
+            };
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+            continue;
+          }
+          const friendly = friendlyAnthropicError(err);
+          turnError = `anthropic stream: ${friendly}`;
+          yield { kind: "error", message: friendly };
+          return { finalBlocks: [], toolUseBlocks: [], stopReason: null, aborted: true };
+        }
+
+        const finalMessage = await stream.finalMessage();
+        if (responseTelemetryPromise) await responseTelemetryPromise;
+        yield {
+          kind: "status",
+          phase: "anthropic_returned",
+          detail: `stop=${finalMessage.stop_reason ?? "unknown"}`,
+        };
+        stopReason = finalMessage.stop_reason ?? stopReason;
+        const usage = finalMessage.usage;
+        inputTokens += usage.input_tokens ?? 0;
+        outputTokens += usage.output_tokens ?? 0;
+        cacheReadTokens += usage.cache_read_input_tokens ?? 0;
+        cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+        // Tell the client the running totals for this turn so the
+        // sidebar can show "1,234 in · 56 out" while the user waits.
+        yield {
+          kind: "usage",
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cache_read_tokens: cacheReadTokens,
+          cache_creation_tokens: cacheCreationTokens,
+        };
+        anthropicCallStats.push({
+          turn,
+          elapsed_ms: Math.round(performance.now() - callStart),
+          ttfb_ms: ttfbMs === null ? null : Math.round(ttfbMs),
+          stream_constructed_ms:
+            streamConstructedMs === null ? null : Math.round(streamConstructedMs),
+          stream_connected_ms: streamConnectedMs === null ? null : Math.round(streamConnectedMs),
+          first_stream_event_ms:
+            firstStreamEventMs === null ? null : Math.round(firstStreamEventMs),
+          first_stream_event_type: firstStreamEventType,
+          message_start_ms: messageStartMs === null ? null : Math.round(messageStartMs),
+          message_start_usage: messageStartUsage,
+          request_id: responseRequestId ?? null,
+          response_headers: responseHeaders,
+          stream_connect_error: streamConnectError,
+          message_id: finalMessage.id,
+          input_tokens: usage.input_tokens ?? 0,
+          output_tokens: usage.output_tokens ?? 0,
+          cache_read_tokens: usage.cache_read_input_tokens ?? 0,
+          cache_creation_tokens: usage.cache_creation_input_tokens ?? 0,
+          stop_reason: finalMessage.stop_reason ?? null,
+        });
+        // Checkpoint after each Anthropic call so a kill on the NEXT
+        // call still leaves a row pointing at the last completed one.
+        turnError = "(in_flight)";
+        await checkpointMetrics();
+        turnError = null;
+        for (const block of finalMessage.content) {
+          if (block.type === "text" || block.type === "tool_use") {
+            collectedBlocks.push(block);
+          }
+        }
+
+        return {
+          finalBlocks: collectedBlocks as ContentBlockParam[],
+          toolUseBlocks: collectedBlocks.filter((b): b is ToolUseBlock => b.type === "tool_use"),
+          stopReason: finalMessage.stop_reason ?? null,
+        };
+      }
+    };
+
+    // Drive the shared agent loop. callModel (above), runTool, and the
+    // abort check are the website's mechanics; the loop ordering, stop
+    // decision, tool_result assembly, and turn cap live in the driver.
+    // Translate its normalized events into the ChatStreamEvent stream the
+    // sidebar consumes, and do the persistence the website needs.
+    let pendingAssistantBlocks: ContentBlockParam[] = [];
+    for await (const ev of runSenorDocoAgentLoop({
+      messages,
+      maxTurns: MAX_TURNS_PER_REPLY,
+      callModel,
+      runTool: async (block) => {
+        const toolStart = performance.now();
+        const tr = await runTool(block, args.ctx);
+        const toolElapsed = Math.round(performance.now() - toolStart);
         numToolCalls++;
         toolCallStats.push({
           name: block.name,
@@ -2617,41 +2585,88 @@ async function* streamAssistantTurn(args: {
           elapsed_ms: toolElapsed,
           preview: tr.preview,
         });
-        yield {
-          kind: "tool_use_result",
-          tool_use_id: block.id,
-          ok: tr.ok,
-          preview: tr.preview,
-        };
-        if (tr.navigateUrl) {
-          yield { kind: "navigate", url: tr.navigateUrl };
+        return tr;
+      },
+      shouldAbort: (opts) => activeTurnWasStopped(opts?.force ?? false),
+    })) {
+      switch (ev.kind) {
+        case "text_delta":
+        case "tool_use_start":
+        case "tool_use_input":
+        case "tool_use_result":
+        case "navigate":
+          yield ev;
+          break;
+        case "status":
+          yield {
+            kind: "status",
+            phase: ev.phase as Extract<ChatStreamEvent, { kind: "status" }>["phase"],
+            detail: ev.detail,
+          };
+          break;
+        case "usage":
+          yield {
+            kind: "usage_update",
+            input_tokens: ev.input_tokens,
+            output_tokens: ev.output_tokens,
+            cache_read_tokens: ev.cache_read_tokens,
+            cache_creation_tokens: ev.cache_creation_tokens,
+          };
+          break;
+        case "error":
+          yield { kind: "error", message: ev.message };
+          return;
+        case "aborted":
+          yield { kind: "error", message: STOPPED_BY_USER_MESSAGE };
+          return;
+        case "assistant_message": {
+          if (ev.stopReason === "tool_use") {
+            pendingAssistantBlocks = ev.blocks;
+            break;
+          }
+          // max_tokens means the model was cut off mid-output. Surface a
+          // short note so the user knows to ask me to continue.
+          const persistedAssistantBlocks = [...ev.blocks];
+          if (ev.stopReason === "max_tokens") {
+            const note = `\n\n_(hit the per-call output cap mid-reply — ask me to continue and I'll pick up where I left off)_`;
+            yield { kind: "text_delta", text: note };
+            persistedAssistantBlocks.push({ type: "text", text: note });
+          }
+          const saved = await appendMessage(
+            args.conversation.id,
+            "assistant",
+            persistedAssistantBlocks,
+          );
+          yield { kind: "message_saved", message_id: saved.id, role: "assistant" };
+          yield { kind: "done" };
+          return;
         }
-        toolResults.push(tr.result);
+        case "tool_results": {
+          // Persist the assistant turn AND the tool-result user message so
+          // the next reload reproduces the same context.
+          const assistantSaved = await appendMessage(
+            args.conversation.id,
+            "assistant",
+            pendingAssistantBlocks,
+          );
+          yield { kind: "message_saved", message_id: assistantSaved.id, role: "assistant" };
+          const toolMsgSaved = await appendMessage(args.conversation.id, "user", ev.blocks);
+          yield { kind: "message_saved", message_id: toolMsgSaved.id, role: "user" };
+          break;
+        }
+        case "turn_limit": {
+          turnError = `hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY}`;
+          const limitMessage = `I hit the per-turn work limit (${MAX_TURNS_PER_REPLY} Anthropic calls) while continuing this job, so I paused instead of risking a tool-call loop. The work so far is saved; send "continue" and I'll pick up from the latest tool results.`;
+          yield { kind: "text_delta", text: limitMessage };
+          const saved = await appendMessage(args.conversation.id, "assistant", [
+            { type: "text", text: limitMessage },
+          ]);
+          yield { kind: "message_saved", message_id: saved.id, role: "assistant" };
+          yield { kind: "done" };
+          return;
+        }
       }
-
-      // Persist the assistant turn AND the tool-result user message so
-      // the next reload reproduces the same context.
-      const assistantSaved = await appendMessage(
-        args.conversation.id,
-        "assistant",
-        collectedBlocks as ContentBlockParam[],
-      );
-      yield { kind: "message_saved", message_id: assistantSaved.id, role: "assistant" };
-
-      const toolResultContent: ContentBlockParam[] = toolResults;
-      const toolMsgSaved = await appendMessage(args.conversation.id, "user", toolResultContent);
-      messages.push({ role: "user", content: toolResultContent });
-      yield { kind: "message_saved", message_id: toolMsgSaved.id, role: "user" };
     }
-
-    turnError = `hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY}`;
-    const limitMessage = `I hit the per-turn work limit (${MAX_TURNS_PER_REPLY} Anthropic calls) while continuing this job, so I paused instead of risking a tool-call loop. The work so far is saved; send "continue" and I'll pick up from the latest tool results.`;
-    yield { kind: "text_delta", text: limitMessage };
-    const saved = await appendMessage(args.conversation.id, "assistant", [
-      { type: "text", text: limitMessage },
-    ]);
-    yield { kind: "message_saved", message_id: saved.id, role: "assistant" };
-    yield { kind: "done" };
   } finally {
     // Final synchronous flush so a turn that completed normally (or
     // errored cleanly) overwrites the "in_flight" sentinel with the
