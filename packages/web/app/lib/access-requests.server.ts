@@ -14,11 +14,12 @@ import {
   getDocoById,
   getDocoByIdOrHandle,
   getUserById,
+  listPendingAccessRequestCountsByDoco,
   listPendingAccessRequestsForDocos,
   roleAtLeast,
   upsertDocoUser,
 } from "@doco/db";
-import { getDocoLevelRole } from "~/lib/doco-access.server";
+import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { loadApprovalGrantOptions } from "~/lib/oauth-approval-grants.server";
 
 export type RequestAccessResult =
@@ -149,4 +150,29 @@ export async function listAccessRequestsForOwner(ownerId: string): Promise<Owner
     });
   }
   return items;
+}
+
+/**
+ * How many pending requests sit in this owner's inbox — the count behind the
+ * header badge. Equals `listAccessRequestsForOwner(ownerId).length` by
+ * construction (same "accessible ∩ owner" universe the inbox page uses), but
+ * computed cheaply enough to run on every page load: when nothing is pending
+ * anywhere it's a single grouped query and an early return, and ownership is
+ * resolved only for the handful of Docos that actually have live requests.
+ */
+export async function countPendingAccessRequestsForOwner(ownerId: string): Promise<number> {
+  const counts = await listPendingAccessRequestCountsByDoco();
+  if (counts.length === 0) return 0;
+
+  // Mirror the inbox page's universe: a Doco the viewer can reach AND owns.
+  // Anchoring on the accessible set keeps the badge in lockstep with the page
+  // even for owner roles (e.g. account grants) the page itself wouldn't list.
+  const accessible = new Set(await listAccessibleDocoIdsForPrincipal(ownerId));
+  let total = 0;
+  for (const { doco_id, owner_id, n } of counts) {
+    if (!accessible.has(doco_id)) continue;
+    const role = await getDocoLevelRole({ ownerId: owner_id, docoId: doco_id }, ownerId);
+    if (role === "owner") total += n;
+  }
+  return total;
 }

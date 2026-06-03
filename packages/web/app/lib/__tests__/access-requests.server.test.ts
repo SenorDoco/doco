@@ -8,8 +8,10 @@ const mocks = vi.hoisted(() => ({
   getDocoByIdOrHandle: vi.fn(),
   getUserById: vi.fn(),
   listPendingAccessRequestsForDocos: vi.fn(),
+  listPendingAccessRequestCountsByDoco: vi.fn(),
   upsertDocoUser: vi.fn(),
   getDocoLevelRole: vi.fn(),
+  listAccessibleDocoIdsForPrincipal: vi.fn(),
   loadApprovalGrantOptions: vi.fn(),
 }));
 
@@ -23,17 +25,22 @@ vi.mock("@doco/db", () => ({
   getDocoByIdOrHandle: mocks.getDocoByIdOrHandle,
   getUserById: mocks.getUserById,
   listPendingAccessRequestsForDocos: mocks.listPendingAccessRequestsForDocos,
+  listPendingAccessRequestCountsByDoco: mocks.listPendingAccessRequestCountsByDoco,
   upsertDocoUser: mocks.upsertDocoUser,
   // Real comparator so the "already has it" no-op path behaves correctly.
   roleAtLeast: (a: string, b: string) => RANK[a] >= RANK[b],
 }));
-vi.mock("~/lib/doco-access.server", () => ({ getDocoLevelRole: mocks.getDocoLevelRole }));
+vi.mock("~/lib/doco-access.server", () => ({
+  getDocoLevelRole: mocks.getDocoLevelRole,
+  listAccessibleDocoIdsForPrincipal: mocks.listAccessibleDocoIdsForPrincipal,
+}));
 vi.mock("~/lib/oauth-approval-grants.server", () => ({
   loadApprovalGrantOptions: mocks.loadApprovalGrantOptions,
 }));
 
 import {
   approveAccessRequest,
+  countPendingAccessRequestsForOwner,
   denyAccessRequest,
   listAccessRequestsForOwner,
   requestDocoAccess,
@@ -201,5 +208,38 @@ describe("listAccessRequestsForOwner", () => {
     mocks.loadApprovalGrantOptions.mockResolvedValue({ docos: [], workspaces: [] });
     expect(await listAccessRequestsForOwner("owner")).toEqual([]);
     expect(mocks.listPendingAccessRequestsForDocos).not.toHaveBeenCalled();
+  });
+});
+
+describe("countPendingAccessRequestsForOwner", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("sums pending requests only on docos the viewer owns", async () => {
+    mocks.listPendingAccessRequestCountsByDoco.mockResolvedValue([
+      { doco_id: "doco_1", owner_id: "workspace_a", n: 2 },
+      { doco_id: "doco_2", owner_id: "workspace_b", n: 3 },
+    ]);
+    mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue(["doco_1", "doco_2"]);
+    // Owner on doco_1, mere writer on doco_2 — only doco_1's requests count.
+    mocks.getDocoLevelRole.mockImplementation(async (meta: { docoId?: string }) =>
+      meta.docoId === "doco_1" ? "owner" : "writer",
+    );
+    expect(await countPendingAccessRequestsForOwner("me")).toBe(2);
+  });
+
+  it("ignores pending requests on docos outside the viewer's accessible set", async () => {
+    mocks.listPendingAccessRequestCountsByDoco.mockResolvedValue([
+      { doco_id: "doco_1", owner_id: "workspace_a", n: 5 },
+    ]);
+    mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue([]);
+    expect(await countPendingAccessRequestsForOwner("me")).toBe(0);
+    // No need to resolve a role for a doco the viewer can't even see.
+    expect(mocks.getDocoLevelRole).not.toHaveBeenCalled();
+  });
+
+  it("short-circuits to 0 without resolving access when nothing is pending", async () => {
+    mocks.listPendingAccessRequestCountsByDoco.mockResolvedValue([]);
+    expect(await countPendingAccessRequestsForOwner("me")).toBe(0);
+    expect(mocks.listAccessibleDocoIdsForPrincipal).not.toHaveBeenCalled();
   });
 });

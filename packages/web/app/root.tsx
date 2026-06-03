@@ -20,6 +20,7 @@ import {
   SiteHeader,
   SiteHeaderSuppressionProvider,
 } from "~/components/site-header";
+import { countPendingAccessRequestsForOwner } from "~/lib/access-requests.server";
 import { countPendingFeedback } from "~/lib/feedback-reports.server";
 import { createMainScrollRestorer } from "~/lib/main-scroll-restoration";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
@@ -30,7 +31,9 @@ import "./app.css";
 // still fetch `me` themselves where they need it; we don't try to
 // thread root data through context. For the owner we also tally uncleared
 // bug/idea reports so the header can flag them beside the version pill;
-// that count is best-effort and never blanks the chrome if it fails.
+// that count is best-effort and never blanks the chrome if it fails. For
+// every signed-in viewer we likewise tally pending access requests on the
+// Docos they own, so the header can surface an "Access requests" entry.
 export async function loader({ request }: { request: Request }) {
   try {
     const me = await getCurrentPrincipal(request);
@@ -42,11 +45,20 @@ export async function loader({ request }: { request: Request }) {
         feedbackPending = null;
       }
     }
-    return { me, feedbackPending };
+    let accessRequestsPending = 0;
+    if (me) {
+      try {
+        accessRequestsPending = await countPendingAccessRequestsForOwner(me.id);
+      } catch {
+        accessRequestsPending = 0;
+      }
+    }
+    return { me, feedbackPending, accessRequestsPending };
   } catch {
     return {
       me: null as CurrentPrincipal | null,
       feedbackPending: null as FeedbackPending | null,
+      accessRequestsPending: 0,
     };
   }
 }
@@ -94,10 +106,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const data = useLoaderData() as
-    | { me: CurrentPrincipal | null; feedbackPending?: FeedbackPending | null }
+    | {
+        me: CurrentPrincipal | null;
+        feedbackPending?: FeedbackPending | null;
+        accessRequestsPending?: number | null;
+      }
     | undefined;
   const me = data?.me ?? null;
   const feedbackPending = data?.feedbackPending ?? null;
+  const accessRequestsPending = data?.accessRequestsPending ?? 0;
   const mainRef = useMainScrollRestoration();
   // Signed-out: the anonymous landing + sign-in flow has its own header
   // chrome; let it render as-is.
@@ -112,7 +129,12 @@ export default function App() {
   // so per-route <SiteHeader> calls (default shellOwner=false) render null.
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <SiteHeader me={me} shellOwner feedbackPending={feedbackPending} />
+      <SiteHeader
+        me={me}
+        shellOwner
+        feedbackPending={feedbackPending}
+        accessRequestsPending={accessRequestsPending}
+      />
       <div className="doco-shell-body flex min-h-0 flex-1">
         <AgentSidebar me={me} />
         <main ref={mainRef} className="doco-shell-main min-w-0 flex-1 overflow-y-auto">

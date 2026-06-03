@@ -22,7 +22,21 @@ interface SiteHeaderProps {
    * it renders the bug/lightbulb flags beside the version pill.
    */
   feedbackPending?: FeedbackPending | null;
+  /**
+   * Pending access requests sitting in the viewer's owner inbox. The root
+   * loader supplies it; the nav surfaces an "Access requests" entry with this
+   * count when it's > 0 so owners actually notice requests waiting on them.
+   */
+  accessRequestsPending?: number | null;
 }
+
+// Shared nav-button styling, hoisted so the access-requests entry matches the
+// other nav items pixel-for-pixel. `text-left` keeps a bare <button> (Sign out)
+// from inheriting the UA-default centered text in the stacked mobile menu.
+const navButtonClass =
+  "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-left font-semibold";
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
 
 const SiteHeaderSuppressionContext = createContext(false);
 
@@ -34,7 +48,12 @@ export function SiteHeaderSuppressionProvider({ children }: { children: React.Re
   );
 }
 
-export function SiteHeader({ me, shellOwner = false, feedbackPending }: SiteHeaderProps) {
+export function SiteHeader({
+  me,
+  shellOwner = false,
+  feedbackPending,
+  accessRequestsPending,
+}: SiteHeaderProps) {
   const suppressed = useContext(SiteHeaderSuppressionContext);
   if (suppressed && !shellOwner) return null;
 
@@ -57,11 +76,11 @@ export function SiteHeader({ me, shellOwner = false, feedbackPending }: SiteHead
             <>
               {/* lg+: nav rendered inline. */}
               <nav className="hidden items-center gap-3 lg:flex">
-                <NavButtons me={me} />
+                <NavButtons me={me} accessRequestsPending={accessRequestsPending} />
               </nav>
               {/* < lg: collapsed into a hamburger popover so the
                   buttons don't crowd the title / version pill. */}
-              <MobileNavMenu me={me} />
+              <MobileNavMenu me={me} accessRequestsPending={accessRequestsPending} />
             </>
           ) : (
             <NavLink
@@ -118,30 +137,73 @@ export function FeedbackFlags({ feedbackPending }: { feedbackPending?: FeedbackP
   );
 }
 
-function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () => void }) {
-  // `text-left` keeps the lone <button> (Sign out) from inheriting the
-  // UA-default centered text, so it lines up with the anchor items in the
-  // stacked mobile menu.
-  const navButtonClass =
-    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-left font-semibold";
-  const linkClass = ({ isActive }: { isActive: boolean }) =>
-    cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
+/**
+ * The "Access requests" nav entry, shown only while requests are waiting in the
+ * viewer's owner inbox. Renders nothing at zero (the common case) so it never
+ * clutters the bar — the pending count is the whole reason it appears. Links to
+ * /access-requests, where an owner approves or denies.
+ */
+export function AccessRequestsNavItem({
+  pending,
+  onNavigate,
+}: {
+  pending?: number | null;
+  onNavigate?: () => void;
+}) {
+  const count = pending ?? 0;
+  if (count <= 0) return null;
+  const summary = `${count} pending access request${count === 1 ? "" : "s"}`;
+  return (
+    <NavLink
+      to="/access-requests"
+      title={summary}
+      aria-label={`Access requests: ${summary}`}
+      className={({ isActive }: { isActive: boolean }) =>
+        cn(
+          navButtonClass,
+          "inline-flex items-center gap-1.5",
+          isActive ? "text-primary" : "text-foreground hover:text-primary",
+        )
+      }
+      onClick={onNavigate}
+    >
+      Access requests
+      <span
+        aria-hidden="true"
+        className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] font-bold leading-none text-primary-foreground"
+      >
+        {count}
+      </span>
+    </NavLink>
+  );
+}
+
+function NavButtons({
+  me,
+  accessRequestsPending,
+  onNavigate,
+}: {
+  me: CurrentPrincipal;
+  accessRequestsPending?: number | null;
+  onNavigate?: () => void;
+}) {
   return (
     <>
-      <NavLink to="/workspaces" className={linkClass} onClick={onNavigate}>
+      <AccessRequestsNavItem pending={accessRequestsPending} onNavigate={onNavigate} />
+      <NavLink to="/workspaces" className={navLinkClass} onClick={onNavigate}>
         Workspaces
       </NavLink>
-      <NavLink to="/integrations" className={linkClass} onClick={onNavigate}>
+      <NavLink to="/integrations" className={navLinkClass} onClick={onNavigate}>
         App integrations
       </NavLink>
-      <NavLink to="/users" className={linkClass} onClick={onNavigate}>
+      <NavLink to="/users" className={navLinkClass} onClick={onNavigate}>
         Collaborators
       </NavLink>
-      <NavLink to="/tokens" className={linkClass} onClick={onNavigate}>
+      <NavLink to="/tokens" className={navLinkClass} onClick={onNavigate}>
         Tokens/MCP
       </NavLink>
       {me.username === "torrenegra" ? (
-        <NavLink to="/feedback" className={linkClass} onClick={onNavigate}>
+        <NavLink to="/feedback" className={navLinkClass} onClick={onNavigate}>
           Feedback
         </NavLink>
       ) : null}
@@ -161,7 +223,13 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
   );
 }
 
-function MobileNavMenu({ me }: { me: CurrentPrincipal }) {
+function MobileNavMenu({
+  me,
+  accessRequestsPending,
+}: {
+  me: CurrentPrincipal;
+  accessRequestsPending?: number | null;
+}) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -192,7 +260,13 @@ function MobileNavMenu({ me }: { me: CurrentPrincipal }) {
       >
         <Menu className="h-4 w-4" />
       </button>
-      {open ? <MobileNavPanel me={me} onNavigate={() => setOpen(false)} /> : null}
+      {open ? (
+        <MobileNavPanel
+          me={me}
+          accessRequestsPending={accessRequestsPending}
+          onNavigate={() => setOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -212,9 +286,11 @@ function MobileNavMenu({ me }: { me: CurrentPrincipal }) {
  */
 export function MobileNavPanel({
   me,
+  accessRequestsPending,
   onNavigate,
 }: {
   me: CurrentPrincipal;
+  accessRequestsPending?: number | null;
   onNavigate?: () => void;
 }) {
   return (
@@ -222,7 +298,7 @@ export function MobileNavPanel({
       aria-label="Navigation"
       className="neu-floating absolute right-0 top-full z-[130] mt-2 flex w-48 flex-col gap-2 rounded-md bg-card p-2"
     >
-      <NavButtons me={me} onNavigate={onNavigate} />
+      <NavButtons me={me} accessRequestsPending={accessRequestsPending} onNavigate={onNavigate} />
     </div>
   );
 }
