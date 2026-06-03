@@ -60,7 +60,7 @@ import {
   isGraphNodeType,
   loadNodeDialogDetail,
 } from "~/lib/node-detail.server";
-import { effectivePerspectiveFocusId } from "~/lib/perspective-focus";
+import { effectivePerspectiveFocusId, perspectiveCenterId } from "~/lib/perspective-focus";
 import {
   ensureDefaultsAttached,
   listAvailablePerspectives,
@@ -556,7 +556,10 @@ export default function DocoHome({
   }, [graph, defaultFocusId, pageRanksMap]);
   const activeSlug = activePerspectiveSlug ?? "graph";
   const effectivePerspectiveKind = activePerspectiveKind ?? "graph";
-  const routeFocusId = focusedNodeId ?? focusedEdge?.from.id ?? null;
+  const routeFocusId = perspectiveCenterId({
+    focusedNodeId,
+    focusedEdgeFromId: focusedEdge?.from.id ?? null,
+  });
   const [graphState, setGraphState] = useState<OverviewGraphData>(() => graphData);
   const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(() =>
     selectedNode ? { detail: selectedNode, loading: false, error: null } : null,
@@ -605,14 +608,22 @@ export default function DocoHome({
     });
   }, [graphData]);
 
+  // Re-center the active perspective on the focused node. Mirrors the
+  // edge effect below: the recenter follows the *focus* (`focusedNodeId`,
+  // which the loader reports even under `?dialog=skip`), while the detail
+  // overlay opens only when its detail is present. Señor Doco's
+  // auto-focus navigates with `?dialog=skip` — `selectedNode` is null
+  // then — but the canvas must still follow the node it just touched
+  // instead of staying parked on the previous one. Gating the recenter on
+  // `selectedNode` (the old bug) skipped it for every agent auto-focus.
   useEffect(() => {
-    if (!selectedNode) return;
+    if (!focusedNodeId) return;
     if (clientDialogOverrideRef.current) return;
     setEdgeDialog(null);
     setEdgeFocus(null);
-    setNodeDialog({ detail: selectedNode, loading: false, error: null });
-    setGraphState((prev) => graphWithCenter(prev, selectedNode.id));
-  }, [selectedNode]);
+    setNodeDialog(selectedNode ? { detail: selectedNode, loading: false, error: null } : null);
+    setGraphState((prev) => graphWithCenter(prev, focusedNodeId));
+  }, [focusedNodeId, selectedNode]);
 
   useEffect(() => {
     if (!focusedEdge) return;
