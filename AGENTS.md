@@ -125,6 +125,52 @@ verification report.
 
 ---
 
+## Testing: what runs in the sandbox, and what needs production
+
+The section above says "no local Postgres, drive production." That's only
+half right, and the wrong half matters: **most changes can be verified
+without production.**
+
+**Bootstrap first.** A fresh web session has no `node_modules` and an
+unbuilt workspace. Nothing — not `pnpm verify`, not a single test — runs
+until you do:
+
+```sh
+pnpm install && pnpm run build
+```
+
+Skip the build and vite can't resolve the workspace packages; tests die
+with `Failed to resolve entry for package "@doco/shared"` before your code
+ever runs. `pnpm verify` builds first for exactly this reason — automate
+the same in a SessionStart hook so every session starts ready. ("I can't
+test here" is almost always just this missing step.)
+
+**A real Postgres runs in-process.** `@electric-sql/pglite` is a dev
+dependency. Point `@doco/db`'s `withClient` at a `new PGlite()` loaded with
+`packages/db/src/schema.sql` and the *real* server code runs against *real*
+Postgres semantics — deterministic and CI-safe, no container. For
+backend/logic changes this is a stronger live test than poking production;
+reach for it first. Patterns to copy: `packages/db/src/__tests__/*` and
+`packages/web/app/lib/__tests__/agent-loop.real-db.test.ts` (drives the
+actual Señor Doco turn loop end-to-end against a real DB, stubbing only the
+model).
+
+**What genuinely needs a deployed environment: the real model.**
+`ANTHROPIC_API_KEY` is not in the sandbox, so Señor Doco / agent behaviour
+that depends on the live LLM can't run locally. In tests, stub the model
+boundary (`streamSenorDocoMessage` / `createSenorDocoMessage`) and keep the
+DB real via PGlite. For a real-*model* end-to-end check, use the production
+dev-signin recipe above — the per-branch Vercel preview reaches **Ready**
+(useful proof your change bundles and boots in the real serverless runtime)
+but is auth-walled, so ship-to-main-then-verify, or use a preview bypass
+token.
+
+The ladder, cheapest first: real-DB test (local, deterministic, in CI) →
+`pnpm verify` → CI → preview **Ready** → and only for live-*model*
+behaviour, production.
+
+---
+
 ## Re-base a cold session before replying
 
 If there's nothing pending to commit and we haven't exchanged
