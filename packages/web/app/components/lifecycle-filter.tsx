@@ -44,6 +44,34 @@ export function initialVisibleLifecycles(available: Iterable<string>): Set<strin
 }
 
 /**
+ * Reconcile the visible set when the available lifecycles change, surfacing
+ * ONLY stages the page hasn't seen before.
+ *
+ * `known` is the set of every lifecycle already accounted for. Each stage in
+ * `available` that isn't in `known` is "new": it's recorded in `nextKnown`,
+ * and — unless it hides by default — returned in `newlyVisible` so the caller
+ * can switch it on. Stages already known are left untouched, which is the
+ * whole point: a default-visible stage the user *unchecked* stays unchecked
+ * even though the live feed re-creates the available set every few seconds.
+ * Without this, the old "re-seed every default-visible stage" logic flipped
+ * the user's choice back on within one revalidation. Pure; never mutates
+ * `known`.
+ */
+export function newlyVisibleLifecycles(
+  available: Iterable<string>,
+  known: ReadonlySet<string>,
+): { newlyVisible: string[]; nextKnown: Set<string> } {
+  const nextKnown = new Set(known);
+  const newlyVisible: string[] = [];
+  for (const lifecycle of available) {
+    if (nextKnown.has(lifecycle)) continue;
+    nextKnown.add(lifecycle);
+    if (!HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle)) newlyVisible.push(lifecycle);
+  }
+  return { newlyVisible, nextKnown };
+}
+
+/**
  * Order `available` lifecycles by LIFECYCLE_ORDER, appending any
  * unknown lifecycle stages at the end alphabetically.
  */

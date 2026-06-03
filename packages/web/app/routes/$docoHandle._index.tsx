@@ -21,7 +21,11 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { GithubIntegrationCard } from "~/components/github-integration-card";
-import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
+import {
+  LIFECYCLE_ORDER,
+  initialVisibleLifecycles,
+  newlyVisibleLifecycles,
+} from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
@@ -644,28 +648,26 @@ export default function DocoHome({
         : initialVisibleLifecycles(availableLifecycles),
   );
 
-  // Keep visible set in sync if the data introduces a new lifecycle.
+  // Surface a lifecycle the data NEWLY introduces, but never re-add one the
+  // user deliberately unchecked. The live feed re-creates `availableLifecycles`
+  // every revalidation (~5s), so re-seeding from the default-visible set would
+  // flip the user's hidden stages back on within seconds. Tracking the stages
+  // we've already seen in a ref keeps that toggle stable while still revealing
+  // genuinely new stages. (newlyVisibleLifecycles is pure + unit-tested.)
+  const knownLifecyclesRef = useRef<Set<string>>(new Set(availableLifecycles));
   useEffect(() => {
-    setVisibleLifecycles((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const lifecycle of availableLifecycles) {
-        // Don't auto-show stages that should be hidden by default.
-        if (!next.has(lifecycle) && !prev.has(lifecycle)) {
-          // initial-hidden stages stay hidden; new not-hidden stages
-          // become visible.
-          // initialVisibleLifecycles enforces hide-by-default policy.
-        }
-      }
-      const seed = initialVisibleLifecycles(availableLifecycles);
-      for (const lifecycle of seed) {
-        if (!next.has(lifecycle) && !prev.has(lifecycle)) {
-          next.add(lifecycle);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
+    const { newlyVisible, nextKnown } = newlyVisibleLifecycles(
+      availableLifecycles,
+      knownLifecyclesRef.current,
+    );
+    knownLifecyclesRef.current = nextKnown;
+    if (newlyVisible.length > 0) {
+      setVisibleLifecycles((prev) => {
+        const next = new Set(prev);
+        for (const lifecycle of newlyVisible) next.add(lifecycle);
+        return next;
+      });
+    }
   }, [availableLifecycles]);
 
   const toggleLifecycle = (lifecycle: string) =>

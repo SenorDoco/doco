@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { pullRequestLabel } from "~/lib/pull-requests";
+import { newlyVisibleLifecycles } from "../lifecycle-filter";
 import { PerspectiveFrame } from "../perspective-frame";
 
 /** Strip HTML tags to recover the visible text content. */
@@ -60,5 +61,54 @@ describe("PerspectiveFrame lifecycle filter panel", () => {
       </PerspectiveFrame>,
     );
     expect(html).not.toContain("Life cycle:");
+  });
+});
+
+describe("newlyVisibleLifecycles", () => {
+  it("re-adds nothing when every available stage is already known", () => {
+    // The fix: once a stage is known, an unchecked default-visible stage
+    // (e.g. 'active', removed by the user) must NOT reappear when the live
+    // feed re-creates the available set on every revalidation.
+    const known = new Set(["drafting", "queued", "active", "retired"]);
+    const { newlyVisible, nextKnown } = newlyVisibleLifecycles(
+      ["drafting", "queued", "active", "retired"],
+      known,
+    );
+    expect(newlyVisible).toEqual([]);
+    expect([...nextKnown].sort()).toEqual(["active", "drafting", "queued", "retired"]);
+  });
+
+  it("surfaces a genuinely new, non-hidden stage and records it as known", () => {
+    const { newlyVisible, nextKnown } = newlyVisibleLifecycles(
+      ["queued", "active", "blocked"],
+      new Set(["queued", "active"]),
+    );
+    expect(newlyVisible).toEqual(["blocked"]);
+    expect(nextKnown.has("blocked")).toBe(true);
+  });
+
+  it("records a new hide-by-default stage as known WITHOUT showing it", () => {
+    // 'retired' hides by default: its first appearance in the data shouldn't
+    // reveal it, but it must be marked known so it isn't re-evaluated later.
+    const { newlyVisible, nextKnown } = newlyVisibleLifecycles(
+      ["queued", "retired"],
+      new Set(["queued"]),
+    );
+    expect(newlyVisible).toEqual([]);
+    expect(nextKnown.has("retired")).toBe(true);
+  });
+
+  it("surfaces only the new non-hidden stages from a mixed set", () => {
+    const { newlyVisible } = newlyVisibleLifecycles(
+      ["queued", "active", "blocked", "retired"],
+      new Set(["queued", "active"]),
+    );
+    expect(newlyVisible).toEqual(["blocked"]);
+  });
+
+  it("does not mutate the passed-in known set", () => {
+    const known = new Set(["queued"]);
+    newlyVisibleLifecycles(["queued", "blocked"], known);
+    expect([...known]).toEqual(["queued"]);
   });
 });
