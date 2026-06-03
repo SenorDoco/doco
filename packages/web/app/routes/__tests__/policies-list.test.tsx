@@ -35,7 +35,6 @@ describe("PolicyRow (policies list)", () => {
         predicate: { agent_instruction: "Import nodes as active by default." },
         lifecycle: "active",
         createdAt: "2026-06-01T00:00:00.000Z",
-        body: "",
       },
     });
 
@@ -57,7 +56,6 @@ describe("PolicyRow (policies list)", () => {
         predicate: { agent_instruction: "Import nodes as active by default." },
         lifecycle: "active",
         createdAt: "2026-06-01T00:00:00.000Z",
-        body: "",
       },
     });
 
@@ -83,7 +81,6 @@ describe("PolicyRow (policies list)", () => {
         },
         lifecycle: "active",
         createdAt: "2026-06-01T00:00:00.000Z",
-        body: "",
       },
     });
 

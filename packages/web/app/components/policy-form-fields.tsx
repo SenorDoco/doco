@@ -158,10 +158,8 @@ function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyF
 
 export function PolicyFormFields({
   initial,
-  bodyMd,
 }: {
   initial?: Partial<PolicyFormInitial>;
-  bodyMd?: string;
 }) {
   const init: PolicyFormInitial = {
     kind: "suggestion",
@@ -269,10 +267,6 @@ export function PolicyFormFields({
           </Field>
         </div>
       ) : null}
-
-      <Field label="Rationale (markdown, optional)">
-        <textarea name="body_md" rows={4} defaultValue={bodyMd} className={INPUT} />
-      </Field>
     </div>
   );
 }

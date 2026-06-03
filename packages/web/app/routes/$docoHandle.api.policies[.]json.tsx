@@ -31,7 +31,6 @@ interface PolicyRow {
   kind: string | null;
   data: Record<string, unknown> | null;
   lifecycle: string | null;
-  body_md: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -46,7 +45,7 @@ export async function loader({
   const ctx = await loadDocoRouteForRead(request, params);
   return withClient(async (c) => {
     const rows = await c.query<PolicyRow>(
-      `SELECT id, kind, data, lifecycle, body_md,
+      `SELECT id, kind, data, lifecycle,
               created_at::text AS created_at,
               updated_at::text AS updated_at
          FROM policies
@@ -63,7 +62,6 @@ export async function loader({
         summary: predicate ? summarizePredicate(predicate) : "",
         predicate,
         lifecycle: r.lifecycle,
-        body_md: r.body_md,
         created_at: r.created_at,
         updated_at: r.updated_at,
       };

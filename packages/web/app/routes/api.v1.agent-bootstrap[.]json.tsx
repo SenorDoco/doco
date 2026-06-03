@@ -64,7 +64,6 @@ interface PolicyArticle {
   /** deterministic: the structured check (else the agent-instruction predicate). */
   predicate: PolicyPredicate | null;
   lifecycle: string | null;
-  body_md: string | null;
 }
 
 interface DocoPolicySet {
@@ -153,9 +152,8 @@ async function loadPolicyArticles(docoId: string): Promise<PolicyArticle[]> {
       kind: string | null;
       data: Record<string, unknown> | null;
       lifecycle: string | null;
-      body_md: string | null;
     }>(
-      `SELECT id, kind, data, lifecycle, body_md
+      `SELECT id, kind, data, lifecycle
          FROM policies
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
@@ -171,7 +169,6 @@ async function loadPolicyArticles(docoId: string): Promise<PolicyArticle[]> {
       agent_instruction: predicate ? agentInstructionOf(predicate) : null,
       predicate,
       lifecycle: row.lifecycle,
-      body_md: row.body_md,
     };
   });
 }
