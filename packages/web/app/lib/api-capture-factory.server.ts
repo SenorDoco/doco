@@ -265,8 +265,9 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       };
       if (rec.type_named_value !== undefined && rec.type_named_value !== null) {
         response[cfg.entityType] = rec.type_named_value;
-      } else if (typeof rec.data.policy === "string") {
-        response.policy = rec.data.policy;
+      } else if (rec.entity_type === "policy") {
+        // Policies have no type-named prose: `kind` + `predicate` already
+        // ride along in `response.data`; surface the markdown body too.
         response.body_md = rec.body_md ?? null;
       } else {
         response[cfg.entityType] = "";

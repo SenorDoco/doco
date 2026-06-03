@@ -1,27 +1,23 @@
 // GET/POST /<doco-handle>/api/policies.json — dedicated policies endpoint.
 //
-// Policies (`guidance_policy`, `node_authoring_policy`) are not
-// nodes. They are Doco-level metadata and are *only* reachable from
-// this endpoint, the agent bootstrap response, or the HTML policies
-// page. The generic /<handle>/api/<type>.json dispatcher refuses
-// policy types.
+// Policies are not nodes. They are Doco-level authoring metadata and are
+// *only* reachable from this endpoint, the agent bootstrap response, or the
+// HTML policies page. The generic /<handle>/api/<type>.json dispatcher refuses
+// the `policy` type.
 //
-// GET  → list every policy in the Doco, both kinds, with a
-//        `policy_kind` discriminator.
+// GET  → list every policy in the Doco, each with its `kind`
+//        ("suggestion" | "deterministic" | "probabilistic") and predicate.
 // POST → capture a new policy. Body shape:
-//        { "policy_kind": "guidance" | "node_authoring", ...draft }
-//        Where `...draft` follows GuidancePolicyDraft or
-//        NodeAuthoringPolicyDraft from capture.server.ts.
+//        { "kind": "suggestion" | "deterministic" | "probabilistic", ...draft }
+//        where `...draft` follows PolicyDraft from capture.server.ts
+//        (suggestion/probabilistic → `agent_instruction`; deterministic →
+//        `predicate` with `sub_kind`).
 
 import { withClient } from "@doco/db";
+import { type PolicyPredicate, summarizePredicate } from "@doco/shared";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
-import {
-  type GuidancePolicyDraft,
-  type NodeAuthoringPolicyDraft,
-  captureGuidancePolicy,
-  captureNodeAuthoringPolicy,
-} from "~/lib/capture.server";
+import { type PolicyDraft, capturePolicy } from "~/lib/capture.server";
 import {
   type DocoRouteParams,
   getDocoLevelRole,
@@ -32,15 +28,12 @@ import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
 interface PolicyRow {
   id: string;
-  policy: string;
+  kind: string | null;
+  data: Record<string, unknown> | null;
   lifecycle: string | null;
   body_md: string | null;
   created_at: string | null;
   updated_at: string | null;
-}
-
-interface PolicyListEntry extends PolicyRow {
-  policy_kind: "guidance" | "node_authoring";
 }
 
 export async function loader({
@@ -52,42 +45,37 @@ export async function loader({
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   return withClient(async (c) => {
-    const [guidance, nodeAuthoring] = await Promise.all([
-      c.query<PolicyRow>(
-        `SELECT id, policy, lifecycle, body_md,
-                created_at::text AS created_at,
-                updated_at::text AS updated_at
-           FROM guidance_policies
-          WHERE doco_id = $1
-          ORDER BY created_at DESC`,
-        [ctx.meta.docoId],
-      ),
-      c.query<PolicyRow>(
-        `SELECT id, policy, lifecycle, body_md,
-                created_at::text AS created_at,
-                updated_at::text AS updated_at
-           FROM node_authoring_policies
-          WHERE doco_id = $1
-          ORDER BY created_at DESC`,
-        [ctx.meta.docoId],
-      ),
-    ]);
-    const items: PolicyListEntry[] = [
-      ...guidance.rows.map((r) => ({
-        ...r,
-        policy_kind: "guidance" as const,
-      })),
-      ...nodeAuthoring.rows.map((r) => ({
-        ...r,
-        policy_kind: "node_authoring" as const,
-      })),
-    ];
+    const rows = await c.query<PolicyRow>(
+      `SELECT id, kind, data, lifecycle, body_md,
+              created_at::text AS created_at,
+              updated_at::text AS updated_at
+         FROM policies
+        WHERE doco_id = $1
+        ORDER BY created_at DESC`,
+      [ctx.meta.docoId],
+    );
+    const items = rows.rows.map((r) => {
+      const data = r.data ?? {};
+      const predicate = (data.predicate ?? null) as PolicyPredicate | null;
+      return {
+        id: r.id,
+        kind: r.kind ?? (typeof data.kind === "string" ? data.kind : null),
+        summary: predicate ? summarizePredicate(predicate) : "",
+        predicate,
+        lifecycle: r.lifecycle,
+        body_md: r.body_md,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      };
+    });
+    const countByKind = (kind: string) => items.filter((i) => i.kind === kind).length;
     return Response.json({
       doco_id: ctx.meta.docoId,
       doco_handle: ctx.handle,
       count: items.length,
-      guidance_count: guidance.rows.length,
-      node_authoring_count: nodeAuthoring.rows.length,
+      suggestion_count: countByKind("suggestion"),
+      deterministic_count: countByKind("deterministic"),
+      probabilistic_count: countByKind("probabilistic"),
       items,
     });
   });
@@ -118,7 +106,7 @@ export async function action({
   const bodyText = await request.text();
 
   return withIdempotency(request, "POST /api/policies", me.id ?? null, bodyText, async () => {
-    let parsed: { policy_kind?: unknown } & Record<string, unknown>;
+    let parsed: { kind?: unknown } & Record<string, unknown>;
     try {
       parsed = JSON.parse(bodyText);
     } catch (e) {
@@ -127,11 +115,11 @@ export async function action({
         { status: 400 },
       );
     }
-    const policyKind = parsed.policy_kind;
-    if (policyKind !== "guidance" && policyKind !== "node_authoring") {
+    const kind = parsed.kind;
+    if (kind !== "suggestion" && kind !== "deterministic" && kind !== "probabilistic") {
       return Response.json(
         {
-          error: 'Body must include "policy_kind": "guidance" | "node_authoring" to disambiguate.',
+          error: 'Body must include "kind": "suggestion" | "deterministic" | "probabilistic".',
         },
         { status: 400 },
       );
@@ -146,41 +134,14 @@ export async function action({
     }
 
     const docoHost = new URL(request.url).origin;
-    const { policy_kind: _discarded, ...rest } = parsed;
-
-    if (policyKind === "guidance") {
-      const draft = stampAuthenticatedCreator(rest as unknown as GuidancePolicyDraft, me.id);
-      if (!draft.authored_by_principal_id && me.id) {
-        draft.authored_by_principal_id =
-          (await resolvePrincipalIdForUser(meta.docoId, me.id)) ?? undefined;
-      }
-      const result = await captureGuidancePolicy(
-        dir,
-        meta.docoId,
-        ownerSlug,
-        docoSlug,
-        draft,
-        docoHost,
-        { authoring: await authoringContextForRequest(request) },
-      );
-      if ("error" in result) return Response.json(result, { status: 400 });
-      return Response.json(result, { status: 201 });
-    }
-
-    const draft = stampAuthenticatedCreator(rest as unknown as NodeAuthoringPolicyDraft, me.id);
+    const draft = stampAuthenticatedCreator(parsed as unknown as PolicyDraft, me.id);
     if (!draft.authored_by_principal_id && me.id) {
       draft.authored_by_principal_id =
         (await resolvePrincipalIdForUser(meta.docoId, me.id)) ?? undefined;
     }
-    const result = await captureNodeAuthoringPolicy(
-      dir,
-      meta.docoId,
-      ownerSlug,
-      docoSlug,
-      draft,
-      docoHost,
-      { authoring: await authoringContextForRequest(request) },
-    );
+    const result = await capturePolicy(dir, meta.docoId, ownerSlug, docoSlug, draft, docoHost, {
+      authoring: await authoringContextForRequest(request),
+    });
     if ("error" in result) return Response.json(result, { status: 400 });
     return Response.json(result, { status: 201 });
   });

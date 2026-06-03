@@ -38,7 +38,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
  *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
  *   /<doco-handle>/settings        per-Doco settings (admin only; danger zone soft-delete; ADR-124)
- *   /<doco-handle>/policies      per-Doco policies page: guidance_policies + node_authoring_policies
+ *   /<doco-handle>/policies      per-Doco policies page (single `policies` table)
  *   /<doco-handle>/status.json     per-Doco status (connection signal for agent footer line)
  *   /<doco-handle>/api/*           per-Doco capture + update endpoints
  *                                  (decisions / intents / settings; ADR-128)
@@ -256,15 +256,8 @@ export default [
   // Standalone per-integration detail (GitHub: repos, import status, actions).
   route(":docoHandle/integrations/github", "routes/$docoHandle.integrations.github.tsx"),
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
-  route(":docoHandle/policies/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx"),
-  route(
-    ":docoHandle/policies/node-authoring/new",
-    "routes/$docoHandle.policies.node-authoring.new.tsx",
-  ),
-  route(
-    ":docoHandle/policies/:entityType/:policyId/edit",
-    "routes/$docoHandle.policies.$entityType.$policyId.edit.tsx",
-  ),
+  route(":docoHandle/policies/new", "routes/$docoHandle.policies.new.tsx"),
+  route(":docoHandle/policies/:policyId/edit", "routes/$docoHandle.policies.$policyId.edit.tsx"),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
   route(":docoHandle/project-tokens", "routes/$docoHandle.project-tokens.tsx"),
@@ -280,14 +273,7 @@ export default [
   route(":docoHandle/api/decisions/:id.json", "routes/$docoHandle.api.decisions.$id[.]json.tsx"),
   route(":docoHandle/api/intents/:id.json", "routes/$docoHandle.api.intents.$id[.]json.tsx"),
   route(":docoHandle/api/rules/:id.json", "routes/$docoHandle.api.rules.$id[.]json.tsx"),
-  route(
-    ":docoHandle/api/guidance_policies/:id.json",
-    "routes/$docoHandle.api.guidance_policies.$id[.]json.tsx",
-  ),
-  route(
-    ":docoHandle/api/node_authoring_policies/:id.json",
-    "routes/$docoHandle.api.node_authoring_policies.$id[.]json.tsx",
-  ),
+  route(":docoHandle/api/policies/:id.json", "routes/$docoHandle.api.policies.$id[.]json.tsx"),
   route(":docoHandle/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoHandle/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
   route(":docoHandle/api/evals/:id.json", "routes/$docoHandle.api.evals.$id[.]json.tsx"),

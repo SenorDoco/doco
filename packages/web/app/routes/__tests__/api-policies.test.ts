@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  captureGuidancePolicy: vi.fn(),
-  captureNodeAuthoringPolicy: vi.fn(),
+  capturePolicy: vi.fn(),
   getDocoLevelRole: vi.fn(),
   listPrincipals: vi.fn(),
   loadDocoRouteForRead: vi.fn(),
@@ -16,8 +15,7 @@ vi.mock("@doco/db", () => ({
 }));
 
 vi.mock("~/lib/capture.server", () => ({
-  captureGuidancePolicy: mocks.captureGuidancePolicy,
-  captureNodeAuthoringPolicy: mocks.captureNodeAuthoringPolicy,
+  capturePolicy: mocks.capturePolicy,
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
@@ -73,15 +71,29 @@ describe("/<doco>/api/policies.json", () => {
     );
   });
 
+  it("rejects a body without a valid kind", async () => {
+    mocks.getDocoLevelRole.mockResolvedValue("owner");
+
+    const response = await action({
+      request: jsonRequest({ agent_instruction: "Keep lane names in business language." }),
+      params: { docoHandle: "bpms" },
+    } as never);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining('"kind"'),
+    });
+    expect(mocks.capturePolicy).not.toHaveBeenCalled();
+  });
+
   it("requires owner scope before attempting to write a policy", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("writer");
 
     const response = await action({
       request: jsonRequest({
-        policy_kind: "guidance",
-        policy: "Use qualified doco labels.",
+        kind: "suggestion",
+        agent_instruction: "Use qualified doco labels.",
         created_by: "principal_spoofed",
-        created_by_principal_id: "principal_spoofed",
         created_by_user_id: "user_spoofed",
       }),
       params: { docoHandle: "bpms" },
@@ -96,33 +108,34 @@ describe("/<doco>/api/policies.json", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "Forbidden: owner role required to write policies.",
     });
-    expect(mocks.captureGuidancePolicy).not.toHaveBeenCalled();
+    expect(mocks.capturePolicy).not.toHaveBeenCalled();
   });
 
-  it("lets doco owners create guidance policies", async () => {
+  it("lets doco owners create a suggestion policy", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("owner");
-    mocks.captureGuidancePolicy.mockResolvedValue({
+    mocks.capturePolicy.mockResolvedValue({
       ok: true,
-      id: "guidance_policy_123",
+      id: "policy_123",
       footer_lines: ["[🔮 Doco] policy added"],
     });
 
     const response = await action({
       request: jsonRequest({
-        policy_kind: "guidance",
-        policy: "Use qualified doco labels.",
+        kind: "suggestion",
+        agent_instruction: "Use qualified doco labels.",
       }),
       params: { docoHandle: "bpms" },
     } as never);
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({ id: "guidance_policy_123" });
-    expect(mocks.captureGuidancePolicy).toHaveBeenCalledWith(
+    await expect(response.json()).resolves.toMatchObject({ id: "policy_123" });
+    expect(mocks.capturePolicy).toHaveBeenCalledWith(
       "/tmp/doco",
       "doco_bpms",
       "torre",
       "bpms",
       expect.objectContaining({
+        kind: "suggestion",
         authored_by_principal_id: "principal_alice",
         created_by_user_id: "user_alice",
       }),

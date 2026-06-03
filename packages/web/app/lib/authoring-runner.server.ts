@@ -13,31 +13,39 @@
 import { type PoolClient, withClient } from "@doco/db";
 import { NODE_TABLES } from "@doco/db";
 import {
-  type AuthoringPredicate,
   type CandidateFields,
+  type DeterministicSubKind,
   type EngineEdge,
   type Lifecycle,
   type LoadedPolicy,
+  type PolicyKind,
   type PrincipalIndex,
   type Violation,
+  agentInstructionOf,
   evaluatePolicies,
+  isDeterministicPredicate,
   policyFiresFor,
 } from "@doco/shared";
 import { judgeProbabilisticPredicate } from "./llm-judge.server";
 
+/** The deterministic `sub_kind` of a policy, or null for suggestion/probabilistic. */
+function subKindOf(p: LoadedPolicy): DeterministicSubKind | null {
+  return isDeterministicPredicate(p.predicate) ? p.predicate.sub_kind : null;
+}
+
 /**
- * Predicate kinds that assert a lifecycle-independent invariant — they
+ * Deterministic sub-kinds that assert a lifecycle-independent invariant — they
  * describe what may exist in the Doco at all, not what an *active* node
  * must look like. These keep firing even on terminal (retired)
  * candidates: a Doco's declared type/membership scope ("only these
  * node types belong here", "this node must not carry X") must hold
  * regardless of lifecycle, otherwise a node captured terminal-by-default
  * (e.g. an Action, which defaults to `retired`) could slip past a
- * template's entity-type allowlist. Every other kind is a
+ * template's entity-type allowlist. Every other check is a
  * shape/completeness gate ("an active node of this kind must have field
  * X / edge Y") and is skipped on the way out — see `runAuthoringPolicies`.
  */
-const LIFECYCLE_INDEPENDENT_KINDS: ReadonlySet<AuthoringPredicate["kind"]> = new Set([
+const LIFECYCLE_INDEPENDENT_KINDS: ReadonlySet<DeterministicSubKind> = new Set([
   "requires_entity_type",
   "requires_node_type",
   "forbids_edge",
@@ -105,9 +113,10 @@ export async function runAuthoringPolicies(opts: {
     }
     let applicablePolicies = policies.filter((p) => policyFiresFor(p, opts.candidate));
     if (terminal) {
-      applicablePolicies = applicablePolicies.filter((p) =>
-        LIFECYCLE_INDEPENDENT_KINDS.has(p.predicate.kind),
-      );
+      applicablePolicies = applicablePolicies.filter((p) => {
+        const sk = subKindOf(p);
+        return sk !== null && LIFECYCLE_INDEPENDENT_KINDS.has(sk);
+      });
     }
     const evaluated = applicablePolicies.length;
     if (evaluated === 0) {
@@ -116,18 +125,17 @@ export async function runAuthoringPolicies(opts: {
 
     const populationNodeTypes = collectPopulationNodeTypes(applicablePolicies);
     const needsPrincipals = applicablePolicies.some(
-      (p) => p.predicate.kind === "requires_field_resolves_to_principal",
+      (p) => subKindOf(p) === "requires_field_resolves_to_principal",
     );
-    const needsGraphCompleteness = applicablePolicies.some(
-      (p) => p.predicate.kind === "graph-completeness",
-    );
-    const needsEdges = applicablePolicies.some(
-      (p) =>
-        p.predicate.kind === "requires_edge" ||
-        p.predicate.kind === "requires_edge_role" ||
-        p.predicate.kind === "forbids_edge" ||
-        p.predicate.kind === "graph-completeness",
-    );
+    const needsEdges = applicablePolicies.some((p) => {
+      const sk = subKindOf(p);
+      return (
+        sk === "requires_edge" ||
+        sk === "requires_edge_role" ||
+        sk === "forbids_edge" ||
+        sk === "graph-completeness"
+      );
+    });
     const needsPopulation = populationNodeTypes.size > 0;
 
     // Sequential when sharing a transaction client (pg can't pipeline
@@ -176,11 +184,13 @@ async function resolveProbabilistic(
   policies: LoadedPolicy[],
   candidate: CandidateFields,
 ): Promise<Violation[]> {
-  const policyById = new Map(policies.map((p) => [p.policy_id, p.policy]));
+  const policyById = new Map(
+    policies.map((p) => [p.policy_id, agentInstructionOf(p.predicate) ?? ""]),
+  );
   return (
     await Promise.all(
       violations.map(async (v) => {
-        if (v.predicate_kind !== "probabilistic" || !v.pending_spec) {
+        if (v.kind !== "probabilistic" || !v.pending_spec) {
           return v;
         }
         const judgment = await judgeProbabilisticPredicate(v.pending_spec, candidate);
@@ -207,11 +217,13 @@ async function resolveProbabilistic(
 function collectPopulationNodeTypes(policies: LoadedPolicy[]): Set<string> {
   const set = new Set<string>();
   for (const p of policies) {
-    if (p.predicate.kind === "graph-completeness") {
-      set.add(p.predicate.incoming_node_type);
+    const pred = p.predicate;
+    if (!isDeterministicPredicate(pred)) continue;
+    if (pred.sub_kind === "graph-completeness") {
+      set.add(pred.incoming_node_type);
     }
-    if (p.predicate.kind === "unique_field") {
-      const when = p.predicate.when_node_type;
+    if (pred.sub_kind === "unique_field") {
+      const when = pred.when_node_type;
       if (when && when.length > 0) {
         for (const nodeType of when) set.add(nodeType);
       } else {
@@ -230,10 +242,11 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
   // full-graph, bpmn-perspective, agent-chat). Without it, a policy
   // whose lifecycle column is NULL is silently invisible to the enforcer
   // while looking accepted everywhere else.
-  const r = await c.query<{ id: string; policy: string; data: Record<string, unknown> | null }>(
-    `SELECT id, policy, data
-       FROM node_authoring_policies
-       WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'`,
+  const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
+    `SELECT id, data
+       FROM policies
+       WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'
+         AND data->>'kind' IN ('deterministic', 'probabilistic')`,
     [docoId],
   );
   const out: LoadedPolicy[] = [];
@@ -245,6 +258,8 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
       );
       continue;
     }
+    const kind = yaml.kind;
+    if (kind !== "deterministic" && kind !== "probabilistic") continue;
     const predicate = yaml.predicate;
     if (!predicate || typeof predicate !== "object") {
       console.warn(
@@ -256,7 +271,7 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
     const lifecycleFilter = yaml.fires_when_node_lifecycle;
     out.push({
       policy_id: row.id,
-      policy: row.policy ?? "",
+      kind: kind as PolicyKind,
       predicate: predicate as LoadedPolicy["predicate"],
       ...(onViolation === "block" || onViolation === "warn" || onViolation === "log"
         ? { on_violation: onViolation }

@@ -1,19 +1,19 @@
-// /<doco-handle>/policies/guidance/new — standalone form for
-// authoring a Doco-level guidance policy. Prose-only meta-rule; no
-// automated check. The landing page at /<doco>/policies links
-// here from the "Add guidance policy" button.
+// /<doco-handle>/policies/new — standalone form for authoring a Doco-level
+// policy. One form for all three kinds: suggestion, deterministic,
+// probabilistic. Owner-only (loadDocoRouteForAdmin gates loader + action).
 
 import { Form, Link, redirect, useActionData } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
+import { PolicyFormFields } from "~/components/policy-form-fields";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
-import { captureGuidancePolicy } from "~/lib/capture.server";
+import { capturePolicy } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { derivePolicySummary } from "~/lib/policy-copy";
+import { policyDraftFromForm } from "~/lib/policy-form";
 import { resolvePrincipalIdForUser } from "~/lib/principal-user.server";
 
 interface ActionError {
@@ -41,46 +41,41 @@ export async function action({
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { dir: docoDir, docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
-  const body_md = String(form.get("body_md") ?? "").trim();
-  const policy = derivePolicySummary(body_md);
-  if (!policy) return Response.json({ error: "Policy is required." }, { status: 400 });
-  const docoHost = new URL(request.url).origin;
+  const parsed = policyDraftFromForm(form);
+  if ("error" in parsed) return Response.json(parsed, { status: 400 });
   const authorPrincipalId = ctx.me?.id
     ? await resolvePrincipalIdForUser(ctx.meta.docoId, ctx.me.id)
     : null;
-
   const draft = stampAuthenticatedCreator(
-    {
-      policy,
-      body_md,
-      authored_by_principal_id: authorPrincipalId ?? undefined,
-    },
+    { ...parsed, authored_by_principal_id: authorPrincipalId ?? undefined },
     ctx.me?.id,
   );
-
-  const result = await captureGuidancePolicy(
+  const docoHost = new URL(request.url).origin;
+  const result = await capturePolicy(
     docoDir,
     ctx.meta.docoId,
     ownerSlug,
     docoSlug,
     draft,
     docoHost,
-    { authoring: await authoringContextForRequest(request) },
+    {
+      authoring: await authoringContextForRequest(request),
+    },
   );
   if ("error" in result) return Response.json(result, { status: result.status ?? 400 });
   return redirect(`/${handle}/policies`);
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
-  return [{ title: `New guidance policy · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
+  return [{ title: `New policy · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function NewGuidancePolicy({
+export default function NewPolicy({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, me } = loaderData;
+  const { ownerSlug, handle, me } = loaderData;
   const actionData = useActionData<ActionError>();
   return (
     <div>
@@ -91,13 +86,13 @@ export default function NewGuidancePolicy({
             ownerSlug,
             handle,
             parent: { label: "Policies", to: `/${handle}/policies` },
-            pageLabel: "New guidance policy",
+            pageLabel: "New policy",
           })}
-          title="New guidance policy"
+          title="New policy"
         >
           <p className="text-sm text-muted-foreground">
-            A plain-English rule you want everyone working on this doco to follow. Nothing checks it
-            automatically — it's a shared agreement.
+            Every policy is an authoring policy. Pick a kind, then describe the instruction (for
+            suggestion / probabilistic) or compose the structural check (for deterministic).
           </p>
         </PageHeader>
         <Card>
@@ -108,19 +103,13 @@ export default function NewGuidancePolicy({
               </div>
             ) : null}
             <Form method="post" className="space-y-4">
-              <textarea
-                name="body_md"
-                required
-                rows={12}
-                placeholder="Write the policy."
-                className="block w-full rounded-md px-3 py-2 text-sm"
-              />
-              <div className="flex items-center gap-3">
+              <PolicyFormFields />
+              <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"
                   className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
-                  Add guidance policy
+                  Add policy
                 </button>
                 <Link
                   to={`/${handle}/policies`}

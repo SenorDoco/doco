@@ -9,10 +9,10 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  * `type` is one of the capture types, plus policies and settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  *
- * Note: policies (`guidance_policy`, `node_authoring_policy`)
- * are NOT nodes and do not have per-type capture routes. The dedicated
- * policies endpoint lives at /<handle>/api/policies.json and is
- * documented under `policies` here.
+ * Note: policies (a single `policy` entity type) are NOT nodes and do
+ * not have per-type capture routes. The dedicated policies endpoint
+ * lives at /<handle>/api/policies.json and is documented under
+ * `policies` here.
  */
 
 type SpecRenderer = (baseUrl: string, handle: string) => string;
@@ -618,28 +618,29 @@ Policies are **not nodes**. They govern how a Doco is authored,
 and they live on a dedicated endpoint — separate from the generic
 node-capture API.
 
-Two kinds:
-  - guidance         contributor-facing prose; not engine-evaluated.
-  - node_authoring engine-evaluated capture-time checks
-                     (deterministic predicate or probabilistic spec).
+There is ONE policy entity type, \`policy\`, living in one table.
+Every policy carries a standalone \`kind\`:
+  - suggestion       contributor-facing instruction; not block-enforced.
+  - deterministic    engine-evaluated capture-time predicate check.
+  - probabilistic    engine-evaluated capture-time check the host
+                     judges with an LLM.
 
 ENDPOINT (list)
   GET ${baseUrl}/${handle}/api/policies.json
 
-  Returns every policy in the Doco, both kinds, with a
-  \`policy_kind\` discriminator:
+  Returns every policy in the Doco, each with its \`kind\` and
+  \`predicate\`:
 
   {
     "doco_id": "doco_...",
     "doco_handle": "<handle>",
     "count": <int>,
-    "guidance_count": <int>,
-    "node_authoring_count": <int>,
     "items": [
       {
-        "policy_kind": "guidance",
-        "id": "guidance_policy_<ULID>",
-        "policy": "...",
+        "id": "policy_<ULID>",
+        "kind": "suggestion",
+        "agent_instruction": "...",
+        "predicate": null,
         "lifecycle": "active",
         "body_md": "...",
         "created_at": "...",
@@ -652,108 +653,91 @@ ENDPOINT (list)
 ENDPOINT (capture)
   POST ${baseUrl}/${handle}/api/policies.json
   Content-Type: application/json
+  (owner role required)
 
 ${RELATION_API_NOTE}
 
-  Body MUST include \`policy_kind\` to disambiguate; remaining
-  fields match the per-kind draft below.
+  Body MUST include \`kind\` to disambiguate; remaining fields match
+  the per-kind draft below.
 
-BODY — policy_kind = "guidance"
-  policy_kind          required   "guidance"
-  policy                required   one-line policy rule
-  body_md               optional   markdown policy body
-  authored_by_principal_id optional principal id; auth fills this
-  lifecycle             optional   one of "drafting" | "active" | "retired"; default "active"
-  deprecated            optional   boolean warning label; lifecycle is unchanged
-  outcome               optional   "succeeded" | "failed"
-
-BODY — policy_kind = "node_authoring"
-  policy_kind          required   "node_authoring"
-  policy                required   one-line policy rule
-  evaluation_kind       required   "deterministic" | "probabilistic"
-  predicate             required*  deterministic AuthoringPredicate object
-                                  or JSON string. Must not have
-                                  kind="probabilistic".
-  spec                  required*  probabilistic spec; stored as
-                                  {kind:"probabilistic", spec}
+BODY — common (every kind)
+  kind                  required   "suggestion" | "deterministic" | "probabilistic"
   fires_when_node_lifecycle optional ["active", ...]
-  on_violation          optional   "block" | "warn" | "log"; default "block"
+  on_violation          optional   "block" | "warn" | "log"; default "block".
+                                  Not used for kind="suggestion".
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
-  lifecycle             optional   one of "drafting" | "active" | "retired"; default "active"
-  deprecated            optional   boolean warning label; lifecycle is unchanged
-  outcome               optional   "succeeded" | "failed"
+
+BODY — kind = "suggestion"
+  agent_instruction     required   the single natural-language instruction.
+
+BODY — kind = "probabilistic"
+  agent_instruction     required   the single natural-language instruction.
+  when_node_type        optional   ["decision", ...]
+
+BODY — kind = "deterministic"
+  predicate             required   predicate object (or JSON string) shaped
+                                  { "sub_kind": <check>, ...params }.
+                                  sub_kind is one of: requires_edge,
+                                  requires_edge_role, forbids_edge,
+                                  requires_field, forbids_field,
+                                  unique_field, requires_node_type,
+                                  requires_entity_type, graph-completeness,
+                                  requires_field_resolves_to_principal.
+                                  The params are unchanged; only the
+                                  discriminator field was renamed from
+                                  \`kind\` to \`sub_kind\`.
 
 SUCCESS RESPONSE (HTTP 201)
   {
     "ok": true,
-    "id": "guidance_policy_<ULID>" | "node_authoring_policy_<ULID>",
-    "footer_lines": ["[🔮 Doco] ✍️ ... Policy added: ... (✅ <n> authoring policies passed in <X.Xs>)"]
+    "id": "policy_<ULID>",
+    "footer_lines": ["[🔮 Doco] ✍️ Policy added: ... (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
-EXAMPLE — guidance
+EXAMPLE — suggestion
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "policy_kind": "guidance",
-      "policy": "Prefer concrete examples over abstract prose."
+      "kind": "suggestion",
+      "agent_instruction": "Prefer concrete examples over abstract prose."
     }'
 
-EXAMPLE — node_authoring (deterministic)
+EXAMPLE — probabilistic
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "policy_kind": "node_authoring",
-      "policy": "Every Decision cites at least one Intent.",
-      "evaluation_kind": "deterministic",
-      "predicate": {
-        "kind": "requires_edge",
-      "edge_type": "supports",
-        "target_node_type": "intent",
-        "when_node_type": ["decision"]
-      }
+      "kind": "probabilistic",
+      "agent_instruction": "Pass when the Decision explains at least one alternative and why it was rejected.",
+      "on_violation": "warn"
     }'
 
-EXAMPLE — node_authoring (unique field)
+EXAMPLE — deterministic
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "policy_kind": "node_authoring",
-      "policy": "No two active glossary terms use the same canonical term.",
-      "evaluation_kind": "deterministic",
+      "kind": "deterministic",
       "predicate": {
-        "kind": "unique_field",
-        "field": "chosen",
-        "case_fold": true,
-        "when_node_type": ["decision"]
+        "sub_kind": "requires_edge_role",
+        "edge_type": "attributed_to",
+        "edge_role": "performed_by",
+        "target_node_type": "principal",
+        "when_node_type": ["action"]
       },
-      "fires_when_node_lifecycle": ["active"]
-    }'
-
-EXAMPLE — node_authoring (probabilistic)
-  curl -sS -X POST \\
-    -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/policies.json \\
-    -d '{
-      "policy_kind": "node_authoring",
-      "policy": "Decision rationale names the rejected alternatives.",
-      "evaluation_kind": "probabilistic",
-      "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
+      "on_violation": "block"
     }'
 
 UPDATE A SPECIFIC POLICY
-  PATCH ${baseUrl}/${handle}/api/guidance_policies/<id>.json
-  PATCH ${baseUrl}/${handle}/api/node_authoring_policies/<id>.json
+  PATCH ${baseUrl}/${handle}/api/policies/<id>.json
   Content-Type: application/json
 
-  Per-id endpoints remain available for editing existing policies.
+  The per-id endpoint remains available for editing existing policies.
   Body shape mirrors the relevant capture draft.
 
 RELATED
