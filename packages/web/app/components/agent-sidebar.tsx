@@ -170,6 +170,25 @@ export function mergeCreatedConversationListItem(
   return [created, ...conversations.filter((conversation) => conversation.id !== created.id)];
 }
 
+/**
+ * One-line explainer pinned at the top of the rail, directly under the
+ * "Señor Doco" header: the in-product assistant runs on Haiku and only
+ * handles simple work, so it points users at the Tokens/MCP page (`/tokens`)
+ * to connect their own agent for anything harder.
+ */
+export function SenorDocoExplainer() {
+  return (
+    <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
+      Señor Doco uses Haiku and can only handle simple stuff. Want to collaborate with your own
+      agent?{" "}
+      <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
+        Connect the MCP
+      </Link>
+      .
+    </div>
+  );
+}
+
 /** Per-request token totals streamed from the server. Reset to null
  *  whenever Señor Doco settles (no in-flight + no remote in-flight). */
 interface TurnUsage {
@@ -2138,6 +2157,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               </div>
             </div>
 
+            <SenorDocoExplainer />
+
             {view === "list" ? (
               <ThreadListView
                 conversations={conversations}
@@ -2312,17 +2333,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 />
               </>
             )}
-
-            {/* Footer pinned at the bottom — explains what Señor Doco is
-          and how a user can mint their own agent token. Out
-          of the user's way during conversation but always reachable. */}
-            <div className="shrink-0 border-t border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
-              Señor Doco runs inside Doco. Want to collaborate with your own agent?{" "}
-              <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
-                Invite it
-              </Link>
-              .
-            </div>
           </div>
         </>
       )}

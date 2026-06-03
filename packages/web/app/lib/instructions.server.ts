@@ -157,7 +157,7 @@ does not travel to a fresh cloud container. Pick by what the agent
 needs:
 
 1. **Pin the credential as env vars (recommended for ephemeral
-   runtimes).** Mint a token at \`/api-keys\`, scope it, and set the
+   runtimes).** Mint a token at \`/tokens\`, scope it, and set the
    revealed \`DOCO_REFRESH\` + \`DOCO_CLIENT_ID\` (and optionally
    \`DOCO_ACCESS\`) as environment variables on the runtime (Claude Code
    on the Web env vars, Codespaces / Replit secrets, etc.). Refresh

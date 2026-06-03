@@ -3,8 +3,10 @@ import {
   type SlackBotIdentity,
   type SlackRecentMessage,
   buildSlackAppMentionResponse,
+  buildSlackChannelIntroLine,
   fetchSlackConversationContext,
   getSlackBotIdentity,
+  markSlackChannelIntroducedIfFirst,
   postSlackMessage,
   verifySlackRequest,
 } from "~/lib/slack.server";
@@ -105,10 +107,17 @@ async function respondToSlackEvent(args: {
     recentMessages,
     origin,
   });
+  // The first time Señor Doco speaks in a channel, lead with the Haiku/MCP
+  // intro. Mark-then-post (atomic) so a racing first reply can't double-post
+  // the intro; checked here — right before posting — so a turn that decided
+  // not to reply doesn't burn the channel's one introduction.
+  const introLine = (await markSlackChannelIntroducedIfFirst({ workspaceId: teamId, channelId }))
+    ? buildSlackChannelIntroLine(origin)
+    : null;
   await postSlackMessage({
     workspaceId: teamId,
     channelId,
-    text,
+    text: introLine ? `${introLine}\n\n${text}` : text,
     ...(threadTs ? { threadTs } : {}),
   });
 }

@@ -2598,6 +2598,39 @@ export function buildSlackConnectCommandResponse(request: Request, payload: Slac
   };
 }
 
+/**
+ * The one-time intro Señor Doco leads with the FIRST time it speaks in a
+ * channel: it runs on Haiku for simple work and points users at the Tokens/MCP
+ * page to connect their own agent for anything harder. `origin` is the request
+ * host so the link is correct in every environment (prod → https://doco.to).
+ */
+export function buildSlackChannelIntroLine(origin?: string | null): string {
+  const base = (origin?.trim() || "https://doco.to").replace(/\/+$/, "");
+  return `I use Haiku and can handle simple stuff. For complex stuff, connect your agent with Doco's MCP <${base}/tokens>`;
+}
+
+/**
+ * Atomically record that the assistant has spoken in a channel, returning true
+ * only the first time (so the caller knows to prepend the intro above). Racing
+ * first messages resolve safely: ON CONFLICT DO NOTHING means exactly one
+ * insert wins and exactly one caller sees `true`.
+ */
+export async function markSlackChannelIntroducedIfFirst(args: {
+  workspaceId: string;
+  channelId: string;
+}): Promise<boolean> {
+  const result = await withClient((c) =>
+    c.query<{ channel_id: string }>(
+      `INSERT INTO group_chat_channel_intros (provider, workspace_id, channel_id)
+         VALUES ('slack', $1, $2)
+       ON CONFLICT (provider, workspace_id, channel_id) DO NOTHING
+       RETURNING channel_id`,
+      [args.workspaceId, args.channelId],
+    ),
+  );
+  return result.rows.length > 0;
+}
+
 export async function postSlackMessage(args: {
   workspaceId: string;
   channelId: string;

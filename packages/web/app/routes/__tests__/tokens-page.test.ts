@@ -37,17 +37,17 @@ import ApiKeysPage, {
   formatLastUsedLabel,
   mcpUrlForWorkspace,
   meta,
-} from "../api-keys";
+} from "../tokens";
 
 function formRequest(fields: Record<string, string>): Request {
-  return new Request("https://doco.test/api-keys", {
+  return new Request("https://doco.test/tokens", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields),
   });
 }
 
-describe("/api-keys page action", () => {
+describe("/tokens page action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
@@ -230,7 +230,7 @@ describe("/api-keys page action", () => {
   });
 });
 
-describe("/api-keys page token metadata", () => {
+describe("/tokens page token metadata", () => {
   it("shows last used as how long ago", () => {
     expect(
       formatLastUsedLabel("2026-06-02T18:30:00.000Z", new Date("2026-06-02T19:52:00.000Z")),

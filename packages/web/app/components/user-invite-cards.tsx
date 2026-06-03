@@ -30,7 +30,7 @@ export function UserInviteCards({
       <p className="text-sm text-muted-foreground">
         Adding a traditional AI agent instead?{" "}
         <a
-          href="/api-keys"
+          href="/tokens"
           data-testid="invite-agent-link"
           className="font-semibold text-primary underline-offset-4 hover:underline"
         >

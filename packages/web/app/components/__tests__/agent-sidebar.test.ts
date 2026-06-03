@@ -1,6 +1,10 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import {
+  SenorDocoExplainer,
   chatBubbleBlocks,
   formatThreadUsageLabel,
   mergeCreatedConversationListItem,
@@ -51,6 +55,25 @@ describe("mergeCreatedConversationListItem", () => {
     });
 
     expect(mergeCreatedConversationListItem([staleCreated], created)).toEqual([created]);
+  });
+});
+
+describe("SenorDocoExplainer", () => {
+  function markup() {
+    return renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(SenorDocoExplainer)),
+    );
+  }
+
+  it("says Señor Doco uses Haiku and only handles simple stuff", () => {
+    expect(markup()).toContain("Señor Doco uses Haiku and can only handle simple stuff");
+  });
+
+  it("invites collaboration via the MCP, linking the tokens page", () => {
+    const html = markup();
+    expect(html).toContain("Want to collaborate with your own agent?");
+    const anchor = html.match(/<a [^>]*>Connect the MCP<\/a>/)?.[0] ?? "";
+    expect(anchor).toContain('href="/tokens"');
   });
 });
 

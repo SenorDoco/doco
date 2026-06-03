@@ -156,7 +156,7 @@ export default function Invites({
           <p className="text-sm text-muted-foreground">
             Share an invite URL with a person to grant them access to this doco. Each invite is
             single-use and expires after the chosen window. For agent access, mint an{" "}
-            <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
+            <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
               API key
             </Link>{" "}
             instead.

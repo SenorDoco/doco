@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   fetchSlackConversationContext: vi.fn(),
   getSlackBotIdentity: vi.fn(),
   postSlackMessage: vi.fn(),
+  markSlackChannelIntroducedIfFirst: vi.fn(),
+  buildSlackChannelIntroLine: vi.fn(),
   waitUntil: vi.fn(),
 }));
 
@@ -44,6 +46,8 @@ vi.mock("~/lib/slack.server", () => ({
   fetchSlackConversationContext: mocks.fetchSlackConversationContext,
   getSlackBotIdentity: mocks.getSlackBotIdentity,
   postSlackMessage: mocks.postSlackMessage,
+  markSlackChannelIntroducedIfFirst: mocks.markSlackChannelIntroducedIfFirst,
+  buildSlackChannelIntroLine: mocks.buildSlackChannelIntroLine,
 }));
 
 vi.mock("@vercel/functions", () => ({
@@ -84,6 +88,12 @@ describe("Slack integration routes", () => {
     mocks.getSlackBotIdentity.mockResolvedValue({ userId: "U999", botId: "B999" });
     mocks.loadScopeOptions.mockResolvedValue([]);
     mocks.getWorkspaceRole.mockResolvedValue("owner");
+    // Default: the channel has already heard the intro, so the existing reply
+    // tests assert plain answer text. The first-message case is covered below.
+    mocks.markSlackChannelIntroducedIfFirst.mockResolvedValue(false);
+    mocks.buildSlackChannelIntroLine.mockReturnValue(
+      "I use Haiku and can handle simple stuff. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>",
+    );
   });
 
   it("renders the workspace picker when no workspace is chosen yet", async () => {
@@ -281,6 +291,40 @@ describe("Slack integration routes", () => {
       workspaceId: "T123",
       channelId: "C123",
       text: "doco has 42 nodes.",
+    });
+  });
+
+  it("leads the first message in a channel with the Haiku/MCP intro", async () => {
+    mocks.markSlackChannelIntroducedIfFirst.mockResolvedValueOnce(true);
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("doco has 42 nodes.");
+
+    const response = await eventsActionThenFlush({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "app_mention",
+            channel: "C123",
+            channel_type: "channel",
+            user: "U123",
+            text: "How many nodes do we have, <@U999>?",
+            ts: "1700000000.000100",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.markSlackChannelIntroducedIfFirst).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+    });
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      text: "I use Haiku and can handle simple stuff. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>\n\ndoco has 42 nodes.",
     });
   });
 

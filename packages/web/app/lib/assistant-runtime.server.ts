@@ -9,7 +9,7 @@ import { ensureEnvLoaded } from "./dotenv.server";
 // Shared Señor Doco model defaults. Surfaces can still choose transport,
 // tools, and output budget, but they should not quietly drift onto a
 // different model/client stack.
-export const SENOR_DOCO_DEFAULT_MODEL = "claude-sonnet-4-6";
+export const SENOR_DOCO_DEFAULT_MODEL = "claude-haiku-4-5";
 export const SENOR_DOCO_DEFAULT_MAX_TOKENS = 8192;
 
 let cachedClient: Anthropic | null = null;
