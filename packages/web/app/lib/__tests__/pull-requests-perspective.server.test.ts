@@ -194,4 +194,51 @@ describe("loadPullRequestsPerspective", () => {
     expect(captured[0].sql).toMatch(/ORDER BY updated_at DESC, created_at DESC, id ASC/);
     expect(data.items[0].updatedAt).toBe("2026-06-02T17:00:00.000Z");
   });
+
+  describe("lifecycle filter", () => {
+    it("applies no lifecycle predicate when no stages are given (all)", async () => {
+      const { client, captured } = makeClient([prRow({ total_count: "5" })]);
+      await loadPullRequestsPerspective(client, "doco_1", { limit: 10 });
+      expect(captured[0].sql).not.toMatch(/lifecycle = '/);
+      expect(captured[0].sql).not.toMatch(/lifecycle NOT IN/);
+    });
+
+    it("applies no predicate when all canonical stages are selected", async () => {
+      const { client, captured } = makeClient([prRow({ total_count: "5" })]);
+      await loadPullRequestsPerspective(client, "doco_1", {
+        limit: 10,
+        lifecycles: ["queued", "active", "retired"],
+      });
+      expect(captured[0].sql).not.toMatch(/lifecycle = '|lifecycle NOT IN/);
+    });
+
+    it("filters to Merged only (active) in BOTH the slice and the count subquery", async () => {
+      const { client, captured } = makeClient([prRow({ lifecycle: "active", total_count: "2" })]);
+      await loadPullRequestsPerspective(client, "doco_1", { limit: 10, lifecycles: ["active"] });
+      // The clause appears twice: once in the COUNT subquery, once in the main WHERE.
+      const matches = captured[0].sql.match(/lifecycle = 'active'/g) ?? [];
+      expect(matches).toHaveLength(2);
+      // Stages are whitelisted literals, so no extra bound parameter is needed.
+      expect(captured[0].params).toEqual(["doco_1", 11]);
+    });
+
+    it("treats Open (queued) as the catch-all: anything not Merged/Closed", async () => {
+      const { client, captured } = makeClient([prRow({ lifecycle: "queued", total_count: "1" })]);
+      await loadPullRequestsPerspective(client, "doco_1", { limit: 10, lifecycles: ["queued"] });
+      expect(captured[0].sql).toMatch(/lifecycle NOT IN \('active', 'retired'\)/);
+    });
+
+    it("returns an empty result WITHOUT querying when no stages are selected (none)", async () => {
+      const { client, captured } = makeClient([prRow({})]);
+      const data = await loadPullRequestsPerspective(client, "doco_1", {
+        limit: 10,
+        lifecycles: [],
+      });
+      expect(captured).toHaveLength(0);
+      expect(data.items).toEqual([]);
+      expect(data.totalCount).toBe(0);
+      expect(data.loadedCount).toBe(0);
+      expect(data.hasMore).toBe(false);
+    });
+  });
 });
