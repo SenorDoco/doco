@@ -171,6 +171,9 @@ function evaluate(candidate: CandidateFields, graph: Graph): Violation[] {
 const deterministicBlocks = (vs: Violation[]) =>
   vs.filter((v) => v.kind === "deterministic" && v.on_violation === "block");
 
+const deterministicWarns = (vs: Violation[]) =>
+  vs.filter((v) => v.kind === "deterministic" && v.on_violation === "warn");
+
 /** Classify a fired probabilistic check by a stable keyword in its spec. */
 function probabilisticLabels(vs: Violation[]): Set<string> {
   const out = new Set<string>();
@@ -291,6 +294,14 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
     edges.push(edge(chain[i].id, chain[i + 1].id, "flows_to", ""));
   for (const t of terminals)
     edges.push(edge(gateway.id, t.id, "flows_to", "", { condition: t.state }));
+  // A gateway must branch (≥2 outgoing `flows_to`). When the happy path ends
+  // at a single terminal, wire the alternative as an explicit rework loop back
+  // to the first Action — a BPMN-valid retry path the template allows, and it
+  // gives the gateway its second branch.
+  if (terminals.length < 2)
+    edges.push(
+      edge(gateway.id, actions[0].id, "flows_to", "", { condition: "rework", kind: "exception" }),
+    );
 
   const nodes = [intent, ...principals, ...actions, gateway, ...states, evalNode];
   return {
@@ -799,7 +810,360 @@ describe("business-processes template — end-to-end via runAuthoringPolicies", 
         lifecycle: "active",
       },
     });
+    // Not blocked, and the judge-gated headline check passes. The bare
+    // synthetic intent has no graph wired, so it trips only the advisory owner
+    // nudge (`owned_by`, a warn) — a real queued process Intent carries that
+    // edge. Nothing here is a hard block.
     expect(result.blocking).toBeNull();
-    expect(result.violations).toEqual([]);
+    expect(result.violations.every((v) => v.on_violation === "warn")).toBe(true);
+  });
+});
+
+// ─── Suite E: the new structural gates ────────────────────────────────────────
+//
+// These are the policies added to close the "agent queued a dangling mid-flow
+// node" bug and its cousins: sequence-flow completeness (`flow-wiring`), unique
+// milestone names, gateway branch count, process-owner + actor coverage, and
+// the deterministic scaffolding/headline floors. Suite A already proves the ten
+// well-formed processes pass every BLOCK gate; here we also prove they trip no
+// deterministic WARNING, then prove each gate catches its specific defect.
+
+describe("business-processes template — new structural gates (no false positives)", () => {
+  for (const s of SCENARIOS) {
+    it(`${s.key}: a well-formed committed process trips no deterministic warnings`, () => {
+      const g = buildProcess(s, "active");
+      for (const candidate of g.nodes) {
+        const warns = deterministicWarns(evaluate(candidate, g));
+        expect(
+          warns,
+          `${candidate.node_type} ${candidate.id} wrongly warned: ${warns.map((w) => `${w.sub_kind}: ${w.reason}`).join("; ")}`,
+        ).toEqual([]);
+      }
+    });
+  }
+});
+
+describe("business-processes template — flow-wiring gate", () => {
+  // Wire a node into a committed process with serves + performed_by already
+  // satisfied, so only the sequence-flow gate is left to (not) fire.
+  function wiredAction(
+    g: BuiltProcess,
+    lifecycle: Lifecycle,
+    opts: { incoming: boolean; outgoing: boolean },
+  ): CandidateFields {
+    const a = node(
+      "action",
+      "loan-approval",
+      { action: "stamp the form", verb: "stamp" },
+      lifecycle,
+    );
+    g.edges.push(edge(a.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(a.id, g.principals[0].id, "attributed_to", "performed_by"));
+    if (opts.incoming) g.edges.push(edge(g.states[0].id, a.id, "flows_to", ""));
+    if (opts.outgoing) g.edges.push(edge(a.id, g.gateway.id, "flows_to", ""));
+    g.nodes.push(a);
+    return a;
+  }
+
+  it("blocks a queued mid-flow Action with no incoming flow (unreachable)", () => {
+    const g = buildProcess(SCENARIOS[0], "queued");
+    const a = wiredAction(g, "queued", { incoming: false, outgoing: true });
+    const blocks = deterministicBlocks(evaluate(a, g));
+    expect(
+      blocks.some((b) => b.sub_kind === "flow-wiring" && /incoming|unreachable/i.test(b.reason)),
+    ).toBe(true);
+  });
+
+  it("blocks an active mid-flow Action with no outgoing flow (dead end)", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const a = wiredAction(g, "active", { incoming: true, outgoing: false });
+    const blocks = deterministicBlocks(evaluate(a, g));
+    expect(
+      blocks.some((b) => b.sub_kind === "flow-wiring" && /outgoing|dead end/i.test(b.reason)),
+    ).toBe(true);
+  });
+
+  it("blocks a terminal State that carries an outgoing flow", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const terminal = g.states.find((s) => s.kind === "terminal");
+    if (!terminal) throw new Error("scenario has no terminal state");
+    g.edges.push(edge(terminal.id, g.actions[0].id, "flows_to", ""));
+    const blocks = deterministicBlocks(evaluate(terminal, g));
+    expect(blocks.some((b) => b.sub_kind === "flow-wiring" && /terminal/i.test(b.reason))).toBe(
+      true,
+    );
+  });
+
+  it("exempts the very same dangling node while it is a drafting sketch", () => {
+    const g = buildProcess(SCENARIOS[0], "drafting");
+    const a = wiredAction(g, "drafting", { incoming: false, outgoing: false });
+    expect(deterministicBlocks(evaluate(a, g))).toEqual([]);
+  });
+
+  it("blocks that dangling node the moment it is queued (the original bug)", () => {
+    const g = buildProcess(SCENARIOS[0], "queued");
+    const a = wiredAction(g, "queued", { incoming: false, outgoing: false });
+    expect(deterministicBlocks(evaluate(a, g)).some((b) => b.sub_kind === "flow-wiring")).toBe(
+      true,
+    );
+  });
+});
+
+describe("business-processes template — unique milestone names", () => {
+  it("blocks a second committed State that reuses a milestone name", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const dupName = g.states[0].state as string;
+    const dup = node("state", "loan-approval", { state: dupName, kind: "intermediate" }, "active");
+    g.nodes.push(dup);
+    const blocks = deterministicBlocks(evaluate(dup, g));
+    expect(blocks.some((b) => b.sub_kind === "unique_field" && /state/.test(b.reason))).toBe(true);
+  });
+});
+
+describe("business-processes template — gateway branch count", () => {
+  it("blocks a single-exit gateway Decision", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const stub = node(
+      "decision",
+      "loan-approval",
+      {
+        decision: "Decide whether to proceed.",
+        question: "Proceed?",
+        chosen: "proceed",
+        alternatives: [{ name: "yes" }, { name: "no" }],
+      },
+      "active",
+    );
+    g.edges.push(edge(stub.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(g.actions[0].id, stub.id, "flows_to", "")); // one incoming
+    g.edges.push(edge(stub.id, g.states[1].id, "flows_to", "")); // a single outgoing branch
+    g.nodes.push(stub);
+    const blocks = deterministicBlocks(evaluate(stub, g));
+    expect(blocks.some((b) => b.sub_kind === "requires_edge" && /flows_to/.test(b.reason))).toBe(
+      true,
+    );
+  });
+});
+
+describe("business-processes template — owner + actor coverage (warnings)", () => {
+  it("warns when the process Intent names no accountable owner", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const ownerless = node(
+      "intent",
+      "loan-approval",
+      { intent: "Approve a thing\n\nTrigger: x. Outcome: y. Out of scope: z." },
+      "active",
+    );
+    g.nodes.push(ownerless);
+    const warns = deterministicWarns(evaluate(ownerless, g));
+    expect(
+      warns.some((b) => b.sub_kind === "requires_edge_role" && /owned_by/.test(b.reason)),
+    ).toBe(true);
+  });
+
+  it("warns about an actor Principal that owns no Action", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const idle = node(
+      "principal",
+      "loan-approval",
+      { name: "Compliance Auditor", body_md: "Reviews the process for compliance." },
+      "active",
+    );
+    g.nodes.push(idle);
+    const warns = deterministicWarns(evaluate(idle, g));
+    expect(
+      warns.some((b) => b.sub_kind === "requires_edge_role" && /performed_by/.test(b.reason)),
+    ).toBe(true);
+  });
+
+  it("exempts the accountable owner (owned_by) from the actor-coverage warning", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const ownerOnly = node(
+      "principal",
+      "loan-approval",
+      { name: "Process Owner", body_md: "Accountable for the whole process outcome." },
+      "active",
+    );
+    // Owner edge, but performs no Action.
+    g.edges.push(edge(g.intent.id, ownerOnly.id, "attributed_to", "owned_by"));
+    g.nodes.push(ownerOnly);
+    const warns = deterministicWarns(evaluate(ownerOnly, g));
+    expect(warns.some((b) => /performed_by/.test(b.reason))).toBe(false);
+  });
+});
+
+describe("business-processes template — scaffolding + headline floors", () => {
+  it("blocks an Action whose prose carries a raw generated BPMN id", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const scaffold = node(
+      "action",
+      "loan-approval",
+      { action: "route the case through Gateway_0x1f3a", verb: "route" },
+      "active",
+    );
+    g.edges.push(edge(scaffold.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(scaffold.id, g.principals[0].id, "attributed_to", "performed_by"));
+    g.edges.push(edge(g.states[0].id, scaffold.id, "flows_to", ""));
+    g.edges.push(edge(scaffold.id, g.gateway.id, "flows_to", ""));
+    g.nodes.push(scaffold);
+    const blocks = deterministicBlocks(evaluate(scaffold, g));
+    expect(blocks.some((b) => b.sub_kind === "forbids_field_pattern")).toBe(true);
+  });
+
+  it("warns on an Intent whose first line is a run-on, not a headline", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const runon = node(
+      "intent",
+      "loan-approval",
+      {
+        intent:
+          "this entire first line is one enormous run-on sentence that crams the whole process description into a single breath and simply never stops to let a reader scan a name",
+      },
+      "active",
+    );
+    g.edges.push(edge(runon.id, g.principals[0].id, "attributed_to", "owned_by"));
+    g.nodes.push(runon);
+    const warns = deterministicWarns(evaluate(runon, g));
+    expect(warns.some((b) => b.sub_kind === "field-line-shape")).toBe(true);
+  });
+});
+
+// ─── Suite F: flow-wiring end-to-end through the REAL runner ───────────────────
+//
+// Suites A/E drive the pure evaluator with edges handed in directly. This suite
+// closes the last gap: it inserts a real graph into Postgres and calls
+// `runAuthoringPolicies`, which loads the candidate's edges from the DB itself
+// (`loadEdges`, gated by `needsEdges`). It is the literal reproduction of the
+// reported bug — queuing a non-initial/non-terminal node with no `flows_to` —
+// proven fixed through the production code path, not a harness shortcut.
+
+describe("business-processes template — flow-wiring end-to-end via runAuthoringPolicies", () => {
+  let edgeSeq = 0;
+  async function insertNode(id: string, nodeType: string, kind?: string): Promise<void> {
+    await dbm.db.query(
+      "INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, kind, data) VALUES ($1,$2,$3,'queued','',$4,'{}')",
+      [id, docoId, nodeType, kind ?? null],
+    );
+  }
+  async function insertEdge(
+    from: string,
+    fromType: string,
+    to: string,
+    toType: string,
+    edgeType: string,
+    role?: string,
+  ): Promise<void> {
+    edgeSeq += 1;
+    await dbm.db.query(
+      "INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, props, lifecycle) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active')",
+      [
+        `edge_e2eflow-${edgeSeq}`,
+        docoId,
+        edgeType,
+        from,
+        fromType,
+        to,
+        toType,
+        JSON.stringify(role ? { role } : {}),
+      ],
+    );
+  }
+
+  beforeAll(async () => {
+    // A minimal real process: init → mid → term, plus a dangling sibling.
+    await insertNode("intent_e2eflow", "intent");
+    await insertNode("principal_e2eflow", "principal");
+    await insertNode("state_e2eflowinit", "state", "initial");
+    await insertNode("action_e2eflowmid", "action");
+    await insertNode("state_e2eflowterm", "state", "terminal");
+    await insertNode("action_e2eflowdangle", "action");
+    // The wired mid Action: serves + performed_by + incoming + outgoing flow.
+    await insertEdge(
+      "action_e2eflowmid",
+      "action",
+      "intent_e2eflow",
+      "intent",
+      "supports",
+      "serves",
+    );
+    await insertEdge(
+      "action_e2eflowmid",
+      "action",
+      "principal_e2eflow",
+      "principal",
+      "attributed_to",
+      "performed_by",
+    );
+    await insertEdge("state_e2eflowinit", "state", "action_e2eflowmid", "action", "flows_to");
+    await insertEdge("action_e2eflowmid", "action", "state_e2eflowterm", "state", "flows_to");
+    // The dangling Action: serves + performed_by wired, but NO flows_to at all.
+    await insertEdge(
+      "action_e2eflowdangle",
+      "action",
+      "intent_e2eflow",
+      "intent",
+      "supports",
+      "serves",
+    );
+    await insertEdge(
+      "action_e2eflowdangle",
+      "action",
+      "principal_e2eflow",
+      "principal",
+      "attributed_to",
+      "performed_by",
+    );
+  });
+
+  it("does NOT flag a fully-wired mid-flow Action queued through the runner", async () => {
+    judge.run.mockResolvedValue({ ok: true });
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: "action_e2eflowmid",
+        node_type: "action",
+        doco_id: docoId,
+        action: "review the application",
+        verb: "review",
+        lifecycle: "queued",
+      },
+    });
+    expect(result.violations.some((v) => v.sub_kind === "flow-wiring")).toBe(false);
+    expect(result.blocking).toBeNull();
+  });
+
+  it("BLOCKS a dangling Action the moment it is queued — the reported bug, fixed", async () => {
+    judge.run.mockResolvedValue({ ok: true });
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: "action_e2eflowdangle",
+        node_type: "action",
+        doco_id: docoId,
+        action: "shred the file",
+        verb: "shred",
+        lifecycle: "queued",
+      },
+    });
+    const flow = result.violations.find((v) => v.sub_kind === "flow-wiring");
+    expect(flow).toBeDefined();
+    expect(flow?.on_violation).toBe("block");
+    expect(result.blocking?.sub_kind).toBe("flow-wiring");
+  });
+
+  it("does NOT block that same dangling Action while it is still a drafting sketch", async () => {
+    judge.run.mockResolvedValue({ ok: true });
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: "action_e2eflowdangle",
+        node_type: "action",
+        doco_id: docoId,
+        action: "shred the file",
+        verb: "shred",
+        lifecycle: "drafting",
+      },
+    });
+    expect(result.violations.some((v) => v.sub_kind === "flow-wiring")).toBe(false);
   });
 });

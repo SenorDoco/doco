@@ -133,7 +133,8 @@ export async function runAuthoringPolicies(opts: {
         sk === "requires_edge" ||
         sk === "requires_edge_role" ||
         sk === "forbids_edge" ||
-        sk === "graph-completeness"
+        sk === "graph-completeness" ||
+        sk === "flow-wiring"
       );
     });
     const needsPopulation = populationNodeTypes.size > 0;
