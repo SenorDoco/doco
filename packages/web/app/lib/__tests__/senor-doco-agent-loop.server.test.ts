@@ -103,9 +103,9 @@ describe("runSenorDocoAgentLoop", () => {
     ]);
   });
 
-  it("emits turn_limit when the model never settles", async () => {
+  it("emits turn_limit reason 'turns' when the model never settles", async () => {
     const messages: unknown[] = [];
-    const { kinds } = await collect(
+    const { kinds, events } = await collect(
       runSenorDocoAgentLoop({
         messages: messages as never,
         maxTurns: 2,
@@ -119,8 +119,77 @@ describe("runSenorDocoAgentLoop", () => {
       }),
     );
 
-    expect(kinds[kinds.length - 1]).toBe("turn_limit");
+    expect(events[events.length - 1]).toEqual({ kind: "turn_limit", reason: "turns" });
     expect(kinds.filter((k) => k === "assistant_message")).toHaveLength(2);
+  });
+
+  // The serverless function that streams a turn has a hard `maxDuration`.
+  // A long job (importing a big BPM) makes dozens of model + tool
+  // round-trips and blows past one invocation's limit — historically the
+  // lambda was SIGKILLed mid-tool-call and the agent just stopped with no
+  // explanation. The wall-clock budget makes the loop pause itself BEFORE
+  // the kill: it stops at the top of a turn once the clock crosses the
+  // budget, emitting turn_limit reason "time" — and the work already done
+  // is preserved in `messages` so "continue" resumes from it. The budget,
+  // not the (much larger) turn cap, is what binds here.
+  it("stops with turn_limit reason 'time' once the wall-clock budget is exceeded", async () => {
+    const messages: unknown[] = [];
+    let calls = 0;
+    let nowMs = 1_000;
+    const { events } = await collect(
+      runSenorDocoAgentLoop({
+        messages: messages as never,
+        maxTurns: 100, // far above what the time budget allows — it must NOT bind
+        timeBudgetMs: 250,
+        now: () => nowMs,
+        callModel: () => {
+          calls++;
+          nowMs += 100; // each turn "consumes" 100ms of wall-clock
+          return modelTurn({
+            finalBlocks: [toolBlock(`toolu_${calls}`)],
+            toolUseBlocks: [toolBlock(`toolu_${calls}`)],
+            stopReason: "tool_use",
+          })();
+        },
+        runTool: okTool,
+      }),
+    );
+
+    // start=1000. Checks at elapsed 0,100,200 pass (3 model turns run);
+    // at elapsed 300 ≥ 250 the loop pauses instead of calling the model again.
+    expect(calls).toBe(3);
+    expect(events[events.length - 1]).toEqual({ kind: "turn_limit", reason: "time" });
+    // The completed turns' work survives the pause: each tool turn pushes an
+    // assistant message and a tool_results user message (3 turns → 6 rows).
+    expect(messages).toHaveLength(6);
+  });
+
+  // Progress guarantee: a budget that's already spent at loop entry must
+  // still run one turn, or a resumed slice ("continue") would pause
+  // immediately and never advance.
+  it("always runs at least one turn even when the budget is already spent", async () => {
+    let calls = 0;
+    const { events } = await collect(
+      runSenorDocoAgentLoop({
+        messages: [],
+        maxTurns: 100,
+        timeBudgetMs: 250,
+        now: () => 10_000, // constant clock: elapsed is always 0 < budget at turn 0
+        callModel: () => {
+          calls++;
+          return modelTurn({
+            finalBlocks: [{ type: "text", text: "Done." }],
+            toolUseBlocks: [],
+            stopReason: "end_turn",
+          })();
+        },
+        runTool: okTool,
+      }),
+    );
+
+    expect(calls).toBe(1);
+    // Settled on a final answer — no budget pause.
+    expect(events.some((e) => e.kind === "turn_limit")).toBe(false);
   });
 
   it("stops at the top of a turn when shouldAbort is true", async () => {

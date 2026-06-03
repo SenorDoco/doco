@@ -48,7 +48,7 @@ vi.mock("../internal-fetch.server", () => ({ internalFetch: vi.fn(async () => nu
 vi.mock("../dotenv.server", () => ({ ensureEnvLoaded: vi.fn() }));
 vi.mock("../telemetry.server", () => ({ upsertAgentTurn: vi.fn(async () => {}) }));
 
-import { runAssistantTurn } from "../agent-chat.server";
+import { TURN_TIME_BUDGET_MS, runAssistantTurn } from "../agent-chat.server";
 import type { ChatConversationRow, ChatStreamContext } from "../agent-chat.server";
 
 type Block =
@@ -122,7 +122,7 @@ function conversation(): ChatConversationRow {
   };
 }
 
-function ctx(): ChatStreamContext {
+function ctx(now?: () => number): ChatStreamContext {
   return {
     origin: "https://doco.local",
     cookieHeader: "",
@@ -131,12 +131,20 @@ function ctx(): ChatStreamContext {
     attachmentIds: [],
     graphReferences: [],
     conversationId: CONV,
+    now,
   };
 }
 
-async function drain(userText: string): Promise<Array<Record<string, unknown>>> {
+async function drain(
+  userText: string,
+  now?: () => number,
+): Promise<Array<Record<string, unknown>>> {
   const events: Array<Record<string, unknown>> = [];
-  for await (const ev of runAssistantTurn({ conversation: conversation(), userText, ctx: ctx() })) {
+  for await (const ev of runAssistantTurn({
+    conversation: conversation(),
+    userText,
+    ctx: ctx(now),
+  })) {
     events.push(ev as Record<string, unknown>);
   }
   return events;
@@ -278,5 +286,55 @@ describe("agent loop against a real database", () => {
     const toolResult = messages[2].content as Array<{ type: string; tool_use_id?: string }>;
     expect(toolResult[0].type).toBe("tool_result");
     expect(toolResult[0].tool_use_id).toBe("toolu_create");
+  });
+
+  // The reported bug: on a long job the streaming lambda hit its serverless
+  // `maxDuration` and was hard-killed mid-tool-call, so Señor Doco "just
+  // stopped" with no explanation and an unfinished job. The loop now pauses
+  // itself before the kill, persisting a resumable "send continue" note.
+  it("pauses with a resumable 'continue' message when the per-reply time budget is exceeded", async () => {
+    let toolCounter = 0;
+    let nowMs = 1_000_000;
+    // The model keeps asking for tools forever; only the wall-clock budget
+    // can stop the loop. Each model call "consumes" the whole budget, so the
+    // loop's next top-of-turn check crosses the deadline and pauses.
+    runtime.stream.mockImplementation(() => {
+      nowMs += TURN_TIME_BUDGET_MS;
+      return makeStream(
+        [
+          {
+            type: "tool_use",
+            id: `toolu_${++toolCounter}`,
+            name: "doco_api",
+            input: { method: "POST" },
+          },
+        ],
+        "tool_use",
+      );
+    });
+
+    const events = await drain("import the whole BPM", () => nowMs);
+    const kinds = events.map((e) => e.kind);
+
+    // One tool turn ran, then the loop paused on the deadline — a clean
+    // finish (`done`), NOT a silent stop, and nowhere near the 100-call cap.
+    expect(runtime.stream).toHaveBeenCalledTimes(1);
+    expect(kinds[kinds.length - 1]).toBe("done");
+
+    // The pause is surfaced as a resumable, time-specific message — the
+    // "time limit" variant, not the turn-cap ("Anthropic calls") one.
+    const streamedText = events
+      .filter((e) => e.kind === "text_delta")
+      .map((e) => e.text as string)
+      .join("");
+    expect(streamedText).toMatch(/continue/i);
+    expect(streamedText).toMatch(/time limit/i);
+    expect(streamedText).not.toMatch(/Anthropic calls/i);
+
+    // ...and persisted, so a page refresh shows the note: user ask →
+    // assistant tool_use → tool_result → the assistant pause message.
+    const messages = await persistedMessages();
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    expect(JSON.stringify(messages[messages.length - 1].content)).toMatch(/continue/i);
   });
 });
