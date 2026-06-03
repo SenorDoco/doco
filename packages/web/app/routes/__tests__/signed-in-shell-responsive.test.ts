@@ -45,4 +45,21 @@ describe("signed-in shell responsive layout", () => {
     expect(sidebar).toContain("data-collapsed");
     expect(sidebar).toContain("senor-doco-backdrop");
   });
+
+  it("stacks the overlay drawer + scrim above the app's z-100 dialog layer", () => {
+    // The app's top page-content layer is the z-[100] node/edge dialog
+    // (see $docoHandle._index.tsx). As a modal, the narrow overlay drawer
+    // and its scrim must sit above it, or the dialog covers the chat.
+    const css = appCss();
+    const railZ = Number(
+      css.match(
+        /\.senor-doco-rail:not\(\[data-collapsed="true"\]\)\s*\{[^}]*?z-index:\s*(\d+)/,
+      )?.[1],
+    );
+    const scrimZ = Number(css.match(/\.senor-doco-backdrop\s*\{[^}]*?z-index:\s*(\d+)/)?.[1]);
+    expect(railZ).toBeGreaterThan(100);
+    expect(scrimZ).toBeGreaterThan(100);
+    // The drawer floats above its own scrim.
+    expect(railZ).toBeGreaterThan(scrimZ);
+  });
 });

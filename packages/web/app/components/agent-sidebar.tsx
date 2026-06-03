@@ -25,7 +25,11 @@ import {
   CREATED_DOCO_CHAT_ID_SEARCH_PARAM,
   readCreatedDocoChatIdSearchParams,
 } from "~/lib/post-create-doco-route";
-import { resolveThinkingActive, useNarrowShell } from "~/lib/senor-doco-shell";
+import {
+  resolvePublishedRailWidth,
+  resolveThinkingActive,
+  useNarrowShell,
+} from "~/lib/senor-doco-shell";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
 interface ContentBlockText {
@@ -535,14 +539,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const railWidth = collapsed ? RAIL_COLLAPSED : thinkingActive ? RAIL_THINKING : RAIL_DEFAULT;
   useEffect(() => {
     if (typeof document === "undefined") return;
-    // As an in-flow side rail, publish the width so floating overlays can
-    // clear it; as an overlay drawer the rail floats above the page, so
-    // nothing should reserve horizontal space for it.
+    // Publish the width page content should clear. The expanded overlay
+    // drawer is a modal floating above the page (reserves nothing); the
+    // side rail and the collapsed strip reserve their real width.
     document.documentElement.style.setProperty(
       "--senor-doco-rail-width",
-      narrowShell ? "0px" : railWidth,
+      resolvePublishedRailWidth({ narrow: narrowShell, collapsed, railWidth }),
     );
-  }, [railWidth, narrowShell]);
+  }, [railWidth, narrowShell, collapsed]);
 
   const toggleShowThinking = useCallback(() => {
     setShowThinking((prev) => {

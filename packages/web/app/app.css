@@ -159,16 +159,20 @@ select {
   position: absolute;
   inset-block: 0;
   inset-inline-start: 0;
-  z-index: 40;
+  /* Above the app's top page-content layer (the z-[100] node/edge dialog),
+     so the open drawer is a true modal and the dialog can't punch through
+     it on narrow screens. */
+  z-index: 120;
   box-shadow: 8px 0 32px rgb(0 0 0 / 28%);
 }
 
-/* Dimming scrim behind the overlay drawer. Rendered only while the
-   drawer is open; clicking anywhere on it collapses the rail. */
+/* Dimming scrim behind the overlay drawer. Rendered only while the drawer
+   is open; clicking anywhere on it collapses the rail. Sits above the
+   z-[100] dialog layer (so it dims it) but below the drawer itself. */
 .senor-doco-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 110;
   border: 0;
   padding: 0;
   background: rgb(0 0 0 / 45%);
