@@ -78,17 +78,17 @@ ensureEnvLoaded();
 const MAX_TURNS_PER_REPLY = 100;
 // Wall-clock budget for one streamed reply, in milliseconds. The route
 // that streams a turn (api.v1.agent-chat.messages[.]json.tsx) runs with
-// `maxDuration: 300` — Vercel SIGKILLs the lambda at that hard ceiling.
-// A long job (importing a big BPM is the canonical case) makes dozens of
-// model + tool round-trips and routinely needs more than one invocation;
-// MAX_TURNS_PER_REPLY=100 never binds first because ~22 calls already
-// exhaust the wall clock. Without a soft budget the lambda is hard-killed
-// mid-tool-call and the user just sees the agent stop with no explanation.
-// We stop ~70s under the ceiling so the in-flight turn (a model call plus
-// its tools can run ~30-70s) and the final "send continue" persistence
-// both finish before the kill. The work so far is already saved, so the
-// pause is fully resumable.
-export const TURN_TIME_BUDGET_MS = 230_000;
+// `maxDuration: 800` (the Fluid Compute ceiling on Pro) — Vercel SIGKILLs
+// the lambda at that hard limit. A long job (importing a big BPM is the
+// canonical case) makes many model + tool round-trips and can still need
+// more than one invocation; MAX_TURNS_PER_REPLY=100 rarely binds first
+// because the wall clock runs out before the call count does. Without a
+// soft budget the lambda is hard-killed mid-tool-call and the user just
+// sees the agent stop with no explanation. We stop ~80s under the ceiling
+// so the in-flight turn (a model call plus its tools can run ~30-70s) and
+// the final "send continue" persistence both finish before the kill. The
+// work so far is already saved, so the pause is fully resumable.
+export const TURN_TIME_BUDGET_MS = 720_000;
 // Per-Anthropic-call output cap. 2048 was the old Haiku-era setting
 // and proved way too tight for Sonnet on multi-tool batches: a single
 // "create 8 actions in parallel" reply truncates mid-tool-JSON

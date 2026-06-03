@@ -26,13 +26,14 @@ import {
 } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-// Give a streamed reply the full Vercel function budget. A long job (e.g.
-// importing a big BPM) makes dozens of model + tool round-trips; the loop's
-// soft wall-clock budget (`TURN_TIME_BUDGET_MS`, 230s) pauses gracefully and
-// prompts "continue" with ~70s of margin under this 300s ceiling. Without
-// this the function runs at the platform default and is hard-killed
-// mid-tool-call, so the agent appears to stop with no explanation.
-export const config = { maxDuration: 300 };
+// Give a streamed reply a large Vercel function budget. A long job (e.g.
+// importing a big BPM) makes many model + tool round-trips; the loop's soft
+// wall-clock budget (`TURN_TIME_BUDGET_MS`, 720s) pauses gracefully and
+// prompts "continue" with ~80s of margin under this 800s ceiling (the Fluid
+// Compute max on Pro). Without this the function runs at the platform
+// default and is hard-killed mid-tool-call, so the agent appears to stop
+// with no explanation.
+export const config = { maxDuration: 800 };
 
 interface Body {
   text?: unknown;
