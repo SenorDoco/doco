@@ -23,6 +23,22 @@ export function resolveThinkingActive(opts: {
 }
 
 /**
+ * The width to publish as `--senor-doco-rail-width` for page content (the
+ * node/edge dialog) to clear. The expanded narrow drawer is a modal
+ * floating above the page, so it reserves nothing (0px) and the page spans
+ * full width behind it. Everything else — the wide side rail and the narrow
+ * collapsed 32px strip — reserves its real width so a fixed dialog doesn't
+ * cover it (e.g. cover the only handle to reopen the chat).
+ */
+export function resolvePublishedRailWidth(opts: {
+  narrow: boolean;
+  collapsed: boolean;
+  railWidth: string;
+}): string {
+  return opts.narrow && !opts.collapsed ? "0px" : opts.railWidth;
+}
+
+/**
  * Tracks whether the shell is below the overlay breakpoint. SSR can't
  * know the viewport width, so it starts at `false` (side rail) and
  * corrects on mount to avoid a hydration mismatch.
