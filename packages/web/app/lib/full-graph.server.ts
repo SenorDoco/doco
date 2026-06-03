@@ -95,13 +95,13 @@ function overviewRowsSql(includeLabel = false): string {
   return `SELECT t.id,
                  t.node_type AS entity_type,
                  t.name,
-                 COALESCE(t.lifecycle, 'asserted') AS lifecycle,
+                 COALESCE(t.lifecycle, 'active') AS lifecycle,
                  t.created_at::text AS created_at
                  ${includeLabel ? `, ${labelExpr} AS label` : ""}
             FROM nodes t
            WHERE t.doco_id = $1
              AND t.node_type IN (${typeList})
-             AND (t.node_type <> 'principal' OR COALESCE(t.lifecycle, 'asserted') = 'asserted')`;
+             AND (t.node_type <> 'principal' OR COALESCE(t.lifecycle, 'active') = 'active')`;
 }
 
 async function loadOverviewRows(
@@ -135,11 +135,12 @@ async function loadOverviewRows(
          FROM (${overviewRowsSql(true)}) nodes
         ORDER BY
           ${limit !== null ? "id = $3 DESC," : ""}
-          CASE COALESCE(lifecycle, 'asserted')
-            WHEN 'asserted' THEN 0
-            WHEN 'drafting' THEN 1
-            WHEN 'retired' THEN 2
-            ELSE 3
+          CASE COALESCE(lifecycle, 'active')
+            WHEN 'active' THEN 0
+            WHEN 'queued' THEN 1
+            WHEN 'drafting' THEN 2
+            WHEN 'retired' THEN 3
+            ELSE 4
           END,
           created_at DESC NULLS LAST,
           id
@@ -201,7 +202,7 @@ export async function loadOverviewGraph(
     id: row.id,
     entity_type: row.entity_type,
     name: row.label ?? row.name,
-    lifecycle: row.lifecycle ?? "asserted",
+    lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     href: overviewEntityHref(options.handle, row.entity_type, row.id),
     is_center: row.id === (options.centerId ?? options.window?.focusNodeId ?? undefined),
@@ -260,7 +261,7 @@ export async function loadOverviewNodeDetails(
         entity_type: row.entity_type,
         summary: row.label ?? row.name ?? row.id,
         name: row.name,
-        lifecycle: row.lifecycle ?? "asserted",
+        lifecycle: row.lifecycle ?? "active",
         created_at: toIso(row.created_at),
         href: overviewEntityHref(handle, row.entity_type, row.id),
       },
@@ -287,13 +288,13 @@ function overviewRowsSqlMulti(): string {
                  t.node_type AS entity_type,
                  t.name,
                  ${labelExpr} AS label,
-                 COALESCE(t.lifecycle, 'asserted') AS lifecycle,
+                 COALESCE(t.lifecycle, 'active') AS lifecycle,
                  t.created_at::text AS created_at,
                  t.doco_id AS doco_id
             FROM nodes t
            WHERE t.doco_id = ANY($1::text[])
              AND t.node_type IN (${typeList})
-             AND (t.node_type <> 'principal' OR COALESCE(t.lifecycle, 'asserted') = 'asserted')`;
+             AND (t.node_type <> 'principal' OR COALESCE(t.lifecycle, 'active') = 'active')`;
 }
 
 export async function loadWorkspaceOverviewGraph(
@@ -341,7 +342,7 @@ export async function loadWorkspaceOverviewGraph(
       id: row.id,
       entity_type: row.entity_type,
       name: row.label ?? row.name,
-      lifecycle: row.lifecycle ?? "asserted",
+      lifecycle: row.lifecycle ?? "active",
       created_at: toIso(row.created_at),
       href: overviewEntityHref(handle, row.entity_type, row.id),
       is_center: false,

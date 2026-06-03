@@ -307,7 +307,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       }
 
       // Per-type write enforcement: editing a node (including lifecycle
-      // moves drafting → asserted → retired) requires write access on
+      // moves drafting → queued → active → retired) requires write access on
       // THIS node type. What a writer may do beyond that is governed by
       // the Doco's own policies, not a built-in role ladder.
       const existing = await getEntity(cfg.entityType, id);

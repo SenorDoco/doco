@@ -12,7 +12,7 @@ describe("computeFilterFacets", () => {
             rows: [
               {
                 node_type: "decision",
-                value: "asserted",
+                value: "active",
                 n: "2",
                 updated_at: "2026-05-31T18:00:00.000Z",
               },
@@ -32,7 +32,8 @@ describe("computeFilterFacets", () => {
                 node_type: "decision",
                 n: "2",
                 drafting_n: "0",
-                asserted_n: "2",
+                queued_n: "0",
+                active_n: "2",
                 retired_n: "0",
                 updated_at: "2026-05-31T18:00:00.000Z",
               },
@@ -40,7 +41,8 @@ describe("computeFilterFacets", () => {
                 node_type: "intent",
                 n: "1",
                 drafting_n: "1",
-                asserted_n: "0",
+                queued_n: "0",
+                active_n: "0",
                 retired_n: "0",
                 updated_at: "2026-05-31T17:00:00.000Z",
               },
@@ -56,19 +58,19 @@ describe("computeFilterFacets", () => {
     expect(queries.filter((sql) => /FROM nodes/i.test(sql))).toHaveLength(2);
     expect(facets.lifecycle).toEqual([
       { value: "drafting", count: 1, updatedAt: "2026-05-31T17:00:00.000Z" },
-      { value: "asserted", count: 2, updatedAt: "2026-05-31T18:00:00.000Z" },
+      { value: "active", count: 2, updatedAt: "2026-05-31T18:00:00.000Z" },
     ]);
     expect(facets.entityType).toEqual([
       {
         value: "decision",
         count: 2,
-        counts: { drafting: 0, asserted: 2, retired: 0 },
+        counts: { drafting: 0, queued: 0, active: 2, retired: 0 },
         updatedAt: "2026-05-31T18:00:00.000Z",
       },
       {
         value: "intent",
         count: 1,
-        counts: { drafting: 1, asserted: 0, retired: 0 },
+        counts: { drafting: 1, queued: 0, active: 0, retired: 0 },
         updatedAt: "2026-05-31T17:00:00.000Z",
       },
     ]);

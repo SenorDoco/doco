@@ -29,7 +29,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "rule_01SLA",
           rule: "Checkout API availability is at least 99.9% monthly.",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: {
@@ -46,7 +46,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "eval_availability",
           eval: "monthly checkout availability calculation",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-26T00:01:00.000Z",
           data: { last_status: "pass" },
         },
@@ -58,7 +58,7 @@ describe("loadSlaPerspectiveData", () => {
           ref_type: "document",
           locator: "https://example.test/contract",
           title: "Contract clause 4.2",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-26T00:02:00.000Z",
           data: {},
         },
@@ -67,7 +67,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "action_breach",
           action: "Notify customer and open service-credit review",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-26T00:03:00.000Z",
           data: {},
         },
@@ -76,12 +76,12 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "decision_approval",
           decision: "Approved 99.9% monthly checkout SLA",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-26T00:04:00.000Z",
           data: {},
         },
       ],
-      principals: [{ id: "principal_platform", name: "Platform Owner", lifecycle: "asserted" }],
+      principals: [{ id: "principal_platform", name: "Platform Owner", lifecycle: "active" }],
       edges: [
         {
           from_id: "rule_01SLA",
@@ -140,7 +140,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "rule_gap",
           rule: "Exports complete within 2 hours.",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: { target: "2 hours" },
@@ -155,7 +155,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "log_delivery",
           log: "Export completed",
-          lifecycle: "asserted",
+          lifecycle: "active",
         },
       ],
       edges: [],
@@ -194,7 +194,7 @@ describe("loadSlaPerspectiveData", () => {
         {
           id: "rule_01",
           rule: "Checkout availability is 99.9% monthly.",
-          lifecycle: "asserted",
+          lifecycle: "active",
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: {},

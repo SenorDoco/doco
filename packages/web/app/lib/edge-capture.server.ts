@@ -34,7 +34,7 @@ export interface CaptureEdgeInput {
   fromId: string;
   toId: string;
   props?: Record<string, unknown> | null;
-  lifecycle?: "drafting" | "asserted";
+  lifecycle?: "drafting" | "active";
   reason?: string | null;
   source?: CommitSource;
   metadata?: Record<string, unknown> | null;
@@ -123,7 +123,7 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
         toId: input.toId,
         toNodeType: to.type,
         props: input.props ?? null,
-        lifecycle: input.lifecycle ?? "asserted",
+        lifecycle: input.lifecycle ?? "active",
         actor: input.actorId,
       });
     });

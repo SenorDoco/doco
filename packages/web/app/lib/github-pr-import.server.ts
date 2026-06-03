@@ -2,7 +2,7 @@
 //
 // A pull request is stored as a `reference` node: ref_type "url", locator = the
 // canonical PR URL (the idempotency key), prose = title + body. Re-importing
-// the same PR upserts the existing Reference (open->drafting, merged->asserted,
+// the same PR upserts the existing Reference (open->queued, merged->active,
 // closed->retired) rather than duplicating - possible because the node freeze
 // was removed, so References are editable. Decisions/Actions link to the PR via
 // the canonical `supports` edge with an implemented_by role; no new edge or
@@ -52,15 +52,15 @@ export interface GitHubPullRequestFile {
 }
 
 export interface PullRequestRefLifecycle {
-  lifecycle: "drafting" | "asserted" | "retired";
+  lifecycle: "queued" | "active" | "retired";
   outcome?: "succeeded";
 }
 
 /**
  * Map a GitHub PR's state to the Reference's lifecycle. Pure.
- *   open            → drafting (in-flight, may still change)
- *   open + approved → asserted (the team has signed off, not yet shipped)
- *   merged          → asserted + outcome succeeded (a settled fact: it shipped)
+ *   open            → queued (in-flight, ready for review, may still change)
+ *   open + approved → active (the team has signed off, not yet shipped)
+ *   merged          → active + outcome succeeded (a settled fact: it shipped)
  *   closed-unmerged → retired (abandoned)
  *
  * "Merged" is detected from `merged === true` OR a non-null `merged_at`. The
@@ -71,19 +71,19 @@ export interface PullRequestRefLifecycle {
  * webhook payloads, so it's the reliable signal.
  *
  * `approved` is supplied by the `pull_request_review` webhook (an approving
- * review on an open PR). Approval lifts an open PR drafting → asserted; merge
+ * review on an open PR). Approval lifts an open PR queued → active; merge
  * then adds `outcome: succeeded`. New commits (a later `synchronize` re-sync
- * without `approved`) drop it back to drafting, mirroring GitHub dismissing a
+ * without `approved`) drop it back to queued, mirroring GitHub dismissing a
  * stale review.
  */
 export function pullRequestRefLifecycle(
   pr: Pick<GitHubPullRequest, "state" | "merged" | "merged_at">,
   opts?: { approved?: boolean },
 ): PullRequestRefLifecycle {
-  if (pr.merged || pr.merged_at) return { lifecycle: "asserted", outcome: "succeeded" };
+  if (pr.merged || pr.merged_at) return { lifecycle: "active", outcome: "succeeded" };
   if (pr.state === "closed") return { lifecycle: "retired" };
-  if (opts?.approved) return { lifecycle: "asserted" };
-  return { lifecycle: "drafting" };
+  if (opts?.approved) return { lifecycle: "active" };
+  return { lifecycle: "queued" };
 }
 
 /** Reference prose for a PR: first line = title (the node label), then the body. Pure. */
@@ -147,7 +147,7 @@ export interface UpsertPullRequestOpts {
   /** Override the github_login → Doco-user-id lookup (testing seam). */
   resolveAuthorUserId?: (login: string) => Promise<string | null>;
   /** The PR carries an approving review (from `pull_request_review`): an open
-   *  PR maps drafting → asserted. Ignored once merged/closed. */
+   *  PR maps queued → active. Ignored once merged/closed. */
   approved?: boolean;
   /** Changed files for the PR, when the caller has a GitHub installation token. */
   changedFiles?: GitHubPullRequestFile[];
@@ -337,7 +337,7 @@ export async function findBusinessProcessReferenceTargetsForChangedLines(
           AND e.lifecycle <> 'retired'
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
-          AND COALESCE(r.lifecycle, 'asserted') <> 'retired'
+          AND COALESCE(r.lifecycle, 'active') <> 'retired'
           AND r.locator IS NOT NULL
           AND e.from_id IS NOT NULL`,
       [docoId],
@@ -368,7 +368,7 @@ export async function hasBusinessProcessCodeReferences(docoId: string): Promise<
           AND e.lifecycle <> 'retired'
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
-          AND COALESCE(r.lifecycle, 'asserted') <> 'retired'
+          AND COALESCE(r.lifecycle, 'active') <> 'retired'
           AND r.locator IS NOT NULL
           AND e.from_id IS NOT NULL
         LIMIT 1`,

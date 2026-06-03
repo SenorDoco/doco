@@ -227,7 +227,7 @@ function href(handle: string, entityType: string, id: string): string {
 /** Map one content node into a dictionary entry, per its type. */
 function toEntry(row: NodeRow, handle: string): GlossaryEntry {
   const data = row.data ?? {};
-  const lifecycle = row.lifecycle ?? "asserted";
+  const lifecycle = row.lifecycle ?? "active";
   let headword: string;
   let question: string | null = null;
   let definitionProse: string;
@@ -314,7 +314,7 @@ export async function loadGlossaryPerspectiveData(
            node_type AS entity_type,
            split_part(COALESCE(NULLIF(title, ''), prose), E'\n', 1) AS label,
            prose AS prose,
-           COALESCE(lifecycle, 'asserted') AS lifecycle,
+           COALESCE(lifecycle, 'active') AS lifecycle,
            data,
            ref_type, locator, citation, title,
            (SELECT COUNT(*) FROM nodes

@@ -32,8 +32,8 @@ const PERSONALIZED_SELECTION_LOG_THRESHOLD_MS = 16;
 let personalizedSelectionMeasureIndex = 0;
 
 function lifecycleRank(lifecycle: string | null | undefined): number {
-  switch (lifecycle ?? "asserted") {
-    case "asserted":
+  switch (lifecycle ?? "active") {
+    case "active":
       return 0;
     case "drafting":
       return 1;
@@ -133,7 +133,7 @@ export function bpmnFocusCandidates(
   return [
     ...filteredNodes,
     ...pools.flatMap((pool) =>
-      pool.intent_id && (!visibleLifecycles || visibleLifecycles.has(pool.lifecycle ?? "asserted"))
+      pool.intent_id && (!visibleLifecycles || visibleLifecycles.has(pool.lifecycle ?? "active"))
         ? [{ id: pool.intent_id, lifecycle: pool.lifecycle ?? null, created_at: null }]
         : [],
     ),

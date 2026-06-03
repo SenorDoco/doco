@@ -88,7 +88,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     handle: "github-pull-requests",
     label: "GitHub pull requests",
     description:
-      "Track a GitHub repository's pull requests as References — new PRs sync automatically, and merged PRs settle as asserted.",
+      "Track a GitHub repository's pull requests as References — new PRs sync automatically, and merged PRs settle as active.",
     updatedAt: "2026-05-31",
     owner: TEMPLATE_OWNER,
   },

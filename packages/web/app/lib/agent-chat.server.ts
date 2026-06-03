@@ -1365,10 +1365,10 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     const rows = await withClient(async (c) =>
       c.query<{ doco_id: string; policy: string; kind: "guidance" | "authoring" }>(
         `SELECT doco_id, policy, 'guidance'::text AS kind FROM guidance_policies
-          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'asserted') = 'asserted'
+          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
          UNION ALL
          SELECT doco_id, policy, 'authoring'::text AS kind FROM node_authoring_policies
-          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'asserted') = 'asserted'
+          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
          ORDER BY doco_id, kind, policy`,
         [accessibleIds],
       ),
@@ -1452,7 +1452,7 @@ function buildSystemBlocks(
 
 ## Visible graph references
 
-When the per-turn user header includes "Visible graph node references", the purple numbered circles currently attached to graph nodes map to those listed ids. Treat shorthand commands like "assert 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered node. "assert" means PATCH lifecycle to "asserted"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
+When the per-turn user header includes "Visible graph node references", the purple numbered circles currently attached to graph nodes map to those listed ids. Treat shorthand commands like "activate 5", "queue 7", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered node. "activate" (or the older "assert") means PATCH lifecycle to "active"; "queue" means PATCH lifecycle to "queued"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
 
 ## Attachments
 
@@ -1517,7 +1517,7 @@ authenticated session or token. Never send created_by.
 ### Inline body cheatsheet (post directly — no spec round trip needed)
 
 Required fields marked *; everything else is optional. lifecycle
-defaults to "asserted" except where noted.
+defaults to "active" except where noted.
 
 **Migration 022/023 prose-field rename.** Every node type now
 stores its full markdown body in a single TYPE-NAMED field — there

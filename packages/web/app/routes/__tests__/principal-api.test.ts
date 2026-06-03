@@ -123,7 +123,7 @@ describe("principal API", () => {
           node_type: "principal",
           name: "Visitor",
           created_by: "user_author",
-          lifecycle: "asserted",
+          lifecycle: "active",
         }),
       }),
     );
@@ -150,7 +150,7 @@ describe("principal API", () => {
         after: expect.objectContaining({
           name: "Visitor",
           body_md: "Human site visitor — no Doco account required.",
-          lifecycle: "asserted",
+          lifecycle: "active",
         }),
       }),
     );

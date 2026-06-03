@@ -99,15 +99,17 @@ export async function loader({ request }: { request: Request }) {
         owner_id: string;
         n: string;
         drafting_n: string;
-        asserted_n: string;
+        queued_n: string;
+        active_n: string;
         retired_n: string;
         last_entity_at: string | null;
       }>(
         `SELECT d.owner_id,
                 COUNT(*)::text AS n,
-                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'asserted') = 'drafting')::text AS drafting_n,
-                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'asserted') = 'asserted')::text AS asserted_n,
-                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'asserted') = 'retired')::text AS retired_n,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'active') = 'drafting')::text AS drafting_n,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'active') = 'queued')::text AS queued_n,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'active') = 'active')::text AS active_n,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'active') = 'retired')::text AS retired_n,
                 MAX(t.updated_at)::text AS last_entity_at
            FROM (${nodesUnionSql}) t
            JOIN docos d ON d.id = t.doco_id
@@ -121,7 +123,8 @@ export async function loader({ request }: { request: Request }) {
           nodeCount: Number(row.n),
           counts: {
             drafting: Number(row.drafting_n),
-            asserted: Number(row.asserted_n),
+            queued: Number(row.queued_n),
+            active: Number(row.active_n),
             retired: Number(row.retired_n),
           },
           lastUpdatedAt: row.last_entity_at,

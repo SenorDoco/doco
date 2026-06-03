@@ -249,7 +249,7 @@ async function loadDefaultFocus(
        )
        SELECT n.id,
               n.node_type,
-              COALESCE(n.lifecycle, 'asserted') AS lifecycle,
+              COALESCE(n.lifecycle, 'active') AS lifecycle,
               n.created_at::text AS created_at,
               n.updated_at::text AS updated_at,
               COALESCE(d.degree, 0)::text AS degree
@@ -281,7 +281,7 @@ async function loadFocusNeighbors(
            FROM edges e
           WHERE e.doco_id = $1
             AND (e.from_id = $3 OR e.to_id = $3)
-            AND COALESCE(e.lifecycle, 'asserted') <> 'retired'
+            AND COALESCE(e.lifecycle, 'active') <> 'retired'
           GROUP BY id
        ),
        node_degrees AS (
@@ -295,7 +295,7 @@ async function loadFocusNeighbors(
        )
        SELECT n.id,
               n.node_type,
-              COALESCE(n.lifecycle, 'asserted') AS lifecycle,
+              COALESCE(n.lifecycle, 'active') AS lifecycle,
               n.created_at::text AS created_at,
               n.updated_at::text AS updated_at,
               COALESCE(d.degree, edge_neighbors.neighbor_degree, 0)::text AS degree
@@ -332,7 +332,7 @@ async function loadRankedFill(
        )
        SELECT n.id,
               n.node_type,
-              COALESCE(n.lifecycle, 'asserted') AS lifecycle,
+              COALESCE(n.lifecycle, 'active') AS lifecycle,
               n.created_at::text AS created_at,
               n.updated_at::text AS updated_at,
               COALESCE(d.degree, 0)::text AS degree
@@ -349,7 +349,7 @@ async function loadRankedFill(
 }
 
 function lifecyclePredicate(alias: string, spec: PerspectiveWindowSpec): string {
-  return spec.excludeRetired ? `AND COALESCE(${alias}.lifecycle, 'asserted') <> 'retired'` : "";
+  return spec.excludeRetired ? `AND COALESCE(${alias}.lifecycle, 'active') <> 'retired'` : "";
 }
 
 function defaultFocusOrderSql(alias: string, spec: PerspectiveWindowSpec): string {
@@ -360,7 +360,7 @@ function defaultFocusOrderSql(alias: string, spec: PerspectiveWindowSpec): strin
                WHERE root_edge.doco_id = ${alias}.doco_id
                  AND root_edge.edge_type = 'has_parent'
                  AND root_edge.from_id = ${alias}.id
-                 AND COALESCE(root_edge.lifecycle, 'asserted') <> 'retired'
+                 AND COALESCE(root_edge.lifecycle, 'active') <> 'retired'
             ) THEN 0 ELSE 1 END,
             ${rankOrderSql(alias, spec)}`;
   }
@@ -369,10 +369,10 @@ function defaultFocusOrderSql(alias: string, spec: PerspectiveWindowSpec): strin
 
 function rankOrderSql(alias: string, spec: PerspectiveWindowSpec): string {
   return `${typeWeightCaseSql(alias, spec)} DESC,
-          CASE COALESCE(${alias}.lifecycle, 'asserted')
-            WHEN 'asserted' THEN 0
-            WHEN 'drafting' THEN 1
-            WHEN 'proposed' THEN 2
+          CASE COALESCE(${alias}.lifecycle, 'active')
+            WHEN 'active' THEN 0
+            WHEN 'queued' THEN 1
+            WHEN 'drafting' THEN 2
             WHEN 'retired' THEN 9
             ELSE 5
           END,

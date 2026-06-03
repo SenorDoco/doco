@@ -782,7 +782,7 @@ export default function DocoHome({
         // Panel opens (dialog edge rows) re-center the camera on the node,
         // like opening its URL from scratch; canvas clicks leave it be.
         if (options.focusPerspective) setClientFocusId(node.id);
-        setVisibleLifecycles((prev) => new Set([...prev, node.lifecycle ?? "asserted"]));
+        setVisibleLifecycles((prev) => new Set([...prev, node.lifecycle ?? "active"]));
       } catch (err) {
         setNodeDialog((prev) => ({
           detail: options.keepDetail ? (prev?.detail ?? null) : null,

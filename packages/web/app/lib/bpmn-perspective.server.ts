@@ -233,7 +233,7 @@ export async function loadBpmnGraph(
   const nodeSql = `SELECT t.id,
               t.node_type AS entity_type,
               split_part(t.prose, E'\n', 1) AS summary,
-              COALESCE(t.lifecycle, 'asserted') AS lifecycle,
+              COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
               t.data,
               (SELECT COUNT(*) FROM nodes
@@ -252,7 +252,7 @@ export async function loadBpmnGraph(
       // So loading a retired Principal adds no noise on its own — it ensures
       // retired nodes land in a correctly-named lane (rather than an
       // `__unresolved__:<id>` fallback) once "Retired" is toggled on.
-      `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
+      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
@@ -687,11 +687,13 @@ function compareBpmnNodesForLargeDoco(a: BpmnNode, b: BpmnNode): number {
 }
 
 function lifecycleRank(lifecycle: string | null | undefined): number {
-  switch (lifecycle ?? "asserted") {
-    case "asserted":
+  switch (lifecycle ?? "active") {
+    case "active":
       return 0;
-    case "drafting":
+    case "queued":
       return 1;
+    case "drafting":
+      return 2;
     case "retired":
       return 3;
     default:

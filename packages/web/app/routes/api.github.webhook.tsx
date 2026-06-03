@@ -2,7 +2,7 @@
 // DOCO_GITHUB_WEBHOOK_SECRET, then routes repo events to Docos that selected
 // that repository or intentionally subscribed to the whole installation. Events handled:
 //   - pull_request           → upsert the PR as a Reference in the subscribed Doco.
-//   - pull_request_review     → an approving review lifts an open PR to asserted.
+//   - pull_request_review     → an approving review lifts an open PR to active.
 //   - installation_repositories (added)   → backfill the new repos' existing PRs.
 //   - installation_repositories (removed) → detach those repos' connections.
 //   - installation (deleted)  → uninstall: detach the installation everywhere.
@@ -162,7 +162,7 @@ export async function action({ request }: { request: Request }) {
     });
   }
 
-  // An approving review lifts an open PR to asserted (the team signed off). The
+  // An approving review lifts an open PR to active (the team signed off). The
   // payload embeds the full PR, so we re-sync the Reference with the approval
   // hint. Other review states (commented / changes_requested) are no-ops.
   if (event === "pull_request_review") {

@@ -7,14 +7,14 @@ describe("loadOrgTreeData", () => {
       {
         id: "principal_alex",
         name: "Alexander Torrenegra",
-        lifecycle: "asserted",
+        lifecycle: "active",
         body_md: "Person. CEO and top-of-chain - founder.",
         data: {},
       },
       {
         id: "principal_research",
         name: "Research Agent",
-        lifecycle: "asserted",
+        lifecycle: "active",
         body_md: "AI agent: research synthesis and brief generation.",
         data: {},
       },
@@ -81,7 +81,7 @@ describe("loadOrgTreeData", () => {
             {
               id: "principal_alex",
               name: "Alex",
-              lifecycle: "asserted",
+              lifecycle: "active",
               body_md: "Person. CEO.",
               data: {},
               // pg returns the windowed bigint as a string.
@@ -118,7 +118,7 @@ describe("loadOrgTreeData", () => {
         }
         return {
           rows: [
-            { id: "principal_a", name: "A", lifecycle: "asserted", body_md: "Person.", data: {} },
+            { id: "principal_a", name: "A", lifecycle: "active", body_md: "Person.", data: {} },
             { id: "principal_b", name: "B", lifecycle: "retired", body_md: "Person.", data: {} },
           ] as T[],
         };

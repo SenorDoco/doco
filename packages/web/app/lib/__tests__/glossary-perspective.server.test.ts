@@ -17,7 +17,7 @@ function row(over: Record<string, unknown>) {
     entity_type: "decision",
     label: null,
     prose: null,
-    lifecycle: "asserted",
+    lifecycle: "active",
     data: {},
     ref_type: null,
     locator: null,

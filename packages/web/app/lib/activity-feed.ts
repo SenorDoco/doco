@@ -54,7 +54,7 @@ export function shouldStrikeActivityTarget(
  *  in AFTER this event (transition target, or its current lifecycle for
  *  non-transition events). Mirrors `shouldStrikeActivityTarget` so a
  *  caller that uses both helpers gets a strike and a color from the
- *  same value. Defaults to "asserted" when nothing is known. */
+ *  same value. Defaults to "active" when nothing is known. */
 export function activityRowLifecycle(
   event: { op?: string; lifecycle?: unknown } & ActivityFeedDelta,
 ): string {
@@ -62,7 +62,7 @@ export function activityRowLifecycle(
     event.op === "lifecycle.transition" ? stringField(event.after, "lifecycle") : null;
   const currentLifecycle = typeof event.lifecycle === "string" ? event.lifecycle : null;
   const afterLifecycle = stringField(event.after, "lifecycle");
-  return transitionLifecycle ?? currentLifecycle ?? afterLifecycle ?? "asserted";
+  return transitionLifecycle ?? currentLifecycle ?? afterLifecycle ?? "active";
 }
 
 export function auditSummaryFallback(entityType: string, id: string): string {

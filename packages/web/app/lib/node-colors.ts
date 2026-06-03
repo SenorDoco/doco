@@ -7,22 +7,24 @@
  * diluted the meaning of color overall.
  */
 
-// Canonical lifecycle has three stages: drafting, asserted, retired.
+// Canonical lifecycle has four stages: drafting, queued, active, retired.
 // Per project owner the color mapping is, in that order:
 //   drafting → blue   (provisional / work in motion)
-//   asserted → black  (settled, in force)
+//   queued   → amber  (ready, waiting to take effect)
+//   active   → black  (settled, in force) — formerly `asserted`
 //   retired  → red    (no longer in use)
 export const LIFECYCLE_COLOR: Record<string, string> = {
   // Same blue the now-removed `proposed` stage used, re-used for drafting.
   drafting: "#2563eb", // blue-600 — provisional
-  asserted: "#171717", // gray-900 — settled and in force
+  queued: "#f59e0b", // amber-500 — ready, awaiting activation
+  active: "#171717", // gray-900 — settled and in force
   retired: "#dc2626", // red-600 — no longer in use
 };
 
 export const LIFECYCLE_FALLBACK_COLOR = "#737373";
 
 export function lifecycleColor(lifecycle: string | null | undefined): string {
-  return LIFECYCLE_COLOR[lifecycle ?? "asserted"] ?? LIFECYCLE_FALLBACK_COLOR;
+  return LIFECYCLE_COLOR[lifecycle ?? "active"] ?? LIFECYCLE_FALLBACK_COLOR;
 }
 
 /**
@@ -32,12 +34,13 @@ export function lifecycleColor(lifecycle: string | null | undefined): string {
  */
 export const LIFECYCLE_DESCRIPTION: Record<string, string> = {
   drafting: "Drafting — provisional, work in motion",
-  asserted: "Asserted — settled, in force",
+  queued: "Queued — ready, waiting to take effect",
+  active: "Active — settled, in force",
   retired: "Retired — no longer in use",
 };
 
 export function lifecycleDescription(lifecycle: string | null | undefined): string {
-  return LIFECYCLE_DESCRIPTION[lifecycle ?? "asserted"] ?? lifecycleLabel(lifecycle);
+  return LIFECYCLE_DESCRIPTION[lifecycle ?? "active"] ?? lifecycleLabel(lifecycle);
 }
 
 /**
@@ -45,26 +48,28 @@ export function lifecycleDescription(lifecycle: string | null | undefined): stri
  * cards all render the stages in this order so a given color always
  * lands in the same position.
  */
-export const LIFECYCLE_ORDER = ["drafting", "asserted", "retired"] as const;
+export const LIFECYCLE_ORDER = ["drafting", "queued", "active", "retired"] as const;
 
 /** A node count broken out by lifecycle stage. */
 export interface LifecycleCounts {
   drafting: number;
-  asserted: number;
+  queued: number;
+  active: number;
   retired: number;
 }
 
 export const EMPTY_LIFECYCLE_COUNTS: LifecycleCounts = {
   drafting: 0,
-  asserted: 0,
+  queued: 0,
+  active: 0,
   retired: 0,
 };
 
 /**
  * Expand a {@link LifecycleCounts} into canonical-order parts, each
  * tagged with its lifecycle color, ready to render as
- * `drafting / asserted / retired`. All three stages are always present
- * (zeros included) so a color's position stays stable.
+ * `drafting / queued / active / retired`. All four stages are always
+ * present (zeros included) so a color's position stays stable.
  */
 export function lifecycleCountParts(
   counts: LifecycleCounts,
@@ -82,10 +87,11 @@ export function sumLifecycleCounts(list: readonly LifecycleCounts[]): LifecycleC
   return list.reduce<LifecycleCounts>(
     (acc, c) => ({
       drafting: acc.drafting + c.drafting,
-      asserted: acc.asserted + c.asserted,
+      queued: acc.queued + c.queued,
+      active: acc.active + c.active,
       retired: acc.retired + c.retired,
     }),
-    { drafting: 0, asserted: 0, retired: 0 },
+    { drafting: 0, queued: 0, active: 0, retired: 0 },
   );
 }
 
@@ -111,7 +117,7 @@ export function textOnLifecycle(lifecycle: string | null | undefined): string {
 
 /** Human-readable label for a lifecycle stage. */
 export function lifecycleLabel(lifecycle: string | null | undefined): string {
-  return (lifecycle ?? "asserted").replaceAll("_", " ");
+  return (lifecycle ?? "active").replaceAll("_", " ");
 }
 
 const NODE_TYPE_PLURAL: Record<string, string> = {

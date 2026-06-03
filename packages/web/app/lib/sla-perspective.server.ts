@@ -197,7 +197,7 @@ function linkFor(
     id: row.id,
     label: firstLine(label),
     href: href(handle, entityType, row.id),
-    lifecycle: row.lifecycle ?? "asserted",
+    lifecycle: row.lifecycle ?? "active",
   };
 }
 
@@ -246,7 +246,7 @@ export async function loadSlaPerspectiveData(
   // the BPMN loader (PR #819), which return every lifecycle.
   const [rules, evals, references, actions, decisions, principals] = await Promise.all([
     c.query<RuleRow>(
-      `SELECT id, prose AS rule, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS rule, COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, created_by, data,
               (SELECT COUNT(*) FROM nodes
                 WHERE node_type = 'rule' AND doco_id = $1) AS total_count
@@ -259,7 +259,7 @@ export async function loadSlaPerspectiveData(
       params,
     ),
     c.query<EvalRow>(
-      `SELECT id, prose AS eval, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS eval, COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, data
          FROM nodes
         WHERE node_type = 'eval'
@@ -271,7 +271,7 @@ export async function loadSlaPerspectiveData(
     ),
     c.query<ReferenceRow>(
       `SELECT id, prose AS reference, ref_type, locator, title,
-              COALESCE(lifecycle, 'asserted') AS lifecycle,
+              COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, data
          FROM nodes
         WHERE node_type = 'reference'
@@ -282,7 +282,7 @@ export async function loadSlaPerspectiveData(
       params,
     ),
     c.query<ActionRow>(
-      `SELECT id, prose AS action, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS action, COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, data
          FROM nodes
         WHERE node_type = 'action'
@@ -293,7 +293,7 @@ export async function loadSlaPerspectiveData(
       params,
     ),
     c.query<DecisionRow>(
-      `SELECT id, prose AS decision, COALESCE(lifecycle, 'asserted') AS lifecycle,
+      `SELECT id, prose AS decision, COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, data
          FROM nodes
         WHERE node_type = 'decision'
@@ -304,7 +304,7 @@ export async function loadSlaPerspectiveData(
       params,
     ),
     c.query<PrincipalRow>(
-      `SELECT id, name, COALESCE(lifecycle, 'asserted') AS lifecycle
+      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
@@ -434,7 +434,7 @@ export async function loadSlaPerspectiveData(
       id: rule.id,
       href: href(handle, "rule", rule.id),
       title,
-      lifecycle: rule.lifecycle ?? "asserted",
+      lifecycle: rule.lifecycle ?? "active",
       promise: rule.rule,
       owner,
       metric,

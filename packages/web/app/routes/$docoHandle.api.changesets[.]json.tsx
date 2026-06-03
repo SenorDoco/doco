@@ -29,7 +29,8 @@ type Operation =
   | RelateOperation
   | RelateManyOperation
   | AppendOperation
-  | AssertOperation
+  | ActivateOperation
+  | QueueOperation
   | RetireOperation
   | SupersedeOperation;
 
@@ -74,8 +75,15 @@ interface AppendOperation {
 // Lifecycle transitions — append-only-safe (history is kept in the immutable
 // audit log; "retire" is a tombstone, never a hard delete). `target` is a node
 // id or a `$alias` defined earlier in the same changeset.
-interface AssertOperation {
-  op: "assert";
+// Move a node to `active` (in force). Renamed from the former `assert` op.
+interface ActivateOperation {
+  op: "activate";
+  target: string;
+}
+
+// Move a node to `queued` (ready, awaiting activation).
+interface QueueOperation {
+  op: "queue";
   target: string;
 }
 
@@ -256,7 +264,7 @@ function collectChangesetWriteTypes(
   operations: unknown[],
 ): { types: string[] } | { error: string } {
   const types = new Set<string>();
-  // Alias → entity_type, so assert/retire/supersede targeting a node created
+  // Alias → entity_type, so activate/queue/retire/supersede targeting a node created
   // earlier in the same batch can be type-checked before anything runs.
   const aliasTypes = new Map<string, string>();
   for (const raw of operations) {
@@ -307,7 +315,7 @@ function collectChangesetWriteTypes(
       }
       continue;
     }
-    if (op.op === "assert" || op.op === "retire") {
+    if (op.op === "activate" || op.op === "queue" || op.op === "retire") {
       const entityType = targetType(op.target);
       if (!entityType) {
         return { error: `Cannot ${op.op}: unrecognized node id/alias "${op.target}".` };
@@ -378,8 +386,11 @@ async function applyOperation(
       footer_lines: [...(created.footer_lines ?? []), ...(related.footer_lines ?? [])],
     };
   }
-  if (op.op === "assert") {
-    return transitionNode(op.target, "asserted", "assert", index, ctx, aliases);
+  if (op.op === "activate") {
+    return transitionNode(op.target, "active", "activate", index, ctx, aliases);
+  }
+  if (op.op === "queue") {
+    return transitionNode(op.target, "queued", "queue", index, ctx, aliases);
   }
   if (op.op === "retire") {
     return transitionNode(op.target, "retired", "retire", index, ctx, aliases);
@@ -395,13 +406,14 @@ async function applyOperation(
   };
 }
 
-// Lifecycle transition (assert → asserted, retire → retired) via updateEntity,
-// the same primitive the per-entity PATCH routes use. `target` resolves an id or
-// a `$alias` created earlier in the batch; the entity type comes from the id.
+// Lifecycle transition (activate → active, queue → queued, retire → retired) via
+// updateEntity, the same primitive the per-entity PATCH routes use. `target`
+// resolves an id or a `$alias` created earlier in the batch; the entity type
+// comes from the id.
 async function transitionNode(
   target: string,
-  lifecycle: "asserted" | "retired",
-  opName: "assert" | "retire",
+  lifecycle: "queued" | "active" | "retired",
+  opName: "activate" | "queue" | "retire",
   index: number,
   ctx: ChangesetContext,
   aliases: Map<string, string>,
@@ -566,11 +578,11 @@ async function createNode(
     ctx.authoring,
   );
   if ("error" in result) {
-    // Pave the draft-first path: if an asserted node blocked on a missing
+    // Pave the draft-first path: if an activating node blocked on a missing
     // required edge, point the author at the two ways to fix it.
     const hint =
       /missing required/i.test(result.error) && /edge|field/i.test(result.error)
-        ? " (tip: create the node with an alias, then add a `relate` or `relate_many` op in the same changeset before asserting it.)"
+        ? " (tip: create the node with an alias, then add a `relate` or `relate_many` op in the same changeset before activating it.)"
         : "";
     return { op_index: index, op: "create", ok: false, error: `${result.error}${hint}` };
   }

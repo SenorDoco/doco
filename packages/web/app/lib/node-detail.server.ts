@@ -13,7 +13,7 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-const LIFECYCLE_STAGES = ["drafting", "asserted", "retired"] as const;
+const LIFECYCLE_STAGES = ["drafting", "queued", "active", "retired"] as const;
 
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
@@ -172,14 +172,15 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 // Stage labels read as state names when the option is the current
-// lifecycle ("Drafting", "Asserted", "Retired") and as the action verb
-// that would move into that stage when the option is one of the other
-// (clickable) choices ("Draft", "Assert", "Retire"). Combined with the
-// press-down state in the UI, this makes the row read like
+// lifecycle ("Drafting", "Queued", "Active", "Retired") and as the action
+// verb that would move into that stage when the option is one of the other
+// (clickable) choices ("Draft", "Queue", "Activate", "Retire"). Combined
+// with the press-down state in the UI, this makes the row read like
 // "you ARE here / click to GO there."
 const LIFECYCLE_VERB: Record<string, string> = {
   drafting: "draft",
-  asserted: "assert",
+  queued: "queue",
+  active: "activate",
   retired: "retire",
 };
 
@@ -196,7 +197,7 @@ function lifecycleOptions(input: {
 }): NodeLifecycleOption[] {
   const current = LIFECYCLE_STAGES.includes(input.current as LifecycleStage)
     ? (input.current as LifecycleStage)
-    : "asserted";
+    : "active";
   const roleReason = input.role
     ? `Write access required to change lifecycle; your role is ${input.role}.`
     : "Sign in with write access to change lifecycle.";
@@ -256,7 +257,7 @@ function relatedDetailsSql(): string {
                  node_type AS entity_type,
                  NULLIF(split_part(COALESCE(NULLIF(prose, ''), name, '')::text, E'\n', 1), '') AS summary,
                  name,
-                 COALESCE(lifecycle, 'asserted') AS lifecycle
+                 COALESCE(lifecycle, 'active') AS lifecycle
             FROM nodes
            WHERE doco_id = $1
              AND id = ANY($2::text[])
@@ -285,7 +286,7 @@ async function loadDialogRelatedDetails(
     entity_type: row.entity_type,
     summary: row.summary ?? row.name ?? row.id,
     name: row.name,
-    lifecycle: row.lifecycle ?? "asserted",
+    lifecycle: row.lifecycle ?? "active",
     href: `/${handle}/${row.entity_type}/${row.id}`,
   }));
 }
@@ -460,7 +461,7 @@ export async function loadNodeDialogDetail(
       `SELECT id,
               ${cfg.primaryColumn} AS primary_text,
               ${bodySelect},
-              COALESCE(lifecycle, 'asserted') AS lifecycle,
+              COALESCE(lifecycle, 'active') AS lifecycle,
               data::text AS raw_json,
               locator,
               created_at,
@@ -553,7 +554,7 @@ export async function loadNodeDialogDetail(
       other_node_type: otherNodeType,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
-      other_lifecycle: detail?.lifecycle ?? "asserted",
+      other_lifecycle: detail?.lifecycle ?? "active",
       href: detail?.href ?? `/${options.handle}/${otherNodeType}/${edge.to_id}`,
     };
   });
@@ -567,7 +568,7 @@ export async function loadNodeDialogDetail(
       other_node_type: otherNodeType,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
-      other_lifecycle: detail?.lifecycle ?? "asserted",
+      other_lifecycle: detail?.lifecycle ?? "active",
       href: detail?.href ?? `/${options.handle}/${otherNodeType}/${edge.from_id}`,
     };
   });
@@ -631,7 +632,7 @@ export async function loadNodeDialogDetail(
     primary_text: row.primary_text,
     body_field: cfg.bodyField,
     body_text: row.body_text,
-    lifecycle: row.lifecycle ?? "asserted",
+    lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
     authoring: {
@@ -652,7 +653,7 @@ export async function loadNodeDialogDetail(
     user_role: userRole,
     can_change_lifecycle: canChangeLifecycle,
     lifecycle_options: lifecycleOptions({
-      current: row.lifecycle ?? "asserted",
+      current: row.lifecycle ?? "active",
       canChange: canChangeLifecycle,
       role: userRole,
       updateUrl,

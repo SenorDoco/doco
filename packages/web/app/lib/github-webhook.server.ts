@@ -105,7 +105,7 @@ export interface ParsedPullRequestReviewEvent {
  * Parse a `pull_request_review` webhook — GitHub sends it when a review is
  * submitted/edited/dismissed on a PR. The payload embeds the full
  * `pull_request`, so we can re-sync the Reference and, on an approving review,
- * lift an open PR to asserted. Pure; defensive about the untrusted shape.
+ * lift an open PR to active. Pure; defensive about the untrusted shape.
  */
 export function parsePullRequestReviewEvent(payload: unknown): ParsedPullRequestReviewEvent | null {
   if (!payload || typeof payload !== "object") return null;

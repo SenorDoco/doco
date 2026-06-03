@@ -186,12 +186,12 @@ const basePr: GitHubPullRequest = {
 };
 
 describe("pullRequestRefLifecycle", () => {
-  it("open → drafting", () => {
-    expect(pullRequestRefLifecycle({ state: "open" })).toEqual({ lifecycle: "drafting" });
+  it("open → queued", () => {
+    expect(pullRequestRefLifecycle({ state: "open" })).toEqual({ lifecycle: "queued" });
   });
-  it("merged → asserted + succeeded", () => {
+  it("merged → active + succeeded", () => {
     expect(pullRequestRefLifecycle({ state: "closed", merged: true })).toEqual({
-      lifecycle: "asserted",
+      lifecycle: "active",
       outcome: "succeeded",
     });
   });
@@ -200,12 +200,12 @@ describe("pullRequestRefLifecycle", () => {
       lifecycle: "retired",
     });
   });
-  it("merged via merged_at when the `merged` boolean is absent (list endpoint) → asserted", () => {
+  it("merged via merged_at when the `merged` boolean is absent (list endpoint) → active", () => {
     // GitHub's "list pull requests" endpoint (what the backfill pages) omits the
     // `merged` boolean and only sends `merged_at`. A merged PR there is
     // state:"closed" with merged_at set — it must NOT be mistaken for abandoned.
     expect(pullRequestRefLifecycle({ state: "closed", merged_at: "2026-05-31T18:12:54Z" })).toEqual(
-      { lifecycle: "asserted", outcome: "succeeded" },
+      { lifecycle: "active", outcome: "succeeded" },
     );
   });
   it("closed with merged_at null (genuinely abandoned) → retired", () => {
@@ -213,14 +213,14 @@ describe("pullRequestRefLifecycle", () => {
       lifecycle: "retired",
     });
   });
-  it("open + approved → asserted (signed off, not yet shipped — no outcome)", () => {
+  it("open + approved → active (signed off, not yet shipped — no outcome)", () => {
     expect(pullRequestRefLifecycle({ state: "open" }, { approved: true })).toEqual({
-      lifecycle: "asserted",
+      lifecycle: "active",
     });
   });
-  it("merge still wins over approval (asserted + succeeded)", () => {
+  it("merge still wins over approval (active + succeeded)", () => {
     expect(pullRequestRefLifecycle({ state: "closed", merged: true }, { approved: true })).toEqual({
-      lifecycle: "asserted",
+      lifecycle: "active",
       outcome: "succeeded",
     });
   });
@@ -246,7 +246,7 @@ describe("pullRequestToReferenceDraft", () => {
     expect(d).toMatchObject({
       ref_type: "url",
       locator: "https://github.com/acme/store/pull/482",
-      lifecycle: "asserted",
+      lifecycle: "active",
       outcome: "succeeded",
     });
     expect(d.reference.split("\n")[0]).toBe(basePr.title);
