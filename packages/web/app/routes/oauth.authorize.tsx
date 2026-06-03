@@ -157,15 +157,23 @@ export async function action({ request }: { request: Request }) {
 
   const grants = await readOAuthApprovalGrants(form, principal.id);
 
-  // A bound connector may only ever grant its own workspace. The picker
-  // already hides the others, but re-check on submit so a tampered POST can't
-  // bind the token to a different (or extra) workspace than the resource.
+  // A bound connector may only grant within its own workspace — the whole
+  // workspace, or specific Docos inside it. The picker already hides the
+  // others, but re-check on submit (against the authoritative scoped options)
+  // so a tampered POST can't bind the token to a different workspace or a Doco
+  // outside it.
   if (params.bound_workspace_id) {
-    const onlyBoundWorkspace =
-      grants.granted_doco_ids.length === 0 &&
-      grants.granted_workspace_ids.length === 1 &&
-      grants.granted_workspace_ids[0] === params.bound_workspace_id;
-    if (!onlyBoundWorkspace) {
+    const { docos, workspaces } = await loadApprovalGrantOptions(principal.id);
+    const scoped = scopeApprovalToBoundWorkspace(docos, workspaces, params.bound_workspace_id);
+    if (scoped.blocked) {
+      throw errorResponse("invalid_scope: you don't own the connector's workspace", 403);
+    }
+    const allowedWorkspaceIds = new Set([scoped.boundWorkspace.id]);
+    const allowedDocoIds = new Set(scoped.docos.map((d) => d.id));
+    const outside =
+      grants.granted_workspace_ids.some((id) => !allowedWorkspaceIds.has(id)) ||
+      grants.granted_doco_ids.some((id) => !allowedDocoIds.has(id));
+    if (outside) {
       throw errorResponse("invalid_scope: this connector can only grant its own workspace", 400);
     }
   }

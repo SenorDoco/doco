@@ -93,6 +93,8 @@ describe("OAuthAccessApprovalForm", () => {
     // The workspace grant is pre-composed (writer by default), not the empty [].
     expect(markup).toContain("workspace_torre");
     expect(markup).not.toContain('name="grants" value="[]"');
+    // …with an optional path to narrow within that workspace.
+    expect(markup).toContain('data-testid="bound-narrow"');
   });
 
   it("shows the empty-state when there is nothing to grant (no full-access fallback)", () => {

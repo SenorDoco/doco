@@ -45,6 +45,17 @@ function workspaceGrants(workspaceId: string) {
   };
 }
 
+function docoGrants(docoId: string) {
+  return {
+    granted_doco_ids: [docoId],
+    granted_doco_roles: { [docoId]: "writer" },
+    granted_doco_write_types: {},
+    granted_workspace_ids: [],
+    granted_workspace_roles: {},
+    granted_workspace_write_types: {},
+  };
+}
+
 describe("/oauth/authorize action — bound-workspace guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,6 +66,21 @@ describe("/oauth/authorize action — bound-workspace guard", () => {
       redirect_uris: ["http://localhost:53682/callback"],
     });
     mocks.issueAuthorizationCode.mockResolvedValue({ code: "authcode_1" });
+    // The approver owns the bound workspace (workspace_01ABC) and one Doco in it.
+    mocks.loadApprovalGrantOptions.mockResolvedValue({
+      docos: [
+        {
+          id: "doco_1",
+          handle: "d1",
+          my_role: "owner",
+          workspace_id: "workspace_01ABC",
+          workspace_label: "acme",
+        },
+      ],
+      workspaces: [
+        { id: "workspace_01ABC", handle: "acme", display_name: "acme", my_role: "owner" },
+      ],
+    });
   });
 
   it("issues a code when the approved grant is the connector's own workspace", async () => {
@@ -66,8 +92,24 @@ describe("/oauth/authorize action — bound-workspace guard", () => {
     expect(res.status).toBe(302); // → /oauth/approved
   });
 
+  it("allows narrowing to a Doco within the connector's workspace", async () => {
+    mocks.readOAuthApprovalGrants.mockResolvedValue(docoGrants("doco_1"));
+
+    const res = await action({ request: approveRequest() });
+
+    expect(mocks.issueAuthorizationCode).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(302);
+  });
+
   it("rejects a grant for a different workspace than the connector's resource", async () => {
     mocks.readOAuthApprovalGrants.mockResolvedValue(workspaceGrants("workspace_OTHER"));
+
+    await expect(action({ request: approveRequest() })).rejects.toMatchObject({ status: 400 });
+    expect(mocks.issueAuthorizationCode).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Doco that isn't in the connector's workspace", async () => {
+    mocks.readOAuthApprovalGrants.mockResolvedValue(docoGrants("doco_OTHER"));
 
     await expect(action({ request: approveRequest() })).rejects.toMatchObject({ status: 400 });
     expect(mocks.issueAuthorizationCode).not.toHaveBeenCalled();

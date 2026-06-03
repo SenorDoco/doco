@@ -58,8 +58,9 @@ export function OAuthAccessApprovalForm({
   );
   const grantsPayload = useMemo(() => JSON.stringify(grants.map(grantPayload)), [grants]);
   const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
-
-  const boundRole: DocoRole = grants[0]?.role ?? "writer";
+  // Bound mode leads with the whole workspace; this reveals the picker to
+  // narrow to specific Docos / types within that one workspace.
+  const [narrowing, setNarrowing] = useState(false);
 
   const tokenNameRef = useRef<HTMLInputElement>(null);
   const grantsRef = useRef<HTMLDivElement>(null);
@@ -98,6 +99,30 @@ export function OAuthAccessApprovalForm({
       grants: grantsRef.current,
     });
   }
+
+  // The full grant picker — used as-is for unbound flows, and for "narrow
+  // within this workspace" when bound (the catalog is already scoped to the
+  // one workspace by the loader, so no other workspace can appear).
+  const pickerBlock = (
+    <>
+      <GrantPicker
+        catalog={catalog}
+        grants={grants}
+        onChange={(next) => {
+          setGrants(next);
+          if (next.length > 0) clearError("grants");
+        }}
+        forToken
+      />
+      {errors.grants ? (
+        <p role="alert" className="mt-2 text-xs text-destructive">
+          {errors.grants}
+        </p>
+      ) : grants.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
+      ) : null}
+    </>
+  );
 
   return (
     <form method="post" noValidate onSubmit={handleSubmit} className="space-y-4">
@@ -142,31 +167,50 @@ export function OAuthAccessApprovalForm({
 
       <div ref={grantsRef}>
         {boundWorkspace ? (
-          <BoundWorkspaceAccess
-            workspaceLabel={boundWorkspace.label}
-            maxRole={boundWorkspace.maxRole}
-            role={boundRole}
-            onChange={(role) => setGrants([boundWorkspaceGrant(boundWorkspace.id, role)])}
-          />
+          narrowing ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Narrowing access within <strong>{boundWorkspace.label}</strong>.
+                </span>
+                <button
+                  type="button"
+                  data-testid="bound-grant-whole"
+                  onClick={() => {
+                    setNarrowing(false);
+                    setGrants([boundWorkspaceGrant(boundWorkspace.id, "writer")]);
+                    clearError("grants");
+                  }}
+                  className="text-xs underline hover:opacity-80"
+                >
+                  Grant the whole workspace instead
+                </button>
+              </div>
+              {pickerBlock}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <BoundWorkspaceAccess
+                workspaceLabel={boundWorkspace.label}
+                maxRole={boundWorkspace.maxRole}
+                role={grants[0]?.role ?? "writer"}
+                onChange={(role) => setGrants([boundWorkspaceGrant(boundWorkspace.id, role)])}
+              />
+              <button
+                type="button"
+                data-testid="bound-narrow"
+                onClick={() => {
+                  setNarrowing(true);
+                  setGrants([]);
+                }}
+                className="text-xs underline hover:opacity-80"
+              >
+                Narrow to specific Docos or types
+              </button>
+            </div>
+          )
         ) : (
-          <>
-            <GrantPicker
-              catalog={catalog}
-              grants={grants}
-              onChange={(next) => {
-                setGrants(next);
-                if (next.length > 0) clearError("grants");
-              }}
-              forToken
-            />
-            {errors.grants ? (
-              <p role="alert" className="mt-2 text-xs text-destructive">
-                {errors.grants}
-              </p>
-            ) : grants.length === 0 ? (
-              <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
-            ) : null}
-          </>
+          pickerBlock
         )}
       </div>
 
