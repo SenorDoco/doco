@@ -185,11 +185,25 @@ describe("/api-keys page action", () => {
   it("renders client-specific setup only for the chosen provider", () => {
     const url = "https://doco.test/workspace_01ABC/mcp";
 
-    const desktop = renderToStaticMarkup(
-      createElement(ProviderInstructions, { providerId: "claude-desktop", url }),
+    // Claude Code keeps the mcp-remote bridge command…
+    const code = renderToStaticMarkup(
+      createElement(ProviderInstructions, { providerId: "claude-code", url }),
     );
-    expect(desktop).toContain(`claude mcp add doco -- npx -y mcp-remote ${url}`);
-    expect(desktop).toContain("claude_desktop_config.json");
+    expect(code).toContain(`claude mcp add doco -- npx -y mcp-remote ${url}`);
+    // …but the hand-edited claude_desktop_config.json block is gone: modern
+    // Claude Desktop uses the same custom-connector flow as Claude.ai, not a
+    // local config file.
+    expect(code).not.toContain("claude_desktop_config.json");
+
+    // Claude Desktop now rides the connector path — paste the URL, no config
+    // file, no bridge.
+    const connector = renderToStaticMarkup(
+      createElement(ProviderInstructions, { providerId: "claude-cursor", url }),
+    );
+    expect(connector).toContain("Add custom connector");
+    expect(connector).toContain(url);
+    expect(connector).not.toContain("claude_desktop_config.json");
+    expect(connector).not.toContain("mcp-remote");
 
     const chatgpt = renderToStaticMarkup(
       createElement(ProviderInstructions, { providerId: "chatgpt", url }),
@@ -197,6 +211,22 @@ describe("/api-keys page action", () => {
     expect(chatgpt).toContain(url);
     // The ChatGPT path doesn't carry the Claude Desktop config.
     expect(chatgpt).not.toContain("claude_desktop_config.json");
+  });
+
+  it("groups Claude Desktop with the connector clients and gives Claude Code its own tab", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ManualMcpPanel, {
+        host: "https://doco.test",
+        workspaces: [{ id: "workspace_01ABC", handle: "acme" }],
+      }),
+    );
+
+    // Claude Desktop now shares the custom-connector button with Claude.ai…
+    expect(markup).toContain("claude.ai · Claude Desktop · Claude mobile · Cursor");
+    // …and Claude Code keeps its own (mcp-remote bridge) tab.
+    expect(markup).toContain("Claude Code");
+    // The old combined "Claude Desktop · Claude Code" tab is gone.
+    expect(markup).not.toContain("Claude Desktop · Claude Code");
   });
 });
 

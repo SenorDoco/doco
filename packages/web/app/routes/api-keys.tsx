@@ -383,8 +383,8 @@ export function mcpUrlForWorkspace(host: string, workspaceId: string): string {
 // The MCP clients we give tailored setup steps for. The list drives the
 // clickable options; ProviderInstructions renders the steps for one.
 const MCP_PROVIDERS: { id: string; label: string }[] = [
-  { id: "claude-cursor", label: "claude.ai · Claude mobile · Cursor" },
-  { id: "claude-desktop", label: "Claude Desktop · Claude Code" },
+  { id: "claude-cursor", label: "claude.ai · Claude Desktop · Claude mobile · Cursor" },
+  { id: "claude-code", label: "Claude Code" },
   { id: "chatgpt", label: "ChatGPT & other clients" },
 ];
 
@@ -402,23 +402,13 @@ export function ProviderInstructions({ providerId, url }: { providerId: string; 
       </div>
     );
   }
-  if (providerId === "claude-desktop") {
+  if (providerId === "claude-code") {
     return (
       <div className="space-y-2" data-testid="provider-instructions">
         <p className="text-xs text-muted-foreground">
-          These bridge to remote MCP with <Code>mcp-remote</Code>. Claude Code:
+          Claude Code reaches the remote server through the <Code>mcp-remote</Code> bridge:
         </p>
         <CopyableCode value={`claude mcp add doco -- npx -y mcp-remote ${url}`} />
-        <p className="text-xs text-muted-foreground">
-          Claude Desktop — add to <Code>claude_desktop_config.json</Code>:
-        </p>
-        <CopyableCode
-          value={`{
-  "mcpServers": {
-    "doco": { "command": "npx", "args": ["-y", "mcp-remote", "${url}"] }
-  }
-}`}
-        />
       </div>
     );
   }
