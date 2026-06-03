@@ -136,14 +136,37 @@ function MobileNavMenu({ me }: { me: CurrentPrincipal }) {
       >
         <Menu className="h-4 w-4" />
       </button>
-      {open ? (
-        <div
-          aria-label="Navigation"
-          className="neu-floating absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-2 rounded-md bg-card p-2"
-        >
-          <NavButtons me={me} onNavigate={() => setOpen(false)} />
-        </div>
-      ) : null}
+      {open ? <MobileNavPanel me={me} onNavigate={() => setOpen(false)} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The hamburger popover panel. Extracted from {@link MobileNavMenu} so its
+ * stacking class is unit-testable via SSR — the live menu only mounts the
+ * panel on click (client state), so a server-rendered <SiteHeader> never
+ * includes it.
+ *
+ * Stacking: the popover and the doco page's floating detail dialog share the
+ * root stacking context (the shell wrappers in `root.tsx` set no z-index), so
+ * the popover must outrank everything the page can float beneath the header —
+ * the node/edge dialog layer at `z-[100]` (`$docoHandle._index.tsx`) and Señor
+ * Doco's overlay drawer at `z-120` (`app.css`). As the outermost, always-
+ * present navigation chrome, it sits at the top of that ladder.
+ */
+export function MobileNavPanel({
+  me,
+  onNavigate,
+}: {
+  me: CurrentPrincipal;
+  onNavigate?: () => void;
+}) {
+  return (
+    <div
+      aria-label="Navigation"
+      className="neu-floating absolute right-0 top-full z-[130] mt-2 flex w-48 flex-col gap-2 rounded-md bg-card p-2"
+    >
+      <NavButtons me={me} onNavigate={onNavigate} />
     </div>
   );
 }
