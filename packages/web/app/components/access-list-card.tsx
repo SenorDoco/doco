@@ -92,6 +92,9 @@ function AccessListEntry({
 }
 
 function AccessLine({ item, compact = false }: { item: AccessListItem; compact?: boolean }) {
+  // Group rows (workspaces) summarize their children, so they don't carry their
+  // own last-updated stamp — only leaf rows (docos) do.
+  const isGroup = Array.isArray(item.children);
   return (
     <div className="flex min-w-0 items-start gap-2">
       <span
@@ -124,9 +127,11 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
             )}
           </span>
         </div>
-        <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">
-          <LastUpdatedLabel iso={item.lastUpdatedAt} />
-        </div>
+        {isGroup ? null : (
+          <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">
+            <LastUpdatedLabel iso={item.lastUpdatedAt} />
+          </div>
+        )}
       </div>
     </div>
   );
