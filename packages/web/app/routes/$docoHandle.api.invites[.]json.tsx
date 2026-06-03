@@ -34,7 +34,7 @@ import {
   buildHumanInvitePrompt,
 } from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
-import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { getDocoLevelRoleForRequest, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { InviteStore } from "~/lib/invite-store.server";
 
 const ROLE_VALUES = new Set<DocoRole>(["owner", "writer", "reader"]);
@@ -91,8 +91,15 @@ export async function action({
   // A reader may invite another reader; an author may invite readers or
   // authors; owners can grant the full set. The role cap keeps invites
   // from widening authority beyond what the caller personally holds.
+  // Capped for Señor Doco: the agent's inviter role tops out at writer, so it
+  // can mint writer/reader invites at most — never an owner invite (which
+  // would hand owner access to someone else).
   const parsedRole = parseRole(body.role);
-  const inviterRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
+  const inviterRole = await getDocoLevelRoleForRequest(
+    request,
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me.id,
+  );
   if (!inviterRole) {
     return Response.json(
       {

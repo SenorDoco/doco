@@ -16,7 +16,7 @@
 //   400 — POST without the confirmation flag, or DELETE without ?id=
 
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { canAdminDoco } from "~/lib/doco-access.server";
+import { canAdminDocoForRequest } from "~/lib/doco-access.server";
 import {
   listProjectTokens,
   mintProjectToken,
@@ -31,7 +31,11 @@ export async function loader({
   params: { docoHandle: string };
 }) {
   const { meta, me } = await loadDocoRouteForRead(request, params);
-  const ok = await canAdminDoco({ ownerId: meta.ownerId, docoId: meta.docoId }, me?.id ?? null);
+  const ok = await canAdminDocoForRequest(
+    request,
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me?.id ?? null,
+  );
   if (!ok) {
     return Response.json(
       { error: "Only the doco's owner can list project tokens." },
@@ -59,7 +63,11 @@ export async function action({
       { status: 401 },
     );
   }
-  const ok = await canAdminDoco({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
+  const ok = await canAdminDocoForRequest(
+    request,
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me.id,
+  );
   if (!ok) {
     return Response.json(
       { error: "Only the doco's owner can manage project tokens." },

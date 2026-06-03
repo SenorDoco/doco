@@ -45,14 +45,31 @@ vi.mock("../oauth-server.server", () => ({
 }));
 
 import {
+  SENOR_DOCO_ROLE_CEILING,
+  canAdminDocoForRequest,
   canWriteDocoTypeForRequest,
+  capRoleForRequest,
   filterDocosToWorkspaceBoundary,
+  getDocoLevelRoleForRequest,
+  isSenorDocoRequest,
   listAccessibleDocoIdsInWorkspace,
   listVisibleDocoIdsForRequest,
   oauthTokenGrantsDoco,
   tokenReachableWorkspaceIdsForRequest,
   tokenReachableWorkspaceIdsFromGrant,
 } from "../doco-access.server";
+
+/** A request marked as coming from Señor Doco (web or Slack). */
+function senorDocoRequest(surface = "senor-doco-web"): Request {
+  return new Request("https://doco.test/acme/api/policies.json", {
+    headers: { "x-doco-authoring-surface": surface },
+  });
+}
+
+/** A plain human/browser request (no agent marker). */
+function humanRequest(): Request {
+  return new Request("https://doco.test/acme/api/policies.json");
+}
 
 function token(overrides: Partial<ValidAccessToken>): ValidAccessToken {
   return {
@@ -146,6 +163,115 @@ describe("canWriteDocoTypeForRequest token caps", () => {
         "user_agent",
         "principal",
       ),
+    ).resolves.toBe(true);
+  });
+});
+
+describe("isSenorDocoRequest", () => {
+  it("detects the web in-page assistant via the authoring-surface header", () => {
+    expect(isSenorDocoRequest(senorDocoRequest("senor-doco-web"))).toBe(true);
+  });
+
+  it("detects the Slack assistant via the authoring-surface header", () => {
+    expect(isSenorDocoRequest(senorDocoRequest("slack"))).toBe(true);
+  });
+
+  it("detects either assistant via the user-agent fallback", () => {
+    const web = new Request("https://doco.test/x", {
+      headers: { "user-agent": "Doco-In-Page-Assistant/1" },
+    });
+    const slack = new Request("https://doco.test/x", {
+      headers: { "user-agent": "Doco-Slack-Assistant/1" },
+    });
+    expect(isSenorDocoRequest(web)).toBe(true);
+    expect(isSenorDocoRequest(slack)).toBe(true);
+  });
+
+  it("is false for humans, MCP clients, and external API callers", () => {
+    expect(isSenorDocoRequest(humanRequest())).toBe(false);
+    expect(isSenorDocoRequest(senorDocoRequest("mcp"))).toBe(false);
+    expect(isSenorDocoRequest(senorDocoRequest("website"))).toBe(false);
+  });
+});
+
+describe("capRoleForRequest", () => {
+  it("caps owner to the ceiling (writer) for a Señor Doco request", () => {
+    expect(capRoleForRequest("owner", senorDocoRequest())).toBe("writer");
+    expect(SENOR_DOCO_ROLE_CEILING).toBe("writer");
+  });
+
+  it("leaves owner intact for a non-agent request", () => {
+    expect(capRoleForRequest("owner", humanRequest())).toBe("owner");
+  });
+
+  it("never raises a lower role and passes null through", () => {
+    expect(capRoleForRequest("writer", senorDocoRequest())).toBe("writer");
+    expect(capRoleForRequest("reader", senorDocoRequest())).toBe("reader");
+    expect(capRoleForRequest(null, senorDocoRequest())).toBeNull();
+  });
+});
+
+describe("getDocoLevelRoleForRequest", () => {
+  const meta = { ownerId: "workspace_A", docoId: "doco_1" };
+
+  beforeEach(() => {
+    // The underlying human is an owner of this Doco.
+    mocks.getDocoUserGrant.mockResolvedValue({ role: "owner", writeTypes: [] });
+  });
+
+  it("caps an owner principal to writer when the caller is Señor Doco", async () => {
+    await expect(getDocoLevelRoleForRequest(senorDocoRequest(), meta, "user_owner")).resolves.toBe(
+      "writer",
+    );
+  });
+
+  it("returns the real owner role for a human request", async () => {
+    await expect(getDocoLevelRoleForRequest(humanRequest(), meta, "user_owner")).resolves.toBe(
+      "owner",
+    );
+  });
+});
+
+describe("canAdminDocoForRequest", () => {
+  const meta = { ownerId: "workspace_A", docoId: "doco_1" };
+
+  beforeEach(() => {
+    mocks.getDocoUserGrant.mockResolvedValue({ role: "owner", writeTypes: [] });
+  });
+
+  it("denies admin to Señor Doco even when the human is the Doco's owner", async () => {
+    await expect(canAdminDocoForRequest(senorDocoRequest(), meta, "user_owner")).resolves.toBe(
+      false,
+    );
+  });
+
+  it("allows admin for a human owner", async () => {
+    await expect(canAdminDocoForRequest(humanRequest(), meta, "user_owner")).resolves.toBe(true);
+  });
+});
+
+describe("canWriteDocoTypeForRequest enforces the Señor Doco ceiling", () => {
+  const meta = { ownerId: "workspace_A", docoId: "doco_1" };
+
+  beforeEach(() => {
+    mocks.getDocoUserGrant.mockResolvedValue({ role: "owner", writeTypes: [] });
+  });
+
+  it("denies owner-only types (policy) to Señor Doco", async () => {
+    await expect(
+      canWriteDocoTypeForRequest(senorDocoRequest(), meta, "user_owner", "policy"),
+    ).resolves.toBe(false);
+  });
+
+  it("still allows owner-only types for a human owner", async () => {
+    await expect(
+      canWriteDocoTypeForRequest(humanRequest(), meta, "user_owner", "policy"),
+    ).resolves.toBe(true);
+  });
+
+  it("still allows writable content types (decision) for Señor Doco", async () => {
+    await expect(
+      canWriteDocoTypeForRequest(senorDocoRequest(), meta, "user_owner", "decision"),
     ).resolves.toBe(true);
   });
 });

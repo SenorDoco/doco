@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   capturePolicy: vi.fn(),
-  getDocoLevelRole: vi.fn(),
+  getDocoLevelRoleForRequest: vi.fn(),
   listPrincipals: vi.fn(),
   loadDocoRouteForRead: vi.fn(),
   withClient: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock("~/lib/capture.server", () => ({
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
-  getDocoLevelRole: mocks.getDocoLevelRole,
+  getDocoLevelRoleForRequest: mocks.getDocoLevelRoleForRequest,
   loadDocoRouteForRead: mocks.loadDocoRouteForRead,
 }));
 
@@ -72,7 +72,7 @@ describe("/<doco>/api/policies.json", () => {
   });
 
   it("rejects a body without a valid kind", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("owner");
+    mocks.getDocoLevelRoleForRequest.mockResolvedValue("owner");
 
     const response = await action({
       request: jsonRequest({ agent_instruction: "Keep lane names in business language." }),
@@ -87,7 +87,7 @@ describe("/<doco>/api/policies.json", () => {
   });
 
   it("requires owner scope before attempting to write a policy", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("writer");
+    mocks.getDocoLevelRoleForRequest.mockResolvedValue("writer");
 
     const response = await action({
       request: jsonRequest({
@@ -112,7 +112,7 @@ describe("/<doco>/api/policies.json", () => {
   });
 
   it("lets doco owners create a suggestion policy", async () => {
-    mocks.getDocoLevelRole.mockResolvedValue("owner");
+    mocks.getDocoLevelRoleForRequest.mockResolvedValue("owner");
     mocks.capturePolicy.mockResolvedValue({
       ok: true,
       id: "policy_123",
