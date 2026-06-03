@@ -1,7 +1,7 @@
 import { withClient } from "@doco/db";
 import type { ReactNode } from "react";
-// Per-Doco search — vector-only ranker (ADR-052, supersedes ADR-030)
-// + left-sidebar filters for lifecycle / node type.
+// Per-Doco search — hybrid ranker (vector + full-text floor; ADR-052,
+// supersedes ADR-030) + left-sidebar filters for lifecycle / node type.
 //
 // One provider call embeds keyword searches; filters resolve to a
 // candidate id set BEFORE cosine so pagination always slices matching
@@ -24,7 +24,7 @@ import {
   parseSearchFilters,
 } from "~/lib/search-filters.server";
 import type { SearchHit } from "~/lib/search.server";
-import { loadFilteredSearchHits, rankSearchEmbeddings } from "~/lib/search.server";
+import { hybridSearch, loadFilteredSearchHits } from "~/lib/search.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 function relativeTimeIso(iso: string | null): string {
@@ -119,87 +119,40 @@ export async function loader({
       };
     }
 
+    // Hybrid: semantic ranking with a full-text floor (see search.server.ts),
+    // degrading to keyword search when no embedding provider is configured or
+    // the query embedding fails — rather than returning nothing.
     const provider = getDocoEmbeddingProvider();
-    const emptyPagination = paginationState(url.searchParams, 0);
+    let queryEmbedding: Float32Array | null = null;
+    let warning: string | null = null;
     if (!provider) {
-      return {
-        q,
-        hits: [] as SearchHit[],
-        warning: "Vector search unavailable: no embedding provider configured (OPENAI_API_KEY).",
-        ownerSlug,
-        docoSlug,
-        handle,
-        host,
-        me,
-        filters,
-        facets,
-        pagination: emptyPagination,
-      };
-    }
-
-    let queryEmbedding: Float32Array;
-    try {
-      const [v] = await provider.embed([q], "query");
-      if (!v || v.length === 0) {
-        return {
-          q,
-          hits: [] as SearchHit[],
-          warning: "Vector search unavailable: provider returned empty embedding.",
-          ownerSlug,
-          docoSlug,
-          handle,
-          host,
-          me,
-          filters,
-          facets,
-          pagination: emptyPagination,
-        };
+      warning =
+        "Semantic ranking unavailable (no embedding provider configured); showing keyword matches.";
+    } else {
+      try {
+        const [v] = await provider.embed([q], "query");
+        if (v && v.length > 0) queryEmbedding = v;
+        else
+          warning =
+            "Semantic ranking unavailable (provider returned an empty embedding); showing keyword matches.";
+      } catch (e) {
+        warning = `Semantic ranking unavailable (${(e as Error).message}); showing keyword matches.`;
       }
-      queryEmbedding = v;
-    } catch (e) {
-      return {
-        q,
-        hits: [] as SearchHit[],
-        warning: `Vector search unavailable: ${(e as Error).message}`,
-        ownerSlug,
-        docoSlug,
-        handle,
-        host,
-        me,
-        filters,
-        facets,
-        pagination: emptyPagination,
-      };
     }
 
-    const ranked = await rankSearchEmbeddings(c, ctx.meta.docoId, queryEmbedding, filters);
-    if (ranked.hits.length === 0) {
-      return {
-        q,
-        hits: [] as SearchHit[],
-        warning:
-          ranked.candidateIds === null
-            ? "No embeddings in this doco yet — reindex first."
-            : "No entities match the active filters.",
-        ownerSlug,
-        docoSlug,
-        handle,
-        host,
-        me,
-        filters,
-        facets,
-        pagination: emptyPagination,
-      };
-    }
-
-    const allHits = ranked.hits;
+    const { hits: allHits } = await hybridSearch(
+      c,
+      ctx.meta.docoId,
+      { queryText: q, queryEmbedding },
+      filters,
+    );
     facets = withHitDerivedCounts(facets, allHits);
     const pagination = paginationState(url.searchParams, allHits.length);
 
     return {
       q,
       hits: paginateHits(allHits, pagination),
-      warning: null,
+      warning,
       ownerSlug,
       docoSlug,
       handle,
