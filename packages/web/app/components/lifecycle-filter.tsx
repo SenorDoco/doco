@@ -26,6 +26,28 @@ export const LIFECYCLE_ORDER: readonly string[] = ["drafting", "queued", "active
  */
 export const HIDDEN_LIFECYCLES_BY_DEFAULT: ReadonlySet<string> = new Set(["retired"]);
 
+/**
+ * Perspective kinds whose content is NOT filtered by the page lifecycle
+ * filter, so the filter panel must stay hidden for them. Today that's only
+ * the Pull requests perspective: it lists every imported PR Reference across
+ * all stages (Merged / Open / Closed) as one flat list and never reads the
+ * visible-lifecycle set. Surfacing the filter there is doubly wrong — the
+ * checkboxes change nothing, and the page-level re-seed (fired by the live
+ * feed's revalidation) flips any the user unchecks back on. Every other
+ * perspective (graph, list, bpmn, org-tree, sla, glossary) filters its nodes
+ * by the visible set, so the filter belongs on those.
+ */
+const PERSPECTIVES_WITHOUT_LIFECYCLE_FILTER: ReadonlySet<string> = new Set(["pull-requests"]);
+
+/**
+ * True when a perspective kind honors the page lifecycle filter — i.e. the
+ * frame should render the filter panel for it. False for perspectives that
+ * ignore the visible-lifecycle set, where the panel would be a dead control.
+ */
+export function perspectiveHonorsLifecycleFilter(kind: string): boolean {
+  return !PERSPECTIVES_WITHOUT_LIFECYCLE_FILTER.has(kind);
+}
+
 export function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
 }
