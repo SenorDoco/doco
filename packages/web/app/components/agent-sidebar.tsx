@@ -29,6 +29,7 @@ import {
   resolvePublishedRailWidth,
   resolveThinkingActive,
   useNarrowShell,
+  viewOnExpand,
 } from "~/lib/senor-doco-shell";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
@@ -526,6 +527,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
+  // Pathname where the user collapsed Señor Doco *in this mount*. null
+  // when the collapsed state was inherited from localStorage on load (a
+  // previous page/session) or after an expand consumes it. Drives
+  // whether expanding restores the open thread or resets to the thread
+  // list — see viewOnExpand and setCollapsedPersistent.
+  const collapseOriginPathRef = useRef<string | null>(null);
   // Publish the rail's current side-rail width as a CSS variable so
   // floating overlays (the node-detail dialog, etc.) can avoid covering
   // it. Below 640px the rail is an overlay drawer floating above the
@@ -563,15 +570,34 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const abortRef = useRef<AbortController | null>(null);
   const sendSeqRef = useRef(0);
 
-  const setCollapsedPersistent = useCallback((next: boolean) => {
-    setCollapsed(next);
-    writeBoolFlag(COLLAPSE_KEY, next);
-    if (!next) {
-      // Expanding clears unread.
-      setUnread(false);
-      writeBoolFlag(UNREAD_KEY, false);
-    }
-  }, []);
+  const setCollapsedPersistent = useCallback(
+    (next: boolean) => {
+      setCollapsed(next);
+      writeBoolFlag(COLLAPSE_KEY, next);
+      if (next) {
+        // Remember where this collapse happened so a later expand on the
+        // same page can restore the open thread (vs. resetting to the list).
+        collapseOriginPathRef.current = location.pathname;
+      } else {
+        // Expanding clears unread.
+        setUnread(false);
+        writeBoolFlag(UNREAD_KEY, false);
+        // Unless the collapse we're undoing happened on this same page,
+        // reset to the thread list rather than dropping the user back into
+        // the last-open (possibly stale) thread.
+        if (
+          viewOnExpand({
+            collapseOriginPath: collapseOriginPathRef.current,
+            currentPath: location.pathname,
+          }) === "list"
+        ) {
+          setView("list");
+        }
+        collapseOriginPathRef.current = null;
+      }
+    },
+    [location.pathname],
+  );
   const markUnread = useCallback(() => {
     setUnread(true);
     writeBoolFlag(UNREAD_KEY, true);
