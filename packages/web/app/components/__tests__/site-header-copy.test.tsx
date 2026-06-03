@@ -39,3 +39,29 @@ describe("SiteHeader copy", () => {
     expect(markup).not.toContain('href="/connect"');
   });
 });
+
+describe("SiteHeader account menu", () => {
+  it("renders the current user's handle with an @ prefix", () => {
+    const markup = renderHeader();
+
+    expect(markup).toContain(">@alice</a>");
+    expect(markup).not.toContain(">alice</a>");
+  });
+
+  it("gives the account button square corners like the rest of the menu", () => {
+    const markup = renderHeader();
+
+    // The account link is the only place that used a pill shape; every menu
+    // button should share the same `rounded-md` corners.
+    expect(markup).not.toContain("rounded-full");
+  });
+
+  it("left-aligns the Sign out control like the other menu items", () => {
+    const markup = renderHeader();
+
+    // Sign out is the only <button> (the rest are anchors), so without an
+    // explicit alignment it inherits the UA-default centered text and looks
+    // out of line in the stacked mobile menu.
+    expect(markup).toMatch(/<button[^>]*\btext-left\b[^>]*>Sign out<\/button>/);
+  });
+});

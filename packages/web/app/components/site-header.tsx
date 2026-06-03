@@ -66,8 +66,11 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
 }
 
 function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () => void }) {
+  // `text-left` keeps the lone <button> (Sign out) from inheriting the
+  // UA-default centered text, so it lines up with the anchor items in the
+  // stacked mobile menu.
   const navButtonClass =
-    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold";
+    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-left font-semibold";
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
   return (
@@ -91,10 +94,10 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
       ) : null}
       <NavLink
         to={`/users/${me.username}`}
-        className="neu-button whitespace-nowrap rounded-full border border-border px-3 py-1.5 font-semibold text-foreground hover:text-primary"
+        className={cn(navButtonClass, "text-foreground hover:text-primary")}
         onClick={onNavigate}
       >
-        {me.username}
+        @{me.username}
       </NavLink>
       <Form method="post" action="/sign-out" className="contents">
         <button type="submit" className={cn(navButtonClass, "text-foreground hover:text-primary")}>
