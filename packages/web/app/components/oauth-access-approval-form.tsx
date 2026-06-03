@@ -1,4 +1,5 @@
 import type { DocoRole } from "@doco/db";
+import { WRITE_ALL } from "@doco/shared";
 import { useMemo, useRef, useState } from "react";
 import { GrantPicker } from "~/components/grant-picker";
 import type { ApprovalDocoOption, ApprovalWorkspaceOption } from "~/lib/approval-grants";
@@ -23,6 +24,7 @@ export type OAuthApprovalWorkspace = ApprovalWorkspaceOption;
 export function OAuthAccessApprovalForm({
   docos,
   workspaces,
+  boundWorkspace,
   tokenNamePlaceholder,
   requestedRole,
   approveLabel,
@@ -32,6 +34,12 @@ export function OAuthAccessApprovalForm({
 }: {
   docos: OAuthApprovalDoco[];
   workspaces: OAuthApprovalWorkspace[];
+  /**
+   * When the connector is bound to one workspace (per-workspace MCP), skip the
+   * multi-workspace picker entirely: grant that workspace and just pick an
+   * access level.
+   */
+  boundWorkspace?: { id: string; label: string; maxRole: DocoRole };
   tokenNamePlaceholder: string;
   requestedRole: DocoRole | null;
   approveLabel: string;
@@ -41,11 +49,17 @@ export function OAuthAccessApprovalForm({
 }) {
   const catalog = useMemo(() => approvalCatalog(docos, workspaces), [docos, workspaces]);
   const [tokenName, setTokenName] = useState("");
-  // No default grant: the approver picks the one workspace (or Docos within it)
-  // this token may reach. A token is capped at a single workspace.
-  const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  // No default grant in the open picker: the approver picks the one workspace
+  // (or Docos within it) this token may reach. When bound to a workspace, the
+  // grant is that workspace — pre-composed as writer, the access level the user
+  // then adjusts. A token is capped at a single workspace either way.
+  const [grants, setGrants] = useState<ComposedGrant[]>(
+    boundWorkspace ? [boundWorkspaceGrant(boundWorkspace.id, "writer")] : [],
+  );
   const grantsPayload = useMemo(() => JSON.stringify(grants.map(grantPayload)), [grants]);
   const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
+
+  const boundRole: DocoRole = grants[0]?.role ?? "writer";
 
   const tokenNameRef = useRef<HTMLInputElement>(null);
   const grantsRef = useRef<HTMLDivElement>(null);
@@ -127,22 +141,33 @@ export function OAuthAccessApprovalForm({
       </div>
 
       <div ref={grantsRef}>
-        <GrantPicker
-          catalog={catalog}
-          grants={grants}
-          onChange={(next) => {
-            setGrants(next);
-            if (next.length > 0) clearError("grants");
-          }}
-          forToken
-        />
-        {errors.grants ? (
-          <p role="alert" className="mt-2 text-xs text-destructive">
-            {errors.grants}
-          </p>
-        ) : grants.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
-        ) : null}
+        {boundWorkspace ? (
+          <BoundWorkspaceAccess
+            workspaceLabel={boundWorkspace.label}
+            maxRole={boundWorkspace.maxRole}
+            role={boundRole}
+            onChange={(role) => setGrants([boundWorkspaceGrant(boundWorkspace.id, role)])}
+          />
+        ) : (
+          <>
+            <GrantPicker
+              catalog={catalog}
+              grants={grants}
+              onChange={(next) => {
+                setGrants(next);
+                if (next.length > 0) clearError("grants");
+              }}
+              forToken
+            />
+            {errors.grants ? (
+              <p role="alert" className="mt-2 text-xs text-destructive">
+                {errors.grants}
+              </p>
+            ) : grants.length === 0 ? (
+              <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
+            ) : null}
+          </>
+        )}
       </div>
 
       {requestedRole ? (
@@ -172,6 +197,54 @@ export function OAuthAccessApprovalForm({
         </button>
       </div>
     </form>
+  );
+}
+
+// The whole-workspace grant a bound connector composes: writer carries
+// write-all, like the picker's plain "Can write" choice (grant-picker `["*"]`).
+function boundWorkspaceGrant(workspaceId: string, role: DocoRole): ComposedGrant {
+  return {
+    level: "workspace",
+    targetId: workspaceId,
+    role,
+    writeTypes: role === "writer" ? [WRITE_ALL] : [],
+  };
+}
+
+// Bound-connector consent: the workspace is fixed, so the only choice is how
+// much access — read, write, or own — over that whole workspace.
+function BoundWorkspaceAccess({
+  workspaceLabel,
+  maxRole,
+  role,
+  onChange,
+}: {
+  workspaceLabel: string;
+  maxRole: DocoRole;
+  role: DocoRole;
+  onChange: (role: DocoRole) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm">
+        Grant access to the <strong>{workspaceLabel}</strong> workspace — all of its Docos.
+      </p>
+      <label className="block text-sm">
+        <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+          Access level
+        </span>
+        <select
+          data-testid="bound-workspace-access"
+          value={role}
+          onChange={(e) => onChange(e.currentTarget.value as DocoRole)}
+          className="rounded-md px-2 py-1.5 text-sm"
+        >
+          <option value="reader">Read only</option>
+          <option value="writer">Can write</option>
+          {maxRole === "owner" ? <option value="owner">Owner</option> : null}
+        </select>
+      </label>
+    </div>
   );
 }
 

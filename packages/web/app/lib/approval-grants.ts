@@ -71,3 +71,62 @@ export function resolveApprovalGrantView(
 export function approvalTargetNotOwnedMessage(targetDocoHandle: string): string {
   return `The token requested access to "${targetDocoHandle}", a Doco you don't own. Ask the agent to target a different one.`;
 }
+
+// ---------------------------------------------------------------------------
+// Per-workspace MCP binding.
+//
+// An MCP connector lives at `/<workspace-id>/mcp` and authorizes against that
+// URL (RFC 8707 `resource`), so a connector is bound to ONE workspace. When
+// the authorize request carries that resource we scope the consent to just
+// that workspace — the approver should never see, or be able to grant, any
+// other workspace through a connector that can't reach it.
+// ---------------------------------------------------------------------------
+
+const WORKSPACE_RESOURCE_RE = /\/(workspace_[A-Za-z0-9]+)\/mcp(?:[/?#]|$)/;
+
+/**
+ * Pull the bound workspace id out of an OAuth `resource` value. Returns null
+ * for anything that isn't a per-workspace MCP endpoint (missing param, an
+ * app-wide URL, a Doco URL, …) so non-MCP flows keep the full picker.
+ */
+export function parseWorkspaceFromResource(resource: string | null | undefined): string | null {
+  if (!resource) return null;
+  const match = resource.match(WORKSPACE_RESOURCE_RE);
+  return match ? match[1] : null;
+}
+
+export type BoundWorkspaceView =
+  | { blocked: true; workspaceId: string }
+  | {
+      blocked: false;
+      boundWorkspace: ApprovalWorkspaceOption;
+      docos: ApprovalDocoOption[];
+      workspaces: ApprovalWorkspaceOption[];
+    };
+
+/**
+ * Narrow the approve screen to the one workspace an MCP connector is bound to.
+ *
+ *   - Approver owns it → show only that workspace and its Docos.
+ *   - Approver doesn't own it → block: a connector for a workspace you don't
+ *     own can't be authorized by you (granting anything else wouldn't help).
+ */
+export function scopeApprovalToBoundWorkspace(
+  docos: ApprovalDocoOption[],
+  workspaces: ApprovalWorkspaceOption[],
+  workspaceId: string,
+): BoundWorkspaceView {
+  const boundWorkspace = workspaces.find((w) => w.id === workspaceId);
+  if (!boundWorkspace) return { blocked: true, workspaceId };
+  return {
+    blocked: false,
+    boundWorkspace,
+    docos: docos.filter((d) => d.workspace_id === workspaceId),
+    workspaces: [boundWorkspace],
+  };
+}
+
+/** Terminal message when the connector's workspace isn't one the approver owns. */
+export function boundWorkspaceNotOwnedMessage(workspaceId: string): string {
+  return `This MCP connector is bound to the workspace ${workspaceId}, which you don't own. Ask one of its owners to authorize the connector, or connect to a workspace you own.`;
+}

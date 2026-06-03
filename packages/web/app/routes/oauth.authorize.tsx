@@ -23,7 +23,10 @@ import {
   type ApprovalDocoOption,
   type ApprovalWorkspaceOption,
   approvalTargetNotOwnedMessage,
+  boundWorkspaceNotOwnedMessage,
+  parseWorkspaceFromResource,
   resolveApprovalGrantView,
+  scopeApprovalToBoundWorkspace,
 } from "~/lib/approval-grants";
 import {
   loadApprovalGrantOptions,
@@ -44,6 +47,10 @@ interface AuthorizeParams {
   target_doco_handle: string | null;
   /** Optional. Pre-fills the per-Doco role dropdown(s). */
   requested_role: string | null;
+  /** RFC 8707 resource the connector authorizes against (verbatim). */
+  resource: string | null;
+  /** Workspace the connector is bound to, parsed from `resource` (per-workspace MCP). */
+  bound_workspace_id: string | null;
 }
 
 interface LoaderData {
@@ -54,6 +61,12 @@ interface LoaderData {
   // When set, the client requested a Doco the user doesn't own — render
   // only the terminal not-owned message instead of the picker.
   blockedTargetHandle: string | null;
+  // When set, the connector is bound to a single workspace: the form skips the
+  // multi-workspace picker and just asks for an access level on this workspace.
+  boundWorkspace: { id: string; label: string; maxRole: DocoRole } | null;
+  // When set, the connector is bound to a workspace the user doesn't own —
+  // render the terminal "not owned" message instead of the picker.
+  boundWorkspaceBlockedId: string | null;
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
 
@@ -80,27 +93,43 @@ export async function loader({ request }: { request: Request }) {
   // tamper defense). Targeting a Doco the user owns (or targeting
   // nothing) yields the identical matrix as /device; targeting a Doco
   // they don't own blocks with a terminal message.
+  const client_name = client.client_name ?? client.client_id.slice(0, 20);
   const { docos, workspaces } = await loadApprovalGrantOptions(principal.id);
-  const view = resolveApprovalGrantView(docos, workspaces, params.target_doco_handle);
 
-  const data: LoaderData = view.blocked
-    ? {
-        client_name: client.client_name ?? client.client_id.slice(0, 20),
-        params,
-        docos: [],
-        workspaces: [],
-        blockedTargetHandle: view.targetDocoHandle,
-        me: principal,
-      }
-    : {
-        client_name: client.client_name ?? client.client_id.slice(0, 20),
-        params,
-        docos: view.docos,
-        workspaces: view.workspaces,
-        blockedTargetHandle: null,
-        me: principal,
-      };
-  return data;
+  // Per-workspace MCP: the connector authorizes against a workspace resource,
+  // so the consent must cover ONLY that workspace — never the approver's
+  // others. Scope to it (or block when the approver doesn't own it).
+  if (params.bound_workspace_id) {
+    const scoped = scopeApprovalToBoundWorkspace(docos, workspaces, params.bound_workspace_id);
+    return {
+      client_name,
+      params,
+      docos: scoped.blocked ? [] : scoped.docos,
+      workspaces: scoped.blocked ? [] : scoped.workspaces,
+      blockedTargetHandle: null,
+      boundWorkspace: scoped.blocked
+        ? null
+        : {
+            id: scoped.boundWorkspace.id,
+            label: scoped.boundWorkspace.display_name || scoped.boundWorkspace.handle,
+            maxRole: scoped.boundWorkspace.my_role,
+          },
+      boundWorkspaceBlockedId: scoped.blocked ? scoped.workspaceId : null,
+      me: principal,
+    } satisfies LoaderData;
+  }
+
+  const view = resolveApprovalGrantView(docos, workspaces, params.target_doco_handle);
+  return {
+    client_name,
+    params,
+    docos: view.blocked ? [] : view.docos,
+    workspaces: view.blocked ? [] : view.workspaces,
+    blockedTargetHandle: view.blocked ? view.targetDocoHandle : null,
+    boundWorkspace: null,
+    boundWorkspaceBlockedId: null,
+    me: principal,
+  } satisfies LoaderData;
 }
 
 export async function action({ request }: { request: Request }) {
@@ -127,6 +156,19 @@ export async function action({ request }: { request: Request }) {
   if (!tokenName) throw errorResponse("token_name required", 400);
 
   const grants = await readOAuthApprovalGrants(form, principal.id);
+
+  // A bound connector may only ever grant its own workspace. The picker
+  // already hides the others, but re-check on submit so a tampered POST can't
+  // bind the token to a different (or extra) workspace than the resource.
+  if (params.bound_workspace_id) {
+    const onlyBoundWorkspace =
+      grants.granted_doco_ids.length === 0 &&
+      grants.granted_workspace_ids.length === 1 &&
+      grants.granted_workspace_ids[0] === params.bound_workspace_id;
+    if (!onlyBoundWorkspace) {
+      throw errorResponse("invalid_scope: this connector can only grant its own workspace", 400);
+    }
+  }
 
   const { code } = await issueAuthorizationCode({
     client_id: params.client_id,
@@ -170,11 +212,21 @@ export default function AuthorizePage() {
         <Card>
           <CardHeader>
             <CardTitle>Approve access</CardTitle>
-            {data.blockedTargetHandle ? null : (
+            {data.blockedTargetHandle || data.boundWorkspaceBlockedId ? null : (
               <CardDescription>
-                An agent is requesting access to your docos through{" "}
-                <strong>{data.client_name}</strong>. Name the token and choose how much access to
-                grant.
+                {data.boundWorkspace ? (
+                  <>
+                    An agent is requesting access to your{" "}
+                    <strong>{data.boundWorkspace.label}</strong> workspace through{" "}
+                    <strong>{data.client_name}</strong>. Name the token and choose the access level.
+                  </>
+                ) : (
+                  <>
+                    An agent is requesting access to your docos through{" "}
+                    <strong>{data.client_name}</strong>. Name the token and choose how much access
+                    to grant.
+                  </>
+                )}
               </CardDescription>
             )}
           </CardHeader>
@@ -183,10 +235,15 @@ export default function AuthorizePage() {
               <p className="text-sm text-destructive">
                 {approvalTargetNotOwnedMessage(data.blockedTargetHandle)}
               </p>
+            ) : data.boundWorkspaceBlockedId ? (
+              <p className="text-sm text-destructive">
+                {boundWorkspaceNotOwnedMessage(data.boundWorkspaceBlockedId)}
+              </p>
             ) : (
               <OAuthAccessApprovalForm
                 docos={data.docos}
                 workspaces={data.workspaces}
+                boundWorkspace={data.boundWorkspace ?? undefined}
                 tokenNamePlaceholder="e.g. Claude Code in repo"
                 requestedRole={(data.params.requested_role as DocoRole | null) ?? null}
                 approveLabel="Approve"
@@ -207,6 +264,7 @@ export default function AuthorizePage() {
 
 function readParams(url: URL): AuthorizeParams {
   const requested = (url.searchParams.get("requested_role") ?? "").toLowerCase();
+  const resource = url.searchParams.get("resource");
   return {
     response_type: url.searchParams.get("response_type") ?? "",
     client_id: url.searchParams.get("client_id") ?? "",
@@ -218,6 +276,8 @@ function readParams(url: URL): AuthorizeParams {
     target_doco_handle: url.searchParams.get("target_doco_handle"),
     requested_role:
       requested && ["reader", "writer", "owner"].includes(requested) ? requested : null,
+    resource,
+    bound_workspace_id: parseWorkspaceFromResource(resource),
   };
 }
 
