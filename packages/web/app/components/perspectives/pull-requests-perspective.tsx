@@ -1,6 +1,8 @@
 // Pull requests perspective — a Doco's imported GitHub pull requests as a
-// flat, newest-first list (every stage together — Merged / Open / Closed —
-// NOT grouped by lifecycle, and not affected by the page lifecycle filter).
+// flat, newest-first list (every stage interleaved — Merged / Open / Closed —
+// NOT grouped by lifecycle). The frame's lifecycle filter narrows the list by
+// PR state (Open / Merged / Closed); the narrowing happens server-side (see the
+// loader) so it spans the whole repo, not just the latest-N slice shown here.
 //
 // PRs are stored as `reference` nodes (locator = the PR URL); the loader
 // (pull-requests-perspective.server.ts) reads the latest back. Each row links
@@ -30,9 +32,20 @@ interface PullRequestsPerspectiveProps {
   handle: string;
   /** Node to scroll into view and pulse — the perspective's one-shot focus. */
   focusId?: string | null;
+  /**
+   * True when the lifecycle filter is narrowing the list (a strict subset of
+   * stages is selected). Lets the empty state distinguish "nothing matches the
+   * filter" from "no PRs imported yet".
+   */
+  filtered?: boolean;
 }
 
-export function PullRequestsPerspective({ data, handle, focusId }: PullRequestsPerspectiveProps) {
+export function PullRequestsPerspective({
+  data,
+  handle,
+  focusId,
+  filtered = false,
+}: PullRequestsPerspectiveProps) {
   usePerspectiveFocusScroll(focusId);
 
   if (!data.connected) {
@@ -55,7 +68,9 @@ export function PullRequestsPerspective({ data, handle, focusId }: PullRequestsP
       <div className="min-h-0 flex-1 overflow-y-auto">
         {data.items.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
-            No pull requests have been imported yet.
+            {filtered
+              ? "No pull requests match the selected stages."
+              : "No pull requests have been imported yet."}
           </p>
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border">

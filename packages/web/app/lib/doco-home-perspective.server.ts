@@ -52,6 +52,11 @@ export async function loadDocoHomePerspectiveData(
     handle: string;
     focusNodeId: string | null | undefined;
     budget?: DocoHomePerspectiveBudget;
+    /**
+     * Selected PR lifecycle stages for the Pull requests perspective. Undefined
+     * (or every stage) loads the full list; a subset narrows it server-side.
+     */
+    pullRequestLifecycles?: string[];
   },
 ): Promise<DocoHomePerspectiveData> {
   const budget = args.budget ?? DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET;
@@ -130,6 +135,7 @@ export async function loadDocoHomePerspectiveData(
         ...empty,
         pullRequestsData: await loadPullRequestsPerspective(c, args.docoId, {
           limit: budget.rowLimit,
+          lifecycles: args.pullRequestLifecycles,
         }),
       };
     default: {

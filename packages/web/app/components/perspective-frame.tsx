@@ -6,6 +6,13 @@ interface LifecycleFilterSpec {
   visible: Set<string>;
   available: Iterable<string>;
   onToggle: (lifecycle: string) => void;
+  /**
+   * Override the chip text for a stage. Lets a perspective relabel the generic
+   * lifecycle stages into its own vocabulary — the Pull requests perspective
+   * shows Open / Merged / Closed instead of queued / active / retired. Defaults
+   * to the stage name with underscores spaced out.
+   */
+  labelFor?: (lifecycle: string) => string;
 }
 
 export interface FullscreenSpec {
@@ -124,11 +131,12 @@ function LifecycleFilterPanel({ spec }: { spec: LifecycleFilterSpec }) {
         {available.map((lifecycle) => {
           const checked = spec.visible.has(lifecycle);
           const color = lifecycleColor(lifecycle);
+          const label = spec.labelFor ? spec.labelFor(lifecycle) : lifecycle.replaceAll("_", " ");
           return (
             <label
               key={lifecycle}
               className="inline-flex cursor-pointer select-none items-center gap-1"
-              title={lifecycle}
+              title={label}
             >
               <input
                 type="checkbox"
@@ -138,7 +146,7 @@ function LifecycleFilterPanel({ spec }: { spec: LifecycleFilterSpec }) {
                 style={{ accentColor: color }}
               />
               <span className="capitalize" style={{ color }}>
-                {lifecycle.replaceAll("_", " ")}
+                {label}
               </span>
             </label>
           );

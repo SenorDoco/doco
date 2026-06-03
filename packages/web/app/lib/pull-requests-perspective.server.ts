@@ -12,6 +12,11 @@
 // helper; no write surface here).
 
 import { getDocoConnectionsContext } from "./github-connection.server";
+import { PR_LIFECYCLE_ORDER, pullRequestLabel } from "./pull-requests";
+
+// Re-exported so existing importers of the label from this module keep working;
+// the canonical definition now lives in the client-safe `./pull-requests`.
+export { pullRequestLabel } from "./pull-requests";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -66,18 +71,30 @@ type PullRequestRefRowWithTotal = PullRequestRefRow & {
   total_count: number | string | null;
 };
 
-// Human labels for the PR lifecycle stages, shown as a per-row chip.
-//   active (merged or approved) → Merged, queued (open) → Open, retired → Closed.
-const LIFECYCLE_LABELS: Record<string, string> = {
-  active: "Merged",
-  queued: "Open",
-  retired: "Closed",
-};
 const DEFAULT_PULL_REQUEST_LIMIT = 500;
 
-/** Display label for a PR's lifecycle chip (Merged / Open / Closed). */
-export function pullRequestLabel(lifecycle: string): string {
-  return LIFECYCLE_LABELS[lifecycle] ?? LIFECYCLE_LABELS.queued;
+// The canonical PR lifecycle stages, as a set, for normalizing row values.
+const VALID_PR_LIFECYCLES: ReadonlySet<string> = new Set(PR_LIFECYCLE_ORDER);
+
+/**
+ * SQL predicate (including the leading ` AND (...)`) that narrows the PR rows
+ * to the requested lifecycle stages, or `""` for no narrowing. `stages` is a
+ * whitelisted subset of `PR_LIFECYCLE_ORDER`, so the literals are safe to
+ * inline — no bound parameter is needed.
+ *
+ * `Open` (queued) is the catch-all: any row that is not Merged (`active`) or
+ * Closed (`retired`) displays as Open, so it matches `lifecycle NOT IN
+ * ('active','retired')` — keeping the filter consistent with the row labels
+ * even for off-canonical stages.
+ */
+function prLifecycleFilterSql(stages: readonly string[]): string {
+  const clauses: string[] = [];
+  for (const stage of stages) {
+    if (stage === "queued") clauses.push("lifecycle NOT IN ('active', 'retired')");
+    else if (stage === "active") clauses.push("lifecycle = 'active'");
+    else if (stage === "retired") clauses.push("lifecycle = 'retired'");
+  }
+  return clauses.length > 0 ? ` AND (${clauses.join(" OR ")})` : "";
 }
 
 function firstLine(value: string | null | undefined): string {
@@ -95,7 +112,8 @@ function firstLine(value: string | null | undefined): string {
 export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequestItem[] {
   return rows.map((row) => {
     const url = row.locator ?? "";
-    const lifecycle = row.lifecycle && LIFECYCLE_LABELS[row.lifecycle] ? row.lifecycle : "queued";
+    const lifecycle =
+      row.lifecycle && VALID_PR_LIFECYCLES.has(row.lifecycle) ? row.lifecycle : "queued";
     return {
       id: row.id,
       title: firstLine(row.reference) || url,
@@ -112,22 +130,44 @@ export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequest
  * plus the latest imported PR References as a flat, newest-first list. PR
  * References are `reference` nodes whose promoted `locator` is a GitHub PR URL
  * (`…/pull/<n>`); the locator column is indexed, so the LIKE stays cheap.
+ *
+ * `lifecycles` narrows the list (and the reported total) to the given PR
+ * stages — a subset of `PR_LIFECYCLE_ORDER`. The narrowing is applied
+ * server-side so it spans the whole repo, not just the latest-N slice the page
+ * caps at. Omit it (or pass every stage) for the full, unfiltered list; pass an
+ * empty array to select nothing.
  */
 export async function loadPullRequestsPerspective(
   c: QueryClient,
   docoId: string,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; lifecycles?: string[] } = {},
 ): Promise<PullRequestsPerspectiveData> {
   const connectionCtx = await getDocoConnectionsContext(docoId);
   const connected = (connectionCtx?.connections.length ?? 0) > 0;
   const limit = Math.max(1, Math.floor(opts.limit ?? DEFAULT_PULL_REQUEST_LIMIT));
   const queryLimit = limit + 1;
 
+  // Normalize the requested stages: undefined → all (no filter); a whitelisted
+  // subset → filter; every stage → all (no filter); none → nothing matches, so
+  // skip the round-trip entirely.
+  const requested =
+    opts.lifecycles === undefined
+      ? null
+      : PR_LIFECYCLE_ORDER.filter((stage) => opts.lifecycles?.includes(stage));
+  if (requested && requested.length === 0) {
+    return { connected, items: [], loadedCount: 0, totalCount: 0, hasMore: false };
+  }
+  const filterSql =
+    requested && requested.length < PR_LIFECYCLE_ORDER.length
+      ? prLifecycleFilterSql(requested)
+      : "";
+
   // The true total comes from an uncorrelated scalar subquery (same predicate,
   // no LIMIT), computed once as an InitPlan. COUNT(*) OVER() proved unreliable
   // under LIMIT on the production planner — it returned the page limit, not the
   // full count — and a result-row cap truncates windowed counts; a plain
-  // aggregate subquery is immune to both, on one round-trip.
+  // aggregate subquery is immune to both, on one round-trip. The lifecycle
+  // filter rides on both the slice and the count so the total tracks the filter.
   const { rows } = await c.query<PullRequestRefRowWithTotal>(
     `SELECT id,
             prose AS reference,
@@ -138,11 +178,11 @@ export async function loadPullRequestsPerspective(
                FROM nodes
               WHERE doco_id = $1
                 AND node_type = 'reference'
-                AND locator LIKE '%/pull/%') AS total_count
+                AND locator LIKE '%/pull/%'${filterSql}) AS total_count
        FROM nodes
       WHERE doco_id = $1
         AND node_type = 'reference'
-        AND locator LIKE '%/pull/%'
+        AND locator LIKE '%/pull/%'${filterSql}
       ORDER BY updated_at DESC, created_at DESC, id ASC
       LIMIT $2`,
     [docoId, queryLimit],
