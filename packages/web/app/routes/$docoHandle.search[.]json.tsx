@@ -1,7 +1,8 @@
 // GET /<doco-handle>/search.json — agent-facing query endpoint.
 //
 // Agents call this at the START of every new task to find nodes in the
-// Doco relevant to the user's request. Vector-only ranking (ADR-052).
+// Doco relevant to the user's request. Hybrid ranking: vector similarity
+// with a full-text floor (ADR-052) so un-embedded nodes are still found.
 // Resource route — no default export.
 import { withClient } from "@doco/db";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
@@ -13,7 +14,7 @@ import {
   computeFilterFacets,
   parseSearchFilters,
 } from "~/lib/search-filters.server";
-import { type SearchHit, rankSearchEmbeddings } from "~/lib/search.server";
+import { type SearchHit, hybridSearch } from "~/lib/search.server";
 
 interface JsonSearchHit {
   id: string;
@@ -73,57 +74,39 @@ export async function loader({
       });
     }
 
+    // Hybrid: semantic ranking when an embedding provider is configured, with
+    // a full-text floor so nodes the vector index never got (content-thin
+    // drafts, or rows whose best-effort embedding pass failed/lagged) are
+    // still found. With no/failed provider, degrade to keyword search rather
+    // than returning nothing.
     const provider = getDocoEmbeddingProvider();
+    let queryEmbedding: Float32Array | null = null;
+    let semanticWarning: string | null = null;
     if (!provider) {
-      return Response.json({
-        query: q,
-        doco_goal: goal,
-        count: 0,
-        duration_ms: Math.round(performance.now() - start),
-        filters: filtersOut,
-        hits: [],
-        viewer,
-        warning: "Vector search unavailable: no embedding provider configured (OPENAI_API_KEY).",
-      });
-    }
-
-    let queryEmbedding: Float32Array;
-    try {
-      const [v] = await provider.embed([q], "query");
-      if (!v || v.length === 0) {
-        return Response.json({
-          query: q,
-          doco_goal: goal,
-          count: 0,
-          duration_ms: Math.round(performance.now() - start),
-          filters: filtersOut,
-          hits: [],
-          viewer,
-          warning: "Vector search unavailable: provider returned empty embedding.",
-        });
+      semanticWarning =
+        "Semantic ranking unavailable (no embedding provider configured); showing keyword matches.";
+    } else {
+      try {
+        const [v] = await provider.embed([q], "query");
+        if (v && v.length > 0) queryEmbedding = v;
+        else
+          semanticWarning =
+            "Semantic ranking unavailable (provider returned an empty embedding); showing keyword matches.";
+      } catch (e) {
+        semanticWarning = `Semantic ranking unavailable (${(e as Error).message}); showing keyword matches.`;
       }
-      queryEmbedding = v;
-    } catch (e) {
-      return Response.json({
-        query: q,
-        doco_goal: goal,
-        count: 0,
-        duration_ms: Math.round(performance.now() - start),
-        filters: filtersOut,
-        hits: [],
-        viewer,
-        warning: `Vector search unavailable: ${(e as Error).message}`,
-      });
     }
 
-    const ranked = await rankSearchEmbeddings(
+    const { hits } = await hybridSearch(
       c,
       ctx.meta.docoId,
-      queryEmbedding,
+      { queryText: q, queryEmbedding },
       filters,
       filters.limit,
     );
-    if (ranked.hits.length === 0) {
+    const allHits = hits.map(toJsonSearchHit);
+
+    if (allHits.length === 0) {
       return Response.json({
         query: q,
         doco_goal: goal,
@@ -132,13 +115,9 @@ export async function loader({
         filters: filtersOut,
         hits: [],
         viewer,
-        warning:
-          ranked.candidateIds === null
-            ? "No embeddings in this doco yet — reindex first."
-            : "No entities match the active filters.",
+        warning: semanticWarning ?? "No entities match the query or the active filters.",
       });
     }
-    const allHits = ranked.hits.map(toJsonSearchHit);
 
     const stableData = {
       query: q,
@@ -147,6 +126,7 @@ export async function loader({
       count: allHits.length,
       filters: filtersOut,
       hits: allHits,
+      ...(semanticWarning ? { warning: semanticWarning } : {}),
     };
     return etaggedJson(
       request,

@@ -212,6 +212,96 @@ export async function rankSearchEmbeddings(
   return { hits, candidateIds };
 }
 
+/**
+ * Lexical (full-text) ranking over `entity_fts_nodes` — the index that's
+ * written inline with every capture, so it covers nodes the vector index
+ * never got: content-thin drafts and rows whose best-effort embedding pass
+ * lagged or silently failed. Same lifecycle/type filtering as the vector
+ * path (via `resolveFilteredCandidates`, which reads `nodes` directly, so
+ * un-embedded nodes are eligible). Returns hits in descending FTS rank.
+ */
+export async function rankSearchFts(
+  c: PoolClient,
+  docoId: string,
+  queryText: string,
+  filters: SearchFilters,
+  limit?: number,
+): Promise<SearchHit[]> {
+  const q = queryText.trim();
+  if (!q) return [];
+  const candidateIds = await resolveFilteredCandidates(c, docoId, filters);
+  if (candidateIds !== null && candidateIds.size === 0) return [];
+
+  const rows = (
+    await c.query<{ entity_id: string; rank: number }>(
+      `WITH query AS (SELECT websearch_to_tsquery('english', $2) AS q)
+       SELECT f.entity_id, ts_rank_cd(f.search_tsv, query.q) AS rank
+         FROM entity_fts_nodes f CROSS JOIN query
+        WHERE f.doco_id = $1 AND f.search_tsv @@ query.q
+        ORDER BY rank DESC, f.entity_id`,
+      [docoId, q],
+    )
+  ).rows;
+
+  let ids = rows.map((r) => r.entity_id);
+  if (candidateIds !== null) ids = ids.filter((id) => candidateIds.has(id));
+  if (typeof limit === "number") ids = ids.slice(0, limit);
+  if (ids.length === 0) return [];
+
+  const hits = await hydrateSearchHits(c, ids, docoId, null);
+  await attachSearchGlobalPageRank(c, docoId, hits);
+  // hydrateSearchHits returns rows grouped by spec; restore FTS rank order.
+  const rankById = new Map(ids.map((id, i) => [id, i]));
+  hits.sort((a, b) => (rankById.get(a.id) ?? 0) - (rankById.get(b.id) ?? 0));
+  return hits;
+}
+
+/**
+ * Union vector hits with FTS hits: vector ranking first (semantic relevance),
+ * then any FTS-only hits the vector set missed — the floor that keeps
+ * un-embedded nodes findable. Deduped by id, capped to `limit`. Pure.
+ */
+export function mergeSearchHits(
+  vectorHits: SearchHit[],
+  ftsHits: SearchHit[],
+  limit?: number,
+): SearchHit[] {
+  const seen = new Set<string>();
+  const merged: SearchHit[] = [];
+  for (const hit of [...vectorHits, ...ftsHits]) {
+    if (seen.has(hit.id)) continue;
+    seen.add(hit.id);
+    merged.push(hit);
+  }
+  return typeof limit === "number" ? merged.slice(0, limit) : merged;
+}
+
+/**
+ * Hybrid search: semantic ranking with a lexical floor. When a query
+ * embedding is supplied, rank by cosine and union in FTS matches the vector
+ * index lacks; with no embedding (provider absent or failed), fall back to
+ * FTS alone so search still works instead of returning nothing. `usedVector`
+ * tells the caller whether semantic ranking was applied.
+ */
+export async function hybridSearch(
+  c: PoolClient,
+  docoId: string,
+  query: { queryText: string; queryEmbedding: Float32Array | null },
+  filters: SearchFilters,
+  limit?: number,
+): Promise<{ hits: SearchHit[]; candidateIds: Set<string> | null; usedVector: boolean }> {
+  let vectorHits: SearchHit[] = [];
+  let candidateIds: Set<string> | null = null;
+  const usedVector = query.queryEmbedding !== null;
+  if (query.queryEmbedding) {
+    const ranked = await rankSearchEmbeddings(c, docoId, query.queryEmbedding, filters, limit);
+    vectorHits = ranked.hits;
+    candidateIds = ranked.candidateIds;
+  }
+  const ftsHits = await rankSearchFts(c, docoId, query.queryText, filters, limit);
+  return { hits: mergeSearchHits(vectorHits, ftsHits, limit), candidateIds, usedVector };
+}
+
 function createdTime(iso: string | null): number {
   if (!iso) return 0;
   const t = Date.parse(iso);
