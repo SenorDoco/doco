@@ -41,7 +41,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Glossaries",
     description:
       "Document product and domain terminology — canonical terms, definitions, aliases, replacement links, sources, and consistency checks.",
-    updatedAt: "2026-06-01",
+    updatedAt: "2026-06-03",
     owner: TEMPLATE_OWNER,
   },
   {
