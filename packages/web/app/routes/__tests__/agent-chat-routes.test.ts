@@ -4,7 +4,6 @@ const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
   loadConversationByIdForPrincipal: vi.fn(),
   loadOrCreateConversation: vi.fn(),
-  mutateConversationAttachments: vi.fn(),
   patchConversation: vi.fn(),
   runAssistantTurn: vi.fn(),
   stopActiveTurnForPrincipal: vi.fn(),
@@ -17,7 +16,6 @@ vi.mock("~/lib/session.server", () => ({
 vi.mock("~/lib/agent-chat.server", () => ({
   loadConversationByIdForPrincipal: mocks.loadConversationByIdForPrincipal,
   loadOrCreateConversation: mocks.loadOrCreateConversation,
-  mutateConversationAttachments: mocks.mutateConversationAttachments,
   patchConversation: mocks.patchConversation,
   runAssistantTurn: mocks.runAssistantTurn,
   stopActiveTurnForPrincipal: mocks.stopActiveTurnForPrincipal,
@@ -41,8 +39,6 @@ function conversationRow(overrides: Record<string, unknown> = {}) {
     archived: false,
     title: "Ask",
     workspace_id: null,
-    attached_doco_ids: [],
-    attached_workspace_handles: [],
     created_at: new Date("2026-01-01T00:00:00Z"),
     updated_at: new Date("2026-01-01T00:00:00Z"),
     active_turn_started_at: null,
@@ -117,5 +113,25 @@ describe("agent chat routes", () => {
         active_turn_started_at: null,
       },
     });
+  });
+
+  it("no longer attaches docos to a thread — legacy attach fields are ignored", async () => {
+    mocks.patchConversation.mockResolvedValue(conversationRow());
+
+    const response = await patchConversationAction({
+      request: jsonRequest(
+        "https://doco.test/api/v1/agent-chat/conversation/conv_1.json",
+        { attach_doco_id: "doco_x", detach_workspace: "acme" },
+        "PATCH",
+      ),
+      params: { id: "conv_1" },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { conversation: Record<string, unknown> };
+    // A thread belongs to a workspace, not docos: the response carries no
+    // attachment fields, and the legacy keys are simply dropped.
+    expect(body.conversation).not.toHaveProperty("attached_doco_ids");
+    expect(body.conversation).not.toHaveProperty("attached_workspace_handles");
   });
 });

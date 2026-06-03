@@ -3,42 +3,23 @@
 // Mutate a single Señor Doco thread. Body fields (all optional):
 //   { title?: string | null,
 //     archived?: boolean,
-//     attach_doco_id?: string,
-//     detach_doco_id?: string,
-//     attach_workspace?: string,
-//     detach_workspace?: string,
 //     stop_active_turn?: boolean }
 //
-// title / archived go through `patchConversation`; attach/detach go
-// through `mutateConversationAttachments`. Either or both may run in
-// a single request — the route stitches the results so the response
-// always reflects the post-patch row.
+// title / archived go through `patchConversation`; either or both may
+// run in a single request alongside stop_active_turn — the route
+// stitches the results so the response reflects the post-patch row.
 //
 // DELETE not exposed — archive is the soft-delete; the row stays
 // around so the agent can still reference it. Hard delete is
 // admin-only.
 
-import {
-  mutateConversationAttachments,
-  patchConversation,
-  stopActiveTurnForPrincipal,
-} from "~/lib/agent-chat.server";
+import { patchConversation, stopActiveTurnForPrincipal } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface PatchBody {
   title?: unknown;
   archived?: unknown;
-  attach_doco_id?: unknown;
-  detach_doco_id?: unknown;
-  attach_workspace?: unknown;
-  detach_workspace?: unknown;
   stop_active_turn?: unknown;
-}
-
-function cleanHandle(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim().slice(0, 128);
-  return trimmed || undefined;
 }
 
 export async function action({
@@ -85,18 +66,10 @@ export async function action({
     return Response.json({ error: "invalid_stop_active_turn" }, { status: 400 });
   }
   const shouldStopActiveTurn = body.stop_active_turn === true;
-  const ops = {
-    attachDocoId: cleanHandle(body.attach_doco_id),
-    detachDocoId: cleanHandle(body.detach_doco_id),
-    attachWorkspace: cleanHandle(body.attach_workspace),
-    detachWorkspace: cleanHandle(body.detach_workspace),
-  };
-  const hasAttachmentOp =
-    ops.attachDocoId || ops.detachDocoId || ops.attachWorkspace || ops.detachWorkspace;
   const hasPatch = Object.keys(patch).length > 0;
-  // Run stop first, then patch (title/archived), then attachments.
-  // All return the updated row; we take the last non-null and bail
-  // with 404 when any scoped mutation says the conversation isn't ours.
+  // Run stop first, then patch (title/archived). Both return the
+  // updated row; we take the last non-null and bail with 404 when any
+  // scoped mutation says the conversation isn't ours.
   let stoppedActiveTurn = false;
   let row = null;
   if (shouldStopActiveTurn) {
@@ -113,12 +86,6 @@ export async function action({
   if (hasPatch && !row) {
     return Response.json({ error: "not_found" }, { status: 404 });
   }
-  if (hasAttachmentOp) {
-    row = await mutateConversationAttachments(id, me.id, ops);
-    if (!row) {
-      return Response.json({ error: "not_found" }, { status: 404 });
-    }
-  }
   if (!row) {
     // Empty patch — load the current row so the client gets fresh state.
     row = await patchConversation(id, me.id, {});
@@ -134,8 +101,6 @@ export async function action({
       archived: row.archived,
       updated_at: row.updated_at.toISOString(),
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
-      attached_doco_ids: row.attached_doco_ids ?? [],
-      attached_workspace_handles: row.attached_workspace_handles ?? [],
     },
   });
 }

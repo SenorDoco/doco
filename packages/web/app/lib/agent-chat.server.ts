@@ -158,8 +158,6 @@ export interface ChatConversationRow {
   title: string | null;
   /** Workspace this thread is hard-scoped to; null = unassigned (broad context). */
   workspace_id: string | null;
-  attached_doco_ids: string[];
-  attached_workspace_handles: string[];
   created_at: Date;
   updated_at: Date;
   active_turn_started_at: Date | null;
@@ -209,12 +207,7 @@ export interface ChatStreamContext {
   attachmentIds: string[];
   graphReferences: VisibleGraphReferenceGroup[];
   abortSignal?: AbortSignal;
-  /**
-   * Conversation id for the active turn. Lets `runTool` attribute
-   * tool calls back to the thread — currently used to back-fill the
-   * thread's attached Docos as the agent works (path-scoped
-   * doco_api calls → `attachDocoToConversation`).
-   */
+  /** Conversation id for the active turn. */
   conversationId: string;
   /**
    * Injectable clock for the loop's wall-clock budget. Defaults to
@@ -298,7 +291,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, user_id, archived, title, workspace_id, attached_doco_ids, attached_workspace_handles, created_at, updated_at, active_turn_started_at";
+  "id, user_id, archived, title, workspace_id, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -374,8 +367,6 @@ export async function createConversation(
   opts: {
     title?: string | null;
     workspaceId?: string | null;
-    attachedDocoIds?: string[];
-    attachedWorkspaceHandles?: string[];
   } = {},
 ): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
@@ -385,23 +376,17 @@ export async function createConversation(
       typeof opts.workspaceId === "string" && opts.workspaceId.trim()
         ? opts.workspaceId.trim()
         : null;
-    const attachedDocoIds = uniqueNonEmptyStrings(opts.attachedDocoIds ?? []);
-    const attachedWorkspaceHandles = uniqueNonEmptyStrings(opts.attachedWorkspaceHandles ?? []);
     const r = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations
-         (id, user_id, title, workspace_id, attached_doco_ids, attached_workspace_handles)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (id, user_id, title, workspace_id)
+       VALUES ($1, $2, $3, $4)
        RETURNING ${CONV_COLS}`,
-      [id, principalId, title, workspaceId, attachedDocoIds, attachedWorkspaceHandles],
+      [id, principalId, title, workspaceId],
     );
     const row = r.rows[0];
     if (!row) throw new Error("failed to create conversation row");
     return row;
   });
-}
-
-function uniqueNonEmptyStrings(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 /**
@@ -548,14 +533,6 @@ export interface ConversationListItem {
   last_message_preview: string | null;
   /** Who sent the latest message — informs the WhatsApp-style "You:" prefix. */
   last_message_role: "user" | "assistant" | null;
-  /**
-   * Stable Doco ids so the client can decide what to do on row-click
-   * without a second snapshot fetch:
-   * exactly one attachment between docos + workspaces → jump straight to
-   * that page; otherwise just open the chat.
-   */
-  attached_doco_ids: string[];
-  attached_workspace_handles: string[];
   /** The Workspace this thread is scoped to; null = unassigned. */
   workspace_id: string | null;
   /** Handle of {@link workspace_id}, for the row's tag; null = unassigned. */
@@ -608,14 +585,10 @@ export async function listConversationsForPrincipal(
       message_count: string;
       last_message_content: unknown;
       last_message_role: "user" | "assistant" | null;
-      attached_doco_ids: string[] | null;
-      attached_workspace_handles: string[] | null;
       workspace_id: string | null;
       workspace_handle: string | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
-              c.attached_doco_ids,
-              c.attached_workspace_handles,
               c.workspace_id,
               w.handle AS workspace_handle,
               COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
@@ -646,8 +619,6 @@ export async function listConversationsForPrincipal(
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
       last_message_preview: extractMessagePreview(row.last_message_content),
       last_message_role: row.last_message_role,
-      attached_doco_ids: row.attached_doco_ids ?? [],
-      attached_workspace_handles: row.attached_workspace_handles ?? [],
       workspace_id: row.workspace_id,
       workspace_handle: row.workspace_handle,
     }));
@@ -676,122 +647,6 @@ export async function patchConversation(
     const r = await c.query<ChatConversationRow>(
       `UPDATE chat_conversations
           SET ${sets.join(", ")}, updated_at = now()
-        WHERE id = $1 AND user_id = $2
-        RETURNING ${CONV_COLS}`,
-      values,
-    );
-    return r.rows[0] ?? null;
-  });
-}
-
-function appendUniqueSql(column: string, paramIndex: number): string {
-  return `${column} = CASE WHEN $${paramIndex} = ANY(${column}) THEN ${column} ELSE ${column} || ARRAY[$${paramIndex}::text] END`;
-}
-
-/**
- * Append a stable Doco id to the thread's `attached_doco_ids` unless
- * it's already there. Idempotent on repeat calls — the conversation
- * accumulates every Doco it has touched. Caller is the doco_api tool
- * dispatcher; this lets the chat sidebar render clickable chips for
- * everywhere the agent has been so the user can jump back to that
- * Doco's perspective view even after a handle rename.
- *
- * Fails silently — attachment is a nice-to-have on top of the tool
- * call; we don't want a transient DB error to break the assistant
- * turn. Most failures are spurious (deadlocks under load) and the
- * next tool call to the same Doco will retry.
- */
-export async function attachDocoIdToConversation(
-  conversationId: string,
-  docoId: string,
-): Promise<void> {
-  if (!conversationId || !docoId) return;
-  try {
-    await withClient(async (c) => {
-      await c.query(
-        `UPDATE chat_conversations
-            SET ${appendUniqueSql("attached_doco_ids", 2)}
-          WHERE id = $1`,
-        [conversationId, docoId],
-      );
-    });
-  } catch {
-    // Best-effort — see docblock.
-  }
-}
-
-/**
- * Resolve a mutable handle at the edge, then store the immutable Doco
- * id. Kept for `doco_api` paths, which still arrive as /<handle>/api.
- */
-export async function attachDocoToConversation(
-  conversationId: string,
-  handle: string,
-): Promise<void> {
-  if (!conversationId || !handle) return;
-  try {
-    await withClient(async (c) => {
-      const doco = await c.query<{ id: string }>("SELECT id FROM docos WHERE handle = $1", [
-        handle,
-      ]);
-      const docoId = doco.rows[0]?.id;
-      if (!docoId) return;
-      await c.query(
-        `UPDATE chat_conversations
-            SET ${appendUniqueSql("attached_doco_ids", 2)}
-          WHERE id = $1`,
-        [conversationId, docoId],
-      );
-    });
-  } catch {
-    // Best-effort — see docblock.
-  }
-}
-
-/**
- * Owner-scoped mutate for the manual override flow. Accepts arbitrary
- * attach/detach operations against a thread the caller owns. Returns
- * the updated row or null when the conversation doesn't exist for
- * this principal. Each handle is checked against `array_remove` /
- * `array_append (unique)` so repeated requests stay idempotent.
- */
-export async function mutateConversationAttachments(
-  conversationId: string,
-  principalId: string,
-  ops: {
-    attachDocoId?: string;
-    detachDocoId?: string;
-    attachWorkspace?: string;
-    detachWorkspace?: string;
-  },
-): Promise<ChatConversationRow | null> {
-  return await withClient(async (c) => {
-    const updates: string[] = [];
-    const values: unknown[] = [conversationId, principalId];
-    if (ops.attachDocoId) {
-      values.push(ops.attachDocoId);
-      updates.push(appendUniqueSql("attached_doco_ids", values.length));
-    }
-    if (ops.detachDocoId) {
-      values.push(ops.detachDocoId);
-      updates.push(`attached_doco_ids = array_remove(attached_doco_ids, $${values.length})`);
-    }
-    if (ops.attachWorkspace) {
-      values.push(ops.attachWorkspace);
-      updates.push(appendUniqueSql("attached_workspace_handles", values.length));
-    }
-    if (ops.detachWorkspace) {
-      values.push(ops.detachWorkspace);
-      updates.push(
-        `attached_workspace_handles = array_remove(attached_workspace_handles, $${values.length})`,
-      );
-    }
-    if (updates.length === 0) {
-      return await loadConversationByIdForPrincipal(conversationId, principalId);
-    }
-    const r = await c.query<ChatConversationRow>(
-      `UPDATE chat_conversations
-          SET ${updates.join(", ")}
         WHERE id = $1 AND user_id = $2
         RETURNING ${CONV_COLS}`,
       values,
@@ -2057,26 +1912,6 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
     };
   }
   if (block.name === "doco_api") {
-    const input = block.input as { method?: unknown; path?: unknown; body?: unknown };
-    const path = typeof input?.path === "string" ? input.path : "";
-    // Auto-attach: when the agent hits a per-Doco URL, remember that
-    // Doco against the active conversation by stable id so the sidebar
-    // can render a clickable chip that survives handle renames.
-    // Best-effort — failures are swallowed by the helper and never
-    // break the tool call.
-    const perDocoById = /^\/by-id\/([^/]+)\/api\//.exec(path);
-    if (perDocoById) {
-      void attachDocoIdToConversation(ctx.conversationId, perDocoById[1]);
-    } else {
-      const perDoco = /^\/([^/]+)\/api\//.exec(path);
-      const handle = perDoco?.[1];
-      // Skip the platform-level API root — `/api/v1/...` matches the
-      // shape above with "api" as the would-be handle. Reserved
-      // prefixes never collide with real Doco handles by URL policy.
-      if (handle && handle !== "api") {
-        void attachDocoToConversation(ctx.conversationId, handle);
-      }
-    }
     return runDocoApiToolRequest({
       toolUseId: block.id,
       input: block.input,
@@ -2944,22 +2779,6 @@ async function* streamAssistantTurn(args: {
 // Public read API for the loader
 // ---------------------------------------------------------------------------
 
-/**
- * Resolved Doco attachment. The handle is the global route handle;
- * label is the human-facing workspace/doco name used where ambiguity matters.
- * `id` is kept for stable links/correlation.
- */
-export interface DocoAttachmentInfo {
-  id?: string;
-  handle: string;
-  label?: string;
-}
-
-export interface WorkspaceAttachmentInfo {
-  handle: string;
-  name: string | null;
-}
-
 export interface ConversationSnapshot {
   conversation_id: string;
   /** User-visible thread name. Null until the first user message is sent. */
@@ -2970,10 +2789,6 @@ export interface ConversationSnapshot {
    * Drives the in-thread workspace tag (mirrors the inbox list's tag).
    */
   workspace_handle: string | null;
-  /** Docos the agent has touched in this thread. Auto-populated by `doco_api`. */
-  attached_docos: DocoAttachmentInfo[];
-  /** Workspaces the agent has touched in this thread. Reserved; not yet populated. */
-  attached_workspaces: WorkspaceAttachmentInfo[];
   messages: {
     id: string;
     role: "user" | "assistant";
@@ -3006,44 +2821,6 @@ export interface ConversationSnapshot {
   thread_usage: ThreadUsage;
 }
 
-async function resolveDocoAttachments(ids: string[]): Promise<DocoAttachmentInfo[]> {
-  const docoIds = uniqueNonEmptyStrings(ids);
-  if (docoIds.length === 0) return [];
-  return await withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; owner_slug: string }>(
-      `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
-         FROM docos d
-         LEFT JOIN workspaces o ON o.id = d.owner_id
-         LEFT JOIN users co ON co.id = d.owner_id
-        WHERE d.id = ANY($1::text[])`,
-      [docoIds],
-    );
-    const byId = new Map(r.rows.map((row) => [row.id, row]));
-    return docoIds.map((id) => {
-      const row = byId.get(id);
-      return row
-        ? {
-            id: row.id,
-            handle: row.handle,
-            label: qualifiedDocoLabel({ ownerSlug: row.owner_slug, handle: row.handle }),
-          }
-        : { id, handle: id };
-    });
-  });
-}
-
-async function resolveWorkspaceAttachments(handles: string[]): Promise<WorkspaceAttachmentInfo[]> {
-  if (handles.length === 0) return [];
-  return await withClient(async (c) => {
-    const r = await c.query<{ handle: string; name: string | null }>(
-      "SELECT handle, name FROM workspaces WHERE handle = ANY($1::text[])",
-      [handles],
-    );
-    const byHandle = new Map(r.rows.map((row) => [row.handle, row.name]));
-    return handles.map((h) => ({ handle: h, name: byHandle.get(h) ?? null }));
-  });
-}
-
 /**
  * Load a snapshot for a specific thread or the user's active thread.
  *
@@ -3066,21 +2843,12 @@ export async function loadSnapshotForPrincipal(
     conv = await loadActiveConversation(principalId);
     if (!conv) return null;
   }
-  const [
-    { messages: rows, hasMore },
-    events,
-    attachedDocos,
-    attachedWorkspaces,
-    threadUsage,
-    workspace,
-  ] = await Promise.all([
+  const [{ messages: rows, hasMore }, events, threadUsage, workspace] = await Promise.all([
     loadMessagesPage(conv.id, {
       before: opts.before ?? null,
       limit: CHAT_MESSAGES_PAGE_SIZE,
     }),
     loadActiveTurnEvents(conv.id),
-    resolveDocoAttachments(conv.attached_doco_ids ?? []),
-    resolveWorkspaceAttachments(conv.attached_workspace_handles ?? []),
     loadThreadUsage(conv.id),
     conv.workspace_id ? getWorkspaceById(conv.workspace_id) : Promise.resolve(null),
   ]);
@@ -3089,8 +2857,6 @@ export async function loadSnapshotForPrincipal(
     title: conv.title,
     archived: conv.archived,
     workspace_handle: workspace?.handle ?? null,
-    attached_docos: attachedDocos,
-    attached_workspaces: attachedWorkspaces,
     messages: rows.map((r) => ({
       id: r.id,
       role: r.role,
