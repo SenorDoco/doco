@@ -93,6 +93,9 @@ export interface SlackConfig {
 
 export interface SlackOAuthState {
   installerId: string;
+  /** The Doco workspace the installer chose to bind this Slack team to. The
+   * team is bound at install time, so it is never installed-but-unbound. */
+  docoWorkspaceId: string;
   nonce: string;
   issuedAt: number;
 }
@@ -223,6 +226,8 @@ interface SlackConversationHistoryMessage {
 interface SlackInstallationInput {
   response: SlackOAuthAccessResponse;
   installedByUserId: string | null;
+  /** The Doco workspace to bind this Slack team to (chosen at install). */
+  docoWorkspaceId: string;
 }
 
 interface SlackConnectionInput {
@@ -308,12 +313,18 @@ export function slackRedirectUri(request: Request): string {
   return `${url.origin}/integrations/slack/callback`;
 }
 
-export function buildSlackInstallUrl(request: Request, installerId: string): string | null {
+export function buildSlackInstallUrl(
+  request: Request,
+  installerId: string,
+  docoWorkspaceId: string,
+): string | null {
   const config = getSlackConfig();
   if (!config.configured || !config.clientId || !config.signingSecret) return null;
+  if (!docoWorkspaceId) return null;
   const state = signSlackState(
     {
       installerId,
+      docoWorkspaceId,
       nonce: randomBytes(16).toString("base64url"),
       issuedAt: Date.now(),
     },
@@ -370,7 +381,12 @@ export function verifySlackState(
   } catch {
     throw new Error("Invalid Slack OAuth state payload.");
   }
-  if (!parsed.installerId || !parsed.nonce || typeof parsed.issuedAt !== "number") {
+  if (
+    !parsed.installerId ||
+    !parsed.docoWorkspaceId ||
+    !parsed.nonce ||
+    typeof parsed.issuedAt !== "number"
+  ) {
     throw new Error("Invalid Slack OAuth state payload.");
   }
   if (nowMs - parsed.issuedAt > STATE_TTL_MS || parsed.issuedAt - nowMs > 60_000) {
@@ -465,8 +481,9 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
     c.query(
       `INSERT INTO group_chat_installations
          (id, provider, workspace_id, workspace_name, bot_user_id, bot_access_token,
-          bot_scope, installed_by_chat_user_id, installed_by_user_id, data, created_at, updated_at)
-       VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, $9::jsonb, now(), now())
+          bot_scope, installed_by_chat_user_id, installed_by_user_id, doco_workspace_id,
+          data, created_at, updated_at)
+       VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, now(), now())
        ON CONFLICT (provider, workspace_id)
        DO UPDATE SET
          workspace_name = EXCLUDED.workspace_name,
@@ -475,6 +492,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
          bot_scope = EXCLUDED.bot_scope,
          installed_by_chat_user_id = EXCLUDED.installed_by_chat_user_id,
          installed_by_user_id = EXCLUDED.installed_by_user_id,
+         doco_workspace_id = EXCLUDED.doco_workspace_id,
          data = EXCLUDED.data,
          updated_at = now()`,
       [
@@ -486,6 +504,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
         scopes,
         input.response.authed_user?.id ?? null,
         input.installedByUserId,
+        input.docoWorkspaceId,
         JSON.stringify(data),
       ],
     ),

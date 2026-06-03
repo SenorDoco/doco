@@ -1,3 +1,4 @@
+import { getWorkspaceRole } from "@doco/db";
 import { redirect } from "react-router";
 import {
   exchangeSlackOAuthCode,
@@ -22,10 +23,17 @@ export async function loader({ request }: { request: Request }) {
 
   try {
     const parsedState = verifySlackState(state, config.signingSecret);
+    // Re-check ownership at completion — the signed state carried the chosen
+    // workspace, but the installer's role could have changed since.
+    const role = await getWorkspaceRole(parsedState.docoWorkspaceId, parsedState.installerId);
+    if (role !== "owner") {
+      throw redirect("/integrations?slack_error=not_workspace_owner");
+    }
     const response = await exchangeSlackOAuthCode(request, code);
     await upsertSlackInstallation({
       response,
       installedByUserId: parsedState.installerId,
+      docoWorkspaceId: parsedState.docoWorkspaceId,
     });
     const teamId = response.team?.id;
     if (!teamId) throw new Error("Slack OAuth response did not include a team id.");

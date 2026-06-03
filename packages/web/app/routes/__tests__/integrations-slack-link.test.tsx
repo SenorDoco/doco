@@ -25,7 +25,7 @@ function render(boundWorkspaceHandle: string | null): string {
 }
 
 describe("/integrations/slack/link confirmation copy", () => {
-  it("when bound, scopes the promise to the one workspace (no account-wide claim)", () => {
+  it("scopes the promise to the team's one workspace (no account-wide claim)", () => {
     const markup = render("torre");
     expect(markup).toContain("in the torre workspace");
     expect(markup).toContain("only within the torre workspace");
@@ -33,13 +33,13 @@ describe("/integrations/slack/link confirmation copy", () => {
     // The old, misleading account-wide phrasing is gone.
     expect(markup).not.toContain("Slack can use your Doco access");
     expect(markup).not.toContain("Doco permissions for Slack requests");
+    // The unbound "no workspace yet" screen was removed (teams bind at install).
+    expect(markup).not.toContain("has no Doco workspace yet");
   });
 
-  it("when unbound, says there is no access yet (no success claim)", () => {
+  it("still reads sensibly if the handle is momentarily unavailable", () => {
     const markup = render(null);
-    expect(markup).toContain("has no Doco workspace yet");
-    expect(markup).toContain("use your access yet");
-    expect(markup).toContain("connect this Slack team to a Doco workspace");
-    expect(markup).not.toContain("Slack can use your Doco access");
+    expect(markup).toContain("only within the workspace");
+    expect(markup).not.toContain("has no Doco workspace yet");
   });
 });
