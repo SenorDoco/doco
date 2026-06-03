@@ -6,7 +6,6 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
-import { normalizeNodeType } from "@doco/shared";
 import {
   type CSSProperties,
   type ReactNode,
@@ -19,6 +18,15 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
+import {
+  type PendingCreate,
+  focusNavigationUrl,
+  focusTargetForCreate,
+  focusTargetForNavigateUrl,
+  focusTargetForResourcePath,
+  pendingCreateForRequest,
+  perspectiveParam,
+} from "~/lib/agent-follow-target";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
 import {
@@ -404,41 +412,6 @@ function formatRelativeTime(iso: string): string {
   const months = Math.floor(days / 30);
   if (months < 12) return `${months}mo ago`;
   return `${Math.floor(months / 12)}y ago`;
-}
-
-type PendingCreate =
-  | { kind: "node"; handle: string; entityType: string }
-  | { kind: "policy"; handle: string };
-
-// When the agent drives focus (vs. an explicit user click), center
-// the graph on the node without opening the detail dialog. The
-// route loader reads `?dialog=skip` and leaves `selectedNode` null.
-function withDialogSkip(target: string): string {
-  if (!target.startsWith("/")) return target;
-  try {
-    const url = new URL(target, "https://doco.local");
-    url.searchParams.set("dialog", "skip");
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return target.includes("?") ? `${target}&dialog=skip` : `${target}?dialog=skip`;
-  }
-}
-
-function withDialogSkipForNodeTarget(target: string): string {
-  if (!target.startsWith("/")) return target;
-  try {
-    const url = new URL(target, "https://doco.local");
-    const segments = url.pathname.split("/").filter(Boolean);
-    const [handle, entityType, id] = segments;
-    const canonicalType = normalizeNodeType(entityType);
-    if (segments.length !== 3 || !handle || !id || !canonicalType) {
-      return target;
-    }
-    url.pathname = `/${handle}/${canonicalType}/${id}`;
-    return withDialogSkip(`${url.pathname}${url.search}${url.hash}`);
-  } catch {
-    return target;
-  }
 }
 
 export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
@@ -1389,68 +1362,39 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       if (toolName !== "doco_api") return;
       if (!input || typeof input !== "object") return;
       const path = (input as { path?: unknown }).path;
-      if (typeof path !== "string" || !path.startsWith("/")) return;
-      // /<handle>/api/<plural-type>/<id>.<ext>
-      const m = /^\/([^/]+)\/api\/([^/]+)\/([^/.]+)\.(?:json|txt)$/.exec(path);
-      if (!m) return;
-      const [, handle, plural, id] = m;
-      let target: string;
-      if (plural === "policies") {
-        target = `/${handle}/policies/${id}/edit`;
-      } else {
-        // Plurals are uniformly the entity-type + "s" across all
-        // node tables shipped today (decisions, intents, actions,
-        // logs, rules, evals, references, ideas, states, principals).
-        const entityType = normalizeNodeType(plural);
-        if (!entityType) return;
-        target = `/${handle}/${entityType}/${id}`;
-      }
-      const currentPath = location.pathname;
-      if (currentPath === target) return;
+      if (typeof path !== "string") return;
+      // A doco_api request that addresses one node or edge by id (read,
+      // update, delete). Focus the active perspective on it so the user
+      // watches the change land; edges center their source node, a
+      // policy opens its editor. Collection endpoints and non-resource
+      // paths fall through.
+      const target = focusTargetForResourcePath(path);
+      if (!target) return;
+      if (location.pathname === target.pathname) return;
       // Don't interrupt active composition — but only when there's
       // actually something half-written. Empty composer = user is
       // waiting; navigate.
       if (composerHasTextRef.current) return;
-      navigate(withDialogSkip(target));
+      navigate(focusNavigationUrl(target, perspectiveParam(location.search)));
     },
-    [navigate, location.pathname],
+    [navigate, location.pathname, location.search],
   );
 
   // POST-to-create flow doesn't have the id in the request path
   // (the path is /<handle>/api/<plural>.json — the id is generated
   // server-side and returned in the response body). So track which
-  // in-flight tool_use_ids are creates, then on tool_use_result pull
-  // the id out of the preview and navigate.
-  //
-  // Two shapes:
-  //   - "node" creates go to /<handle>/<entity-type>/<id>
-  //   - "policy" creates go to /<handle>/policies/<kind-slug>/<id>/edit.
-  //     The plural endpoint is /<handle>/api/policies.json for both
-  //     guidance and node-authoring policies; the kind is in the
-  //     request body's `policy_kind` field, which we capture at
-  //     note-create time.
+  // in-flight tool_use_ids are node/edge/policy creates, then on
+  // tool_use_result pull the id out of the preview and focus it.
   const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map());
 
   const maybeNoteCreate = useCallback((toolUseId: string, toolName: string, input: unknown) => {
     if (toolName !== "doco_api") return;
     if (!input || typeof input !== "object") return;
-    const inp = input as { path?: unknown; method?: unknown; body?: unknown };
+    const inp = input as { path?: unknown; method?: unknown };
     if (typeof inp.path !== "string") return;
-    const method = typeof inp.method === "string" ? inp.method.toUpperCase() : "GET";
-    if (method !== "POST") return;
-    // /<handle>/api/<plural>.<ext> — no id segment.
-    const m = /^\/([^/]+)\/api\/([^/]+)\.(?:json|txt)$/.exec(inp.path);
-    if (!m) return;
-    const [, handle, plural] = m;
-    if (plural === "policies") {
-      // Policy create — every policy is one entity type now; the edit
-      // page is keyed by id alone.
-      pendingCreatesRef.current.set(toolUseId, { kind: "policy", handle });
-      return;
-    }
-    const entityType = normalizeNodeType(plural);
-    if (!entityType) return;
-    pendingCreatesRef.current.set(toolUseId, { kind: "node", handle, entityType });
+    const method = typeof inp.method === "string" ? inp.method : "GET";
+    const pending = pendingCreateForRequest(inp.path, method);
+    if (pending) pendingCreatesRef.current.set(toolUseId, pending);
   }, []);
 
   const maybeFollowCreateResult = useCallback(
@@ -1475,15 +1419,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         if (m) id = m[1];
       }
       if (!id) return;
-      const target =
-        pending.kind === "policy"
-          ? `/${pending.handle}/policies/${id}/edit`
-          : `/${pending.handle}/${pending.entityType}/${id}`;
-      if (location.pathname === target) return;
+      const target = focusTargetForCreate(pending, id);
+      if (location.pathname === target.pathname) return;
       if (composerHasTextRef.current) return;
-      navigate(withDialogSkip(target));
+      navigate(focusNavigationUrl(target, perspectiveParam(location.search)));
     },
-    [navigate, location.pathname],
+    [navigate, location.pathname, location.search],
   );
 
   const send = useCallback(
@@ -1718,7 +1659,24 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               // Create flow: navigate to the freshly-minted node.
               maybeFollowCreateResult(event.tool_use_id, event.ok, event.preview);
             } else if (event.kind === "navigate") {
-              const targetUrl = withDialogSkipForNodeTarget(event.url);
+              // A node/edge focus URL rides the current perspective and
+              // skips the detail dialog, exactly like the agent's
+              // auto-focus — so a write the agent then navigates to lands
+              // in whatever perspective the user is viewing, not the
+              // default graph. Lists, settings, the edge index, etc.
+              // navigate verbatim. The active perspective wins; fall back
+              // to one the agent pinned on the URL.
+              const focusTarget = focusTargetForNavigateUrl(event.url);
+              let targetUrl = event.url;
+              if (focusTarget) {
+                const queryStart = event.url.indexOf("?");
+                const urlPerspective =
+                  queryStart >= 0 ? perspectiveParam(event.url.slice(queryStart)) : null;
+                targetUrl = focusNavigationUrl(
+                  focusTarget,
+                  perspectiveParam(location.search) ?? urlPerspective,
+                );
+              }
               navigate(targetUrl);
               appendThinking({ kind: "navigate", url: targetUrl });
             } else if (event.kind === "message_saved") {
