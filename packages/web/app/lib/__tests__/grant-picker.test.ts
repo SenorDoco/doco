@@ -244,6 +244,11 @@ describe("availableScopes", () => {
       "types",
     ]);
   });
+  it("names the workspace scope after the bound workspace, dropping the plural label", () => {
+    const scopes = availableScopes(catalog, { boundWorkspaceLabel: "torre" });
+    expect(scopes.find((s) => s.scope === "workspace")?.title).toBe("The entire torre workspace");
+    expect(scopes.map((s) => s.title)).not.toContain("Specific workspace(s)");
+  });
 });
 
 describe("coerceSingleWorkspace (token one-workspace cap)", () => {
