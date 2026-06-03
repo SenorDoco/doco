@@ -339,12 +339,102 @@ function Code({ children }: { children: string }) {
   return <code className="rounded bg-input px-1 py-0.5 font-mono">{children}</code>;
 }
 
-function CodeBlock({ children }: { children: string }) {
+function FieldLabel({ children }: { children: string }) {
   return (
-    <pre className="mt-2 overflow-x-auto rounded-md bg-input px-3 py-2 font-mono text-xs">
-      <code>{children}</code>
-    </pre>
+    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {children}
+    </div>
   );
+}
+
+// A code box with its own Copy button. The MCP URL and the per-client
+// setup commands are all things you paste somewhere, so each is copyable.
+function CopyableCode({ value, testid }: { value: string; testid?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="relative">
+      <pre
+        className="overflow-x-auto whitespace-pre rounded-md bg-input px-3 py-2 pr-16 font-mono text-xs"
+        data-testid={testid}
+      >
+        <code>{value}</code>
+      </pre>
+      <button
+        type="button"
+        onClick={() => {
+          if (typeof navigator !== "undefined" && navigator.clipboard) {
+            void navigator.clipboard.writeText(value).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }
+        }}
+        className="neu-button absolute right-2 top-2 rounded-md px-2 py-1 text-[11px]"
+      >
+        {copied ? "Copied!" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+/** The hosted MCP endpoint for one workspace: `<host>/<workspace-id>/mcp`. */
+export function mcpUrlForWorkspace(host: string, workspaceId: string): string {
+  return `${host.replace(/\/+$/, "")}/${workspaceId}/mcp`;
+}
+
+// The MCP clients we give tailored setup steps for. The list drives the
+// clickable options; ProviderInstructions renders the steps for one.
+const MCP_PROVIDERS: { id: string; label: string }[] = [
+  { id: "claude-cursor", label: "claude.ai · Claude mobile · Cursor" },
+  { id: "claude-desktop", label: "Claude Desktop · Claude Code" },
+  { id: "chatgpt", label: "ChatGPT & other clients" },
+];
+
+export function ProviderInstructions({ providerId, url }: { providerId: string; url: string }) {
+  if (providerId === "claude-cursor") {
+    return (
+      <div className="space-y-2" data-testid="provider-instructions">
+        <p className="text-xs text-muted-foreground">
+          Settings → Connectors → Add custom connector, and paste your workspace's URL:
+        </p>
+        <CopyableCode value={url} />
+        <p className="text-xs text-muted-foreground">
+          Approve the OAuth prompt — pick the workspace and, optionally, narrow to specific Docos.
+        </p>
+      </div>
+    );
+  }
+  if (providerId === "claude-desktop") {
+    return (
+      <div className="space-y-2" data-testid="provider-instructions">
+        <p className="text-xs text-muted-foreground">
+          These bridge to remote MCP with <Code>mcp-remote</Code>. Claude Code:
+        </p>
+        <CopyableCode value={`claude mcp add doco -- npx -y mcp-remote ${url}`} />
+        <p className="text-xs text-muted-foreground">
+          Claude Desktop — add to <Code>claude_desktop_config.json</Code>:
+        </p>
+        <CopyableCode
+          value={`{
+  "mcpServers": {
+    "doco": { "command": "npx", "args": ["-y", "mcp-remote", "${url}"] }
+  }
+}`}
+        />
+      </div>
+    );
+  }
+  if (providerId === "chatgpt") {
+    return (
+      <div className="space-y-2" data-testid="provider-instructions">
+        <p className="text-xs text-muted-foreground">
+          Add a connector / custom MCP server with your workspace's URL:
+        </p>
+        <CopyableCode value={url} />
+      </div>
+    );
+  }
+  return null;
 }
 
 export function ManualMcpPanel({
@@ -355,22 +445,26 @@ export function ManualMcpPanel({
   workspaces?: { id: string; handle: string }[];
 }) {
   const baseUrl = host.replace(/\/+$/, "");
+  const hasWorkspaces = workspaces.length > 0;
   // MCP is per-workspace: each workspace has its own endpoint at
-  // /<workspace-id>/mcp, and a connector's token reaches only that workspace.
-  // Show the caller's own workspace URLs; fall back to the id placeholder when
-  // they're not in any workspace yet.
-  const placeholder = `${baseUrl}/WORKSPACE_ID/mcp`;
-  const exampleUrl = workspaces[0] ? `${baseUrl}/${workspaces[0].id}/mcp` : placeholder;
+  // /<workspace-id>/mcp, and a connector's token reaches only that
+  // workspace. So the flow is: pick a workspace → copy its URL → pick a
+  // client. With exactly one workspace there's nothing to ask, so it's
+  // pre-selected; with none, fall back to the WORKSPACE_ID placeholder.
+  const [selectedId, setSelectedId] = useState(workspaces.length === 1 ? workspaces[0].id : "");
+  const [provider, setProvider] = useState("");
+  const selectionResolved = !hasWorkspaces || selectedId !== "";
+  const effectiveId = hasWorkspaces ? selectedId : "WORKSPACE_ID";
+  const url = mcpUrlForWorkspace(baseUrl, effectiveId);
+
   return (
-    <section className="space-y-5" data-testid="manual-mcp-panel">
-      <div className="space-y-2">
-        <h2 className="text-xl font-semibold">Connect a client to Doco</h2>
-        <p className="text-sm text-muted-foreground">
-          Doco hosts a remote MCP server <strong>per workspace</strong>, at{" "}
-          <Code>{placeholder}</Code>. Each connector is bound to one workspace and its token reaches
-          no other. Point any MCP-capable client at your workspace's URL — the client runs the OAuth
-          approval for you and carries the token from then on. The machine-readable version of this
-          page is{" "}
+    <section className="space-y-4" data-testid="manual-mcp-panel">
+      <div className="space-y-1.5">
+        <h2 className="text-base font-semibold">Connect a client to Doco</h2>
+        <p className="text-xs text-muted-foreground">
+          Doco hosts a remote MCP server <strong>per workspace</strong> — each connector is bound to
+          one workspace and its token reaches no other. Pick a workspace, copy its URL, then choose
+          your client for setup steps. Machine-readable version:{" "}
           <a href="/llms.txt" className="underline hover:opacity-80">
             /llms.txt
           </a>
@@ -378,73 +472,83 @@ export function ManualMcpPanel({
         </p>
       </div>
 
-      {workspaces.length > 0 ? (
-        <section className="space-y-2 border-t border-border pt-4" data-testid="workspace-mcp-urls">
-          <h3 className="text-base font-semibold">Your workspace MCP URLs</h3>
-          <ul className="space-y-1">
+      {/* Step 1 — which workspace? */}
+      <div className="space-y-1.5 border-t border-border pt-3">
+        <FieldLabel>Workspace</FieldLabel>
+        {hasWorkspaces ? (
+          <select
+            data-testid="mcp-workspace-select"
+            value={selectedId}
+            onChange={(e) => setSelectedId(e.currentTarget.value)}
+            className="block w-full max-w-md rounded-md px-2 py-1.5 text-xs"
+          >
+            {workspaces.length > 1 ? <option value="">Select a workspace…</option> : null}
             {workspaces.map((w) => (
-              <li key={w.id} className="text-sm">
-                <span className="text-muted-foreground">{w.handle}: </span>
-                <Code>{`${baseUrl}/${w.id}/mcp`}</Code>
-              </li>
+              <option key={w.id} value={w.id}>
+                {w.handle}
+              </option>
             ))}
-          </ul>
-        </section>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Find a workspace's id on its <strong>Settings</strong> page (it looks like{" "}
-          <Code>workspace_01…</Code>) and substitute it for <Code>WORKSPACE_ID</Code> below.
-        </p>
-      )}
+          </select>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            You're not in a workspace yet. Find a workspace's id on its <strong>Settings</strong>{" "}
+            page (it looks like <Code>workspace_01…</Code>) and drop it into the URL below in place
+            of <Code>WORKSPACE_ID</Code>.
+          </p>
+        )}
+      </div>
 
-      <section className="space-y-2 border-t border-border pt-4">
-        <h3 className="text-base font-semibold">claude.ai, Claude mobile, Cursor</h3>
-        <p className="text-sm text-muted-foreground">
-          Settings → Connectors → Add custom connector, and paste your workspace's URL:
-        </p>
-        <CodeBlock>{exampleUrl}</CodeBlock>
-        <p className="text-sm text-muted-foreground">
-          Approve the OAuth prompt — pick the workspace and, optionally, narrow to specific Docos.
-        </p>
-      </section>
+      {selectionResolved ? (
+        <>
+          {/* Step 2 — the URL */}
+          <div className="space-y-1.5 border-t border-border pt-3">
+            <FieldLabel>Your MCP URL</FieldLabel>
+            <CopyableCode value={url} testid="mcp-url" />
+          </div>
 
-      <section className="space-y-2 border-t border-border pt-4">
-        <h3 className="text-base font-semibold">Claude Desktop, Claude Code</h3>
-        <p className="text-sm text-muted-foreground">
-          These bridge to remote MCP with <Code>mcp-remote</Code>. Claude Code:
-        </p>
-        <CodeBlock>{`claude mcp add doco -- npx -y mcp-remote ${exampleUrl}`}</CodeBlock>
-        <p className="text-sm text-muted-foreground">
-          Claude Desktop — add to <Code>claude_desktop_config.json</Code>:
-        </p>
-        <CodeBlock>{`{
-  "mcpServers": {
-    "doco": { "command": "npx", "args": ["-y", "mcp-remote", "${exampleUrl}"] }
-  }
-}`}</CodeBlock>
-      </section>
+          {/* Step 3 — per-client setup, revealed on click */}
+          <div className="space-y-2 border-t border-border pt-3">
+            <FieldLabel>Set up your client</FieldLabel>
+            <p className="text-xs text-muted-foreground">
+              Pick your client for step-by-step setup.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {MCP_PROVIDERS.map((p) => {
+                const active = p.id === provider;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-pressed={active}
+                    data-testid={`mcp-provider-${p.id}`}
+                    onClick={() => setProvider(active ? "" : p.id)}
+                    className={cn(
+                      "neu-button rounded-md px-3 py-1.5 text-xs font-semibold",
+                      active ? "bg-primary text-primary-foreground" : "",
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+            {provider ? (
+              <div className="rounded-md border border-border bg-background/40 p-3">
+                <ProviderInstructions providerId={provider} url={url} />
+              </div>
+            ) : null}
+          </div>
 
-      <section className="space-y-2 border-t border-border pt-4">
-        <h3 className="text-base font-semibold">ChatGPT &amp; other MCP clients</h3>
-        <p className="text-sm text-muted-foreground">
-          Add a connector / custom MCP server with your workspace's URL:
-        </p>
-        <CodeBlock>{exampleUrl}</CodeBlock>
-      </section>
-
-      <section className="space-y-2 border-t border-border pt-4">
-        <h3 className="text-base font-semibold">What you get</h3>
-        <p className="text-sm text-muted-foreground">
-          The connector is read <em>and</em> write: <Code>doco_search</Code> and{" "}
-          <Code>doco_get</Code> (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, and{" "}
-          <Code>doco_changeset</Code> (batch write), and <Code>doco_request_access</Code> (ask an
-          owner for access) — all scoped to this one workspace. Read vs write is a live permission
-          on the same token — stepping up never means reconnecting. Auth is OAuth 2.1 (PKCE +
-          dynamic client registration); an unauthenticated request returns a 401 whose{" "}
-          <Code>WWW-Authenticate</Code> header points at this workspace's protected-resource
-          metadata so the client discovers the rest. No repo or local files needed.
-        </p>
-      </section>
+          {/* What you get */}
+          <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+            The connector is read <em>and</em> write — <Code>doco_search</Code>,{" "}
+            <Code>doco_get</Code> (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>,{" "}
+            <Code>doco_changeset</Code> (write), and <Code>doco_request_access</Code> — all scoped
+            to this one workspace. Read vs write is a live permission on the same token, so stepping
+            up never means reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration).
+          </p>
+        </>
+      ) : null}
     </section>
   );
 }
