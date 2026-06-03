@@ -1676,11 +1676,10 @@ async function readSlackDocoApiPolicies(
       kind: string | null;
       data: Record<string, unknown> | null;
       lifecycle: string | null;
-      body_md: string | null;
       created_at: string | null;
       updated_at: string | null;
     }>(
-      `SELECT id, kind, data, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
+      `SELECT id, kind, data, lifecycle, created_at::text AS created_at, updated_at::text AS updated_at
          FROM policies
         WHERE doco_id = $1
         ORDER BY created_at DESC`,
@@ -1695,7 +1694,6 @@ async function readSlackDocoApiPolicies(
       summary: predicate ? summarizePredicate(predicate) : "",
       predicate,
       lifecycle: row.lifecycle,
-      body_md: row.body_md,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };

@@ -1832,8 +1832,6 @@ export interface PolicyDraft {
   when_node_type?: string[];
   fires_when_node_lifecycle?: string[];
   on_violation?: "block" | "warn" | "log";
-  /** Optional markdown body (long-form rationale). */
-  body_md?: string;
   /** Optional: principal id who authored the policy. */
   authored_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
@@ -2003,7 +2001,7 @@ async function buildPolicyPayload(
     label: summarizePredicate(predicate),
     lifecycle,
     fm,
-    body: draft.body_md?.trim() ?? "",
+    body: "",
     authorId: author,
     createdById,
     now,
@@ -2155,7 +2153,6 @@ export async function loadPolicyForEdit(opts: {
 }): Promise<
   | {
       ok: true;
-      body_md: string;
       lifecycle: string;
       data: Record<string, unknown>;
     }
@@ -2164,11 +2161,10 @@ export async function loadPolicyForEdit(opts: {
   const scopeCol = "doco_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
-      body_md: string | null;
       lifecycle: string | null;
       data: Record<string, unknown> | null;
     }>(
-      `SELECT body_md, lifecycle, data FROM policies
+      `SELECT lifecycle, data FROM policies
         WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.policyId, opts.scopeId],
     );
@@ -2177,7 +2173,6 @@ export async function loadPolicyForEdit(opts: {
   if (!row) return { error: `Policy ${opts.policyId} not found.`, status: 404 };
   return {
     ok: true,
-    body_md: row.body_md ?? "",
     lifecycle: row.lifecycle ?? "active",
     data: row.data ?? {},
   };

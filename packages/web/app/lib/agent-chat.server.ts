@@ -1525,7 +1525,7 @@ required prose key is now \`intent\` / \`decision\` / \`action\` /
 etc., not \`summary\`.
 
 ${renderCaptureCheatsheet()}
-- Policy (Suggestion, owner-only): POST /<handle>/api/policies.json with kind*("suggestion"), agent_instruction*(one natural-language instruction), body_md?, authored_by_principal_id?.
+- Policy (Suggestion, owner-only): POST /<handle>/api/policies.json with kind*("suggestion"), agent_instruction*(one natural-language instruction), authored_by_principal_id?.
 - Policy (Probabilistic, owner-only): same endpoint with kind*("probabilistic"), agent_instruction*(prose the LLM judge evaluates), when_node_type?[], fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 - Policy (Deterministic, owner-only): same endpoint with kind*("deterministic"), predicate*(object keyed by sub_kind, e.g. {"sub_kind":"requires_edge_role","edge_type":"attributed_to","edge_role":"performed_by","target_node_type":"principal","when_node_type":["action"]}), fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
