@@ -66,6 +66,32 @@ describe("PolicyRow (policies list)", () => {
     expect(html).not.toContain("”"); // right double quotation mark
   });
 
+  it("renders the agent instruction with markdown links and preserved line breaks", () => {
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZMARKUP",
+        kind: "suggestion",
+        predicate: {
+          agent_instruction:
+            "Import nodes as active by default.\nSee the [contributing guide](https://example.com/guide).",
+        },
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    // Markdown `[label](url)` links are elevated to anchors carrying the label.
+    expect(html).toContain('href="https://example.com/guide"');
+    expect(html).toContain(">contributing guide");
+    // Line breaks in the instruction survive rendering (the container preserves
+    // whitespace) so multi-line policies read as authored.
+    expect(html).toContain("whitespace-pre-wrap");
+    // The raw markdown markup is consumed, not shown verbatim.
+    expect(html).not.toContain("[contributing guide]");
+  });
+
   it("renders the kind label and, for deterministic, the structured parts", () => {
     const html = renderRow({
       handle: "runbook",
