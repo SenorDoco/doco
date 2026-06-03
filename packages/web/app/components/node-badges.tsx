@@ -8,9 +8,7 @@
 // matching color triplet reinforces the "this lifecycle owns this
 // node" reading.
 
-import { Cog, Lightbulb } from "lucide-react";
 import type { CSSProperties } from "react";
-import { implementationBadgeSpec } from "~/lib/implementation-badge";
 import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/node-colors";
 
 export type BadgeAnchor =
@@ -118,49 +116,6 @@ export function LifecycleBadge({ lifecycle, anchor = "right", className }: Badge
   );
 }
 
-interface ImplementationBadgeProps extends BadgeProps {
-  entityType: string;
-  /** Whether the node has an implementation reference. */
-  implemented: boolean | null | undefined;
-}
-
-/**
- * Implementation-status pill: a white gear when the node has an
- * implementation reference, a yellow light bulb when it doesn't. Styled like
- * the type/lifecycle pills (same dark lifecycle background) so it reads as
- * another box in the row, with a tooltip explaining the icon. Renders nothing
- * for node types outside the indicator scope (see `implementationBadgeSpec`).
- */
-export function ImplementationBadge({
-  entityType,
-  lifecycle,
-  implemented,
-  anchor = "inline",
-  className,
-}: ImplementationBadgeProps) {
-  const spec = implementationBadgeSpec(entityType, implemented);
-  if (!spec) return null;
-  const Icon = spec.status === "implemented" ? Cog : Lightbulb;
-  return (
-    <span
-      style={{
-        ...badgeStyle(lifecycle, anchor),
-        display: anchor === "inline" ? "inline-flex" : "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        // Tighter horizontal padding than the text pills so the square glyph
-        // reads as an icon chip rather than a one-letter label.
-        padding: "2px 4px",
-      }}
-      className={className}
-      title={spec.title}
-      aria-label={spec.title}
-    >
-      <Icon size={11} strokeWidth={2} color={spec.color} aria-hidden="true" />
-    </span>
-  );
-}
-
 /**
  * Tag row centered over the BOTTOM edge of a node — type pill followed
  * by lifecycle pill, both at the same z-level. Paired with
@@ -173,14 +128,6 @@ interface NodeBadgeRowProps {
   lifecycle: string | null | undefined;
   className?: string;
   interactive?: boolean;
-  /**
-   * Implementation status for the gear / light-bulb indicator. Pass a boolean
-   * (the BPMN perspective does) to render the indicator to the right of the
-   * lifecycle pill; leave it `undefined` to render no indicator at all — the
-   * Graph perspective reuses this row and opts out. The indicator further
-   * self-gates by node type (see `implementationBadgeSpec`).
-   */
-  implemented?: boolean | null;
 }
 
 export function NodeBadgeRow({
@@ -188,7 +135,6 @@ export function NodeBadgeRow({
   lifecycle,
   className,
   interactive = false,
-  implemented,
 }: NodeBadgeRowProps) {
   const rowStyle: CSSProperties = {
     position: "absolute",
@@ -209,14 +155,6 @@ export function NodeBadgeRow({
     <div style={rowStyle} className={className}>
       <TypeBadge entityType={entityType} lifecycle={lifecycle} anchor="inline" />
       <LifecycleBadge lifecycle={lifecycle} anchor="inline" />
-      {implemented !== undefined ? (
-        <ImplementationBadge
-          entityType={entityType}
-          lifecycle={lifecycle}
-          implemented={implemented}
-          anchor="inline"
-        />
-      ) : null}
     </div>
   );
 }

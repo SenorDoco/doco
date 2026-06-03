@@ -629,70 +629,12 @@ describe("loadBpmnGraph", () => {
     expect(graph.nodes).toHaveLength(1);
   });
 
-  it("flags a node as implemented when it has an outgoing implemented_by edge", async () => {
-    // A node "has an implementation reference" when it points at a Reference
-    // via a `supports` edge tagged role=implemented_by (how GitHub PR import
-    // links work to code). The BPMN renderer shows a gear for such nodes and
-    // a light bulb for the rest, so the loader must surface the flag.
-    const { client } = makeQueryClient({
-      nodes: [
-        {
-          id: "intent_01IMPL",
-          entity_type: "intent",
-          summary: "Shipping flow",
-          lifecycle: "asserted",
-          created_at: "2026-05-26T00:00:00.000Z",
-          data: {},
-        },
-        {
-          id: "action_01DONE",
-          entity_type: "action",
-          summary: "Built step",
-          lifecycle: "asserted",
-          created_at: "2026-05-26T00:01:00.000Z",
-          data: {},
-        },
-        {
-          id: "action_01TODO",
-          entity_type: "action",
-          summary: "Pending step",
-          lifecycle: "asserted",
-          created_at: "2026-05-26T00:02:00.000Z",
-          data: {},
-        },
-        {
-          id: "reference_01PR",
-          entity_type: "reference",
-          summary: "PR #1",
-          lifecycle: "asserted",
-          created_at: "2026-05-26T00:03:00.000Z",
-          data: {},
-        },
-      ],
-      principals: [],
-      users: [],
-      edges: [
-        edge("edge_07SERVES_DONE", "action_01DONE", "intent_01IMPL", "serves"),
-        edge("edge_07SERVES_TODO", "action_01TODO", "intent_01IMPL", "serves"),
-        edge("edge_07IMPL", "action_01DONE", "reference_01PR", "implemented_by"),
-      ],
-    });
-
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "ship" });
-
-    const done = graph.nodes.find((node) => node.id === "action_01DONE");
-    const todo = graph.nodes.find((node) => node.id === "action_01TODO");
-    expect(done?.implemented).toBe(true);
-    expect(todo?.implemented).toBe(false);
-  });
-
   it("excludes Reference nodes and their citation edges from the BPMN graph", async () => {
     // References are source/background material, not process steps, so the
     // BPMN perspective doesn't render them — not as document artifacts, and
     // not as the gray dashed "see also" links to the steps that cite them.
     // The loader drops both, so the node cap, PageRank, and layout never see
-    // a Reference. (The `implemented` flag still works — it reads the
-    // implemented_by edge, not the Reference node; covered above.)
+    // a Reference.
     const intentId = "intent_01PROCESS";
     const actionId = "action_01STEP";
     const referenceId = "reference_01DOC";

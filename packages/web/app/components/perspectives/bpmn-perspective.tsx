@@ -2214,7 +2214,6 @@ function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
       <NodeBadgeRow
         entityType={data.node.entity_type}
         lifecycle={data.node.lifecycle}
-        implemented={data.node.implemented}
         className="nodrag nopan"
         interactive
       />

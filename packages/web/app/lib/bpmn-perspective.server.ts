@@ -111,13 +111,6 @@ export interface BpmnNode {
    * the right of their source.
    */
   bfs_depth?: number;
-  /**
-   * True when this node has an implementation reference — it points at a
-   * Reference through a `supports` edge tagged role=implemented_by (how a
-   * GitHub PR links the work it ships). Drives the gear (implemented) vs
-   * light-bulb (not implemented) indicator in the BPMN perspective.
-   */
-  implemented: boolean;
 }
 
 export interface BpmnGraphData {
@@ -507,9 +500,6 @@ export async function loadBpmnGraph(
       shape: shapeForEntityType(row.entity_type),
       laneId,
       pool_id: poolId,
-      // Has an implementation reference iff it has an outgoing
-      // `supports`/implemented_by edge (keyed by role in outgoingByType).
-      implemented: edgeTargets(outgoingByType, row.id, "implemented_by").length > 0,
     };
     const intentIds = intentIdsByNode.get(row.id);
     if (intentIds && intentIds.length > 0) node.served_intent_ids = intentIds;
