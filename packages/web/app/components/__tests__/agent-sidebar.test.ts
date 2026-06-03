@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { chatBubbleBlocks, mergeCreatedConversationListItem } from "../agent-sidebar";
+import {
+  chatBubbleBlocks,
+  formatThreadUsageLabel,
+  mergeCreatedConversationListItem,
+} from "../agent-sidebar";
 
 function conversation(overrides: Record<string, unknown> = {}) {
   return {
@@ -83,5 +87,59 @@ describe("chatBubbleBlocks", () => {
         { type: "tool_use", id: "t1", name: "doco_api", input: {} },
       ]),
     ).toEqual([{ type: "text", text: "Checking the graph." }]);
+  });
+});
+
+describe("formatThreadUsageLabel", () => {
+  it("reads turns · headline tokens (input+output) · estimated cost", () => {
+    expect(
+      formatThreadUsageLabel({
+        input_tokens: 500,
+        output_tokens: 500,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        turn_count: 1,
+        estimated_cost_usd: 0.0042,
+      }),
+    ).toBe("1 turn · 1.0k tokens · ~$0.0042");
+  });
+
+  it("pluralizes turns and rounds large token counts", () => {
+    expect(
+      formatThreadUsageLabel({
+        input_tokens: 120_000,
+        output_tokens: 30_000,
+        cache_read_tokens: 4_000_000,
+        cache_creation_tokens: 0,
+        turn_count: 3,
+        estimated_cost_usd: 0.51,
+      }),
+    ).toBe("3 turns · 150k tokens · ~$0.5100");
+  });
+
+  it("shows two decimals for costs of a dollar or more", () => {
+    expect(
+      formatThreadUsageLabel({
+        input_tokens: 800_000,
+        output_tokens: 40_000,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        turn_count: 9,
+        estimated_cost_usd: 2.5,
+      }),
+    ).toBe("9 turns · 840k tokens · ~$2.50");
+  });
+
+  it("reads cleanly for a brand-new thread with no turns", () => {
+    expect(
+      formatThreadUsageLabel({
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        turn_count: 0,
+        estimated_cost_usd: 0,
+      }),
+    ).toBe("0 turns · 0 tokens · ~$0.00");
   });
 });
