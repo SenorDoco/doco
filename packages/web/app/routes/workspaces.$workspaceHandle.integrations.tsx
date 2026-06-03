@@ -107,7 +107,7 @@ export default function WorkspaceIntegrations({
         >
           <div className="space-y-3 pt-1">
             <p className="text-sm text-muted-foreground">
-              Everything wired up under {workspace.handle}, plus a rollup of each Doco&apos;s
+              Everything wired up under {workspace.handle}, plus a rollup of each doco&apos;s
               connections.
             </p>
             <ScopeNavLinks scope="workspace" />
@@ -129,7 +129,7 @@ export default function WorkspaceIntegrations({
               <CardHeader>
                 <CardTitle className="text-base">Workspace-level integrations</CardTitle>
                 <CardDescription>
-                  Connections that apply to every Doco in this workspace.
+                  Connections that apply to every doco in this workspace.
                 </CardDescription>
               </CardHeader>
               {slack.length > 0 ? (
@@ -169,7 +169,7 @@ export default function WorkspaceIntegrations({
               <CardHeader>
                 <CardTitle className="text-base">Docos in this workspace</CardTitle>
                 <CardDescription>
-                  Each Doco manages its own connections. Open one to drill in.
+                  Each doco manages its own connections. Open one to drill in.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
@@ -193,7 +193,7 @@ export default function WorkspaceIntegrations({
                   </ConnectionList>
                 ) : (
                   <p className="px-4 py-3 text-sm text-muted-foreground">
-                    No Docos in this workspace have integrations configured yet.
+                    No docos in this workspace have integrations configured yet.
                   </p>
                 )}
               </CardContent>

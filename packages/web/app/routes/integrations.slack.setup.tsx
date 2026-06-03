@@ -194,9 +194,9 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
           title="Set up Slack"
         >
           <p className="max-w-4xl text-sm leading-relaxed text-muted-foreground">
-            This Slack team is connected to one Doco workspace (chosen when it was installed) — set
+            This Slack team is connected to one doco workspace (chosen when it was installed) — set
             Señor Doco's default access there below. It can never use a person's access in any other
-            workspace. People can still link their own Doco account; their personal access is
+            workspace. People can still link their own doco account; their personal access is
             likewise capped to this workspace and never exceeds the role they already hold.
           </p>
         </PageHeader>
@@ -210,14 +210,14 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
               <CardDescription>
                 Slack workspace: {installation.workspaceName}. Set what Señor Doco can do by default
                 for everyone in this Slack team — limited to the
-                {workspaceGroups[0] ? ` ${workspaceGroups[0].handle}` : ""} Doco workspace this team
+                {workspaceGroups[0] ? ` ${workspaceGroups[0].handle}` : ""} doco workspace this team
                 is connected to.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {workspaceGroups.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  You don't have access to the Doco workspace this Slack team is connected to, so
+                  You don't have access to the doco workspace this Slack team is connected to, so
                   you can't set its defaults. Ask one of its owners.
                 </p>
               ) : null}
@@ -236,7 +236,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                       <span className="block">{group.handle} workspace</span>
                       <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground">
                         {group.docos.length} accessible{" "}
-                        {group.docos.length === 1 ? "Doco" : "Docos"}
+                        {group.docos.length === 1 ? "doco" : "docos"}
                       </span>
                     </div>
 
@@ -252,7 +252,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                               disabled={!allWorkspaceAvailable}
                               onChange={() => updateWorkspace(group.key, { mode: "all" })}
                             />
-                            All Docos in {group.handle}
+                            All docos in {group.handle}
                           </label>
                           <label className="flex items-center gap-2">
                             <input
@@ -262,13 +262,13 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                               checked={state.mode === "specific"}
                               onChange={() => updateWorkspace(group.key, { mode: "specific" })}
                             />
-                            Specific Docos
+                            Specific docos
                           </label>
                         </div>
 
                         {state.mode === "all" && allWorkspaceAvailable ? (
                           <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            What should be Señor Doco's default level of access for all Docos in
+                            What should be Señor Doco's default level of access for all docos in
                             this workspace?
                             <select
                               name={`workspace_role:${group.key}`}
@@ -291,8 +291,8 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
 
                         {state.mode === "all" && !allWorkspaceAvailable ? (
                           <p className="text-sm text-muted-foreground">
-                            You can set defaults for specific Docos in {group.handle}, but you do
-                            not have workspace-wide access to grant every Doco in this workspace.
+                            You can set defaults for specific docos in {group.handle}, but you do
+                            not have workspace-wide access to grant every doco in this workspace.
                           </p>
                         ) : null}
 

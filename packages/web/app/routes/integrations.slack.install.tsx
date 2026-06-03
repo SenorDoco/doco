@@ -61,8 +61,8 @@ export default function SlackInstallPage({ loaderData }: { loaderData: SlackInst
           <CardHeader>
             <CardTitle>Choose a workspace for Slack</CardTitle>
             <CardDescription>
-              A Slack team is connected to exactly one Doco workspace. Señor Doco will only ever use
-              that workspace's Docos — and never more than the access each person already holds
+              A Slack team is connected to exactly one doco workspace. Señor Doco will only ever use
+              that workspace's docos — and never more than the access each person already holds
               there. Pick the workspace this Slack team should use, then approve the install in
               Slack.
             </CardDescription>
@@ -73,7 +73,7 @@ export default function SlackInstallPage({ loaderData }: { loaderData: SlackInst
                 className="text-sm text-muted-foreground"
                 data-testid="slack-install-no-workspaces"
               >
-                You need to own a Doco workspace before connecting Slack. Create one, then come
+                You need to own a doco workspace before connecting Slack. Create one, then come
                 back.
               </p>
             ) : (

@@ -46,7 +46,6 @@ export async function loader({
     handle,
     me: ctx.me,
     policyId: params.policyId,
-    body_md: result.body_md,
     lifecycle: result.lifecycle,
     initial: policyFormInitialFromData(result.data),
     host: await loadHostConfig(),
@@ -130,7 +129,7 @@ export default function EditPolicy({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, handle, me, policyId, initial, body_md } = loaderData;
+  const { ownerSlug, handle, me, policyId, initial } = loaderData;
   const actionData = useActionData<ActionError>();
 
   return (
@@ -160,7 +159,7 @@ export default function EditPolicy({
               </div>
             ) : null}
             <Form method="post" className="space-y-4">
-              <PolicyFormFields initial={initial} bodyMd={body_md} />
+              <PolicyFormFields initial={initial} />
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   type="submit"

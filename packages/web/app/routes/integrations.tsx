@@ -157,7 +157,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
         >
           <p className="text-sm text-muted-foreground">
             A rollup of every workspace you can reach and the connections under it — each
-            Doco&apos;s GitHub repos and any Slack team. Open a workspace to manage them.
+            doco&apos;s GitHub repos and any Slack team. Open a workspace to manage them.
           </p>
         </PageHeader>
 
@@ -179,7 +179,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               <CardHeader>
                 <CardTitle className="text-base">App integrations across your workspaces</CardTitle>
                 <CardDescription>
-                  Each workspace rolls up its Docos&apos; GitHub repos and any Slack team bound to
+                  Each workspace rolls up its docos&apos; GitHub repos and any Slack team bound to
                   it; open one to manage.
                 </CardDescription>
               </CardHeader>
@@ -197,7 +197,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                       const detailParts: string[] = [];
                       if (docosWithIntegrations.length > 0) {
                         detailParts.push(
-                          `${docosWithIntegrations.length} Doco${
+                          `${docosWithIntegrations.length} doco${
                             docosWithIntegrations.length === 1 ? "" : "s"
                           } with connections`,
                         );
@@ -270,7 +270,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                   <CardTitle className="text-base">Slack teams not linked to a workspace</CardTitle>
                   <CardDescription>
                     These installs aren&apos;t bound to any workspace, so Señor Doco can&apos;t
-                    reach a Doco from them. Remove them here, or reconnect from Slack to bind one.
+                    reach a doco from them. Remove them here, or reconnect from Slack to bind one.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -323,7 +323,7 @@ function readNotice(url: URL): string | null {
     return "Install Señor Doco in Slack before setting default permissions.";
   }
   if (url.searchParams.get("slack_unavailable")) {
-    return "Slack is not available yet for this Doco deployment.";
+    return "Slack is not available yet for this doco deployment.";
   }
   if (url.searchParams.get("slack_error")) {
     return "Slack installation did not complete. Try connecting Slack again.";

@@ -221,10 +221,8 @@ export interface Rule extends CommonFields {
    *  carried by `Policy` records, not by this string). */
   predicate?: string;
   fires_when_node_lifecycle?: Lifecycle[];
-  modality?: "must" | "must_not" | "should" | "should_not";
   severity?: "blocker" | "warning" | "info";
   phase?: "declared" | "pre" | "post" | "invariant";
-  expected?: unknown;
   on_violation?: "block" | "warn" | "log";
 }
 
@@ -315,8 +313,6 @@ export interface Policy extends CommonFields {
   fires_when_node_lifecycle?: Lifecycle[];
   /** Defaults to "block". Irrelevant for suggestions (advisory only). */
   on_violation?: "block" | "warn" | "log";
-  /** Optional long-form rationale. */
-  body_md?: string;
 }
 
 // ─── Decision ─────────────────────────────────────────────────────────────

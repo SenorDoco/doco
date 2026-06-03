@@ -275,7 +275,6 @@ CREATE TABLE IF NOT EXISTS policies (
   kind        text,
   -- Policies only ever occupy two stages: 'active' or 'retired'.
   lifecycle   text NOT NULL DEFAULT 'active',
-  body_md     text,
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -288,6 +287,12 @@ CREATE INDEX IF NOT EXISTS policies_kind_idx
   ON policies (doco_id, kind);
 CREATE INDEX IF NOT EXISTS policies_lifecycle_idx
   ON policies (doco_id, lifecycle);
+
+-- Policies never carried a rationale that any template populated, so the
+-- per-policy `body_md` column was retired. schema.sql is re-applied on every
+-- boot, so this strips the column from databases provisioned under the old
+-- shape and is a no-op on fresh installs and on every boot thereafter.
+ALTER TABLE policies DROP COLUMN IF EXISTS body_md;
 
 -- ── Unified node table ───────────────────────────────────────────────────
 -- One row per graph node of any type, discriminated by `node_type`.
@@ -317,7 +322,6 @@ CREATE TABLE IF NOT EXISTS nodes (
   performed_at timestamptz,                   -- action (matches actions.performed_at)
   happened_at  timestamptz,                   -- log (matches logs.happened_at)
   kind         text,                          -- eval, state
-  modality     text,                          -- rule
   severity     text,                          -- rule
   phase        text,                          -- rule
   on_violation text,                          -- rule
@@ -333,6 +337,12 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 CREATE INDEX IF NOT EXISTS nodes_doco_type_idx  ON nodes (doco_id, node_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS nodes_doco_life_idx  ON nodes (doco_id, lifecycle);
+
+-- Self-heal: `modality` was a promoted Rule column that capture always wrote
+-- as the constant "must" and no reader ever consulted (enforcement modality
+-- lives in Policy records, not Rule nodes). Drop it. Idempotent — removed
+-- where present, a no-op on fresh installs (never created above).
+ALTER TABLE nodes DROP COLUMN IF EXISTS modality;
 
 -- Audit events: one row per mutation.
 
@@ -947,6 +957,10 @@ CREATE TABLE IF NOT EXISTS agent_turn_metrics (
   error                    text,
   phases                   jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+-- Per-thread usage roll-up (the Thinking panel meter) sums these rows by
+-- conversation on every snapshot load; the FK column isn't auto-indexed.
+CREATE INDEX IF NOT EXISTS agent_turn_metrics_conversation_idx
+  ON agent_turn_metrics (conversation_id);
 
 CREATE TABLE IF NOT EXISTS capture_timings (
   id                          text PRIMARY KEY,

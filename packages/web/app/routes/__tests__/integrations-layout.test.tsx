@@ -244,7 +244,7 @@ describe("integrations: Slack folded into the per-workspace rollup", () => {
     // The bound team is a small read-only entry under its workspace, counted in
     // the same detail line as the GitHub Docos — exactly like a GitHub entry.
     expect(markup).toContain("Torre.ai");
-    expect(markup).toContain("1 Doco with connections");
+    expect(markup).toContain("1 doco with connections");
     expect(markup).toContain("1 Slack team");
 
     // Standardized rollup chrome is unchanged.

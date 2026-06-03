@@ -18,6 +18,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
+import type { ThreadUsage } from "~/lib/agent-cost";
 import {
   type PendingCreate,
   focusNavigationUrl,
@@ -140,6 +141,12 @@ interface ConversationSnapshot {
    * already in progress.
    */
   active_turn_events?: Array<Record<string, unknown>>;
+  /**
+   * Whole-thread token totals + turn count + USD estimate. Drives the
+   * meter at the top of the Thinking panel. Optional so an older server
+   * (or a partial payload) degrades to "no meter" instead of crashing.
+   */
+  thread_usage?: ThreadUsage;
 }
 
 /** Row in the thread-list. Matches the server's ConversationListItem. */
@@ -475,6 +482,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // to the in-flight bubble so the user sees what THIS request is
   // costing in real time (not the session-wide total).
   const [turnUsage, setTurnUsage] = useState<TurnUsage | null>(null);
+  // Whole-thread usage total (every recorded turn), shown as a meter at
+  // the top of the Thinking panel. Server-authoritative: set from each
+  // snapshot in `reload()`, which re-runs after every turn settles (the
+  // `busy` flip changes reload's identity), so the total picks up the
+  // turn that just finished. Null until the first snapshot lands.
+  const [threadUsage, setThreadUsage] = useState<ThreadUsage | null>(null);
   // Queued sends. When the user hits Send while Señor Doco is
   // mid-reply, the typed text + staged attachments land here and
   // auto-fire one at a time as turns settle. Lets the user keep
@@ -646,6 +659,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         writeStringFlag(ACTIVE_CONV_KEY, data.conversation_id);
       }
       setConversationTitle(data.title);
+      setThreadUsage(data.thread_usage ?? null);
       setAttachedDocos(Array.isArray(data.attached_docos) ? data.attached_docos : []);
       setAttachedWorkspaces(
         Array.isArray(data.attached_workspaces) ? data.attached_workspaces : [],
@@ -747,6 +761,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
     void reload();
   }, [reload, view]);
+
+  // A different thread is selected → drop the previous thread's usage
+  // meter so a stale total doesn't flash before the new snapshot lands.
+  // Any conversationId change also re-runs reload() (it's a dep), which
+  // repopulates threadUsage, so this only blanks the gap in between.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: conversationId is the intentional trigger; the body only resets state.
+  useEffect(() => {
+    setThreadUsage(null);
+  }, [conversationId]);
 
   // Abort any in-flight send when the sidebar unmounts. This used
   // to live as the cleanup on the `[reload]` effect — but `reload`'s
@@ -2270,6 +2293,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     <ThinkingPanel
                       events={thinkingEvents}
                       active={busy || inFlight !== null || remoteInflight}
+                      usage={threadUsage}
                     />
                   ) : null}
                 </div>
@@ -2943,6 +2967,26 @@ function formatTokenCount(n: number): string {
   return `${Math.round(n / 1000)}k`;
 }
 
+// Sub-dollar costs get four decimals (a turn or two can be fractions of a
+// cent); a dollar or more rounds to cents. Zero reads as "$0.00" rather
+// than "$0.0000".
+function formatUsd(n: number): string {
+  if (n <= 0) return "$0.00";
+  return `$${n.toFixed(n < 1 ? 4 : 2)}`;
+}
+
+/**
+ * One-line thread usage meter: turn count · headline tokens · estimated
+ * cost. Headline tokens are input+output (the billed-content figure);
+ * cache tokens fold into the cost but not the headline count. The cost is
+ * an estimate (model list prices), hence the leading "~".
+ */
+export function formatThreadUsageLabel(usage: ThreadUsage): string {
+  const turns = `${usage.turn_count} ${usage.turn_count === 1 ? "turn" : "turns"}`;
+  const tokens = `${formatTokenCount(usage.input_tokens + usage.output_tokens)} tokens`;
+  return `${turns} · ${tokens} · ~${formatUsd(usage.estimated_cost_usd)}`;
+}
+
 function formatMessageTime(createdAt: string): string {
   const date = new Date(createdAt);
   if (!Number.isFinite(date.getTime())) return "";
@@ -3171,7 +3215,15 @@ function InFlightMessageView({
   );
 }
 
-function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: boolean }) {
+function ThinkingPanel({
+  events,
+  active,
+  usage,
+}: {
+  events: ThinkingEvent[];
+  active: boolean;
+  usage: ThreadUsage | null;
+}) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinnedToBottomRef = useRef(true);
   // `performance.now()` at the moment the last event arrived. Drives
@@ -3217,8 +3269,18 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-card/50">
-      <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        Thinking <span className="ml-2 font-mono normal-case">{events.length} events</span>
+      <div className="shrink-0 border-b border-border/70">
+        {usage ? (
+          <div
+            className="border-b border-border/50 px-3 py-1 font-mono text-[10px] text-muted-foreground"
+            title={`Thread totals — ${usage.turn_count} turns · input ${usage.input_tokens.toLocaleString()} · output ${usage.output_tokens.toLocaleString()} · cache read ${usage.cache_read_tokens.toLocaleString()} · cache write ${usage.cache_creation_tokens.toLocaleString()} · estimated ${formatUsd(usage.estimated_cost_usd)}`}
+          >
+            {formatThreadUsageLabel(usage)}
+          </div>
+        ) : null}
+        <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+          Thinking <span className="ml-2 font-mono normal-case">{events.length} events</span>
+        </div>
       </div>
       <div
         ref={scrollRef}

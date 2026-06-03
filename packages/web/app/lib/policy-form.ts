@@ -85,7 +85,6 @@ export function policyDraftFromForm(form: FormData): PolicyDraft | { error: stri
   if (kind !== "suggestion" && kind !== "deterministic" && kind !== "probabilistic") {
     return { error: "kind must be suggestion, deterministic, or probabilistic." };
   }
-  const body_md = str(form, "body_md") || undefined;
   const firesWhen = csv(form, "fires_when_node_lifecycle");
   const onViolationRaw = str(form, "on_violation");
   const on_violation =
@@ -101,7 +100,6 @@ export function policyDraftFromForm(form: FormData): PolicyDraft | { error: stri
       ...(kind === "probabilistic" && when.length > 0 ? { when_node_type: when } : {}),
       ...(kind === "probabilistic" ? { on_violation } : {}),
       ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
-      ...(body_md ? { body_md } : {}),
     };
   }
 
@@ -118,7 +116,6 @@ export function policyDraftFromForm(form: FormData): PolicyDraft | { error: stri
     predicate: JSON.stringify(built.predicate),
     on_violation,
     ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
-    ...(body_md ? { body_md } : {}),
   };
 }
 

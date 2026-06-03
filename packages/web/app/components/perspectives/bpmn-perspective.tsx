@@ -17,7 +17,7 @@
 // lane vertical offset.
 
 import { Handle, MarkerType, Position, type Edge as ReactFlowEdge } from "@xyflow/react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import {
@@ -35,6 +35,7 @@ import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
+import { indexById, reuseStableNodes } from "~/lib/bpmn-stable-nodes";
 import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
 import {
   bpmnFocusCandidates,
@@ -53,6 +54,11 @@ import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
+import {
+  ReferenceNumberStoreContext,
+  createReferenceNumberStore,
+  useReferenceNumber,
+} from "~/lib/reference-number-store";
 import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import "@xyflow/react/dist/style.css";
 
@@ -249,11 +255,42 @@ export function BpmnPerspective({
   // it fires so subsequent clicks (which reshuffle `selectionCenterId`)
   // don't yank the canvas around.
   const defaultFocusAppliedRef = useRef(false);
-  const updateViewport = useCallback((next: FlowViewport) => {
+  // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
+  // transforms itself internally; our `viewport` mirror only feeds the
+  // sticky rails and the reference-number store, so coalescing it to one
+  // update per animation frame keeps those overlays in sync without
+  // re-running their work on every intermediate event.
+  const pendingViewportRef = useRef<FlowViewport | null>(null);
+  const viewportRafRef = useRef<number | null>(null);
+  const commitViewport = useCallback((next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
   }, []);
+  const updateViewport = useCallback(
+    (next: FlowViewport) => {
+      pendingViewportRef.current = next;
+      if (typeof window === "undefined" || !window.requestAnimationFrame) {
+        commitViewport(next);
+        return;
+      }
+      if (viewportRafRef.current != null) return;
+      viewportRafRef.current = window.requestAnimationFrame(() => {
+        viewportRafRef.current = null;
+        const latest = pendingViewportRef.current;
+        if (latest) commitViewport(latest);
+      });
+    },
+    [commitViewport],
+  );
+  useEffect(
+    () => () => {
+      if (viewportRafRef.current != null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(viewportRafRef.current);
+      }
+    },
+    [],
+  );
 
   // Drop nodes whose lifecycle is filtered out. Lanes are never
   // dropped once the server emits them, so a filtered-out Action
@@ -415,25 +452,29 @@ export function BpmnPerspective({
       focusedEdgeId,
     ],
   );
+  // memo() so a node/edge component only re-renders when its own props
+  // change. Paired with the stable `flowNodes` identity above, this keeps
+  // pan/zoom and focus shifts from re-rendering all 65+ shapes at once.
+  // The maps are built once (empty deps), so the memo wrappers are stable.
   const nodeTypes = useMemo(
     () => ({
-      bpmnLane: BpmnLaneNode,
-      bpmnPoolHeader: BpmnPoolHeaderNode,
-      bpmnCircle: BpmnCircleNode,
-      bpmnDiamond: BpmnDiamondNode,
-      bpmnRectangle: BpmnRectangleNode,
-      bpmnDocument: BpmnDocumentNode,
-      bpmnRounded: BpmnRoundedNode,
-      bpmnTask: BpmnTaskNode,
-      bpmnMilestone: BpmnMilestoneNode,
-      bpmnEdgeStub: BpmnEdgeStubNode,
+      bpmnLane: memo(BpmnLaneNode),
+      bpmnPoolHeader: memo(BpmnPoolHeaderNode),
+      bpmnCircle: memo(BpmnCircleNode),
+      bpmnDiamond: memo(BpmnDiamondNode),
+      bpmnRectangle: memo(BpmnRectangleNode),
+      bpmnDocument: memo(BpmnDocumentNode),
+      bpmnRounded: memo(BpmnRoundedNode),
+      bpmnTask: memo(BpmnTaskNode),
+      bpmnMilestone: memo(BpmnMilestoneNode),
+      bpmnEdgeStub: memo(BpmnEdgeStubNode),
     }),
     [],
   );
   const edgeTypes = useMemo(
     () => ({
-      fadingPlaceholder: FadingPlaceholderEdge,
-      stableLabeledBezier: StableLabeledBezierEdge,
+      fadingPlaceholder: memo(FadingPlaceholderEdge),
+      stableLabeledBezier: memo(StableLabeledBezierEdge),
     }),
     [],
   );
@@ -514,6 +555,14 @@ export function BpmnPerspective({
     candidates: nodeReferenceCandidates,
     priorityItems: laneReferences,
   });
+  // Publish the numbering into an external store so each #N badge can
+  // subscribe to its own number. Keeping the number out of node `data`
+  // is what lets `flowNodes` stay referentially stable across pans — the
+  // numbers shift on every frame, the node objects no longer do.
+  const referenceNumberStore = useRef(createReferenceNumberStore()).current;
+  useEffect(() => {
+    referenceNumberStore.setNumbers(referenceNumberByEntityId);
+  }, [referenceNumberByEntityId, referenceNumberStore]);
 
   const externalEdgeStubs = useMemo(() => {
     const summaries = summarizeExternalConnections(links, renderedNodeIds, filteredNodeIds);
@@ -654,6 +703,9 @@ export function BpmnPerspective({
     return edges;
   }, [renderedNodes, renderedPools]);
 
+  // Cache of the previous render's flow nodes, keyed by id, so unchanged
+  // nodes keep their object identity across layout re-runs (see below).
+  const prevFlowNodesRef = useRef<Map<string, FlowNode>>(new Map());
   const flowNodes = useMemo<FlowNode[]>(() => {
     const windowed = layout.flowNodes.flatMap<FlowNode>((node) => {
       const laneData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).lane;
@@ -663,19 +715,19 @@ export function BpmnPerspective({
         (poolData && renderedPoolIds.has(poolData.id)) ||
         (!laneData && !poolData && renderedNodeIds.has(node.id));
       if (!isRendered) return [];
-      // Lane FlowNodes carry data.lane; shape FlowNodes carry data.node.
-      // Each pulls its reference number from the unified map by the
-      // underlying entity id (principal_<ulid> or node id).
+      // Reference numbers (#N badges) are deliberately NOT baked into node
+      // `data` here. The numbering shifts on every pan frame, so injecting
+      // it would force this whole array — and thus every React Flow node —
+      // to rebuild constantly. Each badge instead subscribes to its own
+      // number from the reference-number store (see BpmnBadgeRow /
+      // BpmnLaneNode), keeping `flowNodes` independent of the viewport.
       if (laneData) {
-        const referenceNumber = referenceNumberByEntityId.get(laneData.id);
         const data = {
           ...node.data,
           onLaneClick: isActorLane(laneData) ? openLaneNode : undefined,
         };
-        if (!referenceNumber) return [{ ...node, data }];
-        return [{ ...node, data: { ...data, referenceNumber } }];
+        return [{ ...node, data }];
       }
-      const referenceNumber = referenceNumberByEntityId.get(node.id);
       const baseOpacity =
         typeof node.style?.opacity === "number" ? node.style.opacity : Number(node.style?.opacity);
       const transitionOpacity = renderWindowOpacityById.get(node.id) ?? 1;
@@ -686,14 +738,18 @@ export function BpmnPerspective({
         ...node.style,
         opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
       };
-      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, className, style }];
-      return [{ ...node, className, data: { ...node.data, referenceNumber }, style }];
+      return [{ ...node, className, style }];
     });
-    return [...windowed, ...externalEdgeStubs.nodes];
+    // Reuse last render's object identity for any node whose render inputs
+    // are unchanged, so the memo'd shape components skip work when a focus
+    // shift re-runs the layout. (On pan this memo doesn't recompute at
+    // all — none of its deps depend on the viewport anymore.)
+    const built = [...windowed, ...externalEdgeStubs.nodes];
+    const stable = reuseStableNodes(built, prevFlowNodesRef.current);
+    prevFlowNodesRef.current = indexById(stable);
+    return stable;
   }, [
     layout.flowNodes,
-    referenceNumberByEntityId,
-    nodeById,
     renderedLaneIds,
     renderedPoolIds,
     renderedNodeIds,
@@ -957,72 +1013,74 @@ export function BpmnPerspective({
         )}
       </div>
       {Flow ? (
-        <Flow.ReactFlow
-          nodes={flowNodes}
-          edges={flowEdges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          zIndexMode="manual"
-          nodesDraggable={false}
-          nodesConnectable={false}
-          onlyRenderVisibleElements
-          minZoom={0.1}
-          maxZoom={2.0}
-          panOnDrag
-          zoomOnScroll
-          zoomOnPinch
-          preventScrolling
-          onInit={(instance: FlowInstance) => {
-            flowInstanceRef.current = instance;
-            if (!hasFitRef.current) {
-              if (initialFocusFlowNodeId) {
-                fitInitialFocus(instance, initialFocusFlowNodeId);
-                if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
-                else defaultFocusAppliedRef.current = true;
-              } else {
-                instance.fitView?.({ padding: 0.18 });
+        <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>
+          <Flow.ReactFlow
+            nodes={flowNodes}
+            edges={flowEdges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            zIndexMode="manual"
+            nodesDraggable={false}
+            nodesConnectable={false}
+            onlyRenderVisibleElements
+            minZoom={0.1}
+            maxZoom={2.0}
+            panOnDrag
+            zoomOnScroll
+            zoomOnPinch
+            preventScrolling
+            onInit={(instance: FlowInstance) => {
+              flowInstanceRef.current = instance;
+              if (!hasFitRef.current) {
+                if (initialFocusFlowNodeId) {
+                  fitInitialFocus(instance, initialFocusFlowNodeId);
+                  if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
+                  else defaultFocusAppliedRef.current = true;
+                } else {
+                  instance.fitView?.({ padding: 0.18 });
+                }
+                hasFitRef.current = true;
               }
-              hasFitRef.current = true;
-            }
-            const current = instance.getViewport?.();
-            if (current) updateViewport(current);
-          }}
-          onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
-          onPaneClick={onPaneClick}
-          onNodeClick={(_e: unknown, node: { id: string }) => {
-            const pool = poolByHeaderId.get(node.id);
-            if (pool) {
-              openPoolNode(pool);
-              return;
-            }
-            const target = nodeById.get(node.id);
-            if (!target) return;
-            // Change the focus window without refitting or rebuilding
-            // geometry from that small window. The stable BPMN layout
-            // above keeps already-rendered nodes anchored.
-            if (onCenterChange) onCenterChange(target.id);
-            if (onNodeClick) {
-              onNodeClick(target);
-              return;
-            }
-            if (target.href) navigate(target.href);
-          }}
-          onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
-            const link = (edge.data as { graphLink?: OverviewGraphLink } | undefined)?.graphLink;
-            if (!link?.id) return;
-            (event as { stopPropagation?: () => void } | null)?.stopPropagation?.();
-            if (onCenterChange) onCenterChange(link.source);
-            if (onEdgeClick) {
-              onEdgeClick(link);
-              return;
-            }
-            if (link.href) navigate(link.href);
-          }}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Flow.Background gap={24} size={1} />
-          <StandardControls />
-        </Flow.ReactFlow>
+              const current = instance.getViewport?.();
+              if (current) updateViewport(current);
+            }}
+            onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+            onPaneClick={onPaneClick}
+            onNodeClick={(_e: unknown, node: { id: string }) => {
+              const pool = poolByHeaderId.get(node.id);
+              if (pool) {
+                openPoolNode(pool);
+                return;
+              }
+              const target = nodeById.get(node.id);
+              if (!target) return;
+              // Change the focus window without refitting or rebuilding
+              // geometry from that small window. The stable BPMN layout
+              // above keeps already-rendered nodes anchored.
+              if (onCenterChange) onCenterChange(target.id);
+              if (onNodeClick) {
+                onNodeClick(target);
+                return;
+              }
+              if (target.href) navigate(target.href);
+            }}
+            onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
+              const link = (edge.data as { graphLink?: OverviewGraphLink } | undefined)?.graphLink;
+              if (!link?.id) return;
+              (event as { stopPropagation?: () => void } | null)?.stopPropagation?.();
+              if (onCenterChange) onCenterChange(link.source);
+              if (onEdgeClick) {
+                onEdgeClick(link);
+                return;
+              }
+              if (link.href) navigate(link.href);
+            }}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Flow.Background gap={24} size={1} />
+            <StandardControls />
+          </Flow.ReactFlow>
+        </ReferenceNumberStoreContext.Provider>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
           Loading BPMN view…
@@ -1609,7 +1667,6 @@ function isActorLane(lane: BpmnLane): boolean {
 
 interface BpmnNodeData {
   node: BpmnNode;
-  referenceNumber?: number;
   isCenter?: boolean;
   /** Action serves an Intent beyond its own pool — render the BPMN
    *  collapsed-subprocess "+" marker and the dashed drill-down handle. */
@@ -1621,7 +1678,6 @@ interface BpmnLaneData {
   height: number;
   width: number;
   labelWidth: number;
-  referenceNumber?: number;
   isCenter?: boolean;
   isMilestoneBand?: boolean;
   isArtifactsBand?: boolean;
@@ -1715,6 +1771,28 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
   );
 }
 
+// Lane #N badge — same isolated store subscription as BpmnReferenceBadge,
+// so re-numbering on pan never re-renders the whole lane band.
+const BpmnLaneReferenceBadge = memo(function BpmnLaneReferenceBadge({
+  laneId,
+  label,
+}: {
+  laneId: string;
+  label: string;
+}) {
+  const referenceNumber = useReferenceNumber(laneId);
+  if (!referenceNumber) return null;
+  return (
+    <span
+      aria-label={`Graph reference #${referenceNumber}: ${label}`}
+      className="pointer-events-none absolute -left-2.5 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+      title={`Graph reference #${referenceNumber}`}
+    >
+      #{referenceNumber}
+    </span>
+  );
+});
+
 function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
   // The milestone band and the artifacts band are both phase / data
   // axes perpendicular to the actor lanes — render each with a
@@ -1788,15 +1866,7 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
         tabIndex={isClickableLane ? 0 : undefined}
         title={data.lane.label}
       >
-        {data.referenceNumber ? (
-          <span
-            aria-label={`Graph reference #${data.referenceNumber}: ${data.lane.label}`}
-            className="pointer-events-none absolute -left-2.5 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-            title={`Graph reference #${data.referenceNumber}`}
-          >
-            #{data.referenceNumber}
-          </span>
-        ) : null}
+        <BpmnLaneReferenceBadge laneId={data.lane.id} label={data.lane.label} />
         <span>{data.lane.label}</span>
         <LaneBadgeRow lane={data.lane} />
       </div>
@@ -2187,8 +2257,13 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
 }
 
 function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | number | undefined> {
+  // The #N reference number is intentionally not emitted here. It lives in
+  // the reference-number store (subscribed per-badge) rather than node
+  // `data`, so it can shift on every pan frame without rebuilding nodes.
+  // The sidebar reads numbering from the *published* references
+  // (usePerspectiveReferences), which is the canonical source; this DOM
+  // attribute was only a fallback for perspectives that don't publish.
   return {
-    "data-graph-reference-number": data.referenceNumber,
     "data-node-href": data.node.href ?? undefined,
     "data-node-id": data.node.id,
     "data-node-label": data.node.name ?? data.node.id,
@@ -2196,6 +2271,20 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
     "data-node-type": data.node.entity_type,
   };
 }
+
+// Subscribes to just this node's #N from the reference-number store, so
+// only the badge re-renders when the numbering shifts (e.g. while
+// panning) — never the surrounding shape (border, handles, SVG, label).
+const BpmnReferenceBadge = memo(function BpmnReferenceBadge({
+  nodeId,
+  label,
+}: {
+  nodeId: string;
+  label: string;
+}) {
+  const referenceNumber = useReferenceNumber(nodeId);
+  return <ReferenceNumberBadge referenceNumber={referenceNumber} referenceLabel={label} />;
+});
 
 /**
  * Tag row floated centered over the TOP edge of a BPMN shape (type
@@ -2208,6 +2297,7 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
  * anchor — but kept on the prop so any caller that still passes it
  * doesn't break.
  */
+
 function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
   return (
     <>
@@ -2217,10 +2307,7 @@ function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
         className="nodrag nopan"
         interactive
       />
-      <ReferenceNumberBadge
-        referenceNumber={data.referenceNumber}
-        referenceLabel={data.node.name ?? data.node.id}
-      />
+      <BpmnReferenceBadge nodeId={data.node.id} label={data.node.name ?? data.node.id} />
     </>
   );
 }

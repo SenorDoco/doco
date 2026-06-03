@@ -19,13 +19,13 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
     id: "slack",
     name: "Slack",
     description:
-      "Connect a Slack team to one Doco workspace. Señor Doco then works only in that workspace's Docos; individual channels can be wired to specific Docos after install.",
+      "Connect a Slack team to one doco workspace. Señor Doco then works only in that workspace's docos; individual channels can be wired to specific docos after install.",
     scope: "workspace",
   },
   {
     id: "github",
     name: "GitHub",
-    description: "Connect repositories so their pull requests are tracked as References on a Doco.",
+    description: "Connect repositories so their pull requests are tracked as References on a doco.",
     scope: "doco",
   },
 ];

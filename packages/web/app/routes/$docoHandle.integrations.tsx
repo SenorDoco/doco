@@ -128,7 +128,7 @@ export default function DocoIntegrations() {
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">Connected on this Doco</h2>
+            <h2 className="text-sm font-semibold text-muted-foreground">Connected on this doco</h2>
             {github.connected ? (
               <Card>
                 <CardHeader>

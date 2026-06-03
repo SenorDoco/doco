@@ -119,6 +119,62 @@ describe("loadBpmnGraph", () => {
     );
   });
 
+  it("places a Decision attributed via performed_by in that actor's lane (decided_by ?? performed_by)", async () => {
+    // A gateway Decision SHOULD carry `decided_by`, but Señor Doco (and
+    // legacy BPMN imports) sometimes wire `performed_by` instead. The lane
+    // resolver falls back to `performed_by` so such a Decision lands in its
+    // actor's swim lane rather than dropping into "Unassigned" — exactly how
+    // `intent` already falls back performed_by ?? owned_by. Without the
+    // fallback the Decision below would be Unassigned despite naming Torre.
+    const intentId = "intent_01VERIFYPROC";
+    const decisionId = "decision_01VERIFY";
+
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Verify the user",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: decisionId,
+          entity_type: "decision",
+          summary: "Is the user verified?",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {},
+        },
+      ],
+      principals: [{ id: "principal_torre", name: "Torre", lifecycle: "active" }],
+      users: [],
+      edges: [
+        edge("edge_VERIFY_INTENT", decisionId, intentId, "serves"),
+        // Attributed with performed_by, NOT decided_by.
+        edge("edge_VERIFY_ACTOR", decisionId, "principal_torre", "performed_by"),
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "verify" });
+
+    expect(graph.lanes).toContainEqual(
+      expect.objectContaining({
+        id: `pool:${intentId}::principal_torre`,
+        kind: "actor",
+        label: "Torre",
+      }),
+    );
+    expect(graph.nodes).toContainEqual(
+      expect.objectContaining({
+        id: decisionId,
+        laneId: `pool:${intentId}::principal_torre`,
+        pool_id: `pool:${intentId}`,
+      }),
+    );
+  });
+
   it("loads every lifecycle so the client filter can reveal retired nodes", async () => {
     // Regression: the BPMN loader used to hardcode `<> 'retired'` on its
     // node, principal, and edge queries, so retired nodes never reached

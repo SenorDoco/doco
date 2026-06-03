@@ -283,6 +283,10 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
   );
   // The process owner is `owned_by` the first Principal.
   edges.push(edge(intent.id, principals[0].id, "attributed_to", "owned_by"));
+  // The gateway Decision is `decided_by` a Principal — the actor accountable
+  // for the call (here, the process owner). Mirrors the Action performed_by
+  // wiring so a well-formed gateway is never stranded in the Unassigned lane.
+  edges.push(edge(gateway.id, principals[0].id, "attributed_to", "decided_by"));
   // The Eval `tests` the gateway (supports / role:tests).
   edges.push(edge(evalNode.id, gateway.id, "supports", "tests"));
   // Forward sequence flow: initial → action(s) → gateway → terminals.
@@ -629,6 +633,27 @@ describe("business-processes template — blocks malformed processes", () => {
     expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
   });
 
+  it("blocks a gateway Decision with no decided_by decider", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const orphan = node(
+      "decision",
+      "loan-approval",
+      {
+        decision: "Decide whether the file needs a second reviewer.",
+        question: "Does the file need a second reviewer?",
+        chosen: "Route risky files to a second reviewer",
+        alternatives: [{ name: "risky → second review" }, { name: "clear → continue" }],
+      },
+      "active",
+    );
+    // Wire serves only; omit decided_by.
+    g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves"));
+    g.nodes.push(orphan);
+    const blocks = deterministicBlocks(evaluate(orphan, g));
+    expect(blocks.map((b) => b.sub_kind)).toContain("requires_edge_role");
+    expect(blocks.some((b) => /decided_by/.test(b.reason))).toBe(true);
+  });
+
   it("blocks a flow node (State) that does not serve any Intent", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const floating = node(
@@ -719,6 +744,37 @@ describe("business-processes template — committed-stage completeness (drafting
     const { candidate, graph } = orphanAt("active");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
     expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
+  });
+
+  it("a gateway Decision's decided_by is exempt while drafting but enforced at queued AND active", () => {
+    // Mirrors the performed_by gate above: drafting sketches are exempt;
+    // both committed stages (queued + active) require the decider. This is
+    // the queued/active parity the template guarantees, applied to the new
+    // decision-decider rule — queued must not slip through where active blocks.
+    function gatewayMissingDecidedByBlocks(lifecycle: Lifecycle): boolean {
+      const g = buildProcess(SCENARIOS[0], lifecycle);
+      const orphan = node(
+        "decision",
+        "loan-approval",
+        {
+          decision: "Decide whether to escalate the application.",
+          question: "Should the application be escalated?",
+          chosen: "Escalate high-risk applications",
+          alternatives: [{ name: "high risk → escalate" }, { name: "low risk → continue" }],
+        },
+        lifecycle,
+      );
+      g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves")); // serves wired; no decided_by
+      g.nodes.push(orphan);
+      return deterministicBlocks(evaluate(orphan, g)).some((b) => /decided_by/.test(b.reason));
+    }
+    expect(gatewayMissingDecidedByBlocks("drafting"), "drafting sketch is exempt").toBe(false);
+    expect(gatewayMissingDecidedByBlocks("queued"), "queued is held to the decider rule").toBe(
+      true,
+    );
+    expect(gatewayMissingDecidedByBlocks("active"), "active is held to the decider rule").toBe(
+      true,
+    );
   });
 
   it("probabilistic quality checks also fire at queued, not just active", () => {

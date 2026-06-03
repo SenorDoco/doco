@@ -24,7 +24,6 @@ interface PolicyRow {
   kind: string | null;
   lifecycle: string | null;
   created_at: Date | string | null;
-  body_md: string | null;
   data: Record<string, unknown> | null;
 }
 
@@ -34,7 +33,6 @@ interface PolicyItem {
   predicate: PolicyPredicate | null;
   lifecycle: string | null;
   createdAt: string | null;
-  body: string;
 }
 
 export async function loader({
@@ -49,7 +47,7 @@ export async function loader({
   const rows = await withClient((c) =>
     c
       .query<PolicyRow>(
-        `SELECT id, kind, lifecycle, created_at, body_md, data
+        `SELECT id, kind, lifecycle, created_at, data
            FROM policies
           WHERE doco_id = $1
             AND COALESCE(lifecycle, 'active') = 'active'
@@ -193,9 +191,6 @@ function PolicyView({ item }: { item: PolicyItem }) {
           </p>
         </div>
       )}
-      {item.body ? (
-        <p className="whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{item.body}</p>
-      ) : null}
     </div>
   );
 }
@@ -218,7 +213,6 @@ function toPolicyItem(row: PolicyRow): PolicyItem {
     predicate,
     lifecycle: row.lifecycle,
     createdAt: toIso(row.created_at),
-    body: row.body_md ?? "",
   };
 }
 

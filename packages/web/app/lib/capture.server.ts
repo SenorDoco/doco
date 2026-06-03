@@ -1738,6 +1738,36 @@ export interface RuleDraft {
   outcome?: "succeeded" | "failed";
 }
 
+/**
+ * Map a RuleDraft to the Rule node's structured content fields (pure; no
+ * envelope or lifecycle). `enforced_by` "runtime" promotes the rule to an
+ * `invariant` phase, else `declared`; `severity` "hard"→blocker else warning;
+ * `on_violation` follows severity. Enforcement itself lives in `Policy`
+ * records — a Rule node is documentation, so it carries no `modality`,
+ * `expected`, or `applies_to` selector.
+ */
+export function ruleNodeFields(draft: RuleDraft): {
+  rule: string;
+  predicate: string;
+  severity: "blocker" | "warning" | "info";
+  phase: "declared" | "pre" | "post" | "invariant";
+  on_violation: "block" | "warn" | "log";
+  enforced_by?: "runtime" | "review" | "manual";
+} {
+  const phase: "declared" | "pre" | "post" | "invariant" =
+    draft.enforced_by === "runtime" ? "invariant" : "declared";
+  const severity: "blocker" | "warning" | "info" =
+    draft.severity === "hard" ? "blocker" : "warning";
+  return {
+    rule: draft.rule.trim(),
+    predicate: draft.predicate.trim(),
+    severity,
+    phase,
+    on_violation: severity === "blocker" ? "block" : "warn",
+    ...(draft.enforced_by ? { enforced_by: draft.enforced_by } : {}),
+  };
+}
+
 export async function captureRule(
   docoDir: string,
   docoId: string,
@@ -1755,43 +1785,21 @@ export async function captureRule(
   if (!draft.predicate.trim()) return { error: "predicate is required." };
   const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
   if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  // Map the CLI/spec-facing enforcement vocabulary to the schema's `phase`
-  // field. The original verb is preserved verbatim under `enforced_by`
-  // so the spec is round-trippable.
-  let phase: "declared" | "pre" | "post" | "invariant" = "declared";
-  if (draft.enforced_by === "runtime") phase = "invariant";
-
-  // Severity: `hard` → blocker, `soft` → warning. Defaults to warning
-  // when unspecified (matches the existing on-disk convention).
-  let severity: "blocker" | "warning" | "info" = "warning";
-  if (draft.severity === "hard") severity = "blocker";
 
   const id = `rule_${generateUlid()}`;
-  const ruleText = draft.rule.trim();
-  const label = firstLine(ruleText);
+  const fields = ruleNodeFields(draft);
+  const label = firstLine(fields.rule);
   const now = new Date().toISOString();
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
   const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
   if ("error" in status) return status;
 
-  // Empty selector — matches everything by having nothing to filter
-  // on. Authors can still hand-edit `applies_to` via patch.
-  const appliesTo = { any_of: [] as { tag: string }[] };
-
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
     node_type: "rule",
-    rule: ruleText,
-    modality: "must",
-    severity,
-    phase,
-    ...(draft.enforced_by ? { enforced_by: draft.enforced_by } : {}),
-    applies_to: appliesTo,
-    predicate: draft.predicate.trim(),
-    expected: true,
-    on_violation: severity === "blocker" ? "block" : "warn",
+    ...fields,
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
@@ -1832,8 +1840,6 @@ export interface PolicyDraft {
   when_node_type?: string[];
   fires_when_node_lifecycle?: string[];
   on_violation?: "block" | "warn" | "log";
-  /** Optional markdown body (long-form rationale). */
-  body_md?: string;
   /** Optional: principal id who authored the policy. */
   authored_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
@@ -2003,7 +2009,7 @@ async function buildPolicyPayload(
     label: summarizePredicate(predicate),
     lifecycle,
     fm,
-    body: draft.body_md?.trim() ?? "",
+    body: "",
     authorId: author,
     createdById,
     now,
@@ -2155,7 +2161,6 @@ export async function loadPolicyForEdit(opts: {
 }): Promise<
   | {
       ok: true;
-      body_md: string;
       lifecycle: string;
       data: Record<string, unknown>;
     }
@@ -2164,11 +2169,10 @@ export async function loadPolicyForEdit(opts: {
   const scopeCol = "doco_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
-      body_md: string | null;
       lifecycle: string | null;
       data: Record<string, unknown> | null;
     }>(
-      `SELECT body_md, lifecycle, data FROM policies
+      `SELECT lifecycle, data FROM policies
         WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.policyId, opts.scopeId],
     );
@@ -2177,7 +2181,6 @@ export async function loadPolicyForEdit(opts: {
   if (!row) return { error: `Policy ${opts.policyId} not found.`, status: 404 };
   return {
     ok: true,
-    body_md: row.body_md ?? "",
     lifecycle: row.lifecycle ?? "active",
     data: row.data ?? {},
   };

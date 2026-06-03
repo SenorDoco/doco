@@ -665,7 +665,6 @@ BODY — common (every kind)
   fires_when_node_lifecycle optional ["active", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block".
                                   Not used for kind="suggestion".
-  body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
 
 BODY — kind = "suggestion"
