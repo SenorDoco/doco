@@ -14,18 +14,14 @@ import { ArrowRight } from "lucide-react";
 // loader. We only poll when the tab is visible to avoid burning cycles
 // on idle tabs.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useRevalidator } from "react-router";
+import { Link, useRevalidator, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { GithubIntegrationCard } from "~/components/github-integration-card";
-import {
-  LIFECYCLE_ORDER,
-  initialVisibleLifecycles,
-  perspectiveHonorsLifecycleFilter,
-} from "~/components/lifecycle-filter";
+import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
@@ -67,6 +63,13 @@ import {
   listPerspectivesForDoco,
   resolveActivePerspective,
 } from "~/lib/perspectives.server";
+import {
+  PR_LIFECYCLE_ORDER,
+  parsePrLifecycles,
+  pullRequestLabel,
+  togglePrLifecycleParam,
+  visiblePrLifecycles,
+} from "~/lib/pull-requests";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
 import { useFullscreen } from "~/lib/use-fullscreen";
@@ -320,12 +323,17 @@ export async function loader({
     const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canWriteDoco(ctx.meta, me?.id ?? null);
     const focusNodeId = selectedNode?.id ?? selectedEdge?.from.id;
+    // Pull-requests perspective lifecycle filter: `?pr_lifecycle=queued,active`
+    // narrows the list server-side. Absent → the full list (parse → null).
+    const pullRequestLifecycles =
+      parsePrLifecycles(new URL(request.url).searchParams.get("pr_lifecycle")) ?? undefined;
     const { graph, pageRanks, bpmnGraph, orgTreeData, slaData, glossaryData, pullRequestsData } =
       await loadDocoHomePerspectiveData(c, {
         activeKind,
         docoId: ctx.meta.docoId,
         handle,
         focusNodeId,
+        pullRequestLifecycles,
       });
 
     // Policy count — guidance + node-authoring policies
@@ -667,6 +675,34 @@ export default function DocoHome({
       else next.add(lifecycle);
       return next;
     });
+
+  // Pull-requests perspective lifecycle filter — its own state, held in the URL
+  // (`?pr_lifecycle=`) rather than the page-level `visibleLifecycles`. The PR
+  // list shows GitHub states (Open / Merged / Closed) and is narrowed
+  // server-side, so it needs separate, relabeled controls; keeping the
+  // selection in the URL also makes it survive the live feed's revalidation
+  // without the re-seed that reset the page-level filter.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const prLifecycleParam = searchParams.get("pr_lifecycle");
+  const prVisibleLifecycles = useMemo(
+    () => visiblePrLifecycles(prLifecycleParam),
+    [prLifecycleParam],
+  );
+  const togglePrLifecycle = useCallback(
+    (stage: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          const value = togglePrLifecycleParam(next.get("pr_lifecycle"), stage);
+          if (value === null) next.delete("pr_lifecycle");
+          else next.set("pr_lifecycle", value);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   // Native browser fullscreen on the aside (tabs + search + canvas +
   // lifecycle filter ride along because they're all inside the aside).
@@ -1099,16 +1135,21 @@ export default function DocoHome({
               <PerspectiveFrame
                 fillHeight
                 lifecycleFilter={
-                  // Perspectives that ignore the visible-lifecycle set (the
-                  // Pull requests list) get no filter panel — it would change
-                  // nothing and the page-level re-seed would flip the boxes back.
-                  perspectiveHonorsLifecycleFilter(effectivePerspectiveKind)
+                  // The Pull requests list runs its own filter — GitHub states
+                  // (Open / Merged / Closed), narrowed server-side, kept in the
+                  // URL. Every other perspective uses the page-level set.
+                  effectivePerspectiveKind === "pull-requests"
                     ? {
+                        visible: prVisibleLifecycles,
+                        available: PR_LIFECYCLE_ORDER,
+                        onToggle: togglePrLifecycle,
+                        labelFor: pullRequestLabel,
+                      }
+                    : {
                         visible: visibleLifecycles,
                         available: availableLifecycles,
                         onToggle: toggleLifecycle,
                       }
-                    : undefined
                 }
                 fullscreen={{
                   isFullscreen: isPerspectiveFullscreen,
@@ -1143,6 +1184,7 @@ export default function DocoHome({
                     data={pullRequestsData}
                     handle={handle}
                     focusId={perspectiveFocusId}
+                    filtered={prVisibleLifecycles.size < PR_LIFECYCLE_ORDER.length}
                   />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
                   <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
