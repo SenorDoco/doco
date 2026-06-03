@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   loadScopeOptions: vi.fn(),
   listSlackInstallations: vi.fn(),
   replaceSlackChannelConnections: vi.fn(),
+  setSlackBoundWorkspace: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
@@ -18,6 +19,7 @@ vi.mock("~/lib/api-keys.server", () => ({
 vi.mock("~/lib/slack.server", () => ({
   listSlackInstallations: mocks.listSlackInstallations,
   replaceSlackChannelConnections: mocks.replaceSlackChannelConnections,
+  setSlackBoundWorkspace: mocks.setSlackBoundWorkspace,
 }));
 
 import { action, loader } from "../integrations.slack.setup";
@@ -41,12 +43,14 @@ describe("/integrations/slack/setup", () => {
         id: "doco_bpms",
         label: "torre/bpms",
         myRole: "writer",
+        workspaceId: "workspace_torre",
       },
       {
         level: "doco",
         id: "doco_sales",
         label: "torre/sales",
         myRole: "writer",
+        workspaceId: "workspace_torre",
       },
     ]);
     mocks.listSlackInstallations.mockResolvedValue([
@@ -54,10 +58,12 @@ describe("/integrations/slack/setup", () => {
         workspaceId: "T123",
         workspaceName: "Doco",
         botUserId: "U123",
+        docoWorkspaceId: null,
         installedAt: "2026-05-26T20:00:00.000Z",
       },
     ]);
     mocks.replaceSlackChannelConnections.mockResolvedValue(undefined);
+    mocks.setSlackBoundWorkspace.mockResolvedValue(true);
   });
 
   it("redirects anonymous users to sign in", async () => {
@@ -133,6 +139,11 @@ describe("/integrations/slack/setup", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe("/integrations?slack_connected=Doco");
+    // The Slack team is bound to the one Doco workspace it configured.
+    expect(mocks.setSlackBoundWorkspace).toHaveBeenCalledWith({
+      slackTeamId: "T123",
+      docoWorkspaceId: "workspace_torre",
+    });
     expect(mocks.replaceSlackChannelConnections).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "*",
@@ -146,6 +157,34 @@ describe("/integrations/slack/setup", () => {
       ],
       createdByUserId: "user_alice",
     });
+  });
+
+  it("rejects defaults that span more than one Doco workspace (one team → one workspace)", async () => {
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "workspace", id: "workspace_torre", label: "torre", myRole: "owner" },
+      { level: "workspace", id: "workspace_meta", label: "meta", myRole: "owner" },
+    ]);
+    const body = new URLSearchParams({
+      workspace_id: "T123",
+      "workspace_role:torre": "reader",
+      "workspace_role:meta": "reader",
+    });
+    body.append("workspace_key", "torre");
+    body.append("workspace_key", "meta");
+    body.append("workspace_mode:torre", "all");
+    body.append("workspace_mode:meta", "all");
+
+    const response = (await action({
+      request: new Request("https://doco.test/integrations/slack/setup", {
+        method: "POST",
+        body,
+      }),
+    })) as Response;
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "slack_one_workspace_per_team" });
+    expect(mocks.setSlackBoundWorkspace).not.toHaveBeenCalled();
+    expect(mocks.replaceSlackChannelConnections).not.toHaveBeenCalled();
   });
 
   it("defaults a selected workspace to reader if the role control did not submit", async () => {
