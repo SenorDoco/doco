@@ -145,4 +145,87 @@ describe("runSenorDocoAgentLoop", () => {
     expect(calls).toBe(0);
     expect(kinds).toEqual(["aborted"]);
   });
+
+  // A tool's side effect (e.g. a doco_api write) is durable the instant
+  // runTool returns. If the turn is then aborted — a newer message
+  // superseding it — that completed work MUST still be recorded as an
+  // assistant tool_use + tool_result, or the next turn loads a transcript
+  // where the work looks undone and repeats it. (This is the "sent a
+  // second message, it re-ran the first instruction" bug.)
+  it("records completed tool work when aborted after a tool's side effect commits", async () => {
+    const messages: unknown[] = [];
+    let sideEffectCommitted = false;
+    const { kinds, events } = await collect(
+      runSenorDocoAgentLoop({
+        messages: messages as never,
+        maxTurns: 10,
+        callModel: () =>
+          modelTurn({
+            finalBlocks: [{ type: "text", text: "Adding Señor Doco:" }, toolBlock("toolu_1")],
+            toolUseBlocks: [toolBlock("toolu_1")],
+            stopReason: "tool_use",
+          })(),
+        runTool: async (block) => {
+          // The write lands the moment runTool returns.
+          sideEffectCommitted = true;
+          return {
+            ok: true,
+            preview: "created",
+            result: { type: "tool_result", tool_use_id: block.id, content: "created" },
+          };
+        },
+        // False at the top-of-loop and pre-tool checks; true only once the
+        // tool has run and its side effect is committed.
+        shouldAbort: async () => sideEffectCommitted,
+      }),
+    );
+
+    // The turn was aborted...
+    expect(kinds).toContain("aborted");
+    // ...but the committed work was flushed first: a tool_results event
+    // and the assistant + tool-result messages pushed into history.
+    expect(kinds).toContain("tool_results");
+    expect(kinds.indexOf("tool_results")).toBeLessThan(kinds.indexOf("aborted"));
+    const toolResultsEv = events.find((e) => e.kind === "tool_results");
+    expect(toolResultsEv && "blocks" in toolResultsEv ? toolResultsEv.blocks : []).toHaveLength(1);
+    expect((messages as { role: string }[]).map((m) => m.role)).toEqual(["assistant", "user"]);
+  });
+
+  // Anthropic requires every tool_use block to be answered by a matching
+  // tool_result in the very next turn. When we abort mid-batch, synthesize
+  // results for the tools we never reached so the persisted pair stays
+  // balanced — otherwise the *next* turn's model call 400s.
+  it("balances tool_results for un-run tools when aborted mid-batch", async () => {
+    const messages: unknown[] = [];
+    let toolRuns = 0;
+    const { events } = await collect(
+      runSenorDocoAgentLoop({
+        messages: messages as never,
+        maxTurns: 10,
+        callModel: () =>
+          modelTurn({
+            finalBlocks: [toolBlock("toolu_1"), toolBlock("toolu_2")],
+            toolUseBlocks: [toolBlock("toolu_1"), toolBlock("toolu_2")],
+            stopReason: "tool_use",
+          })(),
+        runTool: async (block) => {
+          toolRuns++;
+          return {
+            ok: true,
+            preview: "ok",
+            result: { type: "tool_result", tool_use_id: block.id, content: "ok" },
+          };
+        },
+        // Abort the instant the first tool has committed; the second never runs.
+        shouldAbort: async () => toolRuns >= 1,
+      }),
+    );
+
+    expect(toolRuns).toBe(1);
+    const ev = events.find((e) => e.kind === "tool_results");
+    const ids =
+      ev && "blocks" in ev ? ev.blocks.map((b) => (b as { tool_use_id: string }).tool_use_id) : [];
+    // Both tool_use ids are answered — toolu_1 for real, toolu_2 synthesized.
+    expect(ids).toEqual(["toolu_1", "toolu_2"]);
+  });
 });
