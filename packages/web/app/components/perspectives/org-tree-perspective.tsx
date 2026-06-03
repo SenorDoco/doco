@@ -67,8 +67,22 @@ interface OrgTreeNodeData extends Record<string, unknown> {
 // class names).
 function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
   const { org, isCenter } = data;
-  const kindIcon = org.type === "agent" ? "🤖" : org.type === "person" ? "👤" : null;
-  const kindLabel = org.type === "agent" ? "agent" : org.type === "person" ? "person" : null;
+  const kindIcon =
+    org.type === "agent"
+      ? "🤖"
+      : org.type === "person"
+        ? "👤"
+        : org.type === "vacant"
+          ? "🪑"
+          : null;
+  const kindLabel =
+    org.type === "agent"
+      ? "agent"
+      : org.type === "person"
+        ? "person"
+        : org.type === "vacant"
+          ? "vacant"
+          : null;
   return (
     <div
       className={`relative flex flex-col justify-between rounded-md border bg-white px-3 py-2 shadow-sm transition ${

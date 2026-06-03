@@ -26,12 +26,14 @@ export interface OrgTreeNode {
   /** Optional short role label rendered under the name. */
   role: string | null;
   /**
-   * "person" | "agent" — drives the icon (👤 vs 🤖). Inferred from
-   * `body_md` prose, not from a structured field (the slim-down
-   * removed `type` from the Principal data shape). null = no
-   * confident inference; the perspective omits the icon for those.
+   * "person" | "agent" | "vacant" — drives the seat icon (👤 / 🤖 / 🪑).
+   * Inferred from `body_md` prose, not from a structured field (the
+   * slim-down removed `type` from the Principal data shape); the
+   * org-chart template requires every seat to declare which of the three
+   * it is. null = no confident inference; the perspective omits the icon
+   * for those.
    */
-  type: "person" | "agent" | null;
+  type: "person" | "agent" | "vacant" | null;
   lifecycle: string;
   /** Manager principal id; null for top-of-chain. */
   reports_to: string | null;
@@ -81,16 +83,27 @@ function normalizeLimit(value: number | null | undefined): number | null {
 }
 
 /**
- * Infer person-vs-agent from the Principal's prose. Cheap regex scan —
- * the canonical phrases the org-chart guidance suggests ("AI agent",
+ * Infer person / AI-agent / vacant from the Principal's prose. Cheap regex
+ * scan — the canonical phrases the org-chart guidance suggests ("AI agent",
  * "Operates under:", "Autonomous agent", "Human director", "Person",
- * etc.) light up the right bucket. When the prose is silent or
- * mixes signals the function returns null so the perspective omits
+ * "Vacant — budgeted …", etc.) light up the right bucket. When the prose is
+ * silent or mixes signals the function returns null so the perspective omits
  * the icon — better than guessing wrong.
  */
-function inferKindFromProse(body: string | null): "person" | "agent" | null {
+function inferKindFromProse(body: string | null): "person" | "agent" | "vacant" | null {
   if (!body) return null;
   const text = body.toLowerCase();
+  // Vacant takes precedence: a budgeted-but-unfilled seat reads as vacant even
+  // when its prose names the kind of occupant it is waiting for ("Vacant —
+  // budgeted Staff Engineer seat …"). We key on explicit vacancy markers, not a
+  // bare "budgeted" (a filled seat can own a budget without being open).
+  const vacantSignals = [
+    /\bvacant\b/,
+    /\bunfilled\b/,
+    /\bopen (?:seat|role|req|requisition|position|headcount)\b/,
+    /\bto be (?:hired|filled)\b/,
+  ];
+  if (vacantSignals.some((rx) => rx.test(text))) return "vacant";
   const agentSignals = [
     /\bai[\s-]?agent\b/,
     /\bautonomous (agent|bot|role)\b/,
@@ -110,7 +123,7 @@ function inferKindFromProse(body: string | null): "person" | "agent" | null {
 function roleFromProse(
   body: string | null,
   name: string,
-  type: "person" | "agent" | null,
+  type: "person" | "agent" | "vacant" | null,
 ): string | null {
   if (!body) return null;
   const firstLine = body
@@ -119,13 +132,18 @@ function roleFromProse(
     .find((l) => l.length > 0);
   if (!firstLine || firstLine.toLowerCase() === name.toLowerCase()) return null;
 
+  // Strip the leading kind marker plus any trailing punctuation (including the
+  // em dash the guidance examples use, e.g. "Vacant — budgeted …") so the role
+  // label reads as the role, not the kind.
   const withoutKind =
     type === "agent"
       ? firstLine.replace(
-          /^(?:ai[\s-]?agent|autonomous\s+(?:agent|bot|role)|agent|bot)\b\s*[:.;,-]?\s*/i,
+          /^(?:ai[\s-]?agent|autonomous\s+(?:agent|bot|role)|agent|bot)\b[\s:.;,—-]*/i,
           "",
         )
-      : firstLine.replace(/^(?:human|person|people|employee|contractor)\b\s*[:.;,-]?\s*/i, "");
+      : type === "vacant"
+        ? firstLine.replace(/^(?:vacant|unfilled|open)\b[\s:.;,—-]*/i, "")
+        : firstLine.replace(/^(?:human|person|people|employee|contractor)\b[\s:.;,—-]*/i, "");
   const role = withoutKind.trim();
   if (!role) return null;
   return role.length > 72 ? `${role.slice(0, 69)}...` : role;

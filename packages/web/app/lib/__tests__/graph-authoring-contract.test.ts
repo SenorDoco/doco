@@ -62,6 +62,12 @@ describe("graph authoring contract", () => {
 
     expect(glossary.constraints.join("\n")).toMatch(/deprecated terms at their replacement/i);
     expect(glossary.constraints.join("\n")).toMatch(/`replaces`/i);
+
+    // Source citation rides the `derived_from` edge (matches the template).
+    expect(glossary.constraints.join("\n")).toMatch(/`derived_from`/);
+    // The deliberate two-stage stance: canonical (`active`) or deprecated
+    // (`retired`) — no draft/queue stage for a glossary term.
+    expect(glossary.constraints.join("\n")).toMatch(/no draft\/queue stage/i);
   });
 
   it("publishes role examples for the simplified edge families", () => {

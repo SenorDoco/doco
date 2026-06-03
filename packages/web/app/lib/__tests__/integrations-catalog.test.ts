@@ -16,9 +16,9 @@ function findOrThrow(id: string) {
 }
 
 describe("integrations-catalog", () => {
-  it("exposes Slack at account scope and GitHub at Doco scope", () => {
+  it("exposes Slack at workspace scope and GitHub at Doco scope", () => {
     expect(slack).toBeDefined();
-    expect(slack.scope).toBe("account");
+    expect(slack.scope).toBe("workspace");
     expect(github).toBeDefined();
     expect(github.scope).toBe("doco");
   });
@@ -35,7 +35,7 @@ describe("integrations-catalog", () => {
       expect(needsScopePrompt({ integration: github, pageScope: "doco" })).toBe(false);
     });
 
-    it("is false for account-scope integrations regardless of page", () => {
+    it("is false for Slack on any page (it runs its own install flow)", () => {
       expect(needsScopePrompt({ integration: slack, pageScope: "workspace" })).toBe(false);
       expect(needsScopePrompt({ integration: slack, pageScope: "doco" })).toBe(false);
     });
