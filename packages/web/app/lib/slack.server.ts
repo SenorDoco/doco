@@ -42,6 +42,11 @@ import {
 import { internalFetch } from "./internal-fetch.server";
 import { listAvailablePerspectives, listPerspectivesForDoco } from "./perspectives.server";
 import {
+  type AgentLoopEvent,
+  type AgentLoopModelResult,
+  runSenorDocoAgentLoop,
+} from "./senor-doco-agent-loop.server";
+import {
   type SenorDocoIntegrationContextCacheInfo,
   buildSenorDocoIntegrationContextKey,
   createSenorDocoIntegrationContextCache,
@@ -1025,9 +1030,12 @@ export async function generateSlackDocoLlmAnswer(
         content: buildSlackLlmUserPrompt(input),
       },
     ];
-    let lastMessage: Message | null = null;
     const footerLines: string[] = [];
-    for (let turn = 0; turn < SLACK_LLM_MAX_TOOL_TURNS; turn++) {
+    let finalText: string | null = null;
+
+    // One batched (non-streaming) model call per turn — Slack posts a
+    // single finished message, so there is nothing to stream.
+    const callModel = async function* (): AsyncGenerator<AgentLoopEvent, AgentLoopModelResult> {
       const message = await createMessage({
         max_tokens: SLACK_LLM_MAX_TOKENS,
         temperature: 0.2,
@@ -1035,46 +1043,50 @@ export async function generateSlackDocoLlmAnswer(
         tools: [DOCO_API_TOOL],
         messages,
       });
-      lastMessage = message;
-      const assistantContent = message.content.filter(
+      const finalBlocks = message.content.filter(
         (block) => block.type === "text" || block.type === "tool_use",
       ) as ContentBlockParam[];
-      messages.push({ role: "assistant", content: assistantContent });
-      if (message.stop_reason !== "tool_use") {
-        return cleanSlackLlmAnswer(slackMessageText(message), {
-          footerLines,
-          repairText: input.repairText,
+      return {
+        finalBlocks,
+        toolUseBlocks: finalBlocks.filter(
+          (block): block is ToolUseBlock => block.type === "tool_use",
+        ),
+        stopReason: message.stop_reason ?? null,
+      };
+    };
+
+    // Same shared loop the website drives. Slack ignores the streaming
+    // events and only reacts to the structural markers: capture the final
+    // answer's text, or — on the turn cap — make one last no-tools call to
+    // wrap up. Tool effects accrue into the footer as each tool runs.
+    for await (const ev of runSenorDocoAgentLoop({
+      messages,
+      maxTurns: SLACK_LLM_MAX_TOOL_TURNS,
+      callModel,
+      runTool: async (block) => {
+        const toolResult = await runTool(block, input);
+        footerLines.push(...extractSlackDocoFooterLines([toolResult]));
+        return toolResult;
+      },
+    })) {
+      if (ev.kind === "assistant_message" && ev.stopReason !== "tool_use") {
+        finalText = ev.blocks
+          .map((block) => (block.type === "text" ? block.text : ""))
+          .join("\n")
+          .trim();
+      } else if (ev.kind === "turn_limit") {
+        const finalMessage = await createMessage({
+          max_tokens: SLACK_LLM_MAX_TOKENS,
+          temperature: 0.2,
+          system: slackLlmSystemPrompt(),
+          messages: [...messages, { role: "user", content: SLACK_LLM_TOOL_LIMIT_PROMPT }],
         });
+        finalText = slackMessageText(finalMessage) || SLACK_LLM_TOOL_LIMIT_FALLBACK;
       }
-      const toolUseBlocks = assistantContent.filter(
-        (block): block is ToolUseBlock => block.type === "tool_use",
-      );
-      if (toolUseBlocks.length === 0) break;
-      const toolResults = await Promise.all(toolUseBlocks.map((block) => runTool(block, input)));
-      footerLines.push(...extractSlackDocoFooterLines(toolResults));
-      messages.push({
-        role: "user",
-        content: toolResults.map((toolResult) => toolResult.result),
-      });
     }
-    if (lastMessage?.stop_reason === "tool_use") {
-      const finalMessage = await createMessage({
-        max_tokens: SLACK_LLM_MAX_TOKENS,
-        temperature: 0.2,
-        system: slackLlmSystemPrompt(),
-        messages: [...messages, { role: "user", content: SLACK_LLM_TOOL_LIMIT_PROMPT }],
-      });
-      return cleanSlackLlmAnswer(slackMessageText(finalMessage) || SLACK_LLM_TOOL_LIMIT_FALLBACK, {
-        footerLines,
-        repairText: input.repairText,
-      });
-    }
-    return lastMessage
-      ? cleanSlackLlmAnswer(slackMessageText(lastMessage), {
-          footerLines,
-          repairText: input.repairText,
-        })
-      : null;
+
+    if (finalText === null) return null;
+    return cleanSlackLlmAnswer(finalText, { footerLines, repairText: input.repairText });
   } catch (error) {
     console.error(
       "[slack] Doco LLM answer failed:",

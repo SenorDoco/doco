@@ -64,10 +64,7 @@ describe("runSenorDocoAgentLoop", () => {
     const messages: unknown[] = [];
     const turns: AgentLoopModelResult[] = [
       {
-        finalBlocks: [
-          { type: "text", text: "Working:" },
-          toolBlock("toolu_1"),
-        ],
+        finalBlocks: [{ type: "text", text: "Working:" }, toolBlock("toolu_1")],
         toolUseBlocks: [toolBlock("toolu_1")],
         stopReason: "tool_use",
       },
