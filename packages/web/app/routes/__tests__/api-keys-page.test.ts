@@ -32,8 +32,10 @@ import { catalogFromOptions } from "~/lib/grant-picker";
 import ApiKeysPage, {
   ExistingTokensPanel,
   ManualMcpPanel,
+  ProviderInstructions,
   action,
   formatLastUsedLabel,
+  mcpUrlForWorkspace,
   meta,
 } from "../api-keys";
 
@@ -120,24 +122,38 @@ describe("/api-keys page action", () => {
     expect(markup).toContain("No active tokens yet.");
   });
 
-  it("teaches the per-workspace MCP URL with the id placeholder when there are no workspaces", () => {
+  it("builds the per-workspace MCP URL, trimming a trailing slash on the host", () => {
+    expect(mcpUrlForWorkspace("https://doco.test", "workspace_01ABC")).toBe(
+      "https://doco.test/workspace_01ABC/mcp",
+    );
+    expect(mcpUrlForWorkspace("https://doco.test/", "workspace_01ABC")).toBe(
+      "https://doco.test/workspace_01ABC/mcp",
+    );
+  });
+
+  it("asks which workspace first and reveals nothing concrete until one is picked", () => {
     const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, { host: "https://doco.test" }),
+      createElement(ManualMcpPanel, {
+        host: "https://doco.test",
+        workspaces: [
+          { id: "workspace_01A", handle: "acme" },
+          { id: "workspace_01B", handle: "beta" },
+        ],
+      }),
     );
 
     expect(markup).toContain("Connect a client to Doco");
     expect(markup).toContain("per workspace");
-    expect(markup).toContain("https://doco.test/WORKSPACE_ID/mcp");
-    expect(markup).toContain(
-      "claude mcp add doco -- npx -y mcp-remote https://doco.test/WORKSPACE_ID/mcp",
-    );
-    // No app-wide /mcp endpoint is advertised anymore.
-    expect(markup).not.toContain("https://doco.test/mcp");
-    expect(markup).toContain("ChatGPT &amp; other MCP clients");
-    expect(markup).toContain("doco_request_access");
+    // The selector offers every workspace by handle…
+    expect(markup).toContain("acme");
+    expect(markup).toContain("beta");
+    // …but with two to choose from, nothing is picked yet, so neither the
+    // URL nor the client setup is shown until the user selects one.
+    expect(markup).not.toContain("https://doco.test/workspace_01A/mcp");
+    expect(markup).not.toContain("https://doco.test/workspace_01B/mcp");
   });
 
-  it("lists a concrete per-workspace MCP URL when the user has a workspace", () => {
+  it("auto-selects and shows the URL when the user has exactly one workspace", () => {
     const markup = renderToStaticMarkup(
       createElement(ManualMcpPanel, {
         host: "https://doco.test",
@@ -145,10 +161,42 @@ describe("/api-keys page action", () => {
       }),
     );
 
+    // One workspace: no need to ask — its URL is shown right away.
     expect(markup).toContain("https://doco.test/workspace_01ABC/mcp");
-    expect(markup).toContain(
-      "claude mcp add doco -- npx -y mcp-remote https://doco.test/workspace_01ABC/mcp",
+    // Client setup steps stay behind the provider options until one is clicked.
+    expect(markup).not.toContain("claude mcp add doco -- npx -y mcp-remote");
+    // No app-wide /mcp endpoint is advertised anymore.
+    expect(markup).not.toContain("https://doco.test/mcp");
+    // The clickable provider options are present, and so is the capabilities note.
+    expect(markup).toContain("Claude Desktop");
+    expect(markup).toContain("ChatGPT");
+    expect(markup).toContain("doco_request_access");
+  });
+
+  it("falls back to the WORKSPACE_ID placeholder when the user has no workspace", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ManualMcpPanel, { host: "https://doco.test" }),
     );
+
+    expect(markup).toContain("https://doco.test/WORKSPACE_ID/mcp");
+    expect(markup).not.toContain("https://doco.test/mcp");
+  });
+
+  it("renders client-specific setup only for the chosen provider", () => {
+    const url = "https://doco.test/workspace_01ABC/mcp";
+
+    const desktop = renderToStaticMarkup(
+      createElement(ProviderInstructions, { providerId: "claude-desktop", url }),
+    );
+    expect(desktop).toContain(`claude mcp add doco -- npx -y mcp-remote ${url}`);
+    expect(desktop).toContain("claude_desktop_config.json");
+
+    const chatgpt = renderToStaticMarkup(
+      createElement(ProviderInstructions, { providerId: "chatgpt", url }),
+    );
+    expect(chatgpt).toContain(url);
+    // The ChatGPT path doesn't carry the Claude Desktop config.
+    expect(chatgpt).not.toContain("claude_desktop_config.json");
   });
 });
 
