@@ -25,8 +25,21 @@ vi.mock("react-router", async () => {
   return {
     ...actual,
     // Render the route's <Form> as a plain form — static markup has no data
-    // router for useSubmit. (Same shim the GitHub render test uses.)
-    Form: ({ children }: { children?: ReactNode }) => <form>{children}</form>,
+    // router for useSubmit. Forward action/method so tests can assert where a
+    // form posts (e.g. Slack removal always targets /integrations).
+    Form: ({
+      children,
+      action,
+      method,
+    }: {
+      children?: ReactNode;
+      action?: string;
+      method?: string;
+    }) => (
+      <form action={action} method={method}>
+        {children}
+      </form>
+    ),
     useLoaderData: () => mocks.docoLoaderData,
     useRevalidator: () => ({ state: "idle", revalidate: vi.fn() }),
   };
@@ -99,9 +112,6 @@ describe("integrations page layout", () => {
           me,
           notice: null,
           slackConfirmation: null,
-          slackInstallHref: null,
-          slackInstallations: [],
-          removableTeamIds: [],
           rollup: { slack: [], workspaces: [], docos: [] },
           pickingIntegrationId: null,
         },
@@ -112,6 +122,8 @@ describe("integrations page layout", () => {
           me,
           workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
           rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
+          slack: [],
+          canManageSlack: false,
           pickingIntegrationId: null,
         },
       }),
@@ -133,9 +145,6 @@ describe("integrations page layout", () => {
             me,
             notice: null,
             slackConfirmation: null,
-            slackInstallHref: null,
-            slackInstallations: [],
-            removableTeamIds: [],
             rollup: { slack: [], workspaces: [], docos: [] },
             pickingIntegrationId: null,
           },
@@ -148,6 +157,8 @@ describe("integrations page layout", () => {
             me,
             workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
             rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
+            slack: [],
+            canManageSlack: false,
             pickingIntegrationId: null,
           },
         }),
@@ -168,7 +179,7 @@ describe("integrations page layout", () => {
   });
 });
 
-describe("integrations connected-pane standardization", () => {
+describe("integrations: Slack folded into the per-workspace rollup", () => {
   const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
   const doco = {
     docoId: "doco_1",
@@ -176,27 +187,30 @@ describe("integrations connected-pane standardization", () => {
     workspaceHandle: "acme",
     githubRepoCount: 4,
   };
+  const boundTeam = {
+    workspaceId: "T1",
+    workspaceName: "Torre.ai",
+    botUserId: "U1",
+    installedAt: "2026-06-03T00:00:00.000Z",
+    docoWorkspaceId: "workspace_acme",
+  };
+  const unboundTeam = {
+    workspaceId: "T2",
+    workspaceName: "Orphan Co",
+    botUserId: null,
+    installedAt: "2026-06-03T00:00:00.000Z",
+    docoWorkspaceId: null,
+  };
 
-  function renderAccountPage(removableTeamIds: string[] = []): string {
+  function renderAccountPage(slack = [boundTeam, unboundTeam]): string {
     return renderRoute(
       createElement(IntegrationsPage, {
         loaderData: {
           me,
           notice: null,
           slackConfirmation: null,
-          slackInstallHref: "/integrations/slack/install",
-          slackInstallations: [
-            {
-              workspaceId: "T1",
-              workspaceName: "Torre.ai",
-              botUserId: "U1",
-              installedAt: "2026-06-03T00:00:00.000Z",
-              docoWorkspaceId: null,
-            },
-          ],
-          removableTeamIds,
           rollup: {
-            slack: [],
+            slack,
             workspaces: [{ workspaceId: "workspace_acme", handle: "acme", installCount: 0 }],
             docos: [doco],
           },
@@ -206,61 +220,73 @@ describe("integrations connected-pane standardization", () => {
     );
   }
 
-  function renderWorkspacePage(): string {
+  function renderWorkspacePage(opts: { canManageSlack?: boolean } = {}): string {
     return renderRoute(
       createElement(WorkspaceIntegrations, {
         loaderData: {
           me,
           workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
           rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [doco] },
+          slack: [{ teamId: "T1", teamName: "Torre.ai", installedAt: "2026-06-03T00:00:00.000Z" }],
+          canManageSlack: opts.canManageSlack ?? true,
           pickingIntegrationId: null,
         },
       }),
     );
   }
 
-  it("renders the Slack-workspaces card with the same flush list + action button as the rollups", () => {
+  it("drops the dedicated Slack card and nests a bound team under its workspace, like GitHub", () => {
     const markup = renderAccountPage();
 
-    // Both the Slack install row and the workspace rollup row sit in flush
-    // divider lists — the Slack card's old nested bordered box is gone.
-    expect(markup).toContain('<ul class="divide-y divide-border">');
-    expect(markup).not.toContain("divide-y divide-border rounded-md border border-border");
+    // No more standalone "Slack workspaces" card.
+    expect(markup).not.toContain("Slack workspaces");
 
-    // Both actions ("Set defaults" on Slack, "Manage" on the rollup) render
-    // through the one shared secondary-button class, at the same size — the
-    // old oversized Slack button (py-2 text-sm) no longer exists.
-    expect(markup).toContain("Set defaults");
-    expect(markup).toContain("Manage");
+    // The bound team is a small read-only entry under its workspace, counted in
+    // the same detail line as the GitHub Docos — exactly like a GitHub entry.
+    expect(markup).toContain("Torre.ai");
+    expect(markup).toContain("1 doco with connections");
+    expect(markup).toContain("1 Slack team");
+
+    // Standardized rollup chrome is unchanged.
+    expect(markup).toContain('<ul class="divide-y divide-border">');
     expect(markup).toContain(CONNECTION_ACTION_SECONDARY);
     expect(markup).not.toContain("px-3 py-2 text-sm");
 
-    // The Slack action navigates to its setup screen like any other row.
-    expect(markup).toContain('href="/integrations/slack/setup?team_id=T1"');
+    // A bound team is managed by drilling in (no inline Remove on this page).
+    expect(markup).not.toContain('value="T1"');
   });
 
-  it("renders the per-Doco rollup with the same standardized row", () => {
-    const markup = renderWorkspacePage();
-    expect(markup).toContain('<ul class="divide-y divide-border">');
-    expect(markup).toContain("Manage");
-    expect(markup).toContain(CONNECTION_ACTION_SECONDARY);
-    expect(markup).toContain("4 GitHub repos connected");
+  it("lists unbound teams in a 'not linked' fallback whose Remove posts to /integrations", () => {
+    const markup = renderAccountPage();
+    expect(markup).toContain("Slack teams not linked to a workspace");
+    expect(markup).toContain("Orphan Co");
+    expect(markup).toContain('value="remove_slack"');
+    expect(markup).toContain('value="T2"');
+    expect(markup).toContain(CONNECTION_ACTION_DESTRUCTIVE);
+    // Removal posts to the canonical /integrations action from wherever it's shown.
+    expect(markup).toContain('action="/integrations"');
   });
 
-  it("shows the Remove control beside Set defaults only for removable teams", () => {
-    // Removable (T1 is in the set) → a remove_slack form posts alongside the
-    // standardized "Set defaults" action, styled with the shared destructive pill.
-    const removable = renderAccountPage(["T1"]);
-    expect(removable).toContain("Set defaults");
-    expect(removable).toContain("Remove");
-    expect(removable).toContain('value="remove_slack"');
-    expect(removable).toContain('value="T1"');
-    expect(removable).toContain(CONNECTION_ACTION_DESTRUCTIVE);
+  it("omits the fallback (and any Remove) when every team is bound", () => {
+    const markup = renderAccountPage([boundTeam]);
+    expect(markup).not.toContain("not linked to a workspace");
+    expect(markup).not.toContain("Remove");
+  });
 
-    // Not removable (empty set) → no remove form at all, just Set defaults.
-    const locked = renderAccountPage([]);
-    expect(locked).toContain("Set defaults");
-    expect(locked).not.toContain("Remove");
-    expect(locked).not.toContain('value="remove_slack"');
+  it("manages Slack on the workspace page: Set defaults for members, Remove for owners", () => {
+    const owner = renderWorkspacePage({ canManageSlack: true });
+    expect(owner).toContain("Workspace-level integrations");
+    expect(owner).toContain("Torre.ai");
+    expect(owner).toContain("Set defaults");
+    expect(owner).toContain('href="/integrations/slack/setup?team_id=T1"');
+    expect(owner).toContain("Remove");
+    expect(owner).toContain(CONNECTION_ACTION_DESTRUCTIVE);
+    // The per-Doco rollup stays standardized.
+    expect(owner).toContain("4 GitHub repos connected");
+    expect(owner).toContain(CONNECTION_ACTION_SECONDARY);
+
+    const member = renderWorkspacePage({ canManageSlack: false });
+    expect(member).toContain("Set defaults");
+    expect(member).not.toContain("Remove");
   });
 });

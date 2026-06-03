@@ -5,10 +5,15 @@ const mocks = vi.hoisted(() => ({
   resolveWorkspaceByHandle: vi.fn(),
   getWorkspaceRole: vi.fn(),
   loadWorkspaceIntegrationsRollup: vi.fn(),
+  listSlackInstallations: vi.fn(),
 }));
 
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: mocks.getCurrentPrincipal,
+}));
+
+vi.mock("~/lib/slack.server", () => ({
+  listSlackInstallations: mocks.listSlackInstallations,
 }));
 
 vi.mock("~/lib/workspace-helpers.server", () => ({
@@ -28,6 +33,7 @@ import { loader } from "../workspaces.$workspaceHandle.integrations";
 describe("/workspaces/:workspaceHandle/integrations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.listSlackInstallations.mockResolvedValue([]);
     mocks.loadWorkspaceIntegrationsRollup.mockResolvedValue({
       workspaceId: "workspace_acme",
       workspaceHandle: "acme",
@@ -112,5 +118,69 @@ describe("/workspaces/:workspaceHandle/integrations", () => {
       constitution: "",
     });
     expect(data.rollup).toEqual(rollup);
+  });
+
+  it("loads only the Slack teams bound to this workspace, and lets an owner manage them", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
+    mocks.resolveWorkspaceByHandle.mockResolvedValue({
+      id: "workspace_acme",
+      handle: "acme",
+      constitution: "",
+    });
+    mocks.getWorkspaceRole.mockResolvedValue("owner");
+    mocks.listSlackInstallations.mockResolvedValue([
+      {
+        workspaceId: "T1",
+        workspaceName: "Torre.ai",
+        botUserId: "U1",
+        installedAt: "2026-06-03T00:00:00.000Z",
+        docoWorkspaceId: "workspace_acme",
+      },
+      {
+        workspaceId: "T2",
+        workspaceName: "Other Co",
+        botUserId: "U2",
+        installedAt: "2026-06-03T00:00:00.000Z",
+        docoWorkspaceId: "workspace_other",
+      },
+    ]);
+
+    const data = await loader({
+      request: new Request("https://doco.test/workspaces/acme/integrations"),
+      params: { workspaceHandle: "acme" },
+    });
+
+    // Only the team bound to THIS workspace, trimmed to what the card needs.
+    expect(data.slack).toEqual([
+      { teamId: "T1", teamName: "Torre.ai", installedAt: "2026-06-03T00:00:00.000Z" },
+    ]);
+    expect(data.canManageSlack).toBe(true);
+  });
+
+  it("shows bound Slack to a non-owner member but withholds the Remove control", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
+    mocks.resolveWorkspaceByHandle.mockResolvedValue({
+      id: "workspace_acme",
+      handle: "acme",
+      constitution: "",
+    });
+    mocks.getWorkspaceRole.mockResolvedValue("writer");
+    mocks.listSlackInstallations.mockResolvedValue([
+      {
+        workspaceId: "T1",
+        workspaceName: "Torre.ai",
+        botUserId: "U1",
+        installedAt: "2026-06-03T00:00:00.000Z",
+        docoWorkspaceId: "workspace_acme",
+      },
+    ]);
+
+    const data = await loader({
+      request: new Request("https://doco.test/workspaces/acme/integrations"),
+      params: { workspaceHandle: "acme" },
+    });
+
+    expect(data.slack).toHaveLength(1);
+    expect(data.canManageSlack).toBe(false);
   });
 });

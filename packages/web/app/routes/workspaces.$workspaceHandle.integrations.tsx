@@ -8,10 +8,11 @@
 //
 // Above both panes: a scope-nav link back up to the account-wide page.
 //
-// No workspace-level integrations exist as concrete features yet, so the left
-// pane primarily surfaces the Docos-in-this-workspace rollup. The card slot
-// for workspace-level integrations is wired so it lights up automatically the
-// moment we add one (e.g. an workspace-level Slack channel default).
+// The Docos-in-this-workspace rollup sits alongside the workspace-level
+// integrations card, which is now where Slack lives: Slack is workspace-scoped
+// (one team binds to one workspace), so this is its management home — the same
+// way GitHub is managed on the Doco it's connected to. The account page only
+// links here.
 import { getWorkspaceRole } from "@doco/db";
 import { ArrowRight } from "lucide-react";
 import { redirect } from "react-router";
@@ -21,6 +22,7 @@ import {
   AvailableIntegrations,
   ConnectionList,
   ConnectionRow,
+  RemoveSlackButton,
   ScopeNavLinks,
   ScopePickerBanner,
 } from "~/components/integrations-shell";
@@ -29,7 +31,15 @@ import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { listSlackInstallations } from "~/lib/slack.server";
 import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
+
+/** A Slack team bound to this workspace, trimmed to what the card renders. */
+interface WorkspaceSlackTeam {
+  teamId: string;
+  teamName: string;
+  installedAt: string;
+}
 
 export async function loader({
   request,
@@ -55,10 +65,21 @@ export async function loader({
     workspaceId: workspace.id,
     workspaceHandle: workspace.handle,
   });
+  const slack: WorkspaceSlackTeam[] = (await listSlackInstallations())
+    .filter((install) => install.docoWorkspaceId === workspace.id)
+    .map((install) => ({
+      teamId: install.workspaceId,
+      teamName: install.workspaceName,
+      installedAt: install.installedAt,
+    }));
   return {
     me,
     workspace,
     rollup,
+    slack,
+    // Removal is owner-only (the inverse of install); members can still open
+    // Set defaults. Mirrors the server-side gate on the /integrations action.
+    canManageSlack: role === "owner",
     pickingIntegrationId: url.searchParams.get("integration"),
   };
 }
@@ -72,7 +93,7 @@ export default function WorkspaceIntegrations({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, workspace, rollup, pickingIntegrationId } = loaderData;
+  const { me, workspace, rollup, slack, canManageSlack, pickingIntegrationId } = loaderData;
   return (
     <div>
       <SiteHeader me={me} />
@@ -111,12 +132,37 @@ export default function WorkspaceIntegrations({
                   Connections that apply to every doco in this workspace.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  No workspace-wide integrations are configured yet. Channel defaults from Slack and
-                  similar workspace-scoped features will appear here.
-                </p>
-              </CardContent>
+              {slack.length > 0 ? (
+                <CardContent className="p-0">
+                  <ConnectionList>
+                    {slack.map((team) => (
+                      <ConnectionRow
+                        key={team.teamId}
+                        title={team.teamName}
+                        detail={`Slack · installed ${formatDate(team.installedAt)}`}
+                        action={{
+                          label: "Set defaults",
+                          href: slackSetupHref(team.teamId),
+                          icon: ArrowRight,
+                        }}
+                        secondaryAction={
+                          canManageSlack ? (
+                            <RemoveSlackButton teamId={team.teamId} teamName={team.teamName} />
+                          ) : undefined
+                        }
+                      />
+                    ))}
+                  </ConnectionList>
+                </CardContent>
+              ) : (
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    No workspace-wide integrations are configured yet. Connect Slack from the
+                    catalog to bind a team to {workspace.handle}; its channel defaults are managed
+                    here.
+                  </p>
+                </CardContent>
+              )}
             </Card>
 
             <Card id="pick-doco">
@@ -162,4 +208,14 @@ export default function WorkspaceIntegrations({
       </SingleColumnPageMain>
     </div>
   );
+}
+
+function slackSetupHref(teamId: string): string {
+  return `/integrations/slack/setup?${new URLSearchParams({ team_id: teamId }).toString()}`;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }

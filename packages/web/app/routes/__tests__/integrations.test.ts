@@ -2,11 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
-  getSlackConfig: vi.fn(),
   listSlackInstallations: vi.fn(),
   removeSlackInstallation: vi.fn(),
   loadAccountIntegrationsRollup: vi.fn(),
-  loadScopeOptions: vi.fn(),
   getWorkspaceRole: vi.fn(),
 }));
 
@@ -15,17 +13,12 @@ vi.mock("~/lib/session.server", () => ({
 }));
 
 vi.mock("~/lib/slack.server", () => ({
-  getSlackConfig: mocks.getSlackConfig,
   listSlackInstallations: mocks.listSlackInstallations,
   removeSlackInstallation: mocks.removeSlackInstallation,
 }));
 
 vi.mock("~/lib/integrations-summary.server", () => ({
   loadAccountIntegrationsRollup: mocks.loadAccountIntegrationsRollup,
-}));
-
-vi.mock("~/lib/api-keys.server", () => ({
-  loadScopeOptions: mocks.loadScopeOptions,
 }));
 
 vi.mock("@doco/db", () => ({
@@ -57,10 +50,8 @@ function removeRequest(body: Record<string, string>): Request {
 describe("/integrations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSlackConfig.mockReturnValue({ configured: false });
     mocks.listSlackInstallations.mockResolvedValue([]);
     mocks.removeSlackInstallation.mockResolvedValue(true);
-    mocks.loadScopeOptions.mockResolvedValue([]);
     mocks.getWorkspaceRole.mockResolvedValue(null);
     mocks.loadAccountIntegrationsRollup.mockResolvedValue({
       slack: [],
@@ -80,23 +71,19 @@ describe("/integrations", () => {
     expect(response.headers.get("Location")).toBe("/sign-in?next=%2Fintegrations");
   });
 
-  it("loads slack workspaces and cross-scope rollup for signed-in users", async () => {
-    mocks.getSlackConfig.mockReturnValue({ configured: true });
-    mocks.getCurrentPrincipal.mockResolvedValue({
-      id: "user_alice",
-      username: "alice",
-    });
+  it("returns the cross-scope rollup (Slack carried on the rollup) for signed-in users", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
     const slackInstallations = [
       {
         workspaceId: "T123",
         workspaceName: "Doco",
         botUserId: "U123",
         installedAt: "2026-05-26T20:00:00.000Z",
+        docoWorkspaceId: "workspace_acme",
       },
     ];
-    mocks.listSlackInstallations.mockResolvedValue(slackInstallations);
     mocks.loadAccountIntegrationsRollup.mockResolvedValue({
-      slack: [],
+      slack: slackInstallations,
       workspaces: [{ workspaceId: "workspace_acme", handle: "acme", installCount: 0 }],
       docos: [
         {
@@ -111,31 +98,10 @@ describe("/integrations", () => {
     const data = await loader({ request: new Request("https://doco.test/integrations") });
 
     expect(data.me).toEqual({ id: "user_alice", username: "alice" });
-    expect(data.slackInstallHref).toBe("/integrations/slack/install");
-    expect(data.slackInstallations).toEqual(slackInstallations);
     expect(data.rollup.slack).toEqual(slackInstallations);
     expect(data.rollup.workspaces).toHaveLength(1);
     expect(data.rollup.docos).toHaveLength(1);
     expect(mocks.loadAccountIntegrationsRollup).toHaveBeenCalledWith({ userId: "user_alice" });
-  });
-
-  it("marks only the teams the user may remove (owns bound workspace, or unbound)", async () => {
-    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
-    mocks.loadScopeOptions.mockResolvedValue([
-      { level: "workspace", id: "workspace_torre", label: "torre", myRole: "owner" },
-      { level: "workspace", id: "workspace_other", label: "other", myRole: "writer" },
-    ]);
-    mocks.listSlackInstallations.mockResolvedValue([
-      slackInstall({ workspaceId: "T_owned", docoWorkspaceId: "workspace_torre" }),
-      slackInstall({ workspaceId: "T_other", docoWorkspaceId: "workspace_other" }),
-      slackInstall({ workspaceId: "T_unbound", docoWorkspaceId: null }),
-    ]);
-
-    const data = await loader({ request: new Request("https://doco.test/integrations") });
-
-    // Owns torre → can remove T_owned; only writes other → cannot remove T_other;
-    // unbound team grants no access → anyone may clear T_unbound.
-    expect(data.removableTeamIds).toEqual(["T_owned", "T_unbound"]);
   });
 
   it("does not expose deployment environment variable names to the browser", async () => {
@@ -146,7 +112,6 @@ describe("/integrations", () => {
 
     const data = await loader({ request: new Request("https://doco.test/integrations") });
 
-    expect(data.slackInstallHref).toBeNull();
     expect(data.slackConfirmation).toBeNull();
     expect(JSON.stringify(data)).not.toContain("SLACK_CLIENT_SECRET");
     expect(JSON.stringify(data)).not.toContain("DOCO_SLACK_INSTALL_URL");

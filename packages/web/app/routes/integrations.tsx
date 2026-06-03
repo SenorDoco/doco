@@ -1,56 +1,42 @@
 // /integrations — account-wide integrations page.
 //
 // Two panes:
-//   Left  — everything wired up: account-level Slack workspaces, plus a
-//           rollup of every workspace and Doco the user can read that already
-//           has integrations. Drill-down links jump to that scope's page.
+//   Left  — a rollup of every workspace the user can reach and the connections
+//           under it, shown as small entries: each Doco's GitHub repos and any
+//           Slack team bound to the workspace. Drill into a workspace to manage
+//           them (Slack is workspace-scoped, like GitHub is Doco-scoped). Slack
+//           teams not bound to any workspace fall into a small "not linked"
+//           list with a Remove control, since they have no workspace to manage
+//           them from.
 //   Right — full catalog of available integrations. Cross-scope clicks
 //           land on the relevant picker so the user can pick an workspace or
 //           Doco to install into.
 import { getWorkspaceRole } from "@doco/db";
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  ExternalLink,
-  MessageSquare,
-  Trash2,
-} from "lucide-react";
-import { Form, Link, redirect } from "react-router";
+import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import {
   AvailableIntegrations,
-  CONNECTION_ACTION_DESTRUCTIVE,
   ConnectionList,
   ConnectionRow,
+  RemoveSlackButton,
   ScopePickerBanner,
 } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { loadScopeOptions } from "~/lib/api-keys.server";
 import {
   type AccountIntegrationsRollup,
   loadAccountIntegrationsRollup,
 } from "~/lib/integrations-summary.server";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
-import {
-  type SlackInstallationSummary,
-  getSlackConfig,
-  listSlackInstallations,
-  removeSlackInstallation,
-} from "~/lib/slack.server";
+import { listSlackInstallations, removeSlackInstallation } from "~/lib/slack.server";
 
 interface IntegrationsPageData {
   me: CurrentPrincipal;
   notice: string | null;
   slackConfirmation: SlackConfirmation | null;
-  slackInstallHref: string | null;
-  slackInstallations: SlackInstallationSummary[];
-  /** Slack team ids this user may remove (owner of the bound workspace, or the
-   * team is unbound). The Remove control renders only for these. */
-  removableTeamIds: string[];
   rollup: AccountIntegrationsRollup;
   pickingIntegrationId: string | null;
 }
@@ -66,40 +52,15 @@ export async function loader({ request }: { request: Request }): Promise<Integra
     throw redirect(`/sign-in?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`);
   }
 
-  const slackInstallations = await listSlackInstallations();
   const rollup = await loadAccountIntegrationsRollup({ userId: me.id });
 
   return {
     me,
     slackConfirmation: readSlackConfirmation(url),
     notice: readNotice(url),
-    slackInstallHref: getSlackConfig().configured ? "/integrations/slack/install" : null,
-    slackInstallations,
-    removableTeamIds: await removableSlackTeamIds(me.id, slackInstallations),
-    rollup: { ...rollup, slack: slackInstallations },
+    rollup,
     pickingIntegrationId: url.searchParams.get("integration"),
   };
-}
-
-/**
- * Which of these Slack teams the user may remove. Removal is the inverse of
- * install (owner-only on the bound Doco workspace), so it takes ownership of
- * that bound workspace. An unbound team grants no Doco access, so it's an
- * orphan any signed-in user may clear.
- */
-async function removableSlackTeamIds(
-  userId: string,
-  installations: SlackInstallationSummary[],
-): Promise<string[]> {
-  if (installations.length === 0) return [];
-  const ownedWorkspaceIds = new Set(
-    (await loadScopeOptions(userId))
-      .filter((option) => option.level === "workspace" && option.myRole === "owner")
-      .map((option) => option.id),
-  );
-  return installations
-    .filter((item) => (item.docoWorkspaceId ? ownedWorkspaceIds.has(item.docoWorkspaceId) : true))
-    .map((item) => item.workspaceId);
 }
 
 export async function action({ request }: { request: Request }) {
@@ -151,16 +112,11 @@ export function meta() {
 }
 
 export default function IntegrationsPage({ loaderData }: { loaderData: IntegrationsPageData }) {
-  const {
-    me,
-    notice,
-    slackConfirmation,
-    slackInstallHref,
-    slackInstallations,
-    removableTeamIds,
-    rollup,
-    pickingIntegrationId,
-  } = loaderData;
+  const { me, notice, slackConfirmation, rollup, pickingIntegrationId } = loaderData;
+
+  // Slack teams bound to no workspace have nowhere to nest in the per-workspace
+  // rollup, so they get a small "not linked" list of their own (Remove only).
+  const unlinkedSlack = rollup.slack.filter((team) => !team.docoWorkspaceId);
 
   if (slackConfirmation) {
     return (
@@ -200,8 +156,8 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
           title="App integrations"
         >
           <p className="text-sm text-muted-foreground">
-            Everything connected to your account, plus a rollup of every workspace and doco you can
-            reach.
+            A rollup of every workspace you can reach and the connections under it — each
+            doco&apos;s GitHub repos and any Slack team. Open a workspace to manage them.
           </p>
         </PageHeader>
 
@@ -219,80 +175,12 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               Connected on your account
             </h2>
 
-            <Card>
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <MessageSquare className="h-5 w-5 text-primary" aria-hidden="true" />
-                      Slack workspaces
-                    </CardTitle>
-                    <CardDescription>
-                      Each Slack team is connected to one doco workspace. After install, channel
-                      defaults wire individual channels to specific docos within that workspace.
-                    </CardDescription>
-                  </div>
-                  {slackInstallHref ? (
-                    <a
-                      href={slackInstallHref}
-                      className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
-                    >
-                      Connect Slack
-                      <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled
-                      className="neu-button inline-flex cursor-not-allowed items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground opacity-50"
-                    >
-                      Slack unavailable
-                    </button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                {slackInstallHref ? (
-                  slackInstallations.length > 0 ? (
-                    <ConnectionList>
-                      {slackInstallations.map((installation) => (
-                        <ConnectionRow
-                          key={installation.workspaceId}
-                          title={installation.workspaceName}
-                          detail={`Installed ${formatDate(installation.installedAt)}`}
-                          action={{
-                            label: "Set defaults",
-                            href: slackSetupHref(installation),
-                            icon: ArrowRight,
-                          }}
-                          secondaryAction={
-                            removableTeamIds.includes(installation.workspaceId) ? (
-                              <RemoveSlackButton installation={installation} />
-                            ) : undefined
-                          }
-                        />
-                      ))}
-                    </ConnectionList>
-                  ) : (
-                    <p className="px-4 py-3 text-sm leading-relaxed text-muted-foreground">
-                      No Slack workspace has installed Señor Doco yet. After Slack approves the app,
-                      the next screen asks which default doco permissions Señor Doco should receive.
-                    </p>
-                  )
-                ) : (
-                  <p className="px-4 py-3 text-sm leading-relaxed text-muted-foreground">
-                    Slack is not ready for this doco deployment yet. Once the Slack app is
-                    configured, this screen will show the Connect Slack button.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
             <Card id="pick-workspace">
               <CardHeader>
                 <CardTitle className="text-base">App integrations across your workspaces</CardTitle>
                 <CardDescription>
-                  Each workspace rolls up its docos&apos; connections; open one to manage.
+                  Each workspace rolls up its docos&apos; GitHub repos and any Slack team bound to
+                  it; open one to manage.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
@@ -303,21 +191,37 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                       const docosWithIntegrations = rollup.docos.filter(
                         (d) => d.workspaceHandle === o.handle,
                       );
+                      const slackTeams = rollup.slack.filter(
+                        (team) => team.docoWorkspaceId === o.workspaceId,
+                      );
+                      const detailParts: string[] = [];
+                      if (docosWithIntegrations.length > 0) {
+                        detailParts.push(
+                          `${docosWithIntegrations.length} doco${
+                            docosWithIntegrations.length === 1 ? "" : "s"
+                          } with connections`,
+                        );
+                      }
+                      if (slackTeams.length > 0) {
+                        detailParts.push(
+                          `${slackTeams.length} Slack team${slackTeams.length === 1 ? "" : "s"}`,
+                        );
+                      }
                       return (
                         <ConnectionRow
                           key={o.workspaceId}
                           title={o.handle}
                           titleHref={`/workspaces/${o.handle}/integrations`}
-                          detail={`${docosWithIntegrations.length} doco${
-                            docosWithIntegrations.length === 1 ? "" : "s"
-                          } with connections`}
+                          detail={
+                            detailParts.length > 0 ? detailParts.join(" · ") : "No connections yet"
+                          }
                           action={{
                             label: "Manage",
                             href: `/workspaces/${o.handle}/integrations`,
                             icon: ArrowRight,
                           }}
                         >
-                          {docosWithIntegrations.length > 0 ? (
+                          {docosWithIntegrations.length > 0 || slackTeams.length > 0 ? (
                             <ul className="mt-2 space-y-1 pl-3 text-xs">
                               {docosWithIntegrations.map((d) => (
                                 <li key={d.docoId} className="flex items-center gap-2">
@@ -334,6 +238,18 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                                   </span>
                                 </li>
                               ))}
+                              {slackTeams.map((team) => (
+                                <li key={team.workspaceId} className="flex items-center gap-2">
+                                  <span className="text-muted-foreground">↳</span>
+                                  <Link
+                                    to={`/workspaces/${o.handle}/integrations`}
+                                    className="font-mono hover:text-primary"
+                                  >
+                                    {team.workspaceName}
+                                  </Link>
+                                  <span className="text-muted-foreground">Slack</span>
+                                </li>
+                              ))}
                             </ul>
                           ) : null}
                         </ConnectionRow>
@@ -347,6 +263,35 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                 )}
               </CardContent>
             </Card>
+
+            {unlinkedSlack.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Slack teams not linked to a workspace</CardTitle>
+                  <CardDescription>
+                    These installs aren&apos;t bound to any workspace, so Señor Doco can&apos;t
+                    reach a doco from them. Remove them here, or reconnect from Slack to bind one.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ConnectionList>
+                    {unlinkedSlack.map((team) => (
+                      <ConnectionRow
+                        key={team.workspaceId}
+                        title={team.workspaceName}
+                        detail="Not linked to any workspace"
+                        secondaryAction={
+                          <RemoveSlackButton
+                            teamId={team.workspaceId}
+                            teamName={team.workspaceName}
+                          />
+                        }
+                      />
+                    ))}
+                  </ConnectionList>
+                </CardContent>
+              </Card>
+            ) : null}
           </section>
 
           <section className="space-y-3">
@@ -357,47 +302,6 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
       </SingleColumnPageMain>
     </div>
   );
-}
-
-/**
- * The destructive "Remove" control for a Slack install row, rendered as the
- * row's secondaryAction next to "Set defaults". A confirm() guards the
- * irreversible delete before the form posts the remove_slack intent.
- */
-function RemoveSlackButton({ installation }: { installation: SlackInstallationSummary }) {
-  return (
-    <Form method="post">
-      <input type="hidden" name="intent" value="remove_slack" />
-      <input type="hidden" name="workspace_id" value={installation.workspaceId} />
-      <button
-        type="submit"
-        onClick={(event) => {
-          if (
-            !confirm(
-              `Remove Señor Doco from ${installation.workspaceName}? This deletes its channel defaults and personal links, and can't be undone.`,
-            )
-          ) {
-            event.preventDefault();
-          }
-        }}
-        className={CONNECTION_ACTION_DESTRUCTIVE}
-      >
-        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-        Remove
-      </button>
-    </Form>
-  );
-}
-
-function slackSetupHref(installation: SlackInstallationSummary): string {
-  const params = new URLSearchParams({ team_id: installation.workspaceId });
-  return `/integrations/slack/setup?${params.toString()}`;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function readSlackConfirmation(url: URL): SlackConfirmation | null {
