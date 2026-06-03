@@ -52,7 +52,7 @@ export interface GraphNode {
   lifecycle_since?: string | null;
   /** Personalized PageRank from the focal node (1.0 = focal node itself). */
   ppr: number;
-  /** Global PageRank — uniform-restart PR over the whole Doco graph. */
+  /** Global PageRank — uniform-restart PR over the whole doco graph. */
   gpr: number;
   is_center?: boolean;
 }
@@ -624,7 +624,7 @@ function EntityNodeCard({
           {isCenter ? (
             <>
               <span className="font-medium text-foreground">in focus</span>
-              <span title="Global PageRank (over the whole Doco graph)">
+              <span title="Global PageRank (over the whole doco graph)">
                 GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
               </span>
             </>
@@ -633,7 +633,7 @@ function EntityNodeCard({
               <span title="Personalized PageRank from focal node">
                 PPR <span className="text-foreground">{ppr.toFixed(3)}</span>
               </span>
-              <span title="Global PageRank (over the whole Doco graph)">
+              <span title="Global PageRank (over the whole doco graph)">
                 GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
               </span>
             </>
@@ -642,7 +642,7 @@ function EntityNodeCard({
               <span className="text-foreground">{count.toLocaleString()}</span> nodes
             </span>
           ) : (
-            <span title="Global PageRank (over the whole Doco graph)">
+            <span title="Global PageRank (over the whole doco graph)">
               GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
             </span>
           )}

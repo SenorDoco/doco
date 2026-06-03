@@ -4,7 +4,7 @@
 // Mint is gated behind an explicit confirmation checkbox so the
 // owner has to acknowledge the trade-off: anyone with read access
 // to the repo where the token is committed will be able to read
-// this Doco. The freshly-minted token body is shown once, with
+// this doco. The freshly-minted token body is shown once, with
 // install instructions for .doco/project-tokens.json.
 
 import { Form, Link, redirect, useNavigation } from "react-router";
@@ -34,7 +34,7 @@ export async function loader({
     me?.id ?? null,
   );
   if (!isOwner) {
-    throw new Response("Forbidden: only the Doco's owner can manage project tokens.", {
+    throw new Response("Forbidden: only the doco's owner can manage project tokens.", {
       status: 403,
     });
   }
@@ -66,7 +66,7 @@ export async function action({
   }
   const isOwner = await canAdminDoco({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
   if (!isOwner) {
-    return { error: "Only the Doco's owner can manage project tokens." };
+    return { error: "Only the doco's owner can manage project tokens." };
   }
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -82,7 +82,7 @@ export async function action({
     if (form.get("confirm_repo_readable") !== "on") {
       return {
         error:
-          "You must check the confirmation box. Anyone with read access to the repo this token is committed to will be able to read this Doco.",
+          "You must check the confirmation box. Anyone with read access to the repo this token is committed to will be able to read this doco.",
       };
     }
     const label = String(form.get("label") ?? "").trim() || null;
@@ -144,9 +144,9 @@ export default function ProjectTokensPage({
           }
         >
           <p className="text-sm text-muted-foreground">
-            A project token is a committable, read-only credential for this Doco. Commit it to{" "}
-            <code>.doco/project-tokens.json</code> in any repo whose readers can also read this Doco
-            — agents that clone the repo will then read the Doco without OAuth.
+            A project token is a committable, read-only credential for this doco. Commit it to{" "}
+            <code>.doco/project-tokens.json</code> in any repo whose readers can also read this doco
+            — agents that clone the repo will then read the doco without OAuth.
           </p>
         </PageHeader>
 
@@ -172,7 +172,7 @@ export default function ProjectTokensPage({
                 <input type="checkbox" name="confirm_repo_readable" className="mt-0.5" required />
                 <span>
                   I understand that anyone with read access to a repo where this token is committed
-                  will be able to read this Doco.
+                  will be able to read this doco.
                 </span>
               </label>
               <button

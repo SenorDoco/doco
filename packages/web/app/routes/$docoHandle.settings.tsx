@@ -1,7 +1,7 @@
 import { getWorkspaceRole, withClient } from "@doco/db";
 import { validateRequestedDocoHandle } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Updates Doco
-// metadata or performs high-risk actions such as renaming/deleting the Doco.
+// metadata or performs high-risk actions such as renaming/deleting the doco.
 //
 // Delete: people only (ADR-040). Two-step confirmation — type the handle to
 // activate the "Delete permanently" button. Hard-delete via ON DELETE
@@ -92,16 +92,16 @@ export async function action({
 
   // ── Delete (ADR-040: people only) ─────────────────────────────────
   if (intent === "delete") {
-    if (!me) return { error: "Sign in to delete this Doco." };
+    if (!me) return { error: "Sign in to delete this doco." };
     if (!isHumanPrincipal(me)) {
-      return { error: "Per ADR-040, only human accounts can delete docos. Ask the Doco's owner." };
+      return { error: "Per ADR-040, only human accounts can delete docos. Ask the doco's owner." };
     }
     const confirmHandle = String(
       form.get("confirm_handle") ?? form.get("confirm_slug") ?? "",
     ).trim();
     if (confirmHandle !== handle) {
       return {
-        error: `To confirm, type the Doco handle exactly: "${handle}".`,
+        error: `To confirm, type the doco handle exactly: "${handle}".`,
       };
     }
     try {
@@ -119,7 +119,7 @@ export async function action({
     const perspectiveId = String(form.get("perspective_id") ?? "").trim();
     if (!perspectiveId) return { error: "Choose a default perspective." };
     const result = await setDefaultPerspective({ docoId: meta.docoId, perspectiveId });
-    if (!result.ok) return { error: "That perspective is not attached to this Doco." };
+    if (!result.ok) return { error: "That perspective is not attached to this doco." };
     return redirect(`/${handle}/settings`);
   }
 
@@ -173,12 +173,12 @@ export async function action({
 
   // ── Change owning workspace (danger zone) ──────────────────────
   if (intent === "change-workspace") {
-    if (!me) return { error: "Sign in to change this Doco's workspace." };
+    if (!me) return { error: "Sign in to change this doco's workspace." };
     const targetWorkspaceId = String(form.get("target_workspace_id") ?? "").trim();
     if (!targetWorkspaceId) return { error: "Choose an workspace." };
     const targetRole = await getWorkspaceRole(targetWorkspaceId, me.id);
     if (targetRole !== "owner") {
-      return { error: "Only workspace owners can move a Doco into that workspace." };
+      return { error: "Only workspace owners can move a doco into that workspace." };
     }
     try {
       await transferDocoToWorkspace({ docoId: meta.docoId, targetWorkspaceId });
@@ -270,7 +270,7 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle>Visibility</CardTitle>
             <CardDescription>
-              Control whether this Doco can be viewed by anyone with the URL.
+              Control whether this doco can be viewed by anyone with the URL.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -319,7 +319,7 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle>Project tokens</CardTitle>
             <CardDescription>
-              Mint a committable, read-only token so agents that clone the repo can read this Doco
+              Mint a committable, read-only token so agents that clone the repo can read this doco
               without OAuth. Only suitable when repo-readers may also be Doco-readers.
             </CardDescription>
           </CardHeader>
@@ -333,7 +333,7 @@ export default function DocoSettings({
         <Card>
           <CardHeader>
             <CardTitle>Default perspective</CardTitle>
-            <CardDescription>Choose the overview that opens first for this Doco.</CardDescription>
+            <CardDescription>Choose the overview that opens first for this doco.</CardDescription>
           </CardHeader>
           <CardContent>
             {perspectives.length > 0 ? (
@@ -367,7 +367,7 @@ export default function DocoSettings({
               </Form>
             ) : (
               <p className="text-xs text-muted-foreground">
-                No perspectives are attached to this Doco yet.
+                No perspectives are attached to this doco yet.
               </p>
             )}
           </CardContent>
@@ -376,8 +376,8 @@ export default function DocoSettings({
         <section className="space-y-1 pt-2">
           <h1 className="text-base font-semibold text-destructive">Danger zone</h1>
           <p className="text-xs text-muted-foreground">
-            These changes can update every Doco URL, alter who has access, or permanently remove
-            this Doco.
+            These changes can update every doco URL, alter who has access, or permanently remove
+            this doco.
           </p>
         </section>
 
@@ -385,7 +385,7 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Rename handle</CardTitle>
             <CardDescription>
-              Renaming takes effect immediately and updates every URL for this Doco.
+              Renaming takes effect immediately and updates every URL for this doco.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -429,7 +429,7 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Change workspace</CardTitle>
             <CardDescription>
-              Move this Doco to an workspace you own. This can alter who has access.
+              Move this doco to an workspace you own. This can alter who has access.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -459,7 +459,7 @@ export default function DocoSettings({
               </Form>
             ) : (
               <p className="text-xs text-muted-foreground">
-                You do not own another workspace this Doco can move to.
+                You do not own another workspace this doco can move to.
               </p>
             )}
           </CardContent>
@@ -468,9 +468,9 @@ export default function DocoSettings({
         {/* Delete is ADR-040: people only. */}
         <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-base text-destructive">Delete Doco</CardTitle>
+            <CardTitle className="text-base text-destructive">Delete doco</CardTitle>
             <CardDescription>
-              Deletion permanently removes this Doco and every entity and edge inside it.
+              Deletion permanently removes this doco and every entity and edge inside it.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -484,14 +484,14 @@ export default function DocoSettings({
                 state={{ preventScrollReset: true }}
                 className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
               >
-                Delete this Doco...
+                Delete this doco...
               </Link>
             ) : (
               <Form method="post" className="space-y-3">
                 <input type="hidden" name="intent" value="delete" />
                 <p className="text-xs">
-                  Type the Doco handle <span className="font-mono font-semibold">{handle}</span> to
-                  confirm. This permanently deletes the Doco and every entity and edge inside it. It
+                  Type the doco handle <span className="font-mono font-semibold">{handle}</span> to
+                  confirm. This permanently deletes the doco and every entity and edge inside it. It
                   cannot be undone. Per ADR-040, only people can delete docos.
                 </p>
                 <input

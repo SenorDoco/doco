@@ -1,4 +1,4 @@
-// /invite/<code> — landing page for a Doco invite. The same URL is
+// /invite/<code> — landing page for a doco invite. The same URL is
 // shareable with humans and agents. Signed-in humans can accept here;
 // signed-out users choose human sign-in or the plain-text agent recipe
 // at /invite/<code>/agent.txt.
@@ -8,7 +8,7 @@
 // "Accept" only after they are signed in:
 //
 //   - If signed in: the invite is redeemed, the human Principal is
-//     joined to the Doco or Workspace. The success card is intentionally minimal —
+//     joined to the doco or Workspace. The success card is intentionally minimal —
 //     just a "Continue" button to /<handle>/.
 //   - If not signed in: ask whether the visitor is human or agent. Humans
 //     sign in and come back here to accept; agents get the plain-text
@@ -214,7 +214,7 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Join a Doco · Doco" }];
+  return [{ title: "Join a doco · Doco" }];
 }
 
 export default function InviteLanding({
@@ -342,7 +342,7 @@ function errorTitle(err: LoaderError["error"]): string {
   if (err === "consumed") return "Invite already redeemed";
   if (err === "revoked") return "Invite revoked";
   if (err === "workspace_not_found") return "The workspace this invite pointed at no longer exists";
-  return "The Doco this invite pointed at no longer exists";
+  return "The doco this invite pointed at no longer exists";
 }
 
 function errorDescription(err: LoaderError["error"]): string {
@@ -353,7 +353,7 @@ function errorDescription(err: LoaderError["error"]): string {
     return "This invite was used. Each invite URL is single-use; ask for a new one.";
   if (err === "revoked") return "The minter revoked this invite. Ask them for a fresh one.";
   if (err === "workspace_not_found") return "The workspace it pointed at has been deleted.";
-  return "The Doco it pointed at has been deleted.";
+  return "The doco it pointed at has been deleted.";
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

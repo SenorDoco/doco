@@ -39,7 +39,7 @@ const BENEFITS: ReadonlyArray<{ title: string; body: string }> = [
   },
   {
     title: "Agents stop relitigating settled calls",
-    body: "Before they act, agents search the Doco — so they build on prior decisions instead of contradicting them.",
+    body: "Before they act, agents search the doco — so they build on prior decisions instead of contradicting them.",
   },
   {
     title: "Decisions outlive the people who made them",
@@ -63,7 +63,7 @@ const FEATURES: ReadonlyArray<{ title: string; body: string }> = [
   },
   {
     title: "Built for agents from the ground up",
-    body: "A native MCP server, OAuth 2.1, and a shared protocol let Claude Code, Cursor, and Codex discover and query your Doco automatically.",
+    body: "A native MCP server, OAuth 2.1, and a shared protocol let Claude Code, Cursor, and Codex discover and query your doco automatically.",
   },
   {
     title: "Semantic search across the lifetime",

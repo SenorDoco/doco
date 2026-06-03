@@ -1,7 +1,7 @@
 // Per-Doco edge list at /<handle>/edges.
 //
 // Doco's relationships live as first-class edge rows. This page surfaces the
-// whole edge set of the Doco so a human (or the in-page assistant) can scan how
+// whole edge set of the doco so a human (or the in-page assistant) can scan how
 // nodes connect, and click through to a single edge's detail view.
 //
 // Listing is ordered by edge_type, then from_id, then to_id — stable
@@ -113,7 +113,7 @@ export default function EdgesIndex({
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-3">
             <CardTitle className="text-sm">
-              {edgeTypeFilter ? `${edgeTypeFilter} edges` : "Every edge in this Doco"}
+              {edgeTypeFilter ? `${edgeTypeFilter} edges` : "Every edge in this doco"}
             </CardTitle>
             {edgeTypeFilter ? (
               <Link to={`/${handle}/edges`} className="text-xs text-primary hover:underline">

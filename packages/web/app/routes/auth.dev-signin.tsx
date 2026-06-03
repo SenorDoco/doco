@@ -139,7 +139,7 @@ export default function DevSignin({
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Dev sign-in" }]} className="mb-2" />
       <h1>Dev sign-in</h1>
       <p style={{ color: "#a00", marginBottom: 16 }}>
-        ⚠️ Testing-only. Signs in as one of the dedicated test principals. Each starts with no Doco
+        ⚠️ Testing-only. Signs in as one of the dedicated test principals. Each starts with no doco
         grants — pair this with an invite mint to give it access for a specific test run.
       </p>
       <Form method="post" style={{ display: "flex", flexDirection: "column", gap: 12 }}>

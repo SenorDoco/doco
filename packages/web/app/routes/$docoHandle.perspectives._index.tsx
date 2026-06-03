@@ -68,7 +68,7 @@ export async function action({
     perspectiveId,
     attachedByUserId: ctx.me.id,
   });
-  // Bounce the user back to the Doco home with the newly-attached
+  // Bounce the user back to the doco home with the newly-attached
   // perspective active, so they can see it immediately.
   const slug = form.get("perspective_slug");
   const url = `/${ctx.handle}${typeof slug === "string" && slug ? `?perspective=${encodeURIComponent(slug)}` : ""}`;
@@ -109,8 +109,8 @@ export default function PerspectivesPicker({
           }
         >
           <p className="text-sm text-muted-foreground">
-            Visualization perspectives switch how the Doco's nodes and edges render. Add any of the
-            perspectives below to put a tab on this Doco's overview page.
+            Visualization perspectives switch how the doco's nodes and edges render. Add any of the
+            perspectives below to put a tab on this doco's overview page.
             {!canAdmin ? (
               <span className="ml-1 italic">Adding requires owner or writer access.</span>
             ) : null}

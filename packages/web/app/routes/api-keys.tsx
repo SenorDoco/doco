@@ -397,7 +397,7 @@ export function ProviderInstructions({ providerId, url }: { providerId: string; 
         </p>
         <CopyableCode value={url} />
         <p className="text-xs text-muted-foreground">
-          Approve the OAuth prompt — pick the workspace and, optionally, narrow to specific Docos.
+          Approve the OAuth prompt — pick the workspace and, optionally, narrow to specific docos.
         </p>
       </div>
     );

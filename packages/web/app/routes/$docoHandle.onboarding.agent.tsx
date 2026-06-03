@@ -59,7 +59,7 @@ export default function OnboardingAgent({
           <CardHeader>
             <CardTitle>Invite a teammate</CardTitle>
             <CardDescription>
-              Share this single-use URL with someone who should join this Doco. They sign in with
+              Share this single-use URL with someone who should join this doco. They sign in with
               GitHub and click Accept.
             </CardDescription>
           </CardHeader>
@@ -67,7 +67,7 @@ export default function OnboardingAgent({
             <CollaborationInvitePrompt
               inviteUrl={inviteUrl}
               continueTo={`/${handle}`}
-              continueLabel="Open your Doco →"
+              continueLabel="Open your doco →"
             />
           </CardContent>
         </Card>
