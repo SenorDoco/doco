@@ -284,7 +284,7 @@ describe("authoring runner — integration", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("demotes block to warn when the judge is unavailable (returns null)", async () => {
+  it("blocks with an error when the judge is unavailable (returns null)", async () => {
     mockedJudge.mockResolvedValue(null);
     await seed({ withProbabilisticRule: true });
     const result = await runAuthoringPolicies({
@@ -299,10 +299,13 @@ describe("authoring runner — integration", () => {
     });
 
     expect(mockedJudge).toHaveBeenCalledTimes(1);
-    expect(result.blocking).toBeNull();
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]?.kind).toBe("probabilistic");
-    expect(result.warnings[0]?.on_violation).toBe("warn");
+    // Fail closed: a judge outage blocks the capture with an actionable error
+    // instead of silently demoting the unchecked policy to a warning.
+    expect(result.blocking).not.toBeNull();
+    expect(result.blocking?.kind).toBe("probabilistic");
+    expect(result.blocking?.on_violation).toBe("block");
+    expect(result.blocking?.reason).toMatch(/could not be checked/i);
+    expect(result.warnings).toEqual([]);
   });
 
   it("skips shape/completeness enforcement when the candidate is transitioning to retired", async () => {
