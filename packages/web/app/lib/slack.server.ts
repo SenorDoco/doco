@@ -573,6 +573,48 @@ export async function setSlackBoundWorkspace(args: {
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * Remove a Slack installation entirely: the install record plus every channel
+ * default and personal user link bound to that Slack team. The three
+ * group_chat_* tables are independent (no cascade between them), so each is
+ * cleared explicitly inside one transaction. Returns false when no install row
+ * existed — removing an already-gone team is a no-op. DELETE ... RETURNING (not
+ * rowCount) keeps the "did anything go?" check portable across pg and PGlite.
+ */
+export async function removeSlackInstallation(slackTeamId: string): Promise<boolean> {
+  if (!slackTeamId) return false;
+  const removed = await withClient(async (c) => {
+    await c.query("BEGIN");
+    try {
+      await c.query(
+        `DELETE FROM group_chat_channel_connections
+          WHERE provider = 'slack' AND workspace_id = $1`,
+        [slackTeamId],
+      );
+      await c.query(
+        `DELETE FROM group_chat_user_links
+          WHERE provider = 'slack' AND workspace_id = $1`,
+        [slackTeamId],
+      );
+      const result = await c.query<{ id: string }>(
+        `DELETE FROM group_chat_installations
+          WHERE provider = 'slack' AND workspace_id = $1
+          RETURNING id`,
+        [slackTeamId],
+      );
+      await c.query("COMMIT");
+      return result.rows.length > 0;
+    } catch (error) {
+      await c.query("ROLLBACK");
+      throw error;
+    }
+  });
+  if (removed) {
+    invalidateSlackIntegrationContextCache({ workspaceId: slackTeamId });
+  }
+  return removed;
+}
+
 export async function saveSlackChannelConnection(input: SlackConnectionInput): Promise<void> {
   await withClient((c) =>
     c.query(
