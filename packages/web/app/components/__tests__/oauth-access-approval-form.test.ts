@@ -41,6 +41,8 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).not.toContain("All your workspaces and docos");
     expect(markup).not.toContain("identity");
     expect(markup).not.toContain('type="radio"');
+    // The scope options stack vertically — no 2-column matrix.
+    expect(markup).not.toContain("sm:grid-cols-2");
     // No default grant is pre-selected (the empty array serializes as []).
     expect(markup).toContain('name="grants" value="[]"');
   });
@@ -68,11 +70,20 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).not.toContain('disabled="');
   });
 
-  it("scopes to a single bound workspace: an access level only, no other workspaces or picker", () => {
+  it("scopes a bound connector to its one workspace: picker leads with 'The entire <name> workspace'", () => {
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
-        docos: [],
-        workspaces: [],
+        docos: [
+          {
+            id: "doco_bpms",
+            handle: "torre-bpms",
+            my_role: "owner",
+            workspace_id: "workspace_torre",
+          },
+        ],
+        workspaces: [
+          { id: "workspace_torre", handle: "torre", display_name: "torre", my_role: "owner" },
+        ],
         boundWorkspace: { id: "workspace_torre", label: "torre", maxRole: "owner" },
         tokenNamePlaceholder: "e.g. Claude Code in repo",
         requestedRole: null,
@@ -82,19 +93,21 @@ describe("OAuthAccessApprovalForm", () => {
       }),
     );
 
-    // No multi-workspace scope chooser / picker when the connector is bound.
-    expect(markup).not.toContain("What do you want to grant access to?");
-    expect(markup).not.toContain('data-testid="grant-picker"');
-    // Leads with the bound workspace and an access-level selector.
-    expect(markup).toContain("torre");
-    expect(markup).toContain('data-testid="bound-workspace-access"');
-    expect(markup).toContain("Read only");
-    expect(markup).toContain("Can write");
-    // The workspace grant is pre-composed (writer by default), not the empty [].
-    expect(markup).toContain("workspace_torre");
-    expect(markup).not.toContain('name="grants" value="[]"');
-    // …with an optional path to narrow within that workspace.
-    expect(markup).toContain('data-testid="bound-narrow"');
+    // The bound consent reuses the shared picker, scoped to the one workspace.
+    expect(markup).toContain('data-testid="grant-picker"');
+    expect(markup).toContain("What do you want to grant access to?");
+    // First option names the bound workspace; the generic/plural labels are gone.
+    expect(markup).toContain("The entire torre workspace");
+    expect(markup).not.toContain("Specific workspace(s)");
+    expect(markup).not.toContain("All your workspaces and docos");
+    // The two narrowing options remain (Docos / types within that workspace).
+    expect(markup).toContain('data-testid="grant-scope-doco"');
+    expect(markup).toContain('data-testid="grant-scope-types"');
+    // The options stack vertically; nothing is selected by default; the old
+    // narrow link is gone.
+    expect(markup).not.toContain("sm:grid-cols-2");
+    expect(markup).toContain('name="grants" value="[]"');
+    expect(markup).not.toContain('data-testid="bound-narrow"');
   });
 
   it("shows the empty-state when there is nothing to grant (no full-access fallback)", () => {

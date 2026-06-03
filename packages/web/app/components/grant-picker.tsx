@@ -47,6 +47,7 @@ export function GrantPicker({
   onChange,
   existing,
   forToken = false,
+  boundWorkspace,
 }: {
   catalog: GrantCatalog;
   grants: ComposedGrant[];
@@ -59,8 +60,19 @@ export function GrantPicker({
    * workspace, mirroring the server-side one-workspace token cap.
    */
   forToken?: boolean;
+  /**
+   * When the connector is bound to one workspace (per-workspace MCP), the
+   * first scope option becomes "The entire <name> workspace" with its
+   * access-level dropdown inline in the row; "Specific docos" / "types" still
+   * narrow within it. The catalog is expected to already be scoped to that one
+   * workspace.
+   */
+  boundWorkspace?: { id: string; label: string; maxRole: DocoRole };
 }) {
-  const scopes = useMemo(() => availableScopes(catalog, { forToken }), [catalog, forToken]);
+  const scopes = useMemo(
+    () => availableScopes(catalog, { forToken, boundWorkspaceLabel: boundWorkspace?.label }),
+    [catalog, forToken, boundWorkspace],
+  );
   // A token selection may never span more than one workspace.
   const emit = (next: ComposedGrant[]) =>
     onChange(forToken ? coerceSingleWorkspace(grants, next, catalog) : next);
@@ -91,28 +103,70 @@ export function GrantPicker({
         </div>
       ) : null}
 
-      {/* Step 1 — scope: raised buttons, pressed when selected. */}
+      {/* Step 1 — scope: raised rows stacked vertically, pressed when selected. */}
       <fieldset className="space-y-2" data-testid="grant-scope-step">
         <legend className="text-xs uppercase tracking-wide text-muted-foreground">
           What do you want to grant access to?
         </legend>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
           {scopes.map((s) => {
             const selected = scope === s.scope;
+            const boundWorkspaceRow = Boolean(boundWorkspace) && s.scope === "workspace";
+            const select = () => {
+              setScope(s.scope);
+              // Picking the bound workspace composes a default writer grant so
+              // its inline dropdown opens on "Can write"; any other scope
+              // starts from a clean slate.
+              if (boundWorkspace && s.scope === "workspace") {
+                emit(applyTargetRole([], "workspace", boundWorkspace.id, "writer"));
+              } else {
+                onChange([]);
+              }
+            };
+            const boxCls = `neu-button${selected ? " neu-pressed" : ""} rounded-md border border-border px-3 py-2 text-left text-sm`;
+            const label = (
+              <>
+                <div className="font-semibold">{s.title}</div>
+                <div className="text-xs text-muted-foreground">{s.blurb}</div>
+              </>
+            );
+            // The bound workspace, once chosen, carries its access-level
+            // dropdown on the right of the same row (a <select> can't nest in a
+            // <button>, so the row wraps the button + select).
+            if (boundWorkspaceRow && selected && boundWorkspace) {
+              return (
+                <div key={s.scope} className={`flex items-center justify-between gap-3 ${boxCls}`}>
+                  <button
+                    type="button"
+                    data-testid={`grant-scope-${s.scope}`}
+                    aria-pressed={selected}
+                    onClick={select}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    {label}
+                  </button>
+                  <AccessSelect
+                    testid="bound-workspace-access"
+                    maxRole={boundWorkspace.maxRole}
+                    value={targetRoleValue(grants, "workspace", boundWorkspace.id)}
+                    includeNoAccess={false}
+                    onChange={(v) =>
+                      emit(applyTargetRole(grants, "workspace", boundWorkspace.id, v))
+                    }
+                  />
+                </div>
+              );
+            }
             return (
               <button
                 key={s.scope}
                 type="button"
                 data-testid={`grant-scope-${s.scope}`}
                 aria-pressed={selected}
-                onClick={() => {
-                  setScope(s.scope);
-                  onChange([]);
-                }}
-                className={`neu-button${selected ? " neu-pressed" : ""} rounded-md border border-border px-3 py-2 text-left text-sm`}
+                onClick={select}
+                className={`block w-full ${boxCls}`}
               >
-                <div className="font-semibold">{s.title}</div>
-                <div className="text-xs text-muted-foreground">{s.blurb}</div>
+                {label}
               </button>
             );
           })}
@@ -122,7 +176,16 @@ export function GrantPicker({
       {scope === "account" ? (
         <AccountStep catalog={catalog} grants={grants} onChange={emit} />
       ) : scope === "workspace" ? (
-        <WorkspaceMultiStep catalog={catalog} grants={grants} onChange={emit} existing={existing} />
+        // Bound mode grants the whole workspace via the inline dropdown above —
+        // no multi-workspace list step.
+        boundWorkspace ? null : (
+          <WorkspaceMultiStep
+            catalog={catalog}
+            grants={grants}
+            onChange={emit}
+            existing={existing}
+          />
+        )
       ) : scope === "doco" ? (
         <DocoMultiStep catalog={catalog} grants={grants} onChange={emit} existing={existing} />
       ) : scope === "types" ? (

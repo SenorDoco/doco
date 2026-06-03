@@ -296,7 +296,7 @@ export interface ScopeChoice {
  */
 export function availableScopes(
   catalog: GrantCatalog,
-  opts: { forToken?: boolean } = {},
+  opts: { forToken?: boolean; boundWorkspaceLabel?: string } = {},
 ): ScopeChoice[] {
   const ownsAnWorkspace = catalog.targets.some(
     (t) => t.level === "workspace" && t.maxRole === "owner",
@@ -312,11 +312,22 @@ export function availableScopes(
     });
   }
   if (hasWorkspace) {
-    out.push({
-      scope: "workspace",
-      title: "Specific workspace(s)",
-      blurb: "One or more workspaces and all of their docos.",
-    });
+    // When the connector is bound to one workspace, the first option grants
+    // that whole workspace by name (with an inline access-level dropdown);
+    // otherwise it's the generic, possibly-multi-workspace choice.
+    out.push(
+      opts.boundWorkspaceLabel
+        ? {
+            scope: "workspace",
+            title: `The entire ${opts.boundWorkspaceLabel} workspace`,
+            blurb: "Read, write, or own the whole workspace and all of its Docos.",
+          }
+        : {
+            scope: "workspace",
+            title: "Specific workspace(s)",
+            blurb: "One or more workspaces and all of their docos.",
+          },
+    );
   }
   if (hasDoco) {
     out.push({
