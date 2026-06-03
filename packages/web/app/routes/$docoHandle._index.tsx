@@ -96,8 +96,7 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   action: "Actions",
   intent: "Intents",
   rule: "Rules",
-  guidance_policy: "Guidance policies",
-  node_authoring_policy: "Node-authoring policies",
+  policy: "Policies",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",
@@ -171,7 +170,7 @@ export async function loader({
         `SELECT event_id, at, entity_type, entity_id, op, before_json, after_json
            FROM audit_events
           WHERE doco_id = $1
-            AND entity_type NOT IN ('guidance_policy', 'node_authoring_policy')
+            AND entity_type NOT IN ('policy')
           ORDER BY at DESC
           LIMIT $2`,
         [ctx.meta.docoId, FEED_LIMIT],
@@ -195,8 +194,7 @@ export async function loader({
            FROM nodes
           WHERE doco_id = $1 AND id = ANY($2::text[])
             AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'state', 'reference', 'principal')
-         UNION ALL SELECT id, policy AS label, lifecycle FROM guidance_policies WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, policy AS label, lifecycle FROM node_authoring_policies WHERE doco_id = $1 AND id = ANY($2::text[])`,
+         UNION ALL SELECT id, COALESCE(NULLIF(data->'predicate'->>'agent_instruction', ''), kind, 'policy') AS label, lifecycle FROM policies WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
       for (const row of entityLabelRows.rows) {
@@ -264,7 +262,7 @@ export async function loader({
            FROM audit_events ae
            JOIN users c ON c.id = ae.by_user
           WHERE ae.doco_id = $1
-            AND ae.entity_type NOT IN ('guidance_policy', 'node_authoring_policy')
+            AND ae.entity_type NOT IN ('policy')
           GROUP BY ae.by_user, c.github_login, c.email, c.id
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
@@ -330,9 +328,7 @@ export async function loader({
     // attached to this Doco.
     const policyRow = (
       await c.query<{ n: string }>(
-        `SELECT
-           ((SELECT COUNT(*) FROM guidance_policies WHERE doco_id = $1)
-          + (SELECT COUNT(*) FROM node_authoring_policies WHERE doco_id = $1))::text AS n`,
+        "SELECT (SELECT COUNT(*) FROM policies WHERE doco_id = $1)::text AS n",
         [ctx.meta.docoId],
       )
     ).rows[0];

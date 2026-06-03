@@ -1,15 +1,14 @@
 import { upsertEntity } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { captureGuidancePolicy } from "../capture.server";
+import { capturePolicy } from "../capture.server";
 
 // Capture goes through enforce → persist → reindex → render. Mock the
 // DB and side-effecting collaborators the same way capture-update does,
 // so these tests exercise the real author-resolution logic in
-// buildGuidancePolicyPayload without a Postgres.
+// buildPolicyPayload without a Postgres.
 vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
-    guidance_policy: { table: "guidance_policies", body: true },
-    node_authoring_policy: { table: "node_authoring_policies", body: true },
+    policy: { table: "policies", body: true },
   },
   getDocoById: vi.fn(async () => ({ id: "doco_x", handle: "torre-bpm" })),
   getEntity: vi.fn(),
@@ -46,12 +45,12 @@ function persistedData(): Record<string, unknown> {
   return (call[0] as { data: Record<string, unknown> }).data;
 }
 
-describe("captureGuidancePolicy author resolution", () => {
+describe("capturePolicy author resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("captures a guidance policy when no principal author can be resolved", async () => {
+  it("captures a policy when no principal author can be resolved", async () => {
     // The new-policy form never collects an author; the route fills it
     // from the signed-in user. resolvePrincipalIdForUser returns null
     // whenever the Doco has no principal that maps to the user — e.g. a
@@ -61,31 +60,33 @@ describe("captureGuidancePolicy author resolution", () => {
     // optional graph edge, so the policy must still capture — without it
     // the owner is blocked with a cryptic "authored_by_principal_id is
     // required" error (the reported bug).
-    const result = await captureGuidancePolicy(
+    const result = await capturePolicy(
       "/tmp/doco",
       DOCO_ID,
       "torre",
       "torre-bpm",
       {
-        policy: "Keep BPMN lane names in business language.",
+        kind: "suggestion",
+        agent_instruction: "Keep BPMN lane names in business language.",
         created_by_user_id: "user_alice",
       },
       "https://doco.test",
     );
 
-    expect(result).toMatchObject({ ok: true, id: expect.stringMatching(/^guidance_policy_/) });
+    expect(result).toMatchObject({ ok: true, id: expect.stringMatching(/^policy_/) });
     expect(upsertEntity).toHaveBeenCalledTimes(1);
     expect(persistedData()).not.toHaveProperty("authored_by");
   });
 
   it("records the principal author when the route resolves one", async () => {
-    const result = await captureGuidancePolicy(
+    const result = await capturePolicy(
       "/tmp/doco",
       DOCO_ID,
       "torre",
       "torre-bpm",
       {
-        policy: "Keep BPMN lane names in business language.",
+        kind: "suggestion",
+        agent_instruction: "Keep BPMN lane names in business language.",
         authored_by_principal_id: "principal_alice",
         created_by_user_id: "user_alice",
       },
@@ -97,13 +98,14 @@ describe("captureGuidancePolicy author resolution", () => {
   });
 
   it("still rejects a user id supplied as the author", async () => {
-    const result = await captureGuidancePolicy(
+    const result = await capturePolicy(
       "/tmp/doco",
       DOCO_ID,
       "torre",
       "torre-bpm",
       {
-        policy: "Keep BPMN lane names in business language.",
+        kind: "suggestion",
+        agent_instruction: "Keep BPMN lane names in business language.",
         authored_by_principal_id: "user_alice",
       },
       "https://doco.test",

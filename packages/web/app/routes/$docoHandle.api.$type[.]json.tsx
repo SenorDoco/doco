@@ -19,10 +19,10 @@ import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.se
 import { CAPTURE_REGISTRY } from "~/lib/node-capture-registry.server";
 
 function notFound(type: string | undefined): Response {
-  if (type === "guidance_policies" || type === "node_authoring_policies") {
+  if (type === "policies" || type === "policy") {
     return Response.json(
       {
-        error: `${type} are policies, not nodes. Use /api/policies.json instead (GET to list, POST with "policy_kind" to capture). See /api/policies.txt for the body shape.`,
+        error: `${type} are policies, not nodes. Use /api/policies.json instead (GET to list, POST with "kind" to capture). See /api/policies.txt for the body shape.`,
       },
       { status: 404 },
     );

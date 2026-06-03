@@ -108,9 +108,8 @@ export async function getDocoLevelGrant(
  * set) via `canWriteType` — owners write everything; otherwise the type
  * must be covered by the wildcard or named explicitly.
  *
- * Policy types (guidance_policy, node_authoring_policy) are NOT
- * write-gateable content — they configure the Doco and stay owner-only,
- * matching `canEditPolicies`. Any non-writable type therefore requires
+ * The `policy` type is NOT write-gateable content — policies configure the
+ * Doco and stay owner-only, matching `canEditPolicies`. Any non-writable type therefore requires
  * the owner role.
  *
  * This does NOT enforce the OAuth-token scope-down; for bearer-auth API

@@ -218,12 +218,8 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.api.references.$id[.]json"),
   },
   {
-    pattern: "/:docoHandle/api/guidance_policies/:id.json",
-    load: () => import("~/routes/$docoHandle.api.guidance_policies.$id[.]json"),
-  },
-  {
-    pattern: "/:docoHandle/api/node_authoring_policies/:id.json",
-    load: () => import("~/routes/$docoHandle.api.node_authoring_policies.$id[.]json"),
+    pattern: "/:docoHandle/api/policies/:id.json",
+    load: () => import("~/routes/$docoHandle.api.policies.$id[.]json"),
   },
   // Generic dispatchers — LAST so the more specific routes above win.
   {

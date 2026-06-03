@@ -15,7 +15,7 @@ import {
   listEntitiesByDoco,
   withClient,
 } from "@doco/db";
-import { generateUlid } from "@doco/shared";
+import { type PolicyPredicate, generateUlid, summarizePredicate } from "@doco/shared";
 import {
   createSenorDocoMessage,
   missingSenorDocoAnthropicMessage,
@@ -1427,14 +1427,8 @@ async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record
     })),
     {
       nodeType: null,
-      table: "guidance_policies",
-      plural: "guidance_policies",
-      group: "policy" as const,
-    },
-    {
-      nodeType: null,
-      table: "node_authoring_policies",
-      plural: "node_authoring_policies",
+      table: "policies",
+      plural: "policies",
       group: "policy" as const,
     },
   ];
@@ -1607,49 +1601,40 @@ async function readSlackDocoApiPolicies(
   doco: SlackAccessibleDoco,
 ): Promise<Record<string, unknown>> {
   const result = await withClient((c) =>
-    Promise.all([
-      c.query<{
-        id: string;
-        policy: string;
-        lifecycle: string | null;
-        body_md: string | null;
-        created_at: string | null;
-        updated_at: string | null;
-      }>(
-        `SELECT id, policy, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
-           FROM guidance_policies
-          WHERE doco_id = $1
-          ORDER BY created_at DESC`,
-        [doco.id],
-      ),
-      c.query<{
-        id: string;
-        policy: string;
-        lifecycle: string | null;
-        body_md: string | null;
-        created_at: string | null;
-        updated_at: string | null;
-      }>(
-        `SELECT id, policy, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
-           FROM node_authoring_policies
-          WHERE doco_id = $1
-          ORDER BY created_at DESC`,
-        [doco.id],
-      ),
-    ]),
+    c.query<{
+      id: string;
+      kind: string | null;
+      data: Record<string, unknown> | null;
+      lifecycle: string | null;
+      body_md: string | null;
+      created_at: string | null;
+      updated_at: string | null;
+    }>(
+      `SELECT id, kind, data, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
+         FROM policies
+        WHERE doco_id = $1
+        ORDER BY created_at DESC`,
+      [doco.id],
+    ),
   );
-  const [guidance, nodeAuthoring] = result;
-  const items = [
-    ...guidance.rows.map((row) => ({ ...row, policy_kind: "guidance" as const })),
-    ...nodeAuthoring.rows.map((row) => ({ ...row, policy_kind: "node_authoring" as const })),
-  ];
+  const items = result.rows.map((row) => {
+    const predicate = (row.data?.predicate ?? null) as PolicyPredicate | null;
+    return {
+      id: row.id,
+      kind: row.kind ?? (typeof row.data?.kind === "string" ? row.data.kind : null),
+      summary: predicate ? summarizePredicate(predicate) : "",
+      predicate,
+      lifecycle: row.lifecycle,
+      body_md: row.body_md,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  });
   return {
     doco_id: doco.id,
     doco_handle: doco.handle,
     qualified_handle: doco.qualifiedHandle,
     count: items.length,
-    guidance_count: guidance.rows.length,
-    node_authoring_count: nodeAuthoring.rows.length,
     items,
   };
 }

@@ -401,30 +401,9 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-// Map a plural API segment to the kind slug used in the policies
-// edit URL (`/<handle>/policies/<kind>/<id>/edit`). Returns null
-// when the plural isn't a policy.
-function pluralToPolicyKindSlug(plural: string): string | null {
-  if (plural === "guidance_policies") return "guidance";
-  if (plural === "node_authoring_policies") return "node-authoring";
-  return null;
-}
-
-// Resolve the URL kind slug from a doco_api POST body for the shared
-// `/<handle>/api/policies.json` create endpoint. The body's
-// `policy_kind` field is either "guidance" or "node_authoring";
-// translate to the slug the policy edit route expects.
-function bodyToPolicyKindSlug(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const k = (body as { policy_kind?: unknown }).policy_kind;
-  if (k === "guidance") return "guidance";
-  if (k === "node_authoring") return "node-authoring";
-  return null;
-}
-
 type PendingCreate =
   | { kind: "node"; handle: string; entityType: string }
-  | { kind: "policy"; handle: string; policyKindSlug: string };
+  | { kind: "policy"; handle: string };
 
 // When the agent drives focus (vs. an explicit user click), center
 // the graph on the node without opening the detail dialog. The
@@ -1408,10 +1387,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const m = /^\/([^/]+)\/api\/([^/]+)\/([^/.]+)\.(?:json|txt)$/.exec(path);
       if (!m) return;
       const [, handle, plural, id] = m;
-      const policyKind = pluralToPolicyKindSlug(plural);
       let target: string;
-      if (policyKind) {
-        target = `/${handle}/policies/${policyKind}/${id}/edit`;
+      if (plural === "policies") {
+        target = `/${handle}/policies/${id}/edit`;
       } else {
         // Plurals are uniformly the entity-type + "s" across all
         // node tables shipped today (decisions, intents, actions,
@@ -1458,14 +1436,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     if (!m) return;
     const [, handle, plural] = m;
     if (plural === "policies") {
-      // Policy create — kind comes from the request body, not the path.
-      const policyKindSlug = bodyToPolicyKindSlug(inp.body);
-      if (!policyKindSlug) return;
-      pendingCreatesRef.current.set(toolUseId, {
-        kind: "policy",
-        handle,
-        policyKindSlug,
-      });
+      // Policy create — every policy is one entity type now; the edit
+      // page is keyed by id alone.
+      pendingCreatesRef.current.set(toolUseId, { kind: "policy", handle });
       return;
     }
     const entityType = normalizeNodeType(plural);
@@ -1497,7 +1470,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       if (!id) return;
       const target =
         pending.kind === "policy"
-          ? `/${pending.handle}/policies/${pending.policyKindSlug}/${id}/edit`
+          ? `/${pending.handle}/policies/${id}/edit`
           : `/${pending.handle}/${pending.entityType}/${id}`;
       if (location.pathname === target) return;
       if (composerHasTextRef.current) return;

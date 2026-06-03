@@ -12,7 +12,7 @@
 // because they're meta), then by a type-specific tiebreaker:
 //   decision/intent/rule/action → lifecycle rank (active first)
 //   log/eval                     → created_at desc (recent matters more)
-//   guidance/auth policies     → name asc (stable alphabetical)
+//   policy                       → name asc (stable alphabetical)
 // Policies are pinned ABOVE the body for `rank_desc` since they're
 // the Doco's authoring contract.
 
@@ -42,8 +42,7 @@ const SORT_OPTIONS: ListSortKey[] = ["recent", "oldest", "rank_desc", "rank_asc"
 
 const NODE_TYPE_ORDER = new Map(
   [
-    "guidance_policy",
-    "node_authoring_policy",
+    "policy",
     "principal",
     "intent",
     "decision",
@@ -67,7 +66,7 @@ const LIFECYCLE_RANK = new Map(
   ["drafting", "queued", "active", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
-const POLICY_TYPES = new Set(["guidance_policy", "node_authoring_policy"]);
+const POLICY_TYPES = new Set(["policy"]);
 const MAX_GRAPH_REFERENCES = 120;
 
 export interface ListPerspectiveNode {
@@ -336,8 +335,7 @@ function typeAwareCompare(
     case "log":
     case "eval":
       return tsValue(b.created_at) - tsValue(a.created_at);
-    case "guidance_policy":
-    case "node_authoring_policy":
+    case "policy":
     case "reference":
       return (a.name ?? "").localeCompare(b.name ?? "");
   }

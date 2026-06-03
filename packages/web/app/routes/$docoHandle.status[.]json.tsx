@@ -98,17 +98,10 @@ const TYPE_MAP: {
     group: "note" as const,
   })),
   {
-    entityType: "guidance_policy",
+    entityType: "policy",
     nodeType: null,
-    table: "guidance_policies",
-    plural: "guidance_policies",
-    group: "policy",
-  },
-  {
-    entityType: "node_authoring_policy",
-    nodeType: null,
-    table: "node_authoring_policies",
-    plural: "node_authoring_policies",
+    table: "policies",
+    plural: "policies",
     group: "policy",
   },
 ];

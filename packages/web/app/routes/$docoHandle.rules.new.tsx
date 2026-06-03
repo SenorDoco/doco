@@ -1,7 +1,6 @@
 import { withClient } from "@doco/db";
 // /<doco-handle>/rules/new — minimal capture form for a domain Rule entity.
-// Policy meta-rules live in guidance_policies and
-// node_authoring_policies instead.
+// Policy meta-rules live in the `policies` table instead.
 import { Form, redirect } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
