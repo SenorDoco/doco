@@ -450,7 +450,7 @@ export function ManualMcpPanel({
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
       <div className="space-y-1.5">
-        <h2 className="text-base font-semibold">Connect a client to Doco</h2>
+        <h2 className="text-base font-semibold">Connect an agent to Doco</h2>
         <p className="text-xs text-muted-foreground">
           Doco hosts a remote MCP server <strong>per workspace</strong> — each connector is bound to
           one workspace and its token reaches no other. Pick a workspace, copy its URL, then choose
