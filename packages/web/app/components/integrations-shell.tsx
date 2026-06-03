@@ -8,9 +8,17 @@
 //   - `ScopePickerBanner` shows the "pick a target" prompt that appears at
 //     the top of a scope page when the user clicked through from a higher
 //     scope (e.g. picked GitHub on the account page → shown a Doco prompt).
-import { ArrowDown, ArrowUpRight, Building2, type LucideIcon, Plug, User } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUpRight,
+  Building2,
+  type LucideIcon,
+  Plug,
+  Trash2,
+  User,
+} from "lucide-react";
 import type { ReactNode } from "react";
-import { Link } from "react-router";
+import { Form, Link } from "react-router";
 import { Card, CardContent } from "~/components/card";
 import { cn } from "~/lib/cn";
 import {
@@ -112,6 +120,46 @@ function ConnectionActionButton({ action }: { action: ConnectionAction }) {
       {label}
       {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
     </Link>
+  );
+}
+
+/**
+ * The destructive "Remove" control for a Slack install, used as a row's
+ * `secondaryAction`. Slack removal is the same operation from anywhere it's
+ * shown — the per-workspace management card or the account-level "not linked"
+ * fallback — so the form always posts the `remove_slack` intent to the
+ * canonical `/integrations` action (which owner-gates bound teams server-side),
+ * regardless of which page rendered it. A confirm() guards the irreversible
+ * delete before the post.
+ */
+export function RemoveSlackButton({
+  teamId,
+  teamName,
+}: {
+  teamId: string;
+  teamName: string;
+}) {
+  return (
+    <Form method="post" action="/integrations">
+      <input type="hidden" name="intent" value="remove_slack" />
+      <input type="hidden" name="workspace_id" value={teamId} />
+      <button
+        type="submit"
+        onClick={(event) => {
+          if (
+            !confirm(
+              `Remove Señor Doco from ${teamName}? This deletes its channel defaults and personal links, and can't be undone.`,
+            )
+          ) {
+            event.preventDefault();
+          }
+        }}
+        className={CONNECTION_ACTION_DESTRUCTIVE}
+      >
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+        Remove
+      </button>
+    </Form>
   );
 }
 
