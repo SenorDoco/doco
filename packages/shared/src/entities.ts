@@ -155,8 +155,9 @@ export interface Idea extends CommonFields {
 // ─── Rule ─────────────────────────────────────────────────────────────────
 
 /**
- * Authoring predicate — the structured shape the engine evaluates at
- * write time. Stored as `Rule.predicate`.
+ * Authoring predicate — the structured shape templates use to author
+ * policies, converted to a runtime `Policy` (`PolicyKind` + `PolicyPredicate`)
+ * at seed time. (`Rule` *nodes* carry a prose `predicate` string, not this.)
  *
  * `when_node_type` filters a predicate to candidates of specific node
  * types. Membership gates (`requires_node_type` / `requires_entity_type`)
@@ -216,7 +217,9 @@ export interface Rule extends CommonFields {
   node_type: "rule";
   /** Full prose: the rule statement, rationale, scope, exceptions. */
   rule: string;
-  predicate?: AuthoringPredicate;
+  /** Prose or machine-checkable assertion the rule states (enforcement is
+   *  carried by `Policy` records, not by this string). */
+  predicate?: string;
   fires_when_node_lifecycle?: Lifecycle[];
   modality?: "must" | "must_not" | "should" | "should_not";
   severity?: "blocker" | "warning" | "info";
