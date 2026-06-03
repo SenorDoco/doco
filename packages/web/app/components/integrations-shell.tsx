@@ -8,7 +8,8 @@
 //   - `ScopePickerBanner` shows the "pick a target" prompt that appears at
 //     the top of a scope page when the user clicked through from a higher
 //     scope (e.g. picked GitHub on the account page → shown a Doco prompt).
-import { ArrowDown, ArrowUpRight, Building2, Plug, User } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Building2, type LucideIcon, Plug, User } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Card, CardContent } from "~/components/card";
 import { cn } from "~/lib/cn";
@@ -20,6 +21,100 @@ import {
   findIntegration,
 } from "~/lib/integrations-catalog";
 
+// One source of truth for the small pill action that ends every integrations
+// row. Secondary (outline) backs the "Manage" / "Set defaults" actions on the
+// connected pane and the scope-nav links; primary backs the catalog's
+// "Connect" / "Set up…". Keeping them here means every action button across the
+// three integrations pages is the exact same size, weight, and shape.
+export const CONNECTION_ACTION_SECONDARY =
+  "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary";
+export const CONNECTION_ACTION_PRIMARY =
+  "neu-button inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
+// Same pill geometry as the secondary action, in the destructive tint — for a
+// row's "Remove"/"Disconnect" control so it lines up with "Set defaults".
+export const CONNECTION_ACTION_DESTRUCTIVE =
+  "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-input";
+
+export interface ConnectionAction {
+  label: string;
+  /** Client-side route to the manage/configure screen for this connection. */
+  href: string;
+  /** Optional trailing glyph (e.g. ArrowRight to "go manage"). */
+  icon?: LucideIcon;
+}
+
+/**
+ * The flush divider list that holds connection rows. Drop it straight into a
+ * `<CardContent className="p-0">` so the rows sit edge-to-edge under the card
+ * header — the same chrome the per-workspace and per-Doco rollups already use.
+ */
+export function ConnectionList({ children }: { children: ReactNode }) {
+  return <ul className="divide-y divide-border">{children}</ul>;
+}
+
+/**
+ * One connected resource, rendered identically wherever it appears (a Slack
+ * workspace install, a workspace in the account rollup, a Doco in a
+ * workspace's rollup): an identity on the left — a `title` that optionally
+ * links to its own manage page, plus a muted `detail` status line — and a
+ * single standardized action on the right, with room for an optional
+ * `secondaryAction` (e.g. a destructive "Remove" form button) beside it.
+ * `children` hangs extra content (e.g. a nested per-Doco sub-list) beneath the
+ * row.
+ */
+export function ConnectionRow({
+  title,
+  titleHref,
+  detail,
+  action,
+  secondaryAction,
+  children,
+}: {
+  title: ReactNode;
+  titleHref?: string;
+  detail?: ReactNode;
+  action?: ConnectionAction;
+  secondaryAction?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <li className="px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          {titleHref ? (
+            <Link
+              to={titleHref}
+              className="text-sm font-semibold text-foreground hover:text-primary"
+            >
+              {title}
+            </Link>
+          ) : (
+            <span className="block text-sm font-semibold text-foreground">{title}</span>
+          )}
+          {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
+        </div>
+        {action || secondaryAction ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {action ? <ConnectionActionButton action={action} /> : null}
+            {secondaryAction}
+          </div>
+        ) : null}
+      </div>
+      {children}
+    </li>
+  );
+}
+
+function ConnectionActionButton({ action }: { action: ConnectionAction }) {
+  const { label, href, icon: Icon } = action;
+  return (
+    <Link to={href} className={CONNECTION_ACTION_SECONDARY}>
+      {label}
+      {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+    </Link>
+  );
+}
+
 export function ScopeNavLinks({
   scope,
   workspaceHandle,
@@ -28,8 +123,7 @@ export function ScopeNavLinks({
   workspaceHandle?: string;
 }) {
   if (scope === "account") return null;
-  const linkClass =
-    "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary";
+  const linkClass = CONNECTION_ACTION_SECONDARY;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {scope === "doco" && workspaceHandle ? (
@@ -120,7 +214,7 @@ function AvailableIntegrationRow({
       <a
         href={href}
         {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
-        className="neu-button inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+        className={CONNECTION_ACTION_PRIMARY}
       >
         {sameScope ? "Connect" : "Set up..."}
         <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />

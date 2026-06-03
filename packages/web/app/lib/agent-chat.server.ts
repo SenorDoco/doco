@@ -75,6 +75,19 @@ import { upsertAgentTurn } from "./telemetry.server";
 ensureEnvLoaded();
 
 const MAX_TURNS_PER_REPLY = 100;
+// Wall-clock budget for one streamed reply, in milliseconds. The route
+// that streams a turn (api.v1.agent-chat.messages[.]json.tsx) runs with
+// `maxDuration: 300` — Vercel SIGKILLs the lambda at that hard ceiling.
+// A long job (importing a big BPM is the canonical case) makes dozens of
+// model + tool round-trips and routinely needs more than one invocation;
+// MAX_TURNS_PER_REPLY=100 never binds first because ~22 calls already
+// exhaust the wall clock. Without a soft budget the lambda is hard-killed
+// mid-tool-call and the user just sees the agent stop with no explanation.
+// We stop ~70s under the ceiling so the in-flight turn (a model call plus
+// its tools can run ~30-70s) and the final "send continue" persistence
+// both finish before the kill. The work so far is already saved, so the
+// pause is fully resumable.
+export const TURN_TIME_BUDGET_MS = 230_000;
 // Per-Anthropic-call output cap. 2048 was the old Haiku-era setting
 // and proved way too tight for Sonnet on multi-tool batches: a single
 // "create 8 actions in parallel" reply truncates mid-tool-JSON
@@ -199,6 +212,12 @@ export interface ChatStreamContext {
    * doco_api calls → `attachDocoToConversation`).
    */
   conversationId: string;
+  /**
+   * Injectable clock for the loop's wall-clock budget. Defaults to
+   * `Date.now` in production; tests pass a controllable clock to drive
+   * the time-budget pause deterministically.
+   */
+  now?: () => number;
 }
 
 export interface VisibleGraphReference {
@@ -573,27 +592,6 @@ export async function attachDocoToConversation(
     });
   } catch {
     // Best-effort — see docblock.
-  }
-}
-
-/** Same shape as attachDocoToConversation but targets `attached_workspace_handles`. */
-export async function attachWorkspaceToConversation(
-  conversationId: string,
-  handle: string,
-): Promise<void> {
-  if (!conversationId || !handle) return;
-  try {
-    await withClient(async (c) => {
-      await c.query(
-        `UPDATE chat_conversations
-            SET attached_workspace_handles = attached_workspace_handles || ARRAY[$2::text]
-          WHERE id = $1
-            AND NOT ($2 = ANY(attached_workspace_handles))`,
-        [conversationId, handle],
-      );
-    });
-  } catch {
-    // Best-effort.
   }
 }
 
@@ -1412,16 +1410,6 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     }
   }
   return value;
-}
-
-/**
- * Manual invalidator for callers that mutate the bootstrap inputs
- * (new doco, policies flipped). Optional; without it the TTL still
- * expires within seconds.
- */
-export function invalidateBootstrapMemo(principalId?: string): void {
-  if (principalId) bootstrapMemo.delete(principalId);
-  else bootstrapMemo.clear();
 }
 
 /**
@@ -2577,6 +2565,8 @@ async function* streamAssistantTurn(args: {
     for await (const ev of runSenorDocoAgentLoop({
       messages,
       maxTurns: MAX_TURNS_PER_REPLY,
+      timeBudgetMs: TURN_TIME_BUDGET_MS,
+      now: args.ctx.now,
       callModel,
       runTool: async (block) => {
         const toolStart = performance.now();
@@ -2659,8 +2649,14 @@ async function* streamAssistantTurn(args: {
           break;
         }
         case "turn_limit": {
-          turnError = `hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY}`;
-          const limitMessage = `I hit the per-turn work limit (${MAX_TURNS_PER_REPLY} Anthropic calls) while continuing this job, so I paused instead of risking a tool-call loop. The work so far is saved; send "continue" and I'll pick up from the latest tool results.`;
+          turnError =
+            ev.reason === "time"
+              ? `hit TURN_TIME_BUDGET_MS=${TURN_TIME_BUDGET_MS}`
+              : `hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY}`;
+          const limitMessage =
+            ev.reason === "time"
+              ? `I paused this reply to save my progress before it ran into the time limit for a single turn — the work so far is saved instead of being cut off mid-step. Send "continue" and I'll pick up from the latest tool results.`
+              : `I hit the per-turn work limit (${MAX_TURNS_PER_REPLY} Anthropic calls) while continuing this job, so I paused instead of risking a tool-call loop. The work so far is saved; send "continue" and I'll pick up from the latest tool results.`;
           yield { kind: "text_delta", text: limitMessage };
           const saved = await appendMessage(args.conversation.id, "assistant", [
             { type: "text", text: limitMessage },

@@ -1,7 +1,7 @@
 // Session + User lookup. The session cookie stores the user id (OAuth
 // identity).
 
-import { type UserRow, getUserByGithubLogin, getUserById } from "@doco/db";
+import { type UserRow, getUserById } from "@doco/db";
 
 const COOKIE_NAME = "doco_session";
 
@@ -66,12 +66,6 @@ export function isHumanPrincipal(principal: CurrentPrincipal | null | undefined)
 
 export async function findPrincipalById(principalId: string): Promise<CurrentPrincipal | null> {
   const row = await getUserById(principalId);
-  if (!row) return null;
-  return rowToPrincipal(row);
-}
-
-export async function findPrincipalByUsername(username: string): Promise<CurrentPrincipal | null> {
-  const row = await getUserByGithubLogin(username);
   if (!row) return null;
   return rowToPrincipal(row);
 }

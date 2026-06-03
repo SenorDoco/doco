@@ -3,7 +3,7 @@ import { GENERIC_CAPTURE_NODE_TYPES, NODE_CATALOG, NODE_TYPES } from "@doco/shar
 // Per-entity-type table mapping + storage interface.
 //
 // Entities are split across categories. Each category maps to one or more
-// tables; the type discriminator string (e.g. "intent", "guidance_policy",
+// tables; the type discriminator string (e.g. "intent", "policy",
 // "user") names the row.
 
 /**
@@ -115,14 +115,6 @@ export const NODE_PROMOTED_COLUMNS: Readonly<Record<string, readonly PromotedCol
   ],
   // principal: no graph promoted columns; name/body_md/role_principal handled
   // directly by the writer (role_principal is stripped from data there).
-};
-
-/** The policy type. Policies are always Doco-scoped. */
-export const POLICY_TABLES: Record<string, { table: string; body: boolean }> = {
-  policy: {
-    table: "policies",
-    body: true,
-  },
 };
 
 /** The user category — human OAuth identity layer. */

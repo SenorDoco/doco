@@ -15,7 +15,12 @@ import {
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
 import { AgentSidebar } from "~/components/agent-sidebar";
 import { FeedbackReporter } from "~/components/feedback-reporter";
-import { SiteHeader, SiteHeaderSuppressionProvider } from "~/components/site-header";
+import {
+  type FeedbackPending,
+  SiteHeader,
+  SiteHeaderSuppressionProvider,
+} from "~/components/site-header";
+import { countPendingFeedback } from "~/lib/feedback-reports.server";
 import { createMainScrollRestorer } from "~/lib/main-scroll-restoration";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import "./app.css";
@@ -23,13 +28,26 @@ import "./app.css";
 // Root loader — fetch the current Principal once so the persistent
 // AgentSidebar in App() knows whether to render. Per-route loaders
 // still fetch `me` themselves where they need it; we don't try to
-// thread root data through context.
+// thread root data through context. For the owner we also tally uncleared
+// bug/idea reports so the header can flag them beside the version pill;
+// that count is best-effort and never blanks the chrome if it fails.
 export async function loader({ request }: { request: Request }) {
   try {
     const me = await getCurrentPrincipal(request);
-    return { me };
+    let feedbackPending: FeedbackPending | null = null;
+    if (me?.username === "torrenegra") {
+      try {
+        feedbackPending = await countPendingFeedback();
+      } catch {
+        feedbackPending = null;
+      }
+    }
+    return { me, feedbackPending };
   } catch {
-    return { me: null as CurrentPrincipal | null };
+    return {
+      me: null as CurrentPrincipal | null,
+      feedbackPending: null as FeedbackPending | null,
+    };
   }
 }
 
@@ -75,8 +93,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const data = useLoaderData() as { me: CurrentPrincipal | null } | undefined;
+  const data = useLoaderData() as
+    | { me: CurrentPrincipal | null; feedbackPending?: FeedbackPending | null }
+    | undefined;
   const me = data?.me ?? null;
+  const feedbackPending = data?.feedbackPending ?? null;
   const mainRef = useMainScrollRestoration();
   // Signed-out: the anonymous landing + sign-in flow has its own header
   // chrome; let it render as-is.
@@ -91,7 +112,7 @@ export default function App() {
   // so per-route <SiteHeader> calls (default shellOwner=false) render null.
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <SiteHeader me={me} shellOwner />
+      <SiteHeader me={me} shellOwner feedbackPending={feedbackPending} />
       <div className="doco-shell-body flex min-h-0 flex-1">
         <AgentSidebar me={me} />
         <main ref={mainRef} className="doco-shell-main min-w-0 flex-1 overflow-y-auto">

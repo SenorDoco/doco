@@ -23,7 +23,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *
  *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
  *   /dashboard                     signed-in host dashboard (docos / users / workspaces)
- *   /mentor/feedback               mentor-only bug/idea report review page
+ *   /feedback                      owner-only bug/idea report review page (clears the header flags)
+ *   /mentor/feedback               legacy redirect → /feedback
  *   /users/<username>              signed-in user's tiny profile placeholder
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
  *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
@@ -81,6 +82,8 @@ export default [
   // Returns the actual agent_turn_metrics / capture_timings rows
   // behind the aggregated health signals.
   route("admin/agent-debug.json", "routes/admin.agent-debug[.]json.tsx"),
+  route("feedback", "routes/feedback.tsx"),
+  // Legacy path — the page is now just /feedback; redirect old links.
   route("mentor/feedback", "routes/mentor.feedback.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),

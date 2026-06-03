@@ -34,6 +34,7 @@ export const HOST_RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "help",
   "about",
   "dashboard",
+  "feedback",
   "mentor",
   "onboarding",
   "agents",
@@ -73,15 +74,6 @@ export function entityUrl(input: EntityUrlInput): string {
   return `${prefix}/${input.entityType}/${input.id}`;
 }
 
-export interface EntityListUrlInput {
-  docoHandle: string;
-  entityType: string;
-}
-
-export function entityListUrl(input: EntityListUrlInput): string {
-  return `${docoPrefix(input)}/${input.entityType}`;
-}
-
 export interface DocoUrlInput {
   docoHandle: string;
 }
@@ -109,20 +101,4 @@ export function validateRequestedDocoHandle(handle: string): string | null {
     return `Doco handle "${handle}" is reserved by Doco's URL routing.`;
   }
   return null;
-}
-
-/**
- * Normalize an arbitrary string into a candidate Doco handle — lowercase,
- * collapse runs of non-alphanumerics into `-`, strip leading/trailing
- * dashes, truncate to 64 chars. Returns null if nothing survives.
- */
-export function normalizeRequestedDocoHandle(input: string): string | null {
-  const normalized = input
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-_]+|[-_]+$/g, "")
-    .slice(0, 64);
-  if (!normalized || !/^[a-z0-9]/.test(normalized)) return null;
-  return normalized;
 }

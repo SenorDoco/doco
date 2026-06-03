@@ -6,7 +6,6 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
-import { normalizeNodeType } from "@doco/shared";
 import {
   type CSSProperties,
   type ReactNode,
@@ -19,6 +18,15 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
+import {
+  type PendingCreate,
+  focusNavigationUrl,
+  focusTargetForCreate,
+  focusTargetForNavigateUrl,
+  focusTargetForResourcePath,
+  pendingCreateForRequest,
+  perspectiveParam,
+} from "~/lib/agent-follow-target";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
 import {
@@ -29,6 +37,7 @@ import {
   resolvePublishedRailWidth,
   resolveThinkingActive,
   useNarrowShell,
+  viewOnExpand,
 } from "~/lib/senor-doco-shell";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
@@ -406,41 +415,6 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-type PendingCreate =
-  | { kind: "node"; handle: string; entityType: string }
-  | { kind: "policy"; handle: string };
-
-// When the agent drives focus (vs. an explicit user click), center
-// the graph on the node without opening the detail dialog. The
-// route loader reads `?dialog=skip` and leaves `selectedNode` null.
-function withDialogSkip(target: string): string {
-  if (!target.startsWith("/")) return target;
-  try {
-    const url = new URL(target, "https://doco.local");
-    url.searchParams.set("dialog", "skip");
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return target.includes("?") ? `${target}&dialog=skip` : `${target}?dialog=skip`;
-  }
-}
-
-function withDialogSkipForNodeTarget(target: string): string {
-  if (!target.startsWith("/")) return target;
-  try {
-    const url = new URL(target, "https://doco.local");
-    const segments = url.pathname.split("/").filter(Boolean);
-    const [handle, entityType, id] = segments;
-    const canonicalType = normalizeNodeType(entityType);
-    if (segments.length !== 3 || !handle || !id || !canonicalType) {
-      return target;
-    }
-    url.pathname = `/${handle}/${canonicalType}/${id}`;
-    return withDialogSkip(`${url.pathname}${url.search}${url.hash}`);
-  } catch {
-    return target;
-  }
-}
-
 export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inFlight, setInFlight] = useState<InFlightMessage | null>(null);
@@ -526,6 +500,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
+  // Pathname where the user collapsed Señor Doco *in this mount*. null
+  // when the collapsed state was inherited from localStorage on load (a
+  // previous page/session) or after an expand consumes it. Drives
+  // whether expanding restores the open thread or resets to the thread
+  // list — see viewOnExpand and setCollapsedPersistent.
+  const collapseOriginPathRef = useRef<string | null>(null);
   // Publish the rail's current side-rail width as a CSS variable so
   // floating overlays (the node-detail dialog, etc.) can avoid covering
   // it. Below 640px the rail is an overlay drawer floating above the
@@ -563,15 +543,34 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const abortRef = useRef<AbortController | null>(null);
   const sendSeqRef = useRef(0);
 
-  const setCollapsedPersistent = useCallback((next: boolean) => {
-    setCollapsed(next);
-    writeBoolFlag(COLLAPSE_KEY, next);
-    if (!next) {
-      // Expanding clears unread.
-      setUnread(false);
-      writeBoolFlag(UNREAD_KEY, false);
-    }
-  }, []);
+  const setCollapsedPersistent = useCallback(
+    (next: boolean) => {
+      setCollapsed(next);
+      writeBoolFlag(COLLAPSE_KEY, next);
+      if (next) {
+        // Remember where this collapse happened so a later expand on the
+        // same page can restore the open thread (vs. resetting to the list).
+        collapseOriginPathRef.current = location.pathname;
+      } else {
+        // Expanding clears unread.
+        setUnread(false);
+        writeBoolFlag(UNREAD_KEY, false);
+        // Unless the collapse we're undoing happened on this same page,
+        // reset to the thread list rather than dropping the user back into
+        // the last-open (possibly stale) thread.
+        if (
+          viewOnExpand({
+            collapseOriginPath: collapseOriginPathRef.current,
+            currentPath: location.pathname,
+          }) === "list"
+        ) {
+          setView("list");
+        }
+        collapseOriginPathRef.current = null;
+      }
+    },
+    [location.pathname],
+  );
   const markUnread = useCallback(() => {
     setUnread(true);
     writeBoolFlag(UNREAD_KEY, true);
@@ -1389,68 +1388,39 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       if (toolName !== "doco_api") return;
       if (!input || typeof input !== "object") return;
       const path = (input as { path?: unknown }).path;
-      if (typeof path !== "string" || !path.startsWith("/")) return;
-      // /<handle>/api/<plural-type>/<id>.<ext>
-      const m = /^\/([^/]+)\/api\/([^/]+)\/([^/.]+)\.(?:json|txt)$/.exec(path);
-      if (!m) return;
-      const [, handle, plural, id] = m;
-      let target: string;
-      if (plural === "policies") {
-        target = `/${handle}/policies/${id}/edit`;
-      } else {
-        // Plurals are uniformly the entity-type + "s" across all
-        // node tables shipped today (decisions, intents, actions,
-        // logs, rules, evals, references, ideas, states, principals).
-        const entityType = normalizeNodeType(plural);
-        if (!entityType) return;
-        target = `/${handle}/${entityType}/${id}`;
-      }
-      const currentPath = location.pathname;
-      if (currentPath === target) return;
+      if (typeof path !== "string") return;
+      // A doco_api request that addresses one node or edge by id (read,
+      // update, delete). Focus the active perspective on it so the user
+      // watches the change land; edges center their source node, a
+      // policy opens its editor. Collection endpoints and non-resource
+      // paths fall through.
+      const target = focusTargetForResourcePath(path);
+      if (!target) return;
+      if (location.pathname === target.pathname) return;
       // Don't interrupt active composition — but only when there's
       // actually something half-written. Empty composer = user is
       // waiting; navigate.
       if (composerHasTextRef.current) return;
-      navigate(withDialogSkip(target));
+      navigate(focusNavigationUrl(target, perspectiveParam(location.search)));
     },
-    [navigate, location.pathname],
+    [navigate, location.pathname, location.search],
   );
 
   // POST-to-create flow doesn't have the id in the request path
   // (the path is /<handle>/api/<plural>.json — the id is generated
   // server-side and returned in the response body). So track which
-  // in-flight tool_use_ids are creates, then on tool_use_result pull
-  // the id out of the preview and navigate.
-  //
-  // Two shapes:
-  //   - "node" creates go to /<handle>/<entity-type>/<id>
-  //   - "policy" creates go to /<handle>/policies/<kind-slug>/<id>/edit.
-  //     The plural endpoint is /<handle>/api/policies.json for both
-  //     guidance and node-authoring policies; the kind is in the
-  //     request body's `policy_kind` field, which we capture at
-  //     note-create time.
+  // in-flight tool_use_ids are node/edge/policy creates, then on
+  // tool_use_result pull the id out of the preview and focus it.
   const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map());
 
   const maybeNoteCreate = useCallback((toolUseId: string, toolName: string, input: unknown) => {
     if (toolName !== "doco_api") return;
     if (!input || typeof input !== "object") return;
-    const inp = input as { path?: unknown; method?: unknown; body?: unknown };
+    const inp = input as { path?: unknown; method?: unknown };
     if (typeof inp.path !== "string") return;
-    const method = typeof inp.method === "string" ? inp.method.toUpperCase() : "GET";
-    if (method !== "POST") return;
-    // /<handle>/api/<plural>.<ext> — no id segment.
-    const m = /^\/([^/]+)\/api\/([^/]+)\.(?:json|txt)$/.exec(inp.path);
-    if (!m) return;
-    const [, handle, plural] = m;
-    if (plural === "policies") {
-      // Policy create — every policy is one entity type now; the edit
-      // page is keyed by id alone.
-      pendingCreatesRef.current.set(toolUseId, { kind: "policy", handle });
-      return;
-    }
-    const entityType = normalizeNodeType(plural);
-    if (!entityType) return;
-    pendingCreatesRef.current.set(toolUseId, { kind: "node", handle, entityType });
+    const method = typeof inp.method === "string" ? inp.method : "GET";
+    const pending = pendingCreateForRequest(inp.path, method);
+    if (pending) pendingCreatesRef.current.set(toolUseId, pending);
   }, []);
 
   const maybeFollowCreateResult = useCallback(
@@ -1475,15 +1445,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         if (m) id = m[1];
       }
       if (!id) return;
-      const target =
-        pending.kind === "policy"
-          ? `/${pending.handle}/policies/${id}/edit`
-          : `/${pending.handle}/${pending.entityType}/${id}`;
-      if (location.pathname === target) return;
+      const target = focusTargetForCreate(pending, id);
+      if (location.pathname === target.pathname) return;
       if (composerHasTextRef.current) return;
-      navigate(withDialogSkip(target));
+      navigate(focusNavigationUrl(target, perspectiveParam(location.search)));
     },
-    [navigate, location.pathname],
+    [navigate, location.pathname, location.search],
   );
 
   const send = useCallback(
@@ -1718,7 +1685,24 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               // Create flow: navigate to the freshly-minted node.
               maybeFollowCreateResult(event.tool_use_id, event.ok, event.preview);
             } else if (event.kind === "navigate") {
-              const targetUrl = withDialogSkipForNodeTarget(event.url);
+              // A node/edge focus URL rides the current perspective and
+              // skips the detail dialog, exactly like the agent's
+              // auto-focus — so a write the agent then navigates to lands
+              // in whatever perspective the user is viewing, not the
+              // default graph. Lists, settings, the edge index, etc.
+              // navigate verbatim. The active perspective wins; fall back
+              // to one the agent pinned on the URL.
+              const focusTarget = focusTargetForNavigateUrl(event.url);
+              let targetUrl = event.url;
+              if (focusTarget) {
+                const queryStart = event.url.indexOf("?");
+                const urlPerspective =
+                  queryStart >= 0 ? perspectiveParam(event.url.slice(queryStart)) : null;
+                targetUrl = focusNavigationUrl(
+                  focusTarget,
+                  perspectiveParam(location.search) ?? urlPerspective,
+                );
+              }
               navigate(targetUrl);
               appendThinking({ kind: "navigate", url: targetUrl });
             } else if (event.kind === "message_saved") {
@@ -2337,60 +2321,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       )}
       {rail}
     </>
-  );
-}
-
-/**
- * Thin (32 px) vertical rail rendered when a collapsible sidebar is in
- * its collapsed state. Shows the side's label written vertically + an
- * optional unread dot. Click anywhere on the rail expands it.
- *
- * Exported so other pages (e.g. the per-Doco home's right column) can
- * reuse the same chrome.
- */
-export function CollapsedRail({
-  label,
-  side,
-  unread,
-  active,
-  onExpand,
-}: {
-  label: string;
-  side: "left" | "right";
-  unread?: boolean;
-  active?: boolean;
-  onExpand: () => void;
-}) {
-  const isLeft = side === "left";
-  return (
-    <button
-      type="button"
-      onClick={onExpand}
-      aria-busy={active}
-      aria-label={active ? `Expand ${label} (working)` : `Expand ${label}`}
-      className={cn(
-        "neu-panel group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 bg-card py-3 hover:bg-input",
-        isLeft ? "border-r border-border" : "border-l border-border",
-      )}
-    >
-      <PanelToggleIcon side={side} open />
-      <div
-        className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
-        style={{
-          writingMode: "vertical-rl",
-          transform: isLeft ? "rotate(180deg)" : undefined,
-        }}
-      >
-        {label}
-      </div>
-      {unread ? (
-        <span
-          aria-label="unread"
-          className="h-2 w-2 rounded-full bg-primary"
-          style={{ boxShadow: "0 0 0 2px var(--color-card)" }}
-        />
-      ) : null}
-    </button>
   );
 }
 
@@ -3124,6 +3054,34 @@ function visibleChatBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
   return blocks.filter((b) => b.type !== "tool_use" && b.type !== "tool_result");
 }
 
+/**
+ * Blocks for the rendered chat bubble. Like `visibleChatBlocks`, but
+ * softens the dangling colon on a text block that immediately precedes a
+ * `tool_use`. That text is a spoken preamble ("Let me update both fields:")
+ * to an action the bubble doesn't show — it lives in the Thinking column —
+ * so rendered verbatim it reads as a sentence cut off mid-thought. Turning
+ * the trailing colon into an ellipsis makes it read as work in progress.
+ * Only the preamble immediately before a tool call is touched; a genuine
+ * trailing colon with no stripped action (and user messages) is left alone.
+ */
+export function chatBubbleBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
+  const out: AnyBlock[] = [];
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i];
+    if (block.type === "tool_use" || block.type === "tool_result") continue;
+    const followedByTool = i + 1 < blocks.length && blocks[i + 1].type === "tool_use";
+    if (block.type === "text" && followedByTool) {
+      const softened = block.text.replace(/:+\s*$/, "…");
+      if (softened !== block.text) {
+        out.push({ type: "text", text: softened });
+        continue;
+      }
+    }
+    out.push(block);
+  }
+  return out;
+}
+
 function SavedMessage({
   message,
   compactAfter,
@@ -3132,7 +3090,7 @@ function SavedMessage({
   compactAfter: boolean;
 }) {
   const isAssistant = message.role === "assistant";
-  const visible = visibleChatBlocks(message.content);
+  const visible = chatBubbleBlocks(message.content);
   // Whole message was tool-call noise → skip the bubble. Detailed
   // tool activity is still in the Thinking column.
   if (visible.length === 0) return null;
@@ -3178,7 +3136,7 @@ function InFlightMessageView({
 }) {
   // tool_use / tool_result chips live in the Thinking column; the
   // main chat only sees text + attachments.
-  const visible = visibleChatBlocks(msg.content);
+  const visible = chatBubbleBlocks(msg.content);
   // Pre-text "thinking" state: the shared status icon below the
   // current message stack carries the only working animation.
   if (visible.length === 0) {

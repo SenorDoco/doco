@@ -16,8 +16,6 @@ import {
 
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
-export const RESERVED_HANDLES = HOST_RESERVED_SLUGS;
-
 const BUILTIN_PERSPECTIVE_ATTACHMENTS = [
   { slug: "graph", perspectiveId: "perspective_graph", position: 0 },
   { slug: "list", perspectiveId: "perspective_list", position: 1 },
@@ -329,7 +327,6 @@ export async function createDocoInWorkspace(opts: {
     const created = nowIso();
     const visibility = opts.visibility ?? "private";
     const template = opts.templateHandle ? findDocoTemplate(opts.templateHandle) : null;
-    const allowedNodeTypes = template?.allowedNodeTypes ?? null;
     const defaultNodeLifecycle = template?.defaultNodeLifecycle ?? null;
     // Goal: explicit caller value wins (including ""), else the
     // template's description, else empty for no-template Docos.
@@ -344,16 +341,15 @@ export async function createDocoInWorkspace(opts: {
       created_at: created,
       created_by: opts.createdByUserId,
       lifecycle: "active",
-      ...(allowedNodeTypes ? { allowed_node_types: allowedNodeTypes } : {}),
       ...(defaultNodeLifecycle ? { default_node_lifecycle: defaultNodeLifecycle } : {}),
     };
 
     await c.query(
       `INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data,
-                          allowed_node_types, default_node_lifecycle,
+                          default_node_lifecycle,
                           goal,
                           created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $10)`,
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $9)`,
       [
         docoId,
         handle,
@@ -361,7 +357,6 @@ export async function createDocoInWorkspace(opts: {
         opts.workspaceId,
         visibility,
         JSON.stringify(data),
-        allowedNodeTypes,
         defaultNodeLifecycle,
         goal,
         created,

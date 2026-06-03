@@ -189,7 +189,7 @@ function PolicyView({ item }: { item: PolicyItem }) {
             Agent instruction:
           </p>
           <p className="text-sm leading-6">
-            &ldquo;{predicate ? (agentInstructionOf(predicate) ?? "") : ""}&rdquo;
+            {predicate ? (agentInstructionOf(predicate) ?? "") : ""}
           </p>
         </div>
       )}
