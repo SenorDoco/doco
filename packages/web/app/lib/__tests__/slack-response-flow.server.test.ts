@@ -41,6 +41,8 @@ describe("Slack response flow", () => {
   it("still asks the LLM when the preliminary Doco search has no excerpts", async () => {
     mocks.withClient.mockImplementation(async (callback) => callback({ query: mocks.query }));
     mocks.query
+      // The team is bound to a Doco workspace (else access fails closed).
+      .mockResolvedValueOnce({ rows: [{ doco_workspace_id: "workspace_doco" }] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -80,6 +82,8 @@ describe("Slack response flow", () => {
   it("reuses the resolved Slack integration context across turns", async () => {
     mocks.withClient.mockImplementation(async (callback) => callback({ query: mocks.query }));
     mocks.query
+      // bound-workspace lookup, then channel defaults, then personal links.
+      .mockResolvedValueOnce({ rows: [{ doco_workspace_id: "workspace_doco" }] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -116,7 +120,9 @@ describe("Slack response flow", () => {
 
     expect(first).toBe("cached context answer");
     expect(second).toBe("cached context answer");
-    expect(mocks.query).toHaveBeenCalledTimes(2);
+    // Turn 1 resolves the context (bound lookup + channel defaults + personal
+    // links = 3 queries); turn 2 is a cache hit (0 queries).
+    expect(mocks.query).toHaveBeenCalledTimes(3);
     expect(answerGenerator).toHaveBeenCalledTimes(2);
     expect(answerGenerator).toHaveBeenLastCalledWith(
       expect.objectContaining({

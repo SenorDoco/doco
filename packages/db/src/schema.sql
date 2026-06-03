@@ -15,7 +15,8 @@
 -- Vocabulary:
 --   nodes   — graph entities (10 types: intent/idea/rule/decision/action/
 --               log/eval/reference/state/principal)
---   policies — Doco-level authoring metadata (2 kinds: guidance / node_authoring)
+--   policies — Doco-level authoring metadata (one `policies` table; each
+--               row's `kind` is suggestion / deterministic / probabilistic)
 --   edges   — relationships between nodes
 --   users      — human OAuth identities, separate from principals
 --                (which are role-personas linked by graph edges).
@@ -245,7 +246,6 @@ CREATE TABLE IF NOT EXISTS docos (
   owner_id        text NOT NULL,    -- workspace_<ulid>
   workspace_id    text NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   visibility      text NOT NULL DEFAULT 'private' CHECK (visibility IN ('public', 'private')),
-  allowed_node_types text[],
   default_node_lifecycle text,
   -- Free-form sentence the project owner writes (or the creation template
   -- seeds) to tell agents what this Doco is for. Surfaced at the top of
@@ -256,15 +256,23 @@ CREATE TABLE IF NOT EXISTS docos (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+-- Self-heal: the Doco-level `allowed_node_types` allowlist was seeded at
+-- creation but never read by any capture-time check — the lone template that
+-- set it (`global`) pointed at the removed `guidance_policy` /
+-- `node_authoring_policy` types. Idempotent — drops it where present, no-op
+-- on a fresh DB.
+ALTER TABLE docos DROP COLUMN IF EXISTS allowed_node_types;
 
--- Per-Doco policy tables. Policy prose lives in `policy` + `body_md`; the
--- remaining structured fields live in `data` (jsonb).
+-- Per-Doco policies. Every policy is an authoring policy; the standalone
+-- `kind` classifies it ('suggestion' | 'deterministic' | 'probabilistic') and
+-- is mirrored to a column for filtering. The full structured record
+-- (predicate, on_violation, fires_when_node_lifecycle, …) lives in `data`.
 
-CREATE TABLE IF NOT EXISTS guidance_policies (
+CREATE TABLE IF NOT EXISTS policies (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  -- One-line policy statement.
-  policy      text,
+  -- 'suggestion' | 'deterministic' | 'probabilistic'.
+  kind        text,
   -- Policies only ever occupy two stages: 'active' or 'retired'.
   lifecycle   text NOT NULL DEFAULT 'active',
   body_md     text,
@@ -274,29 +282,12 @@ CREATE TABLE IF NOT EXISTS guidance_policies (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   updated_by  text
 );
-CREATE INDEX IF NOT EXISTS guidance_policies_doco_idx
-  ON guidance_policies (doco_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS guidance_policies_lifecycle_idx
-  ON guidance_policies (doco_id, lifecycle);
-
-CREATE TABLE IF NOT EXISTS node_authoring_policies (
-  id          text PRIMARY KEY,
-  doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  -- One-line policy statement.
-  policy      text,
-  -- Policies only ever occupy two stages: 'active' or 'retired'.
-  lifecycle   text NOT NULL DEFAULT 'active',
-  body_md     text,
-  data        jsonb NOT NULL,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  created_by  text,
-  updated_at  timestamptz NOT NULL DEFAULT now(),
-  updated_by  text
-);
-CREATE INDEX IF NOT EXISTS node_authoring_policies_doco_idx
-  ON node_authoring_policies (doco_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS node_authoring_policies_lifecycle_idx
-  ON node_authoring_policies (doco_id, lifecycle);
+CREATE INDEX IF NOT EXISTS policies_doco_idx
+  ON policies (doco_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS policies_kind_idx
+  ON policies (doco_id, kind);
+CREATE INDEX IF NOT EXISTS policies_lifecycle_idx
+  ON policies (doco_id, lifecycle);
 
 -- ── Unified node table ───────────────────────────────────────────────────
 -- One row per graph node of any type, discriminated by `node_type`.
@@ -306,10 +297,10 @@ CREATE INDEX IF NOT EXISTS node_authoring_policies_lifecycle_idx
 -- relationships live only in `edges`. `proposer_id` points at `users(id)` (the
 -- OAuth identity that proposed the idea, not a graph node).
 --
--- Policies are deliberately NOT folded in here: guidance_policies /
--- node_authoring_policies stay their own tables (governance config, not graph
--- knowledge). They share the node_versions spine, so any rebuild-from-spine
--- MUST filter entity_type to the node types below.
+-- Policies are deliberately NOT folded in here: the `policies` table stays
+-- its own table (governance config, not graph knowledge). It shares the
+-- node_versions spine, so any rebuild-from-spine MUST filter entity_type to
+-- the node types below.
 CREATE TABLE IF NOT EXISTS nodes (
   id             text PRIMARY KEY,            -- <node_type>_<ulid>
   doco_id        text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
@@ -1000,6 +991,11 @@ CREATE TABLE IF NOT EXISTS group_chat_installations (
   bot_scope                   text[] NOT NULL DEFAULT ARRAY[]::text[],
   installed_by_chat_user_id   text,
   installed_by_user_id        text REFERENCES users(id) ON DELETE SET NULL,
+  -- The single Doco workspace this chat team is bound to. The team's
+  -- assistant reaches at most this one workspace; null = unbound = no Doco
+  -- access (fail closed). This is what stops a linked user's account-wide
+  -- permissions from leaking into chat.
+  doco_workspace_id           text,
   data                        jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at                  timestamptz NOT NULL DEFAULT now(),
   updated_at                  timestamptz NOT NULL DEFAULT now(),
@@ -1031,6 +1027,59 @@ CREATE TABLE IF NOT EXISTS group_chat_user_links (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (provider, workspace_id, chat_user_id, user_id)
 );
+
+-- Heal: chat teams are now bound to a single Doco workspace, so the assistant
+-- can no longer use a linked user's account-wide permissions. The deploy that
+-- introduces the binding column also REVOKES every pre-existing personal link
+-- (users re-link after their team is bound). This must run exactly ONCE, so it
+-- is guarded on the binding column not yet existing — on a fresh DB the column
+-- ships with the CREATE TABLE above (guard false → skip), and after this runs
+-- once the ALTER adds it (guard false on every later boot). Until a team is
+-- bound, the request-time resolver returns no access regardless, so the hole
+-- is closed even before anyone re-links.
+DO $$
+BEGIN
+  IF to_regclass('public.group_chat_installations') IS NOT NULL
+     AND to_regclass('public.group_chat_user_links') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'group_chat_installations'
+          AND column_name = 'doco_workspace_id'
+     ) THEN
+    DELETE FROM group_chat_user_links;
+  END IF;
+END $$;
+ALTER TABLE group_chat_installations ADD COLUMN IF NOT EXISTS doco_workspace_id text;
+
+-- One-shot data migrations (run exactly once across all boots). schema.sql is
+-- re-applied every boot, so destructive resets are gated on a marker row here
+-- rather than being idempotent in-place.
+CREATE TABLE IF NOT EXISTS schema_oneshots (
+  name        text PRIMARY KEY,
+  applied_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- Heal: chat teams are now bound to a single Doco workspace AT INSTALL TIME, so
+-- a team is never installed-but-unbound. Pre-existing Slack state predates that
+-- flow (installs with no binding, defaults/links chosen under the old account-
+-- wide model), so reset it ONCE — every team must re-install through the new
+-- bind-at-install flow and re-authorize. Guarded by a marker so it runs once;
+-- a fresh DB has nothing to delete and simply records the marker.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM schema_oneshots WHERE name = 'slack_reset_bind_at_install') THEN
+    IF to_regclass('public.group_chat_channel_connections') IS NOT NULL THEN
+      DELETE FROM group_chat_channel_connections WHERE provider = 'slack';
+    END IF;
+    IF to_regclass('public.group_chat_user_links') IS NOT NULL THEN
+      DELETE FROM group_chat_user_links WHERE provider = 'slack';
+    END IF;
+    IF to_regclass('public.group_chat_installations') IS NOT NULL THEN
+      DELETE FROM group_chat_installations WHERE provider = 'slack';
+    END IF;
+    INSERT INTO schema_oneshots (name) VALUES ('slack_reset_bind_at_install');
+  END IF;
+END $$;
 
 -- Feedback reports.
 CREATE TABLE IF NOT EXISTS feedback_reports (
@@ -1141,8 +1190,11 @@ BEGIN
   -- 1. Backfill live rows to the new vocabulary (NULL/asserted → active).
   UPDATE nodes                   SET lifecycle = 'active' WHERE lifecycle IS NULL OR lifecycle = 'asserted';
   UPDATE edges                   SET lifecycle = 'active' WHERE lifecycle = 'asserted';
-  UPDATE guidance_policies       SET lifecycle = 'active' WHERE lifecycle IS NULL OR lifecycle = 'asserted';
-  UPDATE node_authoring_policies SET lifecycle = 'active' WHERE lifecycle IS NULL OR lifecycle = 'asserted';
+  -- Policies are constrained to {active, retired} below, and that CHECK
+  -- validates every existing row. Normalize ANY out-of-range policy lifecycle
+  -- (NULL, asserted, or a stale drafting/proposed left by the old capture
+  -- path) to `active` first, so ADD CONSTRAINT can never fail on older data.
+  UPDATE policies                SET lifecycle = 'active' WHERE lifecycle IS NULL OR lifecycle NOT IN ('active', 'retired');
   -- `default_node_lifecycle` is optional; guard so very old databases that
   -- predate the column don't error here.
   IF EXISTS (SELECT 1 FROM information_schema.columns
@@ -1151,29 +1203,21 @@ BEGIN
   END IF;
 
   -- 2. Lifecycle is mandatory and defaults to `active`.
-  ALTER TABLE nodes                   ALTER COLUMN lifecycle SET DEFAULT 'active';
-  ALTER TABLE edges                   ALTER COLUMN lifecycle SET DEFAULT 'active';
-  ALTER TABLE guidance_policies       ALTER COLUMN lifecycle SET DEFAULT 'active';
-  ALTER TABLE node_authoring_policies ALTER COLUMN lifecycle SET DEFAULT 'active';
+  ALTER TABLE nodes    ALTER COLUMN lifecycle SET DEFAULT 'active';
+  ALTER TABLE edges    ALTER COLUMN lifecycle SET DEFAULT 'active';
+  ALTER TABLE policies ALTER COLUMN lifecycle SET DEFAULT 'active';
 
   IF EXISTS (SELECT 1 FROM information_schema.columns
              WHERE table_name = 'nodes' AND column_name = 'lifecycle' AND is_nullable = 'YES') THEN
     ALTER TABLE nodes ALTER COLUMN lifecycle SET NOT NULL;
   END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_name = 'guidance_policies' AND column_name = 'lifecycle' AND is_nullable = 'YES') THEN
-    ALTER TABLE guidance_policies ALTER COLUMN lifecycle SET NOT NULL;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns
-             WHERE table_name = 'node_authoring_policies' AND column_name = 'lifecycle' AND is_nullable = 'YES') THEN
-    ALTER TABLE node_authoring_policies ALTER COLUMN lifecycle SET NOT NULL;
+             WHERE table_name = 'policies' AND column_name = 'lifecycle' AND is_nullable = 'YES') THEN
+    ALTER TABLE policies ALTER COLUMN lifecycle SET NOT NULL;
   END IF;
 
   -- 3. Policies are constrained to exactly two stages.
-  ALTER TABLE guidance_policies       DROP CONSTRAINT IF EXISTS guidance_policies_lifecycle_check;
-  ALTER TABLE guidance_policies       ADD  CONSTRAINT guidance_policies_lifecycle_check
-                                            CHECK (lifecycle IN ('active','retired'));
-  ALTER TABLE node_authoring_policies DROP CONSTRAINT IF EXISTS node_authoring_policies_lifecycle_check;
-  ALTER TABLE node_authoring_policies ADD  CONSTRAINT node_authoring_policies_lifecycle_check
-                                            CHECK (lifecycle IN ('active','retired'));
+  ALTER TABLE policies DROP CONSTRAINT IF EXISTS policies_lifecycle_check;
+  ALTER TABLE policies ADD  CONSTRAINT policies_lifecycle_check
+                            CHECK (lifecycle IN ('active','retired'));
 END $$;

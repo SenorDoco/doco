@@ -16,13 +16,13 @@ describe("doco template metadata", () => {
       const meta = findDocoTemplateMeta(handle);
       expect(meta?.label).toMatch(/Decisions/);
       expect(meta?.description).toMatch(/decision records/i);
-      expect(meta?.updatedAt).toBe("2026-05-31");
+      expect(meta?.updatedAt).toBe("2026-06-03");
     }
   });
 
   it("marks the Glossaries template metadata as updated when its guidance changes", () => {
     const meta = findDocoTemplateMeta("glossaries");
-    expect(meta?.updatedAt).toBe("2026-06-01");
+    expect(meta?.updatedAt).toBe("2026-06-03");
   });
 
   it("describes Glossaries with replacements separate from aliases", () => {

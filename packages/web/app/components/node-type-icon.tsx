@@ -60,19 +60,11 @@ function iconPath(entityType: string) {
           <path d="m8.5 7.5 8 8" />
         </>
       );
-    case "guidance_policy":
+    case "policy":
       return (
         <>
           <path d="M6.5 5.5h11v13h-11z" />
           <path d="M9 9h6M9 12h4M9 15h5" />
-        </>
-      );
-    case "node_authoring_policy":
-      return (
-        <>
-          <path d="M5.5 6.5h13v11h-13z" />
-          <path d="m8.2 12 2.1 2.1 5.5-5.7" />
-          <path d="M8.5 18.8h7" />
         </>
       );
     case "decision":

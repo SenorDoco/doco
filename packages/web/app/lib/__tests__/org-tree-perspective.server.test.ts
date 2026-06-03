@@ -53,6 +53,38 @@ describe("loadOrgTreeData", () => {
     ]);
   });
 
+  it("infers a vacant seat from prose and surfaces it as type `vacant` (distinct from person/agent)", async () => {
+    // The org-chart template makes vacant a first-class occupant state; the
+    // perspective must distinguish a budgeted-but-empty seat from an
+    // undetermined one. Vacant wins even though the prose names the kind of
+    // engineer the seat is budgeted for.
+    const rows = [
+      {
+        id: "principal_staff",
+        name: "Staff Engineer",
+        lifecycle: "active",
+        body_md:
+          "Vacant — budgeted Staff Engineer seat, reporting to the Director of Engineering. Open req for a Q3 start.",
+        data: {},
+      },
+    ];
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      query: async <T>(sql: string) =>
+        /FROM edges/i.test(sql) ? { rows: [] as T[] } : { rows: rows as T[] },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme");
+
+    expect(data.nodes[0]).toEqual(
+      expect.objectContaining({
+        id: "principal_staff",
+        type: "vacant",
+        // The leading "Vacant —" marker is stripped from the role label.
+        role: "budgeted Staff Engineer seat, reporting to the Director of Engineerin...",
+      }),
+    );
+  });
+
   it("passes a SQL limit when a page budget is supplied", async () => {
     const querySpy = vi.fn();
     const client: Parameters<typeof loadOrgTreeData>[0] = {

@@ -60,8 +60,7 @@ export async function loader({
              FROM nodes
             WHERE doco_id = $1
               AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'reference')
-           UNION ALL SELECT id, policy FROM guidance_policies        WHERE doco_id = $1
-           UNION ALL SELECT id, policy FROM node_authoring_policies  WHERE doco_id = $1
+           UNION ALL SELECT id, COALESCE(NULLIF(data->'predicate'->>'agent_instruction', ''), kind, 'policy') AS summary FROM policies WHERE doco_id = $1
          )
          SELECT e.id, e.from_id, e.from_node_type, fl.summary AS from_summary,
                 e.to_id,   e.to_node_type,   tl.summary AS to_summary,

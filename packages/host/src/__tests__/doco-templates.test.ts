@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_DOCO_TEMPLATES, findDocoTemplateByName } from "../doco-templates.js";
 
 describe("template policies carry no vestigial rule `kind`", () => {
-  // Rules are no longer guidances: the guidance/authoring distinction
-  // lives in standalone policies (guidance_policies / node_authoring_policies),
-  // seeded purely by predicate-presence — never a `kind` field
+  // Rules are no longer guidances: every policy lives in the one unified
+  // `policies` table, classified by a standalone `kind` only at seed time
+  // in host.ts — a TemplatePolicy never carries a `kind` field itself
   // (decision_01KRRR5BQ16ASY8HQEE0V499YG). Keep the vestige out for good.
   it("no seeded template policy declares a `kind`", () => {
     for (const t of DEFAULT_DOCO_TEMPLATES) {
@@ -13,6 +13,21 @@ describe("template policies carry no vestigial rule `kind`", () => {
       }
     }
   });
+});
+
+describe("orphaned pre-unification templates are gone", () => {
+  // `global` and `important` were never in the new-Doco picker
+  // (DOCO_TEMPLATES); the API and UI reject any handle outside that list,
+  // so both were unreachable. `global` also still seeded the removed
+  // `guidance_policy` / `node_authoring_policy` node types into the
+  // write-only `allowed_node_types` column. Both removed with the policy
+  // unify — keep them out.
+  for (const name of ["global", "important"]) {
+    it(`does not register the orphaned \`${name}\` template`, () => {
+      expect(findDocoTemplateByName(name)).toBeUndefined();
+      expect(DEFAULT_DOCO_TEMPLATES.some((t) => t.name === name)).toBe(false);
+    });
+  }
 });
 
 describe("business-processes template", () => {
@@ -37,10 +52,6 @@ describe("business-processes template", () => {
     expect(template.defaultNodeLifecycle).toBe("drafting");
     expect(template.description).toMatch(/repeatable business processes/i);
     expect(template.description).toMatch(/BPMN/);
-  });
-
-  it("does NOT set the policy-only `allowedNodeTypes` field — that's reserved for `global`", () => {
-    expect(template.allowedNodeTypes).toBeUndefined();
   });
 
   it("ships with the BPMN perspective attached as the default", () => {
@@ -132,19 +143,22 @@ describe("business-processes template", () => {
     it("Eval tests a target", () => {
       const rule = requiresEdgeRole("supports", "tests", null, "eval");
       expect(rule).toBeDefined();
-      expect(rule?.fires_when_node_lifecycle).toEqual(["active"]);
+      expect(rule?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
     });
 
-    it("fires flow membership checks only when the node is active", () => {
+    it("fires flow membership checks on both committed stages (queued + active), exempting drafting", () => {
+      // A `queued` node asserts readiness, so it is held to the same
+      // actor / serves / sequence-flow wiring as `active`. Only `drafting`
+      // sketches are exempt from completeness.
       expect(
         requiresEdgeRole("supports", "serves", "intent", "action")?.fires_when_node_lifecycle,
-      ).toEqual(["active"]);
+      ).toEqual(["queued", "active"]);
       expect(
         requiresEdgeRole("supports", "serves", "intent", "decision")?.fires_when_node_lifecycle,
-      ).toEqual(["active"]);
+      ).toEqual(["queued", "active"]);
       expect(
         requiresEdgeRole("supports", "serves", "intent", "state")?.fires_when_node_lifecycle,
-      ).toEqual(["active"]);
+      ).toEqual(["queued", "active"]);
     });
 
     it("keeps the role vocabulary in the business-process guidance", () => {
@@ -243,7 +257,7 @@ describe("business-processes template", () => {
       expect(rule.predicate.spec).toMatch(/performed_by/);
       expect(rule.predicate.spec).toMatch(/supports/);
       expect(rule.predicate.spec).toMatch(/serves/);
-      expect(rule.fires_when_node_lifecycle).toEqual(["active"]);
+      expect(rule.fires_when_node_lifecycle).toEqual(["queued", "active"]);
     });
   });
 
@@ -262,13 +276,13 @@ describe("business-processes template", () => {
         (r) =>
           r.predicate?.kind === "probabilistic" && /exhaustive outgoing branches/i.test(r.policy),
       );
-      expect(rule?.fires_when_node_lifecycle).toEqual(["active"]);
+      expect(rule?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
     });
     it("keeps Action grain as an assertion-time check", () => {
       const rule = template.policies.find(
         (r) => r.predicate?.kind === "probabilistic" && /atomic business activity/i.test(r.policy),
       );
-      expect(rule?.fires_when_node_lifecycle).toEqual(["active"]);
+      expect(rule?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
     });
     it("blocks imported BPMN/source metadata in user-facing process prose", () => {
       const rule = template.policies.find(
@@ -276,7 +290,7 @@ describe("business-processes template", () => {
           r.predicate?.kind === "probabilistic" && /imported BPMN\/source metadata/i.test(r.policy),
       );
       expect(rule?.on_violation).toBe("block");
-      expect(rule?.fires_when_node_lifecycle).toEqual(["active"]);
+      expect(rule?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
       expect(rule?.predicate?.kind).toBe("probabilistic");
       if (rule?.predicate?.kind !== "probabilistic") return;
       expect(rule.predicate.when_node_type).toEqual(
@@ -302,8 +316,24 @@ describe("business-processes template", () => {
     it("tells agents to use relate_many for gateway siblings", () => {
       expect(summaries.some((s) => /relate_many/i.test(s) && /gateway/i.test(s))).toBe(true);
     });
-    it("documents draft-first activation", () => {
-      expect(summaries.some((s) => /Drafting nodes/i.test(s) && /active/i.test(s))).toBe(true);
+    it("documents the four-stage lifecycle (drafting → queued → active → retired) and its changeset ops", () => {
+      expect(
+        summaries.some(
+          (s) =>
+            /drafting/i.test(s) &&
+            /queued/i.test(s) &&
+            /active/i.test(s) &&
+            /\bqueue\b/i.test(s) &&
+            /\bactivate\b/i.test(s),
+        ),
+      ).toBe(true);
+    });
+    it("documents using `queued` for a ready-but-not-yet-in-force process", () => {
+      expect(
+        summaries.some(
+          (s) => /`queued`/i.test(s) && /ready/i.test(s) && /not yet in force/i.test(s),
+        ),
+      ).toBe(true);
     });
     it("Log separation (instances live in a sibling Doco)", () => {
       expect(
@@ -388,10 +418,5 @@ describe("github-pull-requests template", () => {
   it("defaults the Doco overview to the Pull requests perspective", () => {
     const template = findDocoTemplateByName("github-pull-requests");
     expect(template?.perspectives).toEqual([{ slug: "pull-requests", isDefault: true }]);
-  });
-
-  it("does NOT set allowedNodeTypes — PRs are stored as reference nodes, allow all", () => {
-    const template = findDocoTemplateByName("github-pull-requests");
-    expect(template?.allowedNodeTypes).toBeUndefined();
   });
 });

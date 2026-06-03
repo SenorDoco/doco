@@ -8,8 +8,8 @@
 //     (OAuth workspace grant) or via membership. Always shared with agents that
 //     have access to the workspace.
 //
-// Each policy set exposes two arrays: `guidance_policies` (prose, no automated check) and
-// `node_authoring_policies` (rules evaluated at capture time).
+// Each policy set exposes a single `policies` array; each policy carries its
+// standalone `kind` (suggestion | deterministic | probabilistic) and predicate.
 //
 // The project owner can add, edit, or remove policies at any time
 // from /<handle>/policies — re-fetch this endpoint if you suspect
@@ -39,6 +39,7 @@ import {
   listWorkspacesForUser,
   withClient,
 } from "@doco/db";
+import { type PolicyPredicate, agentInstructionOf } from "@doco/shared";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
 import {
   canAccessDoco,
@@ -56,8 +57,12 @@ import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface PolicyArticle {
   id: string;
-  /** The one-line rule statement. */
-  policy: string;
+  /** suggestion | deterministic | probabilistic. */
+  kind: string;
+  /** suggestion / probabilistic: the natural-language instruction (else null). */
+  agent_instruction: string | null;
+  /** deterministic: the structured check (else the agent-instruction predicate). */
+  predicate: PolicyPredicate | null;
   lifecycle: string | null;
   body_md: string | null;
 }
@@ -73,8 +78,7 @@ interface DocoPolicySet {
    */
   goal: string;
   owner_id: string;
-  guidance_policies: PolicyArticle[];
-  node_authoring_policies: PolicyArticle[];
+  policies: PolicyArticle[];
 }
 
 export async function loader({ request }: { request: Request }) {
@@ -142,31 +146,34 @@ async function getProjectTokenFromRequest(request: Request): Promise<ProjectToke
   return await validateProjectToken(bearer);
 }
 
-async function loadPolicyArticles(docoId: string): Promise<{
-  guidance: PolicyArticle[];
-  nodeAuthoring: PolicyArticle[];
-}> {
-  const [guidance, nodeAuthoring] = await withClient((c) =>
-    Promise.all([
-      c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
-        `SELECT id, policy, lifecycle, body_md
-           FROM guidance_policies
-          WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'active') = 'active'
-          ORDER BY created_at DESC`,
-        [docoId],
-      ),
-      c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
-        `SELECT id, policy, lifecycle, body_md
-           FROM node_authoring_policies
-          WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'active') = 'active'
-          ORDER BY created_at DESC`,
-        [docoId],
-      ),
-    ]),
+async function loadPolicyArticles(docoId: string): Promise<PolicyArticle[]> {
+  const rows = await withClient((c) =>
+    c.query<{
+      id: string;
+      kind: string | null;
+      data: Record<string, unknown> | null;
+      lifecycle: string | null;
+      body_md: string | null;
+    }>(
+      `SELECT id, kind, data, lifecycle, body_md
+         FROM policies
+        WHERE doco_id = $1
+          AND COALESCE(lifecycle, 'active') = 'active'
+        ORDER BY created_at DESC`,
+      [docoId],
+    ),
   );
-  return { guidance: guidance.rows, nodeAuthoring: nodeAuthoring.rows };
+  return rows.rows.map((row) => {
+    const predicate = (row.data?.predicate ?? null) as PolicyPredicate | null;
+    return {
+      id: row.id,
+      kind: row.kind ?? (typeof row.data?.kind === "string" ? row.data.kind : "suggestion"),
+      agent_instruction: predicate ? agentInstructionOf(predicate) : null,
+      predicate,
+      lifecycle: row.lifecycle,
+      body_md: row.body_md,
+    };
+  });
 }
 
 async function loadBootstrapForProjectToken(
@@ -177,8 +184,8 @@ async function loadBootstrapForProjectToken(
   // The token is scoped to one Doco; surface that Doco's owning workspace's
   // constitution alongside it.
   const workspaceConstitutions = await getWorkspaceConstitutionsByIds([d.workspace_id]);
-  const { guidance, nodeAuthoring } = await loadPolicyArticles(d.id);
-  if (guidance.length === 0 && nodeAuthoring.length === 0 && d.goal.length === 0) {
+  const policies = await loadPolicyArticles(d.id);
+  if (policies.length === 0 && d.goal.length === 0) {
     return { docoPolicies: [], workspaceConstitutions };
   }
   return {
@@ -188,8 +195,7 @@ async function loadBootstrapForProjectToken(
         doco_handle: d.handle,
         goal: d.goal,
         owner_id: d.owner_id,
-        guidance_policies: guidance,
-        node_authoring_policies: nodeAuthoring,
+        policies,
       },
     ],
     workspaceConstitutions,
@@ -214,11 +220,11 @@ async function loadBootstrapForPrincipal(
     if (oauthGrant && !oauthTokenGrantsDoco(oauthGrant, meta)) continue;
     if (!(await canAccessDoco(meta, principalId))) continue;
     workspaceIds.add(d.workspace_id);
-    const { guidance, nodeAuthoring } = await loadPolicyArticles(d.id);
+    const policies = await loadPolicyArticles(d.id);
     // A Doco shows up in bootstrap when it has at least one policy
     // OR a non-empty goal — the goal is itself bootstrap context, not
     // just decoration on top of policies.
-    if (guidance.length === 0 && nodeAuthoring.length === 0 && d.goal.length === 0) {
+    if (policies.length === 0 && d.goal.length === 0) {
       continue;
     }
     docoPolicies.push({
@@ -226,8 +232,7 @@ async function loadBootstrapForPrincipal(
       doco_handle: d.handle,
       goal: d.goal,
       owner_id: d.owner_id,
-      guidance_policies: guidance,
-      node_authoring_policies: nodeAuthoring,
+      policies,
     });
   }
 

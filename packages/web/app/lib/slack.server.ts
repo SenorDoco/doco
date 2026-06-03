@@ -15,7 +15,7 @@ import {
   listEntitiesByDoco,
   withClient,
 } from "@doco/db";
-import { generateUlid } from "@doco/shared";
+import { type PolicyPredicate, generateUlid, summarizePredicate } from "@doco/shared";
 import {
   createSenorDocoMessage,
   missingSenorDocoAnthropicMessage,
@@ -26,7 +26,7 @@ import {
   type ReadAuditFilters,
   readAuditEvents,
 } from "./audit-log.server";
-import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "./doco-access.server";
+import { getDocoLevelRole, listAccessibleDocoIdsInWorkspace } from "./doco-access.server";
 import {
   DOCO_API_TOOL,
   type DocoApiToolEnvelope,
@@ -93,6 +93,9 @@ export interface SlackConfig {
 
 export interface SlackOAuthState {
   installerId: string;
+  /** The Doco workspace the installer chose to bind this Slack team to. The
+   * team is bound at install time, so it is never installed-but-unbound. */
+  docoWorkspaceId: string;
   nonce: string;
   issuedAt: number;
 }
@@ -109,6 +112,12 @@ export interface SlackInstallationSummary {
   workspaceName: string;
   botUserId: string | null;
   installedAt: string;
+  /**
+   * The Doco workspace this Slack team is bound to, or null when unbound. A
+   * Slack team reaches AT MOST this one Doco workspace; an unbound team grants
+   * no Doco access at all (fail closed).
+   */
+  docoWorkspaceId: string | null;
 }
 
 export interface SlackChannelConnectionSummary {
@@ -217,6 +226,8 @@ interface SlackConversationHistoryMessage {
 interface SlackInstallationInput {
   response: SlackOAuthAccessResponse;
   installedByUserId: string | null;
+  /** The Doco workspace to bind this Slack team to (chosen at install). */
+  docoWorkspaceId: string;
 }
 
 interface SlackConnectionInput {
@@ -302,12 +313,18 @@ export function slackRedirectUri(request: Request): string {
   return `${url.origin}/integrations/slack/callback`;
 }
 
-export function buildSlackInstallUrl(request: Request, installerId: string): string | null {
+export function buildSlackInstallUrl(
+  request: Request,
+  installerId: string,
+  docoWorkspaceId: string,
+): string | null {
   const config = getSlackConfig();
   if (!config.configured || !config.clientId || !config.signingSecret) return null;
+  if (!docoWorkspaceId) return null;
   const state = signSlackState(
     {
       installerId,
+      docoWorkspaceId,
       nonce: randomBytes(16).toString("base64url"),
       issuedAt: Date.now(),
     },
@@ -364,7 +381,12 @@ export function verifySlackState(
   } catch {
     throw new Error("Invalid Slack OAuth state payload.");
   }
-  if (!parsed.installerId || !parsed.nonce || typeof parsed.issuedAt !== "number") {
+  if (
+    !parsed.installerId ||
+    !parsed.docoWorkspaceId ||
+    !parsed.nonce ||
+    typeof parsed.issuedAt !== "number"
+  ) {
     throw new Error("Invalid Slack OAuth state payload.");
   }
   if (nowMs - parsed.issuedAt > STATE_TTL_MS || parsed.issuedAt - nowMs > 60_000) {
@@ -459,8 +481,9 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
     c.query(
       `INSERT INTO group_chat_installations
          (id, provider, workspace_id, workspace_name, bot_user_id, bot_access_token,
-          bot_scope, installed_by_chat_user_id, installed_by_user_id, data, created_at, updated_at)
-       VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, $9::jsonb, now(), now())
+          bot_scope, installed_by_chat_user_id, installed_by_user_id, doco_workspace_id,
+          data, created_at, updated_at)
+       VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, now(), now())
        ON CONFLICT (provider, workspace_id)
        DO UPDATE SET
          workspace_name = EXCLUDED.workspace_name,
@@ -469,6 +492,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
          bot_scope = EXCLUDED.bot_scope,
          installed_by_chat_user_id = EXCLUDED.installed_by_chat_user_id,
          installed_by_user_id = EXCLUDED.installed_by_user_id,
+         doco_workspace_id = EXCLUDED.doco_workspace_id,
          data = EXCLUDED.data,
          updated_at = now()`,
       [
@@ -480,6 +504,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
         scopes,
         input.response.authed_user?.id ?? null,
         input.installedByUserId,
+        input.docoWorkspaceId,
         JSON.stringify(data),
       ],
     ),
@@ -492,9 +517,10 @@ export async function listSlackInstallations(): Promise<SlackInstallationSummary
       workspace_id: string;
       workspace_name: string;
       bot_user_id: string | null;
+      doco_workspace_id: string | null;
       created_at: Date | string;
     }>(
-      `SELECT workspace_id, workspace_name, bot_user_id, created_at
+      `SELECT workspace_id, workspace_name, bot_user_id, doco_workspace_id, created_at
          FROM group_chat_installations
         WHERE provider = 'slack'
         ORDER BY workspace_name, workspace_id`,
@@ -504,9 +530,89 @@ export async function listSlackInstallations(): Promise<SlackInstallationSummary
     workspaceId: row.workspace_id,
     workspaceName: row.workspace_name || row.workspace_id,
     botUserId: row.bot_user_id,
+    docoWorkspaceId: row.doco_workspace_id,
     installedAt:
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }));
+}
+
+/**
+ * The Doco workspace a Slack team is bound to (or null when unbound). The
+ * single source of truth the request-time access resolution consults — an
+ * unbound team resolves to no Doco access.
+ */
+export async function getSlackBoundWorkspaceId(slackTeamId: string): Promise<string | null> {
+  if (!slackTeamId) return null;
+  const result = await withClient((c) =>
+    c.query<{ doco_workspace_id: string | null }>(
+      `SELECT doco_workspace_id FROM group_chat_installations
+        WHERE provider = 'slack' AND workspace_id = $1`,
+      [slackTeamId],
+    ),
+  );
+  return result.rows[0]?.doco_workspace_id ?? null;
+}
+
+/**
+ * Bind (or rebind, or with null unbind) a Slack team to a single Doco
+ * workspace. Callers must have already checked the actor owns the target
+ * workspace. Returns false when the Slack team has no installation row.
+ */
+export async function setSlackBoundWorkspace(args: {
+  slackTeamId: string;
+  docoWorkspaceId: string | null;
+}): Promise<boolean> {
+  const result = await withClient((c) =>
+    c.query(
+      `UPDATE group_chat_installations
+          SET doco_workspace_id = $2, updated_at = now()
+        WHERE provider = 'slack' AND workspace_id = $1`,
+      [args.slackTeamId, args.docoWorkspaceId],
+    ),
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Remove a Slack installation entirely: the install record plus every channel
+ * default and personal user link bound to that Slack team. The three
+ * group_chat_* tables are independent (no cascade between them), so each is
+ * cleared explicitly inside one transaction. Returns false when no install row
+ * existed — removing an already-gone team is a no-op. DELETE ... RETURNING (not
+ * rowCount) keeps the "did anything go?" check portable across pg and PGlite.
+ */
+export async function removeSlackInstallation(slackTeamId: string): Promise<boolean> {
+  if (!slackTeamId) return false;
+  const removed = await withClient(async (c) => {
+    await c.query("BEGIN");
+    try {
+      await c.query(
+        `DELETE FROM group_chat_channel_connections
+          WHERE provider = 'slack' AND workspace_id = $1`,
+        [slackTeamId],
+      );
+      await c.query(
+        `DELETE FROM group_chat_user_links
+          WHERE provider = 'slack' AND workspace_id = $1`,
+        [slackTeamId],
+      );
+      const result = await c.query<{ id: string }>(
+        `DELETE FROM group_chat_installations
+          WHERE provider = 'slack' AND workspace_id = $1
+          RETURNING id`,
+        [slackTeamId],
+      );
+      await c.query("COMMIT");
+      return result.rows.length > 0;
+    } catch (error) {
+      await c.query("ROLLBACK");
+      throw error;
+    }
+  });
+  if (removed) {
+    invalidateSlackIntegrationContextCache({ workspaceId: slackTeamId });
+  }
+  return removed;
 }
 
 export async function saveSlackChannelConnection(input: SlackConnectionInput): Promise<void> {
@@ -643,16 +749,24 @@ async function listSlackLinkedUsers(args: {
   });
 }
 
-async function listSlackPersonalConnections(args: {
+export async function listSlackPersonalConnections(args: {
   workspaceId: string;
   chatUserId?: string | null;
+  /** The Doco workspace this Slack team is bound to. Null/absent → no access. */
+  boundWorkspaceId: string | null;
 }): Promise<SlackPersonalAccessSummary> {
+  // Fail closed: a Slack team that isn't bound to a Doco workspace grants NO
+  // personal access — a linked user's account-wide reach never leaks here.
+  if (!args.boundWorkspaceId) return { actors: [], connections: [] };
   const actors = await listSlackLinkedUsers(args);
   if (actors.length === 0) return { actors, connections: [] };
 
+  const boundWorkspaceId = args.boundWorkspaceId;
   const groups = await Promise.all(
     actors.map(async (actor) => {
-      const docoIds = await listAccessibleDocoIdsForPrincipal(actor.userId);
+      // Only the linked user's Docos INSIDE the bound workspace — capped, per
+      // Doco, by their real role below. Never their whole account.
+      const docoIds = await listAccessibleDocoIdsInWorkspace(actor.userId, boundWorkspaceId);
       if (docoIds.length === 0) return [];
       const result = await withClient((c) =>
         c.query<{
@@ -734,7 +848,11 @@ function slackConnectionSourceRank(connection: SlackChannelConnectionSummary): n
 export async function listSlackChannelConnections(args: {
   workspaceId: string;
   channelId: string;
+  /** The Doco workspace this Slack team is bound to. Null/absent → no access. */
+  boundWorkspaceId: string | null;
 }): Promise<SlackChannelConnectionSummary[]> {
+  // Fail closed: an unbound Slack team reaches no Doco, so it has no defaults.
+  if (!args.boundWorkspaceId) return [];
   const result = await withClient((c) =>
     c.query<{
       channel_id: string;
@@ -767,8 +885,15 @@ export async function listSlackChannelConnections(args: {
         WHERE gcc.provider = 'slack'
           AND gcc.workspace_id = $1
           AND gcc.channel_id IN ($2, '*')
+          -- Stay inside the team's bound Doco workspace: a workspace default
+          -- must BE that workspace; a doco default must live in it. Any default
+          -- pointing elsewhere (e.g. set before rebinding) is inert.
+          AND (
+            (gcc.target_level = 'workspace' AND gcc.target_id = $3)
+            OR (gcc.target_level = 'doco' AND d.workspace_id = $3)
+          )
         ORDER BY CASE WHEN gcc.channel_id = $2 THEN 0 ELSE 1 END, target_label, gcc.role`,
-      [args.workspaceId, args.channelId],
+      [args.workspaceId, args.channelId, args.boundWorkspaceId],
     ),
   );
   return result.rows.map((row) => ({
@@ -797,14 +922,20 @@ async function loadSlackIntegrationContext(args: {
     actorId: args.chatUserId ?? null,
   });
   const result = await slackIntegrationContextCache.getOrLoad(key, async () => {
+    // One source of truth for the team's reach: the bound Doco workspace.
+    // Both shared defaults and personal access are scoped to it (and empty
+    // when the team is unbound).
+    const boundWorkspaceId = await getSlackBoundWorkspaceId(args.workspaceId);
     const [sharedConnections, personalAccess] = await Promise.all([
       listSlackChannelConnections({
         workspaceId: args.workspaceId,
         channelId: args.channelId,
+        boundWorkspaceId,
       }),
       listSlackPersonalConnections({
         workspaceId: args.workspaceId,
         chatUserId: args.chatUserId,
+        boundWorkspaceId,
       }),
     ]);
     const connections = mergeSlackConnections([
@@ -1427,14 +1558,8 @@ async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record
     })),
     {
       nodeType: null,
-      table: "guidance_policies",
-      plural: "guidance_policies",
-      group: "policy" as const,
-    },
-    {
-      nodeType: null,
-      table: "node_authoring_policies",
-      plural: "node_authoring_policies",
+      table: "policies",
+      plural: "policies",
       group: "policy" as const,
     },
   ];
@@ -1607,49 +1732,40 @@ async function readSlackDocoApiPolicies(
   doco: SlackAccessibleDoco,
 ): Promise<Record<string, unknown>> {
   const result = await withClient((c) =>
-    Promise.all([
-      c.query<{
-        id: string;
-        policy: string;
-        lifecycle: string | null;
-        body_md: string | null;
-        created_at: string | null;
-        updated_at: string | null;
-      }>(
-        `SELECT id, policy, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
-           FROM guidance_policies
-          WHERE doco_id = $1
-          ORDER BY created_at DESC`,
-        [doco.id],
-      ),
-      c.query<{
-        id: string;
-        policy: string;
-        lifecycle: string | null;
-        body_md: string | null;
-        created_at: string | null;
-        updated_at: string | null;
-      }>(
-        `SELECT id, policy, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
-           FROM node_authoring_policies
-          WHERE doco_id = $1
-          ORDER BY created_at DESC`,
-        [doco.id],
-      ),
-    ]),
+    c.query<{
+      id: string;
+      kind: string | null;
+      data: Record<string, unknown> | null;
+      lifecycle: string | null;
+      body_md: string | null;
+      created_at: string | null;
+      updated_at: string | null;
+    }>(
+      `SELECT id, kind, data, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
+         FROM policies
+        WHERE doco_id = $1
+        ORDER BY created_at DESC`,
+      [doco.id],
+    ),
   );
-  const [guidance, nodeAuthoring] = result;
-  const items = [
-    ...guidance.rows.map((row) => ({ ...row, policy_kind: "guidance" as const })),
-    ...nodeAuthoring.rows.map((row) => ({ ...row, policy_kind: "node_authoring" as const })),
-  ];
+  const items = result.rows.map((row) => {
+    const predicate = (row.data?.predicate ?? null) as PolicyPredicate | null;
+    return {
+      id: row.id,
+      kind: row.kind ?? (typeof row.data?.kind === "string" ? row.data.kind : null),
+      summary: predicate ? summarizePredicate(predicate) : "",
+      predicate,
+      lifecycle: row.lifecycle,
+      body_md: row.body_md,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  });
   return {
     doco_id: doco.id,
     doco_handle: doco.handle,
     qualified_handle: doco.qualifiedHandle,
     count: items.length,
-    guidance_count: guidance.rows.length,
-    node_authoring_count: nodeAuthoring.rows.length,
     items,
   };
 }

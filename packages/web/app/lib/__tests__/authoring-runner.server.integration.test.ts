@@ -1,7 +1,7 @@
 import { upsertEntity, withClient } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAuthoringPolicies } from "../authoring-runner.server";
-import { type NodeAuthoringPolicyDraft, captureNodeAuthoringPolicy } from "../capture.server";
+import { type PolicyDraft, capturePolicy } from "../capture.server";
 import { judgeProbabilisticPredicate } from "../llm-judge.server";
 
 // Required test DB lifecycle hooks (beforeAll/beforeEach/afterAll).
@@ -19,11 +19,27 @@ beforeEach(() => {
 const DOCO_ID = "doco_01TEST00000000000000000001";
 const WORKSPACE_ID = "workspace_01TESTWS000000000000001";
 const PRINCIPAL_ALICE = "principal_01TESTALICE0000000000001";
-const POLICY_ID_PRINCIPAL = "node_authoring_policy_01TESTPRINCIPAL000000001";
-const POLICY_ID_FIELD = "node_authoring_policy_01TESTFIELD000000000001";
-const POLICY_ID_PROBABILISTIC = "node_authoring_policy_01TESTPROB0000000000001";
-const POLICY_ID_UNIQUE = "node_authoring_policy_01TESTUNIQUE00000000001";
-const POLICY_ID_ALLOWLIST = "node_authoring_policy_01TESTALLOWLIST000000001";
+const POLICY_ID_PRINCIPAL = "policy_01TESTPRINCIPAL000000001";
+const POLICY_ID_FIELD = "policy_01TESTFIELD000000000001";
+const POLICY_ID_PROBABILISTIC = "policy_01TESTPROB0000000000001";
+const POLICY_ID_UNIQUE = "policy_01TESTUNIQUE00000000001";
+const POLICY_ID_ALLOWLIST = "policy_01TESTALLOWLIST000000001";
+
+// Insert a policy row in the new unified shape: a standalone `kind` column +
+// a `data` jsonb carrying `kind` and the `predicate`.
+async function insertPolicy(
+  c: { query: (sql: string, params: unknown[]) => Promise<unknown> },
+  id: string,
+  kind: "suggestion" | "deterministic" | "probabilistic",
+  data: Record<string, unknown>,
+  lifecycle: string | null = "active",
+): Promise<void> {
+  await c.query(
+    `INSERT INTO policies (id, doco_id, kind, data, lifecycle, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5, now(), now())`,
+    [id, DOCO_ID, kind, JSON.stringify({ id, doco_id: DOCO_ID, kind, ...data }), lifecycle],
+  );
+}
 
 interface SeedOpts {
   withPrincipalRule?: boolean;
@@ -45,7 +61,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       [WORKSPACE_ID],
     );
 
-    // Insert a doco — required for the FK on node_authoring_policies.
+    // Insert a doco — required for the FK on policies.
     await c.query(
       `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
          VALUES ($1, 'smoke-test', $2, $2, '{}'::jsonb, now(), now())`,
@@ -60,107 +76,53 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
     );
 
     if (opts.withPrincipalRule) {
-      const yaml = JSON.stringify({
-        id: POLICY_ID_PRINCIPAL,
-        doco_id: DOCO_ID,
-        node_type: "node_authoring_policy",
-        policy_kind: "node_authoring",
-        policy: "Action.actor_id resolves to a Principal",
-        evaluation_kind: "deterministic",
+      await insertPolicy(c, POLICY_ID_PRINCIPAL, "deterministic", {
         predicate: {
-          kind: "requires_field_resolves_to_principal",
+          sub_kind: "requires_field_resolves_to_principal",
           field: "actor_id",
           when_node_type: ["action"],
         },
         on_violation: "block",
         ...(opts.firesOnActive ? { fires_when_node_lifecycle: ["active"] } : {}),
       });
-      await c.query(
-        `INSERT INTO node_authoring_policies
-           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
-        [POLICY_ID_PRINCIPAL, DOCO_ID, "Action.actor_id resolves to a Principal", yaml],
-      );
     }
 
     if (opts.withRequiredFieldRule) {
-      const yaml = JSON.stringify({
-        id: POLICY_ID_FIELD,
-        doco_id: DOCO_ID,
-        node_type: "node_authoring_policy",
-        policy_kind: "node_authoring",
-        policy: "Action.actor_id is set",
-        evaluation_kind: "deterministic",
+      await insertPolicy(c, POLICY_ID_FIELD, "deterministic", {
         predicate: {
-          kind: "requires_field",
+          sub_kind: "requires_field",
           fields: ["actor_id"],
           when_node_type: ["action"],
         },
         on_violation: "block",
       });
-      await c.query(
-        `INSERT INTO node_authoring_policies
-           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
-        [POLICY_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
-      );
     }
 
     if (opts.withProbabilisticRule) {
-      const yaml = JSON.stringify({
-        id: POLICY_ID_PROBABILISTIC,
-        doco_id: DOCO_ID,
-        node_type: "node_authoring_policy",
-        policy_kind: "node_authoring",
-        policy: "Action prose is atomic",
-        evaluation_kind: "probabilistic",
+      await insertPolicy(c, POLICY_ID_PROBABILISTIC, "probabilistic", {
         predicate: {
-          kind: "probabilistic",
-          spec: "The Action's `action` field reads as an atomic business activity, not a vague umbrella phase.",
+          agent_instruction:
+            "The Action's `action` field reads as an atomic business activity, not a vague umbrella phase.",
           when_node_type: ["action"],
         },
         on_violation: "block",
       });
-      await c.query(
-        `INSERT INTO node_authoring_policies
-           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
-        [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action prose is atomic", yaml],
-      );
     }
 
     if (opts.withEntityTypeAllowlist) {
-      const yaml = JSON.stringify({
-        id: POLICY_ID_ALLOWLIST,
-        doco_id: DOCO_ID,
-        node_type: "node_authoring_policy",
-        policy_kind: "node_authoring",
-        policy: "Only intent/decision/principal belong here",
-        evaluation_kind: "deterministic",
+      await insertPolicy(c, POLICY_ID_ALLOWLIST, "deterministic", {
         predicate: {
-          kind: "requires_entity_type",
+          sub_kind: "requires_entity_type",
           entity_types: ["intent", "decision", "principal"],
         },
         on_violation: "block",
       });
-      await c.query(
-        `INSERT INTO node_authoring_policies
-           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
-        [POLICY_ID_ALLOWLIST, DOCO_ID, "Only intent/decision/principal belong here", yaml],
-      );
     }
 
     if (opts.withUniqueFieldRule) {
-      const yaml = JSON.stringify({
-        id: POLICY_ID_UNIQUE,
-        doco_id: DOCO_ID,
-        node_type: "node_authoring_policy",
-        policy_kind: "node_authoring",
-        policy: "Decision.chosen is unique",
-        evaluation_kind: "deterministic",
+      await insertPolicy(c, POLICY_ID_UNIQUE, "deterministic", {
         predicate: {
-          kind: "unique_field",
+          sub_kind: "unique_field",
           field: "chosen",
           case_fold: true,
           when_node_type: ["decision"],
@@ -168,12 +130,6 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
         fires_when_node_lifecycle: ["active"],
         on_violation: "block",
       });
-      await c.query(
-        `INSERT INTO node_authoring_policies
-           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
-        [POLICY_ID_UNIQUE, DOCO_ID, "Decision.chosen is unique", yaml],
-      );
     }
   });
 }
@@ -194,7 +150,7 @@ describe("authoring runner — integration", () => {
     });
 
     expect(result.blocking).not.toBeNull();
-    expect(result.blocking?.predicate_kind).toBe("requires_field_resolves_to_principal");
+    expect(result.blocking?.sub_kind).toBe("requires_field_resolves_to_principal");
     expect(result.blocking?.policy_id).toBe(POLICY_ID_PRINCIPAL);
     expect(result.blocking?.reason).toMatch(/principal_01GHOST/);
     expect(result.blocking?.reason).toMatch(/does not resolve/);
@@ -238,7 +194,7 @@ describe("authoring runner — integration", () => {
     });
 
     expect(result.blocking).not.toBeNull();
-    expect(result.blocking?.predicate_kind).toBe("requires_field");
+    expect(result.blocking?.sub_kind).toBe("requires_field");
     expect(result.blocking?.policy_id).toBe(POLICY_ID_FIELD);
   });
 
@@ -303,7 +259,7 @@ describe("authoring runner — integration", () => {
 
     expect(mockedJudge).toHaveBeenCalledTimes(1);
     expect(result.blocking).not.toBeNull();
-    expect(result.blocking?.predicate_kind).toBe("probabilistic");
+    expect(result.blocking?.kind).toBe("probabilistic");
     expect(result.blocking?.policy_id).toBe(POLICY_ID_PROBABILISTIC);
     expect(result.blocking?.reason).toMatch(/umbrella phase/);
   });
@@ -328,7 +284,7 @@ describe("authoring runner — integration", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("demotes block to warn when the judge is unavailable (returns null)", async () => {
+  it("blocks with an error when the judge is unavailable (returns null)", async () => {
     mockedJudge.mockResolvedValue(null);
     await seed({ withProbabilisticRule: true });
     const result = await runAuthoringPolicies({
@@ -343,10 +299,13 @@ describe("authoring runner — integration", () => {
     });
 
     expect(mockedJudge).toHaveBeenCalledTimes(1);
-    expect(result.blocking).toBeNull();
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]?.predicate_kind).toBe("probabilistic");
-    expect(result.warnings[0]?.on_violation).toBe("warn");
+    // Fail closed: a judge outage blocks the capture with an actionable error
+    // instead of silently demoting the unchecked policy to a warning.
+    expect(result.blocking).not.toBeNull();
+    expect(result.blocking?.kind).toBe("probabilistic");
+    expect(result.blocking?.on_violation).toBe("block");
+    expect(result.blocking?.reason).toMatch(/could not be checked/i);
+    expect(result.warnings).toEqual([]);
   });
 
   it("skips shape/completeness enforcement when the candidate is transitioning to retired", async () => {
@@ -401,7 +360,7 @@ describe("authoring runner — integration", () => {
     // though it's retired; the shape gate (requires_field) is skipped, so
     // the only evaluated/blocking policy is the membership invariant.
     expect(result.blocking).not.toBeNull();
-    expect(result.blocking?.predicate_kind).toBe("requires_entity_type");
+    expect(result.blocking?.sub_kind).toBe("requires_entity_type");
     expect(result.blocking?.policy_id).toBe(POLICY_ID_ALLOWLIST);
     expect(result.evaluated).toBe(1);
   });
@@ -464,7 +423,7 @@ describe("authoring runner — integration", () => {
     });
 
     expect(result.blocking).not.toBeNull();
-    expect(result.blocking?.predicate_kind).toBe("unique_field");
+    expect(result.blocking?.sub_kind).toBe("unique_field");
     expect(result.blocking?.policy_id).toBe(POLICY_ID_UNIQUE);
     expect(result.blocking?.reason).toMatch(existingId);
   });
@@ -485,19 +444,21 @@ describe("authoring runner — integration", () => {
            VALUES ($1, 'null-life', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, WORKSPACE_ID],
       );
-      const yaml = JSON.stringify({
-        id: POLICY_ID_FIELD,
-        summary: "Action.actor_id is set",
-        predicate: { kind: "requires_field", fields: ["actor_id"], when_node_type: ["action"] },
-        on_violation: "block",
-      });
       // Explicit NULL on the lifecycle column — should still load because
       // the loader COALESCEs NULL → 'active'.
-      await c.query(
-        `INSERT INTO node_authoring_policies
-           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, NULL, now(), now())`,
-        [POLICY_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
+      await insertPolicy(
+        c,
+        POLICY_ID_FIELD,
+        "deterministic",
+        {
+          predicate: {
+            sub_kind: "requires_field",
+            fields: ["actor_id"],
+            when_node_type: ["action"],
+          },
+          on_violation: "block",
+        },
+        null,
       );
     });
 
@@ -522,17 +483,16 @@ describe("authoring runner — integration", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       await seed({ withRequiredFieldRule: true });
-      const malformedId = "node_authoring_policy_01TESTBORKED00000000000001";
+      const malformedId = "policy_01TESTBORKED00000000000001";
       await withClient(async (c) => {
         await c.query(
-          `INSERT INTO node_authoring_policies
-             (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-             VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
+          `INSERT INTO policies
+             (id, doco_id, kind, data, lifecycle, created_at, updated_at)
+             VALUES ($1, $2, 'deterministic', $3::jsonb, 'active', now(), now())`,
           [
             malformedId,
             DOCO_ID,
-            "Borked",
-            JSON.stringify({ summary: "Borked", predicate: "not-an-object" }),
+            JSON.stringify({ id: malformedId, kind: "deterministic", predicate: "not-an-object" }),
           ],
         );
       });
@@ -583,11 +543,9 @@ describe("authoring runner — integration", () => {
       // graph-completeness policy: every id in `actors` on an Intent
       // must be covered by an incoming Action with a canonical supports edge
       // whose actor_id equals that id.
-      const yaml = JSON.stringify({
-        id: POLICY_ID_PRINCIPAL,
-        summary: "Intent.actors are covered by Actions",
+      await insertPolicy(c, POLICY_ID_PRINCIPAL, "deterministic", {
         predicate: {
-          kind: "graph-completeness",
+          sub_kind: "graph-completeness",
           list_field: "actors",
           edge_type: "supports",
           incoming_node_type: "action",
@@ -596,12 +554,6 @@ describe("authoring runner — integration", () => {
         },
         on_violation: "block",
       });
-      await c.query(
-        `INSERT INTO node_authoring_policies
-           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
-        [POLICY_ID_PRINCIPAL, DOCO_ID, "Intent.actors are covered by Actions", yaml],
-      );
     });
 
     // Persist a *retired* covering action via upsertEntity (mirrors what a
@@ -646,7 +598,7 @@ describe("authoring runner — integration", () => {
     // The covering Action is retired, so it falls out of the population
     // and the completeness check fails.
     expect(result.blocking).not.toBeNull();
-    expect(result.blocking?.predicate_kind).toBe("graph-completeness");
+    expect(result.blocking?.sub_kind).toBe("graph-completeness");
   });
 
   it("rejects a candidate whose actor_id resolves to a RETIRED principal", async () => {
@@ -677,12 +629,12 @@ describe("authoring runner — integration", () => {
     });
 
     expect(result.blocking).not.toBeNull();
-    expect(result.blocking?.predicate_kind).toBe("requires_field_resolves_to_principal");
+    expect(result.blocking?.sub_kind).toBe("requires_field_resolves_to_principal");
     expect(result.blocking?.reason).toMatch(/does not resolve/);
   });
 });
 
-describe("captureNodeAuthoringPolicy — edge_type validation", () => {
+describe("capturePolicy — edge_type validation", () => {
   async function seedDoco(): Promise<void> {
     await withClient(async (c) => {
       await c.query(
@@ -703,13 +655,9 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
     });
   }
 
-  function draft(
-    predicate: Record<string, unknown>,
-    policyText = "test predicate",
-  ): NodeAuthoringPolicyDraft {
+  function draft(predicate: Record<string, unknown>): PolicyDraft {
     return {
-      policy: policyText,
-      evaluation_kind: "deterministic",
+      kind: "deterministic",
       predicate: predicate as never,
       on_violation: "block",
       authored_by_principal_id: PRINCIPAL_ALICE,
@@ -718,12 +666,12 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
 
   it("rejects a requires_edge predicate whose edge_type is a blocked node JSON edge key", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ kind: "requires_edge", edge_type: "intent_ids" }),
+      draft({ sub_kind: "requires_edge", edge_type: "intent_ids" }),
     );
     expect("error" in result).toBe(true);
     if ("error" in result) {
@@ -734,12 +682,12 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
 
   it("rejects a forbids_edge predicate with a non-canonical edge_type", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ kind: "forbids_edge", edge_type: "inputs" }),
+      draft({ sub_kind: "forbids_edge", edge_type: "inputs" }),
     );
     expect("error" in result).toBe(true);
     if ("error" in result) {
@@ -750,36 +698,36 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
 
   it("accepts a requires_edge predicate with a canonical edge_type", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ kind: "requires_edge", edge_type: "supports" }),
+      draft({ sub_kind: "requires_edge", edge_type: "supports" }),
     );
     expect("error" in result).toBe(false);
   });
 
   it("accepts a requires_edge_role predicate with a canonical edge_type and role", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ kind: "requires_edge_role", edge_type: "supports", edge_role: "serves" }),
+      draft({ sub_kind: "requires_edge_role", edge_type: "supports", edge_role: "serves" }),
     );
     expect("error" in result).toBe(false);
   });
 
   it("rejects a requires_edge_role predicate without role metadata", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ kind: "requires_edge_role", edge_type: "supports" }),
+      draft({ sub_kind: "requires_edge_role", edge_type: "supports" }),
     );
     expect("error" in result).toBe(true);
     if ("error" in result) {
@@ -789,13 +737,13 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
 
   it("rejects a requires_edge_role predicate whose edge_type is a blocked node JSON edge key", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
       draft({
-        kind: "requires_edge_role",
+        sub_kind: "requires_edge_role",
         edge_type: "implemented_by",
         edge_role: "implemented_by",
       }),
@@ -809,25 +757,25 @@ describe("captureNodeAuthoringPolicy — edge_type validation", () => {
 
   it("rejects another blocked node JSON edge key", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ kind: "requires_edge", edge_type: "preceded_by" }),
+      draft({ sub_kind: "requires_edge", edge_type: "preceded_by" }),
     );
     expect("error" in result).toBe(true);
   });
 
   it("rejects a graph-completeness predicate with a role label edge_type", async () => {
     await seedDoco();
-    const result = await captureNodeAuthoringPolicy(
+    const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
       draft({
-        kind: "graph-completeness",
+        sub_kind: "graph-completeness",
         list_field: "actors",
         edge_type: "performed_by",
         incoming_node_type: "action",

@@ -206,10 +206,9 @@ Principals expose a smaller surface (create + retire only) — read the
 Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
-Policies are NOT nodes. Policies
-(\`guidance_policy\`, \`node_authoring_policy\`) live on the
-dedicated \`/api/policies.json\` endpoint and inside the bootstrap
-payload — never on the generic \`/api/<type>.json\` route.
+Policies are NOT nodes. Policies (a single \`policy\` entity type)
+live on the dedicated \`/api/policies.json\` endpoint and inside the
+bootstrap payload — never on the generic \`/api/<type>.json\` route.
 
 ### Capture body structure
 
@@ -246,16 +245,18 @@ return 403 until you finish the OAuth recipe.
 
 Every Doco has a set of **policies** — short, project-owner-authored
 statements that govern how you, the agent, author nodes inside it.
-Two kinds, both surfaced at bootstrap:
+There is one \`policy\` entity type; each carries a standalone
+\`kind\`, all surfaced at bootstrap:
 
-  - **Guidance policies** (\`guidance_policy\`) — prose for
-    context. No automated check. Read them and let them shape your
+  - **suggestion** — a single natural-language \`agent_instruction\`
+    for context. No automated check. Read it and let it shape your
     judgement.
-  - **Node-authoring policies** (\`node_authoring_policy\`) —
-    rules evaluated when you capture a node. Either a deterministic
-    predicate ("every Decision cites at least one Intent") or a
-    probabilistic spec the host evaluates with an LLM. \`on_violation:
+  - **deterministic** — a \`predicate\` evaluated when you capture a
+    node ("every Decision cites at least one Intent"). \`on_violation:
     block\` means the host will reject your capture.
+  - **probabilistic** — an \`agent_instruction\` the host evaluates
+    with an LLM when you capture a node. \`on_violation: block\` means
+    the host will reject your capture.
 
 Policies apply only to their Doco. Treat them as binding on your
 authoring at all times.
@@ -270,8 +271,8 @@ Once you hold a Bearer token, hit:
     Authorization: Bearer doco_at_<token>
 
 The response carries the policies for every Doco you have
-read-or-above access to, exposed as \`guidance_policies[]\` and
-\`node_authoring_policies[]\` arrays.
+read-or-above access to, exposed as a single \`policies[]\` array,
+each entry carrying its \`kind\`.
 
 The three invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
@@ -447,8 +448,8 @@ preemptively.
 
 ## The node + policy model
 
-Doco's data model is a graph of typed nodes, plus two kinds of
-policies that govern how nodes are authored:
+Doco's data model is a graph of typed nodes, plus a single \`policy\`
+entity type that governs how nodes are authored:
 
 - **Intent** — what someone wants. Source of every downstream Decision.
 - **Decision** — a chosen resolution to a question, with alternatives
@@ -457,11 +458,11 @@ policies that govern how nodes are authored:
 - **Log** — a recorded event that *did* happen (past-tense verb +
   \`happened_at\` + concrete outputs). Immutable once captured.
 - **Rule** — an ongoing domain constraint.
-- **Guidance policy** — one kind of policy. Contributors read
-  it while working; no automated check.
-- **Node-authoring policy** — the other kind. Evaluated when
-  nodes are captured; deterministic predicates or probabilistic
-  specs. The project owner can edit either kind any time from
+- **Policy** — one entity type with a standalone \`kind\`. A
+  \`suggestion\` is prose contributors read while working (no
+  automated check); a \`deterministic\` predicate or a
+  \`probabilistic\` instruction is evaluated when nodes are captured.
+  The project owner can edit any policy any time from
   \`/<handle>/policies\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.

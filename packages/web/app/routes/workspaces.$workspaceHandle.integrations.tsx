@@ -14,11 +14,13 @@
 // moment we add one (e.g. an workspace-level Slack channel default).
 import { getWorkspaceRole } from "@doco/db";
 import { ArrowRight } from "lucide-react";
-import { Link, redirect } from "react-router";
+import { redirect } from "react-router";
 import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import {
   AvailableIntegrations,
+  ConnectionList,
+  ConnectionRow,
   ScopeNavLinks,
   ScopePickerBanner,
 } from "~/components/integrations-shell";
@@ -126,34 +128,23 @@ export default function WorkspaceIntegrations({
               </CardHeader>
               <CardContent className="p-0">
                 {rollup.docos.length > 0 ? (
-                  <ul className="divide-y divide-border">
+                  <ConnectionList>
                     {rollup.docos.map((d) => (
-                      <li
+                      <ConnectionRow
                         key={d.docoId}
-                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                      >
-                        <div className="min-w-0">
-                          <Link
-                            to={`/${d.handle}/integrations`}
-                            className="text-sm font-semibold text-foreground hover:text-primary"
-                          >
-                            {d.handle}
-                          </Link>
-                          <p className="text-xs text-muted-foreground">
-                            {d.githubRepoCount} GitHub repo{d.githubRepoCount === 1 ? "" : "s"}{" "}
-                            connected
-                          </p>
-                        </div>
-                        <Link
-                          to={`/${d.handle}/integrations`}
-                          className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:text-primary"
-                        >
-                          Manage
-                          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                        </Link>
-                      </li>
+                        title={d.handle}
+                        titleHref={`/${d.handle}/integrations`}
+                        detail={`${d.githubRepoCount} GitHub repo${
+                          d.githubRepoCount === 1 ? "" : "s"
+                        } connected`}
+                        action={{
+                          label: "Manage",
+                          href: `/${d.handle}/integrations`,
+                          icon: ArrowRight,
+                        }}
+                      />
                     ))}
-                  </ul>
+                  </ConnectionList>
                 ) : (
                   <p className="px-4 py-3 text-sm text-muted-foreground">
                     No Docos in this workspace have integrations configured yet.

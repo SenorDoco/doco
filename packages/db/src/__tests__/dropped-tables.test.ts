@@ -16,6 +16,9 @@ const DROPPED_TABLES = [
   "doco_templates",
   "doco_meta",
   "entity_fts_policies",
+  // Collapsed into the single `policies` table.
+  "guidance_policies",
+  "node_authoring_policies",
 ];
 
 function declaresTable(table: string): boolean {
@@ -45,6 +48,14 @@ describe("dead schema objects stay dropped", () => {
 
   it("perspectives no longer declares the unused owner_user_id column", () => {
     expect(/\bowner_user_id\b/.test(tableBlock("perspectives"))).toBe(false);
+  });
+
+  it("docos no longer declares the write-only allowed_node_types column", () => {
+    // The Doco-level node-type allowlist was seeded at creation but never
+    // read by any capture-time check, and the lone template that set it
+    // (`global`) pointed at the removed `guidance_policy` /
+    // `node_authoring_policy` types. Column dropped with the policy unify.
+    expect(/\ballowed_node_types\b/.test(tableBlock("docos"))).toBe(false);
   });
 
   it("does not keep a migration ledger table in the baseline", () => {

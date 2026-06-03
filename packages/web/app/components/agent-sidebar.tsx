@@ -25,6 +25,12 @@ import {
   CREATED_DOCO_CHAT_ID_SEARCH_PARAM,
   readCreatedDocoChatIdSearchParams,
 } from "~/lib/post-create-doco-route";
+import {
+  resolvePublishedRailWidth,
+  resolveThinkingActive,
+  useNarrowShell,
+  viewOnExpand,
+} from "~/lib/senor-doco-shell";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
 interface ContentBlockText {
@@ -401,30 +407,9 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-// Map a plural API segment to the kind slug used in the policies
-// edit URL (`/<handle>/policies/<kind>/<id>/edit`). Returns null
-// when the plural isn't a policy.
-function pluralToPolicyKindSlug(plural: string): string | null {
-  if (plural === "guidance_policies") return "guidance";
-  if (plural === "node_authoring_policies") return "node-authoring";
-  return null;
-}
-
-// Resolve the URL kind slug from a doco_api POST body for the shared
-// `/<handle>/api/policies.json` create endpoint. The body's
-// `policy_kind` field is either "guidance" or "node_authoring";
-// translate to the slug the policy edit route expects.
-function bodyToPolicyKindSlug(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const k = (body as { policy_kind?: unknown }).policy_kind;
-  if (k === "guidance") return "guidance";
-  if (k === "node_authoring") return "node-authoring";
-  return null;
-}
-
 type PendingCreate =
   | { kind: "node"; handle: string; entityType: string }
-  | { kind: "policy"; handle: string; policyKindSlug: string };
+  | { kind: "policy"; handle: string };
 
 // When the agent drives focus (vs. an explicit user click), center
 // the graph on the node without opening the detail dialog. The
@@ -542,25 +527,33 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
-  // Publish the rail's current desktop width as a CSS variable so
-  // floating overlays (the node-detail dialog, etc.) can avoid
-  // covering it. Below the shared shell breakpoint the rail stacks
-  // above content, so there is no left rail to offset from.
-  const thinkingActive = showThinking && view === "chat";
+  // Pathname where the user collapsed Señor Doco *in this mount*. null
+  // when the collapsed state was inherited from localStorage on load (a
+  // previous page/session) or after an expand consumes it. Drives
+  // whether expanding restores the open thread or resets to the thread
+  // list — see viewOnExpand and setCollapsedPersistent.
+  const collapseOriginPathRef = useRef<string | null>(null);
+  // Publish the rail's current side-rail width as a CSS variable so
+  // floating overlays (the node-detail dialog, etc.) can avoid covering
+  // it. Below 640px the rail is an overlay drawer floating above the
+  // page rather than an in-flow side rail, so it reserves no width and
+  // we publish 0 (see the publish effect below).
+  //
+  // Narrow shell also gates the wide thinking column off (and hides its
+  // toggle) so the overlay drawer stays a single 320px column.
+  const narrowShell = useNarrowShell();
+  const thinkingActive = resolveThinkingActive({ showThinking, view, narrow: narrowShell });
   const railWidth = collapsed ? RAIL_COLLAPSED : thinkingActive ? RAIL_THINKING : RAIL_DEFAULT;
   useEffect(() => {
-    if (typeof document === "undefined" || typeof window === "undefined") return;
-    const desktopShell = window.matchMedia("(min-width: 840px)");
-    const publish = () => {
-      document.documentElement.style.setProperty(
-        "--senor-doco-rail-width",
-        desktopShell.matches ? railWidth : "0px",
-      );
-    };
-    publish();
-    desktopShell.addEventListener("change", publish);
-    return () => desktopShell.removeEventListener("change", publish);
-  }, [railWidth]);
+    if (typeof document === "undefined") return;
+    // Publish the width page content should clear. The expanded overlay
+    // drawer is a modal floating above the page (reserves nothing); the
+    // side rail and the collapsed strip reserve their real width.
+    document.documentElement.style.setProperty(
+      "--senor-doco-rail-width",
+      resolvePublishedRailWidth({ narrow: narrowShell, collapsed, railWidth }),
+    );
+  }, [railWidth, narrowShell, collapsed]);
 
   const toggleShowThinking = useCallback(() => {
     setShowThinking((prev) => {
@@ -577,15 +570,34 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const abortRef = useRef<AbortController | null>(null);
   const sendSeqRef = useRef(0);
 
-  const setCollapsedPersistent = useCallback((next: boolean) => {
-    setCollapsed(next);
-    writeBoolFlag(COLLAPSE_KEY, next);
-    if (!next) {
-      // Expanding clears unread.
-      setUnread(false);
-      writeBoolFlag(UNREAD_KEY, false);
-    }
-  }, []);
+  const setCollapsedPersistent = useCallback(
+    (next: boolean) => {
+      setCollapsed(next);
+      writeBoolFlag(COLLAPSE_KEY, next);
+      if (next) {
+        // Remember where this collapse happened so a later expand on the
+        // same page can restore the open thread (vs. resetting to the list).
+        collapseOriginPathRef.current = location.pathname;
+      } else {
+        // Expanding clears unread.
+        setUnread(false);
+        writeBoolFlag(UNREAD_KEY, false);
+        // Unless the collapse we're undoing happened on this same page,
+        // reset to the thread list rather than dropping the user back into
+        // the last-open (possibly stale) thread.
+        if (
+          viewOnExpand({
+            collapseOriginPath: collapseOriginPathRef.current,
+            currentPath: location.pathname,
+          }) === "list"
+        ) {
+          setView("list");
+        }
+        collapseOriginPathRef.current = null;
+      }
+    },
+    [location.pathname],
+  );
   const markUnread = useCallback(() => {
     setUnread(true);
     writeBoolFlag(UNREAD_KEY, true);
@@ -1408,10 +1420,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const m = /^\/([^/]+)\/api\/([^/]+)\/([^/.]+)\.(?:json|txt)$/.exec(path);
       if (!m) return;
       const [, handle, plural, id] = m;
-      const policyKind = pluralToPolicyKindSlug(plural);
       let target: string;
-      if (policyKind) {
-        target = `/${handle}/policies/${policyKind}/${id}/edit`;
+      if (plural === "policies") {
+        target = `/${handle}/policies/${id}/edit`;
       } else {
         // Plurals are uniformly the entity-type + "s" across all
         // node tables shipped today (decisions, intents, actions,
@@ -1458,14 +1469,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     if (!m) return;
     const [, handle, plural] = m;
     if (plural === "policies") {
-      // Policy create — kind comes from the request body, not the path.
-      const policyKindSlug = bodyToPolicyKindSlug(inp.body);
-      if (!policyKindSlug) return;
-      pendingCreatesRef.current.set(toolUseId, {
-        kind: "policy",
-        handle,
-        policyKindSlug,
-      });
+      // Policy create — every policy is one entity type now; the edit
+      // page is keyed by id alone.
+      pendingCreatesRef.current.set(toolUseId, { kind: "policy", handle });
       return;
     }
     const entityType = normalizeNodeType(plural);
@@ -1497,7 +1503,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       if (!id) return;
       const target =
         pending.kind === "policy"
-          ? `/${pending.handle}/policies/${pending.policyKindSlug}/${id}/edit`
+          ? `/${pending.handle}/policies/${id}/edit`
           : `/${pending.handle}/${pending.entityType}/${id}`;
       if (location.pathname === target) return;
       if (composerHasTextRef.current) return;
@@ -2066,16 +2072,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const statusAnchorIndex = lastVisibleMessageIndex(allMessages);
   const railStyle = {
     "--senor-doco-current-width": railWidth,
-    "--senor-doco-stack-height": collapsedDisplay ? RAIL_COLLAPSED : "min(320px, 42svh)",
-    transition: "width 180ms ease-out, height 180ms ease-out",
+    transition: "width 180ms ease-out",
   } as CSSProperties & {
     "--senor-doco-current-width": string;
-    "--senor-doco-stack-height": string;
   };
 
-  return (
+  const rail = (
     <aside
       className="senor-doco-rail neu-panel flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-card"
+      data-collapsed={collapsedDisplay ? "true" : "false"}
       style={railStyle}
       aria-busy={agentActive}
       aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
@@ -2129,7 +2134,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
                     title={showThinking ? "Hide thinking column" : "Show thinking column"}
                     className={cn(
-                      "rounded-md border border-border px-2 py-0.5 text-[11px]",
+                      // Hidden below the 640px overlay breakpoint: the narrow
+                      // drawer has no room for the wide thinking column.
+                      "hidden rounded-md border border-border px-2 py-0.5 text-[11px] sm:inline-flex",
                       showThinking
                         ? "neu-pressed bg-input text-foreground"
                         : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
@@ -2272,7 +2279,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     onMouseDown={markMessageListInteracting}
                     className={cn(
                       "flex min-h-0 flex-col overflow-y-auto px-3 py-3 text-xs leading-relaxed",
-                      showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
+                      thinkingActive ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
                     )}
                   >
                     {loadError ? (
@@ -2301,7 +2308,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     ))}
                     <ConversationStatusIcon status={conversationStatus} />
                   </div>
-                  {showThinking ? (
+                  {thinkingActive ? (
                     <ThinkingPanel
                       events={thinkingEvents}
                       active={busy || inFlight !== null || remoteInflight}
@@ -2338,6 +2345,24 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </>
       )}
     </aside>
+  );
+
+  // Below 640px the expanded rail floats over the page (see the
+  // `.senor-doco-rail` overlay rule in app.css). Render a dimming scrim
+  // behind it; clicking anywhere on it collapses the rail. The scrim is
+  // CSS-hidden at >=640px, where the rail is an in-flow side rail.
+  return (
+    <>
+      {collapsedDisplay ? null : (
+        <button
+          type="button"
+          aria-label="Collapse Señor Doco"
+          className="senor-doco-backdrop"
+          onClick={() => setCollapsedPersistent(true)}
+        />
+      )}
+      {rail}
+    </>
   );
 }
 

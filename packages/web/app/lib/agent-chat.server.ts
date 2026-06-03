@@ -40,7 +40,12 @@ import type {
   Usage,
 } from "@anthropic-ai/sdk/resources/messages";
 import { listWorkspacesForUser, withClient } from "@doco/db";
-import { generateUlid, renderCaptureCheatsheet } from "@doco/shared";
+import {
+  type PolicyPredicate,
+  generateUlid,
+  renderCaptureCheatsheet,
+  summarizePredicate,
+} from "@doco/shared";
 import {
   SENOR_DOCO_DEFAULT_MAX_TOKENS,
   getSenorDocoModel,
@@ -1365,23 +1370,22 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   // ONE batched query for every active policy across every accessible
   // Doco, replacing the prior 2*N per-doco queries. Group in-memory.
   const accessibleIds = accessibleDocos.map((d) => d.docoId);
-  const policiesByDoco = new Map<string, { guidance: string[]; authoring: string[] }>();
+  const policiesByDoco = new Map<string, string[]>();
   if (accessibleIds.length > 0) {
     const rows = await withClient(async (c) =>
-      c.query<{ doco_id: string; policy: string; kind: "guidance" | "authoring" }>(
-        `SELECT doco_id, policy, 'guidance'::text AS kind FROM guidance_policies
+      c.query<{ doco_id: string; kind: string | null; data: Record<string, unknown> | null }>(
+        `SELECT doco_id, kind, data FROM policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
-         UNION ALL
-         SELECT doco_id, policy, 'authoring'::text AS kind FROM node_authoring_policies
-          WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
-         ORDER BY doco_id, kind, policy`,
+          ORDER BY doco_id, kind`,
         [accessibleIds],
       ),
     );
     for (const r of rows.rows) {
-      const bucket = policiesByDoco.get(r.doco_id) ?? { guidance: [], authoring: [] };
-      if (r.kind === "guidance") bucket.guidance.push(r.policy);
-      else bucket.authoring.push(r.policy);
+      const predicate = (r.data?.predicate ?? null) as PolicyPredicate | null;
+      const label = predicate ? summarizePredicate(predicate) : "";
+      if (!label) continue;
+      const bucket = policiesByDoco.get(r.doco_id) ?? [];
+      bucket.push(`${r.kind ?? "policy"}: ${label}`);
       policiesByDoco.set(r.doco_id, bucket);
     }
   }
@@ -1389,11 +1393,10 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   const policySnippets: string[] = [];
   for (const d of accessibleDocos) {
     const ps = policiesByDoco.get(d.docoId);
-    if (!ps || (ps.guidance.length === 0 && ps.authoring.length === 0)) continue;
+    if (!ps || ps.length === 0) continue;
     const label = qualifiedDocoLabel({ ownerSlug: d.ownerUsername, handle: d.handle });
     const lines = [`Policies for ${label} (path=/${d.handle}):`];
-    for (const s of ps.guidance) lines.push(`  - guidance: ${s}`);
-    for (const s of ps.authoring) lines.push(`  - rule: ${s}`);
+    for (const s of ps) lines.push(`  - ${s}`);
     policySnippets.push(lines.join("\n"));
   }
 
@@ -1475,8 +1478,8 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
   GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, users: [{ id, username, role, type, github_login, email }], principal_nodes: [{ id, name, body_md, lifecycle, data, ... }], user_count, principal_node_count }. Read \`users\` for the doco's OAuth members; read \`principal_nodes\` for the Principal NODES visible as BPMN swim lanes / org-chart roles.
   PATCH /<handle>/api/principals/<id>.json       — update a Principal NODE (name, body_md, lifecycle). Same retire-on-lifecycle convention. \`name\` is editable — a rename updates in place and is tracked in the audit log.
-  GET   /<handle>/api/policies.json            — list policies (guidance + node-authoring) for this doco
-  POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "node_authoring"
+  GET   /<handle>/api/policies.json            — list policies for this doco
+  POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "kind": "suggestion" | "deterministic" | "probabilistic"
   GET   /<handle>/api/invites.json               — pending user invites
   GET   /<handle>/api/audit.json                 — audit log entries
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
@@ -1534,8 +1537,9 @@ required prose key is now \`intent\` / \`decision\` / \`action\` /
 etc., not \`summary\`.
 
 ${renderCaptureCheatsheet()}
-- Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?.
-- Policy (Node-authoring, owner-only): same endpoint with policy_kind*("node_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+- Policy (Suggestion, owner-only): POST /<handle>/api/policies.json with kind*("suggestion"), agent_instruction*(one natural-language instruction), body_md?, authored_by_principal_id?.
+- Policy (Probabilistic, owner-only): same endpoint with kind*("probabilistic"), agent_instruction*(prose the LLM judge evaluates), when_node_type?[], fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+- Policy (Deterministic, owner-only): same endpoint with kind*("deterministic"), predicate*(object keyed by sub_kind, e.g. {"sub_kind":"requires_edge_role","edge_type":"attributed_to","edge_role":"performed_by","target_node_type":"principal","when_node_type":["action"]}), fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 The TYPE-NAMED field carries multi-line markdown; the first line is
 the row label that shows up in lists and BPMN swim lanes. Example:

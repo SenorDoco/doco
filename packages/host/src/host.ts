@@ -8,7 +8,11 @@ import {
   nowIso,
   validateRequestedDocoHandle,
 } from "@doco/shared";
-import { DEFAULT_DOCO_TEMPLATES, type DocoTemplate } from "./doco-templates.js";
+import {
+  DEFAULT_DOCO_TEMPLATES,
+  type DocoTemplate,
+  templatePolicyToPolicyRow,
+} from "./doco-templates.js";
 
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
@@ -325,7 +329,6 @@ export async function createDocoInWorkspace(opts: {
     const created = nowIso();
     const visibility = opts.visibility ?? "private";
     const template = opts.templateHandle ? findDocoTemplate(opts.templateHandle) : null;
-    const allowedNodeTypes = template?.allowedNodeTypes ?? null;
     const defaultNodeLifecycle = template?.defaultNodeLifecycle ?? null;
     // Goal: explicit caller value wins (including ""), else the
     // template's description, else empty for no-template Docos.
@@ -340,16 +343,15 @@ export async function createDocoInWorkspace(opts: {
       created_at: created,
       created_by: opts.createdByUserId,
       lifecycle: "active",
-      ...(allowedNodeTypes ? { allowed_node_types: allowedNodeTypes } : {}),
       ...(defaultNodeLifecycle ? { default_node_lifecycle: defaultNodeLifecycle } : {}),
     };
 
     await c.query(
       `INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data,
-                          allowed_node_types, default_node_lifecycle,
+                          default_node_lifecycle,
                           goal,
                           created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $10)`,
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $9)`,
       [
         docoId,
         handle,
@@ -357,7 +359,6 @@ export async function createDocoInWorkspace(opts: {
         opts.workspaceId,
         visibility,
         JSON.stringify(data),
-        allowedNodeTypes,
         defaultNodeLifecycle,
         goal,
         created,
@@ -384,27 +385,21 @@ export async function createDocoInWorkspace(opts: {
 
     if (template && template.policies.length > 0) {
       for (const policy of template.policies) {
-        const isAuthoring = Boolean(policy.predicate);
-        const firesWhen = Array.isArray(policy.fires_when_node_lifecycle)
-          ? policy.fires_when_node_lifecycle
-          : [];
-        const entityType = isAuthoring ? "node_authoring_policy" : "guidance_policy";
-        const table = isAuthoring ? "node_authoring_policies" : "guidance_policies";
-        const policyId = `${entityType}_${generateUlid()}`;
+        // Translate the (still old-shape) TemplatePolicy into the unified
+        // policy row (a standalone `kind` plus an evaluator predicate). The
+        // pure translation lives in `templatePolicyToPolicyRow` so the
+        // template scenario tests seed the exact same rows we enforce here.
+        const row = templatePolicyToPolicyRow(policy);
+        const policyId = `policy_${generateUlid()}`;
         const policyData: Record<string, unknown> = {
           id: policyId,
           doco_id: docoId,
-          policy_kind: isAuthoring ? "node_authoring" : "guidance",
-          policy: policy.policy,
-          ...(policy.predicate
-            ? {
-                evaluation_kind:
-                  policy.predicate.kind === "probabilistic" ? "probabilistic" : "deterministic",
-                predicate: policy.predicate,
-                on_violation: policy.on_violation ?? "block",
-              }
+          kind: row.kind,
+          predicate: row.predicate,
+          ...(row.on_violation !== undefined ? { on_violation: row.on_violation } : {}),
+          ...(row.fires_when_node_lifecycle
+            ? { fires_when_node_lifecycle: row.fires_when_node_lifecycle }
             : {}),
-          ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
           template_seeded: true,
           template_handle: opts.templateHandle ?? null,
           created_at: created,
@@ -412,15 +407,13 @@ export async function createDocoInWorkspace(opts: {
           lifecycle: "active",
         };
         await c.query(
-          // policies table column renamed from `summary` to `policy`
-          // in migration 038; the seed insert tracks the new name.
-          `INSERT INTO ${table} (id, doco_id, policy, data, body_md, lifecycle,
+          `INSERT INTO policies (id, doco_id, kind, data, body_md, lifecycle,
                                 created_at, updated_at, created_by, updated_by)
            VALUES ($1, $2, $3, $4::jsonb, $5, 'active', $6, $6, $7, $7)`,
           [
             policyId,
             docoId,
-            policy.policy,
+            row.kind,
             JSON.stringify(policyData),
             policy.body_md ?? "",
             created,

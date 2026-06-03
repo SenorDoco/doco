@@ -1,41 +1,40 @@
 import { withClient } from "@doco/db";
+import {
+  POLICY_KIND_LABEL,
+  type PolicyPredicate,
+  agentInstructionOf,
+  deterministicHeadline,
+  deterministicParts,
+  isDeterministicPredicate,
+} from "@doco/shared";
 import { Link } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { canEditPolicies, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
-import {
-  AGENT_EXPOSURE_NOTE,
-  GUIDANCE_POLICY_EXPLAINER,
-  NODE_AUTHORING_POLICY_EXPLAINER,
-  policyFullText,
-} from "~/lib/policy-copy";
+import { AGENT_EXPOSURE_NOTE, POLICIES_EXPLAINER } from "~/lib/policy-copy";
 
-type ArticleKind = "deterministic" | "probabilistic";
+type PolicyKind = "suggestion" | "deterministic" | "probabilistic";
 
-interface ArticleRow {
+interface PolicyRow {
   id: string;
-  policy: string;
+  kind: string | null;
   lifecycle: string | null;
   created_at: Date | string | null;
   body_md: string | null;
   data: Record<string, unknown> | null;
 }
 
-interface GuidanceArticleItem {
+interface PolicyItem {
   id: string;
-  policy: string;
+  kind: PolicyKind;
+  predicate: PolicyPredicate | null;
   lifecycle: string | null;
   createdAt: string | null;
   body: string;
-}
-
-interface NodeAuthoringArticleItem extends GuidanceArticleItem {
-  evaluationKind: ArticleKind;
-  predicateKind: string;
 }
 
 export async function loader({
@@ -47,25 +46,18 @@ export async function loader({
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   const { ownerSlug, docoSlug, handle } = ctx;
-  const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
-    const guidance = await c.query<ArticleRow>(
-      `SELECT id, policy, lifecycle, created_at, body_md, data
-         FROM guidance_policies
-        WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'active') = 'active'
-        ORDER BY created_at DESC`,
-      [ctx.meta.docoId],
-    );
-    const nodeAuthoring = await c.query<ArticleRow>(
-      `SELECT id, policy, lifecycle, created_at, body_md, data
-         FROM node_authoring_policies
-        WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'active') = 'active'
-        ORDER BY created_at DESC`,
-      [ctx.meta.docoId],
-    );
-    return [guidance.rows, nodeAuthoring.rows] as const;
-  });
+  const rows = await withClient((c) =>
+    c
+      .query<PolicyRow>(
+        `SELECT id, kind, lifecycle, created_at, body_md, data
+           FROM policies
+          WHERE doco_id = $1
+            AND COALESCE(lifecycle, 'active') = 'active'
+          ORDER BY created_at DESC`,
+        [ctx.meta.docoId],
+      )
+      .then((r) => r.rows),
+  );
 
   return {
     ownerSlug,
@@ -74,8 +66,7 @@ export async function loader({
     me: ctx.me,
     host: await loadHostConfig(),
     canEdit: await canEditPolicies(ctx.meta, ctx.me?.id ?? null),
-    guidanceArticles: guidanceRows.map(toGuidanceArticle),
-    nodeAuthoringArticles: nodeAuthoringRows.map(toNodeAuthoringArticle),
+    policies: rows.map(toPolicyItem),
   };
 }
 
@@ -88,8 +79,7 @@ export default function Policies({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, me, canEdit, guidanceArticles, nodeAuthoringArticles } =
-    loaderData;
+  const { ownerSlug, handle, me, canEdit, policies } = loaderData;
 
   return (
     <div>
@@ -100,135 +90,135 @@ export default function Policies({
           title="Policies"
         >
           <p className="text-sm text-muted-foreground">
-            Rules that govern how nodes get added to this doco. {AGENT_EXPOSURE_NOTE}
+            {POLICIES_EXPLAINER} {AGENT_EXPOSURE_NOTE}
           </p>
         </PageHeader>
 
-        <ArticleSection
-          title="Guidance policies"
-          entityType="guidance_policy"
-          description={GUIDANCE_POLICY_EXPLAINER}
-          addHref={canEdit ? `/${handle}/policies/guidance/new` : null}
-          editHrefBase={canEdit ? `/${handle}/policies/guidance` : null}
-          items={guidanceArticles}
-          empty="No guidance policies yet."
-        />
-
-        <ArticleSection
-          title="Node-authoring policies"
-          entityType="node_authoring_policy"
-          description={NODE_AUTHORING_POLICY_EXPLAINER}
-          addHref={canEdit ? `/${handle}/policies/node-authoring/new` : null}
-          editHrefBase={canEdit ? `/${handle}/policies/node-authoring` : null}
-          items={nodeAuthoringArticles}
-          empty="No node-authoring policies yet."
-        />
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <CardTitle className="flex items-center gap-2">
+                <NodeTypeIcon entityType="policy" className="h-4 w-4" />
+                <span>Policies</span>
+                <span className="font-mono text-xs font-normal text-muted-foreground">
+                  {policies.length}
+                </span>
+              </CardTitle>
+              {canEdit ? (
+                <Link
+                  to={`/${handle}/policies/new`}
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
+                >
+                  + Add
+                </Link>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {policies.length === 0 ? (
+              <p className="text-xs italic text-muted-foreground">No policies yet.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {policies.map((item) => (
+                  <PolicyRow key={item.id} item={item} handle={handle} canEdit={canEdit} />
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );
 }
 
-export function ArticleSection({
-  title,
-  entityType,
-  description,
-  addHref,
-  editHrefBase,
-  items,
-  empty,
+export function PolicyRow({
+  item,
+  handle,
+  canEdit,
 }: {
-  title: string;
-  entityType: "guidance_policy" | "node_authoring_policy";
-  description: string;
-  addHref: string | null;
-  editHrefBase: string | null;
-  items: (GuidanceArticleItem | NodeAuthoringArticleItem)[];
-  empty: string;
+  item: PolicyItem;
+  handle: string;
+  canEdit: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <CardTitle className="flex items-center gap-2">
-              <NodeTypeIcon entityType={entityType} className="h-4 w-4" />
-              <span>{title}</span>
-              <span className="font-mono text-xs font-normal text-muted-foreground">
-                {items.length}
-              </span>
-            </CardTitle>
-            <CardDescription className="leading-5">{description}</CardDescription>
-          </div>
-          {addHref ? (
-            <Link
-              to={addHref}
-              className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
-            >
-              + Add
-            </Link>
-          ) : null}
+    <li className="py-3 first:pt-0 last:pb-0">
+      <div className="flex items-start gap-3">
+        {/* The policy text is NOT a link: the /<handle>/<type>/<id> detail
+            route 404s for the `policy` type. Only Modify navigates. */}
+        <div className="min-w-0 flex-1">
+          <PolicyView item={item} />
         </div>
-      </CardHeader>
-      <CardContent>
-        {items.length === 0 ? (
-          <p className="text-xs italic text-muted-foreground">{empty}</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {items.map((item) => (
-              <li key={item.id} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="whitespace-pre-wrap text-sm leading-6">
-                      {policyFullText({ policy: item.policy, body: item.body })}
-                    </p>
-                    {"evaluationKind" in item ? (
-                      <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-muted-foreground">
-                        <span>{item.evaluationKind}</span>
-                        <span>{item.predicateKind}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                  <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
-                    {item.lifecycle ?? "active"}
-                  </span>
-                  {editHrefBase ? (
-                    <Link
-                      to={`${editHrefBase}/${item.id}/edit`}
-                      className="neu-button shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
-                    >
-                      Modify
-                    </Link>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+        <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
+          {item.lifecycle ?? "active"}
+        </span>
+        {canEdit ? (
+          <Link
+            to={`/${handle}/policies/${item.id}/edit`}
+            className="neu-button shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
+          >
+            Modify
+          </Link>
+        ) : null}
+      </div>
+    </li>
   );
 }
 
-function toGuidanceArticle(row: ArticleRow): GuidanceArticleItem {
+function PolicyView({ item }: { item: PolicyItem }) {
+  const predicate = item.predicate;
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <span className="neu-surface inline-block rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        {POLICY_KIND_LABEL[item.kind]}
+      </span>
+      {predicate && isDeterministicPredicate(predicate) ? (
+        <div className="space-y-1">
+          <p className="text-sm font-semibold leading-6">{deterministicHeadline(predicate)}</p>
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
+            {deterministicParts(predicate).map((part) => (
+              <div key={part.label} className="contents">
+                <dt className="text-muted-foreground">{part.label}</dt>
+                <dd className="font-mono text-foreground">{part.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : (
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Agent instruction:
+          </p>
+          <p className="text-sm leading-6">
+            {predicate ? (agentInstructionOf(predicate) ?? "") : ""}
+          </p>
+        </div>
+      )}
+      {item.body ? (
+        <p className="whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{item.body}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function toPolicyItem(row: PolicyRow): PolicyItem {
+  const data = row.data ?? {};
+  const kind: PolicyKind =
+    row.kind === "deterministic" || row.kind === "probabilistic"
+      ? row.kind
+      : data.kind === "deterministic" || data.kind === "probabilistic"
+        ? data.kind
+        : "suggestion";
+  const predicate =
+    data.predicate && typeof data.predicate === "object"
+      ? (data.predicate as PolicyPredicate)
+      : null;
   return {
     id: row.id,
-    policy: row.policy,
+    kind,
+    predicate,
     lifecycle: row.lifecycle,
     createdAt: toIso(row.created_at),
     body: row.body_md ?? "",
-  };
-}
-
-function toNodeAuthoringArticle(row: ArticleRow): NodeAuthoringArticleItem {
-  const fm = row.data ?? {};
-  const predicate =
-    fm.predicate && typeof fm.predicate === "object"
-      ? (fm.predicate as Record<string, unknown>)
-      : {};
-  return {
-    ...toGuidanceArticle(row),
-    evaluationKind: fm.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic",
-    predicateKind: typeof predicate.kind === "string" ? predicate.kind : "unknown",
   };
 }
 

@@ -136,7 +136,10 @@ select {
 }
 
 .doco-shell-body {
-  flex-direction: column;
+  /* Lay Señor Doco out in a row beside the page, and anchor the overlay
+     drawer + backdrop that take over below the side-rail breakpoint. */
+  position: relative;
+  flex-direction: row;
 }
 
 .doco-shell-main {
@@ -144,26 +147,53 @@ select {
 }
 
 .senor-doco-rail {
-  width: 100%;
-  height: var(--senor-doco-stack-height);
-  border-right-width: 0;
-  border-bottom-width: 1px;
+  width: var(--senor-doco-current-width);
+  height: 100%;
+}
+
+/* Below the 640px side-rail breakpoint the expanded rail never stacks
+   in flow (which squeezed the page into a sliver); it floats over the
+   page as an overlay drawer. The collapsed 32px strip keeps its in-flow
+   width so it stays a reopen handle. */
+.senor-doco-rail:not([data-collapsed="true"]) {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  /* Above the app's top page-content layer (the z-[100] node/edge dialog),
+     so the open drawer is a true modal and the dialog can't punch through
+     it on narrow screens. */
+  z-index: 120;
+  box-shadow: 8px 0 32px rgb(0 0 0 / 28%);
+}
+
+/* Dimming scrim behind the overlay drawer. Rendered only while the drawer
+   is open; clicking anywhere on it collapses the rail. Sits above the
+   z-[100] dialog layer (so it dims it) but below the drawer itself. */
+.senor-doco-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  border: 0;
+  padding: 0;
+  background: rgb(0 0 0 / 45%);
+  cursor: pointer;
 }
 
 .org-home-layout-grid {
   grid-template-columns: minmax(0, 1fr);
 }
 
-@media (min-width: 840px) {
-  .doco-shell-body {
-    flex-direction: row;
+@media (min-width: 640px) {
+  /* Side-rail mode: the rail sits in flow beside the page, never as an
+     overlay, and the dimming scrim is gone. */
+  .senor-doco-rail:not([data-collapsed="true"]) {
+    position: static;
+    z-index: auto;
+    box-shadow: none;
   }
 
-  .senor-doco-rail {
-    width: var(--senor-doco-current-width);
-    height: 100%;
-    border-right-width: 1px;
-    border-bottom-width: 0;
+  .senor-doco-backdrop {
+    display: none;
   }
 }
 

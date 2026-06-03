@@ -205,8 +205,7 @@ export async function loader({
              FROM nodes
             WHERE id = ANY($1::text[])
               AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'state', 'reference')
-           UNION ALL SELECT id, policy AS label, lifecycle FROM guidance_policies WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, policy AS label, lifecycle FROM node_authoring_policies WHERE id = ANY($1::text[])`,
+           UNION ALL SELECT id, COALESCE(NULLIF(data->'predicate'->>'agent_instruction', ''), kind, 'policy') AS label, lifecycle FROM policies WHERE id = ANY($1::text[])`,
           [entityIds],
         );
         for (const r of entityLabelRows.rows) {

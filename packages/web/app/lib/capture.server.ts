@@ -10,10 +10,13 @@ import {
   withTransaction,
 } from "@doco/db";
 import {
-  type AuthoringPredicate,
   BLOCKED_NODE_JSON_EDGE_FIELD_SET,
+  type DeterministicPredicate,
   EDGE_TYPES,
+  type NodeType,
+  type PolicyPredicate,
   generateUlid,
+  summarizePredicate,
 } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
@@ -1084,8 +1087,7 @@ export type NodeTypeName =
   | "decision"
   | "intent"
   | "rule"
-  | "guidance_policy"
-  | "node_authoring_policy"
+  | "policy"
   | "action"
   | "log"
   | "eval"
@@ -1179,15 +1181,10 @@ export async function updateEntity(opts: {
     // long-form markdown body.
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
-  } else if (!typeNamedColumn && "policy" in normalizedPatch) {
-    // Policies (the only non-typeNamedColumn entity reaching this
-    // PATCH path — NodeTypeName doesn't include "principal", which
-    // has its own dedicated route).
-    setScalar(
-      "policy",
-      typeof normalizedPatch.policy === "string" ? normalizedPatch.policy.trim() : undefined,
-    );
   }
+  // Policies carry no type-named prose column: their `kind`, `predicate`,
+  // `on_violation`, and `fires_when_node_lifecycle` flow through the generic
+  // data-jsonb loop below; `body_md` is handled via the `isMd` body path.
   if (normalizedPatch.lifecycle !== undefined) {
     const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "active");
     if (typeof lifecycle !== "string") return lifecycle;
@@ -1213,7 +1210,6 @@ export async function updateEntity(opts: {
     "deprecated",
     "body_md",
     "body_md_append",
-    "policy",
     "created_by_user_id",
     // Slug is not a node data field.
     "slug",
@@ -1819,41 +1815,30 @@ export async function captureRule(
 
 // ─── Policies ───────────────────────────────────────────────────────────
 
-export interface GuidancePolicyDraft {
-  /** Required: one-line rule statement. */
-  policy: string;
-  /** Optional markdown body. Defaults to the policy so the article is readable. */
+export interface PolicyDraft {
+  /** Required: the standalone classifier. */
+  kind: "suggestion" | "deterministic" | "probabilistic";
+  /**
+   * suggestion / probabilistic → the single natural-language instruction for
+   * the agent / LLM judge. Required for those kinds.
+   */
+  agent_instruction?: string;
+  /**
+   * deterministic → the structured check, keyed by `sub_kind` (an object or a
+   * JSON string). Required for deterministic.
+   */
+  predicate?: DeterministicPredicate | string;
+  /** Optional node-type scope for a probabilistic check. */
+  when_node_type?: string[];
+  fires_when_node_lifecycle?: string[];
+  on_violation?: "block" | "warn" | "log";
+  /** Optional markdown body (long-form rationale). */
   body_md?: string;
-  /** Optional: principal id who authored the article. */
+  /** Optional: principal id who authored the policy. */
   authored_by_principal_id?: string;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
   /** Optional: defaults to "active". */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export interface NodeAuthoringPolicyDraft {
-  /** Required: one-line rule statement that describes the check. */
-  policy: string;
-  /** Required: deterministic structural check or probabilistic LLM check. */
-  evaluation_kind: "deterministic" | "probabilistic";
-  /**
-   * Deterministic articles accept an AuthoringPredicate object (or JSON
-   * string) whose kind is not "probabilistic".
-   */
-  predicate?: AuthoringPredicate | string;
-  /**
-   * Probabilistic articles may pass a plain spec; it is stored as
-   * { kind: "probabilistic", spec }.
-   */
-  spec?: string;
-  fires_when_node_lifecycle?: string[];
-  on_violation?: "block" | "warn" | "log";
-  body_md?: string;
-  authored_by_principal_id?: string;
-  created_by_user_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -1876,7 +1861,7 @@ async function resolvePolicyAuthor(draft: {
   return assertNotUserId(value, "authored_by_principal_id") ?? value;
 }
 
-function parsePredicate(value: AuthoringPredicate | string | undefined): unknown {
+function parsePredicate(value: DeterministicPredicate | string | undefined): unknown {
   if (typeof value !== "string") return value;
   try {
     return JSON.parse(value) as unknown;
@@ -1885,55 +1870,34 @@ function parsePredicate(value: AuthoringPredicate | string | undefined): unknown
   }
 }
 
-function normalizeNodeAuthoringPredicate(
-  draft: NodeAuthoringPolicyDraft,
-): AuthoringPredicate | CaptureError {
-  if (draft.evaluation_kind === "probabilistic") {
-    const spec =
-      typeof draft.spec === "string" && draft.spec.trim().length > 0
-        ? draft.spec.trim()
-        : typeof draft.predicate === "object" &&
-            draft.predicate !== null &&
-            draft.predicate.kind === "probabilistic"
-          ? draft.predicate.spec.trim()
-          : "";
-    if (!spec) return { error: "spec is required for probabilistic node_authoring_policies." };
-    return { kind: "probabilistic", spec };
-  }
-
+function normalizeDeterministicPredicate(
+  draft: PolicyDraft,
+): DeterministicPredicate | CaptureError {
   const parsed = parsePredicate(draft.predicate);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return {
-      error: "predicate must be a JSON object for deterministic node_authoring_policies.",
-    };
+    return { error: "predicate must be a JSON object for deterministic policies." };
   }
-  const predicate = parsed as AuthoringPredicate;
-  if (predicate.kind === "probabilistic") {
-    return {
-      error:
-        "deterministic node_authoring_policies cannot use a probabilistic predicate; choose probabilistic instead.",
-    };
-  }
-  if (typeof predicate.kind !== "string" || predicate.kind.length === 0) {
-    return { error: "predicate.kind is required." };
+  const predicate = parsed as DeterministicPredicate;
+  if (typeof predicate.sub_kind !== "string" || predicate.sub_kind.length === 0) {
+    return { error: "predicate.sub_kind is required for deterministic policies." };
   }
   const edgeTypeError = validateEdgeTypeReference(predicate);
   if (edgeTypeError) return edgeTypeError;
   return predicate;
 }
 
-function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError | null {
+function validateEdgeTypeReference(predicate: DeterministicPredicate): CaptureError | null {
   const edgeType = predicateEdgeType(predicate);
   if (edgeType === null) return null;
   if (typeof edgeType !== "string" || edgeType.length === 0) {
-    return { error: `predicate.edge_type is required for \`${predicate.kind}\`.` };
+    return { error: `predicate.edge_type is required for \`${predicate.sub_kind}\`.` };
   }
   if (!EDGE_TYPE_SET.has(edgeType)) {
     return {
       error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type. Valid edge types: ${EDGE_TYPES.join(", ")}.`,
     };
   }
-  if (predicate.kind === "requires_edge_role") {
+  if (predicate.sub_kind === "requires_edge_role") {
     const edgeRole = predicate.edge_role;
     if (typeof edgeRole !== "string" || edgeRole.trim().length === 0) {
       return { error: "predicate.edge_role is required for `requires_edge_role`." };
@@ -1942,12 +1906,12 @@ function validateEdgeTypeReference(predicate: AuthoringPredicate): CaptureError 
   return null;
 }
 
-function predicateEdgeType(predicate: AuthoringPredicate): string | null {
+function predicateEdgeType(predicate: DeterministicPredicate): string | null {
   if (
-    predicate.kind !== "requires_edge" &&
-    predicate.kind !== "requires_edge_role" &&
-    predicate.kind !== "forbids_edge" &&
-    predicate.kind !== "graph-completeness"
+    predicate.sub_kind !== "requires_edge" &&
+    predicate.sub_kind !== "requires_edge_role" &&
+    predicate.sub_kind !== "forbids_edge" &&
+    predicate.sub_kind !== "graph-completeness"
   ) {
     return null;
   }
@@ -1959,12 +1923,11 @@ export interface PolicyCaptureExtras {
   authoring?: AuthoringWriteContext;
 }
 
-type PolicyType = "guidance_policy" | "node_authoring_policy";
-
 interface PolicyPayload {
   id: string;
-  entityType: PolicyType;
-  policy: string;
+  entityType: "policy";
+  /** Human label derived from the predicate — used in audit + footer surfaces. */
+  label: string;
   lifecycle: string;
   fm: Record<string, unknown>;
   body: string;
@@ -1973,63 +1936,44 @@ interface PolicyPayload {
   now: string;
 }
 
-async function buildGuidancePolicyPayload(
+async function buildPolicyPayload(
   docoId: string,
-  draft: GuidancePolicyDraft,
+  draft: PolicyDraft,
   _extras: PolicyCaptureExtras,
 ): Promise<PolicyPayload | CaptureError> {
-  if (!draft.policy?.trim()) return { error: "policy is required." };
-  const author = await resolvePolicyAuthor(draft);
-  if (author !== null && typeof author !== "string") return author;
-
-  const id = `guidance_policy_${generateUlid()}`;
-  const policy = draft.policy.trim();
-  const now = new Date().toISOString();
-  const status = policyLifecycleAttrs(draft);
-  if ("error" in status) return status;
-  const lifecycle = String(status.lifecycle);
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    policy_kind: "guidance",
-    policy,
-    ...(author ? { authored_by: author } : {}),
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return {
-    id,
-    entityType: "guidance_policy",
-    policy,
-    lifecycle,
-    fm,
-    body: draft.body_md?.trim() || policy,
-    authorId: author,
-    createdById,
-    now,
-  };
-}
-
-async function buildNodeAuthoringPolicyPayload(
-  docoId: string,
-  draft: NodeAuthoringPolicyDraft,
-  _extras: PolicyCaptureExtras,
-): Promise<PolicyPayload | CaptureError> {
-  if (!draft.policy?.trim()) return { error: "policy is required." };
-  if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
-    return { error: "evaluation_kind must be deterministic or probabilistic." };
+  if (
+    draft.kind !== "suggestion" &&
+    draft.kind !== "deterministic" &&
+    draft.kind !== "probabilistic"
+  ) {
+    return { error: "kind must be suggestion, deterministic, or probabilistic." };
   }
   const author = await resolvePolicyAuthor(draft);
   if (author !== null && typeof author !== "string") return author;
-  const predicate = normalizeNodeAuthoringPredicate(draft);
-  if ("error" in predicate) return predicate;
 
-  const id = `node_authoring_policy_${generateUlid()}`;
-  const policy = draft.policy.trim();
+  // Build the predicate per kind: deterministic carries a structured check,
+  // suggestion / probabilistic carry a single agent instruction.
+  let predicate: PolicyPredicate;
+  if (draft.kind === "deterministic") {
+    const det = normalizeDeterministicPredicate(draft);
+    if ("error" in det) return det;
+    predicate = det;
+  } else {
+    const instruction = draft.agent_instruction?.trim();
+    if (!instruction) {
+      return { error: `agent_instruction is required for ${draft.kind} policies.` };
+    }
+    const whenNodeType =
+      draft.kind === "probabilistic" && Array.isArray(draft.when_node_type)
+        ? (draft.when_node_type.filter((v) => typeof v === "string" && v.length > 0) as NodeType[])
+        : [];
+    predicate = {
+      agent_instruction: instruction,
+      ...(whenNodeType.length > 0 ? { when_node_type: whenNodeType } : {}),
+    };
+  }
+
+  const id = `policy_${generateUlid()}`;
   const now = new Date().toISOString();
   const status = policyLifecycleAttrs(draft);
   if ("error" in status) return status;
@@ -2042,13 +1986,12 @@ async function buildNodeAuthoringPolicyPayload(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    policy_kind: "node_authoring",
-    evaluation_kind: draft.evaluation_kind,
-    policy,
+    kind: draft.kind,
     predicate,
     ...(author ? { authored_by: author } : {}),
     ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
-    on_violation: draft.on_violation ?? "block",
+    // Suggestions are advisory — `on_violation` is meaningless for them.
+    ...(draft.kind !== "suggestion" ? { on_violation: draft.on_violation ?? "block" } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
@@ -2056,8 +1999,8 @@ async function buildNodeAuthoringPolicyPayload(
 
   return {
     id,
-    entityType: "node_authoring_policy",
-    policy,
+    entityType: "policy",
+    label: summarizePredicate(predicate),
     lifecycle,
     fm,
     body: draft.body_md?.trim() ?? "",
@@ -2067,17 +2010,17 @@ async function buildNodeAuthoringPolicyPayload(
   };
 }
 
-export async function captureGuidancePolicy(
+export async function capturePolicy(
   docoDir: string,
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  draft: GuidancePolicyDraft,
+  draft: PolicyDraft,
   docoHost?: string,
   extras: PolicyCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildGuidancePolicyPayload(docoId, draft, extras);
+  const payload = await buildPolicyPayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   const pred = await enforceAndPersist({
@@ -2101,7 +2044,7 @@ export async function captureGuidancePolicy(
     actorId: payload.createdById,
     entity_type: payload.entityType,
     entity_id: payload.id,
-    label: payload.policy,
+    label: payload.label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, payload.id);
 
@@ -2112,71 +2055,9 @@ export async function captureGuidancePolicy(
     docoSlug,
     entityType: payload.entityType,
     id: payload.id,
-    label: payload.policy,
+    label: payload.label,
     docoHost,
-    ops: [{ kind: "added", summary: payload.policy }],
-    duration_ms,
-    authoringPoliciesPassed: authoringPoliciesPassed(pred),
-  });
-  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
-  return {
-    ok: true,
-    id: payload.id,
-    path: syntheticPath(payload.entityType, payload.id),
-    footer_lines,
-    duration_ms,
-    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-  };
-}
-
-export async function captureNodeAuthoringPolicy(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: NodeAuthoringPolicyDraft,
-  docoHost?: string,
-  extras: PolicyCaptureExtras = {},
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  const payload = await buildNodeAuthoringPolicyPayload(docoId, draft, extras);
-  if ("error" in payload) return payload;
-
-  const pred = await enforceAndPersist({
-    docoId,
-    fm: payload.fm,
-    entityType: payload.entityType,
-    id: payload.id,
-    body: payload.body,
-    authoring: extras.authoring,
-  });
-  if (pred.blocking) {
-    return {
-      error: `Authoring policy violation: ${pred.blocking.reason}`,
-      policy_id: pred.blocking.policy_id,
-      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
-    };
-  }
-  emitAuditForCreate({
-    docoDir,
-    docoId,
-    actorId: payload.createdById,
-    entity_type: payload.entityType,
-    entity_id: payload.id,
-    label: payload.policy,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, payload.id);
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = await renderOperationLines({
-    docoId,
-    ownerSlug,
-    docoSlug,
-    entityType: payload.entityType,
-    id: payload.id,
-    label: payload.policy,
-    docoHost,
-    ops: [{ kind: "added", summary: payload.policy }],
+    ops: [{ kind: "added", summary: payload.label }],
     duration_ms,
     authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
@@ -2199,15 +2080,13 @@ export async function captureNodeAuthoringPolicy(
 export async function transitionPolicyLifecycle(opts: {
   scope: "doco";
   scopeId: string;
-  entityType: "guidance_policy" | "node_authoring_policy";
   policyId: string;
   newLifecycle: "active" | "retired";
   supersededBy?: string;
   actorId: string | null;
   reason?: string;
 }): Promise<{ ok: true } | CaptureError> {
-  const table =
-    opts.entityType === "guidance_policy" ? "guidance_policies" : "node_authoring_policies";
+  const table = "policies";
   const scopeCol = "doco_id";
 
   const before = await withClient(async (c) => {
@@ -2249,7 +2128,7 @@ export async function transitionPolicyLifecycle(opts: {
     docoDir: "",
     docoId: opts.scopeId,
     by: opts.actorId,
-    entity_type: opts.entityType,
+    entity_type: "policy",
     entity_id: opts.policyId,
     op: "lifecycle.transition",
     before: { lifecycle: before.lifecycle ?? "active" },
@@ -2272,29 +2151,24 @@ export async function transitionPolicyLifecycle(opts: {
 export async function loadPolicyForEdit(opts: {
   scope: "doco";
   scopeId: string;
-  entityType: "guidance_policy" | "node_authoring_policy";
   policyId: string;
 }): Promise<
   | {
       ok: true;
-      policy: string;
       body_md: string;
       lifecycle: string;
       data: Record<string, unknown>;
     }
   | CaptureError
 > {
-  const table =
-    opts.entityType === "guidance_policy" ? "guidance_policies" : "node_authoring_policies";
   const scopeCol = "doco_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
-      policy: string | null;
       body_md: string | null;
       lifecycle: string | null;
       data: Record<string, unknown> | null;
     }>(
-      `SELECT policy, body_md, lifecycle, data FROM ${table}
+      `SELECT body_md, lifecycle, data FROM policies
         WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.policyId, opts.scopeId],
     );
@@ -2303,7 +2177,6 @@ export async function loadPolicyForEdit(opts: {
   if (!row) return { error: `Policy ${opts.policyId} not found.`, status: 404 };
   return {
     ok: true,
-    policy: row.policy ?? "",
     body_md: row.body_md ?? "",
     lifecycle: row.lifecycle ?? "active",
     data: row.data ?? {},

@@ -108,9 +108,8 @@ export async function getDocoLevelGrant(
  * set) via `canWriteType` — owners write everything; otherwise the type
  * must be covered by the wildcard or named explicitly.
  *
- * Policy types (guidance_policy, node_authoring_policy) are NOT
- * write-gateable content — they configure the Doco and stay owner-only,
- * matching `canEditPolicies`. Any non-writable type therefore requires
+ * The `policy` type is NOT write-gateable content — policies configure the
+ * Doco and stay owner-only, matching `canEditPolicies`. Any non-writable type therefore requires
  * the owner role.
  *
  * This does NOT enforce the OAuth-token scope-down; for bearer-auth API
@@ -515,6 +514,30 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
     ids.add(id);
   }
   return Array.from(ids);
+}
+
+/**
+ * The principal's accessible Docos, narrowed to a single workspace. Used by
+ * the Slack integration: a Slack team is bound to one Doco workspace, so
+ * Señor Doco may only reach the linked user's Docos INSIDE that workspace —
+ * never their whole account. Always a subset of
+ * `listAccessibleDocoIdsForPrincipal`; returns [] for an empty workspace id
+ * (fail closed — an unbound team grants no personal access).
+ */
+export async function listAccessibleDocoIdsInWorkspace(
+  principalId: string,
+  workspaceId: string,
+): Promise<string[]> {
+  if (!workspaceId) return [];
+  const all = await listAccessibleDocoIdsForPrincipal(principalId);
+  if (all.length === 0) return [];
+  return withClient(async (c) => {
+    const r = await c.query<{ id: string }>(
+      "SELECT id FROM docos WHERE id = ANY($1::text[]) AND workspace_id = $2",
+      [all, workspaceId],
+    );
+    return r.rows.map((row) => String(row.id));
+  });
 }
 
 /**

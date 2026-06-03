@@ -69,7 +69,7 @@ beforeEach(async () => {
         principals,
         workspaces,
         docos,
-        node_authoring_policies,
+        policies,
         actions,
         intents,
         edges

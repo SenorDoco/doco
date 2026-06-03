@@ -2,46 +2,49 @@
  * Default Doco templates (ADR-082; v7 reshape per
  * decision_01KRRR5BQ16ASY8HQEE0V499YG).
  *
- * The framework ships curated templates. `global` is the policies
- * template; the others describe common Doco shapes such as business
- * processes, glossaries, org charts, and decision-record collections.
- * Template names are plain handles.
+ * The framework ships curated templates describing common Doco shapes
+ * such as business processes, glossaries, org charts, and decision-record
+ * collections. Template names are plain handles.
  *
  * Each template ships:
  * - `description` — the description text rendered in the picker and
  *   bootstrap manifest.
- * - `policies` — at install time entries seed Doco-level
- *   policies: prose-only entries become guidance_policies;
- *   predicate-bearing entries become node_authoring_policies.
- * - `allowedNodeTypes` (optional) — a Doco-level allowlist. `global`
- *   ships with policy types so the Doco's policy set is kept
- *   separate from domain Rule nodes.
+ * - `policies` — at install time each entry seeds one row in the unified
+ *   `policies` table, classified by a standalone `kind` (translated in
+ *   host.ts): a prose-only entry becomes a `suggestion` (advisory; the
+ *   prose IS the agent instruction); an entry with a `probabilistic`
+ *   predicate becomes a `probabilistic` policy (LLM-judged; the `spec` is
+ *   the agent instruction); a `descriptive` predicate folds into a
+ *   `suggestion` (recorded, not enforced); any other predicate becomes a
+ *   `deterministic` policy (engine-checked, keyed by `sub_kind`).
  *
- * Template policy entries seed Doco-level policies, split purely by
- * predicate-presence: prose-only entries become guidance_policies,
- * predicate-bearing entries become node_authoring_policies (see
- * host.ts). The historical Rule.kind overloading (guidance / authoring /
- * tagged) is gone — meta-constraints are policies, not Rule nodes
+ * The historical guidance_policies / node_authoring_policies split — and
+ * the older Rule.kind overloading (guidance / authoring / tagged) — are
+ * both gone: every policy now lives in the one `policies` table, and
+ * meta-constraints are policies, not Rule nodes
  * (decision_01KRRR5BQ16ASY8HQEE0V499YG).
  */
 import type { AuthoringPredicate, Lifecycle } from "@doco/shared";
 
 export interface TemplatePolicy {
-  /** The one-line rule statement. Renamed from `summary` to `policy`
-   *  in migration 038 to match the migration-023 type-named-prose
-   *  pattern. For predicate-bearing policies this is the reason text
-   *  that accompanies the structured check; for guidance policies
-   *  this is the policy itself. */
+  /** The one-line statement of the policy. For a prose-only entry this IS
+   *  the policy — it seeds the `suggestion`'s agent instruction. For a
+   *  `probabilistic` entry the `predicate.spec` is what the judge and
+   *  agents actually see, so this doubles as the in-code summary. For a
+   *  `deterministic` entry it is human-readable documentation of the
+   *  structured check. */
   policy: string;
   /**
-   * Engine-readable predicate. When set, the seeder creates a
-   * node_authoring_policy so the check can run during capture.
+   * Engine-readable predicate. When set, the seeder records a
+   * `deterministic` policy — or a `probabilistic` one, for a
+   * `probabilistic` predicate — so the check can run at capture time.
    */
   predicate?: AuthoringPredicate;
   /**
-   * v7: when set, the engine only fires this policy against
-   * candidates whose `lifecycle` is in the list. Used by completeness
-   * rules that skip drafting nodes during mid-construction.
+   * When set, the engine only fires this policy against candidates whose
+   * `lifecycle` is in the list. Completeness and quality gates use this to
+   * hold a node to the bar once it is proposed (`queued`) and accepted
+   * (`active`) while leaving a `drafting` sketch unjudged.
    */
   fires_when_node_lifecycle?: Lifecycle[];
   /**
@@ -95,23 +98,6 @@ export interface DocoTemplate {
    */
   perspectives?: TemplatePerspectiveAttachment[];
   /**
-   * Doco-level allowlist for captured node types. `global` keeps the
-   * Doco policy set focused by accepting only policy types.
-   */
-  allowedNodeTypes?: (
-    | "decision"
-    | "intent"
-    | "action"
-    | "rule"
-    | "guidance_policy"
-    | "node_authoring_policy"
-    | "log"
-    | "eval"
-    | "reference"
-    | "idea"
-    | "state"
-  )[];
-  /**
    * When set, captures into a Doco created from this template default
    * the new node's `lifecycle` to this value unless the author
    * overrides with an explicit flag. The business-processes template
@@ -151,6 +137,19 @@ function decisionRecordQualitySpec(opts: {
   ].join(" ");
 }
 
+// Completeness, uniqueness, quality, and domain-membership judgments hold a
+// decision record to the decision-record bar from the moment it is *proposed*
+// (`queued`) and keep holding it once it is *accepted* (`active`). A
+// `drafting` record is an unjudged sketch — its `chosen` resolution may still
+// be blank — so these gates skip it: an author sketches freely in `drafting`
+// and queues (proposes) the record once it states a question, a choice, and
+// the alternatives. Membership stays gated too, because a half-formed sketch
+// is hard to classify by domain; once a record is complete enough to propose,
+// it is complete enough to place. The node-type allowlist is the deliberate
+// exception — it is a structural invariant about what may exist in the Doco at
+// all, not a property of an in-force record, so it fires at every stage.
+const PROPOSED_OR_ACCEPTED: Lifecycle[] = ["queued", "active"];
+
 function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): TemplatePolicy[] {
   return [
     {
@@ -161,6 +160,7 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
         spec: opts.decisionMembershipSpec,
         when_node_type: ["decision"],
       },
+      fires_when_node_lifecycle: PROPOSED_OR_ACCEPTED,
     },
     {
       policy:
@@ -172,25 +172,25 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
     },
     {
       policy:
-        "Every active decision-record Decision declares `question`, `chosen`, and `alternatives`: the issue being decided, the selected resolution, and the options considered.",
+        "Every proposed or active decision-record Decision declares `question`, `chosen`, and `alternatives`: the issue being decided, the selected resolution, and the options considered. A `drafting` sketch is exempt — its `chosen` may stay blank while the author is still thinking.",
       predicate: {
         kind: "requires_field",
         fields: ["question", "chosen", "alternatives"],
         when_node_type: ["decision"],
       },
-      fires_when_node_lifecycle: ["active"],
+      fires_when_node_lifecycle: PROPOSED_OR_ACCEPTED,
     },
     {
       on_violation: "warn",
       policy:
-        "Active decision-record Decisions should have unique `question` values. If the same question is revisited, retire or supersede the old record and link it to the successor rather than silently rewriting history.",
+        "Proposed and active decision-record Decisions should have unique `question` values. If the same question is revisited, retire or supersede the old record and link it to the successor rather than silently rewriting history.",
       predicate: {
         kind: "unique_field",
         field: "question",
         case_fold: true,
         when_node_type: ["decision"],
       },
-      fires_when_node_lifecycle: ["active"],
+      fires_when_node_lifecycle: PROPOSED_OR_ACCEPTED,
     },
     {
       on_violation: "warn",
@@ -203,11 +203,15 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
           failure: opts.qualityFailure,
         }),
       },
-      fires_when_node_lifecycle: ["active"],
+      fires_when_node_lifecycle: PROPOSED_OR_ACCEPTED,
     },
     {
       policy:
-        "Decision records are append-only once active: correct or replace them by retiring or superseding the old Decision and creating a successor, not by editing away the original context, rationale, or rejected alternatives.",
+        "Lifecycle is the decision's status. `drafting` is a private sketch — the `chosen` resolution can stay blank while you think. Queue (propose) the record to put it up for review: completeness and quality gates begin at `queued`, so a proposal already reads as a real decision record. `active` marks the decision accepted and in force; `retired` deprecates or supersedes it. Capture rough thinking as `drafting`, propose it as `queued`, accept it by activating, and never edit an accepted record in place — supersede it.",
+    },
+    {
+      policy:
+        "Decision records are append-only once accepted (active): while a record is still `drafting` or `queued` you may revise it freely, but after it goes `active` you correct or replace it by retiring or superseding the old Decision and creating a successor — not by editing away the original context, rationale, or rejected alternatives.",
     },
     {
       policy:
@@ -221,45 +225,27 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
   ];
 }
 
+/**
+ * Business-processes fires its completeness + shape policies on the two
+ * *committed* lifecycle stages — `queued` (ready, awaiting activation) and
+ * `active` (in force) — and exempts only `drafting`.
+ *
+ * Rationale (the `queued` stage): the node lifecycle is now
+ * `drafting → queued → active → retired`. A node an author has explicitly
+ * `queue`d is asserting it is ready to go live, so it must already satisfy
+ * the same actor (`performed_by`), Intent (`serves`), and forward
+ * `flows_to` wiring an `active` node does — otherwise "ready" is a lie the
+ * BPMN renderer can't draw. Only a `drafting` sketch may be incomplete.
+ *
+ * This is scoped to business-processes on purpose: it is the one template
+ * that defaults new nodes to `drafting` and carries a real
+ * draft → queue → activate authoring story. Templates that default new
+ * nodes straight to `active` (decision-records, glossaries, org-chart)
+ * rarely pass through `queued`, so they still fire on `["active"]`.
+ */
+const BUSINESS_PROCESS_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
+
 export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
-  {
-    // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the framework-seeded
-    // template renamed to "global"; template names
-    // are plain handles.
-    name: "global",
-    label: "global policies",
-    icon: "🌐",
-    description:
-      "Your doco's global policies — guidance policies and node-authoring policies that govern how contributors work.",
-    allowedNodeTypes: ["guidance_policy", "node_authoring_policy"],
-    policies: [
-      {
-        policy:
-          "Capture each meaningful decision, correction, and load-bearing implementation outcome in Doco.",
-      },
-      {
-        policy: "If you're an agent, check with your client before changing the policies.",
-      },
-      {
-        policy:
-          "AI agents: document every explicit rule and decision from the project owner, and especially every correction. Corrections are the highest-signal moments — they encode preferences that aren't visible in the code or docs. Capture them in Doco the same turn they happen, so the next agent (or the next session of you) doesn't repeat the mistake.",
-      },
-      {
-        policy:
-          "Nothing is ever deleted — nodes and edges are retired, not removed, and every prior version stays recoverable. When you retire or change something load-bearing, say why in the change's reason so the history explains itself to whoever reads it next.",
-      },
-    ],
-  },
-  {
-    // Catch-all template for important Doco-wide decisions that don't
-    // naturally fit a more specific subject area.
-    name: "important",
-    label: "important",
-    icon: "⭐",
-    description:
-      "Important doco-wide decisions that don't naturally fit a more specific subject area.",
-    policies: [],
-  },
   {
     name: "architectural-decisions",
     label: "Architectural decisions",
@@ -271,7 +257,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       decisionMembershipPolicy:
         "A Decision belongs in architectural-decisions when it records an architectural decision: system structure, API or integration boundaries, infrastructure, quality attributes, operational constraints, security/compliance architecture, implementation evidence, or an architecture validation check.",
       decisionMembershipSpec:
-        "PASS for ADR Decisions, technology-selection Decisions, and security/privacy architecture Decisions that record system structure, API or integration boundaries, infrastructure, quality attributes, operational constraints, compliance architecture, implementation evidence, or architecture validation, including Decisions supported by References and Evals. FAIL for product roadmap choices, UI design choices, raw incidents, implementation tasks without architectural consequence, or data-definition decisions better owned by data-decisions.",
+        "PASS for ADR Decisions, technology-selection Decisions, and security/privacy architecture Decisions that record system structure, API or integration boundaries, infrastructure, quality attributes, operational constraints, compliance architecture, implementation evidence, or architecture validation, including Decisions supported by References and Evals. FAIL for product roadmap or pricing choices (route to product-decisions), UI or interaction design choices (design-decisions), data-definition or governance decisions (data-decisions), raw incidents, or implementation tasks with no architectural consequence.",
       qualityPolicy:
         "An active architectural Decision reads like an ADR: it states context and problem, decision drivers or quality attributes, options considered, chosen approach, consequences and trade-offs, implementation/migration impact, and the review or rollback trigger.",
       qualityChecklist: [
@@ -303,7 +289,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       decisionMembershipPolicy:
         "A Decision belongs in product-decisions when it records a product decision: target users, problem framing, scope, roadmap priority, launch strategy, pricing/packaging, growth motion, success metrics, experiment interpretation, or a deliberate decision not to build something.",
       decisionMembershipSpec:
-        "PASS for product Decisions about target users, product goals or outcomes, product principles or commitments, customer/research evidence, experiment or metric interpretation, pricing, packaging, roadmap priority, launch strategy, or deliberate decisions not to build something, including Decisions supported by References and Evals. FAIL for engineering implementation choices, visual/interface design details better owned by design-decisions, pure data-governance choices, one-off support events, or unpromoted feature ideas with no decision yet.",
+        "PASS for product Decisions about target users, product goals or outcomes, product principles or commitments, customer/research evidence, experiment or metric interpretation, pricing, packaging, roadmap priority, launch strategy, or deliberate decisions not to build something, including Decisions supported by References and Evals. FAIL for engineering or infrastructure implementation choices (route to architectural-decisions), visual or interaction design details (design-decisions), data-governance or metric-definition choices (data-decisions), one-off support events, or unpromoted feature ideas with no decision yet.",
       qualityPolicy:
         "An active product Decision states the user/customer problem, strategic goal, evidence, assumptions, options considered, chosen product direction, explicit trade-offs, success metric, accountable decision role, and revisit trigger.",
       qualityChecklist: [
@@ -321,7 +307,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       guidance: [
         "Record `we will not do X` product calls when the choice changes scope, user expectations, sales promises, or future roadmap reasoning; negative decisions are often more valuable than shipped-feature notes.",
         "Use Evals for experiments, A/B tests, metric reviews, or qualitative checks that prove whether the product Decision worked, and link follow-up Decisions when the evidence changes the course.",
-        "Product Decisions separate reversible experiments from committed strategy: two-way-door tests can stay drafting or time-boxed, while one-way-door commitments should be active with explicit approval and revisit criteria.",
+        "Product Decisions separate reversible experiments from committed strategy: a reversible two-way-door test can sit in `queued` (proposed and time-boxed) while you gather evidence, while a one-way-door commitment moves to `active` only with explicit approval and a revisit trigger.",
         "Use References for customer interviews, tickets, analytics, opportunity assessments, pricing research, launch notes, and competitive evidence rather than burying source material inside the Decision prose.",
       ],
     }),
@@ -337,7 +323,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       decisionMembershipPolicy:
         "A Decision belongs in design-decisions when it records a design decision: user journeys, interaction patterns, service flows, content strategy, accessibility behavior, design-system conventions, visual hierarchy with product meaning, research findings, prototypes, or usability validation.",
       decisionMembershipSpec:
-        "PASS for design Decisions about user journeys, interaction patterns, service flows, content strategy, accessibility behavior, design-system conventions, visual hierarchy with product meaning, research findings, prototypes, or usability validation, including Decisions supported by Figma or research References and usability/accessibility Evals. FAIL for raw engineering architecture, product priority calls without UX implications, data governance decisions, or cosmetic preference notes with no user or system rationale.",
+        "PASS for design Decisions about user journeys, interaction patterns, service flows, content strategy, accessibility behavior, design-system conventions, visual hierarchy with product meaning, research findings, prototypes, or usability validation, including Decisions supported by Figma or research References and usability/accessibility Evals. FAIL for backend or infrastructure architecture (route to architectural-decisions), product scope or roadmap priority without UX implications (product-decisions), data governance or schema decisions (data-decisions), or cosmetic preference notes with no user or system rationale.",
       qualityPolicy:
         "An active design Decision states the user journey or service moment, evidence, alternatives considered, chosen pattern, affected states and edge cases, accessibility/content implications, trade-offs, artifacts, and validation plan.",
       qualityChecklist: [
@@ -371,7 +357,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       decisionMembershipPolicy:
         "A Decision belongs in data-decisions when it records a data decision: source-of-truth ownership, canonical metric or entity definitions, schema and contract choices, lineage, quality/freshness targets, retention, privacy classification, access controls, migration/backfill plans, or consumer-impact validation.",
       decisionMembershipSpec:
-        "PASS for data Decisions about source-of-truth ownership, canonical metric or entity definitions, schema and contract choices, lineage, quality/freshness targets, retention, privacy classification, access controls, migration/backfill plans, or consumer-impact validation, including Decisions supported by data contract References and quality or freshness Evals. FAIL for UI design decisions, generic product roadmap choices, pure application architecture with no data ownership/semantics impact, or raw pipeline run Logs.",
+        "PASS for data Decisions about source-of-truth ownership, canonical metric or entity definitions, schema and contract choices, lineage, quality/freshness targets, retention, privacy classification, access controls, migration/backfill plans, or consumer-impact validation, including Decisions supported by data contract References and quality or freshness Evals. FAIL for UI or interaction design decisions (route to design-decisions), product roadmap or pricing choices (product-decisions), pure application or infrastructure architecture with no data ownership or semantics impact (architectural-decisions), or raw pipeline run Logs.",
       qualityPolicy:
         "An active data Decision states the data asset or definition, accountable owner/steward, producers and consumers, source of truth, schema or semantics, privacy/access/retention stance, quality and freshness expectations, lineage, migration/backfill impact, and monitoring/revisit plan.",
       qualityChecklist: [
@@ -396,28 +382,39 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     }),
   },
   {
-    // Glossaries define product and domain language. Each active term
-    // entry is a Decision: `question` names the concept, `chosen` is the
-    // canonical term, and `decision` holds the definition, scope, and
-    // examples. List is the natural authoring surface for terminology.
+    // Glossaries define product and domain language. Each term entry is a
+    // Decision: `question` names the concept, `chosen` is the canonical
+    // headword, `decision` holds the definition, scope, and examples, and
+    // `alternatives` carries aliases / rejected labels.
     //
-    // Term relationships are first-class edges. `relates_to` links
-    // confusable, parent/sub, or homograph terms; `replaces` links a retired
-    // term to its replacement.
+    // Two stages, on purpose. A glossary is a reference work, so a term
+    // entry is either the canonical answer (`active`) or a deprecated one
+    // kept for lookup (`retired`) — exactly the two stages a policy uses.
+    // The framework's other lifecycle stages add nothing here: `queued`
+    // (provisional-but-ready, e.g. an open PR awaiting approval) has no
+    // glossary meaning — a term is either the canonical answer or it isn't —
+    // and `drafting` is just a private scratch state for an unfinished term,
+    // not part of the glossary yet. So a captured term lands `active` (no
+    // `defaultNodeLifecycle` override) and the completeness gates fire on
+    // `active`; a `drafting` stub is exempt until it is activated, and a
+    // `retired` term winds down without re-running the gates. (Contrast
+    // business-processes, which defaults to `drafting` so a flow can be
+    // wired up incrementally.)
+    //
+    // Term relationships are first-class edges: `relates_to` is the
+    // associative "see also" link (confusable, broader/narrower, or
+    // homograph terms); `replaces` links a retired term to its replacement;
+    // `derived_from` cites the external source a borrowed term comes from;
+    // and an Eval `supports` the term it checks.
+    //
+    // The dictionary-styled Glossary perspective is the natural reading
+    // surface for terminology, so a Doco created from this template opens
+    // directly on it. Graph + list defaults stay attached behind.
     name: "glossaries",
     label: "Glossaries",
     icon: "📚",
     description:
       "Document product and domain terminology — canonical terms, definitions, aliases, replacement links, sources, and consistency checks.",
-    // No `defaultNodeLifecycle` override: a glossary term is a
-    // definitional, complete-on-creation node, so a captured term lands
-    // live (`active`) and the term-completeness gates apply right
-    // away. Authors who want to stub a term sketch it explicitly with
-    // `lifecycle: "drafting"`. (Contrast business-processes, which
-    // defaults to `drafting` so a flow can be wired up incrementally.)
-    // The dictionary-styled Glossary perspective is the natural reading
-    // surface for terminology, so a Doco created from this template
-    // opens directly on it. Graph + list defaults stay attached behind.
     perspectives: [{ slug: "glossary", isDefault: true }],
     policies: [
       // ── Membership ──────────────────────────────────────────────
@@ -481,11 +478,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // call replaces three, cutting latency and the misfire surface.
         on_violation: "warn",
         policy:
-          "A glossary term-entry Decision defines exactly one concept with a usable definition. It keeps one concept per entry, its `decision` prose gives a concise definition plus the product/domain scope, and — when the canonical term in `chosen` is itself an acronym or abbreviation — spells out the expanded form and says when the short form is acceptable.",
+          "A glossary term-entry Decision defines exactly one concept with a usable definition. It keeps one concept per entry, its `decision` prose gives a concise definition plus the product/domain scope and at least one example or non-example (never a circular restatement of the headword), and — when the canonical term in `chosen` is itself an acronym or abbreviation — spells out the expanded form and says when the short form is acceptable.",
         predicate: {
           kind: "probabilistic",
           when_node_type: ["decision"],
-          spec: "Judge a glossary term-entry Decision on three aspects; report each failing aspect with a reason, but treat them as warnings, not hard errors. (a) ONE CONCEPT: PASS when the entry defines one concept or one canonical term; FAIL when it defines multiple independent terms, bundles a term with an unrelated policy, or is a catch-all for several concepts. (b) USABLE DEFINITION: PASS when the `decision` prose gives a concise definition AND the product or domain scope where the term applies AND at least one concrete example OR non-example — EITHER an example or a non-example is sufficient, do not require both; FAIL only when one of those three is genuinely absent. (c) ACRONYMS AND ABBREVIATIONS: only inspect the canonical term in `chosen`. If `chosen` is itself an acronym or abbreviation, PASS when the prose expands it at least once and states whether the short form is acceptable in product/docs/UI copy; FAIL when it is left unexpanded. Incidental abbreviations that merely appear in the prose (not the headword) are OUT OF SCOPE — ignore them. If `chosen` is not an acronym, this aspect PASSES.",
+          spec: "Judge a glossary term-entry Decision on three aspects; report each failing aspect with a reason, but treat them as warnings, not hard errors. (a) ONE CONCEPT: PASS when the entry defines one concept or one canonical term; FAIL when it defines multiple independent terms, bundles a term with an unrelated policy, or is a catch-all for several concepts. (b) USABLE DEFINITION: PASS when the `decision` prose gives a concise definition AND the product or domain scope where the term applies AND at least one concrete example OR non-example — EITHER an example or a non-example is sufficient, do not require both; FAIL when one of those three is genuinely absent, or when the prose merely restates the headword instead of explaining it (a circular definition such as `a workspace is a workspace`). (c) ACRONYMS AND ABBREVIATIONS: only inspect the canonical term in `chosen`. If `chosen` is itself an acronym or abbreviation, PASS when the prose expands it at least once and states whether the short form is acceptable in product/docs/UI copy; FAIL when it is left unexpanded. Incidental abbreviations that merely appear in the prose (not the headword) are OUT OF SCOPE — ignore them. If `chosen` is not an acronym, this aspect PASSES.",
         },
         fires_when_node_lifecycle: ["active"],
       },
@@ -528,6 +525,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
 
       // ── Guidance ───────────────────────────────────────────────
       {
+        // The deliberate two-stage stance — see the block comment above.
+        policy:
+          "A glossary is a reference work: a term entry is either the canonical answer (`active`) or a deprecated one kept for lookup (`retired`). Capture a term and it lands `active`; `retire` it when it is superseded, pointing at the successor with a `replaces` edge. You may stub an unfinished term as `drafting` while you work on it, but it is not part of the glossary — and the completeness checks do not apply — until you `activate` it. The framework's `queued` stage has no glossary meaning, so this template stays two-stage like policies do.",
+      },
+      {
         policy:
           "When aliases, synonyms, misleading labels, or rejected labels exist for the same concept, record them in `alternatives`; otherwise omit `alternatives` rather than inventing filler.",
       },
@@ -537,11 +539,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Connect related glossary terms in the graph instead of leaving entries isolated — author a `relates_to` edge to link a term to terms it is easily confused with, its parent or sub-concepts, or the homographs it shares a surface form with, so the vocabulary reads as a navigable network. Change a link by retiring the old edge and adding a new one, not by editing endpoints in place. Deprecation links use `replaces` instead.",
+          'Connect related glossary terms with `relates_to` edges — the associative "see also" link — instead of leaving entries isolated, so the vocabulary reads as a navigable network. Link a term to the ones it is easily confused with, its broader or narrower concepts, and the homographs it shares a surface form with. Change a link by retiring the old edge and adding a new one, not by editing endpoints in place; deprecation links use `replaces` instead.',
       },
       {
         policy:
-          "Borrowed, standards-based, or industry terms cite a Reference when possible. Product-internal terms state that they are product-specific so readers don't mistake them for external standards.",
+          "Borrowed, standards-based, or industry terms cite their source: add a Reference for the external glossary, spec, or doc and link the term to it with a `derived_from` edge. Product-internal terms state that they are product-specific so readers don't mistake them for external standards.",
       },
       {
         policy:
@@ -550,6 +552,10 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         policy:
           "Use Rules for terminology usage policies, such as banned words, capitalization conventions, UI copy constraints, or when two related terms must not be used interchangeably.",
+      },
+      {
+        policy:
+          "Agents read `GET /<handle>/api/authoring-contract.json` for the live field and edge vocabulary, then write terms with `POST /<handle>/api/changesets.json` — creating the term Decision together with its `relates_to`, `derived_from`, or `replaces` edges in the same changeset so an entry never lands isolated.",
       },
     ],
   },
@@ -560,6 +566,10 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // rework loops may route back through a gateway. Generic Doco
     // dependency / rationale edges remain associations and are not
     // treated as BPMN arrows.
+    //
+    // Lifecycle: nodes default to `drafting` so a process can be sketched
+    // freely; completeness + shape rules fire on the committed stages
+    // (`queued` and `active`) only — see BUSINESS_PROCESS_COMMITTED_LIFECYCLES.
     name: "business-processes",
     label: "business-processes",
     icon: "🏭",
@@ -638,7 +648,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: 'Check the candidate\'s visible user-facing text fields, including name, body_md, intent, action, decision, question, chosen, state, rule, and eval text. PASS when the text reads as business-process language for an operator or process reader, and any BPMN/source/import/code-evidence details are absent from visible prose or kept only in structured metadata, References, or audit/history. FAIL when visible text contains raw import scaffolding or implementation/source metadata, including phrases or patterns like "BPMN gateway", "BPMN task", "Gateway_...", "Implementation status", "Code evidence", "Source type", "exclusiveGateway", "user asks:", raw BPMN ids, generated object ids, or notes about code evidence discovered during import. Do not fail merely because a real business term happens to mention a job type, gateway, source, or implementation in ordinary process language; fail only when the prose exposes importer/debug/source metadata instead of the process meaning.',
           when_node_type: ["intent", "action", "decision", "state", "eval", "rule", "principal"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Principal shape ──────────────────────────────────────────
@@ -670,7 +680,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Check the Intent's `intent` field. PASS only when BOTH hold: (a) the FIRST LINE is a brief process name — a short verb + object phrase, optionally with an adjective or adverb, roughly two to six words (e.g. `Publish a job`), and NOT a full run-on sentence that buries the name; and (b) the remaining text lets the reader discern (1) the trigger that starts the process, (2) the terminal business outcome that ends it, and (3) what is explicitly out of scope. FAIL with what is wrong — say `first line is not a brief headline` when line one crams the whole description into one sentence, or name the missing trigger / outcome / out-of-scope element.",
           when_node_type: ["intent"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Action shape ────────────────────────────────────────────
@@ -684,7 +694,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           target_node_type: "principal",
           when_node_type: ["action"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
         // One rule for all three flow-node types. The role-aware edge
@@ -701,7 +711,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           target_node_type: "intent",
           when_node_type: ["action", "decision", "state"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
         // Atomic activity prose — surface umbrella phases and
@@ -721,7 +731,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Check the Action's `action` and `verb`. PASS when the text names a single business activity the named actor performs — an ordinary single-verb step like `review the legal terms`, `approve the invoice`, or `pack the order` PASSES. FAIL with reason only if the text (a) is a vague umbrella phase covering many steps (e.g. `handle request`, `do the thing`, `process order`), (b) bundles two distinct activities joined by `and` (e.g. `examine and treat the patient`), or (c) is an implementation chore divorced from business meaning (e.g. `call API`, `update row`, `write to DB`).",
           when_node_type: ["action"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       // ── Decision shape ──────────────────────────────────────────
       {
@@ -735,18 +745,18 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Check the Decision's `question`, `alternatives`, and any outgoing `flows_to` branch labels/conditions. PASS when the question reads as yes/no or an enumeration, AND the alternatives / outgoing branches either include an explicit default/else branch or name every enumerated value. FAIL with reason if the question has uncovered cases or if a default/else is missing where enum coverage isn't visibly complete.",
           when_node_type: ["decision"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── State shape & sequence wiring (graph invariants kept as
       //    guidance until the evaluator can express subgraph shape) ──
       {
         policy:
-          "A business process has ≥1 active initial State and ≥1 active terminal State, with each `state` name unique within the process. Every process starts somewhere, ends at a business outcome (or an explicitly cancelled outcome), and names its milestones unambiguously.",
+          "A business process has ≥1 committed (`queued` or `active`) initial State and ≥1 committed terminal State, with each `state` name unique within the process. Every process starts somewhere, ends at a business outcome (or an explicitly cancelled outcome), and names its milestones unambiguously.",
       },
       {
         policy:
-          "Flow runs forward from the initial State: each active initial State has ≥1 outgoing `flows_to` edge, every non-initial flow node is reachable from an earlier flow node through forward `flows_to`, and every non-terminal flow node has ≥1 outgoing `flows_to` target in the same process Intent. Terminal States have no outgoing `flows_to` — they end the process path.",
+          "Flow runs forward from the initial State: each committed (`queued` or `active`) initial State has ≥1 outgoing `flows_to` edge, every non-initial flow node is reachable from an earlier flow node through forward `flows_to`, and every non-terminal flow node has ≥1 outgoing `flows_to` target in the same process Intent. Terminal States have no outgoing `flows_to` — they end the process path.",
       },
       {
         // State summary as milestone/condition — noun or past-participle
@@ -758,7 +768,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           when_node_type: ["state"],
           spec: "Check ONLY the State's `state`. PASS when the text reads as a milestone or entry/exit condition — a noun or past-participle (`invoice approved`, `payment captured`, `cart`, `awaiting-review`). FAIL with reason if it reads as an imperative verb naming an Action (`Approve invoice`, `Process the order`).",
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Coverage ────────────────────────────────────────────────
@@ -770,7 +780,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           spec: "Review actor coverage by following `attributed_to` role `performed_by` and `supports` role `serves` edges.",
           when_node_type: ["intent"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Eval ────────────────────────────────────────────────────
@@ -783,7 +793,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           edge_role: "tests",
           when_node_type: ["eval"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── Guidance (prose-only) ───────────────────────────────────
@@ -837,7 +847,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Drafting nodes may be incomplete while the process is being sketched. Move flow nodes and the purpose Intent to `active` only after actor (`performed_by`), Intent (`serves`), and forward `flows_to` wiring are coherent.",
+          "Walk a process node through the four-stage lifecycle drafting → queued → active → retired. Sketch it in `drafting`, where it may be incomplete — completeness and shape rules are suspended. `queue` it (changeset op `queue`) once its actor (`performed_by`), Intent (`serves`), and forward `flows_to` wiring are coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules; only a `drafting` sketch is exempt. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).",
+      },
+      {
+        policy:
+          "Use `queued` for a process — or a single step, gateway, or milestone — that is fully wired and ready but not yet in force: a redesign awaiting sign-off, a step pending a scheduled go-live, or an approved-but-not-yet-rolled-out change. A `queued` node asserts readiness, so it must already satisfy the same actor, `serves`, and forward-flow wiring an `active` node does. If it is still being sketched and that wiring is incomplete, leave it `drafting` instead of queuing it.",
       },
       {
         policy:
@@ -900,11 +914,15 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       "Map the people and AI agents in an organization — reporting lines, teams, roles, and appointments. Every seat declares in its `body_md` prose whether it's filled by a person, filled by an AI agent, or currently vacant.",
     // No `defaultNodeLifecycle` override: a seat, team, or appointment
     // is live the moment it's created, so a captured node lands
-    // `active` (and the active-gated completeness rules — e.g. a
-    // team Intent's roster — apply right away). To sketch a tentative
-    // seat or a roster-less team, pass `lifecycle: "drafting"`
-    // explicitly. (Business-processes keeps a `drafting` default so a
-    // flow can be wired up incrementally.)
+    // `active` (and the completeness rules — e.g. a team Intent's
+    // roster, a seat's reporting line — apply right away). Two explicit
+    // overrides cover the rest of the four-stage lifecycle: capture a
+    // committed-but-not-yet-effective change (a signed hire, an
+    // announced reorg) as `queued` — it meets the same completeness bar
+    // as active but isn't in force yet — and sketch a tentative seat or
+    // roster-less team as `drafting`, where the occupant or reporting
+    // line may still be unknown. (Business-processes keeps a `drafting`
+    // default so a flow can be wired up incrementally.)
     perspectives: [{ slug: "org-tree", isDefault: true }],
     policies: [
       // ── Membership ──────────────────────────────────────────────
@@ -953,27 +971,38 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // valid root Principal (CEO/founder/root agent/external
         // authority) should not receive an unavoidable "missing
         // reports_to" warning once its body_md explains the absence.
+        //
+        // Fires on `queued` AND `active`: a queued seat is a committed,
+        // ready-to-go-live org fact (a signed hire, an announced
+        // appointment) — as complete as an in-force one, so its reporting
+        // line should already be wired. Only `drafting` — the
+        // still-being-sketched stage — is exempt, so a member can be
+        // captured before its manager exists.
         on_violation: "warn",
         policy:
-          "Every active Principal in an org chart either has a `has_parent` reporting edge or explains in `body_md` why it is top-of-chain (founder, board-reporting, root agent, external authority).",
+          "Every in-force or queued Principal in an org chart either has a `has_parent` reporting edge or explains in `body_md` why it is top-of-chain (founder, board-reporting, root agent, external authority).",
         predicate: {
           kind: "probabilistic",
           when_node_type: ["principal"],
           spec: "Read the Principal candidate. PASS if its prose explains why this Principal has no manager above it (founder, board-reporting, root agent, external authority, etc.). Otherwise, expect a has_parent edge with role `reports_to` in the graph; if it is absent, WARN that the reporting edge is missing.",
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: ["queued", "active"],
       },
 
       // ── Team Intents declare members ───────────────────────────
       {
+        // Fires on `queued` and `active` for the same reason the reporting
+        // nudge does: a team that's queued to stand up (an announced
+        // reorg) should already name its roster, while a `drafting` team
+        // can be sketched before its members are assigned.
         policy:
-          "Every active team/unit Intent in an org chart should be linked to member Principals with `attributed_to` edges.",
+          "Every in-force or queued team/unit Intent in an org chart should be linked to member Principals with `attributed_to` edges.",
         predicate: {
           kind: "descriptive",
           spec: "Review team membership through `attributed_to` edges with membership roles.",
           when_node_type: ["intent"],
         },
-        fires_when_node_lifecycle: ["active"],
+        fires_when_node_lifecycle: ["queued", "active"],
       },
 
       // ── Guidance (prose-only) ───────────────────────────────────
@@ -982,8 +1011,17 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           "An org chart describes who reports to whom and which teams exist — not what those people do. Activities, processes, and workflows belong in business-processes Docos linked via Reference.",
       },
       {
+        // The `queued` lifecycle stage is org charting's "future-effective"
+        // tool: it lets the chart hold a committed change before its
+        // effective date without pretending it's already in force. This is
+        // the org-chart analogue of the canonical `queued` example (an open
+        // PR that's ready but not yet merged).
         policy:
-          "Reporting chains must not be circular. A cycle (A reports to B, B reports to C, C reports to A) usually means a refactor in progress; resolve it before asserting the affected Principals. The framework evaluator can't check this yet — it's a manual review.",
+          "Stage a future-effective org change as `queued`: a signed hire who hasn't started, an announced promotion or appointment with a later effective date, a decided-but-unexecuted reorg, or a named successor. A queued seat or reporting line is fully specified — occupant declared, reporting edge wired — it just isn't in force yet, so it shows as pending on the chart. Activate it (the `activate` op) on the effective date. Reserve `drafting` for an org change you're still sketching, where the occupant or reporting line may still be unknown; retire a seat or line that's been vacated or rerouted.",
+      },
+      {
+        policy:
+          "Reporting chains must not be circular. A cycle (A reports to B, B reports to C, C reports to A) usually means a refactor in progress; resolve it before activating the affected Principals. The framework evaluator can't check this yet — it's a manual review.",
       },
       {
         policy:
@@ -991,7 +1029,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Capture reorgs, hires, departures, and role changes as Decisions, and link the affected Principals with `supports` or provenance edges. Org charts churn; without Decisions, the history of WHY a reporting line moved is lost.",
+          "Capture reorgs, hires, departures, and role changes as Decisions, and link the affected Principals with `supports` or provenance edges. Org charts churn; without Decisions, the history of WHY a reporting line moved is lost. When the change is decided but takes effect later, `queue` the Decision (and the seats and reporting edges it moves) and `activate` them on the effective date.",
       },
       {
         policy:
@@ -1029,6 +1067,16 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         policy:
           "Seats persist across routine turnover: when one person leaves and another fills the same seat — or a seat goes vacant and is later refilled by the same kind of occupant — keep the Principal, update `body_md`, and record the change as a Decision, so reporting and membership edges stay intact and the seat's history reads continuously. Only when the seat's nature flips between person and AI agent do you retire the old Principal and create a new one.",
       },
+      {
+        // Mirrors the business-processes authoring rule. Org charts are
+        // frequently bulk-imported or backfilled by agents (from an HRIS, a
+        // Slack roster, a headcount sheet), so the changeset batch — create a
+        // seat and wire its reporting edge atomically — is exactly right.
+        // This also re-points agents at the CURRENT changeset ops after the
+        // `assert`→`activate` rename and the new `queue` op.
+        policy:
+          "Agents author org changes through `GET /<handle>/api/authoring-contract.json` and `POST /<handle>/api/changesets.json`: create a seat and its `reports_to` edge in one changeset so the tree is never transiently rootless, and use `relate_many` for sibling edges that must hold together — a primary `reports_to` plus its `dotted_reports_to` matrix lines, or the `same_occupant_as` links across one person's seats. Stage a future-effective change with the `queue` op and put it in force with `activate`.",
+      },
     ],
   },
 ];
@@ -1042,4 +1090,65 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
  */
 export function findDocoTemplateByName(name: string): DocoTemplate | undefined {
   return DEFAULT_DOCO_TEMPLATES.find((t) => t.name === name);
+}
+
+/**
+ * The essence of a seeded policy row — a standalone `kind` plus the
+ * predicate the evaluator dispatches on. This is the pure translation
+ * from the (still old-shape) `TemplatePolicy` into the unified policies
+ * table introduced in #909; `host.ts` wraps it with the DB-row metadata
+ * (ids, timestamps, `template_seeded`) at Doco-creation time.
+ */
+export interface SeededPolicyRow {
+  kind: "suggestion" | "deterministic" | "probabilistic";
+  /**
+   * suggestion / probabilistic → `{ agent_instruction, when_node_type? }`
+   * deterministic              → `{ sub_kind, ...check params }`
+   */
+  predicate: Record<string, unknown>;
+  /** Set for deterministic / probabilistic policies (defaults to "block"); omitted for suggestions. */
+  on_violation?: "block" | "warn" | "log";
+  fires_when_node_lifecycle?: Lifecycle[];
+}
+
+/**
+ * Translate one `TemplatePolicy` into the unified policy row the evaluator
+ * consumes. Split purely by predicate shape:
+ *   - no predicate                    → `suggestion` (the prose is the instruction)
+ *   - `probabilistic`                 → `probabilistic` (LLM-judged at write time)
+ *   - `descriptive`                   → `suggestion` (recorded, not enforced)
+ *   - any other (structured) predicate → `deterministic`, keyed by `sub_kind`
+ *
+ * Shared by `host.ts` (which seeds these rows) and the template scenario
+ * tests (which run them through the real evaluator), so the two can never
+ * drift apart.
+ */
+export function templatePolicyToPolicyRow(policy: TemplatePolicy): SeededPolicyRow {
+  const pred = policy.predicate;
+  let kind: SeededPolicyRow["kind"];
+  let predicate: Record<string, unknown>;
+  if (!pred) {
+    kind = "suggestion";
+    predicate = { agent_instruction: policy.policy };
+  } else if (pred.kind === "probabilistic" || pred.kind === "descriptive") {
+    // `descriptive` was recorded-but-not-enforced → folds into suggestion.
+    kind = pred.kind === "probabilistic" ? "probabilistic" : "suggestion";
+    predicate = {
+      agent_instruction: pred.spec,
+      ...(pred.when_node_type ? { when_node_type: pred.when_node_type } : {}),
+    };
+  } else {
+    kind = "deterministic";
+    const { kind: subKind, ...rest } = pred;
+    predicate = { sub_kind: subKind, ...rest };
+  }
+  const firesWhen = Array.isArray(policy.fires_when_node_lifecycle)
+    ? policy.fires_when_node_lifecycle
+    : [];
+  return {
+    kind,
+    predicate,
+    ...(kind !== "suggestion" ? { on_violation: policy.on_violation ?? "block" } : {}),
+    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
+  };
 }

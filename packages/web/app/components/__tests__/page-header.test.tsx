@@ -27,13 +27,16 @@ describe("PageHeader", () => {
     expect(html.indexOf('aria-label="Breadcrumb"')).toBeLessThan(html.indexOf("<h1"));
   });
 
-  it("places action buttons to the right of the title on the same row", () => {
+  it("places action buttons immediately next to the title, not floated to the far edge", () => {
     const html = render({
       title: "acctest",
       actions: createElement("a", { href: "/x/settings" }, "Settings"),
     });
-    // The title row is a justify-between flex so actions sit beside the title.
-    expect(html).toContain("justify-between");
+    // The title and its actions pack together on the left so the buttons sit
+    // right beside the title. justify-between would shove the actions to the
+    // opposite edge of the row — a wide, disconnected gap — so it must not be
+    // used on the title row.
+    expect(html).not.toContain("justify-between");
     // Actions render after the title in source order — to its right.
     expect(html.indexOf("<h1")).toBeLessThan(html.indexOf("Settings"));
   });

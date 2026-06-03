@@ -216,4 +216,67 @@ describe("agent loop against a real database", () => {
     expect(toolResultMsg[0].type).toBe("tool_result");
     expect(toolResultMsg[0].tool_use_id).toBe("toolu_1");
   });
+
+  // Regression: a second message arriving mid-tool must not make the next
+  // turn re-run the first instruction. When the interrupt lands after a
+  // write tool's side effect has committed, that work has to be recorded
+  // (assistant tool_use + tool_result) so the next turn's history and
+  // operation-memory reflect it. Before the fix the loop aborted in the
+  // gap between the write and recording it, leaving the transcript showing
+  // the instruction as un-acted-upon — so the model created "Señor Doco" a
+  // second time instead of acting on the second message.
+  it("persists committed tool work when a second message interrupts mid-tool", async () => {
+    runtime.stream.mockReturnValueOnce(
+      makeStream(
+        [
+          { type: "text", text: "Adding Señor Doco:" },
+          {
+            type: "tool_use",
+            id: "toolu_create",
+            name: "doco_api",
+            input: { method: "POST", path: "/acme/api/principals.json" },
+          },
+        ],
+        "tool_use",
+      ),
+    );
+    // The write commits the instant runTool returns. Simulate the
+    // interrupting second message by clearing the active-turn marker right
+    // after the side effect — exactly what stopActiveTurnForPrincipal does
+    // when the next POST /messages.json arrives while this turn is in flight.
+    tool.run.mockImplementationOnce(async ({ toolUseId }: { toolUseId: string }) => {
+      await dbm.db.query(
+        "UPDATE chat_conversations SET active_turn_started_at = NULL WHERE id = $1",
+        [CONV],
+      );
+      return {
+        ok: true,
+        preview: "doco_api 201",
+        result: {
+          type: "tool_result",
+          tool_use_id: toolUseId,
+          content: '{"ok":true,"id":"principal_senordoco"}',
+        },
+      };
+    });
+
+    const events = await drain("Senor Doco reports to Alexander.");
+    const kinds = events.map((e) => e.kind);
+
+    // The turn was interrupted — it surfaced the stop and did NOT finish
+    // normally, and made only the single model call (no continuation).
+    expect(kinds).toContain("error");
+    expect(kinds).not.toContain("done");
+    expect(runtime.stream).toHaveBeenCalledTimes(1);
+
+    // ...but the committed work is durable in the transcript: the user ask,
+    // the assistant's tool_use, AND its tool_result were all persisted.
+    const messages = await persistedMessages();
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+    const assistant = messages[1].content as Array<{ type: string; name?: string }>;
+    expect(assistant.some((b) => b.type === "tool_use" && b.name === "doco_api")).toBe(true);
+    const toolResult = messages[2].content as Array<{ type: string; tool_use_id?: string }>;
+    expect(toolResult[0].type).toBe("tool_result");
+    expect(toolResult[0].tool_use_id).toBe("toolu_create");
+  });
 });
