@@ -18,9 +18,6 @@ import {
 
 export type { DocoRole };
 
-/** Access level a grant confers, before per-type narrowing. */
-export type GrantLevel = "reader" | "writer" | "owner";
-
 /**
  * A target the current user can grant into: an workspace, or a Doco
  * within one. `workspaceId` ties a Doco back to its workspace so the picker
@@ -194,13 +191,6 @@ export function describeWriteScope(role: DocoRole, writeTypes: string[]): string
   if (norm.length === 0) return "read only";
   if (norm.includes(WRITE_ALL)) return "writes everything";
   return `writes ${norm.length} type${norm.length === 1 ? "" : "s"}`;
-}
-
-/** True when the type token is one the picker can offer. */
-export function isOfferableType(t: string): t is WritableType {
-  return (
-    (NODE_TYPES as readonly string[]).includes(t) || (EDGE_TYPES as readonly string[]).includes(t)
-  );
 }
 
 // ── Per-type access levels ──────────────────────────────────────────────────

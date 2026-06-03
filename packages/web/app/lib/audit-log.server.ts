@@ -143,15 +143,3 @@ export async function readAuditEvents(
     return evt;
   });
 }
-
-/**
- * Convenience: read a single entity's history.
- */
-export async function readEntityHistory(
-  docoDir: string,
-  entityId: string,
-  limit?: number,
-  docoIdHint?: string,
-): Promise<AuditEvent[]> {
-  return readAuditEvents(docoDir, { entity_id: entityId, limit }, docoIdHint);
-}

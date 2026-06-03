@@ -75,12 +75,6 @@ export interface SummarizedFields extends CommonFields {
 
 // ─── User (OAuth identity — new category) ─────────────────────────
 
-export interface GitHubIdentity {
-  github_id?: string;
-  github_login: string;
-  email?: string;
-}
-
 /**
  * User — host-scoped human OAuth identity.
  * Authored nodes via `created_by` / `updated_by`. Member of workspaces/docos
@@ -122,20 +116,6 @@ export interface Principal extends CommonFields {
 
 // ─── Doco (root entity) ───────────────────────────────────────────────────
 
-export interface DocoMember {
-  /** Membership is at the OAuth-identity layer; the field name reflects that. */
-  user_id: EntityId<"user">;
-  role: "owner" | "maintainer" | "contributor" | "viewer";
-  permissions: ("read" | "write" | "execute" | "admin")[];
-}
-
-export interface DocoImport {
-  doco: string;
-  ref: string;
-  as: string;
-  include?: string[];
-}
-
 /** Doco.owner_id is polymorphic: User OR Workspace. */
 export type OwnerRef = EntityId<"user"> | EntityId<"workspace">;
 
@@ -143,16 +123,12 @@ export interface Doco {
   id: EntityId<"doco">;
   handle: string;
   visibility: "private" | "public";
-  default_branch?: string;
   owner_id: OwnerRef;
-  summary?: string;
   created_at?: string;
   created_by?: EntityId<"user">;
   updated_at?: string;
   updated_by?: EntityId<"user">;
   lifecycle?: Lifecycle;
-  members?: DocoMember[];
-  imports?: DocoImport[];
 }
 
 // ─── Intent ───────────────────────────────────────────────────────────────
@@ -468,6 +444,3 @@ export type Node =
 
 /** Every entity across all categories. (`Policy` is a single interface now.) */
 export type Entity = Node | Policy | User | Doco | Workspace;
-
-/** Look up a Node interface by its `node_type` literal. */
-export type NodeByType<T extends Node["node_type"]> = Extract<Node, { node_type: T }>;

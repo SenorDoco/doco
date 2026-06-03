@@ -136,20 +136,6 @@ export async function listAvailablePerspectives(): Promise<Perspective[]> {
   });
 }
 
-export async function getPerspectiveBySlug(slug: string): Promise<Perspective | null> {
-  return withClient(async (c) => {
-    const { rows } = await c.query<PerspectiveRow>(
-      `SELECT id, slug, kind, name, description, icon,
-              owner_handle, is_builtin, config
-         FROM perspectives
-        WHERE slug = $1`,
-      [slug],
-    );
-    const row = rows[0];
-    return row ? rowToPerspective(row) : null;
-  });
-}
-
 /**
  * Attach `perspectiveId` to `docoId` at the next position. Idempotent —
  * if already attached, returns silently. Caller must gate on

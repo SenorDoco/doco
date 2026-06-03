@@ -2366,60 +2366,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   );
 }
 
-/**
- * Thin (32 px) vertical rail rendered when a collapsible sidebar is in
- * its collapsed state. Shows the side's label written vertically + an
- * optional unread dot. Click anywhere on the rail expands it.
- *
- * Exported so other pages (e.g. the per-Doco home's right column) can
- * reuse the same chrome.
- */
-export function CollapsedRail({
-  label,
-  side,
-  unread,
-  active,
-  onExpand,
-}: {
-  label: string;
-  side: "left" | "right";
-  unread?: boolean;
-  active?: boolean;
-  onExpand: () => void;
-}) {
-  const isLeft = side === "left";
-  return (
-    <button
-      type="button"
-      onClick={onExpand}
-      aria-busy={active}
-      aria-label={active ? `Expand ${label} (working)` : `Expand ${label}`}
-      className={cn(
-        "neu-panel group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 bg-card py-3 hover:bg-input",
-        isLeft ? "border-r border-border" : "border-l border-border",
-      )}
-    >
-      <PanelToggleIcon side={side} open />
-      <div
-        className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
-        style={{
-          writingMode: "vertical-rl",
-          transform: isLeft ? "rotate(180deg)" : undefined,
-        }}
-      >
-        {label}
-      </div>
-      {unread ? (
-        <span
-          aria-label="unread"
-          className="h-2 w-2 rounded-full bg-primary"
-          style={{ boxShadow: "0 0 0 2px var(--color-card)" }}
-        />
-      ) : null}
-    </button>
-  );
-}
-
 function CollapseIcon({ side }: { side: "left" | "right" }) {
   // A small chevron pointing in the collapse direction.
   return (

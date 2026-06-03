@@ -65,8 +65,3 @@ export function getDocoEmbeddingProvider(): EmbeddingProvider | undefined {
   cached = provider instanceof NoopEmbeddingProvider ? undefined : wrapWithUsageLog(provider);
   return cached;
 }
-
-/** Test-only: clear the memoized provider. */
-export function _resetEmbeddingProviderForTests(): void {
-  cached = null;
-}

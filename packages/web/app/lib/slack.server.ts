@@ -230,16 +230,6 @@ interface SlackInstallationInput {
   docoWorkspaceId: string;
 }
 
-interface SlackConnectionInput {
-  workspaceId: string;
-  channelId: string;
-  channelName: string;
-  targetLevel: "workspace" | "doco";
-  targetId: string;
-  role: string;
-  createdByUserId: string;
-}
-
 interface SlackConnectionGrantInput {
   targetLevel: "workspace" | "doco";
   targetId: string;
@@ -554,26 +544,6 @@ export async function getSlackBoundWorkspaceId(slackTeamId: string): Promise<str
 }
 
 /**
- * Bind (or rebind, or with null unbind) a Slack team to a single Doco
- * workspace. Callers must have already checked the actor owns the target
- * workspace. Returns false when the Slack team has no installation row.
- */
-export async function setSlackBoundWorkspace(args: {
-  slackTeamId: string;
-  docoWorkspaceId: string | null;
-}): Promise<boolean> {
-  const result = await withClient((c) =>
-    c.query(
-      `UPDATE group_chat_installations
-          SET doco_workspace_id = $2, updated_at = now()
-        WHERE provider = 'slack' AND workspace_id = $1`,
-      [args.slackTeamId, args.docoWorkspaceId],
-    ),
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/**
  * Remove a Slack installation entirely: the install record plus every channel
  * default and personal user link bound to that Slack team. The three
  * group_chat_* tables are independent (no cascade between them), so each is
@@ -613,37 +583,6 @@ export async function removeSlackInstallation(slackTeamId: string): Promise<bool
     invalidateSlackIntegrationContextCache({ workspaceId: slackTeamId });
   }
   return removed;
-}
-
-export async function saveSlackChannelConnection(input: SlackConnectionInput): Promise<void> {
-  await withClient((c) =>
-    c.query(
-      `INSERT INTO group_chat_channel_connections
-         (id, provider, workspace_id, channel_id, channel_name, target_level, target_id,
-          role, created_by_user_id, data, created_at, updated_at)
-       VALUES ($1, 'slack', $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, now(), now())
-       ON CONFLICT (provider, workspace_id, channel_id, target_level, target_id)
-       DO UPDATE SET
-         channel_name = EXCLUDED.channel_name,
-         role = EXCLUDED.role,
-         created_by_user_id = EXCLUDED.created_by_user_id,
-         updated_at = now()`,
-      [
-        `gcc_${generateUlid()}`,
-        input.workspaceId,
-        input.channelId,
-        input.channelName,
-        input.targetLevel,
-        input.targetId,
-        input.role,
-        input.createdByUserId,
-      ],
-    ),
-  );
-  invalidateSlackIntegrationContextCache({
-    workspaceId: input.workspaceId,
-    channelId: input.channelId,
-  });
 }
 
 export async function replaceSlackChannelConnections(input: {
@@ -2500,10 +2439,6 @@ export async function getSlackBotToken(workspaceId: string): Promise<string | nu
 export interface SlackBotIdentity {
   userId: string | null;
   botId: string | null;
-}
-
-export async function getSlackBotUserId(workspaceId: string): Promise<string | null> {
-  return (await getSlackBotIdentity(workspaceId))?.userId ?? null;
 }
 
 export async function getSlackBotIdentity(workspaceId: string): Promise<SlackBotIdentity | null> {

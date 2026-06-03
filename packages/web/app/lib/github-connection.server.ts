@@ -33,16 +33,6 @@ export function parseRepoSlug(input: string): { owner: string; name: string } | 
 }
 
 /** Read the Doco's GitHub connection, or null if it isn't connected. */
-export async function getGitHubConnection(docoId: string): Promise<GitHubConnection | null> {
-  return withClient(async (c) => {
-    const r = await c.query<{ gh: unknown }>(
-      `SELECT data->'github_integration' AS gh FROM docos WHERE id = $1`,
-      [docoId],
-    );
-    return normalizeConnections(r.rows[0]?.gh)[0] ?? null;
-  });
-}
-
 type DocoQueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -65,65 +55,6 @@ export async function getGitHubRepoSlug(
   if (!conn) return null;
   const slug = parseRepoSlug(conn.repo);
   return slug ? `${slug.owner}/${slug.name}` : null;
-}
-
-/** Write (upsert) the Doco's GitHub connection into docos.data.github_integration. */
-export async function setGitHubConnection(docoId: string, conn: GitHubConnection): Promise<void> {
-  await withClient(async (c) => {
-    await c.query(
-      `UPDATE docos
-          SET data = jsonb_set(
-                COALESCE(data, '{}'::jsonb)
-                  || jsonb_build_object(
-                       'github_integration',
-                       COALESCE(data->'github_integration', '{}'::jsonb)),
-                '{github_integration,connections}', $2::jsonb, true),
-              updated_at = now()
-        WHERE id = $1`,
-      [docoId, JSON.stringify([conn])],
-    );
-  });
-}
-
-/** Remove the Doco's GitHub connection (disconnect). */
-export async function clearGitHubConnection(docoId: string): Promise<void> {
-  await withClient(async (c) => {
-    await c.query(
-      `UPDATE docos SET data = data - 'github_integration', updated_at = now() WHERE id = $1`,
-      [docoId],
-    );
-  });
-}
-
-export interface DocoGitHubContext {
-  handle: string;
-  workspaceHandle: string;
-  connection: GitHubConnection | null;
-}
-
-/**
- * One-query fetch of the Doco's handle, its org handle, and its GitHub
- * connection — the fields a backfill needs (docoSlug, ownerSlug, repo +
- * installation id).
- */
-export async function getDocoGitHubContext(docoId: string): Promise<DocoGitHubContext | null> {
-  return withClient(async (c) => {
-    const r = await c.query<{ handle: string; workspace_handle: string; gh: unknown }>(
-      `SELECT d.handle, o.handle AS workspace_handle, d.data->'github_integration' AS gh
-         FROM docos d
-         JOIN workspaces o ON o.id = d.workspace_id
-        WHERE d.id = $1`,
-      [docoId],
-    );
-    const row = r.rows[0];
-    return row
-      ? {
-          handle: row.handle,
-          workspaceHandle: row.workspace_handle,
-          connection: normalizeConnections(row.gh)[0] ?? null,
-        }
-      : null;
-  });
 }
 
 // ─── Multi-connection model ──────────────────────────────────────────────
@@ -243,16 +174,6 @@ export async function removeConnection(docoId: string, repo: string): Promise<Gi
   const next = (await listConnections(docoId)).filter((c) => c.repo !== repo);
   await writeConnections(docoId, next);
   return next;
-}
-
-/** Remove the whole GitHub integration from the Doco. */
-export async function clearAllConnections(docoId: string): Promise<void> {
-  await withClient(async (c) => {
-    await c.query(
-      `UPDATE docos SET data = data - 'github_integration', updated_at = now() WHERE id = $1`,
-      [docoId],
-    );
-  });
 }
 
 // ─── Backfill progress marker ────────────────────────────────────────────
