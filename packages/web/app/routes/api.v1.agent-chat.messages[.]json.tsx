@@ -26,6 +26,14 @@ import {
 } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
+// Give a streamed reply the full Vercel function budget. A long job (e.g.
+// importing a big BPM) makes dozens of model + tool round-trips; the loop's
+// soft wall-clock budget (`TURN_TIME_BUDGET_MS`, 230s) pauses gracefully and
+// prompts "continue" with ~70s of margin under this 300s ceiling. Without
+// this the function runs at the platform default and is hard-killed
+// mid-tool-call, so the agent appears to stop with no explanation.
+export const config = { maxDuration: 300 };
+
 interface Body {
   text?: unknown;
   current_path?: unknown;
