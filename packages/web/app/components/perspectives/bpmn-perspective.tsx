@@ -30,10 +30,11 @@ import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
-import { computeIntentEntryPointIds } from "~/lib/bpmn-entry-points";
+import { topEntryPointId } from "~/lib/bpmn-entry-points";
 import { bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
 import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
+import { layoutOutsideNodes } from "~/lib/bpmn-outside-layout";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/bpmn-stable-nodes";
@@ -368,75 +369,71 @@ export function BpmnPerspective({
   }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
   const focusedNodeIdSet = useMemo(() => new Set(focusedNodeIds ?? []), [focusedNodeIds]);
 
-  const selectionPoolId = useMemo(() => {
-    const poolFromIntent = pools.find((pool) => pool.intent_id === selectionCenterId)?.id;
-    return (
-      poolFromIntent ?? (selectionCenterId ? nodeByFullId.get(selectionCenterId)?.pool_id : null)
-    );
-  }, [pools, selectionCenterId, nodeByFullId]);
-  const entryPointIds = useMemo(
-    () => computeIntentEntryPointIds(filteredNodes, links),
-    [filteredNodes, links],
+  // Focusing an Intent no longer fans out its whole swim lane. We home in
+  // on the intent's single most important "way in" — the entry point of
+  // its pool carrying the highest GLOBAL PageRank — and focus that node
+  // instead. `resolveIntentToEntry` maps any intent-center to that node; a
+  // center that is already a node (or an intent with no entry point in the
+  // visible set) passes through unchanged.
+  const resolveIntentToEntry = useCallback(
+    (id: string | null | undefined): string | null => {
+      if (!id) return null;
+      const pool = pools.find((candidate) => candidate.intent_id === id);
+      if (!pool) return id;
+      return topEntryPointId(pool.id, filteredNodes, links, pageRankMap) ?? id;
+    },
+    [pools, filteredNodes, links, pageRankMap],
   );
+  // The single node the view is focused on. Always defined (falls back to
+  // the highest-PageRank node), because the BPMN perspective now always
+  // frames one focal node and the one swim lane that owns it.
+  const effectiveCenterId = useMemo(
+    () => resolveIntentToEntry(selectionCenterId),
+    [resolveIntentToEntry, selectionCenterId],
+  );
+  // The one pool drawn as a swim lane: the focal node's pool. Every other
+  // rendered node lays out *outside* this lane, positioned by graph
+  // distance from the focal node (see layOutBpmn).
+  const focalPoolId = useMemo(() => {
+    if (!effectiveCenterId) return null;
+    const fromIntent = pools.find((pool) => pool.intent_id === effectiveCenterId)?.id;
+    return fromIntent ?? nodeByFullId.get(effectiveCenterId)?.pool_id ?? null;
+  }, [pools, effectiveCenterId, nodeByFullId]);
+
   const targetRenderedNodeIds = useMemo(() => {
     const selectionLinks = linksWithFocusedPoolMembership(
       pools,
       filteredNodes,
       links,
-      selectionCenterId,
+      effectiveCenterId,
     );
-    const baseSelection = selectMeasuredPersonalizedNodeIds(
+    return selectMeasuredPersonalizedNodeIds(
       filteredNodes,
       selectionLinks,
-      selectionCenterId,
+      effectiveCenterId,
       pageRankMap,
       BPMN_RENDER_NODE_BUDGET,
       { docoHandle, perspective: "bpmn" },
       { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN },
     );
-    // An intent is "rendered" once any of its nodes survives the budget.
-    // Whenever it is, every entry point of that intent must render too — so
-    // a process is never shown starting mid-stream. Re-run the selection
-    // with those entry points prioritized ahead of generic PageRank filler;
-    // the budget still caps the total, so over-budget entry points are the
-    // only ones dropped.
-    const renderedPools = new Set<string>();
-    for (const node of filteredNodes) {
-      if (baseSelection.has(node.id)) renderedPools.add(node.pool_id);
-    }
-    const priorityIds = new Set<string>();
-    let allAlreadyRendered = true;
-    for (const node of filteredNodes) {
-      if (!entryPointIds.has(node.id) || !renderedPools.has(node.pool_id)) continue;
-      priorityIds.add(node.id);
-      if (!baseSelection.has(node.id)) allAlreadyRendered = false;
-    }
-    if (allAlreadyRendered) return baseSelection;
-    return selectMeasuredPersonalizedNodeIds(
-      filteredNodes,
-      selectionLinks,
-      selectionCenterId,
-      pageRankMap,
-      BPMN_RENDER_NODE_BUDGET,
-      { docoHandle, perspective: "bpmn" },
-      { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN, priorityIds },
-    );
-  }, [pools, filteredNodes, links, selectionCenterId, pageRankMap, docoHandle, entryPointIds]);
+  }, [pools, filteredNodes, links, effectiveCenterId, pageRankMap, docoHandle]);
   const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
     useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
     [filteredNodes, renderedNodeIds],
   );
+  // Only the focal pool's lanes are drawn, so only its rendered nodes
+  // contribute swim-lane chrome (rails, reference numbering). Out-of-pool
+  // nodes render free-floating and belong to no lane here.
   const renderedLaneIds = useMemo(
-    () => new Set(renderedNodes.map((node) => node.laneId)),
-    [renderedNodes],
+    () =>
+      new Set(
+        renderedNodes.filter((node) => node.pool_id === focalPoolId).map((node) => node.laneId),
+      ),
+    [renderedNodes, focalPoolId],
   );
-  const renderedPoolIds = useMemo(() => {
-    const ids = new Set(renderedNodes.map((node) => node.pool_id));
-    if (selectionPoolId) ids.add(selectionPoolId);
-    return ids;
-  }, [renderedNodes, selectionPoolId]);
+  const renderedPoolIds = useMemo(() => new Set(focalPoolId ? [focalPoolId] : []), [focalPoolId]);
   const renderedLanes = useMemo(
     () => filteredLanes.filter((lane) => renderedLaneIds.has(lane.id)),
     [filteredLanes, renderedLaneIds],
@@ -445,14 +442,16 @@ export function BpmnPerspective({
     () => pools.filter((pool) => renderedPoolIds.has(pool.id)),
     [pools, renderedPoolIds],
   );
-  const layoutPoolIds = useMemo(() => {
-    const ids = new Set(filteredLanes.map((lane) => lane.pool_id));
-    if (selectionPoolId) ids.add(selectionPoolId);
-    return ids;
-  }, [filteredLanes, selectionPoolId]);
+  // Exactly one pool is laid out as a swim lane — the focal node's. Its
+  // lanes anchor the in-lane nodes; every other rendered node is placed
+  // around the focal node, outside any lane.
   const layoutPools = useMemo(
-    () => pools.filter((pool) => layoutPoolIds.has(pool.id)),
-    [pools, layoutPoolIds],
+    () => (focalPoolId ? pools.filter((pool) => pool.id === focalPoolId) : []),
+    [pools, focalPoolId],
+  );
+  const layoutLanes = useMemo(
+    () => (focalPoolId ? filteredLanes.filter((lane) => lane.pool_id === focalPoolId) : []),
+    [filteredLanes, focalPoolId],
   );
   const layoutLinks = useMemo(
     () =>
@@ -460,26 +459,26 @@ export function BpmnPerspective({
     [links, filteredNodeIds],
   );
   // Solve BPMN geometry from the stable visible graph, not from the
-  // transient 20-node render window. React Flow still mounts only the
-  // buffered render window below, but coordinates for surviving nodes
-  // remain anchored as focus changes.
+  // transient render window. React Flow still mounts only the buffered
+  // render window below, but coordinates for surviving nodes remain
+  // anchored as focus changes.
   const layout = useMemo(
     () =>
       layOutBpmn(
         layoutPools,
-        filteredLanes,
+        layoutLanes,
         filteredNodes,
         layoutLinks,
-        focusCenterId,
+        effectiveCenterId,
         focusedNodeIdSet,
         focusedEdgeId ?? null,
       ),
     [
       layoutPools,
-      filteredLanes,
+      layoutLanes,
       filteredNodes,
       layoutLinks,
-      focusCenterId,
+      effectiveCenterId,
       focusedNodeIdSet,
       focusedEdgeId,
     ],
@@ -851,7 +850,11 @@ export function BpmnPerspective({
   // the perspective centers on the most important node, matching the
   // overview graph's behavior.
   const initialFocusFlowNodeId = useMemo(() => {
-    const target = initialFocusId ?? selectionCenterId;
+    // An intent target resolves to its highest-PageRank entry point, so the
+    // camera lands on that single "way in" rather than fitting the whole
+    // pool. The pool-header fallback below only fires for the degenerate
+    // case of an intent with no entry point in the visible set.
+    const target = resolveIntentToEntry(initialFocusId ?? selectionCenterId);
     if (!target) return null;
     const flowNodeIds = new Set(flowNodes.map((node) => node.id));
     if (flowNodeIds.has(target)) return target;
@@ -866,7 +869,7 @@ export function BpmnPerspective({
       if (flowNodeIds.has(id)) return id;
     }
     return null;
-  }, [flowNodes, initialFocusId, selectionCenterId, pools, renderedLanes]);
+  }, [flowNodes, initialFocusId, selectionCenterId, resolveIntentToEntry, pools, renderedLanes]);
 
   // Apply the one-shot initial/default camera focus. A pool target fits the
   // WHOLE pool (header + its lanes) so the camera frames the entire process
@@ -1263,6 +1266,9 @@ interface BpmnLayout {
 
 const POOL_HEADER_HEIGHT = 32;
 const POOL_GAP = 16;
+// Horizontal gap between the one drawn swim lane and the first column of
+// out-of-pool nodes positioned around the focal node (see layOutBpmn).
+const OUTSIDE_LANE_GAP = 120;
 
 // Sub-process drill-down link. An Action that `serves` an Intent other
 // than its own pool's is a BPMN collapsed sub-process: it stands in for
@@ -1511,6 +1517,63 @@ function layOutBpmn(
         position: { x, y },
         parentId: laneNodeId(node.laneId),
         extent: "parent",
+        data: {
+          node,
+          isCenter: node.id === centerId || focusedNodeIds.has(node.id),
+          isSubprocess: subprocessTargetsByNode.has(node.id),
+        },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        initialWidth: size.width,
+        initialHeight: size.height,
+        style: { width: size.width, height: size.height, zIndex: 1, opacity: nodeOpacity },
+      });
+    }
+  }
+
+  // Out-of-pool nodes. Only the focal pool is drawn as a swim lane; every
+  // other rendered node lays out *outside* it, positioned purely by its
+  // graph distance from the focal node — closer nodes in nearer columns,
+  // each band's stack centered on the focal node's vertical middle. They
+  // are top-level React Flow nodes (no lane parent) at absolute canvas
+  // coordinates.
+  const laneIdSet = new Set(lanes.map((lane) => lane.id));
+  const outsiderNodes = nodes.filter((node) => !laneIdSet.has(node.laneId));
+  if (outsiderNodes.length > 0) {
+    const focalPos = centerId ? nodePositions.get(centerId) : undefined;
+    const focalSize = (centerId ? sizeByNode.get(centerId) : undefined) ?? {
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+    };
+    const focalY = focalPos ? focalPos.y + focalSize.height / 2 : 0;
+    const outsidePositions = layoutOutsideNodes(
+      outsiderNodes.map((node) => ({
+        id: node.id,
+        ...(sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }),
+      })),
+      focalDepthByNode,
+      {
+        originX: LANE_LEFT_INSET + laneWidth + OUTSIDE_LANE_GAP,
+        focalY,
+        columnGap: NODE_GAP_X,
+        rowGap: NODE_GAP_Y,
+      },
+    );
+    for (const node of outsiderNodes) {
+      const pos = outsidePositions.get(node.id);
+      if (!pos) continue;
+      const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+      // Store the canvas position in the same lane-relative-x frame the
+      // in-lane nodes use (their x omits LANE_LEFT_INSET, the lane parent's
+      // inset), so reference numbering and external-edge stubs offset both
+      // kinds of node identically.
+      nodePositions.set(node.id, { x: pos.x - LANE_LEFT_INSET, y: pos.y });
+      const nodeOpacity = focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1;
+      flowNodes.push({
+        id: node.id,
+        type: nodeTypeForShape(node.shape),
+        position: { x: pos.x, y: pos.y },
         data: {
           node,
           isCenter: node.id === centerId || focusedNodeIds.has(node.id),
