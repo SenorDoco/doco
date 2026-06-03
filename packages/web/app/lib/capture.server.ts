@@ -735,22 +735,6 @@ function emitAuditForCreate(opts: {
   }
 }
 
-function requiredPrincipalId(
-  value: string | undefined,
-  field: string,
-  fallbackDescription?: string,
-): string | CaptureError {
-  const principalId = value?.trim();
-  if (!principalId) {
-    return {
-      error: `${field} is required${fallbackDescription ? ` (${fallbackDescription})` : ""}.`,
-    };
-  }
-  const bad = assertNotUserId(principalId, field);
-  if (bad) return bad;
-  return principalId;
-}
-
 /**
  * Refuse `user_*` ids on capture paths that expect a Principal.
  * Users are the OAuth identity layer; Principals are the
@@ -1855,15 +1839,21 @@ export interface NodeAuthoringPolicyDraft {
   outcome?: "succeeded" | "failed";
 }
 
+/**
+ * Resolve the optional Principal author of a policy. Authorship is a
+ * graph link (the `authored_by` edge) to a Principal node, so it is
+ * optional: when the route can't map the signed-in user to a Principal
+ * — e.g. a BPMN-imported Doco whose principals are renamed roles
+ * ("Talent seeker", "Torre"), not a "user"/"human" persona — the policy
+ * is still captured, just without an author. `null` means "no author".
+ * When a value IS supplied it must be a Principal id, never a user id.
+ */
 async function resolvePolicyAuthor(draft: {
   authored_by_principal_id?: string;
-}): Promise<string | CaptureError> {
-  const author = requiredPrincipalId(
-    draft.authored_by_principal_id,
-    "authored_by_principal_id",
-    "or pass an authenticated request; the route fills it from `me.id`",
-  );
-  return author;
+}): Promise<string | null | CaptureError> {
+  const value = draft.authored_by_principal_id?.trim();
+  if (!value) return null;
+  return assertNotUserId(value, "authored_by_principal_id") ?? value;
 }
 
 function parsePredicate(value: AuthoringPredicate | string | undefined): unknown {
@@ -1958,7 +1948,7 @@ interface PolicyPayload {
   lifecycle: string;
   fm: Record<string, unknown>;
   body: string;
-  authorId: string;
+  authorId: string | null;
   createdById: string | null;
   now: string;
 }
@@ -1970,7 +1960,7 @@ async function buildGuidancePolicyPayload(
 ): Promise<PolicyPayload | CaptureError> {
   if (!draft.policy?.trim()) return { error: "policy is required." };
   const author = await resolvePolicyAuthor(draft);
-  if (typeof author !== "string") return author;
+  if (author !== null && typeof author !== "string") return author;
 
   const id = `guidance_policy_${generateUlid()}`;
   const policy = draft.policy.trim();
@@ -1985,7 +1975,7 @@ async function buildGuidancePolicyPayload(
     doco_id: docoId,
     policy_kind: "guidance",
     policy,
-    authored_by: author,
+    ...(author ? { authored_by: author } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
@@ -2014,7 +2004,7 @@ async function buildNodeAuthoringPolicyPayload(
     return { error: "evaluation_kind must be deterministic or probabilistic." };
   }
   const author = await resolvePolicyAuthor(draft);
-  if (typeof author !== "string") return author;
+  if (author !== null && typeof author !== "string") return author;
   const predicate = normalizeNodeAuthoringPredicate(draft);
   if ("error" in predicate) return predicate;
 
@@ -2036,7 +2026,7 @@ async function buildNodeAuthoringPolicyPayload(
     evaluation_kind: draft.evaluation_kind,
     policy,
     predicate,
-    authored_by: author,
+    ...(author ? { authored_by: author } : {}),
     ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
     on_violation: draft.on_violation ?? "block",
     created_at: now,
