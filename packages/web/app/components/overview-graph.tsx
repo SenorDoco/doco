@@ -1,5 +1,5 @@
 import { type Edge, Handle, MarkerType, type Node, Position } from "@xyflow/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/node-badges";
@@ -23,6 +23,11 @@ import { lifecycleColor } from "~/lib/node-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { type Point, layoutOverviewGraphNodes } from "~/lib/overview-graph-layout";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
+import {
+  ReferenceNumberStoreContext,
+  createReferenceNumberStore,
+  useReferenceNumber,
+} from "~/lib/reference-number-store";
 import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import { useNewNodeIds } from "~/lib/use-new-node-ids";
 import "@xyflow/react/dist/style.css";
@@ -115,7 +120,6 @@ interface OverviewNodeData {
   node: OverviewGraphNode;
   detail?: OverviewNodeDetail;
   showDetail: boolean;
-  referenceNumber?: number;
   isNew: boolean;
   opacity: number;
 }
@@ -202,6 +206,24 @@ function EdgeStubNode() {
   );
 }
 
+// Subscribes to just this node's #N from the reference-number store, so
+// only the badge re-renders when the numbering shifts (e.g. while
+// panning) — never the surrounding card. The number is intentionally not
+// carried in the React Flow node `data`: that would rebuild the whole
+// `nodes` array on every pan frame and re-render every card (see
+// `~/lib/reference-number-store`). The same pattern backs the BPMN
+// perspective's `BpmnReferenceBadge`.
+export const OverviewReferenceBadge = memo(function OverviewReferenceBadge({
+  nodeId,
+  label,
+}: {
+  nodeId: string;
+  label: string;
+}) {
+  const referenceNumber = useReferenceNumber(nodeId);
+  return <ReferenceNumberBadge referenceNumber={referenceNumber} referenceLabel={label} />;
+});
+
 function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
@@ -222,7 +244,6 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
       />
       <div
         className={`neu-surface overview-graph-node nodrag nopan relative flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden rounded-md border bg-white px-3 py-2 pl-4 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
-        data-graph-reference-number={data.referenceNumber ?? undefined}
         data-node-href={detail?.href ?? data.node.href ?? undefined}
         data-node-id={data.node.id}
         data-node-label={title}
@@ -262,7 +283,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         className="nodrag nopan"
         interactive
       />
-      <ReferenceNumberBadge referenceNumber={data.referenceNumber} referenceLabel={title} />
+      <OverviewReferenceBadge nodeId={data.node.id} label={title} />
     </div>
   );
 }
@@ -306,11 +327,42 @@ export function OverviewGraph({
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
-  const updateViewport = useCallback((next: FlowViewport) => {
+  // Pan/zoom fires `onMove` many times per frame. React Flow transforms
+  // its own canvas internally; our `viewport` mirror only feeds detail
+  // fetching and the reference-number store, so coalescing it to one
+  // commit per animation frame keeps those in sync without re-running
+  // their work on every intermediate event.
+  const pendingViewportRef = useRef<FlowViewport | null>(null);
+  const viewportRafRef = useRef<number | null>(null);
+  const commitViewport = useCallback((next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
   }, []);
+  const updateViewport = useCallback(
+    (next: FlowViewport) => {
+      pendingViewportRef.current = next;
+      if (typeof window === "undefined" || !window.requestAnimationFrame) {
+        commitViewport(next);
+        return;
+      }
+      if (viewportRafRef.current != null) return;
+      viewportRafRef.current = window.requestAnimationFrame(() => {
+        viewportRafRef.current = null;
+        const latest = pendingViewportRef.current;
+        if (latest) commitViewport(latest);
+      });
+    },
+    [commitViewport],
+  );
+  useEffect(
+    () => () => {
+      if (viewportRafRef.current != null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(viewportRafRef.current);
+      }
+    },
+    [],
+  );
 
   const allLifecycles = useMemo(() => {
     const set = new Set<string>(["active"]);
@@ -556,6 +608,16 @@ export function OverviewGraph({
     size,
     candidates: referenceCandidates,
   });
+  // Route the per-node #N through an external store the node badges
+  // subscribe to individually (see `OverviewReferenceBadge`). The numbers
+  // shuffle on every pan frame, but because they no longer live in the
+  // React Flow node `data`, the `nodes` array handed to React Flow stays
+  // referentially stable across pans — only the handful of badges whose
+  // number changed re-render, not all 100 cards.
+  const referenceNumberStore = useRef(createReferenceNumberStore()).current;
+  useEffect(() => {
+    referenceNumberStore.setNumbers(referenceNumberByNodeId);
+  }, [referenceNumberByNodeId, referenceNumberStore]);
 
   const externalEdgeStubs = useMemo(() => {
     const summaries = summarizeExternalConnections(visibleLinks, renderedNodeIds, visibleIds);
@@ -691,7 +753,6 @@ export function OverviewGraph({
           node,
           detail: details.get(node.id),
           showDetail,
-          referenceNumber: referenceNumberByNodeId.get(node.id),
           isNew: newNodeIds.has(node.id),
           opacity,
         } satisfies OverviewNodeData,
@@ -713,7 +774,6 @@ export function OverviewGraph({
     positions,
     details,
     showDetail,
-    referenceNumberByNodeId,
     newNodeIds,
     depthByNodeId,
     focalActive,
@@ -820,102 +880,104 @@ export function OverviewGraph({
   }, [initialFocusFlowNodeId, initialFocusId, fitInitialFocusNode]);
 
   return (
-    <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
-      <div ref={graphRef} className="relative min-h-0 w-full flex-1 overflow-hidden">
-        {search ? (
-          <div className="nodrag nopan absolute left-3 top-3 z-20 w-64 max-w-[calc(100%-9rem)]">
-            {search}
-          </div>
-        ) : null}
-        {visibleNodes.length === 0 ? (
-          <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
-            So empty
-          </div>
-        ) : Flow ? (
-          <Flow.ReactFlow
-            nodes={flowNodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            onlyRenderVisibleElements
-            fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
-            minZoom={GRAPH_MIN_ZOOM}
-            maxZoom={GRAPH_MAX_ZOOM}
-            panOnDrag
-            zoomOnScroll
-            zoomOnPinch
-            zoomOnDoubleClick
-            preventScrolling
-            onInit={(instance: FlowInstance) => {
-              flowInstanceRef.current = instance;
-              if (!hasFitRef.current) {
-                if (initialFocusFlowNodeId) {
-                  fitInitialFocusNode(instance, initialFocusFlowNodeId);
-                  if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
-                  else defaultFocusAppliedRef.current = true;
-                  hasFitRef.current = true;
-                } else if (!initialFocusId && renderedNodes.length > 0) {
-                  instance.fitView?.({
-                    ...GRAPH_FIT_VIEW_OPTIONS,
-                    nodes: renderedNodes.map((node) => ({ id: node.id })),
-                    duration: 0,
-                  });
-                  hasFitRef.current = true;
+    <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>
+      <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
+        <div ref={graphRef} className="relative min-h-0 w-full flex-1 overflow-hidden">
+          {search ? (
+            <div className="nodrag nopan absolute left-3 top-3 z-20 w-64 max-w-[calc(100%-9rem)]">
+              {search}
+            </div>
+          ) : null}
+          {visibleNodes.length === 0 ? (
+            <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
+              So empty
+            </div>
+          ) : Flow ? (
+            <Flow.ReactFlow
+              nodes={flowNodes}
+              edges={flowEdges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              onlyRenderVisibleElements
+              fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
+              minZoom={GRAPH_MIN_ZOOM}
+              maxZoom={GRAPH_MAX_ZOOM}
+              panOnDrag
+              zoomOnScroll
+              zoomOnPinch
+              zoomOnDoubleClick
+              preventScrolling
+              onInit={(instance: FlowInstance) => {
+                flowInstanceRef.current = instance;
+                if (!hasFitRef.current) {
+                  if (initialFocusFlowNodeId) {
+                    fitInitialFocusNode(instance, initialFocusFlowNodeId);
+                    if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
+                    else defaultFocusAppliedRef.current = true;
+                    hasFitRef.current = true;
+                  } else if (!initialFocusId && renderedNodes.length > 0) {
+                    instance.fitView?.({
+                      ...GRAPH_FIT_VIEW_OPTIONS,
+                      nodes: renderedNodes.map((node) => ({ id: node.id })),
+                      duration: 0,
+                    });
+                    hasFitRef.current = true;
+                  }
                 }
-              }
-              const next = instance.getViewport?.();
-              if (next) updateViewport(next);
-            }}
-            onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
-            onPaneClick={onPaneClick}
-            onNodeClick={(_event: unknown, node: { id: string }) => {
-              const target = nodeById.get(node.id);
-              // Change focus without asking React Flow to refit the
-              // viewport. Existing node coordinates stay pinned by
-              // positionCacheRef; the render window may add/remove
-              // nodes around the new focus.
-              if (target && onCenterChange) onCenterChange(target.id);
-              if (target && onNodeClick) {
-                onNodeClick(target);
-                return;
-              }
-              if (target?.href) navigate(target.href);
-            }}
-            onEdgeClick={(event: unknown, edge: Edge) => {
-              const link = renderedLinkByFlowId.get(edge.id);
-              if (!link?.id) return;
-              if (
-                event &&
-                typeof event === "object" &&
-                "stopPropagation" in event &&
-                typeof event.stopPropagation === "function"
-              ) {
-                event.stopPropagation();
-              }
-              if (onCenterChange) onCenterChange(link.source);
-              if (onEdgeClick) {
-                onEdgeClick(link);
-                return;
-              }
-              if (link.href) navigate(link.href);
-            }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Flow.Background gap={20} size={1} />
-            <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} />
-          </Flow.ReactFlow>
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-            Loading graph…
-          </div>
-        )}
-        {/* PerspectiveFrame owns the lifecycle filter and fullscreen
+                const next = instance.getViewport?.();
+                if (next) updateViewport(next);
+              }}
+              onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+              onPaneClick={onPaneClick}
+              onNodeClick={(_event: unknown, node: { id: string }) => {
+                const target = nodeById.get(node.id);
+                // Change focus without asking React Flow to refit the
+                // viewport. Existing node coordinates stay pinned by
+                // positionCacheRef; the render window may add/remove
+                // nodes around the new focus.
+                if (target && onCenterChange) onCenterChange(target.id);
+                if (target && onNodeClick) {
+                  onNodeClick(target);
+                  return;
+                }
+                if (target?.href) navigate(target.href);
+              }}
+              onEdgeClick={(event: unknown, edge: Edge) => {
+                const link = renderedLinkByFlowId.get(edge.id);
+                if (!link?.id) return;
+                if (
+                  event &&
+                  typeof event === "object" &&
+                  "stopPropagation" in event &&
+                  typeof event.stopPropagation === "function"
+                ) {
+                  event.stopPropagation();
+                }
+                if (onCenterChange) onCenterChange(link.source);
+                if (onEdgeClick) {
+                  onEdgeClick(link);
+                  return;
+                }
+                if (link.href) navigate(link.href);
+              }}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Flow.Background gap={20} size={1} />
+              <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} />
+            </Flow.ReactFlow>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+              Loading graph…
+            </div>
+          )}
+          {/* PerspectiveFrame owns the lifecycle filter and fullscreen
             button. They render at fixed positions across every
             perspective. Graph receives `visibleLifecycles` as data and
             applies it to its node filter. */}
+        </div>
       </div>
-    </div>
+    </ReferenceNumberStoreContext.Provider>
   );
 }

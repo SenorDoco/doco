@@ -10,7 +10,7 @@
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
 import dagre from "@dagrejs/dagre";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import {
@@ -25,6 +25,11 @@ import {
   publishGraphReferences,
 } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
+import {
+  ReferenceNumberStoreContext,
+  createReferenceNumberStore,
+  useReferenceNumber,
+} from "~/lib/reference-number-store";
 import { useNewNodeIds } from "~/lib/use-new-node-ids";
 import "@xyflow/react/dist/style.css";
 
@@ -534,9 +539,33 @@ interface EntityNodeCardProps {
   background: string;
   cardHeight: number;
   showPersonalizedRank: boolean;
-  referenceNumber?: number;
   isNew?: boolean;
 }
+
+// Subscribes to just this node's #N from the reference-number store, so
+// only the badge re-renders when the numbering shifts (e.g. while
+// panning) — never the surrounding card. Keeping the number out of the
+// React Flow node `data` is what stops a pan from rebuilding every node
+// (see `~/lib/reference-number-store`).
+export const EntityReferenceBadge = memo(function EntityReferenceBadge({
+  nodeId,
+  label,
+}: {
+  nodeId: string;
+  label: string;
+}) {
+  const referenceNumber = useReferenceNumber(nodeId);
+  if (!referenceNumber) return null;
+  return (
+    <span
+      aria-label={`Graph reference #${referenceNumber}: ${label}`}
+      className="pointer-events-none absolute -left-3 -top-3 z-30 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+      title={`Graph reference #${referenceNumber}`}
+    >
+      #{referenceNumber}
+    </span>
+  );
+});
 
 function EntityNodeCard({
   id,
@@ -554,7 +583,6 @@ function EntityNodeCard({
   background,
   cardHeight,
   showPersonalizedRank,
-  referenceNumber,
   isNew,
 }: EntityNodeCardProps) {
   const hasDistinctTitle = title !== summary;
@@ -571,7 +599,6 @@ function EntityNodeCard({
       className={`nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring${isNew ? " doco-new-node-glow" : ""}`}
       data-entity-node-card={entityType}
       data-entity-node-new={isNew ? "true" : undefined}
-      data-graph-reference-number={referenceNumber ?? undefined}
       data-node-href={href}
       data-node-id={id}
       data-node-label={title}
@@ -588,15 +615,7 @@ function EntityNodeCard({
         boxShadow: `inset -${NODE_STRIPE_WIDTH}px 0 0 ${accentColor}`,
       }}
     >
-      {referenceNumber ? (
-        <span
-          aria-label={`Graph reference #${referenceNumber}: ${title}`}
-          className="pointer-events-none absolute -left-3 -top-3 z-30 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-          title={`Graph reference #${referenceNumber}`}
-        >
-          #{referenceNumber}
-        </span>
-      ) : null}
+      <EntityReferenceBadge nodeId={id} label={title} />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute right-0 top-0 z-20 flex flex-col items-center pt-2 text-white"
@@ -771,11 +790,42 @@ export function EntityGraph({
   const [Flow, setFlow] = useState<any>(null);
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [graphSize, setGraphSize] = useState<GraphSize>({ width: 1, height: 1 });
-  const updateViewport = (next: FlowViewport) => {
+  // Pan/zoom fires `onMove` many times per frame. React Flow transforms
+  // its own canvas internally; our `viewport` mirror only feeds the lane
+  // rails and the reference-number store, so coalescing it to one commit
+  // per animation frame keeps those in sync without re-running their work
+  // on every intermediate event.
+  const pendingViewportRef = useRef<FlowViewport | null>(null);
+  const viewportRafRef = useRef<number | null>(null);
+  const commitViewport = useCallback((next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
-  };
+  }, []);
+  const updateViewport = useCallback(
+    (next: FlowViewport) => {
+      pendingViewportRef.current = next;
+      if (typeof window === "undefined" || !window.requestAnimationFrame) {
+        commitViewport(next);
+        return;
+      }
+      if (viewportRafRef.current != null) return;
+      viewportRafRef.current = window.requestAnimationFrame(() => {
+        viewportRafRef.current = null;
+        const latest = pendingViewportRef.current;
+        if (latest) commitViewport(latest);
+      });
+    },
+    [commitViewport],
+  );
+  useEffect(
+    () => () => {
+      if (viewportRafRef.current != null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(viewportRafRef.current);
+      }
+    },
+    [],
+  );
   useEffect(() => {
     let canceled = false;
     import("@xyflow/react").then((mod) => {
@@ -842,6 +892,15 @@ export function EntityGraph({
     () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
     [graphReferences],
   );
+  // Route per-node #N through an external store the badges subscribe to
+  // individually (see `EntityReferenceBadge`). The numbers reshuffle on
+  // every pan frame, but because they no longer live in the React Flow
+  // node `data`, the `nodes` array stays referentially stable across pans
+  // — only the badges whose number changed re-render, not every card.
+  const referenceNumberStore = useRef(createReferenceNumberStore()).current;
+  useEffect(() => {
+    referenceNumberStore.setNumbers(referenceNumberByNodeId);
+  }, [referenceNumberByNodeId, referenceNumberStore]);
 
   useEffect(() => {
     const graphId = graphReferenceIdRef.current;
@@ -916,7 +975,6 @@ export function EntityGraph({
               accentColor={accentColor}
               background={bg}
               showPersonalizedRank={showPersonalizedRank}
-              referenceNumber={referenceNumberByNodeId.get(n.id)}
               isNew={newNodeIds.has(n.id)}
             />
           ),
@@ -942,7 +1000,6 @@ export function EntityGraph({
     positions,
     hrefFor,
     showPersonalizedRank,
-    referenceNumberByNodeId,
     newNodeIds,
     depthByNodeId,
     focalActive,
@@ -1033,102 +1090,104 @@ export function EntityGraph({
   );
 
   return (
-    <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "flex flex-col gap-2"}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground">Life cycle:</span>
-          {allLifecycles.map((lifecycle) => {
-            const checked = visibleLifecycles.has(lifecycle);
-            const color = lifecycleColor(lifecycle);
-            const label = lifecycleLabel(lifecycle);
-            return (
-              <label
-                key={lifecycle}
-                className="inline-flex cursor-pointer select-none items-center gap-1"
-                title={label}
+    <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>
+      <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "flex flex-col gap-2"}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Life cycle:</span>
+            {allLifecycles.map((lifecycle) => {
+              const checked = visibleLifecycles.has(lifecycle);
+              const color = lifecycleColor(lifecycle);
+              const label = lifecycleLabel(lifecycle);
+              return (
+                <label
+                  key={lifecycle}
+                  className="inline-flex cursor-pointer select-none items-center gap-1"
+                  title={label}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setVisibleLifecycles((prev) => {
+                        const next = new Set(prev);
+                        if (checked) next.delete(lifecycle);
+                        else next.add(lifecycle);
+                        return next;
+                      });
+                    }}
+                    className="h-3 w-3"
+                    style={{ accentColor: color }}
+                  />
+                  <span className="capitalize" style={{ color }}>
+                    {label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div
+          ref={graphRef}
+          className={
+            fillHeight
+              ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
+              : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border"
+          }
+        >
+          {visible.nodes.length === 0 ? (
+            <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
+              So empty
+            </div>
+          ) : Flow ? (
+            <>
+              <Flow.ReactFlow
+                nodes={flowNodes}
+                edges={flowEdges}
+                nodeTypes={nodeTypes}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                fitView
+                fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
+                minZoom={GRAPH_MIN_ZOOM}
+                onInit={(instance: { getViewport?: () => FlowViewport }) => {
+                  const next = instance.getViewport?.();
+                  if (next) updateViewport(next);
+                }}
+                onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+                onNodeClick={(_e: unknown, n: { id: string }) => {
+                  const node = visible.nodes.find((x) => x.id === n.id);
+                  if (!node) return;
+                  // hrefFor is always provided by callers in production; the fallback exists
+                  // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
+                  const href =
+                    node.href ??
+                    (hrefFor
+                      ? hrefFor(node.id, node.entity_type)
+                      : `/${node.entity_type}/${node.id}`);
+                  navigate(href);
+                }}
+                proOptions={{ hideAttribution: true }}
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {
-                    setVisibleLifecycles((prev) => {
-                      const next = new Set(prev);
-                      if (checked) next.delete(lifecycle);
-                      else next.add(lifecycle);
-                      return next;
-                    });
-                  }}
-                  className="h-3 w-3"
-                  style={{ accentColor: color }}
+                <Flow.Background gap={20} size={1} />
+                <Flow.Controls
+                  position="top-right"
+                  showInteractive={false}
+                  fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
                 />
-                <span className="capitalize" style={{ color }}>
-                  {label}
-                </span>
-              </label>
-            );
-          })}
+              </Flow.ReactFlow>
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 overflow-hidden">
+                {laneLabelRails}
+              </div>
+            </>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+              Loading graph…
+            </div>
+          )}
         </div>
       </div>
-
-      <div
-        ref={graphRef}
-        className={
-          fillHeight
-            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
-            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border"
-        }
-      >
-        {visible.nodes.length === 0 ? (
-          <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
-            So empty
-          </div>
-        ) : Flow ? (
-          <>
-            <Flow.ReactFlow
-              nodes={flowNodes}
-              edges={flowEdges}
-              nodeTypes={nodeTypes}
-              nodesDraggable={false}
-              nodesConnectable={false}
-              fitView
-              fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
-              minZoom={GRAPH_MIN_ZOOM}
-              onInit={(instance: { getViewport?: () => FlowViewport }) => {
-                const next = instance.getViewport?.();
-                if (next) updateViewport(next);
-              }}
-              onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
-              onNodeClick={(_e: unknown, n: { id: string }) => {
-                const node = visible.nodes.find((x) => x.id === n.id);
-                if (!node) return;
-                // hrefFor is always provided by callers in production; the fallback exists
-                // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
-                const href =
-                  node.href ??
-                  (hrefFor
-                    ? hrefFor(node.id, node.entity_type)
-                    : `/${node.entity_type}/${node.id}`);
-                navigate(href);
-              }}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Flow.Background gap={20} size={1} />
-              <Flow.Controls
-                position="top-right"
-                showInteractive={false}
-                fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
-              />
-            </Flow.ReactFlow>
-            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 overflow-hidden">
-              {laneLabelRails}
-            </div>
-          </>
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-            Loading graph…
-          </div>
-        )}
-      </div>
-    </div>
+    </ReferenceNumberStoreContext.Provider>
   );
 }
