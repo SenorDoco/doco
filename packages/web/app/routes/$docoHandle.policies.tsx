@@ -10,6 +10,7 @@ import {
 import { Link } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { LinkedProse } from "~/components/linked-text";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
@@ -186,8 +187,8 @@ function PolicyView({ item }: { item: PolicyItem }) {
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Agent instruction:
           </p>
-          <p className="text-sm leading-6">
-            {predicate ? (agentInstructionOf(predicate) ?? "") : ""}
+          <p className="whitespace-pre-wrap break-words text-sm leading-6">
+            {predicate ? <LinkedProse text={agentInstructionOf(predicate) ?? ""} /> : null}
           </p>
         </div>
       )}
