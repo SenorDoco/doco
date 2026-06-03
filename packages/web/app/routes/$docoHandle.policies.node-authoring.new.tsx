@@ -4,8 +4,9 @@
 
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
@@ -107,23 +108,21 @@ export default function NewNodeAuthoringPolicy({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
-        <header>
-          <Breadcrumb
-            items={docoBreadcrumb({
-              ownerSlug,
-              handle,
-              parent: { label: "Policies", to: `/${handle}/policies` },
-              pageLabel: "New node-authoring policy",
-            })}
-            className="mb-1"
-          />
-          <h1 className="text-2xl font-semibold">New node-authoring policy</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+        <PageHeader
+          breadcrumb={docoBreadcrumb({
+            ownerSlug,
+            handle,
+            parent: { label: "Policies", to: `/${handle}/policies` },
+            pageLabel: "New node-authoring policy",
+          })}
+          title="New node-authoring policy"
+        >
+          <p className="text-sm text-muted-foreground">
             An automatic check that runs every time someone adds a node to this doco. Write a strict
             rule, or describe what an LLM judge should look for. Pick what happens on failure: block
             the capture, warn, or just log.
           </p>
-        </header>
+        </PageHeader>
         <Card>
           <CardContent className="pt-6">
             {actionData?.error ? (

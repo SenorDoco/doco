@@ -22,9 +22,10 @@ import {
 import { normalizeWriteTypes } from "@doco/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
-import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
+import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { GrantPicker } from "~/components/grant-picker";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { UserInviteCards } from "~/components/user-invite-cards";
@@ -418,11 +419,11 @@ export default function UsersPage({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader me={loaderData.me} />
-      <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
-        <header>
-          <h1 className="text-2xl font-semibold">Collaborators</h1>
-        </header>
+      <SingleColumnPageMain className="py-6 space-y-6">
+        <PageHeader
+          breadcrumb={hostBreadcrumb({ pageLabel: "Collaborators" })}
+          title="Collaborators"
+        />
 
         <Card>
           <CardContent className="pt-4">

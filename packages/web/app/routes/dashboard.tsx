@@ -12,8 +12,9 @@ import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
+import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import {
   activityRowLifecycle,
@@ -243,12 +244,10 @@ export default function Dashboard({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Dashboard" })} />
-        <header>
-          <h1 className="text-2xl font-semibold">
-            Good {greetingVerb}, {me.username}
-          </h1>
-        </header>
+        <PageHeader
+          breadcrumb={hostBreadcrumb({ pageLabel: "Dashboard" })}
+          title={`Good ${greetingVerb}, ${me.username}`}
+        />
 
         <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-6">
           <section className="space-y-4">

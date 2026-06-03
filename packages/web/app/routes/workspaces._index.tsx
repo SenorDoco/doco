@@ -8,8 +8,9 @@ import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
+import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import {
   activityRowLifecycle,
@@ -271,18 +272,18 @@ export default function WorkspacesIndexPage({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Workspaces" })} />
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Your workspaces</h1>
-          <div className="flex flex-wrap gap-2">
+        <PageHeader
+          breadcrumb={hostBreadcrumb({ pageLabel: "Workspaces" })}
+          title="Your workspaces"
+          actions={
             <Link
               to="/new-workspace"
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Workspace
             </Link>
-          </div>
-        </header>
+          }
+        />
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">

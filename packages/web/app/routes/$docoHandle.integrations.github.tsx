@@ -10,8 +10,9 @@ import { waitUntil } from "@vercel/functions";
 import { ArrowUpRight, Github, Plus } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useSearchParams } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import {
@@ -466,20 +467,19 @@ export default function DocoGitHubIntegration() {
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
-        <Breadcrumb
-          items={docoBreadcrumb({
+        <PageHeader
+          breadcrumb={docoBreadcrumb({
             ownerSlug,
             handle,
             parent: { label: "App integrations", to: `/${handle}/integrations` },
             pageLabel: "GitHub",
           })}
-        />
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">GitHub</h1>
+          title="GitHub"
+        >
           <p className="text-sm text-muted-foreground">
             Pull requests from connected repositories are tracked as References on {handle}.
           </p>
-        </header>
+        </PageHeader>
 
         {flash === "forbidden" ? (
           <p className="rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive">

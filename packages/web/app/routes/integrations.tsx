@@ -19,6 +19,7 @@ import { Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { AvailableIntegrations, ScopePickerBanner } from "~/components/integrations-shell";
+import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -114,15 +115,16 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SiteHeader me={me} />
-      <SingleColumnPageMain className="space-y-6 py-8">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "App integrations" })} />
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold">App integrations</h1>
+      <SingleColumnPageMain className="space-y-6 py-6">
+        <PageHeader
+          breadcrumb={hostBreadcrumb({ pageLabel: "App integrations" })}
+          title="App integrations"
+        >
           <p className="text-sm text-muted-foreground">
             Everything connected to your account, plus a rollup of every workspace and Doco you can
             reach.
           </p>
-        </header>
+        </PageHeader>
 
         {notice ? (
           <div className="rounded-md border border-border bg-background p-3 text-sm text-foreground">

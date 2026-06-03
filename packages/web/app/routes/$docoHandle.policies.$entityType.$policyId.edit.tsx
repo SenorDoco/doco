@@ -8,8 +8,9 @@
 
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
+import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
+import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
@@ -224,25 +225,21 @@ export default function EditPolicy({
     <div>
       <SiteHeader me={me} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
-        <header>
-          <Breadcrumb
-            items={docoBreadcrumb({
-              ownerSlug,
-              handle,
-              parent: { label: "Policies", to: `/${handle}/policies` },
-              pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} policy`,
-            })}
-            className="mb-1"
-          />
-          <h1 className="text-2xl font-semibold">
-            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} policy
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+        <PageHeader
+          breadcrumb={docoBreadcrumb({
+            ownerSlug,
+            handle,
+            parent: { label: "Policies", to: `/${handle}/policies` },
+            pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} policy`,
+          })}
+          title={`Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} policy`}
+        >
+          <p className="text-sm text-muted-foreground">
             Saving changes creates a new policy and retires this one with a{" "}
             <code>superseded_by</code> edge. Retiring leaves the old one in place. Either way the
             audit log retains the full history.
           </p>
-        </header>
+        </PageHeader>
         <Card>
           <CardContent className="pt-6">
             {actionData?.error ? (
