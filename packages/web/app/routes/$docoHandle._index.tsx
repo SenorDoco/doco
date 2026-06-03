@@ -37,6 +37,7 @@ import {
 } from "~/components/overview-graph";
 import { PageHeader } from "~/components/page-header";
 import { PerspectiveFrame } from "~/components/perspective-frame";
+import { PerspectiveSearchOverlay } from "~/components/perspective-search-overlay";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { GlossaryPerspective } from "~/components/perspectives/glossary-perspective";
@@ -44,7 +45,6 @@ import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
-import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -1129,22 +1129,10 @@ export default function DocoHome({
               canAdmin={canAdminPerspectives}
             />
             <div className="relative flex min-h-0 flex-1 flex-col">
-              {/* Search floats over the top-left of whichever perspective
-                  is active. Absolute so it sits inside the canvas without
-                  pushing it down — keeps the tab/canvas seam clean. */}
-              <div className="pointer-events-none absolute right-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
-                <div className="pointer-events-auto">
-                  <SearchBoxWithHistory
-                    handle={handle}
-                    placeholder={
-                      totalNodes > 0
-                        ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
-                        : "Search nodes…"
-                    }
-                    compact
-                  />
-                </div>
-              </div>
+              {/* Floats over the top-right of whichever perspective is
+                  active — see PerspectiveSearchOverlay for the z-index it
+                  must hold to stay above the canvas. */}
+              <PerspectiveSearchOverlay handle={handle} totalNodes={totalNodes} />
               <PerspectiveFrame
                 fillHeight
                 lifecycleFilter={
