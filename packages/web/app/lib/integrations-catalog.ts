@@ -19,8 +19,8 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
     id: "slack",
     name: "Slack",
     description:
-      "Install Señor Doco into a Slack workspace. Channels can be wired to an workspace or Doco after the workspace install.",
-    scope: "account",
+      "Connect a Slack team to one Doco workspace. Señor Doco then works only in that workspace's Docos; individual channels can be wired to specific Docos after install.",
+    scope: "workspace",
   },
   {
     id: "github",
@@ -37,11 +37,16 @@ export function findIntegration(id: string): IntegrationDefinition | undefined {
 /**
  * Pure decision: from which page is the user clicking, and is the
  * integration's home scope something they need to be prompted to pick?
+ *
+ * Slack is exempt: it's workspace-bound but runs its own install flow
+ * (/integrations/slack/install) that picks the workspace itself, so it never
+ * uses the generic scope-picker prompt.
  */
 export function needsScopePrompt(opts: {
   integration: IntegrationDefinition;
   pageScope: IntegrationScope;
 }): boolean {
+  if (opts.integration.id === "slack") return false;
   return opts.integration.scope !== opts.pageScope && opts.integration.scope !== "account";
 }
 
@@ -65,6 +70,10 @@ export function connectHrefFor(opts: {
   docoInstallUrl?: string | null;
 }): string {
   const { integration, pageScope, workspaceHandle, docoHandle, docoInstallUrl } = opts;
+
+  // Slack binds to one workspace through its own install flow, which picks the
+  // workspace itself — so it always routes there, from any page.
+  if (integration.id === "slack") return "/integrations/slack/install";
 
   if (integration.scope === "account") {
     if (integration.id === "slack") return "/integrations/slack/install";
