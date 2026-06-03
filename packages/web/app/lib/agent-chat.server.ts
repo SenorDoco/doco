@@ -39,7 +39,7 @@ import type {
   ToolUseBlock,
   Usage,
 } from "@anthropic-ai/sdk/resources/messages";
-import { listWorkspacesForUser, withClient } from "@doco/db";
+import { getDocoByIdOrHandle, listWorkspacesForUser, withClient } from "@doco/db";
 import {
   type PolicyPredicate,
   generateUlid,
@@ -402,6 +402,76 @@ export async function createConversation(
 
 function uniqueNonEmptyStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+/**
+ * Scope an as-yet-unassigned thread to a Workspace. Idempotent and
+ * owner-guarded: the UPDATE only fires while the thread is still unassigned, so
+ * a concurrent turn can't clobber an existing scope.
+ */
+export async function assignConversationWorkspace(
+  conversationId: string,
+  principalId: string,
+  workspaceId: string,
+): Promise<void> {
+  await withClient((c) =>
+    c.query(
+      `UPDATE chat_conversations
+          SET workspace_id = $3
+        WHERE id = $1 AND user_id = $2 AND workspace_id IS NULL`,
+      [conversationId, principalId, workspaceId],
+    ),
+  );
+}
+
+/**
+ * The Workspace implied by the page the user is on, when it's one they belong
+ * to: a `/workspaces/<handle>` page, or any doco page `/<docoHandle>/…` whose
+ * Workspace the user is a member of. Returns null when the path implies no
+ * (membership) Workspace.
+ */
+async function workspaceFromCurrentPath(
+  currentPath: string | null,
+  memberships: { id: string; handle: string }[],
+): Promise<string | null> {
+  if (!currentPath) return null;
+  const segs = currentPath.split("/").filter(Boolean);
+  if (segs.length === 0) return null;
+  if (segs[0] === "workspaces") {
+    const ws = segs[1] ? memberships.find((w) => w.handle === segs[1]) : undefined;
+    return ws?.id ?? null;
+  }
+  // The first segment may be a doco handle → scope to its owning Workspace,
+  // but only when the user actually belongs to that Workspace.
+  const doco = await getDocoByIdOrHandle(segs[0]);
+  if (doco && memberships.some((w) => w.id === doco.workspace_id)) {
+    return doco.workspace_id;
+  }
+  return null;
+}
+
+/**
+ * Scope a thread to a Workspace when the choice is OBVIOUS — the user is on a
+ * doco/Workspace page they belong to, or they belong to exactly one Workspace
+ * — and persist it so every later turn (and the sidebar tag) is scoped.
+ * Mutates `conversation.workspace_id` in place. Leaves the thread unassigned
+ * when it's genuinely ambiguous; the caller lets Señor Doco ask instead.
+ */
+export async function autoAssignThreadWorkspaceIfObvious(
+  conversation: ChatConversationRow,
+  principalId: string,
+  currentPath: string | null,
+): Promise<void> {
+  if (conversation.workspace_id) return; // already scoped
+  const memberships = await listWorkspacesForUser(principalId);
+  if (memberships.length === 0) return; // nothing to scope to
+
+  const fromPath = await workspaceFromCurrentPath(currentPath, memberships);
+  const candidate = fromPath ?? (memberships.length === 1 ? memberships[0].id : null);
+  if (!candidate) return; // ambiguous — leave unassigned, Señor Doco will ask
+
+  await assignConversationWorkspace(conversation.id, principalId, candidate);
+  conversation.workspace_id = candidate;
 }
 
 export interface ConversationListItem {
@@ -1359,7 +1429,7 @@ export async function buildBootstrapContext(
   // scoped to Workspace B must never share a cached context, or hard-scoping
   // would leak across workspaces. Unassigned threads (workspaceId = null) get
   // their own broad-context entry.
-  const memoKey = `${principalId} ${workspaceId ?? ""}`;
+  const memoKey = `${principalId}\u0000${workspaceId ?? ""}`;
   const cached = bootstrapMemo.get(memoKey);
   if (cached && Date.now() - cached.builtAt < BOOTSTRAP_TTL_MS) {
     return cached.value;
@@ -2385,6 +2455,15 @@ async function* streamAssistantTurn(args: {
       return;
     }
     messages.push({ role: "user", content: userContent });
+
+    // Scope the thread to a Workspace when it's obvious (single Workspace, or
+    // the doco/Workspace page the user is on). Mutates conversation.workspace_id
+    // so the bootstrap below — and every later turn — is hard-scoped.
+    await autoAssignThreadWorkspaceIfObvious(
+      args.conversation,
+      args.ctx.principal.id,
+      args.ctx.currentPath,
+    );
 
     const bootstrapStart = performance.now();
     yield { kind: "status", phase: "loading_bootstrap" };
