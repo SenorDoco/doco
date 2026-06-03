@@ -142,7 +142,7 @@ describe("/tokens page action", () => {
       }),
     );
 
-    expect(markup).toContain("Connect a client to Doco");
+    expect(markup).toContain("Connect an agent to Doco");
     expect(markup).toContain("per workspace");
     // The selector offers every workspace by handle…
     expect(markup).toContain("acme");
