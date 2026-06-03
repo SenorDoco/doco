@@ -107,17 +107,6 @@ interface ChatMessage {
   created_at: string;
 }
 
-interface DocoAttachmentInfo {
-  id: string;
-  handle: string;
-  label?: string;
-}
-
-interface WorkspaceAttachmentInfo {
-  handle: string;
-  name: string | null;
-}
-
 interface ConversationSnapshot {
   conversation_id: string;
   /** User-visible thread name. Null until the first user message lands. */
@@ -125,8 +114,6 @@ interface ConversationSnapshot {
   archived: boolean;
   /** Handle of the Workspace this thread is scoped to; null = unassigned. */
   workspace_handle: string | null;
-  attached_docos: DocoAttachmentInfo[];
-  attached_workspaces: WorkspaceAttachmentInfo[];
   messages: ChatMessage[];
   has_more: boolean;
   /**
@@ -161,8 +148,6 @@ export interface ConversationListItem {
   active_turn_started_at: string | null;
   last_message_preview: string | null;
   last_message_role: "user" | "assistant" | null;
-  attached_doco_ids: string[];
-  attached_workspace_handles: string[];
   /** Workspace this thread is scoped to; null = unassigned. */
   workspace_id: string | null;
   /** Handle of {@link workspace_id}, shown as a tag left of the title. */
@@ -470,12 +455,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     readInitialConversationId(),
   );
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
-  // Resolved {handle, name} for the docos/Workspaces the agent has touched
-  // in this thread. Rendered as clickable chips below the thread
-  // title in chat view. Populated from the snapshot endpoint each
-  // reload; the server-side auto-attach happens in runTool.
-  const [attachedDocos, setAttachedDocos] = useState<DocoAttachmentInfo[]>([]);
-  const [attachedWorkspaces, setAttachedWorkspaces] = useState<WorkspaceAttachmentInfo[]>([]);
   // Handle of the Workspace the open thread is scoped to; drives the in-thread
   // tag in the chat header (mirrors the inbox list's tag). Null = unassigned.
   const [currentWorkspaceHandle, setCurrentWorkspaceHandle] = useState<string | null>(null);
@@ -689,10 +668,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       }
       setConversationTitle(data.title);
       setThreadUsage(data.thread_usage ?? null);
-      setAttachedDocos(Array.isArray(data.attached_docos) ? data.attached_docos : []);
-      setAttachedWorkspaces(
-        Array.isArray(data.attached_workspaces) ? data.attached_workspaces : [],
-      );
       setCurrentWorkspaceHandle(data.workspace_handle ?? null);
       // Merge — don't overwrite. Two classes of message can sit
       // outside the snapshot's window:
@@ -855,8 +830,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setRemoteInflight(false);
       setThinkingEvents([]);
       setMessages([]);
-      setAttachedDocos([]);
-      setAttachedWorkspaces([]);
       setHasMore(false);
       earliestRef.current = null;
       setConversationId(createdChatId);
@@ -902,45 +875,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // dismissed cheaply.
   const switchThread = useCallback(
     (id: string) => {
-      // Single-attachment shortcut. The user said: "If there is only
-      // one, opening a thread should send the visitor to that page."
-      // Look the thread up in our cached list and, if it has exactly
-      // one attached entity (across docos + workspaces), navigate directly
-      // there instead of opening the chat column. The chat column
-      // stays one click away — the thread title in the chat header
-      // still toggles back to it, and the back arrow returns to the
-      // thread list.
-      const conv = conversations.find((c) => c.id === id);
-      if (conv) {
-        const docos = conv.attached_doco_ids ?? [];
-        const workspaces = conv.attached_workspace_handles ?? [];
-        if (docos.length + workspaces.length === 1) {
-          const targetUrl =
-            docos.length === 1
-              ? `/by-id/${encodeURIComponent(docos[0])}`
-              : `/workspaces/${workspaces[0]}`;
-          // Still mark this thread active so subsequent sends land
-          // here; if the user's already on the URL we skip navigate.
-          if (id !== conversationId) {
-            abortRef.current?.abort();
-            setBusy(false);
-            setInFlight(null);
-            setQueuedSends([]);
-            setTurnUsage(null);
-            setRemoteInflight(false);
-            setThinkingEvents([]);
-            setMessages([]);
-            setHasMore(false);
-            earliestRef.current = null;
-            setConversationId(id);
-            writeStringFlag(ACTIVE_CONV_KEY, id);
-          }
-          setView("chat");
-          setRenamingId(null);
-          if (location.pathname !== targetUrl) navigate(targetUrl);
-          return;
-        }
-      }
       if (id === conversationId) {
         setView("chat");
         return;
@@ -957,8 +891,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setRemoteInflight(false);
       setThinkingEvents([]);
       setMessages([]);
-      setAttachedDocos([]);
-      setAttachedWorkspaces([]);
       setHasMore(false);
       earliestRef.current = null;
       setConversationId(id);
@@ -966,7 +898,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setView("chat");
       setRenamingId(null);
     },
-    [conversationId, conversations, location.pathname, navigate],
+    [conversationId],
   );
 
   const newThread = useCallback(async () => {
@@ -995,8 +927,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setRemoteInflight(false);
       setThinkingEvents([]);
       setMessages([]);
-      setAttachedDocos([]);
-      setAttachedWorkspaces([]);
       setHasMore(false);
       earliestRef.current = null;
       setConversationId(created.id);
@@ -1036,104 +966,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     [conversationId],
   );
 
-  // Mutate the active thread's attachment lists via the PATCH route.
-  // Optimistic update — apply the change locally, then issue the
-  // request. On error we re-fetch the snapshot so the chips agree
-  // with the server again.
-  const attachAttachment = useCallback(
-    async (kind: "doco" | "workspace", attachment: AvailableDoco | AvailableWorkspace) => {
-      if (!conversationId || !attachment.handle) return;
-      if (kind === "doco") {
-        const optimistic = attachment as AvailableDoco;
-        setAttachedDocos((prev) =>
-          prev.some(
-            (d) =>
-              (optimistic.id ? d.id === optimistic.id : false) || d.handle === optimistic.handle,
-          )
-            ? prev
-            : [
-                ...prev,
-                {
-                  id: optimistic.id,
-                  handle: optimistic.handle,
-                  label: optimistic.qualified_handle ?? optimistic.handle,
-                },
-              ],
-        );
-      } else {
-        const optimistic = attachment as AvailableWorkspace;
-        setAttachedWorkspaces((prev) =>
-          prev.some((o) => o.handle === attachment.handle) ? prev : [...prev, optimistic],
-        );
-      }
-      try {
-        const body =
-          kind === "doco"
-            ? { attach_doco_id: (attachment as AvailableDoco).id }
-            : { attach_workspace: attachment.handle };
-        const res = await fetch(
-          `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
-          {
-            method: "PATCH",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        // Reload the snapshot so the chip picks up the resolved name.
-        void reload();
-        void loadConversationsList();
-      } catch {
-        // Snap state back to whatever the server says.
-        void reload();
-      }
-    },
-    [conversationId, reload, loadConversationsList],
-  );
-
-  const detachAttachment = useCallback(
-    async (
-      kind: "doco" | "workspace",
-      attachment: DocoAttachmentInfo | WorkspaceAttachmentInfo,
-    ) => {
-      if (!conversationId || !attachment.handle) return;
-      if (kind === "doco") {
-        const docoAttachment = attachment as DocoAttachmentInfo;
-        setAttachedDocos((prev) =>
-          prev.filter((d) =>
-            docoAttachment.id ? d.id !== docoAttachment.id : d.handle !== docoAttachment.handle,
-          ),
-        );
-      } else {
-        setAttachedWorkspaces((prev) => prev.filter((o) => o.handle !== attachment.handle));
-      }
-      try {
-        const body = (() => {
-          if (kind === "doco") {
-            const docoAttachment = attachment as DocoAttachmentInfo;
-            return { detach_doco_id: docoAttachment.id };
-          }
-          return { detach_workspace: attachment.handle };
-        })();
-        const res = await fetch(
-          `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
-          {
-            method: "PATCH",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        void loadConversationsList();
-      } catch {
-        void reload();
-      }
-    },
-    [conversationId, reload, loadConversationsList],
-  );
-
   const archiveThread = useCallback(
     async (id: string) => {
       try {
@@ -1162,8 +994,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           setThinkingEvents([]);
           setConversationId(null);
           setConversationTitle(null);
-          setAttachedDocos([]);
-          setAttachedWorkspaces([]);
           setHasMore(false);
           earliestRef.current = null;
           writeStringFlag(ACTIVE_CONV_KEY, null);
@@ -2276,19 +2106,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                         {displayThreadTitle(conversationTitle)}
                       </button>
                     )}
-                    <AttachmentsRow
-                      docos={attachedDocos}
-                      workspaces={attachedWorkspaces}
-                      onDetachDoco={(doco) => void detachAttachment("doco", doco)}
-                      onDetachWorkspace={(workspace) =>
-                        void detachAttachment("workspace", workspace)
-                      }
-                      onAttachDoco={(doco) => void attachAttachment("doco", doco)}
-                      onAttachWorkspace={(workspace) =>
-                        void attachAttachment("workspace", workspace)
-                      }
-                      conversationId={conversationId}
-                    />
                   </div>
                 </div>
 
@@ -2427,210 +2244,6 @@ function DotsIcon() {
       <circle cx="8" cy="8" r="1.5" />
       <circle cx="13" cy="8" r="1.5" />
     </svg>
-  );
-}
-
-interface AttachmentsRowProps {
-  docos: DocoAttachmentInfo[];
-  workspaces: WorkspaceAttachmentInfo[];
-  conversationId: string | null;
-  onAttachDoco: (doco: AvailableDoco) => void;
-  onAttachWorkspace: (workspace: AvailableWorkspace) => void;
-  onDetachDoco: (doco: DocoAttachmentInfo) => void;
-  onDetachWorkspace: (workspace: WorkspaceAttachmentInfo) => void;
-}
-
-interface AvailableDoco {
-  id: string;
-  handle: string;
-  qualified_handle?: string;
-}
-
-interface AvailableWorkspace {
-  handle: string;
-  name: string | null;
-}
-
-interface AvailableLists {
-  docos: AvailableDoco[];
-  workspaces: AvailableWorkspace[];
-}
-
-function AttachmentsRow({
-  docos,
-  workspaces,
-  conversationId,
-  onAttachDoco,
-  onAttachWorkspace,
-  onDetachDoco,
-  onDetachWorkspace,
-}: AttachmentsRowProps) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [available, setAvailable] = useState<AvailableLists | null>(null);
-  const [loadingAvailable, setLoadingAvailable] = useState(false);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!pickerOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (!pickerRef.current) return;
-      if (e.target instanceof Node && pickerRef.current.contains(e.target)) return;
-      setPickerOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [pickerOpen]);
-
-  // Lazy-load the user's accessible Docos / Workspaces the first time the
-  // picker opens. Cheap query — listAccessibleDocoIdsForPrincipal +
-  // a single docos join — but no point pulling it on every chat
-  // bootstrap.
-  useEffect(() => {
-    if (!pickerOpen || available !== null) return;
-    setLoadingAvailable(true);
-    void Promise.all([
-      fetch("/api/v1/docos.json", { credentials: "same-origin" }).then((r) =>
-        r.ok ? r.json() : { docos: [] },
-      ),
-      fetch("/api/v1/workspaces.json", { credentials: "same-origin" }).then((r) =>
-        r.ok ? r.json() : { workspaces: [] },
-      ),
-    ])
-      .then(([d, o]) => {
-        setAvailable({
-          docos: Array.isArray(d.docos) ? d.docos : [],
-          workspaces: Array.isArray(o.workspaces) ? o.workspaces : [],
-        });
-      })
-      .catch(() => setAvailable({ docos: [], workspaces: [] }))
-      .finally(() => setLoadingAvailable(false));
-  }, [pickerOpen, available]);
-
-  const attachedDocoIdSet = new Set(docos.map((d) => d.id).filter(Boolean));
-  const attachedDocoHandleSet = new Set(docos.map((d) => d.handle));
-  const attachedWorkspaceSet = new Set(workspaces.map((o) => o.handle));
-  const docosToOffer = (available?.docos ?? []).filter(
-    (d) => !attachedDocoIdSet.has(d.id) && !attachedDocoHandleSet.has(d.handle),
-  );
-  const workspacesToOffer = (available?.workspaces ?? []).filter(
-    (o) => !attachedWorkspaceSet.has(o.handle),
-  );
-
-  if (docos.length + workspaces.length === 0 && !conversationId) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5" ref={pickerRef}>
-      {docos.map((d) => (
-        <span
-          key={`doco-${d.id ?? d.handle}`}
-          className="neu-button inline-flex h-5 items-center rounded-full border border-border pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground"
-          title={d.label ?? d.handle}
-        >
-          <Link
-            to={d.id ? `/by-id/${encodeURIComponent(d.id)}` : `/${d.handle}`}
-            className="inline-flex h-full items-center leading-none hover:text-foreground"
-          >
-            {d.label ?? d.handle}
-          </Link>
-          <button
-            type="button"
-            onClick={() => onDetachDoco(d)}
-            aria-label={`Remove ${d.label ?? d.handle}`}
-            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      {workspaces.map((o) => (
-        <span
-          key={`workspace-${o.handle}`}
-          className="neu-button inline-flex h-5 items-center rounded-full border border-border pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground"
-          title={o.name ?? o.handle}
-        >
-          <Link
-            to={`/workspaces/${o.handle}`}
-            className="inline-flex h-full items-center leading-none hover:text-foreground"
-          >
-            @{o.name ?? o.handle}
-          </Link>
-          <button
-            type="button"
-            onClick={() => onDetachWorkspace(o)}
-            aria-label={`Remove ${o.name ?? o.handle}`}
-            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      <div className="relative inline-flex items-center">
-        <button
-          type="button"
-          onClick={() => setPickerOpen((p) => !p)}
-          aria-label="Attach a doco or Workspace"
-          aria-expanded={pickerOpen}
-          className="neu-button inline-flex h-5 w-5 items-center justify-center rounded-full border border-border text-[10px] leading-none text-muted-foreground hover:text-foreground"
-        >
-          +
-        </button>
-        {pickerOpen ? (
-          <div
-            role="menu"
-            className="neu-panel absolute left-0 top-full z-20 mt-1 max-h-72 min-w-[180px] overflow-y-auto rounded-md border border-border bg-card py-1 text-xs shadow"
-          >
-            {loadingAvailable ? (
-              <div className="px-3 py-1 text-[11px] text-muted-foreground">Loading…</div>
-            ) : null}
-            {!loadingAvailable && docosToOffer.length === 0 && workspacesToOffer.length === 0 ? (
-              <div className="px-3 py-1 text-[11px] text-muted-foreground">
-                Nothing else to attach.
-              </div>
-            ) : null}
-            {docosToOffer.length > 0 ? (
-              <div className="px-2 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                Docos
-              </div>
-            ) : null}
-            {docosToOffer.map((d) => (
-              <button
-                key={`d-${d.handle}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setPickerOpen(false);
-                  onAttachDoco(d);
-                }}
-                className="block w-full truncate px-3 py-1 text-left hover:bg-input"
-              >
-                {d.qualified_handle ?? d.handle}
-              </button>
-            ))}
-            {workspacesToOffer.length > 0 ? (
-              <div className="px-2 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                Workspaces
-              </div>
-            ) : null}
-            {workspacesToOffer.map((o) => (
-              <button
-                key={`o-${o.handle}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setPickerOpen(false);
-                  onAttachWorkspace(o);
-                }}
-                className="block w-full truncate px-3 py-1 text-left hover:bg-input"
-              >
-                @{o.name ?? o.handle}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

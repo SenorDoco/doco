@@ -20,8 +20,6 @@ function conversation(overrides: Record<string, unknown> = {}) {
     active_turn_started_at: null,
     last_message_preview: "Hello",
     last_message_role: "user" as const,
-    attached_doco_ids: [],
-    attached_workspace_handles: [],
     workspace_id: null,
     workspace_handle: null,
     ...overrides,
