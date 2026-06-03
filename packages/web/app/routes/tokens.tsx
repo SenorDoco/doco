@@ -353,13 +353,14 @@ function CopyableCode({ value, testid }: { value: string; testid?: string }) {
   return (
     <div className="relative">
       <pre
-        className="overflow-x-auto whitespace-pre rounded-md bg-input px-3 py-2 pr-16 font-mono text-xs"
+        className="min-h-12 overflow-x-auto whitespace-pre rounded-md bg-input px-4 py-3 pr-24 font-mono text-sm leading-6"
         data-testid={testid}
       >
         <code>{value}</code>
       </pre>
       <button
         type="button"
+        data-testid={testid ? `${testid}-copy` : undefined}
         onClick={() => {
           if (typeof navigator !== "undefined" && navigator.clipboard) {
             void navigator.clipboard.writeText(value).then(() => {
@@ -368,7 +369,7 @@ function CopyableCode({ value, testid }: { value: string; testid?: string }) {
             });
           }
         }}
-        className="neu-button absolute right-2 top-2 rounded-md px-2 py-1 text-[11px]"
+        className="neu-button absolute right-3 top-3 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
       >
         {copied ? "Copied!" : "Copy"}
       </button>

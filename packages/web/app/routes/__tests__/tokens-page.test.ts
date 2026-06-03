@@ -173,6 +173,25 @@ describe("/tokens page action", () => {
     expect(markup).toContain("doco_request_access");
   });
 
+  it("renders the MCP URL copy row with room for a primary copy button", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ManualMcpPanel, {
+        host: "https://doco.test",
+        workspaces: [{ id: "workspace_01ABC", handle: "acme" }],
+      }),
+    );
+
+    const urlBlock = markup.match(/<pre class="([^"]*)" data-testid="mcp-url">/)?.[1] ?? "";
+    const copyButton =
+      markup.match(/<button type="button" data-testid="mcp-url-copy" class="([^"]*)">/)?.[1] ?? "";
+
+    expect(urlBlock).toContain("text-sm");
+    expect(urlBlock).toContain("py-3");
+    expect(urlBlock).toContain("pr-24");
+    expect(copyButton).toContain("bg-primary");
+    expect(copyButton).toContain("text-primary-foreground");
+  });
+
   it("falls back to the WORKSPACE_ID placeholder when the user has no workspace", () => {
     const markup = renderToStaticMarkup(
       createElement(ManualMcpPanel, { host: "https://doco.test" }),
