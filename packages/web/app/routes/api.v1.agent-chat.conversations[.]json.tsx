@@ -12,6 +12,7 @@
 //
 // Signed-out callers get 401.
 
+import { listWorkspacesForUser } from "@doco/db";
 import {
   type ConversationListItem,
   createConversation,
@@ -37,6 +38,7 @@ export async function loader({ request }: { request: Request }) {
 
 interface CreateBody {
   title?: unknown;
+  workspace_id?: unknown;
 }
 
 export async function action({ request }: { request: Request }) {
@@ -55,7 +57,27 @@ export async function action({ request }: { request: Request }) {
   }
   const title =
     typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 120) : null;
-  const conv = await createConversation(me.id, { title });
+
+  // A thread may be scoped to a Workspace at creation. Only allow scoping to a
+  // Workspace the caller actually belongs to — otherwise drop the scope rather
+  // than leak that the id exists.
+  const requestedWorkspaceId =
+    typeof body.workspace_id === "string" && body.workspace_id.trim()
+      ? body.workspace_id.trim()
+      : null;
+  let workspaceId: string | null = null;
+  let workspaceHandle: string | null = null;
+  if (requestedWorkspaceId) {
+    const mine = await listWorkspacesForUser(me.id);
+    const match = mine.find((w) => w.id === requestedWorkspaceId);
+    if (!match) {
+      return Response.json({ error: "workspace_not_found" }, { status: 403 });
+    }
+    workspaceId = match.id;
+    workspaceHandle = match.handle;
+  }
+
+  const conv = await createConversation(me.id, { title, workspaceId });
   return Response.json({
     conversation: {
       id: conv.id,
@@ -68,6 +90,8 @@ export async function action({ request }: { request: Request }) {
       last_message_role: null,
       attached_doco_ids: conv.attached_doco_ids ?? [],
       attached_workspace_handles: [],
+      workspace_id: conv.workspace_id,
+      workspace_handle: workspaceHandle,
     },
   });
 }

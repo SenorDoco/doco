@@ -118,6 +118,7 @@ function conversation(): ChatConversationRow {
     user_id: USER,
     archived: false,
     title: null,
+    workspace_id: null,
     attached_doco_ids: [],
     attached_workspace_handles: [],
     created_at: new Date(),

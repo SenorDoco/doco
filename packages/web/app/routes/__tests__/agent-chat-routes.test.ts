@@ -40,6 +40,7 @@ function conversationRow(overrides: Record<string, unknown> = {}) {
     user_id: "user_alice",
     archived: false,
     title: "Ask",
+    workspace_id: null,
     attached_doco_ids: [],
     attached_workspace_handles: [],
     created_at: new Date("2026-01-01T00:00:00Z"),

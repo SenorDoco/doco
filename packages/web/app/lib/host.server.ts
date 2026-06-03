@@ -38,6 +38,8 @@ export interface HostDoco {
   ownerId: string;
   /** Internal ULID — FK target for every entity table. */
   docoId: string;
+  /** ULID of the Workspace that owns this Doco. */
+  workspaceId: string;
   hasIndex: boolean;
   visibility: "private" | "public";
 }
@@ -119,6 +121,7 @@ export async function listAllDocos(): Promise<HostDoco[]> {
       ownerKind,
       ownerId: r.owner_id,
       docoId: r.id,
+      workspaceId: r.workspace_id,
       hasIndex: true,
       visibility: r.visibility,
     };
