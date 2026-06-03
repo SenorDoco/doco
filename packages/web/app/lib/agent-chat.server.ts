@@ -576,27 +576,6 @@ export async function attachDocoToConversation(
   }
 }
 
-/** Same shape as attachDocoToConversation but targets `attached_workspace_handles`. */
-export async function attachWorkspaceToConversation(
-  conversationId: string,
-  handle: string,
-): Promise<void> {
-  if (!conversationId || !handle) return;
-  try {
-    await withClient(async (c) => {
-      await c.query(
-        `UPDATE chat_conversations
-            SET attached_workspace_handles = attached_workspace_handles || ARRAY[$2::text]
-          WHERE id = $1
-            AND NOT ($2 = ANY(attached_workspace_handles))`,
-        [conversationId, handle],
-      );
-    });
-  } catch {
-    // Best-effort.
-  }
-}
-
 /**
  * Owner-scoped mutate for the manual override flow. Accepts arbitrary
  * attach/detach operations against a thread the caller owns. Returns
@@ -1412,16 +1391,6 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     }
   }
   return value;
-}
-
-/**
- * Manual invalidator for callers that mutate the bootstrap inputs
- * (new doco, policies flipped). Optional; without it the TTL still
- * expires within seconds.
- */
-export function invalidateBootstrapMemo(principalId?: string): void {
-  if (principalId) bootstrapMemo.delete(principalId);
-  else bootstrapMemo.clear();
 }
 
 /**

@@ -21,10 +21,6 @@ export function cross(s: string): string {
   return `${c.err("✗")} ${s}`;
 }
 
-export function bullet(s: string): string {
-  return `${c.dim("•")} ${s}`;
-}
-
 export function rule(width = 60): string {
   return c.dim("─".repeat(width));
 }

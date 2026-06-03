@@ -25,19 +25,6 @@ export function readCreatedDocoChatIdSearchParams(search: URLSearchParams): stri
   return id;
 }
 
-export function readCreatedDocoChatIdSearchParam(request: Request): string | null {
-  return readCreatedDocoChatIdSearchParams(new URL(request.url).searchParams);
-}
-
 export function withCreatedDocoId(path: string, docoId: string): string {
   return withSearchParam(path, CREATED_DOCO_ID_SEARCH_PARAM, docoId);
-}
-
-export function withCreatedDocoChatId(
-  path: string,
-  conversationId: string | null | undefined,
-): string {
-  return conversationId
-    ? withSearchParam(path, CREATED_DOCO_CHAT_ID_SEARCH_PARAM, conversationId)
-    : path;
 }

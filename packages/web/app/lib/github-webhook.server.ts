@@ -198,27 +198,6 @@ export interface DocoRepoConnection {
   workspaceHandle: string;
 }
 
-/** Docos connected to "owner/name". */
-export async function findDocoConnectionsByRepo(
-  repoFullName: string,
-): Promise<DocoRepoConnection[]> {
-  return withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; workspace_handle: string }>(
-      `SELECT d.id, d.handle, o.handle AS workspace_handle
-        FROM docos d
-         JOIN workspaces o ON o.id = d.workspace_id
-        WHERE d.data->'github_integration'->'connections'
-                @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
-      [repoFullName],
-    );
-    return r.rows.map((row) => ({
-      docoId: row.id,
-      handle: row.handle,
-      workspaceHandle: row.workspace_handle,
-    }));
-  });
-}
-
 /** Docos subscribed to every repository under a GitHub App installation. */
 export async function findDocoByInstallation(
   installationId: number,

@@ -97,25 +97,6 @@ export function buildMissingDocoGuidance(args: {
 }
 
 /**
- * Single-line summary suitable for the bootstrap response's `warning`
- * field — agents inject this into their `[🔮 Doco] Not connected yet:`
- * disconnected indicator, so it needs to fit on one logical line and
- * still carry the key command.
- */
-export function formatMissingDocoLine(g: MissingDocoGuidance): string {
-  const first = g.actions[0];
-  if (!first) return g.title;
-  const cmd = first.command ? ` Run: \`${first.command}\`` : "";
-  const secondary = g.actions[1];
-  const tail = secondary?.command
-    ? ` Or: \`${secondary.command}\`.`
-    : secondary
-      ? ` Or: ${secondary.label.toLowerCase()}.`
-      : "";
-  return `${g.title} ${first.label}.${cmd}.${tail}`.replace(/\.+/g, ".");
-}
-
-/**
  * Multi-line plain-text guidance for HTTP response bodies (404 / 403)
  * that curl users and raw agents read directly. Formatted so the
  * actions read as a numbered checklist.

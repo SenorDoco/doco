@@ -330,9 +330,3 @@ export async function internalFetch(input: InternalFetchInput): Promise<Response
     throw err;
   }
 }
-
-/** Exposed for tests / diagnostics — list every route the internal
- *  fast path can serve. */
-export function listInternalRoutes(): string[] {
-  return ROUTES.map((r) => r.pattern);
-}
