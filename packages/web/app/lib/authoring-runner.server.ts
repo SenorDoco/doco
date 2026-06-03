@@ -173,13 +173,17 @@ export async function runAuthoringPolicies(opts: {
  *
  *   - judge says PASS  → violation dropped from the list
  *   - judge says FAIL  → violation kept, reason replaced with the judge's
- *   - judge unavailable → violation kept but demoted to "warn" so the
- *     LLM being down doesn't take a capture path offline
+ *   - judge UNAVAILABLE → violation forced to "block" with an actionable
+ *     error. A policy that can't be evaluated hasn't been satisfied, so we
+ *     fail closed and loud (whatever the policy's normal severity) rather
+ *     than silently admitting an unvetted node — the blocked capture
+ *     surfaces the judge outage immediately, so an operator can spot a
+ *     missing key, a rate limit, or an exhausted credit balance.
  *
  * Deterministic violations pass through unchanged. Probabilistic specs
  * are resolved in parallel.
  */
-async function resolveProbabilistic(
+export async function resolveProbabilistic(
   violations: Violation[],
   policies: LoadedPolicy[],
   candidate: CandidateFields,
@@ -195,13 +199,21 @@ async function resolveProbabilistic(
         }
         const judgment = await judgeProbabilisticPredicate(v.pending_spec, candidate);
         if (judgment === null) {
-          // LLM unavailable — demote a block to a warning so a flaky
-          // judge can't take captures offline. `warn` and `log` pass
-          // through unchanged.
-          if (v.on_violation === "block") {
-            return { ...v, on_violation: "warn" as const };
-          }
-          return v;
+          // LLM unavailable — the policy could NOT be checked. Fail closed:
+          // block the capture (whatever the policy's normal severity) and
+          // surface an actionable error so the judge outage is obvious
+          // instead of silently admitting an unvetted node. The specific
+          // Anthropic error is in the server logs (`[authoring-judge] …`).
+          const policyText = policyById.get(v.policy_id) ?? "";
+          const detail =
+            "the LLM policy judge is unavailable — check the Anthropic API key, rate limits, and credit balance (see server logs for the underlying error)";
+          return {
+            ...v,
+            on_violation: "block" as const,
+            reason: policyText
+              ? `${policyText} — could not be checked: ${detail}`
+              : `policy could not be checked: ${detail}`,
+          };
         }
         if (judgment.ok) {
           return null; // Filtered out below.
