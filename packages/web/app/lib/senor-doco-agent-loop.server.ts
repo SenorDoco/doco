@@ -103,18 +103,15 @@ export async function* runSenorDocoAgentLoop(deps: AgentLoopDeps): AsyncGenerato
     if (result.stopReason !== "tool_use") return;
 
     const toolResults: ToolResultBlockParam[] = [];
+    let abortedMidTools = false;
     for (const block of result.toolUseBlocks) {
       if (await deps.shouldAbort?.({ force: true })) {
-        yield { kind: "aborted" };
-        return;
+        abortedMidTools = true;
+        break;
       }
       yield { kind: "status", phase: "running_tool", detail: block.name };
       const startedAt = performance.now();
       const tr = await deps.runTool(block);
-      if (await deps.shouldAbort?.({ force: true })) {
-        yield { kind: "aborted" };
-        return;
-      }
       yield {
         kind: "status",
         phase: "tool_returned",
@@ -123,11 +120,48 @@ export async function* runSenorDocoAgentLoop(deps: AgentLoopDeps): AsyncGenerato
       yield { kind: "tool_use_result", tool_use_id: block.id, ok: tr.ok, preview: tr.preview };
       if (tr.navigateUrl) yield { kind: "navigate", url: tr.navigateUrl };
       toolResults.push(tr.result);
+      // Re-check only AFTER the result is recorded. A tool's side effect is
+      // durable the instant runTool returns, so aborting in the gap between
+      // the write and capturing its tool_result would drop the record of
+      // work that already happened — and the next turn, seeing the
+      // instruction apparently un-acted-upon, repeats it. (That was the
+      // "sent a second message, it re-ran the first instruction" bug.)
+      if (await deps.shouldAbort?.({ force: true })) {
+        abortedMidTools = true;
+        break;
+      }
+    }
+
+    // Anthropic requires every tool_use block to be answered by a
+    // tool_result in the next turn. If we broke out mid-batch with real
+    // work to preserve, synthesize results for the tools we never reached
+    // so the persisted assistant/tool_result pair stays balanced — an
+    // unbalanced pair 400s the next model call.
+    if (abortedMidTools && toolResults.length > 0) {
+      const answered = new Set(toolResults.map((r) => r.tool_use_id));
+      for (const block of result.toolUseBlocks) {
+        if (answered.has(block.id)) continue;
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          is_error: true,
+          content: "Superseded by a newer message before this step ran.",
+        });
+      }
     }
 
     // One user-role message carrying every tool_result (Anthropic contract).
-    yield { kind: "tool_results", blocks: toolResults };
-    deps.messages.push({ role: "user", content: toolResults });
+    // Emitted even on a mid-batch abort — as long as real work committed —
+    // so the consumer persists it and the next turn won't repeat it.
+    if (toolResults.length > 0) {
+      yield { kind: "tool_results", blocks: toolResults };
+      deps.messages.push({ role: "user", content: toolResults });
+    }
+
+    if (abortedMidTools) {
+      yield { kind: "aborted" };
+      return;
+    }
   }
 
   // Ran out of turns without the model settling on a final answer.
