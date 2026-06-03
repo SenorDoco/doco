@@ -172,15 +172,14 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 // Stage labels read as state names when the option is the current
-// lifecycle ("Drafting", "Proposed", "Active", "Retired") and as the
-// action verb that would move into that stage when the option is one
-// of the other (clickable) choices ("Draft", "Propose", "Activate",
-// "Retire"). Combined with the press-down state in the UI, this makes
-// the row read like "you ARE here / click to GO there."
+// lifecycle ("Drafting", "Asserted", "Retired") and as the action verb
+// that would move into that stage when the option is one of the other
+// (clickable) choices ("Draft", "Assert", "Retire"). Combined with the
+// press-down state in the UI, this makes the row read like
+// "you ARE here / click to GO there."
 const LIFECYCLE_VERB: Record<string, string> = {
   drafting: "draft",
-  proposed: "propose",
-  active: "activate",
+  asserted: "assert",
   retired: "retire",
 };
 

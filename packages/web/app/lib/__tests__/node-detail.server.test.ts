@@ -98,6 +98,38 @@ describe("loadNodeDialogDetail", () => {
     });
   });
 
+  it("labels the asserted lifecycle stage with the 'assert' verb", async () => {
+    const detail = await loadNodeDialogDetail(
+      clientWithRow({
+        id: "decision_01TEST",
+        primary_text: "Use display labels",
+        body_text: null,
+        lifecycle: "drafting",
+        raw_json: JSON.stringify({}),
+        created_at: "2026-05-26T17:01:00.000Z",
+        updated_at: "2026-05-26T17:01:00.000Z",
+      }),
+      meta,
+      {
+        handle: "test-doco",
+        entityType: "decision",
+        id: "decision_01TEST",
+        principalId: "principal_owner",
+      },
+    );
+
+    // The clickable stage transitions read as verbs; "asserted" must read as
+    // "assert" (not the leftover "activate", nor the bare state noun).
+    const options = detail?.lifecycle_options ?? [];
+    const asserted = options.find((o) => o.value === "asserted");
+    expect(asserted?.label).toBe("assert");
+    expect(options.map((o) => o.label)).not.toContain("activate");
+    // The current stage still reads as its state name, not a verb.
+    const drafting = options.find((o) => o.value === "drafting");
+    expect(drafting?.current).toBe(true);
+    expect(drafting?.label).toBe("drafting");
+  });
+
   it("includes related node lifecycle on edge edges", async () => {
     const client = {
       query: async <T>(sql: string): Promise<{ rows: T[] }> => {
