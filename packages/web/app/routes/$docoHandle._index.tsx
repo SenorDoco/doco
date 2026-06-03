@@ -21,7 +21,11 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { GithubIntegrationCard } from "~/components/github-integration-card";
-import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
+import {
+  LIFECYCLE_ORDER,
+  initialVisibleLifecycles,
+  perspectiveHonorsLifecycleFilter,
+} from "~/components/lifecycle-filter";
 import { NodeDialog } from "~/components/node-dialog";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
@@ -1094,11 +1098,18 @@ export default function DocoHome({
               </div>
               <PerspectiveFrame
                 fillHeight
-                lifecycleFilter={{
-                  visible: visibleLifecycles,
-                  available: availableLifecycles,
-                  onToggle: toggleLifecycle,
-                }}
+                lifecycleFilter={
+                  // Perspectives that ignore the visible-lifecycle set (the
+                  // Pull requests list) get no filter panel — it would change
+                  // nothing and the page-level re-seed would flip the boxes back.
+                  perspectiveHonorsLifecycleFilter(effectivePerspectiveKind)
+                    ? {
+                        visible: visibleLifecycles,
+                        available: availableLifecycles,
+                        onToggle: toggleLifecycle,
+                      }
+                    : undefined
+                }
                 fullscreen={{
                   isFullscreen: isPerspectiveFullscreen,
                   onToggle: togglePerspectiveFullscreen,
