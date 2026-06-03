@@ -67,6 +67,7 @@ vi.mock("~/components/site-header", () => ({
 }));
 
 import DocoIntegrations, { meta as docoIntegrationsMeta } from "../$docoHandle.integrations";
+import { CONNECTION_ACTION_SECONDARY } from "../../components/integrations-shell";
 import { singleColumnPageMainWidth } from "../../components/page-main";
 import IntegrationsPage, { meta as accountIntegrationsMeta } from "../integrations";
 import WorkspaceIntegrations, {
@@ -156,5 +157,84 @@ describe("integrations page layout", () => {
       expect(markup).not.toContain(">Integrations</h1>");
       expect(page.title).toContain("App integrations");
     }
+  });
+});
+
+describe("integrations connected-pane standardization", () => {
+  const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
+  const doco = {
+    docoId: "doco_1",
+    handle: "torre-prs",
+    workspaceHandle: "acme",
+    githubRepoCount: 4,
+  };
+
+  function renderAccountPage(): string {
+    return renderRoute(
+      createElement(IntegrationsPage, {
+        loaderData: {
+          me,
+          notice: null,
+          slackConfirmation: null,
+          slackInstallHref: "/integrations/slack/install",
+          slackInstallations: [
+            {
+              workspaceId: "T1",
+              workspaceName: "Torre.ai",
+              botUserId: "U1",
+              installedAt: "2026-06-03T00:00:00.000Z",
+              docoWorkspaceId: null,
+            },
+          ],
+          rollup: {
+            slack: [],
+            workspaces: [{ workspaceId: "workspace_acme", handle: "acme", installCount: 0 }],
+            docos: [doco],
+          },
+          pickingIntegrationId: null,
+        },
+      }),
+    );
+  }
+
+  function renderWorkspacePage(): string {
+    return renderRoute(
+      createElement(WorkspaceIntegrations, {
+        loaderData: {
+          me,
+          workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
+          rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [doco] },
+          pickingIntegrationId: null,
+        },
+      }),
+    );
+  }
+
+  it("renders the Slack-workspaces card with the same flush list + action button as the rollups", () => {
+    const markup = renderAccountPage();
+
+    // Both the Slack install row and the workspace rollup row sit in flush
+    // divider lists — the Slack card's old nested bordered box is gone.
+    expect(markup).toContain('<ul class="divide-y divide-border">');
+    expect(markup).not.toContain("divide-y divide-border rounded-md border border-border");
+
+    // Both actions ("Set defaults" on Slack, "Manage" on the rollup) render
+    // through the one shared secondary-button class, at the same size — the
+    // old oversized Slack button (py-2 text-sm) no longer exists.
+    expect(markup).toContain("Set defaults");
+    expect(markup).toContain("Manage");
+    expect(markup).toContain(CONNECTION_ACTION_SECONDARY);
+    expect(markup).not.toContain("px-3 py-2 text-sm");
+
+    // The Slack action navigates to its setup screen like any other row.
+    expect(markup).toContain('href="/integrations/slack/setup?team_id=T1"');
+  });
+
+  it("renders the per-Doco rollup with the same standardized row", () => {
+    const markup = renderWorkspacePage();
+    expect(markup).toContain('<ul class="divide-y divide-border">');
+    expect(markup).toContain("Manage");
+    expect(markup).toContain(CONNECTION_ACTION_SECONDARY);
+    expect(markup).toContain("4 GitHub repos connected");
   });
 });
