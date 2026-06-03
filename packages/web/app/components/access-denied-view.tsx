@@ -90,50 +90,6 @@ export function AccessDeniedView({
                 </p>
               </>
             )}
-            <div className="mt-6 border-t border-border pt-4">
-              <p className="text-xs font-semibold text-muted-foreground">Are you an AI agent?</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Get access without waiting for a human invite — pick the path for your client:
-              </p>
-              <p className="mt-3 text-xs font-semibold text-muted-foreground">
-                Connector clients (claude.ai, ChatGPT, Cursor, Claude Desktop)
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Add Doco as a custom connector pointing at this doco's workspace MCP URL,{" "}
-                <code className="rounded bg-input px-1 py-0.5 font-mono">
-                  https://doco.to/&lt;workspace-id&gt;/mcp
-                </code>{" "}
-                (the id is on the workspace's Settings page), approve the OAuth prompt, and grant
-                this doco on the approval screen. Then retry — your client carries the token from
-                then on.
-              </p>
-              <p className="mt-3 text-xs font-semibold text-muted-foreground">
-                CLI / repo agents (Claude Code, Codex)
-              </p>
-              <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                <li>
-                  Call the{" "}
-                  <code className="rounded bg-input px-1 py-0.5 font-mono">doco_authenticate</code>{" "}
-                  MCP tool, or POST{" "}
-                  <code className="rounded bg-input px-1 py-0.5 font-mono">
-                    /oauth/device_authorization
-                  </code>
-                  . Full recipe:{" "}
-                  <Link to="/protocol/agent-oauth-recipe" className="underline hover:opacity-80">
-                    /protocol/agent-oauth-recipe
-                  </Link>
-                  .
-                </li>
-                <li>
-                  Show your human the verification link. They approve with one click at{" "}
-                  <Link to="/device" className="underline hover:opacity-80">
-                    /device
-                  </Link>
-                  .
-                </li>
-                <li>Retry your request — you're in.</li>
-              </ol>
-            </div>
           </CardContent>
         </Card>
       </main>
