@@ -4,6 +4,7 @@
 import { entityAsOf, getEntity, getVersions, verifyHistory, withClient } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
+import { buildEntityGetResponse, normalizeRawCaptureDraft } from "~/lib/api-capture-shape";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import {
@@ -130,6 +131,11 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             );
           }
 
+          // Raw-schema phase (additive): accept `{prose, attributes:{…}}` and
+          // fold it onto the shape the per-type capture fn already reads. The
+          // legacy type-named field keeps working unchanged.
+          draft = normalizeRawCaptureDraft(draft, PROSE_FIELD[cfg.entityType] ?? cfg.entityType);
+
           const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(
             cfg.entityType,
             draft as Record<string, unknown>,
@@ -249,30 +255,11 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         const snapshot = await withClient((c) => entityAsOf(c, "node", id, txId));
         return Response.json({ id, as_of: txId, snapshot });
       }
-      // Post-rename: the 9 migrated nodes expose their prose under
-      // a single key matching the entity type (intent/decision/rule/...).
-      // Policies surface their one-line rule as `policy` (renamed from
-      // `summary` in 038) plus optional `body_md`. Principals don't
-      // route through this factory.
-      const response: Record<string, unknown> = {
-        id: rec.id,
-        entity_type: rec.entity_type,
-        doco_id: rec.doco_id,
-        lifecycle: rec.lifecycle ?? null,
-        created_at: rec.created_at ?? null,
-        updated_at: rec.updated_at ?? null,
-        data: rec.data,
-      };
-      if (rec.type_named_value !== undefined && rec.type_named_value !== null) {
-        response[cfg.entityType] = rec.type_named_value;
-      } else if (rec.entity_type === "policy") {
-        // Policies have no type-named prose: `kind` + `predicate` already
-        // ride along in `response.data`; surface the markdown body too.
-        response.body_md = rec.body_md ?? null;
-      } else {
-        response[cfg.entityType] = "";
-      }
-      return Response.json(response);
+      // The 9 migrated nodes expose their prose under a single key matching
+      // the entity type (intent/decision/rule/...) AND, in the raw-schema
+      // phase, under `prose` + `attributes`. Policies surface `policy` +
+      // optional `body_md`. Principals don't route through this factory.
+      return Response.json(buildEntityGetResponse(rec, cfg.entityType));
     },
 
     async action({
