@@ -1240,3 +1240,77 @@ describe("business-processes template — flow-wiring end-to-end via runAuthorin
     expect(result.violations.some((v) => v.sub_kind === "flow-wiring")).toBe(false);
   });
 });
+
+// ─── Suite G: a flow node serves AT MOST one Intent (the serves ceiling) ───────
+//
+// The `serves` attachment FLOOR (≥1 Intent) gets a matching CEILING (≤1): every
+// flow node belongs to exactly one BPMN pool. Like the floor, the ceiling is an
+// ATTACHMENT invariant — it fires at EVERY pre-retirement stage (drafting,
+// queued, active), so a node never serves two Intents even in a sketch. Suite A
+// already proves the ten well-formed processes (one serves edge per node) pass
+// every block gate; here we add the explicit ceiling check and prove it catches
+// a node wired into two pools.
+
+describe("business-processes template — a flow node serves at most one Intent", () => {
+  it("seeds the limits_edge_role serves ceiling, firing at every stage", () => {
+    const ceiling = policies.find(
+      (p) =>
+        isDeterministicPredicate(p.predicate) &&
+        p.predicate.sub_kind === "limits_edge_role" &&
+        p.predicate.edge_role === "serves",
+    );
+    expect(ceiling).toBeDefined();
+    expect(ceiling?.on_violation).toBe("block");
+    expect(ceiling?.fires_when_node_lifecycle).toEqual(["drafting", "queued", "active"]);
+  });
+
+  // Wire a SECOND process Intent into the Doco, then an Action that serves BOTH
+  // it and the original process Intent — the ambiguous two-pool case.
+  function actionServingTwoIntents(lifecycle: Lifecycle): {
+    candidate: CandidateFields;
+    graph: BuiltProcess;
+  } {
+    const g = buildProcess(SCENARIOS[0], lifecycle);
+    const second = node(
+      "intent",
+      "loan-servicing",
+      { intent: "Service a disbursed loan" },
+      lifecycle,
+    );
+    const twoPool = node(
+      "action",
+      "loan-approval",
+      { action: "reconcile the ledger", verb: "reconcile" },
+      lifecycle,
+    );
+    g.edges.push(edge(twoPool.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(twoPool.id, second.id, "supports", "serves"));
+    // Attach a performing Principal so the failure is unambiguously the ceiling,
+    // not the performed_by floor.
+    g.edges.push(edge(twoPool.id, g.principals[0].id, "attributed_to", "performed_by"));
+    g.nodes.push(second, twoPool);
+    return { candidate: twoPool, graph: g };
+  }
+
+  for (const lifecycle of ["drafting", "queued", "active"] as const) {
+    it(`blocks an Action serving two Intents at ${lifecycle}`, () => {
+      const { candidate, graph } = actionServingTwoIntents(lifecycle);
+      const blocks = deterministicBlocks(evaluate(candidate, graph));
+      expect(
+        blocks.some((b) => b.sub_kind === "limits_edge_role" && /serves/.test(b.reason)),
+        `${lifecycle}: expected the serves-ceiling to block, got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
+      ).toBe(true);
+    });
+  }
+
+  it("does NOT block flow nodes that each serve exactly one Intent (no false positive)", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    for (const candidate of [g.actions[0], g.gateway, g.states[0]]) {
+      const blocks = deterministicBlocks(evaluate(candidate, g));
+      expect(
+        blocks.some((b) => b.sub_kind === "limits_edge_role"),
+        `${candidate.node_type} ${candidate.id} wrongly tripped the serves ceiling`,
+      ).toBe(false);
+    }
+  });
+});
