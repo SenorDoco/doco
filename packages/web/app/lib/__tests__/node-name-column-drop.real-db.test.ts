@@ -64,18 +64,18 @@ beforeAll(async () => {
   // Intent (pool header) + the focused State + a Principal, mirroring the real
   // torre-bpm shape. The Principal's label lives in `prose` (post-slim-down).
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data, created_by)
-     VALUES ($1,$2,'intent','active','Onboard a new hire', '{}'::jsonb, $3)`,
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, created_by)
+     VALUES ($1,$2,'intent','active','Onboard a new hire', $3)`,
     [INTENT, DOCO, USER],
   );
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, kind, data, created_by)
-     VALUES ($1,$2,'state','drafting','Visits Torre','initial', $3::jsonb, $4)`,
-    [STATE, DOCO, JSON.stringify({ id: STATE, state: "Visits Torre", kind: "initial" }), USER],
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, kind, created_by)
+     VALUES ($1,$2,'state','drafting','Visits Torre','initial', $3)`,
+    [STATE, DOCO, USER],
   );
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data, created_by)
-     VALUES ($1,$2,'principal','active','Alex Torrenegra', '{}'::jsonb, $3)`,
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, created_by)
+     VALUES ($1,$2,'principal','active','Alex Torrenegra', $3)`,
     [PRINCIPAL, DOCO, USER],
   );
   // State supports the Intent, and is attributed to the Principal — two related
