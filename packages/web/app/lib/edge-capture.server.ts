@@ -9,6 +9,7 @@
 import {
   type CommitSource,
   type EdgeRow,
+  type EntityRecord,
   createChangeset,
   createEdge,
   getEntity,
@@ -23,6 +24,7 @@ import {
   isEntityId,
   parseEntityId,
 } from "@doco/shared";
+import { runEdgeAuthoringPolicies } from "./authoring-runner.server";
 
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
 const NODE_TYPE_SET: ReadonlySet<string> = new Set(NODE_TYPES);
@@ -47,13 +49,27 @@ export type EdgeCaptureResult =
 async function resolveEndpoint(
   docoId: string,
   id: string,
-): Promise<{ ok: true; type: string } | { error: string }> {
+): Promise<{ ok: true; type: string; rec: EntityRecord } | { error: string }> {
   if (!isEntityId(id)) return { error: "is not a valid entity id" };
   const parsed = parseEntityId(id);
   if (!parsed) return { error: "is not a valid entity id" };
   const rec = await getEntity(parsed.type, id);
   if (!rec || rec.doco_id !== docoId) return { error: "does not exist in this Doco" };
-  return { ok: true, type: parsed.type };
+  return { ok: true, type: parsed.type, rec };
+}
+
+/**
+ * Flatten an endpoint node into the fields an edge-policy judge needs: its
+ * `name`, its prose `text`, and its structured `data`. Keyed by node type
+ * (e.g. `action`, `intent`) so a policy spec can reference each endpoint by
+ * the role it plays in the edge.
+ */
+function endpointPayload(rec: EntityRecord): Record<string, unknown> {
+  return {
+    name: rec.name ?? null,
+    text: rec.type_named_value ?? null,
+    ...(rec.data && typeof rec.data === "object" ? rec.data : {}),
+  };
 }
 
 /** Create a first-class edge through the commit() boundary. */
@@ -104,6 +120,34 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
       error: `A '${input.edgeType}' edge must point at ${endpoints.to.join(" or ")} (got ${to.type}).`,
       status: 400,
     };
+  }
+
+  // Edge-scoped authoring policies — LLM-judged checks that compare the two
+  // endpoints (e.g. a sub-process child Intent's name must be the base form of
+  // the calling Action it `serves`). A `drafting` edge is a sketch and exempt,
+  // mirroring the node lifecycle exemption; committed (`active`) edges are held
+  // to the policy.
+  const role = typeof input.props?.role === "string" ? input.props.role : null;
+  if ((input.lifecycle ?? "active") !== "drafting") {
+    const pred = await runEdgeAuthoringPolicies({
+      docoId: input.docoId,
+      edge: {
+        edge_type: input.edgeType,
+        role,
+        from_node_type: from.type,
+        to_node_type: to.type,
+      },
+      judgeCandidate: {
+        id: `${input.fromId}->${input.toId}`,
+        edge_type: input.edgeType,
+        role,
+        [from.type]: endpointPayload(from.rec),
+        [to.type]: endpointPayload(to.rec),
+      },
+    });
+    if (pred.blocking) {
+      return { error: pred.blocking.reason, status: 422 };
+    }
   }
 
   try {

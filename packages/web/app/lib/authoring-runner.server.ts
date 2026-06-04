@@ -15,6 +15,7 @@ import { NODE_TABLES } from "@doco/db";
 import {
   type CandidateFields,
   type DeterministicSubKind,
+  type EdgeCandidate,
   type EngineEdge,
   type Lifecycle,
   type LoadedPolicy,
@@ -22,6 +23,7 @@ import {
   type PrincipalIndex,
   type Violation,
   agentInstructionOf,
+  evaluateEdgePolicies,
   evaluatePolicies,
   isDeterministicPredicate,
   policyFiresFor,
@@ -168,6 +170,46 @@ export async function runAuthoringPolicies(opts: {
   return opts.client ? run(opts.client) : withClient(run);
 }
 
+export interface EdgeAuthoringResult {
+  /** Every violation produced (after judge resolution). */
+  violations: Violation[];
+  /** First blocking violation, or null. */
+  blocking: Violation | null;
+  /** Non-blocking warnings. */
+  warnings: Violation[];
+}
+
+/**
+ * Evaluate the doco's edge-scoped probabilistic policies against a
+ * newly-created edge. Unlike `runAuthoringPolicies` (which grades a single
+ * node), this fires on the edge and hands the LLM judge BOTH endpoint nodes via
+ * `judgeCandidate` — so a policy can compare the two, e.g. that a sub-process
+ * child Intent's name is the base form of the calling Action it `serves`.
+ *
+ * The caller resolves the endpoint node fields and packs them into
+ * `judgeCandidate` under keys the policy's spec references (e.g. `action`,
+ * `intent`).
+ */
+export async function runEdgeAuthoringPolicies(opts: {
+  docoId: string;
+  edge: EdgeCandidate;
+  judgeCandidate: Record<string, unknown>;
+  client?: PoolClient;
+}): Promise<EdgeAuthoringResult> {
+  const empty: EdgeAuthoringResult = { violations: [], blocking: null, warnings: [] };
+  const run = async (c: PoolClient): Promise<EdgeAuthoringResult> => {
+    const policies = await loadPolicies(c, opts.docoId);
+    if (policies.length === 0) return empty;
+    const raw = evaluateEdgePolicies({ edge: opts.edge, policies });
+    if (raw.length === 0) return empty;
+    const violations = await resolveProbabilistic(raw, policies, opts.judgeCandidate);
+    const blocking = violations.find((v) => v.on_violation === "block") ?? null;
+    const warnings = violations.filter((v) => v.on_violation === "warn");
+    return { violations, blocking, warnings };
+  };
+  return opts.client ? run(opts.client) : withClient(run);
+}
+
 /**
  * Resolve `probabilistic` violations by handing the pending spec to an
  * LLM judge. Returned violations have three possible outcomes:
@@ -187,7 +229,7 @@ export async function runAuthoringPolicies(opts: {
 export async function resolveProbabilistic(
   violations: Violation[],
   policies: LoadedPolicy[],
-  candidate: CandidateFields,
+  candidate: Record<string, unknown>,
 ): Promise<Violation[]> {
   const policyById = new Map(
     policies.map((p) => [p.policy_id, agentInstructionOf(p.predicate) ?? ""]),
