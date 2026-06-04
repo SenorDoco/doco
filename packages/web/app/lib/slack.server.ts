@@ -2600,13 +2600,13 @@ export function buildSlackConnectCommandResponse(request: Request, payload: Slac
 
 /**
  * The one-time intro Señor Doco leads with the FIRST time it speaks in a
- * channel: it runs on Haiku for simple work and points users at the Tokens/MCP
+ * channel: it runs on Sonnet for simple work and points users at the Tokens/MCP
  * page to connect their own agent for anything harder. `origin` is the request
  * host so the link is correct in every environment (prod → https://doco.to).
  */
 export function buildSlackChannelIntroLine(origin?: string | null): string {
   const base = (origin?.trim() || "https://doco.to").replace(/\/+$/, "");
-  return `I use Haiku and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <${base}/tokens>`;
+  return `I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <${base}/tokens>`;
 }
 
 /**
