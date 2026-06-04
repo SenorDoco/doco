@@ -730,6 +730,24 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
+      {
+        // A sub-process is designed by pairing a calling Action with a child
+        // purpose Intent through a `serves` relationship; the Intent's name is
+        // the base (imperative) form of that Action, which is normally written
+        // third-person (`Posts a job` → `Post a job`). The convention spans two
+        // nodes, but the write-time judge only sees the single candidate's
+        // fields — it can't read across the `serves` edge to the Action — so
+        // the enforceable check lives on the Intent and grades its name on its
+        // own: a base-form verb phrase, not a third-person-singular one.
+        policy:
+          "A sub-process's purpose Intent is named in the base (imperative) verb form — the base form of the calling Action it serves, which is normally written in the third person. For example, the Action `Posts a job` pairs with the child Intent `Post a job`, not `Posts a job`.",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the FIRST LINE of the Intent's `intent` field, which names a process or sub-process. PASS when the name is phrased in the base (imperative) verb form — for example `Post a job`, `Approve the invoice`, `Publish an article`. FAIL with `intent name is not in base verb form` when the name is in the third-person singular present tense (a verb ending in `-s`, such as `Posts a job` or `Approves the invoice`) or any other non-imperative form. The convention: a sub-process Intent takes the base form of the third-person Action it serves (`Posts a job` → `Post a job`).",
+          when_node_type: ["intent"],
+        },
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
+      },
 
       // ── Action shape ────────────────────────────────────────────
       {
@@ -953,18 +971,6 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         policy:
           "When a step is itself a whole sub-process, model it as its own child process Intent and connect the calling Action with a `serves` relationship (stored as `supports` role `serves`) instead of inlining dozens of Actions. The BPMN view collapses the child Intent into its own pool, keeping the parent process readable.",
-      },
-      {
-        // The naming convention that keeps an Action→Intent `serves` pairing
-        // legible: the same activity is named once as work performed (the
-        // Action, third-person — `Posts a job`) and once as the goal it serves
-        // (the child purpose Intent, imperative base form — `Post a job`). This
-        // is authoring guidance, not an enforced gate: the convention spans two
-        // nodes (compare the child Intent's name against the calling Action's),
-        // and the write-time judge only sees the single candidate's fields, so
-        // it can't compare across the `serves` edge.
-        policy:
-          "Name a sub-process by pairing a calling Action with a child purpose Intent through a `serves` relationship, and derive the Intent's name from that Action: take the base form (the imperative) of the Action's verb, which is normally written third-person. For example, the Action `Posts a job` becomes the child Intent `Post a job`. The two read as the same activity — one as the work performed, one as the goal it serves.",
       },
       {
         policy:

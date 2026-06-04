@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_DOCO_TEMPLATES, findDocoTemplateByName } from "../doco-templates.js";
+import {
+  DEFAULT_DOCO_TEMPLATES,
+  findDocoTemplateByName,
+  templatePolicyToPolicyRow,
+} from "../doco-templates.js";
 
 describe("template policies carry no vestigial rule `kind`", () => {
   // Rules are no longer guidances: every policy lives in the one unified
@@ -217,6 +221,42 @@ describe("business-processes template", () => {
     });
   });
 
+  describe("sub-process Intent naming", () => {
+    // A sub-process pairs a calling Action with a child purpose Intent via
+    // `serves`. The Action verb is typically third-person (`Posts a job`); its
+    // child Intent should be the base/imperative form (`Post a job`). The judge
+    // sees only the candidate's own fields (not the connected Action), so the
+    // enforceable check lives on the Intent and grades its name on its own.
+    const namingRule = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.predicate.when_node_type?.includes("intent") &&
+        /base \(imperative\) verb form/i.test(r.policy) &&
+        /Posts a job/i.test(r.policy),
+    );
+
+    it("is a probabilistic policy that blocks on committed lifecycles", () => {
+      expect(namingRule).toBeDefined();
+      expect(namingRule?.predicate?.kind).toBe("probabilistic");
+      expect(namingRule?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+      // It seeds as a probabilistic policy that BLOCKS (the default for a
+      // probabilistic predicate with no explicit on_violation), so a
+      // third-person Intent name can't be queued or activated until renamed.
+      const seeded = namingRule ? templatePolicyToPolicyRow(namingRule) : undefined;
+      expect(seeded?.kind).toBe("probabilistic");
+      expect(seeded?.on_violation).toBe("block");
+    });
+
+    it("judges the Intent name as base/imperative form, not third-person", () => {
+      if (namingRule?.predicate?.kind !== "probabilistic") return;
+      expect(namingRule.predicate.spec).toMatch(/base \(imperative\) verb form|base verb form/i);
+      expect(namingRule.predicate.spec).toMatch(/third-person singular/i);
+      // The worked example both ways: third-person Action → base-form Intent.
+      expect(namingRule.predicate.spec).toMatch(/Posts a job/);
+      expect(namingRule.predicate.spec).toMatch(/Post a job/);
+    });
+  });
+
   describe("Principal lane shape", () => {
     const principalRule = template.policies.find(
       (r) =>
@@ -403,20 +443,6 @@ describe("business-processes template", () => {
     });
     it("tells agents to use relate_many for gateway siblings", () => {
       expect(summaries.some((s) => /relate_many/i.test(s) && /gateway/i.test(s))).toBe(true);
-    });
-    it("tells agents to name a subprocess Intent as the base form of the calling Action", () => {
-      // A subprocess pairs a calling Action with a child purpose Intent via
-      // `serves`. The Action verb is typically third-person (`Posts a job`);
-      // its child Intent should be the base/imperative form (`Post a job`).
-      expect(
-        summaries.some(
-          (s) =>
-            /sub-?process/i.test(s) &&
-            /base form/i.test(s) &&
-            /Posts a job/i.test(s) &&
-            /Post a job/i.test(s),
-        ),
-      ).toBe(true);
     });
     it("documents the four-stage lifecycle (drafting → queued → active → retired) and its changeset ops", () => {
       expect(
