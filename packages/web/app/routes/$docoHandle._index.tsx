@@ -207,7 +207,7 @@ export async function loader({
         // `prose`, except principals (prose='') label on `name`.
         // Policies keep their own tables and their `policy` column.
         `SELECT id,
-                CASE WHEN node_type = 'principal' THEN name ELSE split_part(prose, E'\n', 1) END AS label,
+                split_part(prose, E'\n', 1) AS label,
                 lifecycle
            FROM nodes
           WHERE doco_id = $1 AND id = ANY($2::text[])
@@ -1022,6 +1022,23 @@ export default function DocoHome({
     return () => window.removeEventListener("popstate", onPopState);
   }, [loadNodeDialog, loadEdgeDialog]);
 
+  // Picking a process from the BPMN home list focuses that Intent. Reflect it
+  // in the URL as a focus-only intent link (`?dialog=skip` centers/drills
+  // without popping the detail overlay) so the view is shareable and Back
+  // returns to the list. The canvas itself drills in via onCenterChange; this
+  // only syncs the address bar (no loader refetch).
+  const focusIntentUrl = useCallback(
+    (intentId: string) => {
+      if (typeof window === "undefined") return;
+      clientDialogOverrideRef.current = true;
+      const params = new URLSearchParams();
+      if (activeSlug && activeSlug !== "graph") params.set("perspective", activeSlug);
+      params.set("dialog", "skip");
+      window.history.pushState({}, "", `/${handle}/intent/${intentId}?${params.toString()}`);
+    },
+    [activeSlug, handle],
+  );
+
   const handleLifecycleChange = useCallback(
     async (stage: LifecycleStage) => {
       const detail = nodeDialog?.detail;
@@ -1288,6 +1305,8 @@ export default function DocoHome({
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    onIntentOpen={focusIntentUrl}
+                    onHomeReset={clearPerspectiveFocus}
                     onPaneClick={clearPerspectiveFocus}
                     onEdgeClick={handleGraphEdgeClick}
                     onNodeClick={(node) => {
@@ -1328,6 +1347,7 @@ export default function DocoHome({
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    onHomeReset={clearPerspectiveFocus}
                     onPaneClick={clearPerspectiveFocus}
                     onNodeClick={handleGraphNodeClick}
                     onEdgeClick={handleGraphEdgeClick}

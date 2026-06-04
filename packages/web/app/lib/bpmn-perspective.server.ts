@@ -246,7 +246,7 @@ export async function loadBpmnGraph(
       // So loading a retired Principal adds no noise on its own — it ensures
       // retired nodes land in a correctly-named lane (rather than an
       // `__unresolved__:<id>` fallback) once "Retired" is toggled on.
-      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
+      `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1

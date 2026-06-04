@@ -105,6 +105,11 @@ interface OverviewGraphProps extends OverviewGraphData {
    */
   onCenterChange?: (id: string | null) => void;
   onPaneClick?: () => void;
+  /**
+   * The Home button reset to the default view. The host uses this to clear
+   * any focused-node URL back to the bare perspective.
+   */
+  onHomeReset?: () => void;
   focusedEdgeId?: string | null;
   focusedNodeIds?: Iterable<string> | null;
   onEdgeClick?: (edge: OverviewGraphLink) => void;
@@ -302,6 +307,7 @@ export function OverviewGraph({
   visibleLifecycles: externalVisibleLifecycles,
   onCenterChange,
   onPaneClick,
+  onHomeReset,
   focusedEdgeId,
   focusedNodeIds,
   onEdgeClick,
@@ -866,6 +872,7 @@ export function OverviewGraph({
   const goHome = useCallback(() => {
     const defaultCenter = highestRankedNodeId(visibleNodes, pageRanks) ?? null;
     if (onCenterChange) onCenterChange(defaultCenter);
+    onHomeReset?.();
     const instance = flowInstanceRef.current;
     if (instance?.fitView && renderedNodes.length > 0) {
       instance.fitView({
@@ -876,7 +883,7 @@ export function OverviewGraph({
       const next = instance.getViewport?.();
       if (next) updateViewport(next);
     }
-  }, [onCenterChange, visibleNodes, pageRanks, renderedNodes, updateViewport]);
+  }, [onCenterChange, onHomeReset, visibleNodes, pageRanks, renderedNodes, updateViewport]);
 
   useEffect(() => {
     if (!initialFocusFlowNodeId) return;

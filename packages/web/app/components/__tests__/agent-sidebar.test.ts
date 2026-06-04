@@ -8,6 +8,7 @@ import {
   chatBubbleBlocks,
   formatThreadUsageLabel,
   mergeCreatedConversationListItem,
+  renderInlineLinks,
 } from "../agent-sidebar";
 
 function conversation(overrides: Record<string, unknown> = {}) {
@@ -121,6 +122,55 @@ describe("chatBubbleBlocks", () => {
         { type: "tool_use", id: "t1", name: "doco_api", input: {} },
       ]),
     ).toEqual([{ type: "text", text: "Checking the graph." }]);
+  });
+});
+
+describe("renderInlineLinks", () => {
+  function html(text: string) {
+    return renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement("div", null, renderInlineLinks(text))),
+    );
+  }
+
+  it("renders a markdown footer link as a clickable anchor", () => {
+    const out = html(
+      "[🔮 Doco] ✍️ Decision added: [Use checked footers](https://doco.test/acme-ops/decision/decision_01ABC)",
+    );
+    expect(out).toContain("Use checked footers");
+    expect(out).toContain("decision/decision_01ABC");
+    expect(out).toContain("<a");
+  });
+
+  it("strikes through a retired entity's link instead of leaking ~~ markers", () => {
+    // capture.server.ts wraps the entity anchor in ~~...~~ when the
+    // lifecycle is set to a struck value (e.g. "retired"); the chat must
+    // render that as strikethrough, not show literal tildes around the link.
+    const out = html(
+      '[🔮 Doco] 📝 State updated: ~~[state_01KT7MSSP4DJ1G6GCP7CCRZECJ](https://doco.test/acme-ops/state/state_01KT7MSSP4DJ1G6GCP7CCRZECJ)~~.lifecycle set to "retired"',
+    );
+    // the link survives and is still clickable
+    expect(out).toContain("state_01KT7MSSP4DJ1G6GCP7CCRZECJ");
+    expect(out).toContain("state/state_01KT7MSSP4DJ1G6GCP7CCRZECJ");
+    // it is struck through (retired), matching the activity-feed convention
+    expect(out).toContain("line-through");
+    // and the raw markdown markers never reach the user
+    expect(out).not.toContain("~~");
+  });
+
+  it("strikes through plain (un-linked) retired text without leaking markers", () => {
+    const out = html('[🔮 Doco] 📝 State updated: ~~state_01ABC~~.lifecycle set to "retired"');
+    expect(out).toContain("state_01ABC");
+    expect(out).toContain("line-through");
+    expect(out).not.toContain("~~");
+  });
+
+  it("leaves an ordinary footer line free of strikethrough", () => {
+    const out = html(
+      '[🔮 Doco] 📝 State updated: [my state](https://doco.test/acme-ops/state/state_01ABC).lifecycle set to "active"',
+    );
+    expect(out).toContain("my state");
+    expect(out).not.toContain("line-through");
+    expect(out).not.toContain("~~");
   });
 });
 

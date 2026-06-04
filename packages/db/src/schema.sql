@@ -312,17 +312,13 @@ CREATE TABLE IF NOT EXISTS nodes (
   node_type      text NOT NULL,              -- intent|idea|rule|decision|action|log|eval|reference|state|principal
   -- Lifecycle is mandatory; canonical stages: drafting|queued|active|retired.
   lifecycle      text NOT NULL DEFAULT 'active',
-  prose          text NOT NULL DEFAULT '',   -- unified type-named column for the 9 prose node types; empty string for principals
-  name           text,                       -- principal display label (NULL for the others)
-  body_md        text,                       -- principal prose description (NULL for the others)
-  role_principal boolean NOT NULL DEFAULT false,
+  prose          text NOT NULL DEFAULT '',   -- unified label/prose for every node type, including the principal's name
   proposer_id               text CONSTRAINT nodes_proposer_fk               REFERENCES users(id) ON DELETE SET NULL,             -- idea → users(id) (OAuth identity)
   -- Promoted scalar columns. Slim-down contract phase: every per-type scalar
-  -- (action/log/rule verb/severity/… AND the reference ref_type/locator/
-  -- citation/title) moved into `attributes` and is dropped below. `kind`
-  -- (eval/state) is the last promoted scalar; principal name/body_md and the
-  -- catch-all `data` are folded in later phases.
-  kind         text,                          -- eval, state
+  -- moved into `attributes` and is dropped below; `kind` is the last one
+  -- (eval/state, plus principal human|agent). The catch-all `data` folds in
+  -- a later phase.
+  kind         text,                          -- eval, state, principal
   data         jsonb NOT NULL,
   -- Node-shape slim-down (expand phase): the unified per-node attributes bag
   -- that will replace every per-type promoted column (except `kind`) and the
@@ -409,6 +405,28 @@ BEGIN
       DROP COLUMN IF EXISTS locator,
       DROP COLUMN IF EXISTS citation,
       DROP COLUMN IF EXISTS title;
+  END IF;
+END $$;
+
+-- Contract phase: principals join the prose nodes. Their `name` becomes `prose`,
+-- `body_md` folds into `attributes`, and `name`/`body_md`/`role_principal` are
+-- dropped. Guarded on `name` so fresh installs and migrated DBs both skip.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'nodes' AND column_name = 'name'
+  ) THEN
+    UPDATE nodes
+       SET prose = COALESCE(NULLIF(prose, ''), name, id)
+     WHERE node_type = 'principal';
+    UPDATE nodes
+       SET attributes = attributes || jsonb_strip_nulls(jsonb_build_object('body_md', body_md))
+     WHERE node_type = 'principal' AND body_md IS NOT NULL AND body_md <> '';
+    ALTER TABLE nodes
+      DROP COLUMN IF EXISTS name,
+      DROP COLUMN IF EXISTS body_md,
+      DROP COLUMN IF EXISTS role_principal;
   END IF;
 END $$;
 
@@ -1364,6 +1382,58 @@ WHERE kind = 'deterministic'
   AND data -> 'predicate' ->> 'sub_kind' = 'field-line-shape'
   AND lifecycle = 'active';
 
+-- ── Business-processes: backfill the sub-process Intent-naming EDGE policy ────
+-- The business-processes template gained an EDGE-scoped probabilistic policy:
+-- when a calling Action `serves` a child purpose Intent (a sub-process), the
+-- Intent's name must be the base (imperative) form of the third-person Action
+-- (`Posts a job` -> `Post a job`). New Docos seed it at creation; this backfills
+-- every ALREADY-seeded business-processes Doco that predates the policy so the
+-- rule applies to ALL business-process documents. schema.sql is re-applied on
+-- every boot, carrying the change to production.
+--
+-- A Doco is "business-processes" when it carries the seeded membership judge
+-- (whose instruction mentions "belongs in business-processes"). The new policy's
+-- id is derived deterministically from the doco id, and a NOT EXISTS guard skips
+-- any Doco that already has the Action->Intent `serves` edge policy — so a second
+-- boot is a no-op (doubly so via ON CONFLICT (id) DO NOTHING).
+INSERT INTO policies (id, doco_id, kind, lifecycle, data)
+SELECT
+  'policy_' || upper(substr(md5(bp.doco_id || '-subprocess-serves-naming'), 1, 26)),
+  bp.doco_id,
+  'probabilistic',
+  'active',
+  jsonb_build_object(
+    'id', 'policy_' || upper(substr(md5(bp.doco_id || '-subprocess-serves-naming'), 1, 26)),
+    'doco_id', bp.doco_id,
+    'kind', 'probabilistic',
+    'predicate', jsonb_build_object(
+      'agent_instruction', $subproc_spec$You are checking a `serves` relationship from an Action (the `action` endpoint) to a purpose Intent (the `intent` endpoint). STEP 1 — decide whether this is a SUB-PROCESS pairing: the Intent names the SAME single activity as the Action, expanded into its own process (e.g. Action `Posts a job` ↔ Intent `Post a job`). If instead the Action is merely one step within a broader process the Intent names (e.g. Action `review the application` serving Intent `Approve a consumer loan`), this is an ordinary flow-step link, not a sub-process — PASS, the rule does not apply. STEP 2 — for a sub-process pairing, PASS when the Intent's name is the base (imperative) verb form of the Action, i.e. the Action's third-person verb converted to its base form (`Posts a job` → `Post a job`, `Approves the invoice` → `Approve the invoice`). FAIL with `intent name is not the base form of the action` when the Intent's name is in the third-person singular present tense (a verb ending in `-s`) or otherwise does not read as the base-form imperative of the same activity.$subproc_spec$::text,
+      'edge_type', 'supports',
+      'edge_role', 'serves',
+      'from_node_type', 'action',
+      'to_node_type', 'intent'
+    ),
+    'on_violation', 'block',
+    'template_seeded', true,
+    'template_handle', 'business-processes',
+    'lifecycle', 'active'
+  )
+FROM (
+  SELECT DISTINCT p.doco_id
+  FROM policies p
+  WHERE p.kind = 'probabilistic'
+    AND p.data -> 'predicate' ->> 'agent_instruction' ILIKE '%belongs in business-processes%'
+) bp
+WHERE NOT EXISTS (
+  SELECT 1 FROM policies x
+  WHERE x.doco_id = bp.doco_id
+    AND x.data -> 'predicate' ->> 'edge_type'      = 'supports'
+    AND x.data -> 'predicate' ->> 'edge_role'      = 'serves'
+    AND x.data -> 'predicate' ->> 'from_node_type' = 'action'
+    AND x.data -> 'predicate' ->> 'to_node_type'   = 'intent'
+)
+ON CONFLICT (id) DO NOTHING;
+
 -- ── Business-processes flow-node attachment fires in `drafting` too ─────────
 -- The three flow-node ATTACHMENT gates — a flow node `serves` an Intent, an
 -- Action is `performed_by` a Principal, a gateway Decision is `decided_by` a
@@ -1403,6 +1473,26 @@ WHERE kind = 'deterministic'
          AND data -> 'predicate' ->> 'target_node_type' = 'principal')
       )
   AND NOT (data -> 'fires_when_node_lifecycle' ? 'drafting');
+
+-- ── Business-processes lifecycle-walk guidance: attachment-aware prose ──────
+-- The lifecycle-walk `suggestion` shipped before the attachment change, so it
+-- still tells authors a `drafting` sketch merely has "completeness and shape
+-- rules suspended". The enforcement now also requires a flow node to be
+-- ATTACHED to its Intent/Principal even in draft (see the attachment-gate
+-- migration above), so refresh the advisory prose to match for already-seeded
+-- Docos — kept byte-identical to the template so seeded and new Docos converge.
+-- Matched by the suggestion's stable opening; the `NOT LIKE '%ATTACHED%'` guard
+-- (the new prose contains "ATTACHED") makes a second boot a no-op.
+UPDATE policies
+SET data = jsonb_set(
+      data,
+      '{predicate,agent_instruction}',
+      to_jsonb($bp_lifecycle_walk$Walk a process node through the four-stage lifecycle drafting → queued → active → retired. A `drafting` sketch may be incomplete — completeness and shape rules (forward `flows_to` wiring, gateway exhaustiveness, milestone naming, quality) are suspended — but it must already be ATTACHED: a flow node `serves` its Intent from the moment it is drafted, an Action is `performed_by` a Principal, and a gateway Decision is `decided_by` one, so no node ever floats free of an Intent or Principal even in draft. Create the node and its `serves`/`performed_by`/`decided_by` edge together in one changeset. `queue` it (changeset op `queue`) once its forward `flows_to` wiring is coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules; a `drafting` sketch is exempt only from those completeness/shape rules, not from attachment. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).$bp_lifecycle_walk$::text)
+    ),
+    updated_at = now()
+WHERE kind = 'suggestion'
+  AND data -> 'predicate' ->> 'agent_instruction' LIKE 'Walk a process node through the four-stage lifecycle%'
+  AND data -> 'predicate' ->> 'agent_instruction' NOT LIKE '%ATTACHED%';
 
 -- ── Business-processes: a flow node serves AT MOST one Intent ───────────────
 -- New CEILING gate complementing the `serves` attachment FLOOR (≥1 Intent):

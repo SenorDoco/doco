@@ -135,6 +135,8 @@ export async function capturePrincipal(
     id,
     doco_id: docoId,
     entity_type: "principal",
+    // Principal name now lives in `prose` like every other node's label.
+    type_named_value: name,
     data: raw,
     body_md: bodyMd,
     lifecycle,
