@@ -97,19 +97,12 @@ function prLifecycleFilterSql(stages: readonly string[]): string {
   return clauses.length > 0 ? ` AND (${clauses.join(" OR ")})` : "";
 }
 
-function firstLine(value: string | null | undefined): string {
-  return String(value ?? "")
-    .split(/\r?\n/, 1)[0]
-    .trim();
-}
-
 /**
  * Map PR-shaped Reference rows to a flat list of items, preserving input order
- * (newest first from the query) regardless of stage. The PR title is the FIRST
- * LINE of the Reference prose — for a PR that's the title; the rest of the prose
- * is the PR body/description, which belongs in the node's detail view, not in
- * this one-line row label. Falls back to the locator (PR URL) when the prose is
- * empty. An unknown/null lifecycle is normalized to `queued`. Pure.
+ * (newest first from the query) regardless of stage. The PR title is the full
+ * Reference prose (the node name renders in full, not a first-line
+ * truncation), falling back to the locator (PR URL) when the prose is empty.
+ * An unknown/null lifecycle is normalized to `queued`. Pure.
  */
 export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequestItem[] {
   return rows.map((row) => {
@@ -118,7 +111,7 @@ export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequest
       row.lifecycle && VALID_PR_LIFECYCLES.has(row.lifecycle) ? row.lifecycle : "queued";
     return {
       id: row.id,
-      title: firstLine(row.reference) || url,
+      title: (row.reference ?? "").trim() || url,
       url,
       lifecycle,
       label: pullRequestLabel(lifecycle),
