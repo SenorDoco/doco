@@ -78,70 +78,49 @@ describe("computeIntentEntryPointIds", () => {
 });
 
 describe("topEntryPointId", () => {
-  it("returns the entry point of the pool with the highest global PageRank", () => {
+  it("returns the earliest-created entry point of the pool (the process start)", () => {
     const nodes = [
-      { id: "entryLow", pool_id: "pool:a" },
-      { id: "entryHigh", pool_id: "pool:a" },
-      { id: "internal", pool_id: "pool:a" },
+      { id: "later", pool_id: "pool:a", created_at: "2026-01-03T00:00:00Z" },
+      { id: "earliest", pool_id: "pool:a", created_at: "2026-01-01T00:00:00Z" },
+      { id: "internal", pool_id: "pool:a", created_at: "2026-01-02T00:00:00Z" },
     ];
     const links = [
-      // both entryLow and entryHigh are genuine sources (entry points);
+      // both `later` and `earliest` are genuine sources (entry points);
       // `internal` is a same-pool continuation and never eligible.
-      { source: "entryHigh", target: "internal", edge_type: "flows_to" },
+      { source: "earliest", target: "internal", edge_type: "flows_to" },
     ];
-    const rank = new Map([
-      ["entryLow", 0.1],
-      ["entryHigh", 0.9],
-      ["internal", 0.99],
-    ]);
 
-    expect(topEntryPointId("pool:a", nodes, links, rank)).toBe("entryHigh");
+    expect(topEntryPointId("pool:a", nodes, links)).toBe("earliest");
   });
 
   it("only considers entry points belonging to the requested pool", () => {
     const nodes = [
-      { id: "otherPoolEntry", pool_id: "pool:b" },
-      { id: "poolEntry", pool_id: "pool:a" },
+      // The other pool's entry is older but must be ignored.
+      { id: "otherPoolEntry", pool_id: "pool:b", created_at: "2025-01-01T00:00:00Z" },
+      { id: "poolEntry", pool_id: "pool:a", created_at: "2026-01-01T00:00:00Z" },
     ];
     const links: { source: string; target: string; edge_type: string }[] = [];
-    const rank = new Map([
-      // The other pool's entry ranks higher globally but must be ignored.
-      ["otherPoolEntry", 0.99],
-      ["poolEntry", 0.01],
-    ]);
 
-    expect(topEntryPointId("pool:a", nodes, links, rank)).toBe("poolEntry");
+    expect(topEntryPointId("pool:a", nodes, links)).toBe("poolEntry");
   });
 
-  it("returns null when the pool has no entry point", () => {
+  it("returns null when the pool has no entry point in the set", () => {
     const nodes = [
       { id: "upstream", pool_id: "pool:a" },
       { id: "internal", pool_id: "pool:a" },
     ];
-    const links = [
-      // `internal` has a same-pool inflow → not an entry point. `upstream`
-      // is the only entry point, and it is in this pool... so use a case
-      // where the pool's lone node has a same-pool inflow loop.
-      { source: "internal", target: "internal", edge_type: "flows_to" },
-    ];
-    // Both nodes are entry points here (self-loop doesn't count as inflow
-    // from a distinct node? it does — `internal` gets same-pool inflow).
-    // `upstream` has none, so it is the entry point; assert the empty case
-    // separately with an empty pool.
-    expect(topEntryPointId("pool:empty", nodes, links, undefined)).toBeNull();
+    const links: { source: string; target: string; edge_type: string }[] = [];
+    // No node belongs to pool:empty.
+    expect(topEntryPointId("pool:empty", nodes, links)).toBeNull();
   });
 
-  it("breaks PageRank ties by recency then id", () => {
+  it("breaks ties on created_at by lower id", () => {
     const nodes = [
-      { id: "b", pool_id: "pool:a", created_at: "2026-01-02T00:00:00Z" },
+      { id: "b", pool_id: "pool:a", created_at: "2026-01-01T00:00:00Z" },
       { id: "a", pool_id: "pool:a", created_at: "2026-01-01T00:00:00Z" },
     ];
     const links: { source: string; target: string; edge_type: string }[] = [];
-    const rank = new Map([
-      ["a", 0.5],
-      ["b", 0.5],
-    ]);
-    // Same rank → newer (`b`, created later) wins.
-    expect(topEntryPointId("pool:a", nodes, links, rank)).toBe("b");
+    // Same created_at → lower id (`a`) wins.
+    expect(topEntryPointId("pool:a", nodes, links)).toBe("a");
   });
 });

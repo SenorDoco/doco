@@ -39,12 +39,14 @@ import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspec
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/bpmn-stable-nodes";
 import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
+import { summarizeExternalConnections } from "~/lib/focused-render-selection";
 import {
-  bpmnFocusCandidates,
-  highestRankedNodeId,
-  summarizeExternalConnections,
-} from "~/lib/focused-render-selection";
-import { focalEdgeWidth } from "~/lib/graph-depth";
+  computeDepthFromCenter,
+  focalEdgeWidth,
+  hasFocalNode,
+  opacityForDepth,
+  opacityForEdge,
+} from "~/lib/graph-depth";
 import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
@@ -84,11 +86,6 @@ interface BpmnPerspectiveProps {
    *  "Showing the latest N of M steps" overlay. Defaults to `nodes.length`. */
   totalCount?: number;
   links: OverviewGraphLink[];
-  /**
-   * Per-node global PageRank score on the doco's edge graph.
-   * The server emits this for diagnostics and stable pool ordering.
-   */
-  globalPagerank?: Record<string, number>;
   onNodeClick?: (node: BpmnNode) => void;
   onPoolClick?: (pool: BpmnPool) => void;
   onLaneClick?: (lane: BpmnLane) => void;
@@ -207,7 +204,6 @@ export function BpmnPerspective({
   nodes: nodesRaw,
   totalCount,
   links,
-  globalPagerank,
   onNodeClick,
   onPoolClick,
   onLaneClick,
@@ -323,10 +319,6 @@ export function BpmnPerspective({
     return () => obs.disconnect();
   }, []);
 
-  const pageRankMap = useMemo(
-    () => new Map(Object.entries(globalPagerank ?? {})),
-    [globalPagerank],
-  );
   const nodeByFullId = useMemo(
     () => new Map(filteredNodes.map((node) => [node.id, node])),
     [filteredNodes],
@@ -334,10 +326,6 @@ export function BpmnPerspective({
   const filteredNodeIds = useMemo(
     () => new Set(filteredNodes.map((node) => node.id)),
     [filteredNodes],
-  );
-  const focusCandidates = useMemo(
-    () => bpmnFocusCandidates(filteredNodes, pools, visibleLifecycles),
-    [filteredNodes, pools, visibleLifecycles],
   );
   const focusCenterId = useMemo(() => {
     if (
@@ -348,9 +336,16 @@ export function BpmnPerspective({
     }
     return null;
   }, [centerId, nodeByFullId, pools]);
+  // Cold-open default (no node in the URL): the first pool's entry point.
+  // Pools arrive oldest-first from the server, so this lands on the start
+  // of the oldest process — deterministic, no PageRank.
+  const defaultCenterId = useMemo(
+    () => pools.find((pool) => pool.intent_id)?.intent_id ?? filteredNodes[0]?.id ?? null,
+    [pools, filteredNodes],
+  );
   const selectionCenterId = useMemo(
-    () => focusCenterId ?? highestRankedNodeId(focusCandidates, pageRankMap) ?? centerId ?? null,
-    [focusCenterId, focusCandidates, pageRankMap, centerId],
+    () => focusCenterId ?? defaultCenterId ?? centerId ?? null,
+    [focusCenterId, defaultCenterId, centerId],
   );
   useEffect(() => {
     if (!centerId || focusCenterId || !selectionCenterId || selectionCenterId === centerId) return;
@@ -358,23 +353,22 @@ export function BpmnPerspective({
   }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
   const focusedNodeIdSet = useMemo(() => new Set(focusedNodeIds ?? []), [focusedNodeIds]);
 
-  // Focusing an Intent no longer fans out its whole swim lane. We home in
-  // on the intent's single most important "way in" — the entry point of
-  // its pool carrying the highest GLOBAL PageRank — and focus that node
-  // instead. `resolveIntentToEntry` maps any intent-center to that node; a
-  // center that is already a node (or an intent with no entry point in the
-  // visible set) passes through unchanged.
+  // Focusing an Intent doesn't fan out its whole swim lane — it homes in on
+  // the intent's "way in", the earliest-created entry point of its pool, and
+  // focuses that node. `resolveIntentToEntry` maps any intent-center to that
+  // node; a center that is already a node (or an intent with no entry point
+  // in the visible set) passes through unchanged.
   const resolveIntentToEntry = useCallback(
     (id: string | null | undefined): string | null => {
       if (!id) return null;
       const pool = pools.find((candidate) => candidate.intent_id === id);
       if (!pool) return id;
-      return topEntryPointId(pool.id, filteredNodes, links, pageRankMap) ?? id;
+      return topEntryPointId(pool.id, filteredNodes, links) ?? id;
     },
-    [pools, filteredNodes, links, pageRankMap],
+    [pools, filteredNodes, links],
   );
   // The single node the view is focused on. Always defined (falls back to
-  // the highest-PageRank node), because the BPMN perspective now always
+  // the first pool's entry point), because the BPMN perspective always
   // frames one focal node and the one swim lane that owns it.
   const effectiveCenterId = useMemo(
     () => resolveIntentToEntry(selectionCenterId),
@@ -1243,9 +1237,27 @@ function layOutBpmn(
   focusedNodeIds: ReadonlySet<string>,
   focusedEdgeId: string | null,
 ): BpmnLayout {
+  // Depth from the focal node over the whole rendered graph — drives the
+  // opacity fade (positions are unaffected, so re-focusing within a pool
+  // never moves a node, only re-fades it).
+  const focalDepthByNode = computeDepthFromCenter(nodes, links, centerId);
+  const focalActive = hasFocalNode(centerId, nodes);
+
+  // Pool geometry is solved from the pool's own nodes and internal
+  // sequence flow ONLY — never from the focal node or the adjacent
+  // cross-intent neighbours. That keeps every pool node anchored when the
+  // focal node changes within the same intent: only the adjacent set (and
+  // the opacity ramp) changes, the swim lane stays put.
+  const laneIdSet = new Set(lanes.map((lane) => lane.id));
+  const poolNodes = nodes.filter((node) => laneIdSet.has(node.laneId));
+  const poolNodeIds = new Set(poolNodes.map((node) => node.id));
+  const poolLinks = links.filter(
+    (link) => poolNodeIds.has(link.source) && poolNodeIds.has(link.target),
+  );
+
   const byLane = new Map<string, BpmnNode[]>();
   for (const lane of lanes) byLane.set(lane.id, []);
-  for (const node of nodes) {
+  for (const node of poolNodes) {
     const list = byLane.get(node.laneId);
     if (list) list.push(node);
   }
@@ -1254,7 +1266,7 @@ function layOutBpmn(
   // sit to the right of their ordinary incoming source across lanes.
   // Intentional feedback loops are treated as loopbacks instead of
   // being allowed to pull earlier nodes backward.
-  const depthByNode = computeForwardSequenceDepths(nodes, links);
+  const depthByNode = computeForwardSequenceDepths(poolNodes, poolLinks);
 
   // Within each lane, sequence depth remains the x column. Nodes that
   // share a lane and a depth stack top-to-bottom instead of stealing
@@ -1263,7 +1275,7 @@ function layOutBpmn(
   const { orderedByLane, columnByNode, stackIndexByNode, laneColumnStacks, maxColumn } =
     packBpmnLaneColumns(
       lanes.map((lane) => lane.id),
-      nodes,
+      poolNodes,
       depthByNode,
     );
 
@@ -1296,8 +1308,13 @@ function layOutBpmn(
       size.height += SUBPROCESS_MARKER_ROOM;
     }
     sizeByNode.set(node.id, size);
-    if (size.width > maxNodeWidth) maxNodeWidth = size.width;
-    if (size.height > maxNodeHeight) maxNodeHeight = size.height;
+    // Only pool nodes drive the column step / lane height, so the swim
+    // lane's geometry doesn't shift when a wide adjacent neighbour comes
+    // or goes.
+    if (poolNodeIds.has(node.id)) {
+      if (size.width > maxNodeWidth) maxNodeWidth = size.width;
+      if (size.height > maxNodeHeight) maxNodeHeight = size.height;
+    }
   }
   const columnStep = maxNodeWidth + NODE_GAP_X;
   const baseLaneHeight = Math.max(LANE_HEIGHT, maxNodeHeight + NODE_GAP_Y * 2);
@@ -1450,7 +1467,12 @@ function layOutBpmn(
         connectable: false,
         initialWidth: size.width,
         initialHeight: size.height,
-        style: { width: size.width, height: size.height, zIndex: 1, opacity: 1 },
+        style: {
+          width: size.width,
+          height: size.height,
+          zIndex: 1,
+          opacity: focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1,
+        },
       });
     }
   }
@@ -1460,8 +1482,7 @@ function layOutBpmn(
   // they hug the pool above or below it, on whichever edge the focal node
   // sits closer to, so the hand-off arrow stays short. They are top-level
   // React Flow nodes (no lane parent) at absolute canvas coordinates.
-  const laneIdSet = new Set(lanes.map((lane) => lane.id));
-  const adjacentNodes = nodes.filter((node) => !laneIdSet.has(node.laneId));
+  const adjacentNodes = nodes.filter((node) => !poolNodeIds.has(node.id));
   if (adjacentNodes.length > 0 && centerId) {
     const band = poolGeometry[0];
     const poolTopY = band ? band.y : 0;
@@ -1513,7 +1534,12 @@ function layOutBpmn(
         connectable: false,
         initialWidth: size.width,
         initialHeight: size.height,
-        style: { width: size.width, height: size.height, zIndex: 1, opacity: 1 },
+        style: {
+          width: size.width,
+          height: size.height,
+          zIndex: 1,
+          opacity: focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1,
+        },
       });
     }
   }
@@ -1576,6 +1602,9 @@ function layOutBpmn(
     .map((link, index) => {
       const source = link.source;
       const target = link.target;
+      const edgeOpacity = focalActive
+        ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
+        : 1;
       // Edge inherits the origin node's lifecycle color so an
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
@@ -1585,7 +1614,7 @@ function layOutBpmn(
       if (label) {
         const { labelBoxStyle, labelStyle } = bpmnEdgeLabelStyles(stroke);
         edgeData.label = label;
-        edgeData.labelOpacity = 1;
+        edgeData.labelOpacity = edgeOpacity;
         edgeData.labelZIndex = 1;
         edgeData.labelBoxStyle = labelBoxStyle;
         edgeData.labelStyle = labelStyle;
@@ -1615,7 +1644,7 @@ function layOutBpmn(
         style: {
           stroke,
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 5) : baseStrokeWidth,
-          opacity: 1,
+          opacity: isFocused ? 1 : edgeOpacity,
           cursor: clickable ? "pointer" : undefined,
         },
         markerEnd: {
