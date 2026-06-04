@@ -38,7 +38,7 @@ export async function loader({
     // "summary" cell, scoped by node_type.
     const rows = (
       await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
-        `SELECT id, split_part(prose, E'\n', 1) AS summary, data FROM nodes
+        `SELECT id, split_part(prose, E'\n', 1) AS summary, attributes AS data FROM nodes
           WHERE node_type = $1 AND doco_id = $2
           ORDER BY id DESC LIMIT 200`,
         [type, ctx.meta.docoId],
