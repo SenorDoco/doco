@@ -39,9 +39,9 @@ const USER_ID = "user_01EDGEPOL0000000000000001";
 
 let docoId = "";
 
+// With `role` gone, the edge is scoped by edge_type + endpoint node types only.
 const servesEdge = {
   edge_type: "supports",
-  role: "serves",
   from_node_type: "action",
   to_node_type: "intent",
 } as const;
@@ -51,7 +51,6 @@ function pairing(actionText: string, intentText: string): Record<string, unknown
   return {
     id: "action_x->intent_y",
     edge_type: "supports",
-    role: "serves",
     action: { name: null, text: actionText },
     intent: { name: null, text: intentText },
   };
@@ -131,11 +130,14 @@ describe("edge-scoped sub-process naming policy — end-to-end via runEdgeAuthor
     expect(result.violations).toEqual([]);
   });
 
-  it("does NOT fire on a different edge role (tests)", async () => {
+  it("does NOT fire on a `supports` edge to a non-Intent endpoint (action → rule)", async () => {
+    // With `role` gone, endpoint node types are the only scoping beyond
+    // edge_type. A `supports` edge whose `to` endpoint is not an Intent (what an
+    // Eval's `tests` edge used to be) doesn't match the sub-process naming rule.
     judge.run.mockResolvedValue({ ok: true });
     const result = await runEdgeAuthoringPolicies({
       docoId,
-      edge: { ...servesEdge, role: "tests" },
+      edge: { ...servesEdge, to_node_type: "rule" },
       judgeCandidate: pairing("Posts a job", "Posts a job"),
     });
     expect(judge.run).not.toHaveBeenCalled();

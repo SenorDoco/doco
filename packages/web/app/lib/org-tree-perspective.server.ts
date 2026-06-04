@@ -219,8 +219,7 @@ export async function loadOrgTreeData(
     // Edge roles are retired: every `has_parent` edge between principals is a
     // (solid) reporting line; the first parent wins so the tree stays a clean
     // hierarchy. Dotted-line / matrix reporting is no longer modeled distinctly.
-    if (!reportsToByPrincipal.has(edge.from_id))
-      reportsToByPrincipal.set(edge.from_id, edge.to_id);
+    if (!reportsToByPrincipal.has(edge.from_id)) reportsToByPrincipal.set(edge.from_id, edge.to_id);
   }
 
   const nodes: OrgTreeNode[] = rows.map((r) => {

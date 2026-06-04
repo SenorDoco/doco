@@ -70,15 +70,18 @@ describe("graph authoring contract", () => {
     expect(glossary.constraints.join("\n")).toMatch(/no draft\/queue stage/i);
   });
 
-  it("publishes role examples for the simplified edge families", () => {
-    expect(RELATION_KINDS.supports?.role_examples).toEqual(
-      expect.arrayContaining(["serves", "tests", "implemented_by"]),
-    );
-    expect(RELATION_KINDS.attributed_to?.role_examples).toEqual(
-      expect.arrayContaining(["performed_by", "owned_by"]),
-    );
-    expect(RELATION_KINDS.constrained_by?.role_examples).toEqual(
-      expect.arrayContaining(["gated_by"]),
-    );
+  it("publishes the edge families WITHOUT role examples (edge `role` is gone)", () => {
+    // An edge's meaning now comes from its type + endpoint node types, never a
+    // `props.role` tag, so the authoring contract no longer publishes
+    // `role_examples` for any family — and the description carries the meaning.
+    for (const spec of Object.values(RELATION_KINDS)) {
+      expect((spec as { role_examples?: unknown }).role_examples).toBeUndefined();
+    }
+    expect(RELATION_KINDS.supports?.description).toMatch(/endpoint node types|serves|tests/i);
+    expect(RELATION_KINDS.attributed_to?.description).toMatch(/Principal/i);
+    // No relation advertises a `role` prop either.
+    for (const spec of Object.values(RELATION_KINDS)) {
+      expect(spec.acceptsProps ?? []).not.toContain("role");
+    }
   });
 });

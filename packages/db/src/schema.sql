@@ -954,7 +954,7 @@ INSERT INTO perspectives (id, slug, kind, name, description, icon, owner_handle,
   ('perspective_list','list','list','List','Sortable list of nodes, with type-aware tiebreakers.','📋',NULL,true,'{"default_sort":"recent_desc"}'::jsonb),
   ('perspective_bpmn','bpmn','bpmn','BPMN','Business process modeling — swim lanes, gateways, and events. Inspired by BPMN.','🏭','torrenegra',true,'{"lane_axis":"principal"}'::jsonb),
   ('perspective_glossary','glossary','glossary','Glossary','A dictionary-style reading of the Doco''s terminology — canonical headwords, definitions, senses, and aliases laid out like a printed lexicon.','📖',NULL,true,'{"headword_field":"chosen","primary_entity":"decision","definition_field":"decision"}'::jsonb),
-  ('perspective_org_tree','org-tree','org-tree','Org Tree','Organizational chart — Principals as members, `has_parent` edges with `reports_to` role as reporting lines, with person vs AI agent shown by icon.','🏢',NULL,true,'{"agent_icon":"🤖","person_icon":"👤","root_edge":"has_parent","root_edge_role":"reports_to","icon_by_member_kind":true}'::jsonb),
+  ('perspective_org_tree','org-tree','org-tree','Org Tree','Organizational chart — Principals as members, `has_parent` edges between principals as reporting lines, with person vs AI agent shown by icon.','🏢',NULL,true,'{"agent_icon":"🤖","person_icon":"👤","root_edge":"has_parent","icon_by_member_kind":true}'::jsonb),
   ('perspective_sla','sla','sla','SLAs','Service-level agreement control plane — commitments, owners, evidence links, remedies, and review gaps.','📜',NULL,true,'{"event_logs":false,"primary_entity":"rule","evidence_sources":["eval","reference"]}'::jsonb),
   ('perspective_pull_requests','pull-requests','pull-requests','Pull requests','Imported GitHub pull requests, grouped by lifecycle — merged, open, and closed.','🔀',NULL,true,'{}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
@@ -1356,7 +1356,7 @@ END $$;
 UPDATE policies
 SET data = jsonb_set(
       data, '{predicate}',
-      (data -> 'predicate' - 'edge_role' - 'exempt_when_role')
+      ((data -> 'predicate') - 'edge_role' - 'exempt_when_role')
         || jsonb_build_object(
              'sub_kind', 'requires_edge',
              'target_node_type', 'action',
@@ -1375,7 +1375,7 @@ WHERE kind = 'deterministic'
 UPDATE policies
 SET data = jsonb_set(
       data, '{predicate}',
-      (data -> 'predicate' - 'edge_role') || '{"sub_kind":"requires_edge"}'::jsonb
+      ((data -> 'predicate') - 'edge_role') || '{"sub_kind":"requires_edge"}'::jsonb
     ),
     updated_at = now()
 WHERE kind = 'deterministic'
@@ -1385,7 +1385,7 @@ WHERE kind = 'deterministic'
 UPDATE policies
 SET data = jsonb_set(
       data, '{predicate}',
-      (data -> 'predicate' - 'edge_role') || '{"sub_kind":"limits_edge"}'::jsonb
+      ((data -> 'predicate') - 'edge_role') || '{"sub_kind":"limits_edge"}'::jsonb
     ),
     updated_at = now()
 WHERE kind = 'deterministic'
@@ -1393,7 +1393,7 @@ WHERE kind = 'deterministic'
 
 -- (1d) Edge-scoped probabilistic policies: drop the now-unused edge_role.
 UPDATE policies
-SET data = jsonb_set(data, '{predicate}', data -> 'predicate' - 'edge_role'),
+SET data = jsonb_set(data, '{predicate}', (data -> 'predicate') - 'edge_role'),
     updated_at = now()
 WHERE kind = 'probabilistic'
   AND data -> 'predicate' ? 'edge_type'
@@ -1417,6 +1417,12 @@ UPDATE edges
    SET lifecycle = 'retired', updated_at = now()
  WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
 UPDATE edges SET props = props - 'role' WHERE props ? 'role';
+-- The edges→nodes FKs are DEFERRABLE INITIALLY DEFERRED, so the dedup/strip
+-- UPDATEs above queue deferred constraint-trigger events; CREATE INDEX cannot
+-- run in a transaction that has pending trigger events. Flush them now (the
+-- updated rows still reference live nodes, so the checks pass) before recreating
+-- the role-free index.
+SET CONSTRAINTS ALL IMMEDIATE;
 CREATE UNIQUE INDEX IF NOT EXISTS edges_live_uniq
   ON edges (doco_id, from_id, to_id, edge_type) WHERE lifecycle <> 'retired';
 
@@ -1525,21 +1531,23 @@ ON CONFLICT (id) DO NOTHING;
 -- ── Business-processes lifecycle-walk guidance prose ────────────────────────
 -- Keep the lifecycle-walk `suggestion`'s prose in sync with the template:
 -- a `drafting` sketch may defer serving an Intent (and the other completeness /
--- shape rules) but must still name its actor (`performed_by`) / decider
--- (`decided_by`). Kept byte-identical to the template (doco-templates.ts) so
--- seeded and new Docos converge. Matched by the suggestion's stable opening;
--- the `<> <target>` guard converges ANY earlier wording to the current text and
--- makes a second boot a no-op (once equal, the row no longer matches).
+-- shape rules) but must still name its actor and decider, each via an
+-- `attributed_to` edge to a Principal. Edge `role` is gone, so the prose names
+-- the edge by its type + endpoints, not a role tag. Kept byte-identical to the
+-- template (doco-templates.ts) so seeded and new Docos converge. Matched by the
+-- suggestion's stable opening; the `<> <target>` guard converges ANY earlier
+-- wording (including the old role-bearing text) to the current text and makes a
+-- second boot a no-op (once equal, the row no longer matches).
 UPDATE policies
 SET data = jsonb_set(
       data,
       '{predicate,agent_instruction}',
-      to_jsonb($bp_lifecycle_walk$Walk a process node through the four-stage lifecycle drafting → queued → active → retired. A `drafting` sketch may be incomplete — serving an Intent, forward `flows_to` wiring, gateway exhaustiveness, milestone naming, and quality are all suspended, so a step can be drafted before its Intent (and BPMN pool) is chosen — except that an Action must still name its actor (`performed_by` a Principal) and a gateway Decision its decider (`decided_by` a Principal) from the moment it is drafted, so neither floats free of a Principal even in draft. `queue` it (changeset op `queue`) once it `serves` its Intent and its forward `flows_to` wiring is coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).$bp_lifecycle_walk$::text)
+      to_jsonb($bp_lifecycle_walk$Walk a process node through the four-stage lifecycle drafting → queued → active → retired. A `drafting` sketch may be incomplete — serving an Intent, forward `flows_to` wiring, gateway exhaustiveness, milestone naming, and quality are all suspended, so a step can be drafted before its Intent (and BPMN pool) is chosen — except that an Action must still name its actor and a gateway Decision its decider, each via an `attributed_to` edge to a Principal, from the moment it is drafted, so neither floats free of a Principal even in draft. `queue` it (changeset op `queue`) once it supports its Intent and its forward `flows_to` wiring is coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).$bp_lifecycle_walk$::text)
     ),
     updated_at = now()
 WHERE kind = 'suggestion'
   AND data -> 'predicate' ->> 'agent_instruction' LIKE 'Walk a process node through the four-stage lifecycle%'
-  AND data -> 'predicate' ->> 'agent_instruction' <> $bp_lifecycle_walk$Walk a process node through the four-stage lifecycle drafting → queued → active → retired. A `drafting` sketch may be incomplete — serving an Intent, forward `flows_to` wiring, gateway exhaustiveness, milestone naming, and quality are all suspended, so a step can be drafted before its Intent (and BPMN pool) is chosen — except that an Action must still name its actor (`performed_by` a Principal) and a gateway Decision its decider (`decided_by` a Principal) from the moment it is drafted, so neither floats free of a Principal even in draft. `queue` it (changeset op `queue`) once it `serves` its Intent and its forward `flows_to` wiring is coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).$bp_lifecycle_walk$;
+  AND data -> 'predicate' ->> 'agent_instruction' <> $bp_lifecycle_walk$Walk a process node through the four-stage lifecycle drafting → queued → active → retired. A `drafting` sketch may be incomplete — serving an Intent, forward `flows_to` wiring, gateway exhaustiveness, milestone naming, and quality are all suspended, so a step can be drafted before its Intent (and BPMN pool) is chosen — except that an Action must still name its actor and a gateway Decision its decider, each via an `attributed_to` edge to a Principal, from the moment it is drafted, so neither floats free of a Principal even in draft. `queue` it (changeset op `queue`) once it supports its Intent and its forward `flows_to` wiring is coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).$bp_lifecycle_walk$;
 
 -- ── Business-processes: a flow node serves AT MOST one Intent ───────────────
 -- New CEILING gate complementing the `serves` attachment FLOOR (≥1 Intent):
@@ -1552,7 +1560,7 @@ WHERE kind = 'suggestion'
 -- A business-processes Doco is identified by its serves attachment FLOOR gate
 -- (requires_edge / supports / intent), which only that template seeds. (Edge
 -- roles are retired — the role-removal migration earlier in this file has
--- already converted any legacy requires_edge_role rows to requires_edge by the
+-- already converted any older requires_edge_role rows to requires_edge by the
 -- time this runs.) The inserted row matches host.ts's seeded shape so a migrated
 -- Doco is indistinguishable from a freshly-created one.
 --

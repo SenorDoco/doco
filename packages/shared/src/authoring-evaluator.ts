@@ -311,7 +311,9 @@ function evaluatePredicate(p: LoadedPolicy, opts: EvaluateOpts): Violation | nul
       const target = pred.target_node_type
         ? `${direction === "incoming" ? " from" : " to"} a ${pred.target_node_type}`
         : "";
-      return fail(`carries ${matches.length} ${dir}\`${pred.edge_type}\` edges${target} (max ${max})`);
+      return fail(
+        `carries ${matches.length} ${dir}\`${pred.edge_type}\` edges${target} (max ${max})`,
+      );
     }
     case "forbids_edge": {
       const offender = opts.candidateEdges.find((s) => {

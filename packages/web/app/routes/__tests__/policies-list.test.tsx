@@ -149,9 +149,8 @@ describe("PolicyRow (policies list)", () => {
         id: "policy_01HZFIRES",
         kind: "deterministic",
         predicate: {
-          sub_kind: "requires_edge_role",
+          sub_kind: "requires_edge",
           edge_type: "supports",
-          edge_role: "serves",
           target_node_type: "intent",
         },
         firesWhenNodeLifecycle: ["queued", "active"],
@@ -194,9 +193,8 @@ describe("PolicyRow (policies list)", () => {
         id: "policy_01HZDET",
         kind: "deterministic",
         predicate: {
-          sub_kind: "requires_edge_role",
+          sub_kind: "requires_edge",
           edge_type: "attributed_to",
-          edge_role: "performed_by",
           target_node_type: "principal",
         },
         lifecycle: "active",
@@ -205,9 +203,11 @@ describe("PolicyRow (policies list)", () => {
     });
 
     expect(html).toContain("Deterministic");
-    expect(html).toContain("Requires edge role");
+    // With `role` gone the headline is "Requires edge" and the structured parts
+    // are the edge type + its target endpoint (no role).
+    expect(html).toContain("Requires edge");
     expect(html).toContain("attributed_to");
-    expect(html).toContain("performed_by");
+    expect(html).toContain("principal");
     // canEdit=false → no Modify link, but the row still links to the policy page.
     expect(anchorCount(html)).toBe(1);
     expect(html).toContain('href="/runbook/policies/policy_01HZDET"');

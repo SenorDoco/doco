@@ -708,45 +708,31 @@ describe("capturePolicy — edge_type validation", () => {
     expect("error" in result).toBe(false);
   });
 
-  it("accepts a requires_edge_role predicate with a canonical edge_type and role", async () => {
+  it("accepts a requires_edge predicate with a canonical edge_type and target_node_type", async () => {
+    // With `role` gone, the distinction that used to ride on edge_role lives on
+    // target_node_type — a canonical edge_type + endpoint type is accepted.
     await seedDoco();
     const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ sub_kind: "requires_edge_role", edge_type: "supports", edge_role: "serves" }),
+      draft({ sub_kind: "requires_edge", edge_type: "supports", target_node_type: "intent" }),
     );
     expect("error" in result).toBe(false);
   });
 
-  it("rejects a requires_edge_role predicate without role metadata", async () => {
+  it("rejects a requires_edge predicate whose edge_type is the retired role label `implemented_by`", async () => {
+    // `implemented_by` was an edge ROLE, never a first-class edge type. With
+    // roles gone it must be rejected as an edge_type — the meaning rides on the
+    // `supports` edge type plus its endpoints instead.
     await seedDoco();
     const result = await capturePolicy(
       "",
       DOCO_ID,
       "val-workspace",
       "val-test",
-      draft({ sub_kind: "requires_edge_role", edge_type: "supports" }),
-    );
-    expect("error" in result).toBe(true);
-    if ("error" in result) {
-      expect(result.error).toMatch(/edge_role/);
-    }
-  });
-
-  it("rejects a requires_edge_role predicate whose edge_type is a blocked node JSON edge key", async () => {
-    await seedDoco();
-    const result = await capturePolicy(
-      "",
-      DOCO_ID,
-      "val-workspace",
-      "val-test",
-      draft({
-        sub_kind: "requires_edge_role",
-        edge_type: "implemented_by",
-        edge_role: "implemented_by",
-      }),
+      draft({ sub_kind: "requires_edge", edge_type: "implemented_by" }),
     );
     expect("error" in result).toBe(true);
     if ("error" in result) {

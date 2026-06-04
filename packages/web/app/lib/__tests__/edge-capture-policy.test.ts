@@ -42,7 +42,8 @@ function makeInput(over: Record<string, unknown> = {}) {
     edgeType: "supports",
     fromId: ACTION_ID,
     toId: INTENT_ID,
-    props: { role: "serves" },
+    // Edge `role` is gone — the edge carries no role prop.
+    props: {},
     ...over,
   };
 }
@@ -63,9 +64,10 @@ describe("captureEdge — edge-scoped policy wiring", () => {
     expect("ok" in res && res.ok).toBe(true);
     expect(runEdge.fn).toHaveBeenCalledTimes(1);
     const arg = runEdge.fn.mock.calls[0][0];
+    // The edge scoping handed to the runner is edge_type + endpoint node types
+    // only — `role` is gone.
     expect(arg.edge).toEqual({
       edge_type: "supports",
-      role: "serves",
       from_node_type: "action",
       to_node_type: "intent",
     });

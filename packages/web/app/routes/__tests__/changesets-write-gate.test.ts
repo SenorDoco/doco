@@ -241,7 +241,7 @@ describe("changesets write gate", () => {
     );
   });
 
-  it("preserves the edge role on broad role-bearing relations", async () => {
+  it("drops a `role` prop on a relate op — edge `role` is gone, so the catalog rejects it", async () => {
     await action({
       request: changesetRequest({
         operations: [
@@ -257,24 +257,25 @@ describe("changesets write gate", () => {
       params: { docoHandle: "acme" },
     });
 
-    // The role must survive onto the edge — a role-less attributed_to edge
-    // fails the `performed_by` authoring policy and gets duplicated by a
-    // second, role-bearing edge from the direct edges route.
+    // `role` is no longer a prop any relation accepts (the relation catalog
+    // dropped it), so `relationProps` filters it out: the edge is created with
+    // NO role prop. Its meaning rides on the edge type + endpoints
+    // (`attributed_to` from an Action to a Principal IS the performer link).
     expect(mocks.captureEdge).toHaveBeenCalledWith(
       expect.objectContaining({
         edgeType: "attributed_to",
         fromId: "action_01A",
         toId: "principal_01B",
-        props: { role: "performed_by" },
+        props: null,
       }),
     );
-    // Dedupe must key on the role, not a role-less edge.
+    // Dedupe is keyed on the role-free edge (no role component).
     expect(mocks.edgeExists).toHaveBeenCalledWith(
       "doco_acme",
       "attributed_to",
       "action_01A",
       "principal_01B",
-      "performed_by",
+      null,
     );
   });
 

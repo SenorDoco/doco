@@ -20,7 +20,6 @@ describe("policyDraftFromForm — edge-scoped probabilistic", () => {
       kind: "probabilistic",
       agent_instruction: "compare the two endpoints",
       edge_type: "supports",
-      edge_role: "serves",
       from_node_type: "action",
       to_node_type: "intent",
       when_node_type: "intent", // ignored once edge-scoped
@@ -29,10 +28,11 @@ describe("policyDraftFromForm — edge-scoped probabilistic", () => {
       kind: "probabilistic",
       agent_instruction: "compare the two endpoints",
       edge_type: "supports",
-      edge_role: "serves",
       from_node_type: "action",
       to_node_type: "intent",
     });
+    // Edge `role` is gone — the form never parses or carries one.
+    expect("edge_role" in draft).toBe(false);
     expect("when_node_type" in draft).toBe(false);
   });
 
@@ -63,7 +63,6 @@ describe("policyFormInitialFromData — edge round-trip", () => {
       predicate: {
         agent_instruction: "x",
         edge_type: "supports",
-        edge_role: "serves",
         from_node_type: "action",
         to_node_type: "intent",
       },
@@ -71,10 +70,11 @@ describe("policyFormInitialFromData — edge round-trip", () => {
     expect(init).toMatchObject({
       kind: "probabilistic",
       edge_type: "supports",
-      edge_role: "serves",
       from_node_type: "action",
       to_node_type: "intent",
     });
+    // No edge_role field is prefilled — the concept is gone.
+    expect("edge_role" in init).toBe(false);
   });
 
   it("leaves edge fields blank for a node-scoped probabilistic predicate", () => {
