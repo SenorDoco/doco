@@ -1078,7 +1078,11 @@ export function BpmnPerspective({
             nodesDraggable={false}
             nodesConnectable={false}
             onlyRenderVisibleElements
-            minZoom={0.1}
+            // Allow zooming far enough out to frame very wide pools (a process
+            // with hundreds of steps spans a long horizontal band). The old
+            // 0.1 floor clamped both manual zoom-out and Fit View, so big pools
+            // never fit on screen. Matches the entity graph's 0.02 range.
+            minZoom={0.02}
             maxZoom={2.0}
             panOnDrag
             zoomOnScroll
