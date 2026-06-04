@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   withClient: vi.fn(),
-  captureReference: vi.fn(),
+  captureGenericNode: vi.fn(),
   updateEntity: vi.fn(),
 }));
 
@@ -12,7 +12,7 @@ vi.mock("@doco/db", () => ({
 }));
 vi.mock("../capture.server", () => ({
   NO_FIELDS_CHANGED: "No fields changed.",
-  captureReference: mocks.captureReference,
+  captureGenericNode: mocks.captureGenericNode,
   updateEntity: mocks.updateEntity,
 }));
 
@@ -265,7 +265,7 @@ describe("upsertPullRequestReference", () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
-    mocks.captureReference.mockResolvedValue({ id: "reference_new" });
+    mocks.captureGenericNode.mockResolvedValue({ id: "reference_new" });
     const res = await upsertPullRequestReference(basePr, opts);
     expect(res).toEqual({ status: "created", id: "reference_new" });
     expect(mocks.updateEntity).not.toHaveBeenCalled();
@@ -279,7 +279,7 @@ describe("upsertPullRequestReference", () => {
       opts,
     );
     expect(res).toEqual({ status: "updated", id: "reference_existing" });
-    expect(mocks.captureReference).not.toHaveBeenCalled();
+    expect(mocks.captureGenericNode).not.toHaveBeenCalled();
   });
 
   it("reports a no-op re-import as unchanged — NOT a failure", async () => {
@@ -309,7 +309,7 @@ describe("upsertPullRequestReference", () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
-    mocks.captureReference.mockResolvedValue({ error: "locator is required." });
+    mocks.captureGenericNode.mockResolvedValue({ error: "locator is required." });
     const res = await upsertPullRequestReference(basePr, opts);
     expect(res).toEqual({ status: "error", error: "locator is required." });
   });
@@ -318,14 +318,19 @@ describe("upsertPullRequestReference", () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
-    mocks.captureReference.mockResolvedValue({ id: "reference_new" });
+    mocks.captureGenericNode.mockResolvedValue({ id: "reference_new" });
     const resolveAuthorUserId = vi.fn(async () => "user_octocat");
     await upsertPullRequestReference(
       { ...basePr, user: { login: "octocat" } },
       { ...opts, resolveAuthorUserId },
     );
     expect(resolveAuthorUserId).toHaveBeenCalledWith("octocat");
-    expect(mocks.captureReference.mock.calls[0][4]).toMatchObject({
+    // captureGenericNode(dir, docoId, ownerSlug, docoSlug, entityType, draft, …):
+    // the PR maps onto the raw row shape — prose + ref_type/locator attributes.
+    expect(mocks.captureGenericNode.mock.calls[0][4]).toBe("reference");
+    expect(mocks.captureGenericNode.mock.calls[0][5]).toMatchObject({
+      prose: expect.stringContaining(basePr.title),
+      attributes: { ref_type: "url", locator: basePr.html_url },
       created_by_user_id: "user_octocat",
     });
   });
@@ -334,27 +339,27 @@ describe("upsertPullRequestReference", () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
-    mocks.captureReference.mockResolvedValue({ id: "reference_new" });
+    mocks.captureGenericNode.mockResolvedValue({ id: "reference_new" });
     const resolveAuthorUserId = vi.fn(async () => null);
     await upsertPullRequestReference(
       { ...basePr, user: { login: "ghost" } },
       { ...opts, resolveAuthorUserId },
     );
-    expect(mocks.captureReference.mock.calls[0][4].created_by_user_id).toBeUndefined();
+    expect(mocks.captureGenericNode.mock.calls[0][5].created_by_user_id).toBeUndefined();
   });
 
   it("an explicit createdByUserId wins over login resolution (no lookup)", async () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
-    mocks.captureReference.mockResolvedValue({ id: "reference_new" });
+    mocks.captureGenericNode.mockResolvedValue({ id: "reference_new" });
     const resolveAuthorUserId = vi.fn(async () => "user_resolved");
     await upsertPullRequestReference(
       { ...basePr, user: { login: "octocat" } },
       { ...opts, createdByUserId: "user_explicit", resolveAuthorUserId },
     );
     expect(resolveAuthorUserId).not.toHaveBeenCalled();
-    expect(mocks.captureReference.mock.calls[0][4]).toMatchObject({
+    expect(mocks.captureGenericNode.mock.calls[0][5]).toMatchObject({
       created_by_user_id: "user_explicit",
     });
   });

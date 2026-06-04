@@ -11,6 +11,7 @@ import {
 } from "@doco/db";
 import {
   BLOCKED_NODE_JSON_EDGE_FIELD_SET,
+  CAPTURE_SCHEMAS,
   type DeterministicPredicate,
   EDGE_TYPES,
   NODE_TYPES,
@@ -326,29 +327,6 @@ export async function reindexAndScheduleAttach(
   );
 }
 
-export interface DecisionDraft {
-  /** Required: the full Decision prose (first line = label). */
-  decision: string;
-  /** Required: the question the Decision answers. */
-  question: string;
-  /** Optional: chosen resolution (multi-line ok). Resolution-style
-   *  Decisions (ADRs, glossary terms) carry a `chosen`; BPMN gateway
-   *  Decisions route flow through outgoing `flows_to` edges and have no
-   *  single chosen answer. Templates that need it re-require it via a
-   *  `requires_field` policy (e.g. glossaries). Matches the entity type,
-   *  where `chosen` is `string | null` (null while drafting). */
-  chosen?: string;
-
-  /** Optional: rejected alternatives. */
-  alternatives?: { name: string; rejected_because: string }[];
-  /** Internal route-filled user id that created this entry. */
-  created_by_user_id?: string;
-  /** Optional: defaults to "active". */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
 export interface CaptureResult {
   ok: true;
   id: string;
@@ -393,6 +371,21 @@ const VALID_LIFECYCLES = new Set(["drafting", "queued", "active", "retired"]);
 // Policies occupy only two stages — never the node-only `drafting`/`queued`.
 const POLICY_LIFECYCLES = new Set(["active", "retired"]);
 const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
+
+/**
+ * Envelope keys on a `GenericNodeDraft` that the generic capture path
+ * consumes itself — they must never be folded into the `attributes` bag.
+ * (The legacy type-named prose key is excluded separately, by entityType.)
+ */
+const RESERVED_DRAFT_KEYS: ReadonlySet<string> = new Set([
+  "prose",
+  "attributes",
+  "kind",
+  "lifecycle",
+  "deprecated",
+  "outcome",
+  "created_by_user_id",
+]);
 
 /**
  * Sentinel error returned by updateEntity when a PATCH would change nothing.
@@ -889,47 +882,132 @@ async function finishNodeCapture(args: {
   };
 }
 
-export async function captureDecision(
+/**
+ * The raw row shape every generic node capture speaks (node-shape
+ * slim-down). The API exposes the storage schema directly instead of a
+ * per-type translation:
+ *
+ *   - `prose`       → the node's prose (→ the `prose` column).
+ *   - `kind`        → the promoted `kind` column (eval/state classifiers).
+ *   - `attributes`  → the free-form per-type bag (→ the `attributes` jsonb).
+ *   - lifecycle / deprecated / outcome → the lifecycle envelope.
+ *
+ * For backward compatibility a legacy type-named prose field
+ * (`decision`/`intent`/…) is still accepted as an alias for `prose`, and
+ * attribute keys may be sent flat at the top level (the pre-slim-down
+ * shape). Required-field and enum validation is NOT enforced here — it
+ * lives in the Doco's authoring policies.
+ */
+export interface GenericNodeDraft {
+  /** Node prose; first line is the label. */
+  prose?: string;
+  /** Promoted classifier (eval/state). */
+  kind?: string;
+  /** Free-form per-type metadata bag. */
+  attributes?: Record<string, unknown>;
+  /** Internal route-filled user id that created this entry. */
+  created_by_user_id?: string;
+  lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
+  /** Legacy type-named prose field + flat attribute keys. */
+  [k: string]: unknown;
+}
+
+/**
+ * Per-type default lifecycle, read from the documentation-only
+ * CAPTURE_SCHEMAS so the generic path needs no per-type code to know that
+ * Actions/Logs default to `retired` and Ideas to `drafting`. A type the
+ * schema doesn't list (none today) falls back to `active`.
+ */
+function defaultLifecycleForType(entityType: string): string {
+  return CAPTURE_SCHEMAS[entityType as keyof typeof CAPTURE_SCHEMAS]?.defaultLifecycle ?? "active";
+}
+
+/**
+ * Node types that default to a terminal lifecycle also default to a
+ * `succeeded` outcome — a capture usually records work already done.
+ * (Driven by the schema's default lifecycle, not a per-type branch.)
+ */
+function defaultOutcomeForType(entityType: string): "succeeded" | undefined {
+  return STRUCK_LIFECYCLES.has(defaultLifecycleForType(entityType)) ? "succeeded" : undefined;
+}
+
+/**
+ * Single generic node-capture path (node-shape slim-down, contract step).
+ * Replaces the 9 per-type capture functions + the `normalizeRawCaptureDraft`
+ * translation shim: it writes prose→prose, kind→kind, attributes→attributes
+ * with NO per-type branching for the write. Domain validation (required
+ * fields, enums) is delegated to authoring policies.
+ */
+export async function captureGenericNode(
   docoDir: string,
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  draft: DecisionDraft,
+  entityType: string,
+  draft: GenericNodeDraft,
   docoHost?: string,
   authoring?: AuthoringWriteContext,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.decision?.trim()) return { error: "decision is required." };
-  if (!draft.question?.trim()) return { error: "question is required." };
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  // `chosen` is optional: a BPMN gateway Decision routes flow through outgoing
-  // `flows_to` edges and has no single chosen answer. Resolution-style
-  // Decisions still get `chosen` enforced by their template (glossaries' and
-  // any ADR-style requires_field policy).
 
-  const id = `decision_${generateUlid()}`;
+  // Resolve prose: the raw `prose` key wins; the legacy type-named field
+  // (`decision`/`intent`/…) is accepted as an alias for back-compat.
+  const proseRaw =
+    typeof draft.prose === "string"
+      ? draft.prose
+      : typeof draft[entityType] === "string"
+        ? (draft[entityType] as string)
+        : undefined;
+  if (!proseRaw?.trim()) return { error: "prose is required." };
+  const prose = proseRaw.trim();
 
-  const decisionText = draft.decision.trim();
-  const label = firstLine(decisionText);
+  // Gather the attributes bag: explicit `attributes` keys plus any flat
+  // top-level keys that aren't envelope/identity fields. An explicit
+  // top-level key wins over the same key nested in `attributes`.
+  const attributes: Record<string, unknown> = {};
+  const nested = draft.attributes;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    Object.assign(attributes, nested);
+  }
+  for (const [k, v] of Object.entries(draft)) {
+    if (RESERVED_DRAFT_KEYS.has(k) || k === entityType) continue;
+    attributes[k] = v;
+  }
 
+  // Reject first-class-edge keys wherever they appear (top-level or bag).
+  const edgeKeyError =
+    rejectNodeJsonEdgeKeys(draft as Record<string, unknown>) ?? rejectNodeJsonEdgeKeys(attributes);
+  if (edgeKeyError) return edgeKeyError;
+
+  const id = `${entityType}_${generateUlid()}`;
+  const label = firstLine(prose);
   const now = new Date().toISOString();
+
   const createdById = userCreatorId(draft);
   if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
+
+  const status = lifecycleAttrs(
+    draft,
+    await resolveDefaultLifecycle(docoId, defaultLifecycleForType(entityType)),
+    defaultOutcomeForType(entityType),
+  );
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "decision",
-    decision: decisionText,
-    question: draft.question.trim(),
-    ...(draft.chosen?.trim() ? { chosen: draft.chosen.trim() } : {}),
-    ...(Array.isArray(draft.alternatives) && draft.alternatives.length > 0
-      ? { alternatives: draft.alternatives }
-      : {}),
-    decided_at: now,
+    node_type: entityType,
+    // Prose lands under the type-named key so storage's `computeTypeNamedValue`
+    // promotes it to the `prose` column.
+    [entityType]: prose,
+    // Flatten attributes onto the data bag; storage re-bags them into the
+    // `attributes` jsonb (excluding the envelope/promoted columns).
+    ...attributes,
+    // A top-level `kind` is the promoted classifier (eval/state); it wins
+    // over any `kind` that slipped into the attributes bag.
+    ...(typeof draft.kind === "string" ? { kind: draft.kind } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,
@@ -941,7 +1019,7 @@ export async function captureDecision(
     ownerSlug,
     docoSlug,
     docoHost,
-    entityType: "decision",
+    entityType,
     id,
     label,
     fm,
@@ -1323,508 +1401,6 @@ export async function updateEntity(opts: {
     duration_ms,
     ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
-}
-
-export interface IntentDraft {
-  /** Required: the full Intent prose (first line = label). */
-  intent: string;
-
-  /** Internal route-filled user id that created this entry. */
-  created_by_user_id?: string;
-  /** Optional: defaults to "active". */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export async function captureIntent(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: IntentDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.intent?.trim()) return { error: "intent is required." };
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  const id = `intent_${generateUlid()}`;
-  const intentText = draft.intent.trim();
-  const label = firstLine(intentText);
-
-  const now = new Date().toISOString();
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
-  if ("error" in status) return status;
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "intent",
-    intent: intentText,
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "intent",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
-}
-
-export interface IdeaDraft {
-  /** Required: the full Idea prose (first line = label). */
-  idea: string;
-  /** Internal route-filled user id that created/proposed this idea. */
-  created_by_user_id?: string;
-  /** Optional: entity this idea became once promoted. */
-  promoted_to?: string | null;
-  /** Optional: why the idea was rejected or parked. */
-  rejection_reason?: string | null;
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export async function captureIdea(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: IdeaDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.idea?.trim()) return { error: "idea is required." };
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-  if (!createdById) {
-    return { error: "Authentication is required to capture an idea." };
-  }
-
-  const id = `idea_${generateUlid()}`;
-  const ideaText = draft.idea.trim();
-  const label = firstLine(ideaText);
-  const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "drafting"));
-  if ("error" in status) return status;
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "idea",
-    idea: ideaText,
-    proposer_id: createdById,
-    ...(draft.promoted_to ? { promoted_to: draft.promoted_to } : {}),
-    ...(draft.rejection_reason ? { rejection_reason: draft.rejection_reason } : {}),
-    created_at: now,
-    created_by: createdById,
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "idea",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
-}
-
-export interface EvalDraft {
-  /** Required: the full Eval prose (first line = label). */
-  eval: string;
-  /** Required: criterion shape. */
-  criterion: { kind: "exact" | "shape" | "llm-judge"; spec?: string };
-  /** Optional: what flavor of test this is. */
-  kind?: "unit" | "integration" | "eval" | "process" | "doc-consistency";
-  /** Optional: status the author expects the runner to report. Defaults to "pass". */
-  expected_status?: "pass" | "fail";
-  /** Optional: free-form reproduction steps that produce `actual`. */
-  how_to_run?: string;
-  /** Optional: input value (any shape). */
-  input?: unknown;
-  /** Optional: expected outcome (any shape; prose for llm-judge). */
-  expected?: unknown;
-  /** Internal route-filled user id that created this Eval. */
-  created_by_user_id?: string;
-  /** Optional default: lifecycle = "active". */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export async function captureEval(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: EvalDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.eval?.trim()) return { error: "eval is required." };
-  if (!draft.criterion?.kind) return { error: "criterion.kind is required." };
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  if (!["exact", "shape", "llm-judge"].includes(draft.criterion.kind)) {
-    return { error: `Unknown criterion.kind: ${draft.criterion.kind}` };
-  }
-  if (
-    draft.kind !== undefined &&
-    !["unit", "integration", "eval", "process", "doc-consistency"].includes(draft.kind)
-  ) {
-    return { error: `Unknown kind: ${draft.kind}` };
-  }
-  if (draft.expected_status !== undefined && !["pass", "fail"].includes(draft.expected_status)) {
-    return { error: `Unknown expected_status: ${draft.expected_status}` };
-  }
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-
-  const id = `eval_${generateUlid()}`;
-  const evalText = draft.eval.trim();
-  const label = firstLine(evalText);
-
-  const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
-  if ("error" in status) return status;
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "eval",
-    eval: evalText,
-    ...(draft.kind ? { kind: draft.kind } : {}),
-    ...(draft.expected_status ? { expected_status: draft.expected_status } : {}),
-    ...(draft.how_to_run ? { how_to_run: draft.how_to_run } : {}),
-    ...(draft.input !== undefined ? { input: draft.input } : {}),
-    ...(draft.expected !== undefined ? { expected: draft.expected } : {}),
-    criterion: draft.criterion,
-    last_status: "pending",
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "eval",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
-}
-
-// ─── Action ───────────────────────────────────────────────────────────────
-
-export interface ActionDraft {
-  /** Required: the full Action prose (first line = label). */
-  action: string;
-  /** Required: short verb naming the action (`refactor`, `migrate`, …). */
-  verb: string;
-
-  /** Optional: verb-specific inputs (any shape). */
-  inputs?: unknown;
-  /** Optional: verb-specific outputs (any shape). */
-  outputs?: unknown;
-  /** Internal route-filled user id that created this entry. */
-  created_by_user_id?: string;
-  /** Optional: defaults to "retired" with `outcome: "succeeded"`. */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export async function captureAction(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: ActionDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.action?.trim()) return { error: "action is required." };
-  if (!draft.verb?.trim()) return { error: "verb is required." };
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  const id = `action_${generateUlid()}`;
-  const actionText = draft.action.trim();
-  const label = firstLine(actionText);
-  const now = new Date().toISOString();
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(
-    draft,
-    await resolveDefaultLifecycle(docoId, "retired"),
-    "succeeded",
-  );
-  if ("error" in status) return status;
-
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "action",
-    action: actionText,
-    verb: draft.verb.trim(),
-    ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
-    ...(draft.outputs !== undefined ? { outputs: draft.outputs } : {}),
-    performed_at: now,
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "action",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
-}
-
-// ─── Log (recorded happening) ─────────────────────────────────────────────
-// Parallel to Action but for instance-level happenings: a deploy that ran,
-// a commit that pushed, an eval that verified. Required fields make the
-// instance-vs-template distinction load-bearing: `happened_at` (when) and
-// `outputs` (what concrete results came out).
-
-export interface LogDraft {
-  /** Required: the full Log prose (first line = label). */
-  log: string;
-  /** Past-tense verb naming what happened ("pushed", "deployed", "verified"). */
-  verb: string;
-  /** When the event occurred. ISO 8601 UTC. */
-  happened_at: string;
-  /** Concrete output values from the event — commit hash, deploy URL,
-   *  verification result. Non-empty in practice. */
-  outputs: Record<string, unknown>;
-
-  inputs?: unknown;
-  /** Internal route-filled user id that created this entry. */
-  created_by_user_id?: string;
-  /** Optional override. Logs default to "retired" with `outcome: "succeeded"`. */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export async function captureLog(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: LogDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.log?.trim()) return { error: "log is required." };
-  if (!draft.verb?.trim()) return { error: "verb is required." };
-  if (!draft.happened_at?.trim()) {
-    return { error: "happened_at is required (ISO 8601 UTC) — Logs record a moment in time." };
-  }
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  if (
-    !draft.outputs ||
-    typeof draft.outputs !== "object" ||
-    Object.keys(draft.outputs).length === 0
-  ) {
-    return {
-      error:
-        "outputs is required and must be a non-empty object — Logs record concrete results (commit hash, deploy URL, etc.).",
-    };
-  }
-  const id = `log_${generateUlid()}`;
-  const logText = draft.log.trim();
-  const label = firstLine(logText);
-  const now = new Date().toISOString();
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(
-    draft,
-    await resolveDefaultLifecycle(docoId, "retired"),
-    "succeeded",
-  );
-  if ("error" in status) return status;
-
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "log",
-    log: logText,
-    verb: draft.verb.trim(),
-    happened_at: draft.happened_at,
-    outputs: draft.outputs,
-    ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "log",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
-}
-
-// ─── Rule ─────────────────────────────────────────────────────────────────
-
-export interface RuleDraft {
-  /** Required: the full Rule prose (first line = label). */
-  rule: string;
-  /** Required: machine-checkable / prose predicate the Rule asserts. */
-  predicate: string;
-
-  /**
-   * Optional: enforcement surface — `runtime | review | manual`.
-   * Maps to the Rule's `phase` field in the stored row for compatibility
-   * with the existing schema (`runtime` → `invariant`, `review`/`manual`
-   * → `declared`). The original verb is preserved verbatim in an
-   * `enforced_by` field so the spec stays round-trippable.
-   */
-  enforced_by?: "runtime" | "review" | "manual";
-  /** Optional: severity — `hard` (blocker) or `soft` (warning). Maps to schema. */
-  severity?: "hard" | "soft";
-  /** Internal route-filled user id that created this entry. */
-  created_by_user_id?: string;
-  /** Optional: defaults to "active". */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-/**
- * Map a RuleDraft to the Rule node's structured content fields (pure; no
- * envelope or lifecycle). `enforced_by` "runtime" promotes the rule to an
- * `invariant` phase, else `declared`; `severity` "hard"→blocker else warning;
- * `on_violation` follows severity. Enforcement itself lives in `Policy`
- * records — a Rule node is documentation, so it carries no `modality`,
- * `expected`, or `applies_to` selector.
- */
-export function ruleNodeFields(draft: RuleDraft): {
-  rule: string;
-  predicate: string;
-  severity: "blocker" | "warning" | "info";
-  phase: "declared" | "pre" | "post" | "invariant";
-  on_violation: "block" | "warn" | "log";
-  enforced_by?: "runtime" | "review" | "manual";
-} {
-  const phase: "declared" | "pre" | "post" | "invariant" =
-    draft.enforced_by === "runtime" ? "invariant" : "declared";
-  const severity: "blocker" | "warning" | "info" =
-    draft.severity === "hard" ? "blocker" : "warning";
-  return {
-    rule: draft.rule.trim(),
-    predicate: draft.predicate.trim(),
-    severity,
-    phase,
-    on_violation: severity === "blocker" ? "block" : "warn",
-    ...(draft.enforced_by ? { enforced_by: draft.enforced_by } : {}),
-  };
-}
-
-export async function captureRule(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: RuleDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.rule?.trim()) return { error: "rule is required." };
-  if (typeof draft.predicate !== "string") {
-    return { error: "predicate must be a string (a prose or machine-checkable assertion)." };
-  }
-  if (!draft.predicate.trim()) return { error: "predicate is required." };
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-
-  const id = `rule_${generateUlid()}`;
-  const fields = ruleNodeFields(draft);
-  const label = firstLine(fields.rule);
-  const now = new Date().toISOString();
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
-  if ("error" in status) return status;
-
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "rule",
-    ...fields,
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "rule",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
 }
 
 // ─── Policies ───────────────────────────────────────────────────────────
@@ -2242,159 +1818,4 @@ export async function loadPolicyForEdit(opts: {
     lifecycle: row.lifecycle ?? "active",
     data: row.data ?? {},
   };
-}
-
-const REF_TYPES = new Set(["file", "url", "ticket", "commit", "document", "other"]);
-
-export interface ReferenceDraft {
-  /** Required: the full Reference prose (first line = label). */
-  reference: string;
-  ref_type: string;
-  locator: string;
-  content_hash?: string | null;
-  /** Internal route-filled user id that created this entry. */
-  created_by_user_id?: string;
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export async function captureReference(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: ReferenceDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.reference?.trim()) return { error: "reference is required." };
-  if (!draft.ref_type || !REF_TYPES.has(draft.ref_type)) {
-    return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
-  }
-  if (!draft.locator?.trim()) return { error: "locator is required." };
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-
-  const id = `reference_${generateUlid()}`;
-  const locator = draft.locator.trim();
-  const referenceText = draft.reference.trim();
-  const label = firstLine(referenceText);
-  const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
-  if ("error" in status) return status;
-
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "reference",
-    reference: referenceText,
-    ref_type: draft.ref_type,
-    locator,
-    ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "reference",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
-}
-
-// ─── State (v7 — state-machine node) ──────────────────────────────────────
-// Per decision_01KRRR5BQ16ASY8HQEE0V499YG. A State is a node in a formal
-// state machine: a position the modeled entity occupies for some span of
-// time. Holds invariants while occupied.
-
-export interface StateDraft {
-  /** Required: the full State prose (first line = label / display name). */
-  state: string;
-  /** Required: initial / intermediate / terminal. */
-  kind: "initial" | "intermediate" | "terminal";
-
-  /** Optional: predicates true while in this State. Free-form prose. */
-  invariants?: string[];
-  /** Internal route-filled user id that created this entry. */
-  created_by_user_id?: string;
-  /** Optional: explicit lifecycle override. Defaults to "active". */
-  lifecycle?: string;
-  deprecated?: boolean;
-  outcome?: "succeeded" | "failed";
-}
-
-export async function captureState(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: StateDraft,
-  docoHost?: string,
-  authoring?: AuthoringWriteContext,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.state?.trim()) return { error: "state is required." };
-  if (!draft.kind) return { error: "kind is required (initial | intermediate | terminal)." };
-  if (draft.kind !== "initial" && draft.kind !== "intermediate" && draft.kind !== "terminal") {
-    return {
-      error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".`,
-    };
-  }
-  const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(draft);
-  if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  const createdById = userCreatorId(draft);
-  if (typeof createdById !== "string" && createdById !== null) return createdById;
-
-  const id = `state_${generateUlid()}`;
-  const stateText = draft.state.trim();
-  const label = firstLine(stateText);
-  const now = new Date().toISOString();
-
-  const status = lifecycleAttrs(draft, await resolveDefaultLifecycle(docoId, "active"));
-  if ("error" in status) return status;
-
-  const invariants: string[] = Array.isArray(draft.invariants)
-    ? draft.invariants.filter((s): s is string => typeof s === "string" && s.length > 0)
-    : [];
-
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "state",
-    state: stateText,
-    kind: draft.kind,
-    ...(invariants.length > 0 ? { invariants } : {}),
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    ...status,
-  };
-
-  return finishNodeCapture({
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    docoHost,
-    entityType: "state",
-    id,
-    label,
-    fm,
-    createdById,
-    startedAt,
-    authoring,
-  });
 }

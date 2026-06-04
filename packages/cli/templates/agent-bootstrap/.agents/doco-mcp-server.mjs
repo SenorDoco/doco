@@ -237,7 +237,10 @@ const CAPTURE_TOOL = {
     "request write access from an owner, then retry — it's a grant change,",
     "not a different login.",
     "",
-    "Read GET /<handle>/api/<type>.txt for the exact body shape first.",
+    "The body is the raw node row: { prose, kind?, attributes }. `prose` is",
+    "the node's text (first line = label); per-type fields go in `attributes`",
+    "(e.g. an action: { prose, attributes: { verb } }). Read GET",
+    "/<handle>/api/<type>.txt for the conventional attribute keys first.",
     "Singular or plural `type` is accepted.",
   ].join("\n"),
   inputSchema: {
@@ -251,7 +254,7 @@ const CAPTURE_TOOL = {
       body: {
         type: "object",
         description:
-          "Type-specific capture body (e.g. a decision: { decision, question }). See /<handle>/api/<type>.txt.",
+          "Raw node row: { prose, kind?, attributes:{…} } — prose is the node text, per-type fields live in attributes (the legacy type-named field like { decision } is still accepted). See /<handle>/api/<type>.txt.",
         additionalProperties: true,
       },
     },

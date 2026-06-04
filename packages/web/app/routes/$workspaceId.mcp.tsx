@@ -127,7 +127,7 @@ const RELATE_TOOL = {
       to_id: { type: "string", description: "Target node id." },
       props: {
         type: "object",
-        description: "Optional edge props (e.g. role metadata).",
+        description: "Optional edge props (e.g. a flows_to label or condition).",
         additionalProperties: true,
       },
     },

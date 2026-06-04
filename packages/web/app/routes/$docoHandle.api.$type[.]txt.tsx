@@ -23,9 +23,10 @@ const RELATION_API_NOTE = `RELATIONSHIPS
   (relate / relate_many) or POST /<handle>/api/edges.json.
 
   Common relationship edge types: flows_to, supports, constrained_by,
-  attributed_to, has_parent, derived_from, replaces, relates_to. When a
-  perspective needs a narrower meaning, put it in edge props as role
-  metadata (for example: serves, performed_by, reports_to).
+  attributed_to, has_parent, derived_from, replaces, relates_to. An edge's
+  specific meaning comes from its type plus the node types it connects — e.g.
+  an Action's attributed_to to a Principal is its performer, a flow node's
+  supports to an Intent places it in that pool.
 
   created_by / updated_by are user/API-key provenance derived from the
   authenticated session or token. Never send created_by.
@@ -78,11 +79,14 @@ EXAMPLE
     -H "Content-Type: application/json" \\
     "${baseUrl}/${handle}/api/decisions.json" \\
     -d '{
-      "question": "Where should the Doco-created confirmation live?",
-      "chosen": "Each creation entry point renders its own success card.",
-      "alternatives": [
-        { "name": "Keep the banner on the next-step page", "rejected_because": "Content belongs to the creation flow." }
-      ]
+      "prose": "Render success cards at each creation entry point.",
+      "attributes": {
+        "question": "Where should the Doco-created confirmation live?",
+        "chosen": "Each creation entry point renders its own success card.",
+        "alternatives": [
+          { "name": "Keep the banner on the next-step page", "rejected_because": "Content belongs to the creation flow." }
+        ]
+      }
     }'
 
 WHEN TO CALL THIS
@@ -172,7 +176,7 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/intents.json \\
     -d '{
-      "intent": "Agent capture friction is bounded to a few seconds end-to-end.\\n\\nBackground: writing two ADRs by hand took >5 minutes (70% plumbing). This Intent motivates the single-call capture endpoints."
+      "prose": "Agent capture friction is bounded to a few seconds end-to-end.\\n\\nBackground: writing two ADRs by hand took >5 minutes (70% plumbing). This Intent motivates the single-call capture endpoints."
     }'
 
 WHEN TO CALL THIS
@@ -217,9 +221,8 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/actions.json \\
     -d '{
-      "action": "Use first-class edges in the capture API.",
-      "verb": "update",
-      "outputs": { "commit": "abc123" }
+      "prose": "Use first-class edges in the capture API.",
+      "attributes": { "verb": "update", "outputs": { "commit": "abc123" } }
     }'
 
 UPDATE AN EXISTING ACTION
@@ -262,10 +265,12 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/logs.json \\
     -d '{
-      "log": "Pushed edge-only capture docs.",
-      "verb": "pushed",
-      "happened_at": "2026-05-23T12:00:00.000Z",
-      "outputs": { "branch": "main", "commit": "abc123" }
+      "prose": "Pushed edge-only capture docs.",
+      "attributes": {
+        "verb": "pushed",
+        "happened_at": "2026-05-23T12:00:00.000Z",
+        "outputs": { "branch": "main", "commit": "abc123" }
+      }
     }'
 
 UPDATE AN EXISTING LOG
@@ -307,10 +312,12 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/rules.json \\
     -d '{
-      "rule": "Capture API requests put relationships in edges.",
-      "predicate": "POST and PATCH request bodies use first-class edges for relationships.",
-      "severity": "hard",
-      "enforced_by": "review"
+      "prose": "Capture API requests put relationships in edges.",
+      "attributes": {
+        "predicate": "POST and PATCH request bodies use first-class edges for relationships.",
+        "severity": "hard",
+        "enforced_by": "review"
+      }
     }'
 
 UPDATE AN EXISTING RULE
@@ -351,10 +358,12 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/evals.json \\
     -d '{
-      "eval": "Intent capture body shape — verify intents reject graph relationship keys.",
-      "criterion": {
-        "kind": "shape",
-        "spec": "Intents put relationships in first-class edges."
+      "prose": "Intent capture body shape — verify intents reject graph relationship keys.",
+      "attributes": {
+        "criterion": {
+          "kind": "shape",
+          "spec": "Intents put relationships in first-class edges."
+        }
       }
     }'
 
@@ -396,9 +405,11 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/references.json \\
     -d '{
-      "reference": "Plain-text capture API specs",
-      "ref_type": "file",
-      "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx"
+      "prose": "Plain-text capture API specs",
+      "attributes": {
+        "ref_type": "file",
+        "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx"
+      }
     }'
 
 UPDATE AN EXISTING REFERENCE
@@ -441,9 +452,9 @@ EXAMPLE
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/states.json \\
     -d '{
-      "state": "Capture API contract documented",
+      "prose": "Capture API contract documented",
       "kind": "terminal",
-      "invariants": ["Agents can discover the expected body shape."]
+      "attributes": { "invariants": ["Agents can discover the expected body shape."] }
     }'
 
 UPDATE AN EXISTING STATE

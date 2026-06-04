@@ -1,50 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildEntityGetResponse, normalizeRawCaptureDraft } from "../api-capture-shape";
+import { buildEntityGetResponse } from "../api-capture-shape";
 
-// Stage 2 of the node-shape slim-down (raw-schema phase, additive). The API
-// learns to speak the row shape directly — `{prose, attributes}` — while the
-// legacy type-named field keeps working. These pin the two pure pieces.
-
-describe("normalizeRawCaptureDraft — accept the raw {prose, attributes} shape", () => {
-  it("maps `prose` onto the type-named field the capture fn reads", () => {
-    const draft = normalizeRawCaptureDraft(
-      { prose: "Deploy the build", attributes: { verb: "deploy" } },
-      "action",
-    ) as Record<string, unknown>;
-    expect(draft.action).toBe("Deploy the build");
-    expect(draft.verb).toBe("deploy");
-    // The wrapper keys are consumed, not left to leak into `data`.
-    expect(draft).not.toHaveProperty("prose");
-    expect(draft).not.toHaveProperty("attributes");
-  });
-
-  it("flattens attributes onto the draft without clobbering explicit top-level keys", () => {
-    const draft = normalizeRawCaptureDraft(
-      { prose: "x", verb: "top", attributes: { verb: "nested", target: "t" } },
-      "action",
-    ) as Record<string, unknown>;
-    expect(draft.verb).toBe("top"); // explicit wins over attributes
-    expect(draft.target).toBe("t");
-  });
-
-  it("leaves an explicit type-named field untouched when both are present", () => {
-    const draft = normalizeRawCaptureDraft(
-      { action: "Explicit", prose: "Ignored" },
-      "action",
-    ) as Record<string, unknown>;
-    expect(draft.action).toBe("Explicit");
-    expect(draft).not.toHaveProperty("prose");
-  });
-
-  it("ignores a non-object attributes value", () => {
-    const draft = normalizeRawCaptureDraft({ prose: "p", attributes: "nope" }, "intent") as Record<
-      string,
-      unknown
-    >;
-    expect(draft.intent).toBe("p");
-    expect(draft).not.toHaveProperty("attributes");
-  });
-});
+// Node-shape slim-down (raw-schema phase). The READ side exposes the row shape
+// directly — `{prose, attributes}` — alongside the legacy type-named field.
+// (The write-side `normalizeRawCaptureDraft` translation shim is gone; the
+// generic writer accepts `{prose, kind?, attributes}` natively — see
+// capture-generic.server.test.ts.)
 
 describe("buildEntityGetResponse — expose the row shape on read", () => {
   it("returns prose + attributes alongside the legacy type-named field for a node", () => {
