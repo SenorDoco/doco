@@ -36,6 +36,7 @@ import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing"
 import { bpmnSimplifiedAtZoom } from "~/lib/bpmn-lod";
 import { layoutAdjacentNodes } from "~/lib/bpmn-outside-layout";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
+import { bpmnPriorityReferences } from "~/lib/bpmn-references";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/bpmn-stable-nodes";
 import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
@@ -199,6 +200,7 @@ interface FlowModule {
 }
 
 export function BpmnPerspective({
+  docoHandle,
   pools,
   lanes: lanesRaw,
   nodes: nodesRaw,
@@ -529,24 +531,15 @@ export function BpmnPerspective({
     [onCenterChange, onLaneClick],
   );
 
-  // Principal-owned lanes are first-class references — they get
-  // numbers 1..N (in lane order) before any shape, so a viewer can
-  // jump from the sidebar straight to the swimlane owner. Passed to
-  // the shared hook as `priorityItems`; the hook handles every shape
-  // node's numbering (sort, viewport-cull, cap, registry publish).
-  const laneReferences = useMemo<GraphReferenceItem[]>(
-    () =>
-      renderedLanes
-        .filter((lane) => isActorLane(lane))
-        .map((lane, index) => ({
-          number: index + 1,
-          id: lane.id,
-          entity_type: "principal",
-          label: lane.label,
-          lifecycle: lane.lifecycle ?? "active",
-          href: null,
-        })),
-    [renderedLanes],
+  // The Intent pool and its principal-owned swimlanes are first-class
+  // references — they take the leading numbers (Intent first, then each
+  // swimlane owner, in top-to-bottom reading order) before any shape, so a
+  // viewer can jump from the sidebar straight to the pool or lane owner.
+  // Passed to the shared hook as `priorityItems`; the hook handles every
+  // shape node's numbering (sort, viewport-cull, cap, registry publish).
+  const priorityReferences = useMemo<GraphReferenceItem[]>(
+    () => bpmnPriorityReferences(renderedPools, renderedLanes, docoHandle),
+    [renderedPools, renderedLanes, docoHandle],
   );
   const nodeReferenceCandidates = useMemo(
     () =>
@@ -574,7 +567,7 @@ export function BpmnPerspective({
     viewport,
     size: graphSize,
     candidates: nodeReferenceCandidates,
-    priorityItems: laneReferences,
+    priorityItems: priorityReferences,
   });
   // Publish the numbering into an external store so each #N badge can
   // subscribe to its own number. Keeping the number out of node `data`
@@ -1087,6 +1080,11 @@ export function BpmnPerspective({
             const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
             const labelFontPx = 12 * viewport.zoom;
             const padX = 14 * viewport.zoom;
+            const referenceNumber = pool.intent_id
+              ? referenceNumberByEntityId.get(pool.intent_id)
+              : undefined;
+            const badgeFontPx = 10 * viewport.zoom;
+            const badgeBox = badgeFontPx * 2;
             return (
               <div
                 key={pool.id}
@@ -1119,6 +1117,22 @@ export function BpmnPerspective({
                 tabIndex={isClickablePool ? 0 : undefined}
                 title={pool.label}
               >
+                {referenceNumber ? (
+                  <span
+                    aria-label={`Graph reference #${referenceNumber}: ${pool.label}`}
+                    className="flex flex-shrink-0 items-center justify-center rounded-full bg-primary font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+                    style={{
+                      minWidth: badgeBox,
+                      height: badgeBox,
+                      marginRight: 6 * viewport.zoom,
+                      padding: `0 ${Math.max(2, badgeFontPx * 0.4)}px`,
+                      fontSize: badgeFontPx,
+                    }}
+                    title={`Graph reference #${referenceNumber}`}
+                  >
+                    #{referenceNumber}
+                  </span>
+                ) : null}
                 <span className="overflow-hidden text-ellipsis whitespace-nowrap">
                   {pool.label}
                 </span>
@@ -1760,6 +1774,30 @@ function BpmnEdgeStubNode() {
   );
 }
 
+// Pool #N badge — same isolated store subscription as the lane and shape
+// badges, keyed on the Intent id so re-numbering on pan never re-renders
+// the whole header band. Only real Intent pools (non-null intent_id) carry
+// a number; the Unassigned pool gets none.
+const BpmnPoolReferenceBadge = memo(function BpmnPoolReferenceBadge({
+  intentId,
+  label,
+}: {
+  intentId: string;
+  label: string;
+}) {
+  const referenceNumber = useReferenceNumber(intentId);
+  if (!referenceNumber) return null;
+  return (
+    <span
+      aria-label={`Graph reference #${referenceNumber}: ${label}`}
+      className="pointer-events-none flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+      title={`Graph reference #${referenceNumber}`}
+    >
+      #{referenceNumber}
+    </span>
+  );
+});
+
 /**
  * Pool header band. Renders the Intent's prose as a banner across the
  * full canvas width above the pool's lanes. The Unassigned pool gets
@@ -1804,6 +1842,9 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
           isConnectable={false}
           style={{ background: "transparent", border: "none", left: 24 }}
         />
+      ) : null}
+      {data.pool.intent_id ? (
+        <BpmnPoolReferenceBadge intentId={data.pool.intent_id} label={data.pool.label} />
       ) : null}
       {!isUnassigned && data.pool.intent_id ? (
         <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
