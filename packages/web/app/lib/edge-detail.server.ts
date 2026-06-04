@@ -1,5 +1,56 @@
+import { type DocoRole, roleAtLeast } from "@doco/db";
 import { type AuthoringPair, authoringEntry } from "./authoring-provenance";
+import { getDocoLevelRole } from "./doco-access.server";
 import { getGitHubRepoSlug } from "./github-connection.server";
+
+// Edges carry a slimmer lifecycle than nodes: a sketch (`drafting`), a live
+// edge (`active`), or a removed one (`retired`). There is no `queued` stage —
+// an edge is either proposed, live, or gone.
+const EDGE_LIFECYCLE_STAGES = ["drafting", "active", "retired"] as const;
+export type EdgeLifecycleStage = (typeof EDGE_LIFECYCLE_STAGES)[number];
+
+// The clickable transitions read as verbs ("draft" / "activate" / "retire");
+// the current stage reads as its state name. Mirrors the node dialog so the
+// row says "you ARE here / click to GO there."
+const EDGE_LIFECYCLE_VERB: Record<EdgeLifecycleStage, string> = {
+  drafting: "draft",
+  active: "activate",
+  retired: "retire",
+};
+
+export interface EdgeLifecycleOption {
+  value: EdgeLifecycleStage;
+  label: string;
+  current: boolean;
+  disabled: boolean;
+  reason: string | null;
+}
+
+function edgeLifecycleOptions(input: {
+  current: string;
+  canChange: boolean;
+  role: DocoRole | null;
+}): EdgeLifecycleOption[] {
+  const current = EDGE_LIFECYCLE_STAGES.includes(input.current as EdgeLifecycleStage)
+    ? (input.current as EdgeLifecycleStage)
+    : "active";
+  const roleReason = input.role
+    ? `Write access required to change lifecycle; your role is ${input.role}.`
+    : "Sign in with write access to change lifecycle.";
+  return EDGE_LIFECYCLE_STAGES.map((stage) => {
+    const isCurrent = stage === current;
+    let reason: string | null = null;
+    if (isCurrent) reason = "Current stage.";
+    else if (!input.canChange) reason = roleReason;
+    return {
+      value: stage,
+      label: isCurrent ? stage : EDGE_LIFECYCLE_VERB[stage],
+      current: isCurrent,
+      disabled: Boolean(reason),
+      reason,
+    };
+  });
+}
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -83,6 +134,12 @@ export interface EdgeDialogDetail {
   from: EdgeDialogEndpoint;
   to: EdgeDialogEndpoint;
   history: EdgeDialogHistoryEntry[];
+  // Lifecycle controls — peers of the node dialog's. `update_url` is the
+  // PATCH endpoint the retire/activate buttons post `{ lifecycle }` to.
+  user_role: DocoRole | null;
+  can_change_lifecycle: boolean;
+  update_url: string;
+  lifecycle_options: EdgeLifecycleOption[];
 }
 
 async function resolveActorLabels(
@@ -151,8 +208,8 @@ function endpointFromRow(handle: string, row: EdgeEndpointRow): EdgeDialogEndpoi
 
 export async function loadEdgeDialogDetail(
   c: QueryClient,
-  meta: { docoId: string },
-  options: { handle: string; id: string },
+  meta: { docoId: string; ownerId?: string },
+  options: { handle: string; id: string; principalId?: string | null },
 ): Promise<EdgeDialogDetail | null> {
   const edge = (
     await c.query<EdgeDetailRow>(
@@ -205,11 +262,22 @@ export async function loadEdgeDialogDetail(
   const createdVersion = versions[0];
   const updatedVersion = versions.at(-1);
   const githubRepo = await getGitHubRepoSlug(c, meta.docoId);
+  // Permission keys off the Doco-level role, like the node dialog. Without an
+  // ownerId (e.g. a thin unit-test harness) we can't resolve a role, so the
+  // controls render read-only.
+  const userRole = meta.ownerId
+    ? await getDocoLevelRole(
+        { ownerId: meta.ownerId, docoId: meta.docoId },
+        options.principalId ?? null,
+      )
+    : null;
+  const canChangeLifecycle = roleAtLeast(userRole, "writer");
+  const lifecycle = edge.lifecycle ?? "active";
 
   return {
     id: edge.id,
     edge_type: edge.edge_type,
-    lifecycle: edge.lifecycle ?? "active",
+    lifecycle,
     props: edge.props ?? null,
     created_at: toIso(edge.created_at),
     created_by: edge.created_by,
@@ -259,5 +327,13 @@ export async function loadEdgeDialogDetail(
         })?.mechanism ?? null,
       reason: version.reason ?? null,
     })),
+    user_role: userRole,
+    can_change_lifecycle: canChangeLifecycle,
+    update_url: `/${options.handle}/api/edges/${edge.id}.json`,
+    lifecycle_options: edgeLifecycleOptions({
+      current: lifecycle,
+      canChange: canChangeLifecycle,
+      role: userRole,
+    }),
   };
 }

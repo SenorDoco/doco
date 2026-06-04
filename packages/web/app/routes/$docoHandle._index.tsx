@@ -49,7 +49,11 @@ import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
-import { type EdgeDialogDetail, loadEdgeDialogDetail } from "~/lib/edge-detail.server";
+import {
+  type EdgeDialogDetail,
+  type EdgeLifecycleStage,
+  loadEdgeDialogDetail,
+} from "~/lib/edge-detail.server";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { githubIntegrationStatus } from "~/lib/github-connection.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -308,7 +312,11 @@ export async function loader({
       throw new Response(`Node not found: ${requestedNode.id}`, { status: 404 });
     }
     const selectedEdge = requestedEdgeId
-      ? await loadEdgeDialogDetail(c, { docoId: ctx.meta.docoId }, { handle, id: requestedEdgeId })
+      ? await loadEdgeDialogDetail(
+          c,
+          { docoId: ctx.meta.docoId, ownerId: ctx.meta.ownerId },
+          { handle, id: requestedEdgeId, principalId: me?.id ?? null },
+        )
       : null;
     if (requestedEdgeId && !selectedEdge) {
       throw new Response(`Edge not found: ${requestedEdgeId}`, { status: 404 });
@@ -579,6 +587,10 @@ export default function DocoHome({
   );
   const [lifecycleUpdating, setLifecycleUpdating] = useState<LifecycleStage | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [edgeLifecycleUpdating, setEdgeLifecycleUpdating] = useState<EdgeLifecycleStage | null>(
+    null,
+  );
+  const [edgeLifecycleError, setEdgeLifecycleError] = useState<string | null>(null);
   const clientDialogOverrideRef = useRef(false);
   // One-shot camera focus the perspectives honor. Opening a node from a
   // side panel — clicking an edge row inside an open node/edge dialog —
@@ -637,6 +649,7 @@ export default function DocoHome({
     if (clientDialogOverrideRef.current) return;
     setNodeDialog(null);
     setLifecycleError(null);
+    setEdgeLifecycleError(null);
     setEdgeFocus(edgeFocusFromDetail(focusedEdge));
     setEdgeDialog(selectedEdge ? { detail: selectedEdge, loading: false, error: null } : null);
     setGraphState((prev) => graphWithCenter(prev, focusedEdge.from.id));
@@ -874,6 +887,7 @@ export default function DocoHome({
       }
       setNodeDialog(null);
       setLifecycleError(null);
+      setEdgeLifecycleError(null);
       setEdgeDialog((prev) => ({
         detail: options.keepDetail ? (prev?.detail ?? null) : null,
         loading: true,
@@ -944,6 +958,7 @@ export default function DocoHome({
     clientDialogOverrideRef.current = true;
     setEdgeDialog(null);
     setEdgeFocus(null);
+    setEdgeLifecycleError(null);
     setGraphState((prev) => graphWithCenter(prev, null));
     if (typeof window !== "undefined") {
       const href =
@@ -963,6 +978,7 @@ export default function DocoHome({
     setEdgeDialog(null);
     setEdgeFocus(null);
     setLifecycleError(null);
+    setEdgeLifecycleError(null);
     setGraphState((prev) => graphWithCenter(prev, null));
     if (typeof window !== "undefined") {
       const href =
@@ -1085,6 +1101,51 @@ export default function DocoHome({
     [loadNodeDialog, nodeDialog],
   );
 
+  const handleEdgeLifecycleChange = useCallback(
+    async (stage: EdgeLifecycleStage) => {
+      const detail = edgeDialog?.detail;
+      if (!detail) return;
+      const option = detail.lifecycle_options.find((candidate) => candidate.value === stage);
+      if (!option || option.disabled || !detail.update_url) return;
+      setEdgeLifecycleUpdating(stage);
+      setEdgeLifecycleError(null);
+      try {
+        const res = await fetch(detail.update_url, {
+          method: "PATCH",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ lifecycle: stage }),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(body?.error ?? `Lifecycle update failed with ${res.status}`);
+        }
+        setEdgeDialog((prev) =>
+          prev?.detail?.id === detail.id
+            ? {
+                ...prev,
+                detail: {
+                  ...prev.detail,
+                  lifecycle: stage,
+                },
+              }
+            : prev,
+        );
+        await loadEdgeDialog(
+          { id: detail.id, href: detail.href, source: detail.from.id, target: detail.to.id },
+          { pushUrl: false, keepDetail: true },
+        );
+      } catch (err) {
+        setEdgeLifecycleError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setEdgeLifecycleUpdating(null);
+      }
+    },
+    [edgeDialog, loadEdgeDialog],
+  );
+
   const focusedGraphNodeIds = useMemo(
     () => (edgeFocus ? [edgeFocus.source, edgeFocus.target] : []),
     [edgeFocus],
@@ -1140,13 +1201,19 @@ export default function DocoHome({
         onOpenNode={(entityType, id, href) => {
           void loadNodeDialog(entityType, id, href, { focusPerspective: true });
         }}
+        onOpenEdge={(edge) => {
+          void loadEdgeDialog(edge);
+        }}
       />
     ) : edgeDialog && !isPerspectiveFullscreen ? (
       <EdgeDialog
         detail={edgeDialog.detail}
         loading={edgeDialog.loading}
         error={edgeDialog.error}
+        lifecycleUpdating={edgeLifecycleUpdating}
+        lifecycleError={edgeLifecycleError}
         onClose={closeEdgeDialog}
+        onLifecycleChange={handleEdgeLifecycleChange}
         onOpenNode={(entityType, id, href) => {
           void loadNodeDialog(entityType, id, href, { focusPerspective: true });
         }}
@@ -1371,13 +1438,19 @@ export default function DocoHome({
                       onOpenNode={(entityType, id, href) => {
                         void loadNodeDialog(entityType, id, href, { focusPerspective: true });
                       }}
+                      onOpenEdge={(edge) => {
+                        void loadEdgeDialog(edge);
+                      }}
                     />
                   ) : edgeDialog ? (
                     <EdgeDialog
                       detail={edgeDialog.detail}
                       loading={edgeDialog.loading}
                       error={edgeDialog.error}
+                      lifecycleUpdating={edgeLifecycleUpdating}
+                      lifecycleError={edgeLifecycleError}
                       onClose={closeEdgeDialog}
+                      onLifecycleChange={handleEdgeLifecycleChange}
                       onOpenNode={(entityType, id, href) => {
                         void loadNodeDialog(entityType, id, href, { focusPerspective: true });
                       }}

@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { loadEdgeDialogDetail } from "../edge-detail.server";
+
+vi.mock("../doco-access.server", () => ({
+  getDocoLevelRole: vi.fn(async () => "owner"),
+}));
 
 const meta = {
   docoId: "doco_01TEST",
+  ownerId: "workspace_01TEST",
 };
 
 describe("loadEdgeDialogDetail", () => {
@@ -150,5 +155,54 @@ describe("loadEdgeDialogDetail", () => {
         }),
       ],
     });
+  });
+
+  it("offers retire/activate lifecycle options and an update URL for writers", async () => {
+    const client = {
+      query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        if (sql.includes("FROM edges")) {
+          return {
+            rows: [
+              {
+                id: "edge_01TEST",
+                from_id: "decision_01FROM",
+                from_node_type: "decision",
+                to_id: "intent_01TO",
+                to_node_type: "intent",
+                edge_type: "supports",
+                props: null,
+                lifecycle: "active",
+                created_at: "2026-05-30T10:00:00.000Z",
+                created_by: "user_alice",
+                updated_at: "2026-05-30T10:01:00.000Z",
+                updated_by: "user_alice",
+                retired_at: null,
+              },
+            ] as T[],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+
+    const detail = await loadEdgeDialogDetail(client, meta, {
+      handle: "test-doco",
+      id: "edge_01TEST",
+      principalId: "user_alice",
+    });
+
+    expect(detail?.update_url).toBe("/test-doco/api/edges/edge_01TEST.json");
+    expect(detail?.can_change_lifecycle).toBe(true);
+    const options = detail?.lifecycle_options ?? [];
+    expect(options.map((o) => o.value)).toEqual(["drafting", "active", "retired"]);
+    // The current stage reads as its state name; the others read as verbs.
+    expect(options.find((o) => o.value === "active")).toMatchObject({
+      current: true,
+      label: "active",
+    });
+    expect(options.find((o) => o.value === "retired")?.label).toBe("retire");
+    expect(options.find((o) => o.value === "drafting")?.label).toBe("draft");
+    // Writers can act on the non-current stages.
+    expect(options.find((o) => o.value === "retired")?.disabled).toBe(false);
   });
 });

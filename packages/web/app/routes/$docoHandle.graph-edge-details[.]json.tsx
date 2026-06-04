@@ -14,7 +14,11 @@ export async function loader({
   const id = url.searchParams.get("id") ?? "";
   if (!id) return Response.json({ error: "Missing edge id" }, { status: 400 });
   const edge = await withClient((c) =>
-    loadEdgeDialogDetail(c, { docoId: ctx.meta.docoId }, { handle: ctx.handle, id }),
+    loadEdgeDialogDetail(
+      c,
+      { docoId: ctx.meta.docoId, ownerId: ctx.meta.ownerId },
+      { handle: ctx.handle, id, principalId: ctx.me?.id ?? null },
+    ),
   );
   if (!edge) return Response.json({ error: `Edge not found: ${id}` }, { status: 404 });
   return Response.json({ edge });

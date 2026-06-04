@@ -1,16 +1,36 @@
-import { Loader2, X } from "lucide-react";
+import { ArrowRight, Loader2, X } from "lucide-react";
 import { Link } from "react-router";
 import { LinkedProse, LinkedValue } from "~/components/linked-text";
 import { LifecycleBadge, TypeBadge } from "~/components/node-badges";
-import type { EdgeDialogDetail, EdgeDialogEndpoint } from "~/lib/edge-detail.server";
+import type {
+  EdgeDialogDetail,
+  EdgeDialogEndpoint,
+  EdgeLifecycleStage,
+} from "~/lib/edge-detail.server";
 import { lifecycleColor } from "~/lib/node-colors";
 
 interface EdgeDialogProps {
   detail: EdgeDialogDetail | null;
   loading: boolean;
   error: string | null;
+  lifecycleUpdating: EdgeLifecycleStage | null;
+  lifecycleError: string | null;
   onClose: () => void;
+  onLifecycleChange: (stage: EdgeLifecycleStage) => void;
   onOpenNode: (entityType: string, id: string, href: string) => void;
+}
+
+function lifecycleButtonClass(
+  detail: EdgeDialogDetail,
+  stage: EdgeLifecycleStage,
+  active: boolean,
+) {
+  const base =
+    "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-border px-3 text-[11px] font-semibold capitalize";
+  if (active) return `${base} neu-pressed`;
+  const option = detail.lifecycle_options.find((candidate) => candidate.value === stage);
+  if (option?.disabled) return `${base} neu-button cursor-not-allowed opacity-55`;
+  return `${base} neu-button`;
 }
 
 function displayDate(iso: string | null): string {
@@ -114,9 +134,21 @@ function EndpointRow({
   );
 }
 
-export function EdgeDialog({ detail, loading, error, onClose, onOpenNode }: EdgeDialogProps) {
+export function EdgeDialog({
+  detail,
+  loading,
+  error,
+  lifecycleUpdating,
+  lifecycleError,
+  onClose,
+  onLifecycleChange,
+  onOpenNode,
+}: EdgeDialogProps) {
   const title = detail ? `${detail.from.summary} ${detail.edge_type} ${detail.to.summary}` : "Edge";
   const propsEntries = detail?.props ? Object.entries(detail.props) : [];
+  const disabledReason = detail?.lifecycle_options.find(
+    (option) => option.disabled && !option.current,
+  )?.reason;
 
   return (
     <aside
@@ -143,13 +175,38 @@ export function EdgeDialog({ detail, loading, error, onClose, onOpenNode }: Edge
           </button>
         </div>
         {detail ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <code className="rounded bg-input px-1.5 py-0.5 font-mono text-[11px]">
-              {detail.edge_type}
-            </code>
-            <span className="font-mono" style={{ color: lifecycleColor(detail.lifecycle) }}>
-              {detail.lifecycle}
-            </span>
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <code className="rounded bg-input px-1.5 py-0.5 font-mono text-[11px]">
+                {detail.edge_type}
+              </code>
+            </div>
+            <div className="flex flex-wrap gap-1.5" aria-label="Lifecycle stages">
+              {detail.lifecycle_options.map((option) => {
+                const color = lifecycleColor(option.value);
+                const busy = lifecycleUpdating === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={option.disabled || busy || lifecycleUpdating !== null}
+                    onClick={() => onLifecycleChange(option.value)}
+                    title={option.reason ?? `Mark as ${option.value}`}
+                    className={lifecycleButtonClass(detail, option.value, option.current)}
+                    style={{ color }}
+                  >
+                    {busy ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : null}
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {disabledReason ? (
+              <p className="text-[11px] leading-snug text-muted-foreground">{disabledReason}</p>
+            ) : null}
+            {lifecycleError ? (
+              <p className="text-[11px] leading-snug text-destructive">{lifecycleError}</p>
+            ) : null}
           </div>
         ) : null}
       </header>
@@ -172,8 +229,12 @@ export function EdgeDialog({ detail, loading, error, onClose, onOpenNode }: Edge
         {detail && !loading ? (
           <div className="space-y-5 text-xs">
             <section>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <EndpointRow label="From" endpoint={detail.from} onOpenNode={onOpenNode} />
+                <div className="flex items-center gap-1.5 pl-3 text-[10px] text-muted-foreground">
+                  <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <code className="font-mono">{detail.edge_type}</code>
+                </div>
                 <EndpointRow label="To" endpoint={detail.to} onOpenNode={onOpenNode} />
               </div>
               <DocoSourceLine doco={detail.doco} />
