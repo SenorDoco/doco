@@ -199,6 +199,28 @@ Only run the full `pnpm verify` yourself when you can't rely on CI to
 catch it before merge — e.g. auto-merge isn't wired up, or you're
 landing without a PR.
 
+### The fast path, worked through
+
+Say you're tightening the copy on a meta-template. The loop:
+
+```sh
+# 0. Once per fresh session — without this the focused test dies on
+#    `Failed to resolve entry for package "@doco/shared"`, not on your code.
+pnpm install && pnpm run build
+
+# 1. Drive the change with the ONE test that covers it, in watch mode.
+#    Edit the copy, watch it go green. This is your whole feedback loop.
+pnpm --filter @doco/web exec vitest app/lib/__tests__/doco-templates-meta.test.ts
+
+# 2. Land it. Commit on the feature branch, push, open the PR, and:
+gh pr merge --auto --squash
+```
+
+That's it — no local `pnpm verify`. The single CI run on the PR is both
+your full-pipeline check and (via `--auto`) your merge trigger. Reach for
+`pnpm verify` locally only when you've broken something CI can't catch
+before merge, or you're landing without a PR.
+
 This is enforced **agent-neutrally**, not by any single tool's config:
 `.github/workflows/ci.yml` runs `pnpm verify` on every PR to `main`, so a
 red suite blocks the merge for every agent *and* every human — even for
