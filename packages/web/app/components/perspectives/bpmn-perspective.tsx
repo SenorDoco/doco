@@ -1959,7 +1959,7 @@ function ShapeLabel({ node }: { node: BpmnNode }) {
       }}
       title={node.name ?? ""}
     >
-      <span className="line-clamp-3">{node.name ?? <em>(unnamed)</em>}</span>
+      <span className="break-words">{node.name ?? <em>(unnamed)</em>}</span>
     </div>
   );
 }
@@ -2177,7 +2177,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
       {simplified ? null : <BpmnBadgeRow data={data} />}
       {simplified ? null : (
         <span
-          className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
+          className="pointer-events-none break-words text-center text-[10px] font-semibold uppercase tracking-wide"
           style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
           title={data.node.name ?? ""}
         >

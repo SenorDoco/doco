@@ -95,7 +95,7 @@ function CommitmentRow({
       >
         <span className="min-w-0 pr-4">
           <span
-            className="block truncate text-sm font-semibold text-foreground"
+            className="block whitespace-pre-line break-words text-sm font-semibold text-foreground"
             title={commitment.title}
           >
             {commitment.title}
@@ -305,7 +305,7 @@ function LinkRow({
       className="flex min-w-0 items-center gap-2 rounded border border-border bg-background px-2 py-1.5 text-xs hover:bg-muted/40"
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">{link.label}</span>
+      <span className="min-w-0 flex-1 whitespace-pre-line break-words">{link.label}</span>
     </Link>
   );
 }
