@@ -181,7 +181,7 @@ export default function PolicyDetail({
             ) : null}
             <PolicyView item={item} />
             <p className="text-[11px] text-muted-foreground">
-              Policy id: <code>{policyId}</code>
+              Policy id: <code className="select-all">{policyId}</code>
             </p>
           </CardContent>
         </Card>

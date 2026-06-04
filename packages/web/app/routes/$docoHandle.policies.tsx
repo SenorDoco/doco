@@ -133,6 +133,12 @@ export function PolicyRow({
       <div className="pointer-events-none relative z-10 flex items-start gap-3">
         <div className="min-w-0 flex-1 [&_a]:pointer-events-auto">
           <PolicyView item={item} />
+          {/* The id, shown for reference — selectable (one click selects the
+              whole thing) so it can be copied to cite the policy. pointer-events
+              are re-enabled here so selecting it doesn't open the row link. */}
+          <p className="pointer-events-auto mt-1.5 select-all font-mono text-[10px] text-muted-foreground/70">
+            {item.id}
+          </p>
         </div>
         <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
           {item.lifecycle ?? "active"}
