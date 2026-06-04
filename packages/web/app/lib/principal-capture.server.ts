@@ -23,6 +23,8 @@ import {
 export interface PrincipalDraft {
   name?: string;
   body_md?: string;
+  /** Seat occupant kind — "human" or "agent" (optional; vacant declares none). */
+  kind?: string;
   lifecycle?: string;
   created_by?: string | null;
 }
@@ -99,6 +101,10 @@ export async function capturePrincipal(
   const id = makeEntityId("principal", generateUlid());
   const now = nowIso();
   const bodyMd = draft.body_md?.trim() || "";
+  const kind = draft.kind?.trim();
+  if (kind && kind !== "human" && kind !== "agent") {
+    return { error: 'kind must be "human" or "agent" when set.', status: 400 };
+  }
   const createdBy = draft.created_by ?? null;
   const raw = {
     id,
@@ -106,6 +112,7 @@ export async function capturePrincipal(
     node_type: "principal",
     name,
     body_md: bodyMd,
+    ...(kind ? { kind } : {}),
     created_at: now,
     created_by: createdBy,
     lifecycle,
