@@ -1648,7 +1648,7 @@ Changeset example for BPMN-style ordered flow:
     ]
   }
 
-Common relation kinds: flows_to (source -> target, edge labels allowed) · supports · constrained_by · attributed_to · has_parent · derived_from · replaces · relates_to. An edge's specific meaning comes from its type plus the node types it connects (e.g. an Action's `attributed_to` to a Principal is its performer; a flow node's `supports` to an Intent places it in that pool). You can also POST /<handle>/api/edges.json for direct edge creation.
+Common relation kinds: flows_to (source -> target, edge labels allowed) · supports · constrained_by · attributed_to · has_parent · derived_from · replaces · relates_to. An edge's specific meaning comes from its type plus the node types it connects (e.g. an Action's attributed_to to a Principal is its performer; a flow node's supports to an Intent places it in that pool). You can also POST /<handle>/api/edges.json for direct edge creation.
 
 When sibling relations must become valid together, use \`op: "relate_many"\` in the same changeset. This is especially important for exhaustive gateways, tree siblings, and other structures where adding the first edge alone would be temporarily invalid.
 
