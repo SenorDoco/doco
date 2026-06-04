@@ -85,6 +85,38 @@ describe("loadOrgTreeData", () => {
     );
   });
 
+  it("prefers the explicit `kind` column over prose inference", async () => {
+    // A principal that declares `kind` takes its seat type from the column,
+    // even when the prose would infer the opposite — the structured field wins.
+    const rows = [
+      {
+        id: "principal_bot",
+        name: "Ops Bot",
+        lifecycle: "active",
+        kind: "agent",
+        body_md: "Human operator on the platform team.",
+        data: {},
+      },
+      {
+        id: "principal_dana",
+        name: "Dana",
+        lifecycle: "active",
+        kind: "human",
+        body_md: "AI agent that drafts weekly reports.",
+        data: {},
+      },
+    ];
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      query: async <T>(sql: string) =>
+        /FROM edges/i.test(sql) ? { rows: [] as T[] } : { rows: rows as T[] },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme");
+
+    expect(data.nodes[0]?.type).toBe("agent"); // kind=agent beats "Human …" prose
+    expect(data.nodes[1]?.type).toBe("person"); // kind=human beats "AI agent …" prose
+  });
+
   it("passes a SQL limit when a page budget is supplied", async () => {
     const querySpy = vi.fn();
     const client: Parameters<typeof loadOrgTreeData>[0] = {
