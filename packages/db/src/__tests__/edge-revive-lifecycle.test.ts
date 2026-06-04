@@ -33,7 +33,9 @@ async function seed(): Promise<void> {
     [FROM, "decision"],
     [TO, "intent"],
   ] as const) {
-    await db.query("INSERT INTO nodes (id, doco_id, node_type, data) VALUES ($1,$2,$3,'{}')", [
+    // `nodes.data` was dropped (per-node data now lives in `attributes`); these
+    // nodes only need to exist to satisfy the edge FKs, so insert a bare row.
+    await db.query("INSERT INTO nodes (id, doco_id, node_type) VALUES ($1,$2,$3)", [
       id,
       DOCO,
       type,
