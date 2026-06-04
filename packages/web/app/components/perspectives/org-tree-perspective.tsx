@@ -57,6 +57,13 @@ interface OrgTreeNodeData extends Record<string, unknown> {
   isCenter: boolean;
 }
 
+// Wide org charts (many siblings near the top of the chain) spread far
+// past the viewport. ReactFlow clamps the reachable zoom at `minZoom`, so
+// the floor has to sit low enough for `fitView` to pull the whole tree on
+// screen instead of cropping the outermost branches.
+export const ORG_TREE_MIN_ZOOM = 0.05;
+export const ORG_TREE_MAX_ZOOM = 1.5;
+
 // Custom React Flow node — the principal card.
 //
 // Visual hierarchy: icon, Principal name, and a compact role label
@@ -326,8 +333,8 @@ function OrgTreeInner({
         onlyRenderVisibleElements
         fitView={!initialFocusFlowNodeId}
         fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.2}
-        maxZoom={1.5}
+        minZoom={ORG_TREE_MIN_ZOOM}
+        maxZoom={ORG_TREE_MAX_ZOOM}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} />
