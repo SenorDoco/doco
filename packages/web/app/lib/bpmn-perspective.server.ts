@@ -247,12 +247,22 @@ export async function loadBpmnGraph(
       // So loading a retired Principal adds no noise on its own — it ensures
       // retired nodes land in a correctly-named lane (rather than an
       // `__unresolved__:<id>` fallback) once "Retired" is toggled on.
+      //
+      // And load every Principal in the Doco — deliberately NOT window-gated.
+      // In a focused window the flow nodes that sit in a lane make the cut, but
+      // the Principal node that owns the lane usually doesn't (it's a neighbor
+      // of an Action, not the focus Intent, and its low type weight rarely
+      // survives the ranked-fill budget). Window-gating the principal query
+      // dropped it from `principalById`, so `resolveLane` fell through to
+      // `__unresolved__:<id>` and the lane header rendered the raw
+      // `principal_…` id instead of its name. There are only a handful of
+      // Principals per Doco, so loading all of them is cheap insurance that
+      // every actor lane resolves to a name.
       `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
-          AND doco_id = $1
-          ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}`,
-      nodeParams,
+          AND doco_id = $1`,
+      [docoId],
     ),
     c.query<UserRow>(
       `SELECT c.id, c.github_login
