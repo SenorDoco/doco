@@ -39,6 +39,8 @@ export async function action({
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     body_md?: string;
+    /** Seat occupant kind — "human" or "agent" (a vacant seat sets none). */
+    kind?: string;
     lifecycle?: string;
   };
 
