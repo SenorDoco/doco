@@ -247,18 +247,19 @@ interface DialogIncomingEdgeRow {
 }
 
 function relatedDetailsSql(): string {
-  // Post-collapse: one `nodes` table. `summary` is the first line of
-  // `prose` for generic prose types and `name` for principal (prose='');
-  // `name` is the principal's display label (NULL for prose types, which
-  // don't populate `nodes.name`). The type list mirrors GRAPH_NODE_TABLES
-  // so isGraphNodeType and this query stay in lockstep.
+  // Post-collapse + slim-down: one `nodes` table, and the `name` column was
+  // dropped — every type (principals included) carries its label in `prose`.
+  // `summary` is the first line of `prose`; `name` is the principal's display
+  // label, kept principal-only (NULL for prose types) so downstream consumers
+  // see the same shape the old column had. The type list mirrors
+  // GRAPH_NODE_TABLES so isGraphNodeType and this query stay in lockstep.
   const typeList = Object.values(GRAPH_NODE_TABLES)
     .map((cfg) => `'${cfg.nodeType}'`)
     .join(", ");
   return `SELECT id,
                  node_type AS entity_type,
-                 NULLIF(split_part(COALESCE(NULLIF(prose, ''), name, '')::text, E'\n', 1), '') AS summary,
-                 name,
+                 NULLIF(split_part(prose, E'\n', 1), '') AS summary,
+                 CASE WHEN node_type = 'principal' THEN NULLIF(prose, '') END AS name,
                  COALESCE(lifecycle, 'active') AS lifecycle
             FROM nodes
            WHERE doco_id = $1

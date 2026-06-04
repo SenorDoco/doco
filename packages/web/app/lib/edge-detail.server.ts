@@ -167,10 +167,14 @@ export async function loadEdgeDialogDetail(
 
   const endpointRows = (
     await c.query<EdgeEndpointRow>(
+      // Post-slim-down: the `name` column was dropped — a principal's display
+      // label now lives in `prose` like every other type. `summary` is the
+      // first line of `prose`; `name` is principal-only (NULL for prose types,
+      // matching the old column's shape).
       `SELECT id,
               node_type AS entity_type,
-              NULLIF(split_part(COALESCE(NULLIF(prose, ''), name, '')::text, E'\n', 1), '') AS summary,
-              name,
+              NULLIF(split_part(prose, E'\n', 1), '') AS summary,
+              CASE WHEN node_type = 'principal' THEN NULLIF(prose, '') END AS name,
               COALESCE(lifecycle, 'active') AS lifecycle,
               created_at
          FROM nodes
