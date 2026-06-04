@@ -815,6 +815,62 @@ describe("loadBpmnGraph", () => {
       false,
     );
   });
+
+  it("keeps fully-disconnected nodes in the Unassigned pool, not an arbitrary intent", async () => {
+    // A node with no edges at all serves no intent and reaches none through
+    // the graph. The old no-Unassigned policy force-homed such orphans into
+    // the oldest intent's pool, which dropped unrelated work into that intent
+    // (a real Doco showed crawler steps landing under a "Post a job" goal).
+    // Genuine orphans must stay in the real Unassigned pool instead.
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          id: "intent_01GOAL",
+          entity_type: "intent",
+          summary: "Post a job",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: "action_01CONNECTED",
+          entity_type: "action",
+          summary: "Serves the goal",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {},
+        },
+        {
+          id: "action_01ORPHAN",
+          entity_type: "action",
+          summary: "Spider assembles Torre opportunity payload",
+          lifecycle: "drafting",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {},
+        },
+      ],
+      principals: [{ id: "principal_system", name: "System", lifecycle: "active" }],
+      users: [],
+      edges: [
+        edge("edge_SERVES", "action_01CONNECTED", "intent_01GOAL", "serves"),
+        edge("edge_ACTOR", "action_01CONNECTED", "principal_system", "performed_by"),
+        // action_01ORPHAN deliberately has no edges at all.
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "jobs" });
+
+    const orphan = graph.nodes.find((n) => n.id === "action_01ORPHAN");
+    const connected = graph.nodes.find((n) => n.id === "action_01CONNECTED");
+    // The orphan lands in Unassigned — never inside the intent's pool.
+    expect(orphan?.pool_id).toBe("pool:unassigned");
+    expect(orphan?.pool_id).not.toBe("pool:intent_01GOAL");
+    // The connected action still homes into the intent it serves.
+    expect(connected?.pool_id).toBe("pool:intent_01GOAL");
+    // The Unassigned pool is rendered (and sorts to the bottom).
+    expect(graph.pools.map((p) => p.id)).toContain("pool:unassigned");
+    expect(graph.pools[graph.pools.length - 1]?.id).toBe("pool:unassigned");
+  });
 });
 
 describe("computeNearestIntentByNode", () => {
