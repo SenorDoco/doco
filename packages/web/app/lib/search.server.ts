@@ -260,23 +260,82 @@ export async function rankSearchFts(
   return hits;
 }
 
+// Reciprocal Rank Fusion constants. `RRF_K` damps the contribution of any
+// single ranker (the standard value is 60) so that being #1 in one list is a
+// nudge, not a veto. `PAGERANK_RRF_WEIGHT` scales how loudly global authority
+// (gpr) speaks relative to a content ranker (cosine / FTS, each weight 1.0):
+// 0 disables it, 1 makes it a peer. Kept below 1 so relevance leads and
+// authority breaks ties / lifts corroborated hits. Tune against the
+// retrieval eval harness in `packages/index`.
+export const RRF_K = 60;
+export const PAGERANK_RRF_WEIGHT = 0.5;
+
+export interface RrfOptions {
+  k?: number;
+  pagerankWeight?: number;
+}
+
 /**
- * Union vector hits with FTS hits: vector ranking first (semantic relevance),
- * then any FTS-only hits the vector set missed — the floor that keeps
- * un-embedded nodes findable. Deduped by id, capped to `limit`. Pure.
+ * Fuse the cosine, full-text, and global-PageRank signals via Reciprocal Rank
+ * Fusion. Each hit scores `Σ wᵢ / (k + rankᵢ)` over the rankers that placed it:
+ * its cosine rank (position in `vectorHits`), its FTS rank (position in
+ * `ftsHits`), and its PageRank rank (position when the union is ordered by
+ * `gpr` desc). RRF compares by *rank position*, sidestepping the scale
+ * mismatch between cosine (~[0,0.8]) and PageRank (≈1/N, power-law skewed) that
+ * makes a raw weighted sum unusable. A hit corroborated by two content rankers
+ * outranks one seen by a single ranker; PageRank then lifts authorities. Result
+ * is the deduped union sorted by descending fused score, `id` as a stable
+ * tiebreak, capped to `limit`. Pure.
  */
 export function mergeSearchHits(
   vectorHits: SearchHit[],
   ftsHits: SearchHit[],
   limit?: number,
+  options: RrfOptions = {},
 ): SearchHit[] {
-  const seen = new Set<string>();
-  const merged: SearchHit[] = [];
+  const k = options.k ?? RRF_K;
+  const pagerankWeight = options.pagerankWeight ?? PAGERANK_RRF_WEIGHT;
+
+  // Deduped union; first-seen object wins (it carries gpr / vector_score).
+  const byId = new Map<string, SearchHit>();
   for (const hit of [...vectorHits, ...ftsHits]) {
-    if (seen.has(hit.id)) continue;
-    seen.add(hit.id);
-    merged.push(hit);
+    if (!byId.has(hit.id)) byId.set(hit.id, hit);
   }
+
+  // Rank position within each content ranker's list (0-based, lower is better).
+  const rankIn = (hits: SearchHit[]): Map<string, number> => {
+    const ranks = new Map<string, number>();
+    hits.forEach((hit, i) => {
+      if (!ranks.has(hit.id)) ranks.set(hit.id, i);
+    });
+    return ranks;
+  };
+  const cosineRank = rankIn(vectorHits);
+  const ftsRank = rankIn(ftsHits);
+
+  // PageRank rank over the union — every hit carries a gpr, so this ranker
+  // covers the whole shortlist (including FTS-only, un-embedded nodes).
+  const pagerankRank = new Map<string, number>();
+  if (pagerankWeight !== 0) {
+    [...byId.values()]
+      .sort((a, b) => b.gpr - a.gpr || a.id.localeCompare(b.id))
+      .forEach((hit, i) => pagerankRank.set(hit.id, i));
+  }
+
+  const fusedScore = (id: string): number => {
+    let score = 0;
+    const cr = cosineRank.get(id);
+    if (cr !== undefined) score += 1 / (k + cr);
+    const fr = ftsRank.get(id);
+    if (fr !== undefined) score += 1 / (k + fr);
+    const pr = pagerankRank.get(id);
+    if (pr !== undefined) score += pagerankWeight / (k + pr);
+    return score;
+  };
+
+  const merged = [...byId.values()].sort(
+    (a, b) => fusedScore(b.id) - fusedScore(a.id) || a.id.localeCompare(b.id),
+  );
   return typeof limit === "number" ? merged.slice(0, limit) : merged;
 }
 
