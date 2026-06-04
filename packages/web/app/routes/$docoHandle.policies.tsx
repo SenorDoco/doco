@@ -1,41 +1,19 @@
 import { withClient } from "@doco/db";
-import {
-  POLICY_KIND_LABEL,
-  type PolicyPredicate,
-  agentInstructionOf,
-  deterministicHeadline,
-  deterministicParts,
-  isDeterministicPredicate,
-  isEdgePredicate,
-} from "@doco/shared";
 import { Link } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { LinkedProse } from "~/components/linked-text";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
+import {
+  type PolicyItem,
+  type PolicyRowData,
+  PolicyView,
+  toPolicyItem,
+} from "~/components/policy-view";
 import { SiteHeader } from "~/components/site-header";
 import { canEditPolicies, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { AGENT_EXPOSURE_NOTE, POLICIES_EXPLAINER } from "~/lib/policy-copy";
-
-type PolicyKind = "suggestion" | "deterministic" | "probabilistic";
-
-interface PolicyRow {
-  id: string;
-  kind: string | null;
-  lifecycle: string | null;
-  created_at: Date | string | null;
-  data: Record<string, unknown> | null;
-}
-
-interface PolicyItem {
-  id: string;
-  kind: PolicyKind;
-  predicate: PolicyPredicate | null;
-  lifecycle: string | null;
-  createdAt: string | null;
-}
 
 export async function loader({
   request,
@@ -48,7 +26,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   const rows = await withClient((c) =>
     c
-      .query<PolicyRow>(
+      .query<PolicyRowData>(
         `SELECT id, kind, lifecycle, created_at, data
            FROM policies
           WHERE doco_id = $1
@@ -141,11 +119,19 @@ export function PolicyRow({
   canEdit: boolean;
 }) {
   return (
-    <li className="py-3 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-3">
-        {/* The policy text is NOT a link: the /<handle>/<type>/<id> detail
-            route 404s for the `policy` type. Only Modify navigates. */}
-        <div className="min-w-0 flex-1">
+    <li className="relative py-3 first:pt-0 last:pb-0">
+      {/* Stretched link: clicking anywhere on the row opens the policy's own
+          page. It sits BENEATH the content (a DOM sibling, not a parent — so no
+          nested anchors), and the content layer is click-transparent except for
+          its own links + the Modify button, which re-enable pointer events and
+          paint above it. */}
+      <Link
+        to={`/${handle}/policies/${item.id}`}
+        aria-label="Open policy"
+        className="absolute inset-0 z-0 rounded-md hover:bg-input/40"
+      />
+      <div className="pointer-events-none relative z-10 flex items-start gap-3">
+        <div className="min-w-0 flex-1 [&_a]:pointer-events-auto">
           <PolicyView item={item} />
         </div>
         <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
@@ -154,7 +140,7 @@ export function PolicyRow({
         {canEdit ? (
           <Link
             to={`/${handle}/policies/${item.id}/edit`}
-            className="neu-button shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
+            className="neu-button pointer-events-auto shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
           >
             Modify
           </Link>
@@ -162,71 +148,4 @@ export function PolicyRow({
       </div>
     </li>
   );
-}
-
-function PolicyView({ item }: { item: PolicyItem }) {
-  const predicate = item.predicate;
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <span className="neu-surface inline-block rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-        {POLICY_KIND_LABEL[item.kind]}
-      </span>
-      {predicate && isDeterministicPredicate(predicate) ? (
-        <div className="space-y-1">
-          <p className="text-sm font-semibold leading-6">{deterministicHeadline(predicate)}</p>
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
-            {deterministicParts(predicate).map((part) => (
-              <div key={part.label} className="contents">
-                <dt className="text-muted-foreground">{part.label}</dt>
-                <dd className="font-mono text-foreground">{part.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      ) : (
-        <div className="space-y-0.5">
-          {predicate && isEdgePredicate(predicate) ? (
-            <p className="text-[10px] font-mono text-muted-foreground">
-              edge-scoped: {predicate.from_node_type ?? "any"} —{predicate.edge_type}
-              {predicate.edge_role ? `[${predicate.edge_role}]` : ""}→{" "}
-              {predicate.to_node_type ?? "any"}
-            </p>
-          ) : null}
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Agent instruction:
-          </p>
-          <p className="whitespace-pre-wrap break-words text-sm leading-6">
-            {predicate ? <LinkedProse text={agentInstructionOf(predicate) ?? ""} /> : null}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function toPolicyItem(row: PolicyRow): PolicyItem {
-  const data = row.data ?? {};
-  const kind: PolicyKind =
-    row.kind === "deterministic" || row.kind === "probabilistic"
-      ? row.kind
-      : data.kind === "deterministic" || data.kind === "probabilistic"
-        ? data.kind
-        : "suggestion";
-  const predicate =
-    data.predicate && typeof data.predicate === "object"
-      ? (data.predicate as PolicyPredicate)
-      : null;
-  return {
-    id: row.id,
-    kind,
-    predicate,
-    lifecycle: row.lifecycle,
-    createdAt: toIso(row.created_at),
-  };
-}
-
-function toIso(value: Date | string | null): string | null {
-  if (!value) return null;
-  const d = value instanceof Date ? value : new Date(String(value));
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }

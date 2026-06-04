@@ -54,6 +54,9 @@ Read before writing:
 - Before adding a Decision, Intent, Rule, Action, Log, Reference, State, Idea, Principal, or policy, search/list enough to make sure you do not create a near-duplicate. Patch or supersede the existing node when that is the faithful move.
 - Treat the host API and live Doco policies as source of truth. If policy context was cached, use it as working context but refresh when access changes, a write is rejected, the user says policies changed, or the result seems stale.
 
+Referring to policies:
+- Each policy has its own stable page at \`/<doco-handle>/policies/<policy-id>\`. The policy list you are given carries the doco handle and every policy's id, so you can always build this link. Whenever you refer to, cite, or quote a policy, link to it at that URL so the user can open the exact policy you mean.
+
 What to document:
 - Explicit capture requests: when the user says "doco this", "capture this", "record this decision", or equivalent, write the appropriate node if the current surface has authorized write access.
 - Decision-shaped chat: a choice was made, alternatives were considered, or a constraint becomes binding. Prefer Decision; add or link Rule when the choice creates reusable guidance.

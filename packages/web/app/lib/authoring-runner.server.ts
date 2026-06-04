@@ -134,6 +134,7 @@ export async function runAuthoringPolicies(opts: {
       return (
         sk === "requires_edge" ||
         sk === "requires_edge_role" ||
+        sk === "limits_edge_role" ||
         sk === "forbids_edge" ||
         sk === "graph-completeness" ||
         sk === "flow-wiring"
