@@ -183,7 +183,8 @@ function probabilisticLabels(vs: Violation[]): Set<string> {
     if (/belongs in business-processes|repeatable structure/i.test(s)) out.add("membership");
     else if (/exclusiveGateway|Implementation status|Source type/i.test(s))
       out.add("imported-metadata");
-    else if (/FIRST LINE|brief process name/i.test(s)) out.add("intent-headline");
+    else if (/identifies a single repeatable|concise statement of that process/i.test(s))
+      out.add("intent-shape");
     else if (/single business activity|atomic/i.test(s)) out.add("atomic-activity");
     else if (/enumeration|exhaustive|default\/else/i.test(s)) out.add("gateway-exhaustive");
     else if (/milestone or entry\/exit condition/i.test(s)) out.add("milestone-naming");
@@ -606,7 +607,7 @@ describe("business-processes template — ten real-life processes (well-formed, 
   it("queues exactly the right probabilistic checks per node type (loan-approval)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     expect(probabilisticLabels(evaluate(g.intent, g))).toEqual(
-      new Set(["membership", "intent-headline", "imported-metadata"]),
+      new Set(["membership", "intent-shape", "imported-metadata"]),
     );
     expect(probabilisticLabels(evaluate(g.actions[0], g))).toEqual(
       new Set(["membership", "imported-metadata", "atomic-activity"]),
@@ -791,10 +792,10 @@ describe("business-processes template — committed-stage completeness (drafting
   it("probabilistic quality checks also fire at queued, not just active", () => {
     const draftG = buildProcess(SCENARIOS[0], "drafting");
     const queuedG = buildProcess(SCENARIOS[0], "queued");
-    // The intent-headline / imported-metadata checks are committed-stage only.
+    // The intent-shape / imported-metadata checks are committed-stage only.
     expect(probabilisticLabels(evaluate(draftG.intent, draftG))).toEqual(new Set(["membership"]));
     expect(probabilisticLabels(evaluate(queuedG.intent, queuedG))).toEqual(
-      new Set(["membership", "intent-headline", "imported-metadata"]),
+      new Set(["membership", "intent-shape", "imported-metadata"]),
     );
   });
 
@@ -835,8 +836,11 @@ describe("business-processes template — end-to-end via runAuthoringPolicies", 
     expect(result.blocking?.sub_kind).toBe("requires_node_type");
   });
 
-  it("blocks a process Intent when the judge rejects its headline", async () => {
-    judge.run.mockResolvedValue({ ok: false, reason: "first line is not a brief headline" });
+  it("blocks a process Intent when the judge rejects its purpose", async () => {
+    judge.run.mockResolvedValue({
+      ok: false,
+      reason: "does not identify a single repeatable process",
+    });
     const result = await runAuthoringPolicies({
       docoId,
       candidate: {
@@ -844,14 +848,14 @@ describe("business-processes template — end-to-end via runAuthoringPolicies", 
         node_type: "intent",
         doco_id: docoId,
         intent:
-          "this entire sentence is one long run-on that buries the process name and never names a trigger",
+          "this sprawls across several unrelated processes and never settles on one repeatable purpose",
         lifecycle: "active",
       },
     });
     expect(judge.run).toHaveBeenCalled();
     expect(result.blocking).not.toBeNull();
     expect(result.blocking?.kind).toBe("probabilistic");
-    expect(result.blocking?.reason).toMatch(/headline/i);
+    expect(result.blocking?.reason).toMatch(/process|purpose/i);
   });
 
   it("passes a well-formed process Intent when the judge approves", async () => {
@@ -866,7 +870,7 @@ describe("business-processes template — end-to-end via runAuthoringPolicies", 
         lifecycle: "active",
       },
     });
-    // Not blocked, and the judge-gated headline check passes. The bare
+    // Not blocked, and the judge-gated intent-shape check passes. The bare
     // synthetic intent has no graph wired, so it trips only the advisory owner
     // nudge (`owned_by`, a warn) — a real queued process Intent carries that
     // edge. Nothing here is a hard block.
@@ -880,7 +884,7 @@ describe("business-processes template — end-to-end via runAuthoringPolicies", 
 // These are the policies added to close the "agent queued a dangling mid-flow
 // node" bug and its cousins: sequence-flow completeness (`flow-wiring`), unique
 // milestone names, gateway branch count, process-owner + actor coverage, and
-// the deterministic scaffolding/headline floors. Suite A already proves the ten
+// the deterministic scaffolding floors. Suite A already proves the ten
 // well-formed processes pass every BLOCK gate; here we also prove they trip no
 // deterministic WARNING, then prove each gate catches its specific defect.
 
@@ -1048,7 +1052,7 @@ describe("business-processes template — owner + actor coverage (warnings)", ()
   });
 });
 
-describe("business-processes template — scaffolding + headline floors", () => {
+describe("business-processes template — scaffolding floors", () => {
   it("blocks an Action whose prose carries a raw generated BPMN id", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const scaffold = node(
@@ -1064,23 +1068,6 @@ describe("business-processes template — scaffolding + headline floors", () => 
     g.nodes.push(scaffold);
     const blocks = deterministicBlocks(evaluate(scaffold, g));
     expect(blocks.some((b) => b.sub_kind === "forbids_field_pattern")).toBe(true);
-  });
-
-  it("warns on an Intent whose first line is a run-on, not a headline", () => {
-    const g = buildProcess(SCENARIOS[0], "active");
-    const runon = node(
-      "intent",
-      "loan-approval",
-      {
-        intent:
-          "this entire first line is one enormous run-on sentence that crams the whole process description into a single breath and simply never stops to let a reader scan a name",
-      },
-      "active",
-    );
-    g.edges.push(edge(runon.id, g.principals[0].id, "attributed_to", "owned_by"));
-    g.nodes.push(runon);
-    const warns = deterministicWarns(evaluate(runon, g));
-    expect(warns.some((b) => b.sub_kind === "field-line-shape")).toBe(true);
   });
 });
 
