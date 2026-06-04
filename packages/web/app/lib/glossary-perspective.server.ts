@@ -2,10 +2,8 @@
 //
 // A glossary's "term entries" can be modeled with more than one node
 // type. The glossaries template treats a **Decision** as the canonical
-// term: its prose leads with the term (first line = the node's name =
-// the headword), the rest of the prose is the definition, `chosen`
-// repeats the term, `question` is the concept, and `alternatives` are
-// aliases. But real glossaries also define terms as
+// term (`chosen` = headword, `question` = concept, prose = definition,
+// `alternatives` = aliases), but real glossaries also define terms as
 // **References** (title = headword, prose/citation = definition), and
 // the template additionally allows Rules (terminology usage), Evals
 // (consistency checks), and an Intent (scope). So this loader reads
@@ -238,12 +236,6 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
   let tag: string;
 
   if (row.entity_type === "decision") {
-    // The headword is the node's NAME. For a term Decision that's the first
-    // line of the prose (`row.label`): the prose leads with the term and the
-    // rest is the definition. `data.name`/`data.title`/`chosen` are only
-    // fallbacks for a node with no prose. Tying the headword to the node name
-    // keeps it matching what the List, Graph, and search show — and keeps the
-    // definition out of the headword.
     headword =
       asString(data.name) ??
       asString(data.title) ??

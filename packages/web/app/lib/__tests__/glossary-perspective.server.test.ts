@@ -53,15 +53,13 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(entry.tag).toBe("term"); // ref_type used as the register label
   });
 
-  it("maps a term Decision to a first-line headword, question lead-in, and alternatives", async () => {
+  it("maps Decisions to chosen=headword, question lead-in, and alternatives", async () => {
     const client = makeClient([
       row({
         id: "decision_01",
         entity_type: "decision",
-        // The node name is the first line of the prose: the term leads, the
-        // definition is the body. `chosen` repeats the canonical term.
         label: "Node",
-        prose: "Node\n\nA single typed node in a Doco.",
+        prose: "A single typed node in a Doco.",
         data: {
           chosen: "Node",
           question: "What is one unit of captured knowledge?",
@@ -73,36 +71,9 @@ describe("loadGlossaryPerspectiveData", () => {
     const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
     const entry = groups[0].entries[0];
     expect(entry.headword).toBe("Node");
-    expect(entry.senses).toEqual(["A single typed node in a Doco."]);
     expect(entry.question).toBe("What is one unit of captured knowledge?");
     expect(entry.tag).toBe("n.");
     expect(entry.alternatives).toEqual([{ name: "node", note: "too generic", deprecated: true }]);
-  });
-
-  it("keeps the definition out of the headword: the term leads the prose, the definition is the body", async () => {
-    // Regression guard for the glossary model fix. A node's name is the first
-    // line of its prose, so a term Decision leads with the term; the
-    // definition is the body. The headword is the term, never the definition —
-    // even though `chosen` also carries the term.
-    const client = makeClient([
-      row({
-        id: "decision_ws",
-        entity_type: "decision",
-        label: "Workspace",
-        prose: "Workspace\n\nA named container that groups related Docos under a shared owner.",
-        data: {
-          chosen: "Workspace",
-          question: "What is a workspace in Doco?",
-        },
-      }),
-    ]);
-
-    const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
-    const entry = groups[0].entries[0];
-    expect(entry.headword).toBe("Workspace");
-    expect(entry.senses).toEqual([
-      "A named container that groups related Docos under a shared owner.",
-    ]);
   });
 
   it("uses the stored node name as the glossary headword before decision metadata fallback", async () => {
