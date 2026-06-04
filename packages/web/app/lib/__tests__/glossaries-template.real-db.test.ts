@@ -190,10 +190,10 @@ describe("glossaries template — seeded shape (real host seeder)", () => {
       [docoId],
     );
     const byKind = Object.fromEntries(rows.map((r) => [r.kind, r.n]));
-    // 5 deterministic gates, 3 probabilistic judges, 8 prose suggestions.
+    // 5 deterministic gates, 3 probabilistic judges, 9 prose suggestions.
     expect(byKind.deterministic).toBe(5);
     expect(byKind.probabilistic).toBe(3);
-    expect(byKind.suggestion).toBe(8);
+    expect(byKind.suggestion).toBe(9);
     // The enforcer loads only the 5 + 3 enforceable policies; suggestions
     // are advisory and never reach it.
   });
@@ -201,14 +201,20 @@ describe("glossaries template — seeded shape (real host seeder)", () => {
 
 describe("glossaries template — 10 real-life term scenarios", () => {
   it("1. defines a clean canonical term → passes everything", async () => {
+    // A term Decision leads its prose with the term — that first line is the
+    // node's name and the dictionary headword — then the definition as the
+    // body. (A node's name is the first line of its prose everywhere in Doco,
+    // so leading with the definition would put the definition in the name.)
+    const decision =
+      "Workspace\n\nThe top-level container that groups related Docos and the people and agents who can reach them. Scope: Doco's access model. For example, the `acme` workspace holds Acme's product and engineering Docos. Not to be confused with a Doco, which lives inside a workspace.";
+    expect(decision.split("\n")[0]).toBe("Workspace"); // the term is the node name, not the definition
     const r = await run({
       id: ID.workspace,
       node_type: "decision",
       lifecycle: "active",
       question: "What is a Workspace in Doco?",
       chosen: "Workspace",
-      decision:
-        "A Workspace is the top-level container that groups related Docos and the people and agents who can reach them. Scope: Doco's access model. For example, the `acme` workspace holds Acme's product and engineering Docos. Not to be confused with a Doco, which lives inside a workspace.",
+      decision,
     });
     expect(r.blocking).toBeNull();
     expect(r.warnings).toEqual([]);

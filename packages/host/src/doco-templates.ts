@@ -378,9 +378,14 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   },
   {
     // Glossaries define product and domain language. Each term entry is a
-    // Decision: `question` names the concept, `chosen` is the canonical
-    // headword, `decision` holds the definition, scope, and examples, and
-    // `alternatives` carries aliases / rejected labels.
+    // Decision whose `decision` prose LEADS WITH THE TERM on its first line —
+    // that first line is the node's name and the dictionary headword — then a
+    // blank line and the definition (scope + examples) as the body. `question`
+    // names the concept, `chosen` repeats the same canonical term (the
+    // case-folded uniqueness key), and `alternatives` carries aliases /
+    // rejected labels. Opening with the definition instead would make the
+    // definition the node's name (the name is the first line of the prose
+    // everywhere in Doco), so the term must come first.
     //
     // Two stages, on purpose. A glossary is a reference work, so a term
     // entry is either the canonical answer (`active`) or a deprecated one
@@ -473,11 +478,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // call replaces three, cutting latency and the misfire surface.
         on_violation: "warn",
         policy:
-          "A glossary term-entry Decision defines exactly one concept with a usable definition. It keeps one concept per entry, its `decision` prose gives a concise definition plus the product/domain scope and at least one example or non-example (never a circular restatement of the headword), and — when the canonical term in `chosen` is itself an acronym or abbreviation — spells out the expanded form and says when the short form is acceptable.",
+          "A glossary term-entry Decision defines exactly one concept with a usable definition. It keeps one concept per entry; its `decision` prose leads with the term on its first line (that first line is the node's name and the dictionary headword) and then, as the body, gives a concise definition plus the product/domain scope and at least one example or non-example (never a circular restatement of the headword); and — when the canonical term in `chosen` is itself an acronym or abbreviation — spells out the expanded form and says when the short form is acceptable.",
         predicate: {
           kind: "probabilistic",
           when_node_type: ["decision"],
-          spec: "Judge a glossary term-entry Decision on three aspects; report each failing aspect with a reason, but treat them as warnings, not hard errors. (a) ONE CONCEPT: PASS when the entry defines one concept or one canonical term; FAIL when it defines multiple independent terms, bundles a term with an unrelated policy, or is a catch-all for several concepts. (b) USABLE DEFINITION: PASS when the `decision` prose gives a concise definition AND the product or domain scope where the term applies AND at least one concrete example OR non-example — EITHER an example or a non-example is sufficient, do not require both; FAIL when one of those three is genuinely absent, or when the prose merely restates the headword instead of explaining it (a circular definition such as `a workspace is a workspace`). (c) ACRONYMS AND ABBREVIATIONS: only inspect the canonical term in `chosen`. If `chosen` is itself an acronym or abbreviation, PASS when the prose expands it at least once and states whether the short form is acceptable in product/docs/UI copy; FAIL when it is left unexpanded. Incidental abbreviations that merely appear in the prose (not the headword) are OUT OF SCOPE — ignore them. If `chosen` is not an acronym, this aspect PASSES.",
+          spec: "Judge a glossary term-entry Decision on three aspects; report each failing aspect with a reason, but treat them as warnings, not hard errors. (a) ONE CONCEPT: PASS when the entry defines one concept or one canonical term; FAIL when it defines multiple independent terms, bundles a term with an unrelated policy, or is a catch-all for several concepts. (b) USABLE DEFINITION: the prose must LEAD WITH THE TERM on its first line — that first line is the node's name and the dictionary headword — then the definition as the body. PASS when the prose leads with the term AND gives a concise definition AND the product or domain scope where the term applies AND at least one concrete example OR non-example — EITHER an example or a non-example is sufficient, do not require both; FAIL when the first line is the definition rather than the term (which makes the definition the node's name), when one of those three is genuinely absent, or when the prose merely restates the headword instead of explaining it (a circular definition such as `a workspace is a workspace`). (c) ACRONYMS AND ABBREVIATIONS: only inspect the canonical term in `chosen`. If `chosen` is itself an acronym or abbreviation, PASS when the prose expands it at least once and states whether the short form is acceptable in product/docs/UI copy; FAIL when it is left unexpanded. Incidental abbreviations that merely appear in the prose (not the headword) are OUT OF SCOPE — ignore them. If `chosen` is not an acronym, this aspect PASSES.",
         },
         fires_when_node_lifecycle: ["active"],
       },
@@ -519,6 +524,14 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
 
       // ── Guidance ───────────────────────────────────────────────
+      {
+        // A node's name is the first line of its prose everywhere in Doco
+        // (List, Graph, search, the node dialog, and the Glossary headword),
+        // so a term Decision must lead its prose with the term — otherwise the
+        // definition lands in the name instead of the body.
+        policy:
+          "Lead each term Decision's `decision` prose with the term itself on the first line — that first line becomes the node's name and the dictionary headword — then a blank line and the definition as the body. Repeat the same canonical term in `chosen`. Don't open with the definition: the first line is the node's name, so a definition-first entry puts the definition where the term should be.",
+      },
       {
         // The deliberate two-stage stance — see the block comment above.
         policy:
