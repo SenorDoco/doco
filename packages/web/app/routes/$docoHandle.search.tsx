@@ -212,100 +212,105 @@ export default function SearchInDoco({
       <SiteHeader me={me} />
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Search" })} />
-        <section className="space-y-4">
-          <Form method="get" className="space-y-3">
-            <div>
-              <label className="text-xs text-muted-foreground" htmlFor="q">
-                Search
-              </label>
-              <input
-                id="q"
-                name="q"
-                defaultValue={activeQ}
-                placeholder="Find anything…"
-                className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+        {/* Two columns: the search box + facet filters live in a left sidebar
+            so they stop pushing the results down the page; results fill the
+            wider right column. Collapses to a single stack below md. */}
+        <div className="grid gap-8 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
+          <aside className="space-y-4">
+            <Form method="get" className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground" htmlFor="q">
+                  Search
+                </label>
+                <input
+                  id="q"
+                  name="q"
+                  defaultValue={activeQ}
+                  placeholder="Find anything…"
+                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                />
+                {preservedSearchParams.map(([key, value]) => (
+                  <input key={`${key}-${value}`} type="hidden" name={key} value={value} />
+                ))}
+              </div>
+            </Form>
+            <div className="space-y-4">
+              <FacetGroup
+                label="Types"
+                name="entity_type"
+                searchParams={sp}
+                options={facets.entityType.map((f) => ({
+                  value: f.value,
+                  label: nodeTypePlural(f.value),
+                  count: f.count,
+                  icon: <NodeTypeIcon entityType={f.value} />,
+                }))}
+                selected={new Set(filters.entityType ?? [])}
+                wildcardActive={filters.entityType === null}
               />
-              {preservedSearchParams.map(([key, value]) => (
-                <input key={`${key}-${value}`} type="hidden" name={key} value={value} />
-              ))}
+              <FacetGroup
+                label="Life cycles"
+                name="lifecycle"
+                searchParams={sp}
+                options={facets.lifecycle.map((f) => ({
+                  value: f.value,
+                  label: f.value,
+                  count: f.count,
+                  color: lifecycleColor(f.value),
+                }))}
+                selected={new Set(filters.lifecycle ?? [])}
+                wildcardActive={filters.lifecycle === null}
+              />
             </div>
-          </Form>
-          <div className="space-y-4">
-            <FacetGroup
-              label="Types"
-              name="entity_type"
-              searchParams={sp}
-              options={facets.entityType.map((f) => ({
-                value: f.value,
-                label: nodeTypePlural(f.value),
-                count: f.count,
-                icon: <NodeTypeIcon entityType={f.value} />,
-              }))}
-              selected={new Set(filters.entityType ?? [])}
-              wildcardActive={filters.entityType === null}
-            />
-            <FacetGroup
-              label="Life cycles"
-              name="lifecycle"
-              searchParams={sp}
-              options={facets.lifecycle.map((f) => ({
-                value: f.value,
-                label: f.value,
-                count: f.count,
-                color: lifecycleColor(f.value),
-              }))}
-              selected={new Set(filters.lifecycle ?? [])}
-              wildcardActive={filters.lifecycle === null}
-            />
-          </div>
-        </section>
+          </aside>
 
-        <section className="space-y-4">
-          <ResultsSummary pagination={pagination} />
-          {warning ? (
-            <Card>
-              <CardContent className="pt-4 text-sm text-muted-foreground">{warning}</CardContent>
-            </Card>
-          ) : null}
-          {hits.length === 0 && !warning ? (
-            <Card>
-              <CardContent className="pt-4 text-sm text-muted-foreground">
-                {activeQ
-                  ? "No hits."
-                  : hasFilters
-                    ? "No nodes match these filters."
-                    : "Type a query to search."}
-              </CardContent>
-            </Card>
-          ) : null}
-          {hits.map((hit) => {
-            const vectorScore = hit.vector_score;
-            return (
-              <Card key={hit.id}>
-                <CardHeader>
-                  <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
-                    <NodeTypeBadge entityType={hit.entity_type} />
-                    <Link
-                      to={`/${handle}/${hit.entity_type}/${hit.id}`}
-                      className="break-all font-mono text-xs text-primary hover:underline"
-                    >
-                      {hit.id}
-                    </Link>
-                    {hit.lifecycle ? <LifecycleBadge lifecycle={hit.lifecycle} /> : null}
-                    <span className="text-xs text-muted-foreground">
-                      {vectorScore === null ? "" : `cosine ${vectorScore.toFixed(4)} · `}
-                      gpr {hit.gpr.toFixed(4)} · {relativeTimeIso(hit.created_at)}
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
+          <section className="space-y-4">
+            <ResultsSummary pagination={pagination} />
+            {warning ? (
+              <Card>
+                <CardContent className="pt-4 text-sm text-muted-foreground">{warning}</CardContent>
+              </Card>
+            ) : null}
+            {hits.length === 0 && !warning ? (
+              <Card>
+                <CardContent className="pt-4 text-sm text-muted-foreground">
+                  {activeQ
+                    ? "No hits."
+                    : hasFilters
+                      ? "No nodes match these filters."
+                      : "Type a query to search."}
                 </CardContent>
               </Card>
-            );
-          })}
-          <PaginationControls pagination={pagination} searchParams={sp} />
-        </section>
+            ) : null}
+            {hits.map((hit) => {
+              const vectorScore = hit.vector_score;
+              return (
+                <Card key={hit.id}>
+                  <CardHeader>
+                    <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+                      <NodeTypeBadge entityType={hit.entity_type} />
+                      <Link
+                        to={`/${handle}/${hit.entity_type}/${hit.id}`}
+                        className="break-all font-mono text-xs text-primary hover:underline"
+                      >
+                        {hit.id}
+                      </Link>
+                      {hit.lifecycle ? <LifecycleBadge lifecycle={hit.lifecycle} /> : null}
+                      <span className="text-xs text-muted-foreground">
+                        {vectorScore === null ? "" : `cosine ${vectorScore.toFixed(4)} · `}
+                        gpr {hit.gpr.toFixed(4)} · {relativeTimeIso(hit.created_at)}
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+            <PaginationControls pagination={pagination} searchParams={sp} />
+          </section>
+        </div>
       </main>
     </div>
   );
