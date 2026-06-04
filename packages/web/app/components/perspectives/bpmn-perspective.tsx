@@ -505,6 +505,15 @@ export function BpmnPerspective({
       links.filter((link) => renderedNodeIds.has(link.source) && renderedNodeIds.has(link.target)),
     [links, renderedNodeIds],
   );
+  // Focusing a whole Intent (the home-list pick, a pool-header click, or an
+  // intent URL) frames the entire pool without singling out any node — so the
+  // depth-fade + focal highlight are suppressed. Focusing a specific node
+  // (clicking a shape) still highlights it. `selectionCenterId` is the Intent
+  // id in the former case and a node id in the latter.
+  const isIntentFocus = useMemo(
+    () => pools.some((pool) => pool.intent_id === selectionCenterId),
+    [pools, selectionCenterId],
+  );
   const layout = useMemo(
     () =>
       layOutBpmn(
@@ -515,6 +524,7 @@ export function BpmnPerspective({
         effectiveCenterId,
         focusedNodeIdSet,
         focusedEdgeId ?? null,
+        !isIntentFocus,
       ),
     [
       layoutPools,
@@ -524,6 +534,7 @@ export function BpmnPerspective({
       effectiveCenterId,
       focusedNodeIdSet,
       focusedEdgeId,
+      isIntentFocus,
     ],
   );
   // memo() so a node/edge component only re-renders when its own props
@@ -1363,7 +1374,7 @@ const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
 // area by the same amount so text never enters the marker strip.
 const SUBPROCESS_MARKER_ROOM = 20;
 
-function layOutBpmn(
+export function layOutBpmn(
   pools: BpmnPool[],
   lanes: BpmnLane[],
   nodes: BpmnNode[],
@@ -1371,12 +1382,18 @@ function layOutBpmn(
   centerId: string | null | undefined,
   focusedNodeIds: ReadonlySet<string>,
   focusedEdgeId: string | null,
+  // Whether to single out the focal node — the depth-fade + `isCenter`
+  // highlight. False when the focus is a whole Intent (the home-list pick or
+  // a pool-header click): the entire pool reads uniformly, nothing is
+  // emphasized. `centerId` is still honored for layout (it anchors the
+  // adjacent cross-intent neighbours), just not for highlighting.
+  highlightFocal: boolean,
 ): BpmnLayout {
   // Depth from the focal node over the whole rendered graph — drives the
   // opacity fade (positions are unaffected, so re-focusing within a pool
   // never moves a node, only re-fades it).
   const focalDepthByNode = computeDepthFromCenter(nodes, links, centerId);
-  const focalActive = hasFocalNode(centerId, nodes);
+  const focalActive = highlightFocal && hasFocalNode(centerId, nodes);
 
   // Pool geometry is solved from the pool's own nodes and internal
   // sequence flow ONLY — never from the focal node or the adjacent
@@ -1507,7 +1524,7 @@ function layOutBpmn(
         width: laneWidth,
         height: POOL_HEADER_HEIGHT,
         isCenter:
-          pool.intent_id === centerId ||
+          (highlightFocal && pool.intent_id === centerId) ||
           Boolean(pool.intent_id && focusedNodeIds.has(pool.intent_id)),
       },
       draggable: false,
@@ -1543,7 +1560,8 @@ function layOutBpmn(
           isMilestoneBand: lane.kind === "milestone",
           isArtifactsBand: lane.kind === "artifacts",
           isCenter:
-            isActorLane(lane) && (lane.base_id === centerId || focusedNodeIds.has(lane.base_id)),
+            isActorLane(lane) &&
+            ((highlightFocal && lane.base_id === centerId) || focusedNodeIds.has(lane.base_id)),
         },
         draggable: false,
         selectable: false,
@@ -1594,7 +1612,7 @@ function layOutBpmn(
         extent: "parent",
         data: {
           node,
-          isCenter: node.id === centerId || focusedNodeIds.has(node.id),
+          isCenter: (highlightFocal && node.id === centerId) || focusedNodeIds.has(node.id),
           isSubprocess: subprocessTargetsByNode.has(node.id),
         },
         draggable: false,
@@ -1661,7 +1679,7 @@ function layOutBpmn(
         position: { x: pos.x, y: pos.y },
         data: {
           node,
-          isCenter: node.id === centerId || focusedNodeIds.has(node.id),
+          isCenter: (highlightFocal && node.id === centerId) || focusedNodeIds.has(node.id),
           isSubprocess: subprocessTargetsByNode.has(node.id),
         },
         draggable: false,
@@ -1762,7 +1780,12 @@ function layOutBpmn(
       if (link.id) edgeData.graphLink = link;
       const isFocused = Boolean(focusedEdgeId && link.id === focusedEdgeId);
       const clickable = Boolean(link.id && link.href);
-      const baseStrokeWidth = focalEdgeWidth(source, target, centerId, 1.75);
+      const baseStrokeWidth = focalEdgeWidth(
+        source,
+        target,
+        highlightFocal ? centerId : null,
+        1.75,
+      );
       return {
         id: link.id ?? `${link.source}-${link.target}-${index}`,
         source,
