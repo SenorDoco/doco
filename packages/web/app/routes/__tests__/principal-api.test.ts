@@ -211,6 +211,60 @@ describe("principal API", () => {
     );
   });
 
+  it("forwards a structured `kind` to the evaluator AND persists it on the node (filled seat declares human/agent)", async () => {
+    // Post-slim-down the org-chart person/agent declaration is the structured
+    // `kind` field. The route must forward it to the authoring evaluator (which
+    // now keys the declaration off `kind`) AND persist it in the node data so
+    // the org-tree icon and downstream reads see it.
+    const response = await action({
+      request: principalRequest({
+        name: "reviewer-bot",
+        body_md: "Pull-request reviewer for the platform repo.",
+        kind: "agent",
+      }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidate: expect.objectContaining({ name: "reviewer-bot", kind: "agent" }),
+      }),
+    );
+    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ name: "reviewer-bot", kind: "agent" }),
+      }),
+    );
+  });
+
+  it("rejects an invalid `kind` (must be human or agent when set)", async () => {
+    const response = await action({
+      request: principalRequest({ name: "weird", kind: "robot" }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringMatching(/kind must be "human" or "agent"/i),
+    });
+  });
+
+  it("omits `kind` for a vacant seat — a vacant seat declares no kind", async () => {
+    const response = await action({
+      request: principalRequest({
+        name: "open-staff-seat",
+        body_md: "Vacant — budgeted Staff Engineer seat, open req.",
+      }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(201);
+    const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
+    expect(persistedData).not.toHaveProperty("kind");
+  });
+
   it("treats former reserved role-principal names as ordinary names", async () => {
     const response = await action({
       request: principalRequest({ name: "human" }),
