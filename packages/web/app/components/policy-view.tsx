@@ -47,6 +47,16 @@ export function PolicyView({ item }: { item: PolicyItem }) {
   // show the stages — otherwise editing that filter (e.g. removing "drafting")
   // leaves the card unchanged and the edit looks like it never saved.
   const firesOn = (item.firesWhenNodeLifecycle ?? []).filter((s) => typeof s === "string" && s);
+  // Rendered as just another labeled row (`fires on lifecycle` → stages),
+  // identical to the deterministic predicate parts — there's nothing special
+  // about it.
+  const firesRow =
+    firesOn.length > 0 ? (
+      <div className="contents">
+        <dt className="text-muted-foreground">fires on lifecycle</dt>
+        <dd className="font-mono text-foreground">{firesOn.join(", ")}</dd>
+      </div>
+    ) : null;
   return (
     <div className="min-w-0 space-y-1.5">
       <span className="neu-surface inline-block rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -62,6 +72,7 @@ export function PolicyView({ item }: { item: PolicyItem }) {
                 <dd className="font-mono text-foreground">{part.value}</dd>
               </div>
             ))}
+            {firesRow}
           </dl>
         </div>
       ) : (
@@ -79,14 +90,13 @@ export function PolicyView({ item }: { item: PolicyItem }) {
           <p className="whitespace-pre-wrap break-words text-sm leading-6">
             {predicate ? <LinkedProse text={agentInstructionOf(predicate) ?? ""} /> : null}
           </p>
+          {firesRow ? (
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
+              {firesRow}
+            </dl>
+          ) : null}
         </div>
       )}
-      {firesOn.length > 0 ? (
-        <p className="text-[11px] text-muted-foreground">
-          <span className="font-semibold uppercase tracking-wider">fires on lifecycle</span>{" "}
-          <span className="font-mono text-foreground">{firesOn.join(", ")}</span>
-        </p>
-      ) : null}
     </div>
   );
 }
