@@ -1,78 +1,77 @@
 import { describe, expect, it } from "vitest";
-import { layoutOutsideNodes } from "../bpmn-outside-layout";
+import { layoutAdjacentNodes } from "../bpmn-outside-layout";
 
-const opts = { originX: 1000, focalY: 0, columnGap: 50, rowGap: 20 };
+const opts = { centerX: 500, poolTopY: 100, poolBottomY: 300, gap: 40, columnGap: 20 };
 
-describe("layoutOutsideNodes", () => {
-  it("returns nothing for an empty outsider set", () => {
-    expect(layoutOutsideNodes([], new Map(), opts).size).toBe(0);
+describe("layoutAdjacentNodes", () => {
+  it("returns nothing for an empty set", () => {
+    expect(layoutAdjacentNodes([], opts).size).toBe(0);
   });
 
-  it("places closer nodes (smaller graph distance) in earlier columns", () => {
-    const outsiders = [
-      { id: "far", width: 100, height: 40 },
-      { id: "near", width: 100, height: 40 },
-    ];
-    const depth = new Map([
-      ["near", 1],
-      ["far", 3],
-    ]);
-    const positions = layoutOutsideNodes(outsiders, depth, opts);
-    const near = positions.get("near");
-    const far = positions.get("far");
-    expect(near).toBeDefined();
-    expect(far).toBeDefined();
-    // Distance band drives the column: nearer node sits left of the farther one.
-    expect((near as { x: number }).x).toBeLessThan((far as { x: number }).x);
-    // Closest band starts at originX.
-    expect((near as { x: number }).x).toBe(1000);
+  it("places an 'above' node above the pool's top edge", () => {
+    const positions = layoutAdjacentNodes(
+      [{ id: "n", width: 100, height: 60, side: "above" }],
+      opts,
+    );
+    const n = positions.get("n") as { x: number; y: number };
+    // y = poolTopY - gap - height = 100 - 40 - 60 = 0
+    expect(n.y).toBe(0);
+    // Single node centered on centerX: x = 500 - 100/2 = 450
+    expect(n.x).toBe(450);
   });
 
-  it("stacks same-band nodes vertically, centered on the focal y", () => {
-    const outsiders = [
-      { id: "a", width: 100, height: 40 },
-      { id: "b", width: 100, height: 40 },
-    ];
-    const depth = new Map([
-      ["a", 1],
-      ["b", 1],
-    ]);
-    const positions = layoutOutsideNodes(outsiders, depth, { ...opts, focalY: 0 });
+  it("places a 'below' node under the pool's bottom edge", () => {
+    const positions = layoutAdjacentNodes(
+      [{ id: "n", width: 100, height: 60, side: "below" }],
+      opts,
+    );
+    const n = positions.get("n") as { y: number };
+    // y = poolBottomY + gap = 300 + 40 = 340
+    expect(n.y).toBe(340);
+  });
+
+  it("lays multiple same-side nodes in a horizontal row centered on centerX", () => {
+    const positions = layoutAdjacentNodes(
+      [
+        { id: "a", width: 100, height: 60, side: "above" },
+        { id: "b", width: 100, height: 60, side: "above" },
+      ],
+      opts,
+    );
     const a = positions.get("a") as { x: number; y: number };
     const b = positions.get("b") as { x: number; y: number };
-    // Same band → same column x.
-    expect(a.x).toBe(b.x);
-    // Two 40px nodes with a 20px gap span 100px, centered on y=0 → -50..50.
-    const ys = [a.y, b.y].sort((m, n) => m - n);
-    expect(ys[0]).toBe(-50);
-    expect(ys[1]).toBe(10); // -50 + 40 + 20
+    // Same side → same y, laid left→right.
+    expect(a.y).toBe(b.y);
+    expect(b.x).toBeGreaterThan(a.x);
+    // Row total width = 100 + 20 + 100 = 220, centered on 500 → starts at 390.
+    expect(a.x).toBe(390);
+    expect(b.x).toBe(390 + 100 + 20);
   });
 
-  it("puts unreachable nodes in the outermost band", () => {
-    const outsiders = [
-      { id: "reachable", width: 100, height: 40 },
-      { id: "orphan", width: 100, height: 40 },
-    ];
-    const depth = new Map([["reachable", 1]]);
-    const positions = layoutOutsideNodes(outsiders, depth, opts);
-    const reachable = positions.get("reachable") as { x: number };
-    const orphan = positions.get("orphan") as { x: number };
-    expect(orphan.x).toBeGreaterThan(reachable.x);
+  it("separates 'above' and 'below' rows onto opposite edges", () => {
+    const positions = layoutAdjacentNodes(
+      [
+        { id: "up", width: 100, height: 60, side: "above" },
+        { id: "down", width: 100, height: 60, side: "below" },
+      ],
+      opts,
+    );
+    const up = positions.get("up") as { y: number };
+    const down = positions.get("down") as { y: number };
+    expect(up.y).toBeLessThan(opts.poolTopY);
+    expect(down.y).toBeGreaterThan(opts.poolBottomY);
   });
 
-  it("is deterministic for ties within a band (sorted by id)", () => {
-    const outsiders = [
-      { id: "z", width: 100, height: 40 },
-      { id: "a", width: 100, height: 40 },
-    ];
-    const depth = new Map([
-      ["z", 2],
-      ["a", 2],
-    ]);
-    const positions = layoutOutsideNodes(outsiders, depth, { ...opts, focalY: 0 });
-    const a = positions.get("a") as { y: number };
-    const z = positions.get("z") as { y: number };
-    // `a` sorts before `z`, so it takes the top slot.
-    expect(a.y).toBeLessThan(z.y);
+  it("orders a row deterministically by id", () => {
+    const positions = layoutAdjacentNodes(
+      [
+        { id: "z", width: 100, height: 60, side: "below" },
+        { id: "a", width: 100, height: 60, side: "below" },
+      ],
+      opts,
+    );
+    const a = positions.get("a") as { x: number };
+    const z = positions.get("z") as { x: number };
+    expect(a.x).toBeLessThan(z.x);
   });
 });

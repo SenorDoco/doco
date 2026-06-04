@@ -1,78 +1,61 @@
 /**
- * Layout for the BPMN flow nodes that render *outside* the one drawn
- * swim lane. The BPMN perspective draws a single pool at a time — the
- * one owning the focused node. Every other node that survives the
- * render budget still shows, but it is not nested in a swim lane;
- * instead it is positioned purely by its graph distance from the focal
- * node, in distance-banded columns next to the drawn pool.
+ * Layout for the BPMN flow nodes that render *outside* the one drawn swim
+ * lane — the focal node's first-degree neighbours that belong to other
+ * intents. The BPMN perspective draws a single pool (the focal node's
+ * intent) in full; these adjacent nodes hug the pool above or below it,
+ * on whichever edge they sit closer to, connected back to the focal node.
  *
- * Band 0 sits closest to the pool; each successive band (one BFS hop
- * further from the focal node) is a column further out. Unreachable
- * nodes collapse into the outermost band. Within a band, nodes stack
- * vertically, centered on the focal node's y, so the neighbourhood
- * reads as a halo of decreasing relatedness around the focus.
+ * Each node carries the side it belongs on (decided by the caller from the
+ * vertical position of the in-pool node it attaches to). Within a side the
+ * nodes lay out in a single horizontal row, centered on `centerX`, just
+ * outside the pool band.
  *
- * Pure and deterministic: same inputs → same positions, so the camera
- * and reference numbering stay stable across renders.
+ * Pure and deterministic: same inputs → same positions.
  */
 
-export interface OutsideNodeSize {
+export interface AdjacentNodeInput {
   id: string;
   width: number;
   height: number;
+  side: "above" | "below";
 }
 
-export interface OutsideLayoutOptions {
-  /** Canvas x where the first (closest) band's column begins. */
-  originX: number;
-  /** Canvas y to vertically center each band's stack on (focal node center). */
-  focalY: number;
-  /** Horizontal gap between successive distance bands. */
+export interface AdjacentLayoutOptions {
+  /** Canvas x to center each row on (typically the focal node's center x). */
+  centerX: number;
+  /** Canvas y of the pool's top edge — the "above" row sits over it. */
+  poolTopY: number;
+  /** Canvas y of the pool's bottom edge — the "below" row sits under it. */
+  poolBottomY: number;
+  /** Vertical gap between the pool edge and the row of adjacent nodes. */
+  gap: number;
+  /** Horizontal gap between nodes within a row. */
   columnGap: number;
-  /** Vertical gap between stacked nodes within a band. */
-  rowGap: number;
 }
 
-// Distance bucket for nodes unreachable from the focal node — they sort
-// after every finite-distance band, in the outermost column.
-const UNREACHABLE_BAND = Number.MAX_SAFE_INTEGER;
-
-export function layoutOutsideNodes(
-  outsiders: readonly OutsideNodeSize[],
-  depthByNode: ReadonlyMap<string, number>,
-  opts: OutsideLayoutOptions,
+export function layoutAdjacentNodes(
+  nodes: readonly AdjacentNodeInput[],
+  opts: AdjacentLayoutOptions,
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
-  if (outsiders.length === 0) return positions;
+  if (nodes.length === 0) return positions;
 
-  const bands = new Map<number, OutsideNodeSize[]>();
-  for (const node of outsiders) {
-    const depth = depthByNode.get(node.id);
-    const band = depth === undefined ? UNREACHABLE_BAND : depth;
-    const list = bands.get(band) ?? [];
-    list.push(node);
-    bands.set(band, list);
-  }
-
-  const sortedBands = [...bands.keys()].sort((a, b) => a - b);
-  let columnX = opts.originX;
-  for (const band of sortedBands) {
-    const list = bands.get(band) ?? [];
-    list.sort((a, b) => a.id.localeCompare(b.id));
-    const columnWidth = list.reduce((max, node) => Math.max(max, node.width), 0);
-    const totalHeight = list.reduce(
-      (sum, node, index) => sum + node.height + (index > 0 ? opts.rowGap : 0),
+  for (const side of ["above", "below"] as const) {
+    const row = nodes.filter((node) => node.side === side).sort((a, b) => a.id.localeCompare(b.id));
+    if (row.length === 0) continue;
+    const totalWidth = row.reduce(
+      (sum, node, index) => sum + node.width + (index > 0 ? opts.columnGap : 0),
       0,
     );
-    let y = opts.focalY - totalHeight / 2;
-    for (const node of list) {
-      // Center each node within its band's column so varied widths line
-      // up by their middle, matching the in-lane column behavior.
-      const x = columnX + (columnWidth - node.width) / 2;
+    let x = opts.centerX - totalWidth / 2;
+    for (const node of row) {
+      // "above": sit the whole node above the pool's top edge. "below":
+      // hang it just under the pool's bottom edge.
+      const y =
+        side === "above" ? opts.poolTopY - opts.gap - node.height : opts.poolBottomY + opts.gap;
       positions.set(node.id, { x, y });
-      y += node.height + opts.rowGap;
+      x += node.width + opts.columnGap;
     }
-    columnX += columnWidth + opts.columnGap;
   }
   return positions;
 }
