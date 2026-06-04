@@ -18,28 +18,16 @@ import { redirect } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { type HealthSnapshot, getAgentHealth } from "~/lib/agent-health.server";
+import { type AnthropicUsageBucket, aggregateAnthropicUsage } from "~/lib/agent-usage.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-// Approximate USD cost per million tokens. Anthropic publishes these
-// per-model on their pricing page; keep the constants near the
-// rendering code so a future model swap is one place to update.
-const ANTHROPIC_HAIKU_INPUT_USD_PER_M = 0.8;
-const ANTHROPIC_HAIKU_OUTPUT_USD_PER_M = 4.0;
-const ANTHROPIC_HAIKU_CACHE_READ_USD_PER_M = 0.08;
-const ANTHROPIC_HAIKU_CACHE_WRITE_USD_PER_M = 1.0;
+// Anthropic rates live with the shared rate cards in `agent-cost.ts`, and
+// aggregateAnthropicUsage prices each window per model (Señor Doco on Sonnet,
+// the judge on Haiku) — so only the OpenAI embedding rate is local here.
 const OPENAI_EMBEDDING_USD_PER_M_TOKENS = 0.02;
 // OpenAI's embedding API doesn't return usage; tokens ≈ chars / 4
 // for English text is the standard rule of thumb.
 const CHARS_PER_TOKEN = 4;
-
-interface AnthropicBucket {
-  turn_count: number;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cache_creation_tokens: number;
-  total_ms: number;
-}
 
 interface OpenAiBucket {
   call_count: number;
@@ -77,10 +65,10 @@ interface RecentOpenAiRow {
 interface UsageSnapshot {
   generated_at: string;
   anthropic: {
-    last_hour: AnthropicBucket;
-    last_day: AnthropicBucket;
-    last_30d: AnthropicBucket;
-    all_time: AnthropicBucket;
+    last_hour: AnthropicUsageBucket;
+    last_day: AnthropicUsageBucket;
+    last_30d: AnthropicUsageBucket;
+    all_time: AnthropicUsageBucket;
   };
   openai: {
     last_hour: OpenAiBucket;
@@ -91,37 +79,6 @@ interface UsageSnapshot {
   recent_anthropic: RecentAnthropicRow[];
   recent_openai: RecentOpenAiRow[];
   health: HealthSnapshot;
-}
-
-async function aggregateAnthropic(sinceClause: string): Promise<AnthropicBucket> {
-  return await withClient(async (c) => {
-    const r = await c.query<{
-      turn_count: string;
-      input_tokens: string | null;
-      output_tokens: string | null;
-      cache_read_tokens: string | null;
-      cache_creation_tokens: string | null;
-      total_ms: string | null;
-    }>(
-      `SELECT COUNT(*)::text AS turn_count,
-              COALESCE(SUM(input_tokens),0)::text AS input_tokens,
-              COALESCE(SUM(output_tokens),0)::text AS output_tokens,
-              COALESCE(SUM(cache_read_tokens),0)::text AS cache_read_tokens,
-              COALESCE(SUM(cache_creation_tokens),0)::text AS cache_creation_tokens,
-              COALESCE(SUM(total_ms),0)::text AS total_ms
-         FROM agent_turn_metrics
-        WHERE ${sinceClause}`,
-    );
-    const row = r.rows[0];
-    return {
-      turn_count: Number(row?.turn_count ?? 0),
-      input_tokens: Number(row?.input_tokens ?? 0),
-      output_tokens: Number(row?.output_tokens ?? 0),
-      cache_read_tokens: Number(row?.cache_read_tokens ?? 0),
-      cache_creation_tokens: Number(row?.cache_creation_tokens ?? 0),
-      total_ms: Number(row?.total_ms ?? 0),
-    };
-  });
 }
 
 async function aggregateOpenAi(sinceClause: string): Promise<OpenAiBucket> {
@@ -182,10 +139,10 @@ export async function loader({ request }: { request: Request }) {
     recentOai,
     health,
   ] = await Promise.all([
-    aggregateAnthropic(since1h),
-    aggregateAnthropic(since24h),
-    aggregateAnthropic(since30d),
-    aggregateAnthropic(sinceAll),
+    aggregateAnthropicUsage(since1h),
+    aggregateAnthropicUsage(since24h),
+    aggregateAnthropicUsage(since30d),
+    aggregateAnthropicUsage(sinceAll),
     aggregateOpenAi(occurred1h),
     aggregateOpenAi(occurred24h),
     aggregateOpenAi(occurred30d),
@@ -255,14 +212,6 @@ function fmtInt(n: number): string {
 function fmtUsd(n: number): string {
   return `$${n.toFixed(n < 1 ? 4 : 2)}`;
 }
-function anthropicCostUsd(b: AnthropicBucket): number {
-  return (
-    (b.input_tokens * ANTHROPIC_HAIKU_INPUT_USD_PER_M) / 1e6 +
-    (b.output_tokens * ANTHROPIC_HAIKU_OUTPUT_USD_PER_M) / 1e6 +
-    (b.cache_read_tokens * ANTHROPIC_HAIKU_CACHE_READ_USD_PER_M) / 1e6 +
-    (b.cache_creation_tokens * ANTHROPIC_HAIKU_CACHE_WRITE_USD_PER_M) / 1e6
-  );
-}
 function openaiTokens(b: OpenAiBucket): number {
   return Math.round(b.total_chars / CHARS_PER_TOKEN);
 }
@@ -280,7 +229,7 @@ function fmtMs(n: number): string {
 
 export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapshot }) {
   const s = loaderData;
-  const windows: Array<{ label: string; anth: AnthropicBucket; oai: OpenAiBucket }> = [
+  const windows: Array<{ label: string; anth: AnthropicUsageBucket; oai: OpenAiBucket }> = [
     { label: "Last hour", anth: s.anthropic.last_hour, oai: s.openai.last_hour },
     { label: "Last 24h", anth: s.anthropic.last_day, oai: s.openai.last_day },
     { label: "Last 30d", anth: s.anthropic.last_30d, oai: s.openai.last_30d },
@@ -333,7 +282,7 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
                       <td className="text-right">
                         {fmtInt(w.anth.cache_read_tokens)} / {fmtInt(w.anth.cache_creation_tokens)}
                       </td>
-                      <td className="text-right">{fmtUsd(anthropicCostUsd(w.anth))}</td>
+                      <td className="text-right">{fmtUsd(w.anth.cost_usd)}</td>
                     </tr>
                   ))}
                 </tbody>
