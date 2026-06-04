@@ -596,7 +596,11 @@ export async function renderOperationLines(opts: {
   } else {
     handle = `${opts.ownerSlug}-${opts.docoSlug}`;
   }
-  const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${opts.entityType}/${opts.id}` : null;
+  // Policies are not nodes: their page lives at the plural `/policies/<id>`,
+  // not the generic `/<type>/<id>` node route (which 404s for `policy`). Every
+  // other entity type maps straight to its singular segment.
+  const entitySegment = opts.entityType === "policy" ? "policies" : opts.entityType;
+  const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${entitySegment}/${opts.id}` : null;
   const buildAnchor = (labelForLine: string): string => {
     const text = trunc(labelForLine);
     return linkUrl ? `[${mdLinkText(text)}](${linkUrl})` : text;
