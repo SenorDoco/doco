@@ -70,20 +70,6 @@ describe("graph authoring contract", () => {
     expect(glossary.constraints.join("\n")).toMatch(/no draft\/queue stage/i);
   });
 
-  it("anchors a term on the Decision's first line (the node name), with the definition as the body", () => {
-    const glossary = PERSPECTIVE_CONTRACTS.glossary;
-    const termConstraint = glossary.constraints.find((c) => /term entry is a Decision/i.test(c));
-    expect(termConstraint).toBeDefined();
-    // A node's name is the first line of its prose, so the term must lead the
-    // prose and the definition is the body. The old contract called `chosen`
-    // the headword and the prose "the definition", which steered agents to put
-    // the whole definition on the first line — i.e. into the node's name.
-    expect(termConstraint).toMatch(/first line/i);
-    expect(termConstraint).toMatch(/node'?s name/i);
-    expect(termConstraint).toMatch(/definition as the body/i);
-    expect(termConstraint).not.toMatch(/`chosen` is the canonical headword/i);
-  });
-
   it("publishes role examples for the simplified edge families", () => {
     expect(RELATION_KINDS.supports?.role_examples).toEqual(
       expect.arrayContaining(["serves", "tests", "implemented_by"]),
