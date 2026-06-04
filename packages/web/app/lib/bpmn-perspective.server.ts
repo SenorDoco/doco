@@ -187,6 +187,7 @@ interface EdgeRow {
   from_id: string;
   to_id: string;
   edge_type: string;
+  lifecycle: string | null;
   edge_props_json: Record<string, unknown> | null;
 }
 
@@ -302,7 +303,8 @@ export async function loadBpmnGraph(
       // edge when both endpoints are visible. Excluding retired edges here
       // would leave revealed retired nodes disconnected. Matches the
       // Graph/List loader, which applies no lifecycle filter to edges.
-      `SELECT id, from_id, to_id, edge_type, props AS edge_props_json
+      `SELECT id, from_id, to_id, edge_type,
+              COALESCE(lifecycle, 'active') AS lifecycle, props AS edge_props_json
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -699,6 +701,7 @@ function bpmnLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): Overview
     source: row.from_id,
     target: row.to_id,
     edge_type: displayType,
+    lifecycle: row.lifecycle ?? "active",
     label: row.edge_type === "flows_to" ? sequenceFlowLabel(row.edge_props_json) : null,
     href,
   };

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { pullRequestLabel } from "~/lib/pull-requests";
-import { newlyVisibleLifecycles } from "../lifecycle-filter";
+import { edgeLifecycle, isEdgeLifecycleVisible, newlyVisibleLifecycles } from "../lifecycle-filter";
 import { PerspectiveFrame } from "../perspective-frame";
 
 /** Strip HTML tags to recover the visible text content. */
@@ -110,5 +110,26 @@ describe("newlyVisibleLifecycles", () => {
     const known = new Set(["queued"]);
     newlyVisibleLifecycles(["queued", "blocked"], known);
     expect([...known]).toEqual(["queued"]);
+  });
+});
+
+describe("edge lifecycle visibility", () => {
+  it("defaults an edge with no lifecycle to active", () => {
+    expect(edgeLifecycle({})).toBe("active");
+    expect(edgeLifecycle({ lifecycle: null })).toBe("active");
+    expect(edgeLifecycle({ lifecycle: "retired" })).toBe("retired");
+  });
+
+  it("hides a retired edge when retired is filtered out (the default)", () => {
+    const visible = new Set(["drafting", "queued", "active"]);
+    expect(isEdgeLifecycleVisible({ lifecycle: "retired" }, visible)).toBe(false);
+    expect(isEdgeLifecycleVisible({ lifecycle: "active" }, visible)).toBe(true);
+    // A lifecycle-less edge rides the active default, so it stays visible.
+    expect(isEdgeLifecycleVisible({}, visible)).toBe(true);
+  });
+
+  it("reveals a retired edge once retired is toggled on", () => {
+    const visible = new Set(["drafting", "queued", "active", "retired"]);
+    expect(isEdgeLifecycleVisible({ lifecycle: "retired" }, visible)).toBe(true);
   });
 });

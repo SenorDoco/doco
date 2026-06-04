@@ -511,6 +511,61 @@ describe("loadBpmnGraph", () => {
     );
   });
 
+  it("carries each link's own lifecycle so the filter can hide retired edges", async () => {
+    // The lifecycle filter applies to edges, not just nodes — the loader must
+    // select and surface each edge's lifecycle so a retired sequence edge can
+    // hide by default and reappear when "Retired" is toggled on.
+    const intentId = "intent_01PROCESS";
+    const firstId = "action_01FIRST";
+    const secondId = "action_01SECOND";
+
+    const { client, captured } = makeQueryClient({
+      nodes: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "A process",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: firstId,
+          entity_type: "action",
+          summary: "First step",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {},
+        },
+        {
+          id: secondId,
+          entity_type: "action",
+          summary: "Second step",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {},
+        },
+      ],
+      principals: [{ id: "principal_system", name: "System", lifecycle: "active" }],
+      users: [],
+      edges: [
+        { ...edge("edge_live", firstId, secondId, "flows_to"), lifecycle: "active" },
+        { ...edge("edge_dead", secondId, firstId, "flows_to"), lifecycle: "retired" },
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "process" });
+
+    const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
+    expect(edgeQuery?.sql).toMatch(/lifecycle/i);
+    expect(graph.links).toContainEqual(
+      expect.objectContaining({ id: "edge_live", lifecycle: "active" }),
+    );
+    expect(graph.links).toContainEqual(
+      expect.objectContaining({ id: "edge_dead", lifecycle: "retired" }),
+    );
+  });
+
   it("does not render sequence links from node JSON", async () => {
     const intentId = "intent_01PROCESS";
     const firstId = "action_01FIRST";

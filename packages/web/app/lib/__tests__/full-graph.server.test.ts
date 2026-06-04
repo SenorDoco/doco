@@ -194,6 +194,7 @@ describe("loadOverviewGraph", () => {
           from_id: "decision_01",
           to_id: "intent_01",
           edge_type: "supports",
+          lifecycle: "active",
         },
       ],
     });
@@ -206,8 +207,60 @@ describe("loadOverviewGraph", () => {
         source: "decision_01",
         target: "intent_01",
         edge_type: "supports",
+        lifecycle: "active",
         href: "/acme/edges/edge_01",
       },
+    ]);
+  });
+
+  it("carries each edge's own lifecycle so the filter can hide retired edges", async () => {
+    // The lifecycle filter applies to edges, not just nodes — the loader must
+    // surface the edge's lifecycle (and the SQL must select it) so a retired
+    // edge can be hidden by default and revealed on toggle.
+    const { client, captured } = makeQueryClient({
+      entities: [
+        {
+          id: "decision_01",
+          entity_type: "decision",
+          name: null,
+          label: "A",
+          lifecycle: "active",
+          created_at: "2026-04-01T00:00:00Z",
+        },
+        {
+          id: "intent_01",
+          entity_type: "intent",
+          name: null,
+          label: "B",
+          lifecycle: "active",
+          created_at: "2026-04-01T00:00:00Z",
+        },
+      ],
+      edges: [
+        {
+          id: "edge_live",
+          from_id: "decision_01",
+          to_id: "intent_01",
+          edge_type: "supports",
+          lifecycle: "active",
+        },
+        {
+          id: "edge_dead",
+          from_id: "intent_01",
+          to_id: "decision_01",
+          edge_type: "supports",
+          lifecycle: "retired",
+        },
+      ],
+    });
+
+    const graph = await loadOverviewGraph(client, "doco_acme", { handle: "acme" });
+
+    const edgeQuery = captured.find((c) => /FROM edges/i.test(c.sql));
+    expect(edgeQuery?.sql).toMatch(/lifecycle/i);
+    expect(graph.links.map((l) => [l.id, l.lifecycle])).toEqual([
+      ["edge_live", "active"],
+      ["edge_dead", "retired"],
     ]);
   });
 

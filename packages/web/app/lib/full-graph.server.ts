@@ -18,6 +18,7 @@ interface EdgeRow {
   from_id: string;
   to_id: string;
   edge_type: string;
+  lifecycle: string | null;
   doco_id?: string;
 }
 
@@ -159,7 +160,7 @@ async function loadOverviewLinks(
   if (nodeIds.length === 0) return [];
   const rows = (
     await c.query<EdgeRow>(
-      `SELECT id, from_id, to_id, edge_type
+      `SELECT id, from_id, to_id, edge_type, COALESCE(lifecycle, 'active') AS lifecycle
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -174,6 +175,7 @@ async function loadOverviewLinks(
     source: s.from_id,
     target: s.to_id,
     edge_type: s.edge_type,
+    lifecycle: s.lifecycle ?? "active",
     href: overviewEdgeHref(undefined, s.id),
   }));
 }

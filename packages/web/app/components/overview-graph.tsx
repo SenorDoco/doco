@@ -2,6 +2,7 @@ import { type Edge, Handle, MarkerType, type Node, Position } from "@xyflow/reac
 import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
+import { isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/node-badges";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
@@ -49,6 +50,13 @@ export interface OverviewGraphLink {
   edge_type: string;
   label?: string | null;
   href?: string | null;
+  /**
+   * The edge's own lifecycle (drafting / queued / active / retired).
+   * Drives edge visibility under the page-level lifecycle filter so a
+   * retired edge hides by default just like a retired node. Optional so
+   * links built without it default to "active".
+   */
+  lifecycle?: string | null;
 }
 
 export interface OverviewGraphData {
@@ -437,9 +445,20 @@ export function OverviewGraph({
   const allNodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
   const newNodeIds = useNewNodeIds(allNodeIds);
   const visibleIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
+  // An edge renders only when both endpoints are visible AND its own
+  // lifecycle is in the filter. The lifecycle filter applies to edges,
+  // not just nodes — a retired edge between two active nodes hides by
+  // default (retired is off out of the box) and reappears when the user
+  // toggles "Retired" on.
   const visibleLinks = useMemo(
-    () => links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target)),
-    [links, visibleIds],
+    () =>
+      links.filter(
+        (link) =>
+          visibleIds.has(link.source) &&
+          visibleIds.has(link.target) &&
+          isEdgeLifecycleVisible(link, visibleLifecycles),
+      ),
+    [links, visibleIds, visibleLifecycles],
   );
   const visibleDepthByNodeId = useMemo(
     () => computeDepthFromCenter(visibleNodes, visibleLinks, focusCenterId),

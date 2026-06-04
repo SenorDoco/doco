@@ -1,4 +1,5 @@
 import { ArrowRight, Loader2, X } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { LinkedProse, LinkedValue } from "~/components/linked-text";
 import { LifecycleBadge, TypeBadge } from "~/components/node-badges";
@@ -12,6 +13,19 @@ export interface OpenEdgeTarget {
   href: string;
   source: string;
   target: string;
+}
+
+/**
+ * A node-dialog edge row is "retired" when either the edge itself or the
+ * node on the other end is retired. Such rows hide by default — the dialog
+ * surfaces a "Show retired edges and nodes" toggle when any exist, so the
+ * active picture stays uncluttered while history is still reachable.
+ */
+export function isRetiredEdgeRow(edge: {
+  edge_lifecycle: string;
+  other_lifecycle: string;
+}): boolean {
+  return edge.edge_lifecycle === "retired" || edge.other_lifecycle === "retired";
 }
 
 interface NodeDialogProps {
@@ -122,6 +136,16 @@ export function NodeDialog({
     (option) => option.disabled && !option.current,
   )?.reason;
   const hasPrimaryText = Boolean(detail?.primary_text);
+  // Retired edges and retired nodes hide by default; the toggle reveals
+  // them only when the viewer asks. Counted across both directions so a
+  // single button governs the whole Edges section.
+  const [showRetired, setShowRetired] = useState(false);
+  const incoming = detail?.incoming ?? [];
+  const outgoing = detail?.outgoing ?? [];
+  const retiredEdgeCount =
+    incoming.filter(isRetiredEdgeRow).length + outgoing.filter(isRetiredEdgeRow).length;
+  const visibleIncoming = showRetired ? incoming : incoming.filter((e) => !isRetiredEdgeRow(e));
+  const visibleOutgoing = showRetired ? outgoing : outgoing.filter((e) => !isRetiredEdgeRow(e));
 
   return (
     <aside
@@ -276,7 +300,7 @@ export function NodeDialog({
                   label="Incoming"
                   direction="incoming"
                   currentNodeId={detail.id}
-                  edges={detail.incoming}
+                  edges={visibleIncoming}
                   onOpenNode={onOpenNode}
                   onOpenEdge={onOpenEdge}
                 />
@@ -284,11 +308,23 @@ export function NodeDialog({
                   label="Outgoing"
                   direction="outgoing"
                   currentNodeId={detail.id}
-                  edges={detail.outgoing}
+                  edges={visibleOutgoing}
                   onOpenNode={onOpenNode}
                   onOpenEdge={onOpenEdge}
                 />
               </div>
+              {retiredEdgeCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowRetired((prev) => !prev)}
+                  className="neu-button mt-3 inline-flex items-center rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  aria-pressed={showRetired}
+                >
+                  {showRetired
+                    ? "Hide retired edges and nodes"
+                    : `Show retired edges and nodes (${retiredEdgeCount})`}
+                </button>
+              ) : null}
             </section>
 
             <section className="pt-4">
