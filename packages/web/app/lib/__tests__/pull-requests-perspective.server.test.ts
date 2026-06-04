@@ -43,12 +43,13 @@ describe("pullRequestItemsFromRows", () => {
     expect(items.map((i) => i.lifecycle)).toEqual(["retired", "queued", "active"]);
   });
 
-  it("derives the title from the first line of the reference prose", () => {
+  it("uses the full reference prose as the title, not just the first line", () => {
     const items = pullRequestItemsFromRows([
       row({ reference: "Fix the thing\n\nLonger body explaining the fix." }),
     ]);
 
-    expect(items[0].title).toBe("Fix the thing");
+    // Perspectives render the full node name, not a first-line truncation.
+    expect(items[0].title).toBe("Fix the thing\n\nLonger body explaining the fix.");
   });
 
   it("falls back to the locator when the prose is empty", () => {

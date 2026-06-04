@@ -134,6 +134,56 @@ describe("loadSlaPerspectiveData", () => {
     expect(data.stats.evidenceLinked).toBe(1);
   });
 
+  it("uses the full Rule prose as the commitment title, not just the first line", async () => {
+    const { client } = makeQueryClient({
+      rules: [
+        {
+          id: "rule_multiline",
+          rule: "Checkout API availability is at least 99.9% monthly.\n\nMeasured over rolling 30-day windows, excluding scheduled maintenance.",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          created_by: null,
+          data: { target: "99.9%" },
+        },
+      ],
+      evals: [],
+      references: [],
+      actions: [],
+      decisions: [],
+      principals: [],
+    });
+
+    const data = await loadSlaPerspectiveData(client, "doco_01", "acme-slas");
+
+    // Perspectives render the full node name, not a first-line truncation.
+    expect(data.commitments[0]?.title).toBe(
+      "Checkout API availability is at least 99.9% monthly.\n\nMeasured over rolling 30-day windows, excluding scheduled maintenance.",
+    );
+  });
+
+  it("falls back to a placeholder title when the Rule prose is blank", async () => {
+    const { client } = makeQueryClient({
+      rules: [
+        {
+          id: "rule_blank",
+          rule: "   ",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          created_by: null,
+          data: {},
+        },
+      ],
+      evals: [],
+      references: [],
+      actions: [],
+      decisions: [],
+      principals: [],
+    });
+
+    const data = await loadSlaPerspectiveData(client, "doco_01", "acme-slas");
+    expect(data.commitments[0]?.title).toBe("(untitled SLA commitment)");
+  });
+
   it("surfaces register gaps without reading Logs as evidence", async () => {
     const { client, query } = makeQueryClient({
       rules: [

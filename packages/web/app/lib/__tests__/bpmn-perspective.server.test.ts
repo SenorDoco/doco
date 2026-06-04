@@ -61,6 +61,23 @@ function edge(
 }
 
 describe("loadBpmnGraph", () => {
+  it("selects the full prose as the node summary, not just the first line", async () => {
+    // Perspectives render the full node name — the loader must not truncate
+    // the summary to the first line of prose with split_part().
+    const { client, captured } = makeQueryClient({
+      nodes: [],
+      principals: [],
+      users: [],
+      edges: [],
+    });
+
+    await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
+
+    const nodeQuery = captured.find((q) => /AS summary/i.test(q.sql));
+    expect(nodeQuery?.sql).toMatch(/t\.prose AS summary/);
+    expect(nodeQuery?.sql).not.toMatch(/split_part\([^)]*prose/);
+  });
+
   it("resolves drafting Principals as BPMN actor lanes", async () => {
     const { client, captured } = makeQueryClient({
       nodes: [
