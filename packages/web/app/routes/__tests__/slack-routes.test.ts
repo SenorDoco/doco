@@ -92,7 +92,7 @@ describe("Slack integration routes", () => {
     // tests assert plain answer text. The first-message case is covered below.
     mocks.markSlackChannelIntroducedIfFirst.mockResolvedValue(false);
     mocks.buildSlackChannelIntroLine.mockReturnValue(
-      "I use Haiku and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>",
+      "I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>",
     );
   });
 
@@ -294,7 +294,7 @@ describe("Slack integration routes", () => {
     });
   });
 
-  it("leads the first message in a channel with the Haiku/MCP intro", async () => {
+  it("leads the first message in a channel with the Sonnet/MCP intro", async () => {
     mocks.markSlackChannelIntroducedIfFirst.mockResolvedValueOnce(true);
     mocks.buildSlackAppMentionResponse.mockResolvedValue("doco has 42 nodes.");
 
@@ -324,7 +324,7 @@ describe("Slack integration routes", () => {
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
-      text: "I use Haiku and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>\n\ndoco has 42 nodes.",
+      text: "I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>\n\ndoco has 42 nodes.",
     });
   });
 

@@ -163,14 +163,14 @@ export function mergeCreatedConversationListItem(
 
 /**
  * One-line explainer pinned at the top of the rail, directly under the
- * "Señor Doco" header: the in-product assistant runs on Haiku and only
+ * "Señor Doco" header: the in-product assistant runs on Sonnet and only
  * handles simple work, so it points users at the Tokens/MCP page (`/tokens`)
  * to connect their own agent for anything harder.
  */
 export function SenorDocoExplainer() {
   return (
     <div className="shrink-0 border-b border-border px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
-      Señor Doco uses Haiku and can only handle simple requests. Want to collaborate with your own
+      Señor Doco uses Sonnet and can only handle simple requests. Want to collaborate with your own
       agent?{" "}
       <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
         Connect the MCP
