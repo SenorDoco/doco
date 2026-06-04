@@ -40,6 +40,7 @@ import { bpmnPriorityReferences } from "~/lib/bpmn-references";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/bpmn-stable-nodes";
 import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
+import { topLevelIntentPools } from "~/lib/bpmn-top-level-intents";
 import { summarizeExternalConnections } from "~/lib/focused-render-selection";
 import {
   computeDepthFromCenter,
@@ -244,6 +245,32 @@ export function BpmnPerspective({
   // it fires so subsequent clicks (which reshuffle `selectionCenterId`)
   // don't yank the canvas around.
   const defaultFocusAppliedRef = useRef(false);
+  // The BPMN perspective opens on a list of the Doco's top-level processes
+  // (the "home" view) rather than drilling straight into one pool. An
+  // explicit camera focus — a node URL, an agent auto-focus, a panel open —
+  // skips the list and drills in. Picking a process from the list, or
+  // arriving via such a focus, switches to the swim-lane canvas; the Home
+  // button returns to the list.
+  const [homeMode, setHomeMode] = useState<boolean>(() => !initialFocusId);
+  useEffect(() => {
+    if (initialFocusId) setHomeMode(false);
+  }, [initialFocusId]);
+  // Reset the one-shot camera-fit machinery so the next drill-in (after the
+  // canvas remounts coming out of the list) frames its process afresh.
+  const goHome = useCallback(() => {
+    hasFitRef.current = false;
+    flowInstanceRef.current = null;
+    defaultFocusAppliedRef.current = false;
+    initialFocusAppliedRef.current = null;
+    setHomeMode(true);
+  }, []);
+  const openIntent = useCallback(
+    (intentId: string) => {
+      setHomeMode(false);
+      onCenterChange?.(intentId);
+    },
+    [onCenterChange],
+  );
   // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
   // transforms itself internally; our `viewport` mirror only feeds the
   // sticky rails and the reference-number store, so coalescing it to one
@@ -349,6 +376,15 @@ export function BpmnPerspective({
     () => focusCenterId ?? defaultCenterId ?? centerId ?? null,
     [focusCenterId, defaultCenterId, centerId],
   );
+  // The home view's clickable directory: every top-level process. Computed
+  // from the full node set (not the lifecycle-filtered one) so hiding a
+  // lifecycle never reclassifies a process as a sub-process, then filtered
+  // for display so a hidden-lifecycle Intent drops out of the list too.
+  const listPools = useMemo(() => {
+    const top = topLevelIntentPools(pools, nodes);
+    if (!visibleLifecycles) return top;
+    return top.filter((pool) => visibleLifecycles.has(pool.lifecycle ?? "active"));
+  }, [pools, nodes, visibleLifecycles]);
   useEffect(() => {
     if (!centerId || focusCenterId || !selectionCenterId || selectionCenterId === centerId) return;
     onCenterChange?.(selectionCenterId);
@@ -851,6 +887,20 @@ export function BpmnPerspective({
     );
   }
 
+  // Home view: the directory of top-level processes. Rendered instead of
+  // the swim-lane canvas so the canvas (and its Home button) only mount
+  // once the viewer has drilled into a process — coming back out resets
+  // the fit machinery (goHome) so the next pick frames its pool afresh.
+  // A Doco with no top-level Intents (e.g. only Unassigned work) has
+  // nothing to list, so it falls through to the canvas as before.
+  if (homeMode && listPools.length > 0) {
+    return (
+      <div ref={graphRef} className="relative h-full w-full">
+        <BpmnProcessList pools={listPools} onSelect={openIntent} />
+      </div>
+    );
+  }
+
   // Sticky lane label rails — overlays anchored to the left edge of the
   // canvas so the principal label + lane outline stay visible even when
   // the user pans horizontally past the lane's natural x=0 origin.
@@ -1048,7 +1098,7 @@ export function BpmnPerspective({
             proOptions={{ hideAttribution: true }}
           >
             <Flow.Background gap={24} size={1} />
-            <StandardControls />
+            <StandardControls onHome={goHome} />
           </Flow.ReactFlow>
         </ReferenceNumberStoreContext.Provider>
       ) : (
@@ -1144,6 +1194,53 @@ export function BpmnPerspective({
       {/* Lifecycle filter + Reorder-automatically + Fullscreen toggle
           all live on PerspectiveFrame at fixed positions. BPMN just
           receives `visibleLifecycles` and filters its data. */}
+    </div>
+  );
+}
+
+/**
+ * The BPMN home view: a clickable directory of the Doco's top-level
+ * processes (always at least one — the caller renders the canvas instead
+ * when there are none). Picking one focuses that Intent so the canvas
+ * drills into its swim-lane process. Reads as "the list of processes you
+ * can dive into," the BPMN analogue of the graph's fit-to-everything
+ * default.
+ */
+function BpmnProcessList({
+  pools,
+  onSelect,
+}: {
+  pools: BpmnPool[];
+  onSelect: (intentId: string) => void;
+}) {
+  return (
+    <div className="flex h-full w-full justify-center overflow-auto p-6">
+      <div className="w-full max-w-md">
+        <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Processes
+        </h2>
+        <ul className="flex flex-col gap-1.5">
+          {pools.map((pool) => {
+            const intentId = pool.intent_id;
+            if (!intentId) return null;
+            return (
+              <li key={pool.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(intentId)}
+                  className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <TypeBadge entityType="intent" lifecycle={pool.lifecycle ?? "active"} />
+                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                    {pool.label}
+                  </span>
+                  <LifecycleBadge lifecycle={pool.lifecycle ?? "active"} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }
