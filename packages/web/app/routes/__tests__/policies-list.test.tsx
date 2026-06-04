@@ -25,7 +25,7 @@ function anchorCount(html: string): number {
 }
 
 describe("PolicyRow (policies list)", () => {
-  it("does not turn the policy text into a link — only Modify is clickable", () => {
+  it("links the whole row to the policy's own page, and keeps Modify clickable", () => {
     const html = renderRow({
       handle: "runbook",
       canEdit: true,
@@ -38,12 +38,34 @@ describe("PolicyRow (policies list)", () => {
       },
     });
 
-    // The /<handle>/<type>/<id> detail route 404s for the `policy` type, so the
-    // row must not link there — the only anchor left is the Modify button.
-    expect(anchorCount(html)).toBe(1);
+    // Clicking the policy opens its stable page; the Modify control still links
+    // to the edit form. Two anchors: the row link + Modify.
+    expect(anchorCount(html)).toBe(2);
+    expect(html).toContain('href="/runbook/policies/policy_01HZARTICLE"');
+    expect(html).toContain('href="/runbook/policies/policy_01HZARTICLE/edit"');
+    // It must NOT link to the generic /<handle>/<type>/<id> route, which 404s
+    // for the `policy` type.
     expect(html).not.toContain("/policy/policy_01HZARTICLE");
     expect(html).toContain("Import nodes as active by default.");
-    expect(html).toContain('href="/runbook/policies/policy_01HZARTICLE/edit"');
+  });
+
+  it("links to the policy page even when the viewer cannot edit", () => {
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZREADER",
+        kind: "suggestion",
+        predicate: { agent_instruction: "Import nodes as active by default." },
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    // Read-only viewers get the row link but no Modify control.
+    expect(anchorCount(html)).toBe(1);
+    expect(html).toContain('href="/runbook/policies/policy_01HZREADER"');
+    expect(html).not.toContain("/edit");
   });
 
   it("renders the agent instruction without wrapping curly quotation marks", () => {
@@ -82,6 +104,9 @@ describe("PolicyRow (policies list)", () => {
       },
     });
 
+    // The whole-row link coexists with inner markdown links — they are DOM
+    // siblings (the row link is absolutely positioned), never nested anchors.
+    expect(html).toContain('href="/runbook/policies/policy_01HZMARKUP"');
     // Markdown `[label](url)` links are elevated to anchors carrying the label.
     expect(html).toContain('href="https://example.com/guide"');
     expect(html).toContain(">contributing guide");
@@ -114,7 +139,8 @@ describe("PolicyRow (policies list)", () => {
     expect(html).toContain("Requires edge role");
     expect(html).toContain("attributed_to");
     expect(html).toContain("performed_by");
-    // canEdit=false → no Modify link.
-    expect(anchorCount(html)).toBe(0);
+    // canEdit=false → no Modify link, but the row still links to the policy page.
+    expect(anchorCount(html)).toBe(1);
+    expect(html).toContain('href="/runbook/policies/policy_01HZDET"');
   });
 });

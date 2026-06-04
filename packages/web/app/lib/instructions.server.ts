@@ -265,6 +265,14 @@ The project owner can **add, edit, or remove policies any time**,
 at \`/<handle>/policies\`. Re-bootstrap if you suspect they've
 changed mid-session.
 
+Each policy also has its own stable, linkable page at
+\`https://doco.to/<handle>/policies/<policy_id>\`. You already hold the
+\`<handle>\` (per Doco) and every policy's \`id\` from the bootstrap
+payload below, so you can always build this URL. **Whenever you refer
+to, cite, or quote a policy — in chat, a PR comment, a commit message,
+anywhere — link to it at that URL** so the reader can open the exact
+policy you mean.
+
 Once you hold a Bearer token, hit:
 
     GET https://doco.to/api/v1/agent-bootstrap.json
