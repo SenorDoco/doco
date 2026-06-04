@@ -24,6 +24,9 @@ export interface PolicyFormInitial {
   sub_kind: string;
   edge_type: string;
   edge_role: string;
+  /** Edge-scoped probabilistic policy: endpoint node types for the edge it fires on. */
+  from_node_type: string;
+  to_node_type: string;
   target_node_type: string;
   fields: string;
   field: string;
@@ -54,6 +57,8 @@ export function policyFormInitialFromData(data: Record<string, unknown>): Policy
     sub_kind: s(predicate.sub_kind) || "requires_field",
     edge_type: s(predicate.edge_type),
     edge_role: s(predicate.edge_role),
+    from_node_type: s(predicate.from_node_type),
+    to_node_type: s(predicate.to_node_type),
     target_node_type: s(predicate.target_node_type),
     fields: joinArr(predicate.fields),
     field: s(predicate.field),
@@ -94,10 +99,26 @@ export function policyDraftFromForm(form: FormData): PolicyDraft | { error: stri
     const agent_instruction = str(form, "agent_instruction");
     if (!agent_instruction) return { error: "Agent instruction is required." };
     const when = csv(form, "when_node_type");
+    // Edge-scoped probabilistic: an `edge_type` makes the policy fire on edge
+    // creation (judge sees both endpoints) instead of on a node. `when_node_type`
+    // does not apply to an edge-scoped policy, so it is dropped when edge_type is set.
+    const edge_type = kind === "probabilistic" ? str(form, "edge_type") : "";
+    const edge_role = str(form, "edge_role");
+    const from_node_type = str(form, "from_node_type");
+    const to_node_type = str(form, "to_node_type");
     return {
       kind: kind as "suggestion" | "probabilistic",
       agent_instruction,
-      ...(kind === "probabilistic" && when.length > 0 ? { when_node_type: when } : {}),
+      ...(kind === "probabilistic" && edge_type
+        ? {
+            edge_type,
+            ...(edge_role ? { edge_role } : {}),
+            ...(from_node_type ? { from_node_type } : {}),
+            ...(to_node_type ? { to_node_type } : {}),
+          }
+        : kind === "probabilistic" && when.length > 0
+          ? { when_node_type: when }
+          : {}),
       ...(kind === "probabilistic" ? { on_violation } : {}),
       ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
     };

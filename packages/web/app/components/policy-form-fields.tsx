@@ -167,6 +167,8 @@ export function PolicyFormFields({
     sub_kind: "requires_field",
     edge_type: "",
     edge_role: "",
+    from_node_type: "",
+    to_node_type: "",
     target_node_type: "",
     fields: "",
     field: "",
@@ -183,6 +185,10 @@ export function PolicyFormFields({
   };
   const [kind, setKind] = useState<PolicyKind>(init.kind);
   const [subKind, setSubKind] = useState<string>(init.sub_kind);
+  // A probabilistic policy can be node-scoped (judge one node) or edge-scoped
+  // (fire on edge creation; judge both endpoints). An `edge_type` on the stored
+  // predicate means it was edge-scoped.
+  const [edgeScoped, setEdgeScoped] = useState<boolean>(Boolean(init.edge_type));
 
   return (
     <div className="space-y-4">
@@ -241,9 +247,60 @@ export function PolicyFormFields({
             />
           </Field>
           {kind === "probabilistic" ? (
-            <Field label="When node type (comma-separated, optional)">
-              <input name="when_node_type" defaultValue={init.when_node_type} className={INPUT} />
-            </Field>
+            <>
+              <fieldset className="flex flex-wrap gap-2">
+                <legend className={LABEL}>Scope</legend>
+                {(
+                  [
+                    ["node", "Node — judge one node"],
+                    ["edge", "Edge — judge a relationship (both endpoints)"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label
+                    key={value}
+                    className="neu-button inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold"
+                  >
+                    <input
+                      type="radio"
+                      name="__scope"
+                      value={value}
+                      checked={edgeScoped === (value === "edge")}
+                      onChange={() => setEdgeScoped(value === "edge")}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
+              {edgeScoped ? (
+                <>
+                  <Field label="Edge type">
+                    <EdgeTypeSelect defaultValue={init.edge_type} />
+                  </Field>
+                  <Field label="Edge role (optional)">
+                    <input name="edge_role" defaultValue={init.edge_role} className={INPUT} />
+                  </Field>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="From node type (optional)">
+                      <NodeTypeSelect name="from_node_type" defaultValue={init.from_node_type} />
+                    </Field>
+                    <Field label="To node type (optional)">
+                      <NodeTypeSelect name="to_node_type" defaultValue={init.to_node_type} />
+                    </Field>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Fires when a matching edge is created; the judge sees both endpoint nodes.
+                  </p>
+                </>
+              ) : (
+                <Field label="When node type (comma-separated, optional)">
+                  <input
+                    name="when_node_type"
+                    defaultValue={init.when_node_type}
+                    className={INPUT}
+                  />
+                </Field>
+              )}
+            </>
           ) : null}
         </>
       )}

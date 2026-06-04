@@ -13,6 +13,7 @@ import {
   BLOCKED_NODE_JSON_EDGE_FIELD_SET,
   type DeterministicPredicate,
   EDGE_TYPES,
+  NODE_TYPES,
   type NodeType,
   type PolicyPredicate,
   generateUlid,
@@ -48,6 +49,7 @@ const SYSTEM_MANAGED_FIELDS: ReadonlySet<string> = new Set([
   "updated_by",
 ]);
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
+const NODE_TYPE_SET: ReadonlySet<string> = new Set(NODE_TYPES);
 
 function isSystemManagedField(key: string): boolean {
   return SYSTEM_MANAGED_FIELDS.has(key);
@@ -1838,6 +1840,17 @@ export interface PolicyDraft {
   predicate?: DeterministicPredicate | string;
   /** Optional node-type scope for a probabilistic check. */
   when_node_type?: string[];
+  /**
+   * Edge scoping for an EDGE-scoped probabilistic policy. When `edge_type` is
+   * set on a `probabilistic` draft, the policy fires on EDGE creation (the LLM
+   * judge sees BOTH endpoint nodes) instead of on a single node candidate —
+   * e.g. "a sub-process child Intent's name is the base form of the calling
+   * Action it `serves`". `when_node_type` is ignored for an edge-scoped policy.
+   */
+  edge_type?: string;
+  edge_role?: string;
+  from_node_type?: string;
+  to_node_type?: string;
   fires_when_node_lifecycle?: string[];
   on_violation?: "block" | "warn" | "log";
   /** Optional: principal id who authored the policy. */
@@ -1925,6 +1938,44 @@ function predicateEdgeType(predicate: DeterministicPredicate): string | null {
   return typeof edgeType === "string" ? edgeType : "";
 }
 
+/**
+ * Build the seeded predicate for an EDGE-scoped probabilistic policy. Validates
+ * the edge_type against the first-class edge families and any endpoint node
+ * types against the node-type allowlist. The result fires on edge creation and
+ * hands the judge both endpoints (see `runEdgeAuthoringPolicies`).
+ */
+function buildEdgeProbabilisticPredicate(
+  instruction: string,
+  draft: PolicyDraft,
+): PolicyPredicate | CaptureError {
+  const edgeType = draft.edge_type?.trim() ?? "";
+  if (!EDGE_TYPE_SET.has(edgeType)) {
+    return {
+      error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type. Valid edge types: ${EDGE_TYPES.join(", ")}.`,
+    };
+  }
+  const edgeRole = draft.edge_role?.trim();
+  const fromNodeType = draft.from_node_type?.trim();
+  const toNodeType = draft.to_node_type?.trim();
+  for (const [field, value] of [
+    ["from_node_type", fromNodeType],
+    ["to_node_type", toNodeType],
+  ] as const) {
+    if (value && !NODE_TYPE_SET.has(value)) {
+      return {
+        error: `predicate.${field} \`${value}\` is not a node type. Valid node types: ${NODE_TYPES.join(", ")}.`,
+      };
+    }
+  }
+  return {
+    agent_instruction: instruction,
+    edge_type: edgeType,
+    ...(edgeRole ? { edge_role: edgeRole } : {}),
+    ...(fromNodeType ? { from_node_type: fromNodeType as NodeType } : {}),
+    ...(toNodeType ? { to_node_type: toNodeType as NodeType } : {}),
+  };
+}
+
 export interface PolicyCaptureExtras {
   authoring?: AuthoringWriteContext;
 }
@@ -1969,14 +2020,26 @@ async function buildPolicyPayload(
     if (!instruction) {
       return { error: `agent_instruction is required for ${draft.kind} policies.` };
     }
-    const whenNodeType =
-      draft.kind === "probabilistic" && Array.isArray(draft.when_node_type)
-        ? (draft.when_node_type.filter((v) => typeof v === "string" && v.length > 0) as NodeType[])
-        : [];
-    predicate = {
-      agent_instruction: instruction,
-      ...(whenNodeType.length > 0 ? { when_node_type: whenNodeType } : {}),
-    };
+    // Edge-scoped probabilistic: an `edge_type` on a probabilistic draft makes
+    // the policy fire on edge creation (the judge sees both endpoints) instead
+    // of on a node. `when_node_type` does not apply to an edge-scoped policy.
+    const edgeType = draft.kind === "probabilistic" ? draft.edge_type?.trim() : undefined;
+    if (edgeType) {
+      const edgePredicate = buildEdgeProbabilisticPredicate(instruction, draft);
+      if ("error" in edgePredicate) return edgePredicate;
+      predicate = edgePredicate;
+    } else {
+      const whenNodeType =
+        draft.kind === "probabilistic" && Array.isArray(draft.when_node_type)
+          ? (draft.when_node_type.filter(
+              (v) => typeof v === "string" && v.length > 0,
+            ) as NodeType[])
+          : [];
+      predicate = {
+        agent_instruction: instruction,
+        ...(whenNodeType.length > 0 ? { when_node_type: whenNodeType } : {}),
+      };
+    }
   }
 
   const id = `policy_${generateUlid()}`;

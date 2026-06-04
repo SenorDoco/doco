@@ -6,6 +6,7 @@ import {
   deterministicHeadline,
   deterministicParts,
   isDeterministicPredicate,
+  isEdgePredicate,
 } from "@doco/shared";
 import { Link } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
@@ -184,6 +185,13 @@ function PolicyView({ item }: { item: PolicyItem }) {
         </div>
       ) : (
         <div className="space-y-0.5">
+          {predicate && isEdgePredicate(predicate) ? (
+            <p className="text-[10px] font-mono text-muted-foreground">
+              edge-scoped: {predicate.from_node_type ?? "any"} —{predicate.edge_type}
+              {predicate.edge_role ? `[${predicate.edge_role}]` : ""}→{" "}
+              {predicate.to_node_type ?? "any"}
+            </p>
+          ) : null}
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Agent instruction:
           </p>
