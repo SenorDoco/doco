@@ -78,6 +78,30 @@ describe("capturePolicy author resolution", () => {
     expect(persistedData()).not.toHaveProperty("authored_by");
   });
 
+  it("links the capture footer to the policy's page, not the 404ing /policy/ node route", async () => {
+    const result = await capturePolicy(
+      "/tmp/doco",
+      DOCO_ID,
+      "torre",
+      "torre-bpm",
+      {
+        kind: "suggestion",
+        agent_instruction: "Keep BPMN lane names in business language.",
+        created_by_user_id: "user_alice",
+      },
+      "https://doco.test",
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    const { id, footer_lines } = result as { id: string; footer_lines: string[] };
+    const footer = footer_lines.join("\n");
+    // Policies are not nodes: the footer must point at the real Policy page
+    // (`/<handle>/policies/<id>`), never the generic `/<type>/<id>` node route
+    // (`/<handle>/policy/<id>`), which 404s for the `policy` type.
+    expect(footer).toContain(`https://doco.test/torre-bpm/policies/${id}`);
+    expect(footer).not.toContain(`/torre-bpm/policy/${id}`);
+  });
+
   it("records the principal author when the route resolves one", async () => {
     const result = await capturePolicy(
       "/tmp/doco",
