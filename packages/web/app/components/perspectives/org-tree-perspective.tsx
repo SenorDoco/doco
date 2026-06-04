@@ -106,7 +106,7 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
           </span>
         ) : null}
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold leading-tight text-foreground">
+          <div className="break-words text-sm font-semibold leading-tight text-foreground">
             {org.name}
           </div>
           {org.role ? (

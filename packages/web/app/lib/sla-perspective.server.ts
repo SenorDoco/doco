@@ -127,11 +127,10 @@ function normalizeLimit(value: number | null | undefined): number | null {
   return Number.isFinite(limit) && limit > 0 ? limit : null;
 }
 
-function firstLine(value: string | null | undefined): string {
-  const line = String(value ?? "")
-    .split(/\r?\n/, 1)[0]
-    .trim();
-  return line || "(untitled SLA commitment)";
+function commitmentTitle(value: string | null | undefined): string {
+  // Perspectives render the full node name, not a first-line truncation, so
+  // the commitment title is the Rule's complete prose.
+  return String(value ?? "").trim() || "(untitled SLA commitment)";
 }
 
 function asString(value: unknown): string | null {
@@ -195,7 +194,8 @@ function linkFor(
 ): SlaLink {
   return {
     id: row.id,
-    label: firstLine(label),
+    // Perspectives render the full node name, not a first-line truncation.
+    label: label.trim(),
     href: href(handle, entityType, row.id),
     lifecycle: row.lifecycle ?? "active",
   };
@@ -346,7 +346,7 @@ export async function loadSlaPerspectiveData(
 
   const commitments: SlaCommitment[] = rules.rows.map((rule) => {
     const data = rule.data ?? {};
-    const title = firstLine(rule.rule);
+    const title = commitmentTitle(rule.rule);
     const ownerId =
       outgoing.get(rule.id)?.find((s) => edgeRole(s) === "owned_by" && principalsById.has(s.to_id))
         ?.to_id ??

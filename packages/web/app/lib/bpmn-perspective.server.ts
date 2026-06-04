@@ -202,8 +202,9 @@ export async function loadBpmnGraph(
 ): Promise<BpmnGraphData> {
   // Post-collapse: one `nodes` query over the eight BPMN node types
   // (BPMN_TABLES deliberately excludes logs and principals — principals
-  // are loaded separately below as actor lanes). `summary` is the first
-  // line of `prose`.
+  // are loaded separately below as actor lanes). `summary` is the node's
+  // full `prose` — perspectives render the complete node name, not just its
+  // first line (the box auto-sizes to the label via sizeForNode).
   //
   // Every lifecycle is loaded — including retired. Hiding a lifecycle is
   // the client's job: the page-level lifecycle filter (`visibleLifecycles`,
@@ -225,7 +226,7 @@ export async function loadBpmnGraph(
   if (windowIds.length > 0) nodeParams.push(windowIds);
   const nodeSql = `SELECT t.id,
               t.node_type AS entity_type,
-              split_part(t.prose, E'\n', 1) AS summary,
+              t.prose AS summary,
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
               t.data,

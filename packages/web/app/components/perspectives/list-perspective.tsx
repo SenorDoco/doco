@@ -232,7 +232,10 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
       <span aria-hidden className="shrink-0">
         <NodeTypeIcon entityType={node.entity_type} />
       </span>
-      <span className="min-w-0 flex-1 truncate" title={node.name ?? undefined}>
+      <span
+        className="min-w-0 flex-1 whitespace-pre-line break-words"
+        title={node.name ?? undefined}
+      >
         {node.name ?? <span className="italic text-muted-foreground">(unnamed)</span>}
       </span>
       {node.lifecycle ? (
