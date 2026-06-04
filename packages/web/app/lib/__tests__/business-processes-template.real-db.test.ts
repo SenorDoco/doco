@@ -720,23 +720,23 @@ describe("business-processes template — blocks malformed processes", () => {
   });
 });
 
-// ─── Suite C: Principal-attachment every stage; Intent + completeness committed ─
+// ─── Suite C: all flow-node gates are committed-only; drafting is exempt ───────
 //
-// The split this suite pins down:
+// What this suite pins down:
 //   - PRINCIPAL ATTACHMENT — an Action is `performed_by`, a gateway Decision
-//     `decided_by` a Principal — is required from `drafting` onward, so a
-//     sketched Action/gateway never floats free of its actor/decider.
+//     `decided_by` a Principal — fires only on the committed stages, so a
+//     `drafting` sketch may name no actor/decider yet.
 //   - INTENT (`serves`) + COMPLETENESS / SHAPE — serving an Intent, forward
-//     `flows_to` wiring, gateway exhaustiveness, milestone naming, … — stays
-//     suspended while `drafting` and fires only on the committed stages
-//     (`queued`, `active`). So a step can be drafted before its Intent (pool)
-//     is chosen; the Intent link is required once committed.
+//     `flows_to` wiring, gateway exhaustiveness, milestone naming, … — likewise
+//     fires only on the committed stages (`queued`, `active`). So a step can be
+//     drafted before its actor, decider, or Intent (pool) is chosen; all are
+//     required once committed.
 
-describe("business-processes template — principal attachment every stage, intent committed-only", () => {
+describe("business-processes template — all flow-node gates committed-only, drafting exempt", () => {
   // The same orphan Action (serves wired, performed_by missing) at each
-  // lifecycle. Attachment to the Principal (`performed_by`) is now required at
-  // EVERY pre-retirement stage, so even a `drafting` orphan is blocked — that
-  // is the change. (`queued`/`active` were already held.)
+  // lifecycle. Attachment to the Principal (`performed_by`) fires only on the
+  // committed stages, so a `drafting` orphan is exempt while `queued`/`active`
+  // are blocked.
   function orphanAt(lifecycle: Lifecycle): { candidate: CandidateFields; graph: Graph } {
     const g = buildProcess(SCENARIOS[0], lifecycle);
     const orphan = node(
@@ -750,10 +750,10 @@ describe("business-processes template — principal attachment every stage, inte
     return { candidate: orphan, graph: g };
   }
 
-  it("a drafting flow node IS held to its Principal attachment (the new behavior)", () => {
+  it("a drafting flow node is NOT held to its Principal attachment (drafting exempt)", () => {
     const { candidate, graph } = orphanAt("drafting");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
-    expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
+    expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(false);
   });
 
   it("a queued node IS held to its Principal attachment", () => {
@@ -768,11 +768,11 @@ describe("business-processes template — principal attachment every stage, inte
     expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
   });
 
-  it("a drafting flow node that IS attached stays exempt from completeness/shape rules", () => {
-    // Attachment (serves + performed_by) satisfied, but the forward `flows_to`
-    // wiring is missing. The flow-wiring gate is completeness, not attachment,
-    // so a drafting sketch is still free to defer it — proving the change
-    // tightened ONLY attachment, not every rule.
+  it("a drafting flow node with actor + Intent wired still has no blocks", () => {
+    // serves + performed_by satisfied and the forward `flows_to` wiring still
+    // missing — the flow-wiring gate is committed-only too, so a drafting
+    // sketch is free to defer it. (A fully-bare draft is likewise exempt; see
+    // the orphan test above.)
     const g = buildProcess(SCENARIOS[0], "drafting");
     const attached = node(
       "action",
@@ -835,10 +835,10 @@ describe("business-processes template — principal attachment every stage, inte
     );
   });
 
-  it("a gateway Decision's decided_by is enforced at drafting, queued, AND active", () => {
-    // Mirrors the performed_by gate: a gateway must name its decider Principal
-    // from the moment it exists, so a missing `decided_by` blocks at every
-    // pre-retirement stage — drafting included.
+  it("a gateway Decision's decided_by is enforced at queued and active, NOT drafting", () => {
+    // Mirrors the performed_by gate: a committed gateway must name its decider
+    // Principal, so a missing `decided_by` blocks at `queued`/`active`, but a
+    // `drafting` sketch may defer it.
     function gatewayMissingDecidedByBlocks(lifecycle: Lifecycle): boolean {
       const g = buildProcess(SCENARIOS[0], lifecycle);
       const orphan = node(
@@ -856,8 +856,8 @@ describe("business-processes template — principal attachment every stage, inte
       g.nodes.push(orphan);
       return deterministicBlocks(evaluate(orphan, g)).some((b) => /decided_by/.test(b.reason));
     }
-    expect(gatewayMissingDecidedByBlocks("drafting"), "drafting is held to the decider rule").toBe(
-      true,
+    expect(gatewayMissingDecidedByBlocks("drafting"), "drafting is exempt from the decider rule").toBe(
+      false,
     );
     expect(gatewayMissingDecidedByBlocks("queued"), "queued is held to the decider rule").toBe(
       true,
@@ -1291,16 +1291,16 @@ describe("business-processes template — flow-wiring end-to-end via runAuthorin
 
 // ─── Suite G: a flow node serves AT MOST one Intent (the serves ceiling) ───────
 //
-// The `serves` attachment FLOOR (≥1 Intent) gets a matching CEILING (≤1): every
-// flow node belongs to exactly one BPMN pool. Like the floor, the ceiling is an
-// ATTACHMENT invariant — it fires at EVERY pre-retirement stage (drafting,
-// queued, active), so a node never serves two Intents even in a sketch. Suite A
-// already proves the ten well-formed processes (one serves edge per node) pass
-// every block gate; here we add the explicit ceiling check and prove it catches
-// a node wired into two pools.
+// The `serves` FLOOR (≥1 Intent) gets a matching CEILING (≤1): every committed
+// flow node belongs to exactly one BPMN pool. Like the floor, the ceiling fires
+// on the committed stages only (`queued`, `active`) — a `drafting` sketch is
+// exempt. Suite A already proves the ten well-formed processes (one serves edge
+// per node) pass every block gate; here we add the explicit ceiling check and
+// prove it catches a committed node wired into two pools, while a drafting one
+// is left alone.
 
 describe("business-processes template — a flow node serves at most one Intent", () => {
-  it("seeds the limits_edge_role serves ceiling, firing at every stage", () => {
+  it("seeds the limits_edge_role serves ceiling, firing on committed stages only", () => {
     const ceiling = policies.find(
       (p) =>
         isDeterministicPredicate(p.predicate) &&
@@ -1309,7 +1309,7 @@ describe("business-processes template — a flow node serves at most one Intent"
     );
     expect(ceiling).toBeDefined();
     expect(ceiling?.on_violation).toBe("block");
-    expect(ceiling?.fires_when_node_lifecycle).toEqual(["drafting", "queued", "active"]);
+    expect(ceiling?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
   });
 
   // Wire a SECOND process Intent into the Doco, then an Action that serves BOTH
@@ -1340,7 +1340,7 @@ describe("business-processes template — a flow node serves at most one Intent"
     return { candidate: twoPool, graph: g };
   }
 
-  for (const lifecycle of ["drafting", "queued", "active"] as const) {
+  for (const lifecycle of ["queued", "active"] as const) {
     it(`blocks an Action serving two Intents at ${lifecycle}`, () => {
       const { candidate, graph } = actionServingTwoIntents(lifecycle);
       const blocks = deterministicBlocks(evaluate(candidate, graph));
@@ -1350,6 +1350,14 @@ describe("business-processes template — a flow node serves at most one Intent"
       ).toBe(true);
     });
   }
+
+  it("does NOT block an Action serving two Intents while it is a drafting sketch", () => {
+    const { candidate, graph } = actionServingTwoIntents("drafting");
+    const blocks = deterministicBlocks(evaluate(candidate, graph));
+    expect(blocks.some((b) => b.sub_kind === "limits_edge_role" && /serves/.test(b.reason))).toBe(
+      false,
+    );
+  });
 
   it("does NOT block flow nodes that each serve exactly one Intent (no false positive)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
