@@ -720,19 +720,19 @@ describe("business-processes template — blocks malformed processes", () => {
   });
 });
 
-// ─── Suite C: attachment every stage; completeness committed-only ─────────────
+// ─── Suite C: Principal-attachment every stage; Intent + completeness committed ─
 //
 // The split this suite pins down:
-//   - ATTACHMENT — a flow node `serves` its Intent, is `performed_by` (Action)
-//     or `decided_by` (gateway) a Principal — is required from `drafting`
-//     onward. A business-processes Doco never holds a flow node (an Action, a
-//     gateway, or a milestone/event State) that floats free of an Intent or a
-//     Principal, even in draft.
-//   - COMPLETENESS / SHAPE — forward `flows_to` wiring, gateway exhaustiveness,
-//     milestone naming, … — stays suspended while `drafting` and fires only on
-//     the committed stages (`queued`, `active`).
+//   - PRINCIPAL ATTACHMENT — an Action is `performed_by`, a gateway Decision
+//     `decided_by` a Principal — is required from `drafting` onward, so a
+//     sketched Action/gateway never floats free of its actor/decider.
+//   - INTENT (`serves`) + COMPLETENESS / SHAPE — serving an Intent, forward
+//     `flows_to` wiring, gateway exhaustiveness, milestone naming, … — stays
+//     suspended while `drafting` and fires only on the committed stages
+//     (`queued`, `active`). So a step can be drafted before its Intent (pool)
+//     is chosen; the Intent link is required once committed.
 
-describe("business-processes template — attachment every stage, completeness committed-only", () => {
+describe("business-processes template — principal attachment every stage, intent committed-only", () => {
   // The same orphan Action (serves wired, performed_by missing) at each
   // lifecycle. Attachment to the Principal (`performed_by`) is now required at
   // EVERY pre-retirement stage, so even a `drafting` orphan is blocked — that
@@ -785,6 +785,54 @@ describe("business-processes template — attachment every stage, completeness c
     // No incoming/outgoing flows_to wired.
     g.nodes.push(attached);
     expect(deterministicBlocks(evaluate(attached, g))).toEqual([]);
+  });
+
+  it("a drafting flow node need NOT serve an Intent (intent not required in drafting)", () => {
+    // An Action that names its actor (`performed_by`) but has no `serves` edge
+    // is fine while drafting — the Intent link is deferrable until it commits.
+    const g = buildProcess(SCENARIOS[0], "drafting");
+    const noIntent = node(
+      "action",
+      "loan-approval",
+      { action: "stamp the form", verb: "stamp" },
+      "drafting",
+    );
+    g.edges.push(edge(noIntent.id, g.principals[0].id, "attributed_to", "performed_by")); // actor only; no serves
+    g.nodes.push(noIntent);
+    const blocks = deterministicBlocks(evaluate(noIntent, g));
+    expect(blocks.some((b) => /serves/.test(b.reason))).toBe(false);
+    expect(blocks).toEqual([]);
+
+    // A milestone State (whose only attachment gate is `serves`) likewise needs
+    // no Intent while drafting.
+    const draftState = node(
+      "state",
+      "loan-approval",
+      { state: "paperwork stamped", kind: "intermediate" },
+      "drafting",
+    );
+    g.nodes.push(draftState); // no serves edge
+    expect(deterministicBlocks(evaluate(draftState, g))).toEqual([]);
+  });
+
+  it("the same unattached-to-Intent flow node IS blocked once committed (queued)", () => {
+    // The Intent link is required at the committed stages — the drafting
+    // exemption above is lifecycle-scoped, not a blanket drop of the gate.
+    const g = buildProcess(SCENARIOS[0], "queued");
+    const noIntent = node(
+      "action",
+      "loan-approval",
+      { action: "stamp the form", verb: "stamp" },
+      "queued",
+    );
+    g.edges.push(edge(noIntent.id, g.principals[0].id, "attributed_to", "performed_by"));
+    g.edges.push(edge(g.states[0].id, noIntent.id, "flows_to", ""));
+    g.edges.push(edge(noIntent.id, g.gateway.id, "flows_to", ""));
+    g.nodes.push(noIntent);
+    const blocks = deterministicBlocks(evaluate(noIntent, g));
+    expect(blocks.some((b) => b.sub_kind === "requires_edge_role" && /serves/.test(b.reason))).toBe(
+      true,
+    );
   });
 
   it("a gateway Decision's decided_by is enforced at drafting, queued, AND active", () => {
