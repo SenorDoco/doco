@@ -43,15 +43,13 @@ describe("pullRequestItemsFromRows", () => {
     expect(items.map((i) => i.lifecycle)).toEqual(["retired", "queued", "active"]);
   });
 
-  it("uses the first line of the prose (the PR title) as the row title, not the body", () => {
+  it("uses the full reference prose as the title, not just the first line", () => {
     const items = pullRequestItemsFromRows([
       row({ reference: "Fix the thing\n\nLonger body explaining the fix." }),
     ]);
 
-    // The PR's name is its title (the first line of the Reference prose); the
-    // body — the PR description — must NOT leak into this one-line row label.
-    // It stays in the node's prose, shown in the node detail dialog.
-    expect(items[0].title).toBe("Fix the thing");
+    // Perspectives render the full node name, not a first-line truncation.
+    expect(items[0].title).toBe("Fix the thing\n\nLonger body explaining the fix.");
   });
 
   it("falls back to the locator when the prose is empty", () => {
