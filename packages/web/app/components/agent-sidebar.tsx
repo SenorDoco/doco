@@ -3032,22 +3032,14 @@ function ThinkingRow({ ev }: { ev: ThinkingEvent }) {
   return null;
 }
 
-// Render text blocks with inline `[label](url)` markdown links
-// elevated to anchors. The chat surface is otherwise plain text — no
-// full markdown — but footer lines emitted by capture endpoints carry
-// a markdown link to the affected entity (e.g.
-// `[🔮 Doco] 👤 Principal added: [juanfer](http://host/handle/principal/...)`).
-// Without this the user sees the brackets-and-parens literal instead
-// of a clickable jump.
-//
-// Same-origin URLs are routed through React Router's Link so the chat
-// state survives the navigation; foreign URLs fall back to a plain
-// anchor opened in a new tab.
-function renderInlineLinks(text: string): ReactNode[] {
+// Resolve inline `[label](url)` markdown links within a single run of
+// text into anchors. Same-origin URLs are routed through React Router's
+// Link so the chat state survives the navigation; foreign URLs fall back
+// to a plain anchor opened in a new tab.
+function renderLinkRun(text: string, nextKey: () => number): ReactNode[] {
   const out: ReactNode[] = [];
   const re = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
   let last = 0;
-  let key = 0;
   let m: RegExpExecArray | null = re.exec(text);
   while (m !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
@@ -3065,14 +3057,14 @@ function renderInlineLinks(text: string): ReactNode[] {
     }
     if (toProp) {
       out.push(
-        <Link key={key++} to={toProp} className="underline hover:text-primary">
+        <Link key={nextKey()} to={toProp} className="underline hover:text-primary">
           {label}
         </Link>,
       );
     } else {
       out.push(
         <a
-          key={key++}
+          key={nextKey()}
           href={url}
           target="_blank"
           rel="noreferrer"
@@ -3086,6 +3078,40 @@ function renderInlineLinks(text: string): ReactNode[] {
     m = re.exec(text);
   }
   if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+// Render text blocks with inline `[label](url)` markdown links elevated
+// to anchors. The chat surface is otherwise plain text — no full markdown
+// — but footer lines emitted by capture endpoints carry a markdown link
+// to the affected entity (e.g.
+// `[🔮 Doco] 👤 Principal added: [juanfer](http://host/handle/principal/...)`).
+// Without this the user sees the brackets-and-parens literal instead of a
+// clickable jump.
+//
+// Capture footers also wrap the entity anchor in `~~...~~` when the
+// lifecycle is set to a struck value such as "retired" (see
+// capture.server.ts). We honor that strikethrough here — rendering the run
+// with `line-through`, the same convention the activity feed uses — so the
+// retired signal lands instead of leaking literal tildes around the link.
+export function renderInlineLinks(text: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  const strikeRe = /~~([\s\S]+?)~~/g;
+  let last = 0;
+  let key = 0;
+  const nextKey = () => key++;
+  let m: RegExpExecArray | null = strikeRe.exec(text);
+  while (m !== null) {
+    if (m.index > last) out.push(...renderLinkRun(text.slice(last, m.index), nextKey));
+    out.push(
+      <span key={nextKey()} className="line-through decoration-2">
+        {renderLinkRun(m[1], nextKey)}
+      </span>,
+    );
+    last = m.index + m[0].length;
+    m = strikeRe.exec(text);
+  }
+  if (last < text.length) out.push(...renderLinkRun(text.slice(last), nextKey));
   return out;
 }
 
