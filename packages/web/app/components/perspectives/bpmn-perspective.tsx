@@ -165,6 +165,11 @@ const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
 const BPMN_RENDER_EDGE_BUDGET = 700;
 const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
+// Long swim-lane processes can run far wider than the viewport. ReactFlow
+// clamps the reachable zoom at `minZoom`, so the floor has to sit low enough
+// for `fitView` (and manual scroll/pinch) to pull the whole flow on screen.
+export const BPMN_MIN_ZOOM = 0.02;
+export const BPMN_MAX_ZOOM = 2.0;
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -1078,8 +1083,8 @@ export function BpmnPerspective({
             nodesDraggable={false}
             nodesConnectable={false}
             onlyRenderVisibleElements
-            minZoom={0.1}
-            maxZoom={2.0}
+            minZoom={BPMN_MIN_ZOOM}
+            maxZoom={BPMN_MAX_ZOOM}
             panOnDrag
             zoomOnScroll
             zoomOnPinch

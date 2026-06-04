@@ -142,7 +142,10 @@ const OVERVIEW_NODE_WIDTH = 224;
 const OVERVIEW_NODE_HEIGHT = 91;
 const DETAIL_ZOOM = 0.95;
 const MAX_DETAIL_FETCH = 80;
-const GRAPH_MIN_ZOOM = 0.03;
+// Dense overview graphs can sprawl well past the viewport. ReactFlow clamps
+// the reachable zoom at `minZoom`, so keep the floor low enough for `fitView`
+// (and manual scroll/pinch) to pull the whole graph on screen.
+export const GRAPH_MIN_ZOOM = 0.02;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
 const OVERVIEW_RENDER_NODE_BUDGET = 50;
