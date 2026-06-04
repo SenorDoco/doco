@@ -91,29 +91,19 @@ export const NODE_PROMOTED_COLUMNS: Readonly<Record<string, readonly PromotedCol
   intent: [],
   idea: [{ column: "proposer_id", field: "proposer_id" }],
   decision: [],
-  action: [
-    { column: "verb", field: "verb", stripFromData: true },
-    { column: "performed_at", field: "performed_at", stripFromData: true },
-  ],
-  log: [
-    { column: "verb", field: "verb", stripFromData: true },
-    { column: "happened_at", field: "happened_at", stripFromData: true },
-  ],
+  // Node-shape slim-down (contract phase): action/log/rule scalars no longer
+  // get their own columns — they live in the unified `attributes` bag. Only
+  // `kind` (eval/state) stays promoted, plus idea's `proposer_id` FK.
+  action: [],
+  log: [],
   eval: [{ column: "kind", field: "kind", stripFromData: true }],
-  rule: [
-    { column: "severity", field: "severity", stripFromData: true },
-    { column: "phase", field: "phase", stripFromData: true },
-    { column: "on_violation", field: "on_violation", stripFromData: true },
-  ],
+  rule: [],
   state: [{ column: "kind", field: "kind", stripFromData: true }],
-  reference: [
-    { column: "ref_type", field: "ref_type", stripFromData: true },
-    { column: "locator", field: "locator", stripFromData: true },
-    { column: "citation", field: "citation", stripFromData: true },
-    { column: "title", field: "title", stripFromData: true },
-  ],
-  // principal: no graph promoted columns; name/body_md/role_principal handled
-  // directly by the writer (role_principal is stripped from data there).
+  // reference scalars (ref_type/locator/citation/title) now live in `attributes`.
+  reference: [],
+  // principal: `kind` (human/agent) is promoted to its column; name/body_md/
+  // role_principal are written directly by the writer.
+  principal: [{ column: "kind", field: "kind", stripFromData: true }],
 };
 
 /** The user category — human OAuth identity layer. */
@@ -166,6 +156,8 @@ export interface EntityRecord {
   name?: string | null;
   /** Full prose content for node rows. */
   type_named_value?: string | null;
+  /** Node-shape slim-down: the unified per-node attributes bag (jsonb). */
+  attributes?: Record<string, unknown> | null;
   created_at?: string | null;
   created_by?: string | null;
   updated_at?: string | null;

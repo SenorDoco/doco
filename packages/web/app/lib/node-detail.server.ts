@@ -463,7 +463,7 @@ export async function loadNodeDialogDetail(
               ${bodySelect},
               COALESCE(lifecycle, 'active') AS lifecycle,
               data::text AS raw_json,
-              locator,
+              attributes->>'locator' AS locator,
               created_at,
               updated_at,
               created_by,

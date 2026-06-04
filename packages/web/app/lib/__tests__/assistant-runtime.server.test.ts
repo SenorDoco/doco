@@ -10,10 +10,10 @@ describe("assistant-runtime.server", () => {
     restoreEnv("DOCO_ASSISTANT_MODEL", originalFallbackModel);
   });
 
-  it("defaults Señor Doco to Haiku — simple, cheap, MCP-for-complex", () => {
-    // Señor Doco is positioned as the in-product Haiku assistant for simple
+  it("defaults Señor Doco to Sonnet — capable in-product assistant, MCP-for-complex", () => {
+    // Señor Doco is positioned as the in-product Sonnet assistant for simple
     // work; complex work is delegated to a user's own agent over the MCP.
-    expect(SENOR_DOCO_DEFAULT_MODEL).toBe("claude-haiku-4-5");
+    expect(SENOR_DOCO_DEFAULT_MODEL).toBe("claude-sonnet-4-6");
   });
 
   it("uses the shared Señor Doco model default", () => {

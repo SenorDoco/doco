@@ -860,6 +860,24 @@ export function OverviewGraph({
     [updateViewport],
   );
 
+  // "Home" button: reset to the view the graph opens on by default —
+  // focus back on the highest-ranked node and frame the whole graph,
+  // matching the cold-open `fitView` over every rendered node.
+  const goHome = useCallback(() => {
+    const defaultCenter = highestRankedNodeId(visibleNodes, pageRanks) ?? null;
+    if (onCenterChange) onCenterChange(defaultCenter);
+    const instance = flowInstanceRef.current;
+    if (instance?.fitView && renderedNodes.length > 0) {
+      instance.fitView({
+        ...GRAPH_FIT_VIEW_OPTIONS,
+        nodes: renderedNodes.map((node) => ({ id: node.id })),
+        duration: 300,
+      });
+      const next = instance.getViewport?.();
+      if (next) updateViewport(next);
+    }
+  }, [onCenterChange, visibleNodes, pageRanks, renderedNodes, updateViewport]);
+
   useEffect(() => {
     if (!initialFocusFlowNodeId) return;
     const hasExplicitFocus = Boolean(initialFocusId);
@@ -965,7 +983,7 @@ export function OverviewGraph({
               proOptions={{ hideAttribution: true }}
             >
               <Flow.Background gap={20} size={1} />
-              <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} />
+              <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} onHome={goHome} />
             </Flow.ReactFlow>
           ) : (
             <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">

@@ -262,8 +262,8 @@ const STRIP_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = (() =>
     for (const pc of columns) if (pc.stripFromData) keys.add(pc.field);
     if (keys.size > 0) out[type] = keys;
   }
-  // Principal's role_principal is promoted to its own column by the writer.
-  out.principal = new Set(["role_principal"]);
+  // Principal's role_principal + kind are promoted to their own columns.
+  out.principal = new Set(["role_principal", "kind"]);
   return out;
 })();
 
@@ -407,16 +407,15 @@ export async function listIdentityRows(
  * sees the structured values.
  */
 const PROMOTED_COLUMNS_BY_TYPE: Record<string, readonly string[]> = {
-  action: ["verb", "performed_at"],
-  log: ["verb", "happened_at"],
+  // Node-shape slim-down (contract phase): action/log/rule AND reference scalars
+  // are dropped columns now — they come back via the `attributes` merge below,
+  // not here. Only `kind` (eval/state) and principal's `role_principal` remain.
   eval: ["kind"],
-  rule: ["kind", "severity", "phase", "on_violation"],
   state: ["kind"],
-  reference: ["ref_type", "locator", "citation", "title"],
-  principal: ["role_principal"],
+  principal: ["role_principal", "kind"],
 };
 
-function rowToRecord(entityType: string, row: Record<string, unknown>): EntityRecord {
+export function rowToRecord(entityType: string, row: Record<string, unknown>): EntityRecord {
   // Merge promoted typed columns back into the data jsonb so callers that read
   // structured fields off `rec.data` still find them.
   const baseData = (row.data && typeof row.data === "object" ? row.data : {}) as Record<
@@ -433,6 +432,13 @@ function rowToRecord(entityType: string, row: Record<string, unknown>): EntityRe
       data[col] = v instanceof Date ? v.toISOString() : v;
     }
   }
+  // Node-shape slim-down: the unified `attributes` bag is the source of truth
+  // for per-type domain fields (incl. the dropped action/log/rule scalars like
+  // verb / severity). Merge it on top so callers reading `rec.data.verb` still
+  // find them once those columns are gone.
+  if (row.attributes && typeof row.attributes === "object") {
+    Object.assign(data, row.attributes as Record<string, unknown>);
+  }
 
   const rec: EntityRecord = {
     id: String(row.id),
@@ -448,6 +454,11 @@ function rowToRecord(entityType: string, row: Record<string, unknown>): EntityRe
   // Empty string means "not set yet".
   if ("prose" in row && row.prose !== null && row.prose !== "") {
     rec.type_named_value = String(row.prose);
+  }
+  // Node-shape slim-down (raw-schema phase): surface the unified `attributes`
+  // bag so callers/the API can read the row shape directly.
+  if ("attributes" in row && row.attributes && typeof row.attributes === "object") {
+    rec.attributes = row.attributes as Record<string, unknown>;
   }
   if (row.created_at instanceof Date) rec.created_at = row.created_at.toISOString();
   if ("created_by" in row && row.created_by !== null) rec.created_by = String(row.created_by);

@@ -27,11 +27,10 @@ export interface OrgTreeNode {
   role: string | null;
   /**
    * "person" | "agent" | "vacant" — drives the seat icon (👤 / 🤖 / 🪑).
-   * Inferred from `body_md` prose, not from a structured field (the
-   * slim-down removed `type` from the Principal data shape); the
-   * org-chart template requires every seat to declare which of the three
-   * it is. null = no confident inference; the perspective omits the icon
-   * for those.
+   * Taken from the promoted `kind` column when set (`human`→person,
+   * `agent`→agent); otherwise inferred from the Principal's prose, which
+   * also covers `vacant` (no `kind` value of its own). null = no confident
+   * signal; the perspective omits the icon for those.
    */
   type: "person" | "agent" | "vacant" | null;
   lifecycle: string;
@@ -59,6 +58,8 @@ interface OrgTreeRow {
   id: string;
   name: string;
   lifecycle: string | null;
+  /** Promoted seat kind — "human" | "agent" (null for vacant/undeclared). */
+  kind: string | null;
   body_md: string | null;
   data: Record<string, unknown>;
   /** Scalar-subquery total principals (bigint → string from pg). */
@@ -120,6 +121,18 @@ function inferKindFromProse(body: string | null): "person" | "agent" | "vacant" 
   return null;
 }
 
+/**
+ * Map the promoted `kind` column to the perspective's seat type. Principals
+ * declare `human` or `agent`; "vacant" has no `kind` of its own, so it stays a
+ * prose inference. Returns null for an unset/unrecognized kind so the caller
+ * falls back to `inferKindFromProse`.
+ */
+function mapPrincipalKind(kind: string | null): "person" | "agent" | null {
+  if (kind === "human") return "person";
+  if (kind === "agent") return "agent";
+  return null;
+}
+
 function roleFromProse(
   body: string | null,
   name: string,
@@ -165,7 +178,7 @@ export async function loadOrgTreeData(
       // Migration 037 dropped `summary` from principals; the
       // description shown under the label is now the first non-blank
       // line of `body_md`.
-      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle, body_md, data,
+      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle, kind, body_md, data,
               (SELECT COUNT(*) FROM nodes
                 WHERE node_type = 'principal' AND doco_id = $1) AS total_count
          FROM nodes
@@ -215,7 +228,7 @@ export async function loadOrgTreeData(
   }
 
   const nodes: OrgTreeNode[] = rows.map((r) => {
-    const type = inferKindFromProse(r.body_md);
+    const type = mapPrincipalKind(r.kind) ?? inferKindFromProse(r.body_md);
     const role = roleFromProse(r.body_md, r.name, type);
     const reports_to = reportsToByPrincipal.get(r.id) ?? null;
     const dotted_reports_to = dottedReportsToByPrincipal.get(r.id) ?? [];

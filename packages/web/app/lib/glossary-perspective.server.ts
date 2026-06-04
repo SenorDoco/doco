@@ -312,11 +312,14 @@ export async function loadGlossaryPerspectiveData(
     `
     SELECT id,
            node_type AS entity_type,
-           split_part(COALESCE(NULLIF(title, ''), prose), E'\n', 1) AS label,
+           split_part(COALESCE(NULLIF(attributes->>'title', ''), prose), E'\n', 1) AS label,
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,
            data,
-           ref_type, locator, citation, title,
+           attributes->>'ref_type' AS ref_type,
+           attributes->>'locator' AS locator,
+           attributes->>'citation' AS citation,
+           attributes->>'title' AS title,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1
                AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')) AS total_count

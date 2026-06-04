@@ -2,7 +2,7 @@
 // @doco/db's withClient at an in-process PGlite loaded with the REAL schema
 // and proves that markSlackChannelIntroducedIfFirst returns true exactly once
 // per (workspace, channel), so Señor Doco leads its FIRST message in a channel
-// with the Haiku/MCP intro and never repeats it. Also pins the intro copy.
+// with the Sonnet/MCP intro and never repeats it. Also pins the intro copy.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,9 +66,9 @@ describe("markSlackChannelIntroducedIfFirst (real DB)", () => {
 });
 
 describe("buildSlackChannelIntroLine", () => {
-  it("states the Haiku scope and links the tokens page on the request origin", () => {
+  it("states the Sonnet scope and links the tokens page on the request origin", () => {
     expect(buildSlackChannelIntroLine("https://example.test")).toBe(
-      "I use Haiku and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://example.test/tokens>",
+      "I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://example.test/tokens>",
     );
   });
 

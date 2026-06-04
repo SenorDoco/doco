@@ -317,18 +317,12 @@ CREATE TABLE IF NOT EXISTS nodes (
   body_md        text,                       -- principal prose description (NULL for the others)
   role_principal boolean NOT NULL DEFAULT false,
   proposer_id               text CONSTRAINT nodes_proposer_fk               REFERENCES users(id) ON DELETE SET NULL,             -- idea → users(id) (OAuth identity)
-  -- Promoted scalar columns.
-  verb         text,                          -- action, log
-  performed_at timestamptz,                   -- action (matches actions.performed_at)
-  happened_at  timestamptz,                   -- log (matches logs.happened_at)
+  -- Promoted scalar columns. Slim-down contract phase: every per-type scalar
+  -- (action/log/rule verb/severity/… AND the reference ref_type/locator/
+  -- citation/title) moved into `attributes` and is dropped below. `kind`
+  -- (eval/state) is the last promoted scalar; principal name/body_md and the
+  -- catch-all `data` are folded in later phases.
   kind         text,                          -- eval, state
-  severity     text,                          -- rule
-  phase        text,                          -- rule
-  on_violation text,                          -- rule
-  ref_type     text,                          -- reference
-  locator      text,                          -- reference
-  citation     text,                          -- reference
-  title        text,                          -- reference
   data         jsonb NOT NULL,
   -- Node-shape slim-down (expand phase): the unified per-node attributes bag
   -- that will replace every per-type promoted column (except `kind`) and the
@@ -342,6 +336,9 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 CREATE INDEX IF NOT EXISTS nodes_doco_type_idx  ON nodes (doco_id, node_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS nodes_doco_life_idx  ON nodes (doco_id, lifecycle);
+-- Reference dedupe key (slim-down: `locator` is now in `attributes`). Keeps the
+-- PR-import idempotency lookup (github-pr-import.server.ts) an indexed read.
+CREATE INDEX IF NOT EXISTS nodes_ref_locator_idx ON nodes (doco_id, (attributes->>'locator')) WHERE node_type = 'reference';
 
 -- Self-heal: `modality` was a promoted Rule column that capture always wrote
 -- as the constant "must" and no reader ever consulted (enforcement modality
@@ -349,17 +346,13 @@ CREATE INDEX IF NOT EXISTS nodes_doco_life_idx  ON nodes (doco_id, lifecycle);
 -- where present, a no-op on fresh installs (never created above).
 ALTER TABLE nodes DROP COLUMN IF EXISTS modality;
 
--- Node-shape slim-down (expand phase). Add the unified `attributes` bag to
--- pre-existing tables, then backfill it from `data` + the promoted scalar
--- columns. Idempotent and non-destructive: the backfill only touches rows that
--- still carry the empty default, so re-applying schema.sql (every prod boot)
--- is a no-op once migrated, and freshly-written rows populate `attributes`
--- directly via the writer. No columns are dropped here — that is the later
--- contract phase, after every reader has moved off them.
+-- Node-shape slim-down. Add the unified `attributes` bag and backfill it from
+-- `data` + the retained promoted columns (defensive: the writer already fills
+-- it on every write, this only touches rows still on the empty default).
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS attributes jsonb NOT NULL DEFAULT '{}'::jsonb;
 UPDATE nodes
    SET attributes = jsonb_strip_nulls(
-         (COALESCE(data, '{}'::jsonb)
+         COALESCE(data, '{}'::jsonb)
             -- identity / audit / lifecycle live in real columns
             - 'id' - 'doco_id' - 'node_type' - 'lifecycle'
             - 'created_at' - 'created_by' - 'updated_at' - 'updated_by'
@@ -372,11 +365,52 @@ UPDATE nodes
             -- the type-named prose field, duplicated into data on old writes
             - 'intent' - 'idea' - 'rule' - 'decision' - 'action'
             - 'log' - 'eval' - 'reference' - 'state')
-         || jsonb_build_object(
-              'verb', verb, 'performed_at', performed_at, 'happened_at', happened_at,
-              'severity', severity, 'phase', phase, 'on_violation', on_violation,
-              'ref_type', ref_type, 'locator', locator, 'citation', citation, 'title', title))
  WHERE attributes = '{}'::jsonb;
+
+-- Contract phase: the action/log/rule scalar columns now live in `attributes`.
+-- Fold any straggler values in, then DROP the columns. Guarded on the `verb`
+-- column so a fresh install (never created them) and an already-migrated DB
+-- both skip — idempotent across every prod boot.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'nodes' AND column_name = 'verb'
+  ) THEN
+    UPDATE nodes
+       SET attributes = attributes || jsonb_strip_nulls(jsonb_build_object(
+             'verb', verb, 'performed_at', performed_at, 'happened_at', happened_at,
+             'severity', severity, 'phase', phase, 'on_violation', on_violation));
+    ALTER TABLE nodes
+      DROP COLUMN IF EXISTS verb,
+      DROP COLUMN IF EXISTS performed_at,
+      DROP COLUMN IF EXISTS happened_at,
+      DROP COLUMN IF EXISTS severity,
+      DROP COLUMN IF EXISTS phase,
+      DROP COLUMN IF EXISTS on_violation;
+  END IF;
+END $$;
+
+-- Contract phase: the reference scalar columns (ref_type / locator / citation
+-- / title) now live in `attributes`. Fold any straggler values in, then DROP.
+-- Guarded on `ref_type` so fresh installs and already-migrated DBs both skip.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'nodes' AND column_name = 'ref_type'
+  ) THEN
+    UPDATE nodes
+       SET attributes = attributes || jsonb_strip_nulls(jsonb_build_object(
+             'ref_type', ref_type, 'locator', locator,
+             'citation', citation, 'title', title));
+    ALTER TABLE nodes
+      DROP COLUMN IF EXISTS ref_type,
+      DROP COLUMN IF EXISTS locator,
+      DROP COLUMN IF EXISTS citation,
+      DROP COLUMN IF EXISTS title;
+  END IF;
+END $$;
 
 -- Audit events: one row per mutation.
 
@@ -1087,7 +1121,7 @@ CREATE TABLE IF NOT EXISTS group_chat_user_links (
 );
 -- One row per group-chat channel the assistant has already spoken in. The
 -- presence of a row means "already introduced", so Señor Doco leads only its
--- FIRST message in a channel with the Haiku/MCP intro and never repeats it.
+-- FIRST message in a channel with the Sonnet/MCP intro and never repeats it.
 -- A bare insert with ON CONFLICT DO NOTHING makes the first-time check atomic.
 CREATE TABLE IF NOT EXISTS group_chat_channel_intros (
   provider      text NOT NULL CHECK (provider IN ('slack','google-chat','discord','other')),
@@ -1382,3 +1416,42 @@ WHERE NOT EXISTS (
 )
 ON CONFLICT (id) DO NOTHING;
 
+-- ── Business-processes flow-node attachment fires in `drafting` too ─────────
+-- The three flow-node ATTACHMENT gates — a flow node `serves` an Intent, an
+-- Action is `performed_by` a Principal, a gateway Decision is `decided_by` a
+-- Principal — used to fire only on the committed stages (`["queued","active"]`),
+-- so a flow node sketched in `drafting` could float free of any Intent or
+-- Principal. The template now fires them from `drafting` onward, so no flow
+-- node is ever unattached even in a sketch (only the completeness/shape gates
+-- stay drafting-exempt). Converge every already-seeded business-processes Doco
+-- onto that.
+--
+-- Matched by the three distinct (edge_type, edge_role, target_node_type) tuples,
+-- which are unique to these gates. The actor-coverage `performed_by` nudge
+-- carries NO target_node_type (and an `incoming` direction), and the `owned_by`
+-- owner gate / `tests` Eval gate carry other roles, so all stay committed-only.
+-- Idempotent: the `NOT (... ? 'drafting')` guard makes a second boot a no-op,
+-- and the `lifecycle = 'active'` guard leaves retired rows untouched.
+UPDATE policies
+SET data = jsonb_set(
+      data,
+      '{fires_when_node_lifecycle}',
+      '["drafting", "queued", "active"]'::jsonb,
+      true
+    ),
+    updated_at = now()
+WHERE kind = 'deterministic'
+  AND lifecycle = 'active'
+  AND data -> 'predicate' ->> 'sub_kind' = 'requires_edge_role'
+  AND (
+        (data -> 'predicate' ->> 'edge_type' = 'supports'
+         AND data -> 'predicate' ->> 'edge_role' = 'serves'
+         AND data -> 'predicate' ->> 'target_node_type' = 'intent')
+     OR (data -> 'predicate' ->> 'edge_type' = 'attributed_to'
+         AND data -> 'predicate' ->> 'edge_role' = 'performed_by'
+         AND data -> 'predicate' ->> 'target_node_type' = 'principal')
+     OR (data -> 'predicate' ->> 'edge_type' = 'attributed_to'
+         AND data -> 'predicate' ->> 'edge_role' = 'decided_by'
+         AND data -> 'predicate' ->> 'target_node_type' = 'principal')
+      )
+  AND NOT (data -> 'fires_when_node_lifecycle' ? 'drafting');

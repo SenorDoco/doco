@@ -107,7 +107,7 @@ async function respondToSlackEvent(args: {
     recentMessages,
     origin,
   });
-  // The first time Señor Doco speaks in a channel, lead with the Haiku/MCP
+  // The first time Señor Doco speaks in a channel, lead with the Sonnet/MCP
   // intro. Mark-then-post (atomic) so a racing first reply can't double-post
   // the intro; checked here — right before posting — so a turn that decided
   // not to reply doesn't burn the channel's one introduction.
