@@ -32,9 +32,8 @@ import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
 import { topEntryPointId } from "~/lib/bpmn-entry-points";
 import { bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
-import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
-import { layoutOutsideNodes } from "~/lib/bpmn-outside-layout";
+import { layoutAdjacentNodes } from "~/lib/bpmn-outside-layout";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/bpmn-stable-nodes";
@@ -42,16 +41,9 @@ import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
 import {
   bpmnFocusCandidates,
   highestRankedNodeId,
-  selectMeasuredPersonalizedNodeIds,
   summarizeExternalConnections,
 } from "~/lib/focused-render-selection";
-import {
-  computeDepthFromCenter,
-  focalEdgeWidth,
-  hasFocalNode,
-  opacityForDepth,
-  opacityForEdge,
-} from "~/lib/graph-depth";
+import { focalEdgeWidth } from "~/lib/graph-depth";
 import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
@@ -61,7 +53,6 @@ import {
   createReferenceNumberStore,
   useReferenceNumber,
 } from "~/lib/reference-number-store";
-import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -161,8 +152,6 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
-const BPMN_RENDER_NODE_BUDGET = 50;
-const BPMN_RENDER_FIRST_DEGREE_MIN = 25;
 const BPMN_RENDER_EDGE_BUDGET = 700;
 const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
 
@@ -212,7 +201,6 @@ interface FlowModule {
 }
 
 export function BpmnPerspective({
-  docoHandle,
   pools,
   lanes: lanesRaw,
   nodes: nodesRaw,
@@ -400,32 +388,41 @@ export function BpmnPerspective({
     return fromIntent ?? nodeByFullId.get(effectiveCenterId)?.pool_id ?? null;
   }, [pools, effectiveCenterId, nodeByFullId]);
 
-  const targetRenderedNodeIds = useMemo(() => {
-    const selectionLinks = linksWithFocusedPoolMembership(
-      pools,
-      filteredNodes,
-      links,
-      effectiveCenterId,
-    );
-    return selectMeasuredPersonalizedNodeIds(
-      filteredNodes,
-      selectionLinks,
-      effectiveCenterId,
-      pageRankMap,
-      BPMN_RENDER_NODE_BUDGET,
-      { docoHandle, perspective: "bpmn" },
-      { minFirstDegree: BPMN_RENDER_FIRST_DEGREE_MIN },
-    );
-  }, [pools, filteredNodes, links, effectiveCenterId, pageRankMap, docoHandle]);
-  const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
-    useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
+  // The exact set rendered — no budget, no PageRank windowing, no
+  // buffering. We draw the focal node's whole intent (every node in its
+  // pool) plus the focal node's first-degree sequence-flow neighbours that
+  // live in *other* intents. Those neighbours render above/below the lane
+  // (see layOutBpmn); clicking one makes it the focal node and the whole
+  // set recomputes from scratch.
+  const renderedNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!focalPoolId) return ids;
+    for (const node of filteredNodes) {
+      if (node.pool_id === focalPoolId) ids.add(node.id);
+    }
+    if (effectiveCenterId) {
+      for (const link of links) {
+        if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
+        const neighborId =
+          link.source === effectiveCenterId
+            ? link.target
+            : link.target === effectiveCenterId
+              ? link.source
+              : null;
+        if (!neighborId) continue;
+        const neighbor = nodeByFullId.get(neighborId);
+        if (neighbor && neighbor.pool_id !== focalPoolId) ids.add(neighborId);
+      }
+    }
+    return ids;
+  }, [filteredNodes, links, effectiveCenterId, focalPoolId, nodeByFullId]);
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
     [filteredNodes, renderedNodeIds],
   );
   // Only the focal pool's lanes are drawn, so only its rendered nodes
-  // contribute swim-lane chrome (rails, reference numbering). Out-of-pool
-  // nodes render free-floating and belong to no lane here.
+  // contribute swim-lane chrome (rails, reference numbering). Adjacent
+  // cross-intent nodes render above/below the lane and belong to none.
   const renderedLaneIds = useMemo(
     () =>
       new Set(
@@ -443,8 +440,8 @@ export function BpmnPerspective({
     [pools, renderedPoolIds],
   );
   // Exactly one pool is laid out as a swim lane — the focal node's. Its
-  // lanes anchor the in-lane nodes; every other rendered node is placed
-  // around the focal node, outside any lane.
+  // lanes anchor the in-lane nodes; the adjacent cross-intent neighbours
+  // are placed above/below it.
   const layoutPools = useMemo(
     () => (focalPoolId ? pools.filter((pool) => pool.id === focalPoolId) : []),
     [pools, focalPoolId],
@@ -453,21 +450,19 @@ export function BpmnPerspective({
     () => (focalPoolId ? filteredLanes.filter((lane) => lane.pool_id === focalPoolId) : []),
     [filteredLanes, focalPoolId],
   );
+  // Geometry is solved from exactly the rendered set — the layout is
+  // recomputed in full on every focus change, nothing is pinned.
   const layoutLinks = useMemo(
     () =>
-      links.filter((link) => filteredNodeIds.has(link.source) && filteredNodeIds.has(link.target)),
-    [links, filteredNodeIds],
+      links.filter((link) => renderedNodeIds.has(link.source) && renderedNodeIds.has(link.target)),
+    [links, renderedNodeIds],
   );
-  // Solve BPMN geometry from the stable visible graph, not from the
-  // transient render window. React Flow still mounts only the buffered
-  // render window below, but coordinates for surviving nodes remain
-  // anchored as focus changes.
   const layout = useMemo(
     () =>
       layOutBpmn(
         layoutPools,
         layoutLanes,
-        filteredNodes,
+        renderedNodes,
         layoutLinks,
         effectiveCenterId,
         focusedNodeIdSet,
@@ -476,7 +471,7 @@ export function BpmnPerspective({
     [
       layoutPools,
       layoutLanes,
-      filteredNodes,
+      renderedNodes,
       layoutLinks,
       effectiveCenterId,
       focusedNodeIdSet,
@@ -759,17 +754,11 @@ export function BpmnPerspective({
         };
         return [{ ...node, data }];
       }
-      const baseOpacity =
-        typeof node.style?.opacity === "number" ? node.style.opacity : Number(node.style?.opacity);
-      const transitionOpacity = renderWindowOpacityById.get(node.id) ?? 1;
-      // Opacity transition lives in the `.doco-graph-fade` CSS class, not
-      // inline — keeps it out of the per-render style object.
+      // Nodes mount at the opacity the layout assigned (full opacity now —
+      // there is no render-window fade). The `.doco-graph-fade` class still
+      // smooths any opacity change a node component sets on its own.
       const className = node.className ? `${node.className} doco-graph-fade` : "doco-graph-fade";
-      const style = {
-        ...node.style,
-        opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
-      };
-      return [{ ...node, className, style }];
+      return [{ ...node, className }];
     });
     // Reuse last render's object identity for any node whose render inputs
     // are unchanged, so the memo'd shape components skip work when a focus
@@ -784,7 +773,6 @@ export function BpmnPerspective({
     renderedLaneIds,
     renderedPoolIds,
     renderedNodeIds,
-    renderWindowOpacityById,
     openLaneNode,
     externalEdgeStubs.nodes,
   ]);
@@ -794,56 +782,15 @@ export function BpmnPerspective({
         .filter((edge) => renderedNodeIds.has(edge.source) && renderedNodeIds.has(edge.target))
         .slice(0, BPMN_RENDER_EDGE_BUDGET)
         .map((edge) => {
-          const transitionOpacity = Math.min(
-            renderWindowOpacityById.get(edge.source) ?? 1,
-            renderWindowOpacityById.get(edge.target) ?? 1,
-          );
-          const baseOpacity =
-            typeof edge.style?.opacity === "number"
-              ? edge.style.opacity
-              : Number(edge.style?.opacity);
-          const edgeData = edge.data as
-            | (Record<string, unknown> & {
-                labelBoxStyle?: CSSProperties;
-                labelOpacity?: number;
-              })
-            | undefined;
-          const labelOpacity =
-            typeof edgeData?.labelOpacity === "number" ? edgeData.labelOpacity : 1;
-          const data =
-            edgeData && "labelOpacity" in edgeData
-              ? {
-                  ...edgeData,
-                  labelOpacity: labelOpacity * transitionOpacity,
-                  labelBoxStyle: {
-                    ...edgeData.labelBoxStyle,
-                    transition: "opacity 500ms ease",
-                  },
-                }
-              : edgeData;
           const className = edge.className
             ? `${edge.className} doco-graph-fade-edge`
             : "doco-graph-fade-edge";
-          return {
-            ...edge,
-            className,
-            data,
-            style: {
-              ...edge.style,
-              opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
-            },
-          };
+          return { ...edge, className };
         }),
       ...externalEdgeStubs.edges,
       ...subprocessEdges,
     ],
-    [
-      layout.flowEdges,
-      renderedNodeIds,
-      renderWindowOpacityById,
-      externalEdgeStubs.edges,
-      subprocessEdges,
-    ],
+    [layout.flowEdges, renderedNodeIds, externalEdgeStubs.edges, subprocessEdges],
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
   // selection center (highest global PageRank in the BPMN view) so opening
@@ -1089,9 +1036,9 @@ export function BpmnPerspective({
               }
               const target = nodeById.get(node.id);
               if (!target) return;
-              // Change the focus window without refitting or rebuilding
-              // geometry from that small window. The stable BPMN layout
-              // above keeps already-rendered nodes anchored.
+              // Make the clicked node the new focal node. If it belongs to
+              // another intent (an adjacent neighbour), this resets the whole
+              // render: its pool becomes the drawn swim lane.
               if (onCenterChange) onCenterChange(target.id);
               if (onNodeClick) {
                 onNodeClick(target);
@@ -1266,9 +1213,9 @@ interface BpmnLayout {
 
 const POOL_HEADER_HEIGHT = 32;
 const POOL_GAP = 16;
-// Horizontal gap between the one drawn swim lane and the first column of
-// out-of-pool nodes positioned around the focal node (see layOutBpmn).
-const OUTSIDE_LANE_GAP = 120;
+// Vertical gap between the drawn swim lane and the row of adjacent
+// cross-intent neighbours sitting above or below it (see layOutBpmn).
+const ADJACENT_POOL_GAP = 80;
 
 // Sub-process drill-down link. An Action that `serves` an Intent other
 // than its own pool's is a BPMN collapsed sub-process: it stands in for
@@ -1286,22 +1233,6 @@ const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
 // area by the same amount so text never enters the marker strip.
 const SUBPROCESS_MARKER_ROOM = 20;
 
-function bpmnGraphRankNodes(
-  pools: readonly BpmnPool[],
-  nodes: readonly BpmnNode[],
-): Array<{ id: string }> {
-  const seen = new Set<string>();
-  const out: Array<{ id: string }> = [];
-  const add = (id: string | null | undefined) => {
-    if (!id || seen.has(id)) return;
-    seen.add(id);
-    out.push({ id });
-  };
-  for (const node of nodes) add(node.id);
-  for (const pool of pools) add(pool.intent_id);
-  return out;
-}
-
 function layOutBpmn(
   pools: BpmnPool[],
   lanes: BpmnLane[],
@@ -1311,14 +1242,6 @@ function layOutBpmn(
   focusedNodeIds: ReadonlySet<string>,
   focusedEdgeId: string | null,
 ): BpmnLayout {
-  // Per-node BFS depth from the focal node — used to fade non-
-  // neighbours. Separate from `computeDepths` below, which is the
-  // topological column position used for left-to-right layout.
-  const focusNodes = bpmnGraphRankNodes(pools, nodes);
-  const focusLinks = linksWithFocusedPoolMembership(pools, nodes, links, centerId);
-  const focalDepthByNode = computeDepthFromCenter(focusNodes, focusLinks, centerId);
-  const focalActive = hasFocalNode(centerId, focusNodes);
-
   const byLane = new Map<string, BpmnNode[]>();
   for (const lane of lanes) byLane.set(lane.id, []);
   for (const node of nodes) {
@@ -1510,7 +1433,6 @@ function layOutBpmn(
       }
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
-      const nodeOpacity = focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1;
       flowNodes.push({
         id: node.id,
         type: nodeTypeForShape(node.shape),
@@ -1527,41 +1449,48 @@ function layOutBpmn(
         connectable: false,
         initialWidth: size.width,
         initialHeight: size.height,
-        style: { width: size.width, height: size.height, zIndex: 1, opacity: nodeOpacity },
+        style: { width: size.width, height: size.height, zIndex: 1, opacity: 1 },
       });
     }
   }
 
-  // Out-of-pool nodes. Only the focal pool is drawn as a swim lane; every
-  // other rendered node lays out *outside* it, positioned purely by its
-  // graph distance from the focal node — closer nodes in nearer columns,
-  // each band's stack centered on the focal node's vertical middle. They
-  // are top-level React Flow nodes (no lane parent) at absolute canvas
-  // coordinates.
+  // Adjacent cross-intent nodes — the focal node's first-degree neighbours
+  // that belong to other intents. They don't sit in the drawn swim lane;
+  // they hug the pool above or below it, on whichever edge the focal node
+  // sits closer to, so the hand-off arrow stays short. They are top-level
+  // React Flow nodes (no lane parent) at absolute canvas coordinates.
   const laneIdSet = new Set(lanes.map((lane) => lane.id));
-  const outsiderNodes = nodes.filter((node) => !laneIdSet.has(node.laneId));
-  if (outsiderNodes.length > 0) {
-    const focalPos = centerId ? nodePositions.get(centerId) : undefined;
-    const focalSize = (centerId ? sizeByNode.get(centerId) : undefined) ?? {
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-    };
-    const focalY = focalPos ? focalPos.y + focalSize.height / 2 : 0;
-    const outsidePositions = layoutOutsideNodes(
-      outsiderNodes.map((node) => ({
+  const adjacentNodes = nodes.filter((node) => !laneIdSet.has(node.laneId));
+  if (adjacentNodes.length > 0 && centerId) {
+    const band = poolGeometry[0];
+    const poolTopY = band ? band.y : 0;
+    const poolBottomY = band ? band.y + band.height : 0;
+    const poolMidline = (poolTopY + poolBottomY) / 2;
+    const focalPos = nodePositions.get(centerId);
+    const focalSize = sizeByNode.get(centerId) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+    const focalCenterX = focalPos
+      ? LANE_LEFT_INSET + focalPos.x + focalSize.width / 2
+      : LANE_LEFT_INSET + laneWidth / 2;
+    const focalCenterY = focalPos ? focalPos.y + focalSize.height / 2 : poolMidline;
+    // The neighbours all attach to the focal node, so they share its side:
+    // above the pool when the focal node is in its top half, else below.
+    const side: "above" | "below" = focalCenterY < poolMidline ? "above" : "below";
+    const adjacentPositions = layoutAdjacentNodes(
+      adjacentNodes.map((node) => ({
         id: node.id,
         ...(sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }),
+        side,
       })),
-      focalDepthByNode,
       {
-        originX: LANE_LEFT_INSET + laneWidth + OUTSIDE_LANE_GAP,
-        focalY,
+        centerX: focalCenterX,
+        poolTopY,
+        poolBottomY,
+        gap: ADJACENT_POOL_GAP,
         columnGap: NODE_GAP_X,
-        rowGap: NODE_GAP_Y,
       },
     );
-    for (const node of outsiderNodes) {
-      const pos = outsidePositions.get(node.id);
+    for (const node of adjacentNodes) {
+      const pos = adjacentPositions.get(node.id);
       if (!pos) continue;
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
       // Store the canvas position in the same lane-relative-x frame the
@@ -1569,7 +1498,6 @@ function layOutBpmn(
       // inset), so reference numbering and external-edge stubs offset both
       // kinds of node identically.
       nodePositions.set(node.id, { x: pos.x - LANE_LEFT_INSET, y: pos.y });
-      const nodeOpacity = focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1;
       flowNodes.push({
         id: node.id,
         type: nodeTypeForShape(node.shape),
@@ -1584,7 +1512,7 @@ function layOutBpmn(
         connectable: false,
         initialWidth: size.width,
         initialHeight: size.height,
-        style: { width: size.width, height: size.height, zIndex: 1, opacity: nodeOpacity },
+        style: { width: size.width, height: size.height, zIndex: 1, opacity: 1 },
       });
     }
   }
@@ -1647,9 +1575,6 @@ function layOutBpmn(
     .map((link, index) => {
       const source = link.source;
       const target = link.target;
-      const edgeOpacity = focalActive
-        ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
-        : 1;
       // Edge inherits the origin node's lifecycle color so an
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
@@ -1659,7 +1584,7 @@ function layOutBpmn(
       if (label) {
         const { labelBoxStyle, labelStyle } = bpmnEdgeLabelStyles(stroke);
         edgeData.label = label;
-        edgeData.labelOpacity = edgeOpacity;
+        edgeData.labelOpacity = 1;
         edgeData.labelZIndex = 1;
         edgeData.labelBoxStyle = labelBoxStyle;
         edgeData.labelStyle = labelStyle;
@@ -1689,7 +1614,7 @@ function layOutBpmn(
         style: {
           stroke,
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 5) : baseStrokeWidth,
-          opacity: isFocused ? 1 : edgeOpacity,
+          opacity: 1,
           cursor: clickable ? "pointer" : undefined,
         },
         markerEnd: {
