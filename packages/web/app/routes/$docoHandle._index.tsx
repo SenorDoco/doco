@@ -60,6 +60,13 @@ import {
   isGraphNodeType,
   loadNodeDialogDetail,
 } from "~/lib/node-detail.server";
+import {
+  type DialogHistoryAction,
+  edgeDialogHistoryState,
+  entityTypeFromPathname,
+  nodeDialogHistoryState,
+  readDialogHistoryState,
+} from "~/lib/perspective-dialog-history";
 import { effectivePerspectiveFocusId, perspectiveCenterId } from "~/lib/perspective-focus";
 import {
   ensureDefaultsAttached,
@@ -802,7 +809,9 @@ export default function DocoHome({
       const pushUrl = options.pushUrl ?? true;
       if (pushUrl && typeof window !== "undefined") {
         clientDialogOverrideRef.current = true;
-        window.history.pushState({ docoNodeDialog: id }, "", href);
+        // Tag the entry so a Back/Forward popstate can re-open this exact
+        // overlay (it's client-only — React Router's location never moves).
+        window.history.pushState(nodeDialogHistoryState(id, entityType, href), "", href);
       }
       setEdgeDialog(null);
       setEdgeFocus(null);
@@ -853,7 +862,11 @@ export default function DocoHome({
       const pushUrl = options.pushUrl ?? true;
       if (pushUrl && typeof window !== "undefined") {
         clientDialogOverrideRef.current = true;
-        window.history.pushState({ docoEdgeDialog: edge.id }, "", href);
+        window.history.pushState(
+          edgeDialogHistoryState(edge.id, edge.source ?? null, edge.target ?? null, href),
+          "",
+          href,
+        );
       }
       if (edge.source && edge.target) {
         setEdgeFocus({ id: edge.id, source: edge.source, target: edge.target });
@@ -920,7 +933,10 @@ export default function DocoHome({
         activeSlug === "graph"
           ? `/${handle}`
           : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
-      window.history.replaceState(window.history.state, "", href);
+      // Drop any node/edge dialog marker: this entry is now the bare
+      // perspective, so a later Back/Forward into it must not re-open an
+      // overlay the user already dismissed.
+      window.history.replaceState(null, "", href);
     }
   }, [activeSlug, handle]);
 
@@ -934,7 +950,10 @@ export default function DocoHome({
         activeSlug === "graph"
           ? `/${handle}`
           : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
-      window.history.replaceState(window.history.state, "", href);
+      // Drop any node/edge dialog marker: this entry is now the bare
+      // perspective, so a later Back/Forward into it must not re-open an
+      // overlay the user already dismissed.
+      window.history.replaceState(null, "", href);
     }
   }, [activeSlug, handle]);
 
@@ -950,9 +969,58 @@ export default function DocoHome({
         activeSlug === "graph"
           ? `/${handle}`
           : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
-      window.history.replaceState(window.history.state, "", href);
+      // Drop any node/edge dialog marker: this entry is now the bare
+      // perspective, so a later Back/Forward into it must not re-open an
+      // overlay the user already dismissed.
+      window.history.replaceState(null, "", href);
     }
   }, [activeSlug, handle]);
+
+  // Back/Forward reconciliation. Opening a node/edge overlay pushes a
+  // client-only history entry (loadNodeDialog / loadEdgeDialog) without a
+  // React Router navigation, so RR's location never moves and Back would
+  // otherwise change the URL while leaving the overlay on screen. Read the
+  // marker we stored on each entry and re-open (Back/Forward into an
+  // overlay) or dismiss (Back to the bare perspective) to match the URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = (event: PopStateEvent) => {
+      const action: DialogHistoryAction = readDialogHistoryState(event.state);
+      clientDialogOverrideRef.current = true;
+      if (action.kind === "node") {
+        const entityType = action.entityType || entityTypeFromPathname(window.location.pathname);
+        const href = action.href ?? `${window.location.pathname}${window.location.search}`;
+        if (!entityType) {
+          setNodeDialog(null);
+          return;
+        }
+        void loadNodeDialog(entityType, action.id, href, {
+          pushUrl: false,
+          focusPerspective: true,
+        });
+        return;
+      }
+      if (action.kind === "edge") {
+        const href = action.href ?? `${window.location.pathname}${window.location.search}`;
+        // loadEdgeDialog only re-centers when both endpoints are present
+        // (`edge.source && edge.target`), so empty-string fallbacks here
+        // simply skip the re-center for an older marker that lacks them.
+        void loadEdgeDialog(
+          { id: action.id, href, source: action.source ?? "", target: action.target ?? "" },
+          { pushUrl: false },
+        );
+        return;
+      }
+      // No dialog marker on this entry — the user navigated back to the
+      // bare perspective. Dismiss whatever overlay is open.
+      setNodeDialog(null);
+      setEdgeDialog(null);
+      setEdgeFocus(null);
+      setLifecycleError(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [loadNodeDialog, loadEdgeDialog]);
 
   const handleLifecycleChange = useCallback(
     async (stage: LifecycleStage) => {
