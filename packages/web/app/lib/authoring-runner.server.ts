@@ -194,13 +194,23 @@ export async function runEdgeAuthoringPolicies(opts: {
   docoId: string;
   edge: EdgeCandidate;
   judgeCandidate: Record<string, unknown>;
+  /**
+   * Include edge-scoped probabilistic quality checks. Pass false for a
+   * `drafting` edge — the deterministic `requires_edge_type` allowlist still
+   * fires (it's a structural gate), but the LLM quality judges are deferred.
+   */
+  includeProbabilistic?: boolean;
   client?: PoolClient;
 }): Promise<EdgeAuthoringResult> {
   const empty: EdgeAuthoringResult = { violations: [], blocking: null, warnings: [] };
   const run = async (c: PoolClient): Promise<EdgeAuthoringResult> => {
     const policies = await loadPolicies(c, opts.docoId);
     if (policies.length === 0) return empty;
-    const raw = evaluateEdgePolicies({ edge: opts.edge, policies });
+    const raw = evaluateEdgePolicies({
+      edge: opts.edge,
+      policies,
+      includeProbabilistic: opts.includeProbabilistic ?? true,
+    });
     if (raw.length === 0) return empty;
     const violations = await resolveProbabilistic(raw, policies, opts.judgeCandidate);
     const blocking = violations.find((v) => v.on_violation === "block") ?? null;

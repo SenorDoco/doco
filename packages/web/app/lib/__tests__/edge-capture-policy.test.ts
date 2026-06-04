@@ -1,7 +1,9 @@
 // captureEdge wiring for edge-scoped authoring policies: it must pack BOTH
 // endpoints into the judge candidate, block (422) when the edge policy fails,
-// and exempt a `drafting` sketch edge. The DB + edge runner are mocked so this
-// is a focused unit test of the wiring in edge-capture.server.
+// and evaluate a `drafting` sketch edge with the probabilistic judges deferred
+// (the deterministic `requires_edge_type` allowlist still fires). The DB + edge
+// runner are mocked so this is a focused unit test of the wiring in
+// edge-capture.server.
 
 import { generateUlid, makeEntityId } from "@doco/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -95,10 +97,27 @@ describe("captureEdge — edge-scoped policy wiring", () => {
     expect(dbStub.createEdge).toHaveBeenCalledTimes(1);
   });
 
-  it("exempts a drafting sketch edge — no policy evaluation", async () => {
+  it("still evaluates a drafting sketch edge, but with the probabilistic judges deferred", async () => {
+    // The deterministic `requires_edge_type` allowlist is a structural gate, so
+    // a drafting edge IS evaluated (a disallowed edge type is barred even in a
+    // sketch). Only the probabilistic quality judges are deferred — the runner
+    // is called with includeProbabilistic=false.
+    runEdge.fn.mockResolvedValue({ violations: [], blocking: null, warnings: [] });
     const res = await captureEdge(makeInput({ lifecycle: "drafting" }));
     expect("ok" in res && res.ok).toBe(true);
-    expect(runEdge.fn).not.toHaveBeenCalled();
+    expect(runEdge.fn).toHaveBeenCalledTimes(1);
+    expect(runEdge.fn.mock.calls[0][0].includeProbabilistic).toBe(false);
     expect(dbStub.createEdge).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a drafting edge whose type the allowlist bars (structural gate fires in draft)", async () => {
+    runEdge.fn.mockResolvedValue({
+      violations: [],
+      blocking: { reason: "edge_type `has_parent` not in allowlist", on_violation: "block" },
+      warnings: [],
+    });
+    const res = await captureEdge(makeInput({ lifecycle: "drafting", edgeType: "has_parent" }));
+    expect("error" in res && res.status).toBe(422);
+    expect(dbStub.createEdge).not.toHaveBeenCalled();
   });
 });

@@ -188,11 +188,12 @@ describe("glossaries template — seeded shape (real host seeder)", () => {
       [docoId],
     );
     const byKind = Object.fromEntries(rows.map((r) => [r.kind, r.n]));
-    // 5 deterministic gates, 3 probabilistic judges, 8 prose suggestions.
-    expect(byKind.deterministic).toBe(5);
+    // 6 deterministic gates (incl. the requires_edge_type allowlist), 3
+    // probabilistic judges, 8 prose suggestions.
+    expect(byKind.deterministic).toBe(6);
     expect(byKind.probabilistic).toBe(3);
     expect(byKind.suggestion).toBe(8);
-    // The enforcer loads only the 5 + 3 enforceable policies; suggestions
+    // The enforcer loads only the 6 + 3 enforceable policies; suggestions
     // are advisory and never reach it.
   });
 });
