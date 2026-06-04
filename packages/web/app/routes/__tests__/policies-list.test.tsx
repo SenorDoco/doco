@@ -137,6 +137,53 @@ describe("PolicyRow (policies list)", () => {
     expect(html).not.toContain("[contributing guide]");
   });
 
+  it("shows the lifecycle stages a policy fires on, so editing them is visible", () => {
+    // Regression: a policy's `fires_when_node_lifecycle` filter was editable on
+    // the modify form but never rendered in the list, so removing a stage (e.g.
+    // "drafting") produced no visible change — the edit looked like it hadn't
+    // saved. The card must surface the stages it fires on.
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZFIRES",
+        kind: "deterministic",
+        predicate: {
+          sub_kind: "requires_edge_role",
+          edge_type: "supports",
+          edge_role: "serves",
+          target_node_type: "intent",
+        },
+        firesWhenNodeLifecycle: ["queued", "active"],
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    expect(html).toContain("fires on lifecycle");
+    expect(html).toContain("queued, active");
+    // "drafting" was removed, so it must not linger in the card.
+    expect(html).not.toContain("drafting");
+  });
+
+  it("omits the lifecycle line when a policy fires on every stage", () => {
+    // No `fires_when_node_lifecycle` means "fires regardless of lifecycle" —
+    // there's nothing meaningful to show, so the line is suppressed.
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZALLLC",
+        kind: "deterministic",
+        predicate: { sub_kind: "requires_node_type", node_types: ["action"] },
+        firesWhenNodeLifecycle: null,
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+    expect(html).not.toContain("fires on lifecycle");
+  });
+
   it("renders the kind label and, for deterministic, the structured parts", () => {
     const html = renderRow({
       handle: "runbook",

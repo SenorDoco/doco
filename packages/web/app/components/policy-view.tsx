@@ -30,12 +30,23 @@ export interface PolicyItem {
   id: string;
   kind: PolicyKind;
   predicate: PolicyPredicate | null;
+  /**
+   * The lifecycle stages this policy fires on (`fires_when_node_lifecycle`).
+   * `null`/absent means it fires regardless of lifecycle, so there's nothing
+   * to surface.
+   */
+  firesWhenNodeLifecycle?: string[] | null;
   lifecycle: string | null;
   createdAt: string | null;
 }
 
 export function PolicyView({ item }: { item: PolicyItem }) {
   const predicate = item.predicate;
+  // An empty / absent `fires_when_node_lifecycle` means the policy fires
+  // regardless of lifecycle, so there's nothing to surface. When it IS scoped,
+  // show the stages — otherwise editing that filter (e.g. removing "drafting")
+  // leaves the card unchanged and the edit looks like it never saved.
+  const firesOn = (item.firesWhenNodeLifecycle ?? []).filter((s) => typeof s === "string" && s);
   return (
     <div className="min-w-0 space-y-1.5">
       <span className="neu-surface inline-block rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -70,6 +81,12 @@ export function PolicyView({ item }: { item: PolicyItem }) {
           </p>
         </div>
       )}
+      {firesOn.length > 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          <span className="font-semibold uppercase tracking-wider">fires on lifecycle</span>{" "}
+          <span className="font-mono text-foreground">{firesOn.join(", ")}</span>
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -86,10 +103,14 @@ export function toPolicyItem(row: PolicyRowData): PolicyItem {
     data.predicate && typeof data.predicate === "object"
       ? (data.predicate as PolicyPredicate)
       : null;
+  const firesWhenNodeLifecycle = Array.isArray(data.fires_when_node_lifecycle)
+    ? data.fires_when_node_lifecycle.filter((v): v is string => typeof v === "string")
+    : null;
   return {
     id: row.id,
     kind,
     predicate,
+    firesWhenNodeLifecycle,
     lifecycle: row.lifecycle,
     createdAt: toIso(row.created_at),
   };
