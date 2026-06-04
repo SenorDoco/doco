@@ -97,6 +97,59 @@ describe("capturePolicy author resolution", () => {
     expect(persistedData()).toMatchObject({ authored_by: "principal_alice" });
   });
 
+  it("captures an EDGE-scoped probabilistic policy carrying the edge scoping", async () => {
+    const result = await capturePolicy(
+      "/tmp/doco",
+      DOCO_ID,
+      "torre",
+      "torre-bpm",
+      {
+        kind: "probabilistic",
+        agent_instruction:
+          "A sub-process Intent is the base form of the Action it serves (`Posts a job` → `Post a job`).",
+        edge_type: "supports",
+        edge_role: "serves",
+        from_node_type: "action",
+        to_node_type: "intent",
+        created_by_user_id: "user_alice",
+      },
+      "https://doco.test",
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(persistedData()).toMatchObject({
+      kind: "probabilistic",
+      predicate: {
+        agent_instruction: expect.stringContaining("base form"),
+        edge_type: "supports",
+        edge_role: "serves",
+        from_node_type: "action",
+        to_node_type: "intent",
+      },
+      on_violation: "block",
+    });
+    // Edge-scoped predicates carry no node-type filter.
+    expect((persistedData().predicate as Record<string, unknown>).when_node_type).toBeUndefined();
+  });
+
+  it("rejects an edge-scoped policy with an unknown edge_type", async () => {
+    const result = await capturePolicy(
+      "/tmp/doco",
+      DOCO_ID,
+      "torre",
+      "torre-bpm",
+      {
+        kind: "probabilistic",
+        agent_instruction: "compare the endpoints",
+        edge_type: "not_a_real_edge",
+        created_by_user_id: "user_alice",
+      },
+      "https://doco.test",
+    );
+    expect(result).toMatchObject({ error: expect.stringContaining("not a first-class edge type") });
+    expect(upsertEntity).not.toHaveBeenCalled();
+  });
+
   it("still rejects a user id supplied as the author", async () => {
     const result = await capturePolicy(
       "/tmp/doco",
