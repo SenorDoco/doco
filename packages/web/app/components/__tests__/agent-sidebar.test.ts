@@ -65,8 +65,8 @@ describe("SenorDocoExplainer", () => {
     );
   }
 
-  it("says Señor Doco uses Haiku and only handles simple stuff", () => {
-    expect(markup()).toContain("Señor Doco uses Haiku and can only handle simple stuff");
+  it("says Señor Doco uses Haiku and only handles simple requests", () => {
+    expect(markup()).toContain("Señor Doco uses Haiku and can only handle simple requests");
   });
 
   it("invites collaboration via the MCP, linking the tokens page", () => {

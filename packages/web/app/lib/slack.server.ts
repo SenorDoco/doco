@@ -2606,7 +2606,7 @@ export function buildSlackConnectCommandResponse(request: Request, payload: Slac
  */
 export function buildSlackChannelIntroLine(origin?: string | null): string {
   const base = (origin?.trim() || "https://doco.to").replace(/\/+$/, "");
-  return `I use Haiku and can handle simple stuff. For complex stuff, connect your agent with Doco's MCP <${base}/tokens>`;
+  return `I use Haiku and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <${base}/tokens>`;
 }
 
 /**
