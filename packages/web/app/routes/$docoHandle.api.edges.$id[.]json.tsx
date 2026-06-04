@@ -2,6 +2,8 @@
 // GET    /<doco>/api/edges/<id>.json?history=1  — full version history.
 // DELETE /<doco>/api/edges/<id>.json            — retire the edge.
 // POST   /<doco>/api/edges/<id>.json {op:"retire"} — retire (DELETE-less clients).
+// PATCH  /<doco>/api/edges/<id>.json {lifecycle} — move the edge's lifecycle
+//        (drafting / active / retired). Drives the edge dialog's buttons.
 //
 // Time-travel reads are O(1) snapshot lookups: "how it was"
 // never replays a log.
@@ -9,7 +11,13 @@
 import { entityAsOf, getVersions, verifyHistory, withClient } from "@doco/db";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
-import { getEdgeById, retireEdgeRequest } from "~/lib/edge-capture.server";
+import {
+  EDGE_LIFECYCLES,
+  type EdgeLifecycle,
+  getEdgeById,
+  retireEdgeRequest,
+  setEdgeLifecycleRequest,
+} from "~/lib/edge-capture.server";
 
 interface Params {
   docoHandle: string;
@@ -57,8 +65,11 @@ export async function action({ request, params }: { request: Request; params: Pa
   if (!me) {
     return Response.json({ error: "Authentication required to edit." }, { status: 401 });
   }
-  if (request.method !== "DELETE" && request.method !== "POST") {
-    return Response.json({ error: "Use DELETE (or POST {op:'retire'})." }, { status: 405 });
+  if (request.method !== "DELETE" && request.method !== "POST" && request.method !== "PATCH") {
+    return Response.json(
+      { error: "Use PATCH {lifecycle}, DELETE, or POST {op:'retire'}." },
+      { status: 405 },
+    );
   }
 
   const edge = await getEdgeById(meta.docoId, id);
@@ -72,9 +83,48 @@ export async function action({ request, params }: { request: Request; params: Pa
     { ownerId: meta.ownerId, docoId: meta.docoId },
     me.id,
     edge.edge_type,
-    "retire this edge",
+    "change this edge",
   );
   if (denied) return denied;
+
+  const authoring = await authoringContextForRequest(request);
+
+  // PATCH moves the edge along its lifecycle (drafting / active / retired).
+  if (request.method === "PATCH") {
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch (e) {
+      return Response.json(
+        { error: `Invalid JSON body: ${(e as Error).message}` },
+        { status: 400 },
+      );
+    }
+    const lifecycle = body.lifecycle;
+    if (typeof lifecycle !== "string" || !EDGE_LIFECYCLES.includes(lifecycle as EdgeLifecycle)) {
+      return Response.json(
+        { error: `lifecycle must be one of: ${EDGE_LIFECYCLES.join(", ")}.` },
+        { status: 400 },
+      );
+    }
+    const result = await setEdgeLifecycleRequest({
+      docoId: meta.docoId,
+      actorId: me.id,
+      id,
+      lifecycle: lifecycle as EdgeLifecycle,
+      reason: typeof body.reason === "string" ? body.reason : null,
+      ...authoring,
+    });
+    if ("error" in result) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
+    return Response.json({
+      ok: true,
+      id: result.id,
+      edge: result.edge,
+      footer_lines: result.footer_lines,
+    });
+  }
 
   let reason: string | null = null;
   if (request.method === "POST") {
@@ -91,7 +141,7 @@ export async function action({ request, params }: { request: Request; params: Pa
     actorId: me.id,
     id,
     reason,
-    ...(await authoringContextForRequest(request)),
+    ...authoring,
   });
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: result.status });

@@ -1,10 +1,18 @@
-import { Loader2, X } from "lucide-react";
+import { ArrowRight, Loader2, X } from "lucide-react";
 import { Link } from "react-router";
 import { LinkedProse, LinkedValue } from "~/components/linked-text";
 import { LifecycleBadge, TypeBadge } from "~/components/node-badges";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { lifecycleColor } from "~/lib/node-colors";
 import type { LifecycleStage, NodeDialogDetail } from "~/lib/node-detail.server";
+
+/** What an edge row needs to open the edge's own dialog. */
+export interface OpenEdgeTarget {
+  id: string;
+  href: string;
+  source: string;
+  target: string;
+}
 
 interface NodeDialogProps {
   detail: NodeDialogDetail | null;
@@ -15,6 +23,7 @@ interface NodeDialogProps {
   onClose: () => void;
   onLifecycleChange: (stage: LifecycleStage) => void;
   onOpenNode: (entityType: string, id: string, href: string) => void;
+  onOpenEdge: (edge: OpenEdgeTarget) => void;
 }
 
 function displayDate(iso: string | null): string {
@@ -106,6 +115,7 @@ export function NodeDialog({
   onClose,
   onLifecycleChange,
   onOpenNode,
+  onOpenEdge,
 }: NodeDialogProps) {
   const title = detail?.primary_text ?? detail?.name ?? detail?.summary ?? detail?.id ?? "Node";
   const disabledReason = detail?.lifecycle_options.find(
@@ -262,8 +272,22 @@ export function NodeDialog({
                 Edges
               </h3>
               <div className="space-y-4">
-                <EdgeList label="Incoming" edges={detail.incoming} onOpenNode={onOpenNode} />
-                <EdgeList label="Outgoing" edges={detail.outgoing} onOpenNode={onOpenNode} />
+                <EdgeList
+                  label="Incoming"
+                  direction="incoming"
+                  currentNodeId={detail.id}
+                  edges={detail.incoming}
+                  onOpenNode={onOpenNode}
+                  onOpenEdge={onOpenEdge}
+                />
+                <EdgeList
+                  label="Outgoing"
+                  direction="outgoing"
+                  currentNodeId={detail.id}
+                  edges={detail.outgoing}
+                  onOpenNode={onOpenNode}
+                  onOpenEdge={onOpenEdge}
+                />
               </div>
             </section>
 
@@ -362,12 +386,19 @@ export function NodeDialog({
 
 function EdgeList({
   label,
+  direction,
+  currentNodeId,
   edges,
   onOpenNode,
+  onOpenEdge,
 }: {
   label: string;
+  // "incoming": other → this node. "outgoing": this node → other.
+  direction: "incoming" | "outgoing";
+  currentNodeId: string;
   edges: NodeDialogDetail["outgoing"];
   onOpenNode: (entityType: string, id: string, href: string) => void;
+  onOpenEdge: (edge: OpenEdgeTarget) => void;
 }) {
   return (
     <div>
@@ -381,11 +412,41 @@ function EdgeList({
           {edges.map((edge) => {
             const edgeTitle = edge.other_name ?? edge.other_summary ?? edge.other_id;
             const retired = edge.other_lifecycle === "retired";
+            // Endpoints from this node's vantage: an outgoing edge runs from
+            // this node to the other; an incoming edge runs from the other to
+            // this node. The edge dialog re-centers the canvas on `source`.
+            const source = direction === "outgoing" ? currentNodeId : edge.other_id;
+            const target = direction === "outgoing" ? edge.other_id : currentNodeId;
+            const edgeColor = lifecycleColor(edge.edge_lifecycle);
             return (
-              <li key={`${label}-${edge.edge_type}-${edge.other_id}`}>
+              <li
+                key={`${label}-${edge.edge_id}`}
+                className="space-y-1.5 px-3 py-2 hover:bg-input/20"
+              >
+                {/* The edge itself — a first-class entity. Clicking opens the
+                    edge dialog (its lifecycle, history, both endpoints). */}
                 <button
                   type="button"
-                  className="block w-full px-3 py-2 text-left hover:bg-input/30"
+                  onClick={() =>
+                    onOpenEdge({ id: edge.edge_id, href: edge.edge_href, source, target })
+                  }
+                  title={`Open edge: ${edge.edge_type}`}
+                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] hover:bg-input/40"
+                >
+                  <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate font-mono" style={{ color: edgeColor }}>
+                    {edge.edge_type}
+                  </span>
+                  {edge.edge_label ? (
+                    <span className="truncate font-mono text-muted-foreground">
+                      {edge.edge_label}
+                    </span>
+                  ) : null}
+                </button>
+                {/* The node on the other end. Clicking opens its node dialog. */}
+                <button
+                  type="button"
+                  className="block w-full rounded-md text-left hover:bg-input/30"
                   onClick={() =>
                     onOpenNode(
                       edge.other_node_type,
@@ -403,8 +464,6 @@ function EdgeList({
                       />
                       <LifecycleBadge lifecycle={edge.other_lifecycle} anchor="inline" />
                     </span>
-                    <span className="font-mono">{edge.edge_type}</span>
-                    {edge.edge_label ? <span className="font-mono">{edge.edge_label}</span> : null}
                   </div>
                   <p
                     className={`mt-1 break-words text-xs text-foreground ${

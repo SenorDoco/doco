@@ -18,8 +18,13 @@ const LIFECYCLE_STAGES = ["drafting", "queued", "active", "retired"] as const;
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
 export interface NodeDialogEdge {
+  // The edge itself — a first-class entity. Carried so each row can open the
+  // edge dialog (its lifecycle, history, endpoints), not just the other node.
+  edge_id: string;
   edge_type: string;
   edge_label: string | null;
+  edge_lifecycle: string;
+  edge_href: string;
   other_id: string;
   other_node_type: string;
   other_summary: string | null;
@@ -233,6 +238,8 @@ interface DialogRelatedNodeDetail {
 }
 
 interface DialogOutgoingEdgeRow {
+  edge_id: string;
+  edge_lifecycle: string;
   to_id: string;
   to_node_type: string;
   edge_type: string;
@@ -240,6 +247,8 @@ interface DialogOutgoingEdgeRow {
 }
 
 interface DialogIncomingEdgeRow {
+  edge_id: string;
+  edge_lifecycle: string;
   from_id: string;
   from_node_type: string;
   edge_type: string;
@@ -520,7 +529,8 @@ export async function loadNodeDialogDetail(
 
   const outgoingRows = (
     await c.query<DialogOutgoingEdgeRow>(
-      `SELECT to_id, to_node_type, edge_type, props AS edge_props_json
+      `SELECT id AS edge_id, COALESCE(lifecycle, 'active') AS edge_lifecycle,
+              to_id, to_node_type, edge_type, props AS edge_props_json
          FROM edges
         WHERE doco_id = $1 AND from_id = $2
         ORDER BY edge_type, to_id`,
@@ -529,7 +539,8 @@ export async function loadNodeDialogDetail(
   ).rows;
   const incomingRows = (
     await c.query<DialogIncomingEdgeRow>(
-      `SELECT from_id, from_node_type, edge_type, props AS edge_props_json
+      `SELECT id AS edge_id, COALESCE(lifecycle, 'active') AS edge_lifecycle,
+              from_id, from_node_type, edge_type, props AS edge_props_json
          FROM edges
         WHERE doco_id = $1 AND to_id = $2
         ORDER BY edge_type, from_id`,
@@ -551,8 +562,11 @@ export async function loadNodeDialogDetail(
     const detail = relatedById.get(edge.to_id);
     const otherNodeType = detail?.entity_type ?? edge.to_node_type;
     return {
+      edge_id: edge.edge_id,
       edge_type: displayEdgeType(edge.edge_type, edge.edge_props_json),
       edge_label: sequenceFlowLabel(edge.edge_props_json),
+      edge_lifecycle: edge.edge_lifecycle ?? "active",
+      edge_href: `/${options.handle}/edges/${edge.edge_id}`,
       other_id: edge.to_id,
       other_node_type: otherNodeType,
       other_summary: detail?.summary ?? null,
@@ -565,8 +579,11 @@ export async function loadNodeDialogDetail(
     const detail = relatedById.get(edge.from_id);
     const otherNodeType = detail?.entity_type ?? edge.from_node_type;
     return {
+      edge_id: edge.edge_id,
       edge_type: displayEdgeType(edge.edge_type, edge.edge_props_json),
       edge_label: sequenceFlowLabel(edge.edge_props_json),
+      edge_lifecycle: edge.edge_lifecycle ?? "active",
+      edge_href: `/${options.handle}/edges/${edge.edge_id}`,
       other_id: edge.from_id,
       other_node_type: otherNodeType,
       other_summary: detail?.summary ?? null,

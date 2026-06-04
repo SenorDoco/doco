@@ -211,6 +211,94 @@ describe("loadNodeDialogDetail", () => {
     });
   });
 
+  it("exposes the edge's own id, lifecycle, and page href so the row opens the edge dialog", async () => {
+    const client = {
+      query: async <T>(sql: string): Promise<{ rows: T[] }> => {
+        if (sql.includes("FROM edges") && sql.includes("from_id = $2")) {
+          return {
+            rows: [
+              {
+                edge_id: "edge_01OUT",
+                edge_lifecycle: "active",
+                to_id: "action_01ACTIVE",
+                to_node_type: "action",
+                edge_type: "supports",
+              },
+            ] as T[],
+          };
+        }
+        if (sql.includes("FROM edges") && sql.includes("to_id = $2")) {
+          return {
+            rows: [
+              {
+                edge_id: "edge_01IN",
+                edge_lifecycle: "drafting",
+                from_id: "action_01RETIRED",
+                from_node_type: "action",
+                edge_type: "flows_to",
+              },
+            ] as T[],
+          };
+        }
+        if (sql.includes("node_type IN")) {
+          return {
+            rows: [
+              {
+                id: "action_01ACTIVE",
+                entity_type: "action",
+                summary: "Live action",
+                name: null,
+                lifecycle: "active",
+              },
+              {
+                id: "action_01RETIRED",
+                entity_type: "action",
+                summary: "Retired action",
+                name: null,
+                lifecycle: "retired",
+              },
+            ] as T[],
+          };
+        }
+        if (sql.includes("WITH input(actor_id)")) return { rows: [] };
+        if (sql.includes("FROM audit_events")) return { rows: [] };
+        return {
+          rows: [
+            {
+              id: "decision_01TEST",
+              primary_text: "Use lifecycle badges",
+              body_text: null,
+              lifecycle: "active",
+              raw_json: JSON.stringify({}),
+              created_at: "2026-05-26T17:01:00.000Z",
+              updated_at: "2026-05-26T17:01:00.000Z",
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const detail = await loadNodeDialogDetail(client, meta, {
+      handle: "test-doco",
+      entityType: "decision",
+      id: "decision_01TEST",
+      principalId: "principal_owner",
+    });
+
+    expect(detail?.outgoing[0]).toMatchObject({
+      edge_id: "edge_01OUT",
+      edge_lifecycle: "active",
+      edge_href: "/test-doco/edges/edge_01OUT",
+      other_id: "action_01ACTIVE",
+    });
+    expect(detail?.incoming[0]).toMatchObject({
+      edge_id: "edge_01IN",
+      edge_lifecycle: "drafting",
+      edge_href: "/test-doco/edges/edge_01IN",
+      other_id: "action_01RETIRED",
+    });
+  });
+
   it("does not include BPMN sequence links unless edge rows exist", async () => {
     const decisionId = "decision_01ROUTE";
     const priorId = "action_01PRIOR";

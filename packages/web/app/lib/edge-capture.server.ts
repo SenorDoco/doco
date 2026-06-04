@@ -14,6 +14,7 @@ import {
   createEdge,
   getEntity,
   retireEdge,
+  updateEdge,
   withClient,
   withTransaction,
 } from "@doco/db";
@@ -262,4 +263,84 @@ export async function retireEdgeRequest(input: {
     return retireEdge(c, txId, { id: input.id, actor: input.actorId });
   });
   return { ok: true, id: edge.id, edge, footer_lines: [`edge ${edge.id} retired`] };
+}
+
+export const EDGE_LIFECYCLES = ["drafting", "active", "retired"] as const;
+export type EdgeLifecycle = (typeof EDGE_LIFECYCLES)[number];
+
+export type EdgeLifecycleResult =
+  | { ok: true; id: string; edge: EdgeRow; footer_lines: string[] }
+  | { error: string; status: number };
+
+/**
+ * Move an edge through its lifecycle (drafting / active / retired) via the
+ * commit() boundary. Retiring routes through `retireEdgeRequest`; reviving a
+ * retired edge clears its retirement stamp (see `updateEdge`) and can collide
+ * with the live-unique slot, which we surface as a 409.
+ */
+export async function setEdgeLifecycleRequest(input: {
+  docoId: string;
+  actorId: string | null;
+  id: string;
+  lifecycle: EdgeLifecycle;
+  reason?: string | null;
+  source?: CommitSource;
+  metadata?: Record<string, unknown> | null;
+}): Promise<EdgeLifecycleResult> {
+  if (!EDGE_LIFECYCLES.includes(input.lifecycle)) {
+    return {
+      error: `Unknown edge lifecycle '${input.lifecycle}'. Valid: ${EDGE_LIFECYCLES.join(", ")}.`,
+      status: 400,
+    };
+  }
+  if (input.lifecycle === "retired") {
+    const { lifecycle: _lifecycle, ...retireInput } = input;
+    return retireEdgeRequest(retireInput);
+  }
+  // Narrowed past the `retired` early return; pin it in a local so the
+  // transaction closure below keeps the non-retired type.
+  const lifecycle: "drafting" | "active" = input.lifecycle;
+
+  const existing = await getEdgeById(input.docoId, input.id);
+  if (!existing) return { error: `edge not found: ${input.id}`, status: 404 };
+  if (existing.lifecycle === lifecycle) {
+    return {
+      ok: true,
+      id: existing.id,
+      edge: existing,
+      footer_lines: [`edge ${existing.id} already ${lifecycle}`],
+    };
+  }
+
+  try {
+    const edge = await withTransaction(async (c) => {
+      const txId = await createChangeset(c, {
+        docoId: input.docoId,
+        actor: input.actorId,
+        source: input.source ?? "api",
+        metadata: input.metadata ?? null,
+        reason: input.reason ?? `set edge lifecycle to ${lifecycle}`,
+      });
+      return updateEdge(c, txId, {
+        id: input.id,
+        lifecycle,
+        actor: input.actorId,
+      });
+    });
+    return {
+      ok: true,
+      id: edge.id,
+      edge,
+      footer_lines: [`edge ${edge.id} lifecycle → ${lifecycle}`],
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/edges_live_uniq|duplicate key/.test(msg)) {
+      return {
+        error: `A live '${existing.edge_type}' edge already exists between these nodes.`,
+        status: 409,
+      };
+    }
+    return { error: msg, status: 500 };
+  }
 }
