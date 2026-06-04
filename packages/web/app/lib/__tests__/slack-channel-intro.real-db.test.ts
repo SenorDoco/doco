@@ -68,7 +68,7 @@ describe("markSlackChannelIntroducedIfFirst (real DB)", () => {
 describe("buildSlackChannelIntroLine", () => {
   it("states the Haiku scope and links the tokens page on the request origin", () => {
     expect(buildSlackChannelIntroLine("https://example.test")).toBe(
-      "I use Haiku and can handle simple stuff. For complex stuff, connect your agent with Doco's MCP <https://example.test/tokens>",
+      "I use Haiku and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://example.test/tokens>",
     );
   });
 

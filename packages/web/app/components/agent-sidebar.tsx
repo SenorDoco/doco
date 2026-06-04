@@ -170,7 +170,7 @@ export function mergeCreatedConversationListItem(
 export function SenorDocoExplainer() {
   return (
     <div className="shrink-0 border-b border-border px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
-      Señor Doco uses Haiku and can only handle simple stuff. Want to collaborate with your own
+      Señor Doco uses Haiku and can only handle simple requests. Want to collaborate with your own
       agent?{" "}
       <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
         Connect the MCP
