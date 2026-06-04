@@ -14,12 +14,7 @@
 // resolved by the caller and passed as createdByUserId.
 import { getUserByGithubLogin, withClient } from "@doco/db";
 import { isEntityId } from "@doco/shared";
-import {
-  NO_FIELDS_CHANGED,
-  type ReferenceDraft,
-  captureReference,
-  updateEntity,
-} from "./capture.server";
+import { NO_FIELDS_CHANGED, captureGenericNode, updateEntity } from "./capture.server";
 import { normalizePath, parseCodeReferenceLocator } from "./code-locator";
 import {
   type CaptureEdgeInput,
@@ -84,6 +79,22 @@ export function pullRequestRefLifecycle(
   if (pr.state === "closed") return { lifecycle: "retired" };
   if (opts?.approved) return { lifecycle: "active" };
   return { lifecycle: "queued" };
+}
+
+/**
+ * The Reference fields a PR maps to. An internal GitHub→Doco import struct
+ * (not the public capture API): `pullRequestToReferenceDraft` fills it, then
+ * the create path hands it to the generic node writer and the update path
+ * maps it onto a PATCH.
+ */
+export interface ReferenceDraft {
+  reference: string;
+  ref_type: string;
+  locator: string;
+  content_hash?: string | null;
+  created_by_user_id?: string;
+  lifecycle?: string;
+  outcome?: "succeeded" | "failed";
 }
 
 /** Reference prose for a PR: first line = title (the node label), then the body. Pure. */
@@ -554,12 +565,25 @@ export async function upsertPullRequestReference(
       createdByUserId = null;
     }
   }
-  const res = await captureReference(
+  // Map the import struct onto the generic row shape: prose → prose, the
+  // ref_type/locator/content_hash scalars → attributes.
+  const res = await captureGenericNode(
     opts.docoDir,
     opts.docoId,
     opts.ownerSlug,
     opts.docoSlug,
-    { ...draft, ...(createdByUserId ? { created_by_user_id: createdByUserId } : {}) },
+    "reference",
+    {
+      prose: draft.reference,
+      attributes: {
+        ref_type: draft.ref_type,
+        locator: draft.locator,
+        ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
+      },
+      ...(draft.lifecycle ? { lifecycle: draft.lifecycle } : {}),
+      ...(draft.outcome ? { outcome: draft.outcome } : {}),
+      ...(createdByUserId ? { created_by_user_id: createdByUserId } : {}),
+    },
     opts.docoHost,
   );
   if ("error" in res) return { status: "error", error: res.error };

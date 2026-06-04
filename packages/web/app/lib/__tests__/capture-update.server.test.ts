@@ -1,7 +1,7 @@
 import { getDocoById, getEntity, upsertEntity } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  captureDecision,
+  captureGenericNode,
   renderOperationLines,
   updateDecision,
   updateEntity,
@@ -240,18 +240,21 @@ describe("updateEntity", () => {
   });
 
   it("rejects created_by_principal_id on Decision capture because authorship is edge-only", async () => {
-    const result = await captureDecision(
+    const result = await captureGenericNode(
       "/tmp/doco",
       DOCO_ID,
       "test",
       "doco",
+      "decision",
       {
-        decision: "Use user provenance",
-        question: "Who created this node?",
-        chosen: "The authenticated user.",
-        created_by_principal_id: "principal_creator",
+        prose: "Use user provenance",
+        attributes: {
+          question: "Who created this node?",
+          chosen: "The authenticated user.",
+          created_by_principal_id: "principal_creator",
+        },
         created_by_user_id: "user_alice",
-      } as never,
+      },
       "https://doco.test",
     );
 
@@ -262,15 +265,15 @@ describe("updateEntity", () => {
   });
 
   it('rejects the retired lifecycle vocabulary ("asserted"/"proposed") on capture', async () => {
-    const result = await captureDecision(
+    const result = await captureGenericNode(
       "/tmp/doco",
       DOCO_ID,
       "test",
       "doco",
+      "decision",
       {
-        decision: "Adopt the new vocabulary",
-        question: "What lifecycle is stored?",
-        chosen: "asserted",
+        prose: "Adopt the new vocabulary",
+        attributes: { question: "What lifecycle is stored?", chosen: "asserted" },
         lifecycle: "asserted",
         created_by_user_id: "user_alice",
       },

@@ -1,25 +1,9 @@
-import { NODE_CATALOG } from "@doco/shared";
+import { GENERIC_CAPTURE_NODE_TYPES, NODE_CATALOG } from "@doco/shared";
 import { makeCaptureRoute } from "~/lib/api-capture-factory.server";
 import {
-  type ActionDraft,
   type AuthoringWriteContext,
-  type DecisionDraft,
-  type EvalDraft,
-  type IdeaDraft,
-  type IntentDraft,
-  type LogDraft,
-  type ReferenceDraft,
-  type RuleDraft,
-  type StateDraft,
-  captureAction,
-  captureDecision,
-  captureEval,
-  captureIdea,
-  captureIntent,
-  captureLog,
-  captureReference,
-  captureRule,
-  captureState,
+  type GenericNodeDraft,
+  captureGenericNode,
 } from "~/lib/capture.server";
 import { type PrincipalDraft, capturePrincipal } from "~/lib/principal-capture.server";
 
@@ -75,19 +59,39 @@ function entry<TDraft>(
   };
 }
 
+/**
+ * Generic node-capture entry: every generic node type routes through the
+ * single `captureGenericNode` writer (node-shape slim-down), bound to its
+ * entity_type. No per-type capture function — the API exposes the row
+ * schema (`{prose, kind?, attributes}`) directly.
+ */
+function genericEntry(entityType: string): RegistryEntry {
+  return entry<GenericNodeDraft>(
+    entityType,
+    (docoDir, docoId, ownerSlug, docoSlug, draft, docoHost, authoring) =>
+      captureGenericNode(
+        docoDir,
+        docoId,
+        ownerSlug,
+        docoSlug,
+        entityType,
+        draft,
+        docoHost,
+        authoring,
+      ),
+  );
+}
+
 // Nodes only — policies use /<handle>/api/policies.json so they
-// stay separate from domain captures.
-export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
-  decisions: entry<DecisionDraft>("decision", captureDecision),
-  intents: entry<IntentDraft>("intent", captureIntent),
-  ideas: entry<IdeaDraft>("idea", captureIdea),
-  actions: entry<ActionDraft>("action", captureAction),
-  references: entry<ReferenceDraft>("reference", captureReference),
-  rules: entry<RuleDraft>("rule", captureRule),
-  logs: entry<LogDraft>("log", captureLog),
-  evals: entry<EvalDraft>("eval", captureEval),
-  states: entry<StateDraft>("state", captureState),
-};
+// stay separate from domain captures. Every generic catalog node type is
+// wired here automatically, so adding one to NODE_CATALOG (capture:
+// "generic") lights up its capture route + changeset/contract coverage.
+export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = Object.fromEntries(
+  GENERIC_CAPTURE_NODE_TYPES.map((entityType) => {
+    const e = genericEntry(entityType);
+    return [e.type, e];
+  }),
+);
 
 // Bespoke captures: catalog node types (NODE_CATALOG[*].capture === "bespoke")
 // whose body diverges from the shared `prose` column, so they carry their own

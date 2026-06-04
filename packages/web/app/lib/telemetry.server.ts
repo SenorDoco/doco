@@ -11,10 +11,10 @@
 //      log and are swallowed; missing telemetry is preferable to a
 //      broken response.
 //
-// Why AsyncLocalStorage: capture functions are deeply nested across
-// route → factory → captureDecision → persistEntity → reindex →
-// loadDocoFromPostgres. Threading a `phaseBag` parameter through nine
-// capture functions plus the reindex stack would touch every signature
+// Why AsyncLocalStorage: capture is deeply nested across
+// route → factory → captureGenericNode → persistEntity → reindex →
+// loadDocoFromPostgres. Threading a `phaseBag` parameter through the
+// capture path plus the reindex stack would touch every signature
 // in the system. Async-local state keeps the wiring at the boundary.
 
 import { AsyncLocalStorage } from "node:async_hooks";
