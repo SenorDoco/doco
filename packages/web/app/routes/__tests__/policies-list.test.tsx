@@ -160,8 +160,10 @@ describe("PolicyRow (policies list)", () => {
       },
     });
 
-    expect(html).toContain("fires on lifecycle");
-    expect(html).toContain("queued, active");
+    // Rendered as just another labeled row, identical to the predicate parts
+    // (`<dt>` label + `<dd>` value) — nothing special about it.
+    expect(html).toContain('<dt class="text-muted-foreground">fires on lifecycle</dt>');
+    expect(html).toContain('<dd class="font-mono text-foreground">queued, active</dd>');
     // "drafting" was removed, so it must not linger in the card.
     expect(html).not.toContain("drafting");
   });
