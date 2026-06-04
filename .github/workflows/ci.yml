@@ -13,7 +13,13 @@ on:
     branches: [main]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # Key on the commit SHA, not the PR merge ref. For pull_request events
+  # github.ref is refs/pull/N/merge, which GitHub recomputes every time `main`
+  # advances — so under heavy concurrent merging, each PR's in-flight run was
+  # getting cancelled/superseded at checkout (3–5s "failures" with no logs).
+  # Per-SHA grouping cancels only a genuine re-run of the *same* commit, never
+  # a different commit's run or a base-churn recompute.
+  group: ci-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
