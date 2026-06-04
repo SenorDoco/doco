@@ -1,5 +1,7 @@
 // POST /<doco>/api/edges.json  — create a first-class edge.
 // GET  /<doco>/api/edges.json  — list live edges.
+//   ?from_id=<node_id>        scope to edges originating at one node
+//   ?include_retired=true     include retired edges (default: live only)
 //
 // Edge authoring. Writes go through the append-only commit()
 // boundary; per-edge-type write grants gate creation, exactly like nodes.
@@ -15,15 +17,33 @@ interface Params {
 
 export async function loader({ request, params }: { request: Request; params: Params }) {
   const { meta } = await loadDocoRouteForRead(request, params);
+
+  // Honor the documented query params so the JSON API agrees with the node
+  // panel: `from_id` scopes to one node's edges; `include_retired=true` widens
+  // the default live-only view to include retired edges.
+  const url = new URL(request.url);
+  const fromId = url.searchParams.get("from_id");
+  const includeRetired = url.searchParams.get("include_retired") === "true";
+
+  const conditions = ["doco_id = $1"];
+  const args: unknown[] = [meta.docoId];
+  if (!includeRetired) {
+    conditions.push("lifecycle <> 'retired'");
+  }
+  if (fromId) {
+    args.push(fromId);
+    conditions.push(`from_id = $${args.length}`);
+  }
+
   const rows = await withClient((c) =>
     c.query(
       `SELECT id, edge_type, from_id, from_node_type, to_id, to_node_type,
               props, lifecycle, created_at, created_by, updated_at, updated_by, retired_at
          FROM edges
-        WHERE doco_id = $1 AND lifecycle <> 'retired'
+        WHERE ${conditions.join(" AND ")}
         ORDER BY created_at DESC
         LIMIT 1000`,
-      [meta.docoId],
+      args,
     ),
   );
   return Response.json({ edges: rows.rows });
