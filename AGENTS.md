@@ -29,13 +29,18 @@ Once a turn ends, nothing resumes it when CI goes green — so "I'll
 squash-merge once CI passes" followed by ending the turn never merges.
 The PR just sits there.
 
-When the squash-merge in step 3 is gated on CI, do one of these before
-you end the turn:
+When the squash-merge in step 3 is gated on CI, **default to enabling
+auto-merge** before you end the turn:
 
 - **Enable auto-merge** — `gh pr merge --auto --squash`. The merge
-  fires by itself once checks pass; no further turn required.
+  fires by itself once checks pass; no further turn required, and no
+  idle waiting. This is the default — use it whenever the required
+  checks are wired into branch protection.
 - **Block on the checks in-turn** — `gh pr checks --watch` (or
-  `gh run watch`), then squash-merge once it returns green.
+  `gh run watch`), then squash-merge once it returns green. Reserve
+  this for when auto-merge isn't available (e.g. the check isn't
+  marked required, so `--auto` would never fire), since it spends the
+  whole turn idling on the pipeline.
 
 Never say you'll merge "when CI passes" and then end the turn.
 
@@ -186,15 +191,19 @@ One contract, run everywhere:
 pnpm verify   # builds the workspace, typechecks, runs the test suite, lints
 ```
 
-Run `pnpm verify` before opening a PR. For the inner TDD loop, stay fast
-with `pnpm vitest related <file>` (or `vitest --changed`) — `verify` is
-the pre-PR gate, not the per-edit loop.
+Don't run the full `pnpm verify` locally *and* wait on CI to re-run it —
+that's the same pipeline twice. CI is the authoritative gate (see below),
+so let it own the full run. Locally, stay on the fast inner loop:
+`pnpm vitest related <file>` (or `vitest --changed`) for the TDD cycle.
+Only run the full `pnpm verify` yourself when you can't rely on CI to
+catch it before merge — e.g. auto-merge isn't wired up, or you're
+landing without a PR.
 
 This is enforced **agent-neutrally**, not by any single tool's config:
 `.github/workflows/ci.yml` runs `pnpm verify` on every PR to `main`, so a
 red suite blocks the merge for every agent *and* every human — even for
 commits pushed through the GitHub API, which bypass all local and
 per-tool hooks. (Mark the check required in branch protection to make it
-blocking.) A tool's own hooks — Claude Code's `.claude/`, a git
-pre-push hook — may call the same `pnpm verify` for faster feedback, but
-CI is the gate that always runs.
+blocking.) With auto-merge (`gh pr merge --auto --squash`) the PR lands
+itself the moment that run goes green, so the single CI pass is both your
+verification and your merge trigger — no local rerun, no idle watching.
