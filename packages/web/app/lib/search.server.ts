@@ -172,13 +172,17 @@ export async function attachSearchGlobalPageRank(
       [docoId],
     )
   ).rows;
+  // Directed: an edge's direction is meaningful here (e.g. an event
+  // "serves" an intent as from=event → to=intent), so the intent that many
+  // nodes point at accumulates rank as an authority rather than having its
+  // mass diluted across a symmetrized star. See ADR / globalPageRank docs.
   const gpr = globalPageRank(
     edgeRows.map((s) => ({
       from: s.from_id,
       to: s.to_id,
       edge_type: s.edge_type,
     })),
-    { alpha: 0.85 },
+    { alpha: 0.85, directed: true },
   );
   const gprById = new Map<string, number>();
   for (const point of gpr) gprById.set(point.id, point.score);
