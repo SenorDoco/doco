@@ -123,29 +123,30 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
     };
   }
 
-  // Edge-scoped authoring policies — LLM-judged checks that compare the two
-  // endpoints (e.g. a sub-process child Intent's name must be the base form of
-  // the calling Action that `supports` it). A `drafting` edge is a sketch and
-  // exempt, mirroring the node lifecycle exemption; committed (`active`) edges
-  // are held to the policy.
-  if ((input.lifecycle ?? "active") !== "drafting") {
-    const pred = await runEdgeAuthoringPolicies({
-      docoId: input.docoId,
-      edge: {
-        edge_type: input.edgeType,
-        from_node_type: from.type,
-        to_node_type: to.type,
-      },
-      judgeCandidate: {
-        id: `${input.fromId}->${input.toId}`,
-        edge_type: input.edgeType,
-        [from.type]: endpointPayload(from.rec),
-        [to.type]: endpointPayload(to.rec),
-      },
-    });
-    if (pred.blocking) {
-      return { error: pred.blocking.reason, status: 422 };
-    }
+  // Edge-scoped authoring policies. The deterministic `requires_edge_type`
+  // allowlist is a structural membership gate, so it fires on EVERY edge —
+  // including a `drafting` sketch (a disallowed edge type is never created). The
+  // LLM-judged quality checks (e.g. a sub-process child Intent's name must be
+  // the base form of the calling Action that `supports` it) are exempt while
+  // `drafting`, mirroring the node lifecycle exemption.
+  const includeProbabilistic = (input.lifecycle ?? "active") !== "drafting";
+  const pred = await runEdgeAuthoringPolicies({
+    docoId: input.docoId,
+    edge: {
+      edge_type: input.edgeType,
+      from_node_type: from.type,
+      to_node_type: to.type,
+    },
+    judgeCandidate: {
+      id: `${input.fromId}->${input.toId}`,
+      edge_type: input.edgeType,
+      [from.type]: endpointPayload(from.rec),
+      [to.type]: endpointPayload(to.rec),
+    },
+    includeProbabilistic,
+  });
+  if (pred.blocking) {
+    return { error: pred.blocking.reason, status: 422 };
   }
 
   try {
