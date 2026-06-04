@@ -1163,7 +1163,7 @@ describe("business-processes template — flow-wiring end-to-end via runAuthorin
   let edgeSeq = 0;
   async function insertNode(id: string, nodeType: string, kind?: string): Promise<void> {
     await dbm.db.query(
-      "INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, kind, data) VALUES ($1,$2,$3,'queued','',$4,'{}')",
+      "INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, kind) VALUES ($1,$2,$3,'queued','',$4)",
       [id, docoId, nodeType, kind ?? null],
     );
   }
