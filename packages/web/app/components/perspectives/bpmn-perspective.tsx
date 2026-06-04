@@ -16,7 +16,7 @@
 // sit on left/right edges so edges connect cleanly regardless of
 // lane vertical offset.
 
-import { Handle, MarkerType, Position, type Edge as ReactFlowEdge } from "@xyflow/react";
+import { Handle, MarkerType, Position, type Edge as ReactFlowEdge, useStore } from "@xyflow/react";
 import { type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
@@ -33,6 +33,7 @@ import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
 import { topEntryPointId } from "~/lib/bpmn-entry-points";
 import { bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
+import { bpmnSimplifiedAtZoom } from "~/lib/bpmn-lod";
 import { layoutAdjacentNodes } from "~/lib/bpmn-outside-layout";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
@@ -1951,6 +1952,17 @@ function commonHandles() {
   );
 }
 
+// Subscribe each shape to a *boolean* derived from the live zoom: true
+// once the canvas is zoomed out far enough that labels/badges are
+// illegible. Selecting on the boolean (not the raw zoom) means a shape
+// re-renders at most once as a zoom gesture crosses BPMN_LOD_ZOOM, and
+// never during a constant-zoom pan — so the LOD switch itself costs
+// nothing on the frames that matter. Below the threshold the shape drops
+// its label, badges, and shadow and pans as a plain bordered box.
+function useBpmnSimplified(): boolean {
+  return useStore((s) => bpmnSimplifiedAtZoom(s.transform[2]));
+}
+
 function bpmnStrokeWidth(data: BpmnNodeData, baseWidth = 2): number {
   return data.isCenter ? baseWidth * 2 : baseWidth;
 }
@@ -1961,6 +1973,7 @@ function bpmnBorder(data: BpmnNodeData, stroke: string, baseWidth = 2): string {
 
 function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
+  const simplified = useBpmnSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -1974,11 +1987,11 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <BpmnBadgeRow data={data} />
-      <ShapeLabel node={data.node} />
+      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ShapeLabel node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -1986,6 +1999,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
 
 function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
+  const simplified = useBpmnSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -1999,11 +2013,11 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <BpmnBadgeRow data={data} />
-      <ShapeLabel node={data.node} />
+      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ShapeLabel node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -2017,38 +2031,43 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
 // so the marker never overlaps the label. The dashed drill-down link
 // leaves the node's bottom-center handle — just under the marker — on
 // its way down to the sub-process pool.
-function SubprocessMarker({ stroke }: { stroke: string }) {
+function SubprocessMarker({ stroke, hideGlyph = false }: { stroke: string; hideGlyph?: boolean }) {
   return (
     <>
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          bottom: 14,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 16,
-          height: 16,
-          boxSizing: "border-box",
-          background: "#fff",
-          border: `1.5px solid ${stroke}`,
-          borderRadius: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 13,
-          lineHeight: 1,
-          fontWeight: 700,
-          color: stroke,
-          zIndex: 2,
-          // Asymmetric bottom padding lifts the "+" glyph ~2px within the
-          // box (the box stays put); the "+" optically reads low when
-          // centered, so this nudges it toward the visual middle.
-          paddingBottom: 4,
-        }}
-      >
-        +
-      </div>
+      {/* The bottom Handle anchors the dashed drill-down edge and must
+          stay mounted at every zoom; only the visible "+" glyph — a tiny
+          illegible box when zoomed out — is dropped under LOD. */}
+      {hideGlyph ? null : (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            bottom: 14,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 16,
+            height: 16,
+            boxSizing: "border-box",
+            background: "#fff",
+            border: `1.5px solid ${stroke}`,
+            borderRadius: 2,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 13,
+            lineHeight: 1,
+            fontWeight: 700,
+            color: stroke,
+            zIndex: 2,
+            // Asymmetric bottom padding lifts the "+" glyph ~2px within the
+            // box (the box stays put); the "+" optically reads low when
+            // centered, so this nudges it toward the visual middle.
+            paddingBottom: 4,
+          }}
+        >
+          +
+        </div>
+      )}
       <Handle
         type="source"
         id={SUBPROCESS_SOURCE_HANDLE}
@@ -2066,6 +2085,7 @@ function SubprocessMarker({ stroke }: { stroke: string }) {
 // sub-process it also wears the collapsed-subprocess "+" marker.
 function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
+  const simplified = useBpmnSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -2079,7 +2099,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
         // Reserve a bottom strip for the collapsed-subprocess "+" so the
         // centered label never sits under it. The layout grew the box by
         // the same amount; border-box keeps the padding inside that box
@@ -2088,14 +2108,14 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         boxSizing: data.isSubprocess ? "border-box" : undefined,
       }}
     >
-      <BpmnBadgeRow data={data} />
-      <ShapeLabel node={data.node} />
+      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ShapeLabel node={data.node} />}
       {/* commonHandles first so the id-less right (source) handle is the
           node's first source handle: xyflow binds an edge with no
           sourceHandle to bounds[0], and sequence flow must keep exiting
           right. The "+" marker's bottom handle is addressed by id. */}
       {commonHandles()}
-      {data.isSubprocess ? <SubprocessMarker stroke={stroke} /> : null}
+      {data.isSubprocess ? <SubprocessMarker stroke={stroke} hideGlyph={simplified} /> : null}
     </div>
   );
 }
@@ -2107,6 +2127,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
 // timeline rather than a row of flow shapes.
 function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
+  const simplified = useBpmnSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -2124,14 +2145,16 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
         boxSizing: "border-box",
       }}
     >
-      <BpmnBadgeRow data={data} />
-      <span
-        className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
-        style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
-        title={data.node.name ?? ""}
-      >
-        {data.node.name ?? <em>(unnamed)</em>}
-      </span>
+      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : (
+        <span
+          className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
+          style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
+          title={data.node.name ?? ""}
+        >
+          {data.node.name ?? <em>(unnamed)</em>}
+        </span>
+      )}
       {commonHandles()}
     </div>
   );
@@ -2139,6 +2162,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
 
 function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
+  const simplified = useBpmnSimplified();
   // Circle fills the React Flow box (sized per-node via sizeForNode
   // upstream). Because the box is squared for circles, border-radius:50%
   // gives a true round shape; longer summaries grow the box and the
@@ -2155,7 +2179,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <BpmnBadgeRow data={data} circular />
+      {simplified ? null : <BpmnBadgeRow data={data} circular />}
       <div
         style={{
           width: "100%",
@@ -2167,10 +2191,10 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+          boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
         }}
       >
-        <ShapeLabel node={data.node} />
+        {simplified ? null : <ShapeLabel node={data.node} />}
       </div>
       {commonHandles()}
     </div>
@@ -2179,6 +2203,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
 
 function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
+  const simplified = useBpmnSimplified();
   // The diamond fills the full React Flow box so gateways line up
   // visually with Task rectangles. For a non-square box that means
   // an elongated rhombus rather than a perfect diamond — acceptable
@@ -2195,7 +2220,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <BpmnBadgeRow data={data} />
+      {simplified ? null : <BpmnBadgeRow data={data} />}
       <svg
         aria-hidden="true"
         style={{
@@ -2203,7 +2228,9 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
           inset: 0,
           width: "100%",
           height: "100%",
-          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.04))",
+          // The SVG drop-shadow filter is a per-frame compositing cost;
+          // drop it (with the rest of the detail) when zoomed out.
+          filter: simplified ? undefined : "drop-shadow(0 1px 2px rgba(0,0,0,0.04))",
           pointerEvents: "none",
         }}
         preserveAspectRatio="none"
@@ -2216,18 +2243,20 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
           strokeWidth={bpmnStrokeWidth(data)}
         />
       </svg>
-      <div
-        style={{
-          position: "relative",
-          width: "60%",
-          height: "60%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ShapeLabel node={data.node} />
-      </div>
+      {simplified ? null : (
+        <div
+          style={{
+            position: "relative",
+            width: "60%",
+            height: "60%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ShapeLabel node={data.node} />
+        </div>
+      )}
       {commonHandles()}
     </div>
   );
@@ -2235,6 +2264,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
 
 function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
+  const simplified = useBpmnSimplified();
   // The "document" look — rectangle with a wavy bottom edge. We draw
   // it as inline SVG behind the label so the shape stays crisp at any
   // zoom.
@@ -2250,7 +2280,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <BpmnBadgeRow data={data} />
+      {simplified ? null : <BpmnBadgeRow data={data} />}
       <svg
         viewBox="0 0 140 60"
         preserveAspectRatio="none"
@@ -2270,7 +2300,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
           strokeWidth={bpmnStrokeWidth(data)}
         />
       </svg>
-      <ShapeLabel node={data.node} />
+      {simplified ? null : <ShapeLabel node={data.node} />}
       {commonHandles()}
     </div>
   );

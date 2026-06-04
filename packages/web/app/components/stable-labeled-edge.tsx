@@ -5,8 +5,10 @@ import {
   type EdgeProps,
   Position,
   getBezierPath,
+  useStore,
 } from "@xyflow/react";
 import type { CSSProperties } from "react";
+import { bpmnSimplifiedAtZoom } from "~/lib/bpmn-lod";
 
 // A bezier has no corner radius, so when an edge doubles back — its
 // target sitting to the left of its source, e.g. a gateway's feedback
@@ -160,7 +162,14 @@ export function StableLabeledBezierEdge({
       targetPosition,
     });
   }
-  const label = typeof data?.label === "string" ? data.label.trim() : "";
+  const rawLabel = typeof data?.label === "string" ? data.label.trim() : "";
+  // Edge labels are HTML portaled into the canvas; at low zoom they're
+  // illegible but still cost layout/paint on every pan frame. Drop them
+  // with the rest of the node detail once zoomed out (same threshold as
+  // the shapes). Selecting on the boolean keeps re-renders to the single
+  // frame that crosses the threshold.
+  const simplified = useStore((s) => bpmnSimplifiedAtZoom(s.transform[2]));
+  const label = simplified ? "" : rawLabel;
 
   return (
     <>
