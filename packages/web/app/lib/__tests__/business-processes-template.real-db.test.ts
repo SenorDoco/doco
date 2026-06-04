@@ -720,14 +720,23 @@ describe("business-processes template — blocks malformed processes", () => {
   });
 });
 
-// ─── Suite C: the `queued` lifecycle adaptation ───────────────────────────────
+// ─── Suite C: attachment every stage; completeness committed-only ─────────────
+//
+// The split this suite pins down:
+//   - ATTACHMENT — a flow node `serves` its Intent, is `performed_by` (Action)
+//     or `decided_by` (gateway) a Principal — is required from `drafting`
+//     onward. A business-processes Doco never holds a flow node (an Action, a
+//     gateway, or a milestone/event State) that floats free of an Intent or a
+//     Principal, even in draft.
+//   - COMPLETENESS / SHAPE — forward `flows_to` wiring, gateway exhaustiveness,
+//     milestone naming, … — stays suspended while `drafting` and fires only on
+//     the committed stages (`queued`, `active`).
 
-describe("business-processes template — committed-stage completeness (drafting → queued → active)", () => {
-  // The same orphan Action (serves wired, performed_by missing) at three
-  // lifecycles. `drafting` is the exempt sketch stage; `queued` and `active`
-  // are committed and must satisfy the actor/serves wiring. Before this
-  // revamp the rules fired on `["active"]` only, so a `queued` orphan slipped
-  // through — closing that gap is the point of the change.
+describe("business-processes template — attachment every stage, completeness committed-only", () => {
+  // The same orphan Action (serves wired, performed_by missing) at each
+  // lifecycle. Attachment to the Principal (`performed_by`) is now required at
+  // EVERY pre-retirement stage, so even a `drafting` orphan is blocked — that
+  // is the change. (`queued`/`active` were already held.)
   function orphanAt(lifecycle: Lifecycle): { candidate: CandidateFields; graph: Graph } {
     const g = buildProcess(SCENARIOS[0], lifecycle);
     const orphan = node(
@@ -741,28 +750,47 @@ describe("business-processes template — committed-stage completeness (drafting
     return { candidate: orphan, graph: g };
   }
 
-  it("a drafting sketch is exempt — completeness is suspended", () => {
+  it("a drafting flow node IS held to its Principal attachment (the new behavior)", () => {
     const { candidate, graph } = orphanAt("drafting");
-    expect(deterministicBlocks(evaluate(candidate, graph))).toEqual([]);
+    const blocks = deterministicBlocks(evaluate(candidate, graph));
+    expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
   });
 
-  it("a queued node IS held to completeness (the new behavior)", () => {
+  it("a queued node IS held to its Principal attachment", () => {
     const { candidate, graph } = orphanAt("queued");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
     expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
   });
 
-  it("an active node IS held to completeness", () => {
+  it("an active node IS held to its Principal attachment", () => {
     const { candidate, graph } = orphanAt("active");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
     expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
   });
 
-  it("a gateway Decision's decided_by is exempt while drafting but enforced at queued AND active", () => {
-    // Mirrors the performed_by gate above: drafting sketches are exempt;
-    // both committed stages (queued + active) require the decider. This is
-    // the queued/active parity the template guarantees, applied to the new
-    // decision-decider rule — queued must not slip through where active blocks.
+  it("a drafting flow node that IS attached stays exempt from completeness/shape rules", () => {
+    // Attachment (serves + performed_by) satisfied, but the forward `flows_to`
+    // wiring is missing. The flow-wiring gate is completeness, not attachment,
+    // so a drafting sketch is still free to defer it — proving the change
+    // tightened ONLY attachment, not every rule.
+    const g = buildProcess(SCENARIOS[0], "drafting");
+    const attached = node(
+      "action",
+      "loan-approval",
+      { action: "stamp the form", verb: "stamp" },
+      "drafting",
+    );
+    g.edges.push(edge(attached.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(attached.id, g.principals[0].id, "attributed_to", "performed_by"));
+    // No incoming/outgoing flows_to wired.
+    g.nodes.push(attached);
+    expect(deterministicBlocks(evaluate(attached, g))).toEqual([]);
+  });
+
+  it("a gateway Decision's decided_by is enforced at drafting, queued, AND active", () => {
+    // Mirrors the performed_by gate: a gateway must name its decider Principal
+    // from the moment it exists, so a missing `decided_by` blocks at every
+    // pre-retirement stage — drafting included.
     function gatewayMissingDecidedByBlocks(lifecycle: Lifecycle): boolean {
       const g = buildProcess(SCENARIOS[0], lifecycle);
       const orphan = node(
@@ -780,7 +808,9 @@ describe("business-processes template — committed-stage completeness (drafting
       g.nodes.push(orphan);
       return deterministicBlocks(evaluate(orphan, g)).some((b) => /decided_by/.test(b.reason));
     }
-    expect(gatewayMissingDecidedByBlocks("drafting"), "drafting sketch is exempt").toBe(false);
+    expect(gatewayMissingDecidedByBlocks("drafting"), "drafting is held to the decider rule").toBe(
+      true,
+    );
     expect(gatewayMissingDecidedByBlocks("queued"), "queued is held to the decider rule").toBe(
       true,
     );
