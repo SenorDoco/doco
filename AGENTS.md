@@ -46,6 +46,44 @@ Never say you'll merge "when CI passes" and then end the turn.
 
 ---
 
+## A red CI check isn't always your code — diagnose once, then re-run
+
+Spurious CI failures happen (runner startup, queue contention, a
+cancelled run). The failure mode to avoid is the *diagnosis loop*:
+re-fetching job logs, re-reading PR state, and re-checking `main` churn
+across turn after turn, then stalling out by asking the user how to
+land. Conclude once and act.
+
+**The signature of an infra cancellation, not a test failure:** the
+check goes red in a few seconds, and the job log is a 404 / has no
+downloadable output. A genuine `pnpm verify` failure takes minutes and
+leaves a real log with the failing test or lint. So:
+
+- **Red in ~seconds, no downloadable log → it's a cancelled/infra run.**
+  The fix is to **re-trigger the run** (push an empty commit, or re-run
+  the failed job), *not* to investigate your code and *not* to merge
+  past it. Recognize this on the first occurrence; don't re-pull the
+  log a second and third time to "confirm" — same signature, same
+  conclusion.
+- **Red after minutes, with a real log → it's your code.** Read the
+  log once, fix it, push.
+
+**Don't merge past a red required check.** Once the CI check is a
+required status check in branch protection (which it should be — that's
+what makes `--auto` trustworthy), `mergeable_state` is `blocked` until
+it's green, and the right move when it's spuriously red is to re-trigger
+the run and let auto-merge fire on green — never to override the gate.
+If a run is *genuinely* wedged and re-triggering doesn't clear it,
+that's the rare case worth surfacing to the user; a fast no-log
+cancellation is not.
+
+This pairs with auto-merge: `gh pr merge --auto --squash` already
+re-evaluates on every new run, so a re-triggered green run lands the PR
+without another turn. The whole point is that you never have to choose
+between "babysit the pipeline" and "merge past red."
+
+---
+
 ## Visually verify UI changes against the live app
 
 Sandboxed agent runtimes (no local Postgres, no headless browser
