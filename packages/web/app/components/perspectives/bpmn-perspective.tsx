@@ -31,7 +31,7 @@ import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
 import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
 import { topEntryPointId } from "~/lib/bpmn-entry-points";
-import { bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
+import { bpmnFocusFlowNodeId, bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import { bpmnSimplifiedAtZoom } from "~/lib/bpmn-lod";
 import { layoutAdjacentNodes } from "~/lib/bpmn-outside-layout";
@@ -100,6 +100,17 @@ interface BpmnPerspectiveProps {
    */
   onCenterChange?: (id: string | null) => void;
   onPaneClick?: () => void;
+  /**
+   * Picking a process from the home list focuses that Intent. The host
+   * uses this to reflect the focus in the URL (a focus-only `/intent/<id>`
+   * link), so the view is shareable and the Back button works.
+   */
+  onIntentOpen?: (intentId: string) => void;
+  /**
+   * The Home button reset to the default (process-list) view. The host
+   * uses this to clear the focused-node URL back to the bare perspective.
+   */
+  onHomeReset?: () => void;
   /**
    * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
    * this set are excluded; lanes that end up empty after filtering
@@ -212,6 +223,8 @@ export function BpmnPerspective({
   onLaneClick,
   onCenterChange,
   onPaneClick,
+  onIntentOpen,
+  onHomeReset,
   visibleLifecycles,
   centerId,
   initialFocusId,
@@ -263,13 +276,15 @@ export function BpmnPerspective({
     defaultFocusAppliedRef.current = false;
     initialFocusAppliedRef.current = null;
     setHomeMode(true);
-  }, []);
+    onHomeReset?.();
+  }, [onHomeReset]);
   const openIntent = useCallback(
     (intentId: string) => {
       setHomeMode(false);
       onCenterChange?.(intentId);
+      onIntentOpen?.(intentId);
     },
-    [onCenterChange],
+    [onCenterChange, onIntentOpen],
   );
   // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
   // transforms itself internally; our `viewport` mirror only feeds the
@@ -821,19 +836,22 @@ export function BpmnPerspective({
   // the perspective centers on the most important node, matching the
   // overview graph's behavior.
   const initialFocusFlowNodeId = useMemo(() => {
-    // An intent target resolves to its highest-PageRank entry point, so the
-    // camera lands on that single "way in" rather than fitting the whole
-    // pool. The pool-header fallback below only fires for the degenerate
-    // case of an intent with no entry point in the visible set.
-    const target = resolveIntentToEntry(initialFocusId ?? selectionCenterId);
-    if (!target) return null;
+    const rawTarget = initialFocusId ?? selectionCenterId;
+    if (!rawTarget) return null;
     const flowNodeIds = new Set(flowNodes.map((node) => node.id));
-    if (flowNodeIds.has(target)) return target;
-    const pool = pools.find((candidate) => candidate.intent_id === target);
-    if (pool) {
-      const poolHeaderId = `pool-header:${pool.id}`;
-      if (flowNodeIds.has(poolHeaderId)) return poolHeaderId;
+    // An *intent* focus frames the WHOLE pool (its header, which the fit then
+    // expands to header + lanes), not just the entry step; a *node* focus
+    // frames that node.
+    const poolIdByIntentId = new Map<string, string>();
+    for (const candidate of pools) {
+      if (candidate.intent_id) poolIdByIntentId.set(candidate.intent_id, candidate.id);
     }
+    const direct = bpmnFocusFlowNodeId(rawTarget, poolIdByIntentId, flowNodeIds);
+    if (direct) return direct;
+    // Degenerate fallbacks: an intent whose pool header isn't rendered drops
+    // to its entry point; an actor-lane target frames that lane.
+    const target = resolveIntentToEntry(rawTarget);
+    if (target && flowNodeIds.has(target)) return target;
     const lane = renderedLanes.find((candidate) => candidate.base_id === target);
     if (lane) {
       const id = laneNodeId(lane.id);

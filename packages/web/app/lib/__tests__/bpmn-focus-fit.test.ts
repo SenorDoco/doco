@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bpmnPoolFitNodeIds } from "../bpmn-focus-fit";
+import { bpmnFocusFlowNodeId, bpmnPoolFitNodeIds } from "../bpmn-focus-fit";
 
 describe("bpmnPoolFitNodeIds", () => {
   const laneFlowNodeId = (id: string) => `lane:${id}`;
@@ -40,5 +40,28 @@ describe("bpmnPoolFitNodeIds", () => {
       "pool-header:poolA",
       "lane:poolA::talent",
     ]);
+  });
+});
+
+describe("bpmnFocusFlowNodeId", () => {
+  const poolIdByIntentId = new Map([
+    ["intent_a", "pool:intent_a"],
+    ["intent_b", "pool:intent_b"],
+  ]);
+  const rendered = new Set(["pool-header:pool:intent_a", "action_99"]);
+
+  it("frames the whole pool for an Intent target (its header, not an entry step)", () => {
+    expect(bpmnFocusFlowNodeId("intent_a", poolIdByIntentId, rendered)).toBe(
+      "pool-header:pool:intent_a",
+    );
+  });
+
+  it("frames the node itself for a non-Intent target", () => {
+    expect(bpmnFocusFlowNodeId("action_99", poolIdByIntentId, rendered)).toBe("action_99");
+  });
+
+  it("returns null when neither the Intent's pool header nor the node is rendered", () => {
+    expect(bpmnFocusFlowNodeId("intent_b", poolIdByIntentId, rendered)).toBeNull();
+    expect(bpmnFocusFlowNodeId("decision_x", poolIdByIntentId, rendered)).toBeNull();
   });
 });

@@ -33,3 +33,26 @@ export function bpmnPoolFitNodeIds(
   }
   return ids.filter((id) => renderedFlowNodeIds.has(id));
 }
+
+/**
+ * The flow node the BPMN camera should frame for a given focus target.
+ *
+ * An *Intent* focus frames the whole pool: it resolves to that pool's header
+ * (`pool-header:<id>`), which `bpmnPoolFitNodeIds` then expands to header +
+ * lanes so the camera sees the entire process — not just its entry step. A
+ * non-Intent (node) focus frames that node. Returns null when neither the
+ * Intent's pool header nor the node is currently rendered.
+ */
+export function bpmnFocusFlowNodeId(
+  target: string,
+  poolIdByIntentId: ReadonlyMap<string, string>,
+  renderedFlowNodeIds: ReadonlySet<string>,
+): string | null {
+  const poolId = poolIdByIntentId.get(target);
+  if (poolId) {
+    const headerId = `${POOL_HEADER_PREFIX}${poolId}`;
+    if (renderedFlowNodeIds.has(headerId)) return headerId;
+  }
+  if (renderedFlowNodeIds.has(target)) return target;
+  return null;
+}
