@@ -7,12 +7,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(testDir, "../../../..");
 const templateRoot = resolve(repoRoot, "packages/cli/templates/agent-bootstrap");
 
-const runtimeBootstrapFiles = [
-  ".agents/doco-agent-client.mjs",
-  ".agents/doco-mcp-server.mjs",
-  ".claude/bootstrap-fetch.sh",
-  ".claude/user-prompt-fetch.sh",
-];
+const runtimeBootstrapFiles = [".agents/doco-agent-client.mjs", ".agents/doco-mcp-server.mjs"];
 
 function read(path: string) {
   return readFileSync(path, "utf8");
