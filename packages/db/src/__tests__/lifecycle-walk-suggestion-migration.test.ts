@@ -42,7 +42,12 @@ async function ensureDoco(): Promise<void> {
 async function seedSuggestion(prose: string): Promise<string> {
   await ensureDoco();
   const id = `policy_${Math.random().toString(36).slice(2)}`;
-  const data = { id, doco_id: "doco_test", kind: "suggestion", predicate: { agent_instruction: prose } };
+  const data = {
+    id,
+    doco_id: "doco_test",
+    kind: "suggestion",
+    predicate: { agent_instruction: prose },
+  };
   await db.query(
     `INSERT INTO policies (id, doco_id, kind, data, lifecycle)
        VALUES ($1, 'doco_test', 'suggestion', $2::jsonb, 'active')`,
