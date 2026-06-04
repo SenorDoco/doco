@@ -55,41 +55,36 @@ interface RankableEntryNode extends EntryPointNode {
 
 /**
  * The single entry point of a pool to surface when focusing its intent:
- * the entry point carrying the highest *global* PageRank. When an intent
- * is focused, the BPMN perspective no longer fans out the whole swim
- * lane — it homes in on this one "way in" to the process, the most
- * important place work enters the intent.
+ * the process "start" — the earliest-created entry point. When an intent
+ * is focused, the BPMN perspective doesn't fan out the whole swim lane;
+ * it homes in on this one "way in" to the process.
  *
  * Returns `null` when the pool has no entry point in the given node set
  * (e.g. every node was filtered out), so the caller can fall back to the
  * intent itself.
  *
- * Ties on PageRank break deterministically — newer node first, then by
- * id — so the same focus lands on the same node across renders.
+ * Deterministic with no ranking input: earliest `created_at` wins, ties
+ * broken by the lower id — so the same focus lands on the same node
+ * across renders.
  */
 export function topEntryPointId(
   poolId: string,
   nodes: readonly RankableEntryNode[],
   links: readonly EntryPointLink[],
-  globalRank: ReadonlyMap<string, number> | undefined,
 ): string | null {
   const entryIds = computeIntentEntryPointIds(nodes, links);
   let best: RankableEntryNode | null = null;
-  let bestRank = Number.NEGATIVE_INFINITY;
+  let bestTime = Number.POSITIVE_INFINITY;
   for (const node of nodes) {
     if (node.pool_id !== poolId || !entryIds.has(node.id)) continue;
-    const rank = globalRank?.get(node.id) ?? 0;
-    if (best === null || rank > bestRank) {
+    const time = node.created_at ? Date.parse(node.created_at) : Number.POSITIVE_INFINITY;
+    if (
+      best === null ||
+      time < bestTime ||
+      (time === bestTime && node.id.localeCompare(best.id) < 0)
+    ) {
       best = node;
-      bestRank = rank;
-      continue;
-    }
-    if (rank < bestRank) continue;
-    // Tie on global PageRank: prefer the newer node, then the lower id.
-    const bestTime = best.created_at ? Date.parse(best.created_at) : 0;
-    const nodeTime = node.created_at ? Date.parse(node.created_at) : 0;
-    if (nodeTime > bestTime || (nodeTime === bestTime && node.id.localeCompare(best.id) < 0)) {
-      best = node;
+      bestTime = time;
     }
   }
   return best?.id ?? null;

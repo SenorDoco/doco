@@ -1214,7 +1214,6 @@ export default function DocoHome({
                     nodes={bpmnGraph.nodes}
                     totalCount={bpmnGraph.totalCount}
                     links={bpmnGraph.links}
-                    globalPagerank={bpmnGraph.global_pagerank}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
                     initialFocusId={perspectiveFocusId}

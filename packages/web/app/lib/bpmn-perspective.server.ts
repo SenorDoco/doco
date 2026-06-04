@@ -42,7 +42,7 @@
 
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
-import { highestRanked, pageRank } from "./pagerank";
+import { highestRanked } from "./pagerank";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 
@@ -65,9 +65,6 @@ export interface BpmnPool {
   id: string; // "pool:<intent_id>" or POOL_UNASSIGNED_ID
   intent_id: string | null; // null for the Unassigned pool
   label: string; // Intent prose (first line), or "Unassigned"
-  /** Per-node PageRank score on the doco's edge graph; drives
-   *  pool ordering and primary-intent picks for multi-intent nodes. */
-  pagerank: number;
   /** Intent's lifecycle (drafting / proposed / active / retired). Null
    *  for the Unassigned pool. Drives the lifecycle badge on the pool
    *  header. */
@@ -118,10 +115,6 @@ export interface BpmnGraphData {
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
-  /** Per-node global PageRank score, exposed so the client can
-   *  reuse the same graph to compute personalized PageRank from a
-   *  focal node without re-running queries. */
-  global_pagerank?: Record<string, number>;
   /**
    * TRUE total of BPMN flow nodes ("steps") for this Doco, counted before the
    * server node cap. `nodes.length` is the delivered slice; the header reports
@@ -321,17 +314,19 @@ export async function loadBpmnGraph(
       .map((r) => bpmnLinkFromEdgeRow(r, opts.handle));
   }
 
-  // ── Global PageRank over the edge graph ────────────────────────
-  // Drives:
-  //   1. Pool order (most important Intent's pool first).
+  // ── Deterministic intent precedence (no PageRank) ──────────────
+  // A stable ordering over intents used for:
+  //   1. Pool order (oldest Intent's pool first).
   //   2. Primary-intent picks for multi-intent nodes.
-  // The personalized variant (teleport biased to a focal node) is the
-  // client's job — we just expose the raw global scores so it can
-  // recompute when the user clicks into a node.
-  const pr = pageRank(
-    allRows.map((r) => ({ id: r.id })),
-    links,
-  );
+  //   3. The homeless-node nearest-intent fallback.
+  // Score is higher for older intents (negated created_at), so the same
+  // `highestRanked` "max wins" call now picks the oldest intent; missing
+  // timestamps sort last. Ties fall through to id order downstream.
+  const intentPrecedence = new Map<string, number>();
+  for (const [id, row] of intentsById) {
+    const ms = row.created_at ? Date.parse(row.created_at) : Number.NaN;
+    intentPrecedence.set(id, Number.isFinite(ms) ? -ms : Number.NEGATIVE_INFINITY);
+  }
 
   // ── Pool assignment per node ────────────────────────────────────
   // 1. Intents themselves are pool headers, not nodes — they live in
@@ -360,7 +355,7 @@ export async function loadBpmnGraph(
         intentsById.has(id),
       );
       if (intentIds.length > 0) intentIdsByNode.set(row.id, intentIds);
-      const primary = intentIds.length > 0 ? highestRanked(intentIds, pr) : null;
+      const primary = intentIds.length > 0 ? highestRanked(intentIds, intentPrecedence) : null;
       poolByNode.set(row.id, primary ? `pool:${primary}` : POOL_UNASSIGNED_ID);
     } else {
       poolByNode.set(row.id, POOL_UNASSIGNED_ID);
@@ -411,8 +406,8 @@ export async function loadBpmnGraph(
       if (poolByNode.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
     }
     if (homeless.length > 0) {
-      const nearestIntentByNode = computeNearestIntentByNode(intentIds, links, pr);
-      const defaultIntent = highestRanked(intentIds, pr);
+      const nearestIntentByNode = computeNearestIntentByNode(intentIds, links, intentPrecedence);
+      const defaultIntent = highestRanked(intentIds, intentPrecedence);
       for (const row of homeless) {
         const bestIntent = nearestIntentByNode.get(row.id) ?? defaultIntent;
         if (bestIntent) poolByNode.set(row.id, `pool:${bestIntent}`);
@@ -528,7 +523,6 @@ export async function loadBpmnGraph(
         id: POOL_UNASSIGNED_ID,
         intent_id: null,
         label: "Unassigned",
-        pagerank: 0,
         lifecycle: null,
       });
       continue;
@@ -541,17 +535,19 @@ export async function loadBpmnGraph(
       id,
       intent_id: intentId,
       label,
-      pagerank: pr.get(intentId) ?? 0,
       lifecycle: intentRow?.lifecycle ?? null,
     });
   }
 
-  // Pool order: real Intent pools sorted by descending PageRank (most
-  // important process first), Unassigned pinned to the bottom.
+  // Pool order: real Intent pools oldest-first (deterministic, no
+  // PageRank), ties broken by intent id; Unassigned pinned to the bottom.
   pools.sort((a, b) => {
     if (a.id === POOL_UNASSIGNED_ID) return 1;
     if (b.id === POOL_UNASSIGNED_ID) return -1;
-    return b.pagerank - a.pagerank;
+    const pa = a.intent_id ? (intentPrecedence.get(a.intent_id) ?? Number.NEGATIVE_INFINITY) : 0;
+    const pb = b.intent_id ? (intentPrecedence.get(b.intent_id) ?? Number.NEGATIVE_INFINITY) : 0;
+    if (pa !== pb) return pb - pa;
+    return (a.intent_id ?? "").localeCompare(b.intent_id ?? "");
   });
 
   // Drop pools with no nodes assigned (a freshly-captured Intent
@@ -597,19 +593,8 @@ export async function loadBpmnGraph(
     return a.label.localeCompare(b.label);
   });
 
-  // Expose per-node PageRank scores so the client can compute
-  // personalized PageRank from a focal node without re-running the
-  // edge query.
-  const globalPagerank: Record<string, number> = {};
-  for (const [id, score] of pr) globalPagerank[id] = score;
-
   const stepTotal = Number(nodeRows.rows[0]?.total_count ?? nodes.length);
-  return limitBpmnGraph(
-    { pools, lanes, nodes, links, global_pagerank: globalPagerank },
-    opts.nodeLimit,
-    opts.focusId,
-    stepTotal,
-  );
+  return limitBpmnGraph({ pools, lanes, nodes, links }, opts.nodeLimit, opts.focusId, stepTotal);
 }
 
 function limitBpmnGraph(
@@ -633,12 +618,7 @@ function limitBpmnGraph(
   const poolIds = new Set(nodes.map((node) => node.pool_id));
   const lanes = graph.lanes.filter((lane) => laneIds.has(lane.id));
   const pools = graph.pools.filter((pool) => poolIds.has(pool.id));
-  const globalPagerank = Object.fromEntries(
-    Object.entries(graph.global_pagerank ?? {}).filter(
-      ([id]) => nodeIds.has(id) || poolIds.has(`pool:${id}`),
-    ),
-  );
-  return { pools, lanes, nodes, links, global_pagerank: globalPagerank, totalCount };
+  return { pools, lanes, nodes, links, totalCount };
 }
 
 function selectBpmnNodeIds(
