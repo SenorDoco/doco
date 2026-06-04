@@ -49,6 +49,26 @@ describe("PolicyRow (policies list)", () => {
     expect(html).toContain("Import nodes as active by default.");
   });
 
+  it("shows the policy id on the row, as selectable text, for reference", () => {
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZIDREF",
+        kind: "suggestion",
+        predicate: { agent_instruction: "Import nodes as active by default." },
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    // The id is rendered as visible text content (not only inside the row's
+    // href), so a reader or agent can copy it to cite the policy.
+    expect(html).toContain(">policy_01HZIDREF<");
+    // One-click select makes it easy to copy off the list.
+    expect(html).toContain("select-all");
+  });
+
   it("links to the policy page even when the viewer cannot edit", () => {
     const html = renderRow({
       handle: "runbook",
