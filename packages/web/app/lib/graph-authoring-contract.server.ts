@@ -93,7 +93,7 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
     perspective: "glossary",
     node_types: ["decision", "rule", "reference", "eval"],
     constraints: [
-      "Each term entry is a Decision: `chosen` is the canonical headword, `question` the concept, and the prose the definition. A term is canonical (`active`) or deprecated (`retired`) — there is no draft/queue stage.",
+      "Each term entry is a Decision whose prose leads with the term on its first line — that first line is the node's name and the dictionary headword — then a blank line and the definition as the body. `chosen` repeats that same canonical term (the case-folded uniqueness key) and `question` states the concept. Don't open with the definition, or it becomes the node's name. A term is canonical (`active`) or deprecated (`retired`) — there is no draft/queue stage.",
       "Keep one concept per Decision; record aliases, synonyms, and rejected labels in `alternatives`.",
       "Use Rules for terminology usage policies; cite a borrowed or standards-based term's source by linking the term to a Reference with `derived_from`.",
       "Link related, confusable, or homograph terms with `relates_to`; point deprecated terms at their replacement with `replaces`.",

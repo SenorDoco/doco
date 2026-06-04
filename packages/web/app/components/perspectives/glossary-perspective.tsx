@@ -79,9 +79,9 @@ export function GlossaryPerspective({
           The pages are blank.
         </p>
         <p className="max-w-md text-sm italic" style={{ color: INK_SOFT }}>
-          No terms have been defined yet. Capture a Decision — its{" "}
-          <span className="font-semibold not-italic">chosen</span> term becomes the headword and its
-          prose the definition — and it will be set in type here.
+          No terms have been defined yet. Capture a Decision whose{" "}
+          <span className="font-semibold not-italic">first line</span> is the term — that becomes
+          the headword — followed by the definition as the body, and it will be set in type here.
         </p>
       </div>
     );
