@@ -83,18 +83,19 @@ function overviewEdgeHref(handle: string | undefined, id: string): string | unde
 }
 
 function overviewRowsSql(includeLabel = false): string {
-  // Post-collapse: one `nodes` table discriminated by `node_type`. The
-  // graph renders every node type plus principals. For the 9 prose
-  // types the label is the first line of `prose`; principals carry
-  // prose='' and fall back to their `name`. Principals also drop
-  // retired role-personas (the other types don't filter lifecycle
-  // here), so the lifecycle filter is principal-scoped.
+  // Post-collapse + slim-down: one `nodes` table discriminated by
+  // `node_type`, and the `name` column was dropped — every type
+  // (principals included) carries its label in `prose`. The label is the
+  // first line of `prose`; `name` is kept principal-only (NULL for prose
+  // types) to match the old column's shape. Principals also drop retired
+  // role-personas (the other types don't filter lifecycle here), so the
+  // lifecycle filter is principal-scoped.
   const types = GRAPH_TABLES.map((entry) => entry.entityType);
   const typeList = types.map((t) => `'${t}'`).join(", ");
-  const labelExpr = "COALESCE(NULLIF(split_part(t.prose, E'\n', 1), ''), t.name)";
+  const labelExpr = "NULLIF(split_part(t.prose, E'\n', 1), '')";
   return `SELECT t.id,
                  t.node_type AS entity_type,
-                 t.name,
+                 CASE WHEN t.node_type = 'principal' THEN NULLIF(t.prose, '') END AS name,
                  COALESCE(t.lifecycle, 'active') AS lifecycle,
                  t.created_at::text AS created_at
                  ${includeLabel ? `, ${labelExpr} AS label` : ""}
