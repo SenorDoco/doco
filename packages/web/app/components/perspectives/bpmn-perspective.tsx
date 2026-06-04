@@ -20,6 +20,7 @@ import { Handle, MarkerType, Position, type Edge as ReactFlowEdge, useStore } fr
 import { type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
+import { isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
 import {
   LifecycleBadge,
   NodeBadgeRow,
@@ -222,7 +223,7 @@ export function BpmnPerspective({
   lanes: lanesRaw,
   nodes: nodesRaw,
   totalCount,
-  links,
+  links: linksRaw,
   onNodeClick,
   onPoolClick,
   onLaneClick,
@@ -337,6 +338,18 @@ export function BpmnPerspective({
     const fn = nodes.filter((n) => visibleLifecycles.has(n.lifecycle ?? "active"));
     return { filteredNodes: fn, filteredLanes: lanes };
   }, [nodes, lanes, visibleLifecycles]);
+
+  // The lifecycle filter applies to edges too: a retired `flows_to`
+  // sequence edge hides by default (retired is off out of the box) and
+  // reappears only when "Retired" is toggled on. Filtering here — before
+  // every downstream consumer (neighbour expansion, layout, edge stubs) —
+  // means a hidden-lifecycle edge never draws and never pulls a neighbour
+  // into the rendered set. Endpoint-visibility is still enforced
+  // separately by the `renderedNodeIds` checks downstream.
+  const links = useMemo(() => {
+    if (!visibleLifecycles) return linksRaw;
+    return linksRaw.filter((link) => isEdgeLifecycleVisible(link, visibleLifecycles));
+  }, [linksRaw, visibleLifecycles]);
 
   useEffect(() => {
     let alive = true;

@@ -27,6 +27,29 @@ export function lifecycleLabel(lifecycle: string): string {
 }
 
 /**
+ * An edge's effective lifecycle, defaulting to "active" when the edge
+ * carries no explicit value (older edges, or links built without a
+ * lifecycle column). Mirrors how nodes default in the perspectives.
+ */
+export function edgeLifecycle(link: { lifecycle?: string | null }): string {
+  return link.lifecycle ?? "active";
+}
+
+/**
+ * Whether an edge survives the lifecycle filter on its OWN lifecycle.
+ * The "Life cycle" selections at the bottom of the perspectives apply to
+ * edges as well as nodes: a retired edge hides by default (retired is off
+ * by default) exactly like a retired node, and toggling "Retired" on
+ * reveals both. Endpoint visibility is checked separately by the caller.
+ */
+export function isEdgeLifecycleVisible(
+  link: { lifecycle?: string | null },
+  visible: ReadonlySet<string>,
+): boolean {
+  return visible.has(edgeLifecycle(link));
+}
+
+/**
  * Default-visible lifecycle set for an initial useState. Caller
  * passes the lifecycles that exist in their data; this returns the
  * subset that should be on by default.
