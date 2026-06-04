@@ -307,7 +307,7 @@ export async function loadSlaPerspectiveData(
       params,
     ),
     c.query<PrincipalRow>(
-      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
+      `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
