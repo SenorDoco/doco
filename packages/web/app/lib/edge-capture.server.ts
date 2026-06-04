@@ -125,23 +125,20 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
 
   // Edge-scoped authoring policies — LLM-judged checks that compare the two
   // endpoints (e.g. a sub-process child Intent's name must be the base form of
-  // the calling Action it `serves`). A `drafting` edge is a sketch and exempt,
-  // mirroring the node lifecycle exemption; committed (`active`) edges are held
-  // to the policy.
-  const role = typeof input.props?.role === "string" ? input.props.role : null;
+  // the calling Action that `supports` it). A `drafting` edge is a sketch and
+  // exempt, mirroring the node lifecycle exemption; committed (`active`) edges
+  // are held to the policy.
   if ((input.lifecycle ?? "active") !== "drafting") {
     const pred = await runEdgeAuthoringPolicies({
       docoId: input.docoId,
       edge: {
         edge_type: input.edgeType,
-        role,
         from_node_type: from.type,
         to_node_type: to.type,
       },
       judgeCandidate: {
         id: `${input.fromId}->${input.toId}`,
         edge_type: input.edgeType,
-        role,
         [from.type]: endpointPayload(from.rec),
         [to.type]: endpointPayload(to.rec),
       },

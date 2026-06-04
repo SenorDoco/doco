@@ -713,62 +713,58 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         // Attachment, not completeness — fires from `drafting` onward (see
         // BUSINESS_PROCESS_ATTACHED_LIFECYCLES): an Action never floats free of
-        // the actor who performs it, even in a sketch. Authors create the
-        // Action and its `performed_by` edge together in one changeset.
+        // the actor who performs it, even in a sketch. With edge roles gone, an
+        // Action's `attributed_to` edge to a Principal IS the performer link —
+        // the source node type (action) carries that meaning. Authors create
+        // the Action and its `attributed_to` edge together in one changeset.
         policy:
-          "Every Action in business-processes must have a `performed_by` relationship to the Principal who performs the activity (stored as an `attributed_to` edge) — from the moment the Action is drafted, not only once it is committed.",
+          "Every Action in business-processes is attributed to the Principal who performs it — an `attributed_to` edge from the Action to that Principal — from the moment the Action is drafted, not only once it is committed.",
         predicate: {
-          kind: "requires_edge_role",
+          kind: "requires_edge",
           edge_type: "attributed_to",
-          edge_role: "performed_by",
           target_node_type: "principal",
           when_node_type: ["action"],
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_ATTACHED_LIFECYCLES,
       },
       {
-        // One rule for all three flow-node types. The role-aware edge
-        // predicate filters by `when_node_type`, so a single policy covers
-        // Action, gateway Decision, and milestone State — they share the
-        // same constraint (be tied to a concrete process/pool) and
-        // previously shipped as three near-identical entries.
+        // One rule for all three flow-node types, filtered by `when_node_type`.
+        // With roles gone, a flow node's `supports` edge to an Intent IS its
+        // pool membership ("serves") — the endpoint types (flow node → intent)
+        // carry the meaning. Without it the BPMN renderer can't place the node
+        // in a pool, and the step floats free of the business outcome it advances.
         policy:
-          "Every committed (`queued` or `active`) flow node in business-processes — Action, gateway Decision, or milestone/event State — must `serve` an Intent (stored as a `supports` edge with role `serves`). Without it the BPMN renderer can't place the node in a pool, and the step floats free of the business outcome it advances. A `drafting` sketch may defer this link — serving an Intent is not required while drafting.",
+          "Every committed (`queued` or `active`) flow node in business-processes — Action, gateway Decision, or milestone/event State — links to the Intent it serves with a `supports` edge to that Intent. Without it the BPMN renderer can't place the node in a pool, and the step floats free of the business outcome it advances. A `drafting` sketch may defer this link.",
         predicate: {
-          kind: "requires_edge_role",
+          kind: "requires_edge",
           edge_type: "supports",
-          edge_role: "serves",
           target_node_type: "intent",
           when_node_type: ["action", "decision", "state"],
         },
-        // Completeness, not Principal-attachment — a flow node need NOT `serve`
-        // an Intent while it is a `drafting` sketch (so a step can be drafted
-        // before its Intent/pool is chosen); the link is required once the node
-        // is committed (`queued` or `active`). Contrast the actor/decider gates
-        // (`performed_by`, `decided_by`), which DO fire in drafting — see
+        // Completeness, not Principal-attachment — a flow node need NOT serve an
+        // Intent while it is a `drafting` sketch (so a step can be drafted before
+        // its Intent/pool is chosen); the link is required once the node is
+        // committed. Contrast the actor/decider gates (the `attributed_to` edges
+        // from Actions and gateway Decisions), which DO fire in drafting — see
         // BUSINESS_PROCESS_ATTACHED_LIFECYCLES.
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
-        // The CEILING that complements the `serves` attachment FLOOR above.
-        // Every flow node serves AT MOST one Intent, so combined with the ≥1
-        // gate a flow node serves EXACTLY one Intent — it belongs to a single
-        // BPMN pool. A node wired to two Intents is ambiguous: the renderer
-        // can't decide which pool owns it, and the step's business purpose is
-        // no longer singular. Like the floor it mirrors, this is an ATTACHMENT
-        // invariant — it fires from `drafting` onward
-        // (BUSINESS_PROCESS_ATTACHED_LIFECYCLES), i.e. at EVERY pre-retirement
-        // stage — so a node never serves two Intents even in a sketch. A
-        // sub-process calling Action `serves` only its child purpose Intent
-        // (its pool) and is woven into the parent flow by `flows_to`, so it too
-        // stays single-Intent. Re-point by retiring the old `serves` edge
-        // before adding the new one; endpoints are immutable.
+        // The CEILING that complements the serves FLOOR above. A flow node has
+        // AT MOST one `supports` edge to an Intent, so combined with the ≥1 gate
+        // it belongs to EXACTLY one BPMN pool. A node linked to two Intents is
+        // ambiguous: the renderer can't decide which pool owns it. Fires from
+        // `drafting` onward — a node never serves two Intents even in a sketch
+        // (the cap forces nothing, so it stays compatible with drafting deferring
+        // the floor). A sub-process calling Action links only to its child
+        // purpose Intent (its pool) and is woven into the parent flow by
+        // `flows_to`, so it too stays single-Intent. Re-point by retiring the old
+        // `supports` edge before adding the new one; endpoints are immutable.
         policy:
-          "Every flow node in business-processes — Action, gateway Decision, or milestone/event State — serves AT MOST one Intent: it belongs to exactly one process pool, at every stage (drafting, queued, and active). Combined with the `serves` attachment gate that requires at least one Intent, a flow node serves exactly one. A node that serves two Intents is ambiguous — the BPMN renderer can't place it in a single pool, and its business purpose is no longer singular. Re-point by retiring the old `serves` edge before adding the new one.",
+          "Every flow node in business-processes — Action, gateway Decision, or milestone/event State — links to AT MOST one Intent via `supports`: it belongs to exactly one process pool, at every stage (drafting, queued, and active). Combined with the gate that requires at least one Intent once committed, a flow node serves exactly one. A node linked to two Intents is ambiguous — the BPMN renderer can't place it in a single pool. Re-point by retiring the old `supports` edge before adding the new one.",
         predicate: {
-          kind: "limits_edge_role",
+          kind: "limits_edge",
           edge_type: "supports",
-          edge_role: "serves",
           target_node_type: "intent",
           max_count: 1,
           when_node_type: ["action", "decision", "state"],
@@ -776,25 +772,22 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_node_lifecycle: BUSINESS_PROCESS_ATTACHED_LIFECYCLES,
       },
       {
-        // Sub-process naming, enforced on the `serves` EDGE (not on either
-        // node). A sub-process is designed by connecting a calling Action to a
-        // child purpose Intent with a `serves` relationship; the Intent's name
-        // should be the base (imperative) form of that Action, which is
-        // normally written third-person (`Posts a job` → `Post a job`). The
-        // convention spans two nodes, so it can't live on either node alone —
-        // the node judge sees only its own candidate. This edge-scoped check
-        // fires when the Action→Intent `serves` edge is created and hands the
-        // judge BOTH endpoints. A STEP-1 gate in the spec makes ordinary
-        // flow-step `serves` edges (an Action that is merely one step of the
-        // overarching process, not a sub-process expansion) PASS, so only true
-        // sub-process pairings are graded.
+        // Sub-process naming, enforced on the EDGE (not on either node). A
+        // sub-process is designed by connecting a calling Action to a child
+        // purpose Intent with a `supports` edge; the Intent's name should be the
+        // base (imperative) form of that Action (`Posts a job` → `Post a job`).
+        // The convention spans two nodes, so it can't live on either alone — the
+        // node judge sees only its own candidate. This edge-scoped check fires
+        // when the Action→Intent `supports` edge is created and hands the judge
+        // BOTH endpoints. A STEP-1 gate makes ordinary flow-step links (an Action
+        // that is merely one step, not a sub-process expansion) PASS, so only
+        // true sub-process pairings are graded.
         predicate: {
           kind: "edge-probabilistic",
           edge_type: "supports",
-          edge_role: "serves",
           from_node_type: "action",
           to_node_type: "intent",
-          spec: "You are checking a `serves` relationship from an Action (the `action` endpoint) to a purpose Intent (the `intent` endpoint). STEP 1 — decide whether this is a SUB-PROCESS pairing: the Intent names the SAME single activity as the Action, expanded into its own process (e.g. Action `Posts a job` ↔ Intent `Post a job`). If instead the Action is merely one step within a broader process the Intent names (e.g. Action `review the application` serving Intent `Approve a consumer loan`), this is an ordinary flow-step link, not a sub-process — PASS, the rule does not apply. STEP 2 — for a sub-process pairing, PASS when the Intent's name is the base (imperative) verb form of the Action, i.e. the Action's third-person verb converted to its base form (`Posts a job` → `Post a job`, `Approves the invoice` → `Approve the invoice`). FAIL with `intent name is not the base form of the action` when the Intent's name is in the third-person singular present tense (a verb ending in `-s`) or otherwise does not read as the base-form imperative of the same activity.",
+          spec: "You are checking a `supports` relationship from an Action (the `action` endpoint) to a purpose Intent (the `intent` endpoint). STEP 1 — decide whether this is a SUB-PROCESS pairing: the Intent names the SAME single activity as the Action, expanded into its own process (e.g. Action `Posts a job` ↔ Intent `Post a job`). If instead the Action is merely one step within a broader process the Intent names (e.g. Action `review the application` supporting Intent `Approve a consumer loan`), this is an ordinary flow-step link, not a sub-process — PASS, the rule does not apply. STEP 2 — for a sub-process pairing, PASS when the Intent's name is the base (imperative) verb form of the Action, i.e. the Action's third-person verb converted to its base form (`Posts a job` → `Post a job`, `Approves the invoice` → `Approve the invoice`). FAIL with `intent name is not the base form of the action` when the Intent's name is in the third-person singular present tense (a verb ending in `-s`) or otherwise does not read as the base-form imperative of the same activity.",
         },
       },
       {
@@ -845,22 +838,19 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         // A gateway routes the flow; strict BPMN leaves the diamond itself
         // unowned and lets the surrounding activities carry accountability.
-        // We make that accountability explicit instead: every gateway names
-        // the Principal — a role, team, or system actor — answerable for the
-        // call, via a `decided_by` attributed_to edge. Mirrors the Action
-        // `performed_by` gate, and like it this is an ATTACHMENT gate: it
+        // We make that accountability explicit instead: every gateway is
+        // attributed to the Principal answerable for the call, via an
+        // `attributed_to` edge. With roles gone, a Decision's `attributed_to`
+        // edge to a Principal IS its decider (source node type = decision).
+        // Mirrors the Action gate, and like it this is an ATTACHMENT gate: it
         // fires from `drafting` onward (see BUSINESS_PROCESS_ATTACHED_LIFECYCLES),
-        // so a gateway is never sketched unowned — drafting a decider-less
-        // gateway is blocked, not deferred, which also keeps it out of the
-        // BPMN "Unassigned" lane. The perspective still renders a decider
-        // supplied via `performed_by`, but `decided_by` is the role this
-        // template requires.
+        // so a gateway is never sketched unowned — which also keeps it out of
+        // the BPMN "Unassigned" lane.
         policy:
-          "Every gateway Decision in business-processes must have a `decided_by` relationship to the Principal answerable for the call — the role, team, or system that owns how the gateway is decided (stored as an `attributed_to` edge) — from the moment the gateway is drafted, not only once it is committed. A gateway with no decider floats into the Unassigned lane.",
+          "Every gateway Decision in business-processes is attributed to the Principal answerable for the call — an `attributed_to` edge from the Decision to that Principal — from the moment the gateway is drafted, not only once it is committed. A gateway with no such Principal floats into the Unassigned lane.",
         predicate: {
-          kind: "requires_edge_role",
+          kind: "requires_edge",
           edge_type: "attributed_to",
-          edge_role: "decided_by",
           target_node_type: "principal",
           when_node_type: ["decision"],
         },
@@ -920,39 +910,38 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
 
       // ── Coverage ────────────────────────────────────────────────
       {
-        // Every actor Principal earns its swim lane by owning ≥1 Action
-        // (incoming `attributed_to` role `performed_by`). Deterministic, but a
-        // `warn`: the single accountable owner (linked by `owned_by`) performs
-        // no step yet is legitimately present, so it is structurally exempt —
-        // the same "don't ding a valid special case" instinct behind the
-        // org-tree root-Principal nudge. (That each Action `serves` the Intent
-        // is already enforced by the flow-node `serves` gate above.)
+        // Every actor Principal earns its swim lane by being the target of ≥1
+        // Action's `attributed_to` edge (an incoming performer link). A `warn`,
+        // and structurally exempt for the accountable owner — the Principal an
+        // Intent is `attributed_to` — who performs no step yet is legitimately
+        // present. With roles gone, performer vs owner is told apart by the
+        // OTHER endpoint's type: an incoming `attributed_to` from an Action is a
+        // performer link; one from an Intent marks the owner.
         on_violation: "warn",
         policy:
-          "Each actor Principal in the process owns at least one Action through a `performed_by` relationship. The single accountable process owner, linked by `owned_by`, is exempt.",
+          "Each actor Principal in the process is the target of at least one Action's `attributed_to` edge. The single accountable process owner — the Principal an Intent is attributed to — is exempt.",
         predicate: {
-          kind: "requires_edge_role",
+          kind: "requires_edge",
           edge_type: "attributed_to",
-          edge_role: "performed_by",
           direction: "incoming",
-          exempt_when_role: "owned_by",
+          target_node_type: "action",
+          exempt_when_other_node_type: "intent",
           when_node_type: ["principal"],
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
-        // The accountable process owner — formerly prose-only guidance, now a
-        // `warn` gate. A committed process Intent should name its owner via an
-        // `attributed_to` edge with role `owned_by`. Kept as `warn` (not block)
-        // because a sub-process child Intent may inherit ownership rather than
-        // re-declare it, and we don't want to false-positive on those.
+        // The accountable process owner — a `warn` gate. A committed process
+        // Intent should be attributed to its owner via an `attributed_to` edge
+        // to a Principal. Kept as `warn` (not block) because a sub-process child
+        // Intent may inherit ownership rather than re-declare it, and we don't
+        // want to false-positive on those.
         on_violation: "warn",
         policy:
-          "Name the single accountable process owner in the purpose Intent and link it with an `attributed_to` edge carrying role `owned_by` — the Principal answerable for the whole process's outcome (the RACI 'Accountable' role, distinct from the per-step `performed_by` actors).",
+          "Name the single accountable process owner in the purpose Intent and link it with an `attributed_to` edge to the Principal answerable for the whole process's outcome (the RACI 'Accountable' role, distinct from the per-step performers).",
         predicate: {
-          kind: "requires_edge_role",
+          kind: "requires_edge",
           edge_type: "attributed_to",
-          edge_role: "owned_by",
           target_node_type: "principal",
           when_node_type: ["intent"],
         },
@@ -962,11 +951,10 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       // ── Eval ────────────────────────────────────────────────────
       {
         policy:
-          "Every Eval in business-processes must `test` the node whose claim it pins (stored as a `supports` edge with role `tests`).",
+          "Every Eval in business-processes links to the node whose claim it pins with a `supports` edge to that node.",
         predicate: {
-          kind: "requires_edge_role",
+          kind: "requires_edge",
           edge_type: "supports",
-          edge_role: "tests",
           when_node_type: ["eval"],
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
@@ -1346,12 +1334,11 @@ export function templatePolicyToPolicyRow(policy: TemplatePolicy): SeededPolicyR
   } else if (pred.kind === "edge-probabilistic") {
     // Edge-scoped probabilistic: LLM-judged like `probabilistic`, but fires on
     // edge creation with both endpoints handed to the judge. The edge scoping
-    // (edge_type / role / endpoint node types) rides on the seeded predicate.
+    // (edge_type / endpoint node types) rides on the seeded predicate.
     kind = "probabilistic";
     predicate = {
       agent_instruction: pred.spec,
       edge_type: pred.edge_type,
-      ...(pred.edge_role ? { edge_role: pred.edge_role } : {}),
       ...(pred.from_node_type ? { from_node_type: pred.from_node_type } : {}),
       ...(pred.to_node_type ? { to_node_type: pred.to_node_type } : {}),
     };

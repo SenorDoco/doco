@@ -6,7 +6,6 @@ import type { PolicyDraft } from "~/lib/capture.server";
 
 export const DETERMINISTIC_SUB_KINDS = [
   "requires_edge",
-  "requires_edge_role",
   "forbids_edge",
   "requires_field",
   "forbids_field",
@@ -23,7 +22,6 @@ export interface PolicyFormInitial {
   agent_instruction: string;
   sub_kind: string;
   edge_type: string;
-  edge_role: string;
   /** Edge-scoped probabilistic policy: endpoint node types for the edge it fires on. */
   from_node_type: string;
   to_node_type: string;
@@ -56,7 +54,6 @@ export function policyFormInitialFromData(data: Record<string, unknown>): Policy
     agent_instruction: s(predicate.agent_instruction),
     sub_kind: s(predicate.sub_kind) || "requires_field",
     edge_type: s(predicate.edge_type),
-    edge_role: s(predicate.edge_role),
     from_node_type: s(predicate.from_node_type),
     to_node_type: s(predicate.to_node_type),
     target_node_type: s(predicate.target_node_type),
@@ -103,7 +100,6 @@ export function policyDraftFromForm(form: FormData): PolicyDraft | { error: stri
     // creation (judge sees both endpoints) instead of on a node. `when_node_type`
     // does not apply to an edge-scoped policy, so it is dropped when edge_type is set.
     const edge_type = kind === "probabilistic" ? str(form, "edge_type") : "";
-    const edge_role = str(form, "edge_role");
     const from_node_type = str(form, "from_node_type");
     const to_node_type = str(form, "to_node_type");
     return {
@@ -112,7 +108,6 @@ export function policyDraftFromForm(form: FormData): PolicyDraft | { error: stri
       ...(kind === "probabilistic" && edge_type
         ? {
             edge_type,
-            ...(edge_role ? { edge_role } : {}),
             ...(from_node_type ? { from_node_type } : {}),
             ...(to_node_type ? { to_node_type } : {}),
           }
@@ -155,18 +150,6 @@ function buildDeterministicPredicate(
       if (!edge_type) return { error: "edge_type is required." };
       const target = str(form, "target_node_type");
       return withWhen({ sub_kind, edge_type, ...(target ? { target_node_type: target } : {}) });
-    }
-    case "requires_edge_role": {
-      const edge_type = str(form, "edge_type");
-      const edge_role = str(form, "edge_role");
-      if (!edge_type || !edge_role) return { error: "edge_type and edge_role are required." };
-      const target = str(form, "target_node_type");
-      return withWhen({
-        sub_kind,
-        edge_type,
-        edge_role,
-        ...(target ? { target_node_type: target } : {}),
-      });
     }
     case "requires_field":
     case "forbids_field": {

@@ -219,8 +219,26 @@ function hasText(value: string | null): boolean {
   return Boolean(value && value.trim().length > 0);
 }
 
+function nodeTypeOf(id: string): string {
+  const i = id.indexOf("_");
+  return i <= 0 ? "" : id.slice(0, i);
+}
+
+// Edge `role` is retired, so the SLA-relevant role is DERIVED from the edge type
+// and its endpoint node types: a Rule's `attributed_to` → Principal is its
+// owner; an Eval's `supports` is a test; an Action's `constrained_by` is a
+// `gated_by` guard; a Decision's `constrained_by` consults the Rule. (The old
+// `acts_on` nuance folds into `gated_by`.)
 function edgeRole(edge: EdgeRow): string {
-  return typeof edge.props?.role === "string" ? edge.props.role : edge.edge_type;
+  const from = nodeTypeOf(edge.from_id);
+  const to = nodeTypeOf(edge.to_id);
+  if (edge.edge_type === "supports" && from === "eval") return "tests";
+  if (edge.edge_type === "attributed_to" && to === "principal") return "owned_by";
+  if (edge.edge_type === "constrained_by") {
+    if (from === "action") return "gated_by";
+    if (from === "decision") return "consults";
+  }
+  return edge.edge_type;
 }
 
 export async function loadSlaPerspectiveData(

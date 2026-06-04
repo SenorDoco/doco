@@ -11,7 +11,6 @@ export interface RelationKindSpec {
   value: RelationOwner;
   cardinality: RelationCardinality;
   acceptsProps?: string[];
-  role_examples?: string[];
   description: string;
 }
 
@@ -25,7 +24,6 @@ export const RELATION_KINDS: Record<string, RelationKindSpec> = Object.fromEntri
       value: entry.value,
       cardinality: entry.cardinality,
       ...(entry.acceptsProps ? { acceptsProps: [...entry.acceptsProps] } : {}),
-      ...(entry.roleExamples ? { role_examples: [...entry.roleExamples] } : {}),
       description: entry.description,
     },
   ]),

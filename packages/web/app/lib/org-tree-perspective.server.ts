@@ -215,24 +215,20 @@ export async function loadOrgTreeData(
           )
         ).rows;
   const reportsToByPrincipal = new Map<string, string>();
-  const dottedReportsToByPrincipal = new Map<string, string[]>();
   for (const edge of edgeRows) {
-    const role = edge.props?.role;
-    if (role === "reports_to") {
-      if (!reportsToByPrincipal.has(edge.from_id))
-        reportsToByPrincipal.set(edge.from_id, edge.to_id);
-    } else if (role === "dotted_reports_to") {
-      const list = dottedReportsToByPrincipal.get(edge.from_id) ?? [];
-      if (!list.includes(edge.to_id)) list.push(edge.to_id);
-      dottedReportsToByPrincipal.set(edge.from_id, list);
-    }
+    // Edge roles are retired: every `has_parent` edge between principals is a
+    // (solid) reporting line; the first parent wins so the tree stays a clean
+    // hierarchy. Dotted-line / matrix reporting is no longer modeled distinctly.
+    if (!reportsToByPrincipal.has(edge.from_id))
+      reportsToByPrincipal.set(edge.from_id, edge.to_id);
   }
 
   const nodes: OrgTreeNode[] = rows.map((r) => {
     const type = mapPrincipalKind(r.kind) ?? inferKindFromProse(r.body_md);
     const role = roleFromProse(r.body_md, r.name, type);
     const reports_to = reportsToByPrincipal.get(r.id) ?? null;
-    const dotted_reports_to = dottedReportsToByPrincipal.get(r.id) ?? [];
+    // Dotted-line / matrix reporting is no longer modeled (edge roles retired).
+    const dotted_reports_to: string[] = [];
     return {
       id: r.id,
       name: r.name,

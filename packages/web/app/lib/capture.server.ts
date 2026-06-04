@@ -1849,10 +1849,9 @@ export interface PolicyDraft {
    * set on a `probabilistic` draft, the policy fires on EDGE creation (the LLM
    * judge sees BOTH endpoint nodes) instead of on a single node candidate —
    * e.g. "a sub-process child Intent's name is the base form of the calling
-   * Action it `serves`". `when_node_type` is ignored for an edge-scoped policy.
+   * Action that `supports` it". `when_node_type` is ignored for an edge-scoped policy.
    */
   edge_type?: string;
-  edge_role?: string;
   from_node_type?: string;
   to_node_type?: string;
   fires_when_node_lifecycle?: string[];
@@ -1920,19 +1919,13 @@ function validateEdgeTypeReference(predicate: DeterministicPredicate): CaptureEr
       error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type. Valid edge types: ${EDGE_TYPES.join(", ")}.`,
     };
   }
-  if (predicate.sub_kind === "requires_edge_role") {
-    const edgeRole = predicate.edge_role;
-    if (typeof edgeRole !== "string" || edgeRole.trim().length === 0) {
-      return { error: "predicate.edge_role is required for `requires_edge_role`." };
-    }
-  }
   return null;
 }
 
 function predicateEdgeType(predicate: DeterministicPredicate): string | null {
   if (
     predicate.sub_kind !== "requires_edge" &&
-    predicate.sub_kind !== "requires_edge_role" &&
+    predicate.sub_kind !== "limits_edge" &&
     predicate.sub_kind !== "forbids_edge" &&
     predicate.sub_kind !== "graph-completeness"
   ) {
@@ -1958,7 +1951,6 @@ function buildEdgeProbabilisticPredicate(
       error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type. Valid edge types: ${EDGE_TYPES.join(", ")}.`,
     };
   }
-  const edgeRole = draft.edge_role?.trim();
   const fromNodeType = draft.from_node_type?.trim();
   const toNodeType = draft.to_node_type?.trim();
   for (const [field, value] of [
@@ -1974,7 +1966,6 @@ function buildEdgeProbabilisticPredicate(
   return {
     agent_instruction: instruction,
     edge_type: edgeType,
-    ...(edgeRole ? { edge_role: edgeRole } : {}),
     ...(fromNodeType ? { from_node_type: fromNodeType as NodeType } : {}),
     ...(toNodeType ? { to_node_type: toNodeType as NodeType } : {}),
   };

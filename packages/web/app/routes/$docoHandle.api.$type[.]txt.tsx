@@ -141,8 +141,7 @@ ${renderCapturePatchFields("idea")}
 
 Intents are the source of every downstream Decision/Action. Capture an
 Intent **before** writing the first Decision that depends on it, then
-link the Decision to the Intent with a \`supports\` edge carrying
-\`role: "serves"\`.
+link the Decision to the Intent with a \`supports\` edge.
 
 ENDPOINT
   POST ${baseUrl}/${handle}/api/intents.json
@@ -678,7 +677,7 @@ BODY — kind = "deterministic"
   predicate             required   predicate object (or JSON string) shaped
                                   { "sub_kind": <check>, ...params }.
                                   sub_kind is one of: requires_edge,
-                                  requires_edge_role, forbids_edge,
+                                  limits_edge, forbids_edge,
                                   requires_field, forbids_field,
                                   unique_field, requires_node_type,
                                   requires_entity_type, graph-completeness,
@@ -723,9 +722,8 @@ EXAMPLE — deterministic
     -d '{
       "kind": "deterministic",
       "predicate": {
-        "sub_kind": "requires_edge_role",
+        "sub_kind": "requires_edge",
         "edge_type": "attributed_to",
-        "edge_role": "performed_by",
         "target_node_type": "principal",
         "when_node_type": ["action"]
       },
