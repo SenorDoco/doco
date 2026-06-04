@@ -1577,30 +1577,30 @@ authenticated session or token. Never send created_by.
 Required fields marked *; everything else is optional. lifecycle
 defaults to "active" except where noted.
 
-**Migration 022/023 prose-field rename.** Every node type now
-stores its full markdown body in a single TYPE-NAMED field — there
-is no separate \`summary\` / \`body_md\` / \`title\` / \`name\` /
-\`description\` field anymore. The first line of the prose IS the
-label shown in lists; the rest is the body. POSTs that send the old
-\`summary\` field will fail with \`<type> is required.\` because the
-required prose key is now \`intent\` / \`decision\` / \`action\` /
-etc., not \`summary\`.
+**Raw row shape.** A node capture body is the storage row itself:
+\`{ prose, kind?, attributes }\`. \`prose\` is the node's full markdown
+text (first line = the label shown in lists and BPMN swim lanes);
+\`kind\` is the promoted classifier a couple of types carry (eval,
+state); every other per-type field goes inside \`attributes\`. There
+is no separate \`summary\` / \`body_md\` / \`title\` / \`description\`
+field. The legacy type-named prose key (\`intent\` / \`decision\` / …)
+is still accepted as an alias for \`prose\`.
 
 ${renderCaptureCheatsheet()}
 - Policy (Suggestion, owner-only): POST /<handle>/api/policies.json with kind*("suggestion"), agent_instruction*(one natural-language instruction), authored_by_principal_id?.
 - Policy (Probabilistic, owner-only): same endpoint with kind*("probabilistic"), agent_instruction*(prose the LLM judge evaluates), when_node_type?[], fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 - Policy (Deterministic, owner-only): same endpoint with kind*("deterministic"), predicate*(object keyed by sub_kind, e.g. {"sub_kind":"requires_edge_role","edge_type":"attributed_to","edge_role":"performed_by","target_node_type":"principal","when_node_type":["action"]}), fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
-The TYPE-NAMED field carries multi-line markdown; the first line is
-the row label that shows up in lists and BPMN swim lanes. Example:
+\`prose\` carries multi-line markdown; the first line is the row label
+that shows up in lists and BPMN swim lanes. Example:
 
   POST /<handle>/api/intents.json
-  { "intent": "Talent seeker pays to activate Torre Reach\\n\\nThe buyer can complete the purchase without support intervention…" }
+  { "prose": "Talent seeker pays to activate Torre Reach\\n\\nThe buyer can complete the purchase without support intervention…" }
 
-More examples (minimal — first line of the type-named field is the label):
-{ "intent": "Checkout can be completed without support.\\n\\nBackground: support tickets averaged 3/week before this work." }   ← Intent
-{ "action": "Implement principal-id capture fields.\\n\\nReplaced the username-based path…", "verb": "implement", "outputs": { "commit": "abc123" } }                          ← Action
-{ "decision": "Use ULIDs for all entity ids.", "question": "What identifier scheme should every entity use?", "chosen": "ULID — time-sortable, URL-safe, no collisions in practice." } ← Decision
+More examples (minimal — first line of \`prose\` is the label):
+{ "prose": "Checkout can be completed without support.\\n\\nBackground: support tickets averaged 3/week before this work." }   ← Intent
+{ "prose": "Implement principal-id capture fields.\\n\\nReplaced the username-based path…", "attributes": { "verb": "implement", "outputs": { "commit": "abc123" } } }   ← Action
+{ "prose": "Use ULIDs for all entity ids.", "attributes": { "question": "What identifier scheme should every entity use?", "chosen": "ULID — time-sortable, URL-safe, no collisions in practice." } } ← Decision
 
 Only call GET /<handle>/api/<type>.txt when you need detail beyond
 this cheatsheet (long-form error semantics, deep PATCH field list,

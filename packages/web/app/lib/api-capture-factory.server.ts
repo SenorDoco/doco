@@ -4,7 +4,7 @@
 import { entityAsOf, getEntity, getVersions, verifyHistory, withClient } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
-import { buildEntityGetResponse, normalizeRawCaptureDraft } from "~/lib/api-capture-shape";
+import { buildEntityGetResponse } from "~/lib/api-capture-shape";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import {
@@ -131,11 +131,10 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             );
           }
 
-          // Raw-schema phase (additive): accept `{prose, attributes:{…}}` and
-          // fold it onto the shape the per-type capture fn already reads. The
-          // legacy type-named field keeps working unchanged.
-          draft = normalizeRawCaptureDraft(draft, PROSE_FIELD[cfg.entityType] ?? cfg.entityType);
-
+          // The generic node writer speaks the raw row shape directly:
+          // `{prose, kind?, attributes:{…}}`, with the legacy type-named prose
+          // field (`decision`/`intent`/…) still accepted as a `prose` alias —
+          // no translation shim needed here.
           const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(
             cfg.entityType,
             draft as Record<string, unknown>,
@@ -144,15 +143,15 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             return Response.json({ error: nodeJsonEdgeKeyError }, { status: 400 });
           }
 
-          // Reject non-string prose fields up front: the captureX functions
-          // call `.trim()` on the type-named prose field (intent/decision/…),
-          // which throws TypeError → 500 when a client sends an object or
-          // array. A typed boundary check turns that into a clean 400.
+          // Reject a non-string prose value up front: the capture writer trims
+          // prose, which would throw TypeError → 500 when a client sends an
+          // object or array. A typed boundary check turns that into a clean
+          // 400. Accept it via either `prose` or the legacy type-named field.
           const proseField = PROSE_FIELD[cfg.entityType];
-          if (proseField) {
-            const v = (draft as Record<string, unknown>)[proseField];
+          for (const key of ["prose", ...(proseField ? [proseField] : [])]) {
+            const v = (draft as Record<string, unknown>)[key];
             if (v !== undefined && typeof v !== "string") {
-              return Response.json({ error: `'${proseField}' must be a string.` }, { status: 400 });
+              return Response.json({ error: `'${key}' must be a string.` }, { status: 400 });
             }
           }
 

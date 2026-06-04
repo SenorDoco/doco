@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
-import { type RuleDraft, captureRule } from "~/lib/capture.server";
+import { type GenericNodeDraft, captureGenericNode } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { captureEdge } from "~/lib/edge-capture.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -75,21 +75,22 @@ export async function action({
     : "review";
   const authorPrincipalId = me?.id ? await resolvePrincipalIdForUser(meta.docoId, me.id) : null;
 
-  const draft: RuleDraft = stampAuthenticatedCreator(
+  // Raw row shape: prose → prose; the predicate/severity/enforced_by
+  // conventional attribute keys → the attributes bag (per CAPTURE_SCHEMAS).
+  const draft: GenericNodeDraft = stampAuthenticatedCreator(
     {
-      rule: ruleText,
-      predicate,
-      severity,
-      enforced_by: enforcedBy,
-    } satisfies RuleDraft,
+      prose: ruleText,
+      attributes: { predicate, severity, enforced_by: enforcedBy },
+    } satisfies GenericNodeDraft,
     me?.id,
   );
 
-  const result = await captureRule(
+  const result = await captureGenericNode(
     dir,
     meta.docoId,
     ownerSlug,
     docoSlug,
+    "rule",
     draft,
     new URL(request.url).origin,
   );
