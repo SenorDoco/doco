@@ -856,9 +856,10 @@ describe("business-processes template — all flow-node gates committed-only, dr
       g.nodes.push(orphan);
       return deterministicBlocks(evaluate(orphan, g)).some((b) => /decided_by/.test(b.reason));
     }
-    expect(gatewayMissingDecidedByBlocks("drafting"), "drafting is exempt from the decider rule").toBe(
-      false,
-    );
+    expect(
+      gatewayMissingDecidedByBlocks("drafting"),
+      "drafting is exempt from the decider rule",
+    ).toBe(false);
     expect(gatewayMissingDecidedByBlocks("queued"), "queued is held to the decider rule").toBe(
       true,
     );
