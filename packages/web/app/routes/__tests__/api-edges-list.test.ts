@@ -54,9 +54,7 @@ describe("GET /<doco>/api/edges.json", () => {
     const captured = captureQuery();
 
     await loader({
-      request: new Request(
-        "https://doco.test/torre-bpm/api/edges.json?from_id=state_visits_torre",
-      ),
+      request: new Request("https://doco.test/torre-bpm/api/edges.json?from_id=state_visits_torre"),
       params: { docoHandle: "torre-bpm" },
     } as never);
 
@@ -79,9 +77,7 @@ describe("GET /<doco>/api/edges.json", () => {
     const captured = captureQuery();
 
     await loader({
-      request: new Request(
-        "https://doco.test/torre-bpm/api/edges.json?include_retired=true",
-      ),
+      request: new Request("https://doco.test/torre-bpm/api/edges.json?include_retired=true"),
       params: { docoHandle: "torre-bpm" },
     } as never);
 
