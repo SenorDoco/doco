@@ -139,10 +139,12 @@ const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
   // dedicated columns rather than the generic prose column.
   principal: {
     nodeType: "principal",
-    primaryColumn: "name",
+    // Slim-down: principals dropped their `name`/`body_md` columns — the label
+    // is `prose`, and the body folds into the `attributes` bag.
+    primaryColumn: "prose",
     typeNamedColumn: null,
     primaryField: "name",
-    bodyColumn: "body_md",
+    bodyColumn: "attributes->>'body_md'",
     bodyField: "body_md",
     updateSegment: "principals",
   },

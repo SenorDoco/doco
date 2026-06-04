@@ -207,7 +207,7 @@ export async function loader({
         // `prose`, except principals (prose='') label on `name`.
         // Policies keep their own tables and their `policy` column.
         `SELECT id,
-                CASE WHEN node_type = 'principal' THEN name ELSE split_part(prose, E'\n', 1) END AS label,
+                split_part(prose, E'\n', 1) AS label,
                 lifecycle
            FROM nodes
           WHERE doco_id = $1 AND id = ANY($2::text[])

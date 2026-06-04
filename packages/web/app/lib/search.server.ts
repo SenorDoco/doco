@@ -60,7 +60,8 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
     table: "nodes",
     nodeType: "principal",
     entityType: "principal",
-    selectExtra: "name, created_at",
+    // Slim-down: principal label lives in `prose` now (no `name` column).
+    selectExtra: "prose AS name, created_at",
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
