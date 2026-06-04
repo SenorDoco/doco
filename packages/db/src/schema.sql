@@ -532,17 +532,17 @@ CREATE TABLE IF NOT EXISTS edges (
   updated_by      text,
   retired_at      timestamptz
 );
--- At most one LIVE edge per (doco, from, to, type, role); retired duplicates
--- ok. Canonical edge families may carry multiple roles between the same nodes
--- (e.g. actor + owner attribution), so role metadata is part of the live
--- uniqueness identity.
+-- At most one LIVE edge per (doco, from, to, type); retired duplicates ok.
+-- Edge `role` is retired, so the relation type alone is the live identity — two
+-- nodes are connected by at most one live edge of each type. (The role-removal
+-- migration near the end of this file drops the old role-bearing index, dedups
+-- any edges that collapse together, and recreates this one.)
 CREATE UNIQUE INDEX IF NOT EXISTS edges_live_uniq
   ON edges (
     doco_id,
     from_id,
     to_id,
-    edge_type,
-    COALESCE(props->>'role', '')
+    edge_type
   ) WHERE lifecycle <> 'retired';
 CREATE INDEX IF NOT EXISTS edges_doco_idx           ON edges (doco_id);
 CREATE INDEX IF NOT EXISTS edges_doco_type_from_idx ON edges (doco_id, edge_type, from_id);
@@ -1343,6 +1343,83 @@ BEGIN
                             CHECK (lifecycle IN ('active','retired'));
 END $$;
 
+-- ── Edge `role` removal ─────────────────────────────────────────────────────
+-- Edge roles are retired: an edge's meaning now comes from its type plus its
+-- endpoint node types, never a `props.role` tag. This converges already-seeded
+-- production data onto the new model. It runs EARLY (before the BP backfills
+-- below) so every later migration sees role-free policies. Idempotent: each
+-- UPDATE matches only rows still in the old shape, so a second boot is a no-op.
+
+-- (1a) The actor-coverage gate is the one role gate that also carried an
+-- exemption. Re-express it structurally: an incoming `attributed_to` from an
+-- Action (the performer), exempt when one comes from an Intent (the owner).
+UPDATE policies
+SET data = jsonb_set(
+      data, '{predicate}',
+      (data -> 'predicate' - 'edge_role' - 'exempt_when_role')
+        || jsonb_build_object(
+             'sub_kind', 'requires_edge',
+             'target_node_type', 'action',
+             'exempt_when_other_node_type', 'intent'
+           )
+    ),
+    updated_at = now()
+WHERE kind = 'deterministic'
+  AND data -> 'predicate' ->> 'sub_kind' = 'requires_edge_role'
+  AND data -> 'predicate' ->> 'edge_role' = 'performed_by'
+  AND data -> 'predicate' ->> 'direction' = 'incoming'
+  AND data -> 'predicate' ->> 'exempt_when_role' = 'owned_by';
+
+-- (1b) Every other requires_edge_role → requires_edge (drop the role; the
+-- edge_type + target_node_type + when_node_type already carry the distinction).
+UPDATE policies
+SET data = jsonb_set(
+      data, '{predicate}',
+      (data -> 'predicate' - 'edge_role') || '{"sub_kind":"requires_edge"}'::jsonb
+    ),
+    updated_at = now()
+WHERE kind = 'deterministic'
+  AND data -> 'predicate' ->> 'sub_kind' = 'requires_edge_role';
+
+-- (1c) limits_edge_role → limits_edge (drop the role).
+UPDATE policies
+SET data = jsonb_set(
+      data, '{predicate}',
+      (data -> 'predicate' - 'edge_role') || '{"sub_kind":"limits_edge"}'::jsonb
+    ),
+    updated_at = now()
+WHERE kind = 'deterministic'
+  AND data -> 'predicate' ->> 'sub_kind' = 'limits_edge_role';
+
+-- (1d) Edge-scoped probabilistic policies: drop the now-unused edge_role.
+UPDATE policies
+SET data = jsonb_set(data, '{predicate}', data -> 'predicate' - 'edge_role'),
+    updated_at = now()
+WHERE kind = 'probabilistic'
+  AND data -> 'predicate' ? 'edge_type'
+  AND data -> 'predicate' ? 'edge_role';
+
+-- (2) Edges: drop the old role-bearing live-uniqueness index, dedup edges that
+-- collapse to the same (doco, from, to, type) once role is ignored (keep the
+-- oldest, retire the rest — e.g. a performer + owner attribution between the
+-- same two nodes merges), strip the role tag, and recreate the role-free index.
+DROP INDEX IF EXISTS edges_live_uniq;
+WITH ranked AS (
+  SELECT id,
+         row_number() OVER (
+           PARTITION BY doco_id, from_id, to_id, edge_type
+           ORDER BY created_at, id
+         ) AS rn
+    FROM edges
+   WHERE lifecycle <> 'retired'
+)
+UPDATE edges
+   SET lifecycle = 'retired', updated_at = now()
+ WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+UPDATE edges SET props = props - 'role' WHERE props ? 'role';
+CREATE UNIQUE INDEX IF NOT EXISTS edges_live_uniq
+  ON edges (doco_id, from_id, to_id, edge_type) WHERE lifecycle <> 'retired';
+
 -- ── Business-processes Intent shape: grade the WHOLE field, never a line ────
 -- The seeded business-processes Intent-shape check used to be line-scoped — it
 -- graded "the first line" as a brief headline (and, earlier still, also
@@ -1407,9 +1484,8 @@ SELECT
     'doco_id', bp.doco_id,
     'kind', 'probabilistic',
     'predicate', jsonb_build_object(
-      'agent_instruction', $subproc_spec$You are checking a `serves` relationship from an Action (the `action` endpoint) to a purpose Intent (the `intent` endpoint). STEP 1 — decide whether this is a SUB-PROCESS pairing: the Intent names the SAME single activity as the Action, expanded into its own process (e.g. Action `Posts a job` ↔ Intent `Post a job`). If instead the Action is merely one step within a broader process the Intent names (e.g. Action `review the application` serving Intent `Approve a consumer loan`), this is an ordinary flow-step link, not a sub-process — PASS, the rule does not apply. STEP 2 — for a sub-process pairing, PASS when the Intent's name is the base (imperative) verb form of the Action, i.e. the Action's third-person verb converted to its base form (`Posts a job` → `Post a job`, `Approves the invoice` → `Approve the invoice`). FAIL with `intent name is not the base form of the action` when the Intent's name is in the third-person singular present tense (a verb ending in `-s`) or otherwise does not read as the base-form imperative of the same activity.$subproc_spec$::text,
+      'agent_instruction', $subproc_spec$You are checking a `supports` relationship from an Action (the `action` endpoint) to a purpose Intent (the `intent` endpoint). STEP 1 — decide whether this is a SUB-PROCESS pairing: the Intent names the SAME single activity as the Action, expanded into its own process (e.g. Action `Posts a job` ↔ Intent `Post a job`). If instead the Action is merely one step within a broader process the Intent names (e.g. Action `review the application` supporting Intent `Approve a consumer loan`), this is an ordinary flow-step link, not a sub-process — PASS, the rule does not apply. STEP 2 — for a sub-process pairing, PASS when the Intent's name is the base (imperative) verb form of the Action, i.e. the Action's third-person verb converted to its base form (`Posts a job` → `Post a job`, `Approves the invoice` → `Approve the invoice`). FAIL with `intent name is not the base form of the action` when the Intent's name is in the third-person singular present tense (a verb ending in `-s`) or otherwise does not read as the base-form imperative of the same activity.$subproc_spec$::text,
       'edge_type', 'supports',
-      'edge_role', 'serves',
       'from_node_type', 'action',
       'to_node_type', 'intent'
     ),
@@ -1428,7 +1504,6 @@ WHERE NOT EXISTS (
   SELECT 1 FROM policies x
   WHERE x.doco_id = bp.doco_id
     AND x.data -> 'predicate' ->> 'edge_type'      = 'supports'
-    AND x.data -> 'predicate' ->> 'edge_role'      = 'serves'
     AND x.data -> 'predicate' ->> 'from_node_type' = 'action'
     AND x.data -> 'predicate' ->> 'to_node_type'   = 'intent'
 )
@@ -1474,15 +1549,17 @@ WHERE kind = 'suggestion'
 -- template seeds this on new Docos; converge every already-seeded
 -- business-processes Doco by inserting the policy where it is missing.
 --
--- A business-processes Doco is identified by its `serves` attachment FLOOR gate
--- (requires_edge_role / supports / serves / intent), which only that template
--- seeds. The inserted row matches host.ts's seeded shape so a migrated Doco is
--- indistinguishable from a freshly-created one.
+-- A business-processes Doco is identified by its serves attachment FLOOR gate
+-- (requires_edge / supports / intent), which only that template seeds. (Edge
+-- roles are retired — the role-removal migration earlier in this file has
+-- already converted any legacy requires_edge_role rows to requires_edge by the
+-- time this runs.) The inserted row matches host.ts's seeded shape so a migrated
+-- Doco is indistinguishable from a freshly-created one.
 --
 -- Idempotent two ways: the NOT EXISTS guard skips any Doco that already carries
--- a limits_edge_role / serves gate (including freshly-created Docos seeded from
--- the template, whose gate has a different, ULID-shaped id), so a second boot
--- is a no-op; and the id is derived from the doco id with ON CONFLICT DO
+-- a limits_edge / supports / intent gate (including freshly-created Docos seeded
+-- from the template, whose gate has a different, ULID-shaped id), so a second
+-- boot is a no-op; and the id is derived from the doco id with ON CONFLICT DO
 -- NOTHING, so a re-run can never mint a duplicate or abort the boot on a PK
 -- clash. schema.sql is re-applied on every boot, so this carries the change to
 -- production.
@@ -1496,9 +1573,8 @@ SELECT
     'doco_id', serves.doco_id,
     'kind', 'deterministic',
     'predicate', jsonb_build_object(
-      'sub_kind', 'limits_edge_role',
+      'sub_kind', 'limits_edge',
       'edge_type', 'supports',
-      'edge_role', 'serves',
       'target_node_type', 'intent',
       'max_count', 1,
       'when_node_type', jsonb_build_array('action', 'decision', 'state')
@@ -1517,9 +1593,8 @@ FROM (
     FROM policies
    WHERE kind = 'deterministic'
      AND lifecycle = 'active'
-     AND data -> 'predicate' ->> 'sub_kind' = 'requires_edge_role'
+     AND data -> 'predicate' ->> 'sub_kind' = 'requires_edge'
      AND data -> 'predicate' ->> 'edge_type' = 'supports'
-     AND data -> 'predicate' ->> 'edge_role' = 'serves'
      AND data -> 'predicate' ->> 'target_node_type' = 'intent'
 ) AS serves
 WHERE NOT EXISTS (
@@ -1527,8 +1602,8 @@ WHERE NOT EXISTS (
     FROM policies existing
    WHERE existing.doco_id = serves.doco_id
      AND existing.lifecycle = 'active'
-     AND existing.data -> 'predicate' ->> 'sub_kind' = 'limits_edge_role'
+     AND existing.data -> 'predicate' ->> 'sub_kind' = 'limits_edge'
      AND existing.data -> 'predicate' ->> 'edge_type' = 'supports'
-     AND existing.data -> 'predicate' ->> 'edge_role' = 'serves'
+     AND existing.data -> 'predicate' ->> 'target_node_type' = 'intent'
 )
 ON CONFLICT (id) DO NOTHING;
