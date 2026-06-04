@@ -60,7 +60,7 @@ import {
   type DocoApiToolResult,
   runDocoApiToolRequest,
 } from "./doco-api-tool.server";
-import { qualifiedDocoLabel } from "./doco-labels";
+import { qualifiedDocoLabel, renderPolicyContextSnippet } from "./doco-labels";
 import { DOCO_TEMPLATES } from "./doco-templates-meta";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
@@ -1399,11 +1399,19 @@ export async function buildBootstrapContext(
   // ONE batched query for every active policy across every accessible
   // Doco, replacing the prior 2*N per-doco queries. Group in-memory.
   const accessibleIds = accessibleDocos.map((d) => d.docoId);
-  const policiesByDoco = new Map<string, string[]>();
+  // Carry each policy's id alongside its rendered label so the snippet loop
+  // below can emit a `/<handle>/policies/<id>` link — Señor Doco is told to
+  // cite policies by that URL, so it needs the id in context to build it.
+  const policiesByDoco = new Map<string, { id: string; kind: string; label: string }[]>();
   if (accessibleIds.length > 0) {
     const rows = await withClient(async (c) =>
-      c.query<{ doco_id: string; kind: string | null; data: Record<string, unknown> | null }>(
-        `SELECT doco_id, kind, data FROM policies
+      c.query<{
+        id: string;
+        doco_id: string;
+        kind: string | null;
+        data: Record<string, unknown> | null;
+      }>(
+        `SELECT id, doco_id, kind, data FROM policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
           ORDER BY doco_id, kind`,
         [accessibleIds],
@@ -1414,7 +1422,7 @@ export async function buildBootstrapContext(
       const label = predicate ? summarizePredicate(predicate) : "";
       if (!label) continue;
       const bucket = policiesByDoco.get(r.doco_id) ?? [];
-      bucket.push(`${r.kind ?? "policy"}: ${label}`);
+      bucket.push({ id: r.id, kind: r.kind ?? "policy", label });
       policiesByDoco.set(r.doco_id, bucket);
     }
   }
@@ -1424,9 +1432,7 @@ export async function buildBootstrapContext(
     const ps = policiesByDoco.get(d.docoId);
     if (!ps || ps.length === 0) continue;
     const label = qualifiedDocoLabel({ ownerSlug: d.ownerUsername, handle: d.handle });
-    const lines = [`Policies for ${label} (path=/${d.handle}):`];
-    for (const s of ps) lines.push(`  - ${s}`);
-    policySnippets.push(lines.join("\n"));
+    policySnippets.push(renderPolicyContextSnippet(label, d.handle, ps));
   }
 
   // The workspace charter(s) the user can reach, pulled from the SAME shared

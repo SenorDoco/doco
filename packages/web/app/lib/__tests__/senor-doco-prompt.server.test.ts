@@ -25,4 +25,19 @@ describe("senor-doco-prompt.server", () => {
     expect(prompt).toContain("do not create a near-duplicate");
     expect(prompt).toContain("Only test-surface actions are available.");
   });
+
+  it("teaches Señor Doco to link a policy by its stable URL when citing it", () => {
+    expect(SENOR_DOCO_DOCUMENTATION_CONTRACT_PROMPT).toContain("Referring to policies");
+    expect(SENOR_DOCO_DOCUMENTATION_CONTRACT_PROMPT).toContain(
+      "/<doco-handle>/policies/<policy-id>",
+    );
+    // The guidance must reach any surface that builds the shared core prompt.
+    const prompt = buildSenorDocoCorePrompt({
+      surfaceDescription: "a test surface",
+      accessDescription: "Use test access only.",
+      capabilityDescription: "answer Doco questions.",
+      inScopePrefix: "the accessible",
+    });
+    expect(prompt).toContain("/<doco-handle>/policies/<policy-id>");
+  });
 });

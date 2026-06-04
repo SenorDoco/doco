@@ -40,6 +40,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
  *   /<doco-handle>/settings        per-Doco settings (admin only; danger zone soft-delete; ADR-124)
  *   /<doco-handle>/policies      per-Doco policies page (single `policies` table)
+ *   /<doco-handle>/policies/<id> one policy's stable, linkable page (owner gets Modify + Revoke)
  *   /<doco-handle>/status.json     per-Doco status (connection signal for agent footer line)
  *   /<doco-handle>/api/*           per-Doco capture + update endpoints
  *                                  (decisions / intents / settings; ADR-128)
@@ -262,6 +263,10 @@ export default [
   route(":docoHandle/integrations/github", "routes/$docoHandle.integrations.github.tsx"),
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
   route(":docoHandle/policies/new", "routes/$docoHandle.policies.new.tsx"),
+  // Stable, linkable page for one policy — agents and humans cite a policy by
+  // this URL. The `/new` static segment above out-ranks `:policyId`, so it
+  // still wins its match.
+  route(":docoHandle/policies/:policyId", "routes/$docoHandle.policies.$policyId.tsx"),
   route(":docoHandle/policies/:policyId/edit", "routes/$docoHandle.policies.$policyId.edit.tsx"),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
