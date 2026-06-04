@@ -1589,7 +1589,7 @@ is still accepted as an alias for \`prose\`.
 ${renderCaptureCheatsheet()}
 - Policy (Suggestion, owner-only): POST /<handle>/api/policies.json with kind*("suggestion"), agent_instruction*(one natural-language instruction), authored_by_principal_id?.
 - Policy (Probabilistic, owner-only): same endpoint with kind*("probabilistic"), agent_instruction*(prose the LLM judge evaluates), when_node_type?[], fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
-- Policy (Deterministic, owner-only): same endpoint with kind*("deterministic"), predicate*(object keyed by sub_kind, e.g. {"sub_kind":"requires_edge_role","edge_type":"attributed_to","edge_role":"performed_by","target_node_type":"principal","when_node_type":["action"]}), fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+- Policy (Deterministic, owner-only): same endpoint with kind*("deterministic"), predicate*(object keyed by sub_kind, e.g. {"sub_kind":"requires_edge","edge_type":"attributed_to","target_node_type":"principal","when_node_type":["action"]}), fires_when_node_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 \`prose\` carries multi-line markdown; the first line is the row label
 that shows up in lists and BPMN swim lanes. Example:
@@ -1648,7 +1648,7 @@ Changeset example for BPMN-style ordered flow:
     ]
   }
 
-Common relation kinds: flows_to (source -> target, edge labels allowed) · supports · constrained_by · attributed_to · has_parent · derived_from · replaces · relates_to. Use edge props such as { "role": "serves" }, { "role": "performed_by" }, or { "role": "reports_to" } when a perspective needs a more specific relation role. You can also POST /<handle>/api/edges.json for direct edge creation.
+Common relation kinds: flows_to (source -> target, edge labels allowed) · supports · constrained_by · attributed_to · has_parent · derived_from · replaces · relates_to. An edge's specific meaning comes from its type plus the node types it connects (e.g. an Action's attributed_to to a Principal is its performer; a flow node's supports to an Intent places it in that pool). You can also POST /<handle>/api/edges.json for direct edge creation.
 
 When sibling relations must become valid together, use \`op: "relate_many"\` in the same changeset. This is especially important for exhaustive gateways, tree siblings, and other structures where adding the first edge alone would be temporarily invalid.
 

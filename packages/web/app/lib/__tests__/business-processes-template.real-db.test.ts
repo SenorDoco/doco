@@ -215,14 +215,19 @@ function node(
     ...fields,
   };
 }
+// Edge `role` is gone: an edge's meaning comes from its `edge_type` plus its
+// endpoint node types (the id prefixes), never from a `props.role` tag. The
+// 4th arg is kept only as in-test documentation of what the edge MEANS (e.g.
+// "serves", "performed_by") — it is NOT written into the edge, so no role leaks
+// back into the data the evaluator sees.
 function edge(
   from: string,
   to: string,
   edge_type: string,
-  role: string,
+  _meaning: string,
   props: Record<string, unknown> = {},
 ): EngineEdge {
-  return { from_id: from, to_id: to, edge_type, edge_props_json: { role, ...props } };
+  return { from_id: from, to_id: to, edge_type, edge_props_json: { ...props } };
 }
 
 interface ScenarioSpec {
@@ -629,7 +634,10 @@ describe("business-processes template — ten real-life processes (well-formed, 
 // ─── Suite B: catches real modeling mistakes (deterministic blocks) ───────────
 
 describe("business-processes template — blocks malformed processes", () => {
-  it("blocks an Action with no performed_by actor", () => {
+  it("blocks an Action that names no performer (no attributed_to edge to a Principal)", () => {
+    // With `role` gone the performer gate is requires_edge(attributed_to →
+    // principal) scoped to Actions; the missing-edge reason names the edge type
+    // and its target endpoint, not a `performed_by` role.
     const g = buildProcess(SCENARIOS[0], "active");
     const orphan = node(
       "action",
@@ -637,15 +645,18 @@ describe("business-processes template — blocks malformed processes", () => {
       { action: "shred the file", verb: "shred" },
       "active",
     );
-    // Wire serves only; omit performed_by.
+    // Wire serves only; omit the attributed_to → principal performer edge.
     g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves"));
     g.nodes.push(orphan);
     const blocks = deterministicBlocks(evaluate(orphan, g));
-    expect(blocks.map((b) => b.sub_kind)).toContain("requires_edge_role");
-    expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
+    expect(blocks.map((b) => b.sub_kind)).toContain("requires_edge");
+    expect(blocks.some((b) => /attributed_to.*principal/.test(b.reason))).toBe(true);
   });
 
-  it("blocks a gateway Decision with no decided_by decider", () => {
+  it("blocks a gateway Decision that names no decider (no attributed_to edge to a Principal)", () => {
+    // Mirrors the Action performer gate: requires_edge(attributed_to →
+    // principal) scoped to Decisions. The source node type (decision) is what
+    // makes this attribution the gateway's decider now that roles are gone.
     const g = buildProcess(SCENARIOS[0], "active");
     const orphan = node(
       "decision",
@@ -658,12 +669,12 @@ describe("business-processes template — blocks malformed processes", () => {
       },
       "active",
     );
-    // Wire serves only; omit decided_by.
+    // Wire serves only; omit the attributed_to → principal decider edge.
     g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves"));
     g.nodes.push(orphan);
     const blocks = deterministicBlocks(evaluate(orphan, g));
-    expect(blocks.map((b) => b.sub_kind)).toContain("requires_edge_role");
-    expect(blocks.some((b) => /decided_by/.test(b.reason))).toBe(true);
+    expect(blocks.map((b) => b.sub_kind)).toContain("requires_edge");
+    expect(blocks.some((b) => /attributed_to.*principal/.test(b.reason))).toBe(true);
   });
 
   it("blocks a flow node (State) that does not serve any Intent", () => {
@@ -676,9 +687,9 @@ describe("business-processes template — blocks malformed processes", () => {
     );
     g.nodes.push(floating); // no serves edge
     const blocks = deterministicBlocks(evaluate(floating, g));
-    expect(blocks.some((b) => b.sub_kind === "requires_edge_role" && /serves/.test(b.reason))).toBe(
-      true,
-    );
+    expect(
+      blocks.some((b) => b.sub_kind === "requires_edge" && /supports.*intent/.test(b.reason)),
+    ).toBe(true);
   });
 
   it("blocks an Eval that does not test anything", () => {
@@ -690,8 +701,10 @@ describe("business-processes template — blocks malformed processes", () => {
       "active",
     );
     g.nodes.push(loose); // no tests edge
+    // The Eval gate is requires_edge(supports) with no target endpoint, so the
+    // reason names only the edge type.
     const blocks = deterministicBlocks(evaluate(loose, g));
-    expect(blocks.some((b) => b.sub_kind === "requires_edge_role" && /tests/.test(b.reason))).toBe(
+    expect(blocks.some((b) => b.sub_kind === "requires_edge" && /supports/.test(b.reason))).toBe(
       true,
     );
   });
@@ -733,10 +746,12 @@ describe("business-processes template — blocks malformed processes", () => {
 //     required once committed.
 
 describe("business-processes template — all flow-node gates committed-only, drafting exempt", () => {
-  // The same orphan Action (serves wired, performed_by missing) at each
-  // lifecycle. Attachment to the Principal (`performed_by`) fires only on the
-  // committed stages, so a `drafting` orphan is exempt while `queued`/`active`
-  // are blocked.
+  // The same orphan Action (serves wired, performer edge missing) at each
+  // lifecycle. All flow-node attachment gates fire only on the committed stages,
+  // so a `drafting` orphan is exempt while `queued`/`active` are blocked. With
+  // `role` gone the missing-edge reason names the edge type + its target
+  // endpoint, not a `performed_by` role.
+  const missingPerformer = (b: Violation) => /attributed_to.*principal/.test(b.reason);
   function orphanAt(lifecycle: Lifecycle): { candidate: CandidateFields; graph: Graph } {
     const g = buildProcess(SCENARIOS[0], lifecycle);
     const orphan = node(
@@ -745,7 +760,7 @@ describe("business-processes template — all flow-node gates committed-only, dr
       { action: "file the paperwork", verb: "file" },
       lifecycle,
     );
-    g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves")); // serves wired; no performed_by
+    g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves")); // serves wired; no performer edge
     g.nodes.push(orphan);
     return { candidate: orphan, graph: g };
   }
@@ -753,19 +768,19 @@ describe("business-processes template — all flow-node gates committed-only, dr
   it("a drafting flow node is NOT held to its Principal attachment (drafting exempt)", () => {
     const { candidate, graph } = orphanAt("drafting");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
-    expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(false);
+    expect(blocks.some(missingPerformer)).toBe(false);
   });
 
   it("a queued node IS held to its Principal attachment", () => {
     const { candidate, graph } = orphanAt("queued");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
-    expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
+    expect(blocks.some(missingPerformer)).toBe(true);
   });
 
   it("an active node IS held to its Principal attachment", () => {
     const { candidate, graph } = orphanAt("active");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
-    expect(blocks.some((b) => /performed_by/.test(b.reason))).toBe(true);
+    expect(blocks.some(missingPerformer)).toBe(true);
   });
 
   it("a drafting flow node with actor + Intent wired still has no blocks", () => {
@@ -788,8 +803,9 @@ describe("business-processes template — all flow-node gates committed-only, dr
   });
 
   it("a drafting flow node need NOT serve an Intent (intent not required in drafting)", () => {
-    // An Action that names its actor (`performed_by`) but has no `serves` edge
-    // is fine while drafting — the Intent link is deferrable until it commits.
+    // An Action that names its actor (an `attributed_to` edge to a Principal)
+    // but has no `supports` edge to an Intent is fine while drafting — the
+    // Intent link is deferrable until it commits.
     const g = buildProcess(SCENARIOS[0], "drafting");
     const noIntent = node(
       "action",
@@ -800,11 +816,11 @@ describe("business-processes template — all flow-node gates committed-only, dr
     g.edges.push(edge(noIntent.id, g.principals[0].id, "attributed_to", "performed_by")); // actor only; no serves
     g.nodes.push(noIntent);
     const blocks = deterministicBlocks(evaluate(noIntent, g));
-    expect(blocks.some((b) => /serves/.test(b.reason))).toBe(false);
+    expect(blocks.some((b) => /supports.*intent/.test(b.reason))).toBe(false);
     expect(blocks).toEqual([]);
 
-    // A milestone State (whose only attachment gate is `serves`) likewise needs
-    // no Intent while drafting.
+    // A milestone State (whose only attachment gate is the serves link) likewise
+    // needs no Intent while drafting.
     const draftState = node(
       "state",
       "loan-approval",
@@ -830,16 +846,17 @@ describe("business-processes template — all flow-node gates committed-only, dr
     g.edges.push(edge(noIntent.id, g.gateway.id, "flows_to", ""));
     g.nodes.push(noIntent);
     const blocks = deterministicBlocks(evaluate(noIntent, g));
-    expect(blocks.some((b) => b.sub_kind === "requires_edge_role" && /serves/.test(b.reason))).toBe(
-      true,
-    );
+    expect(
+      blocks.some((b) => b.sub_kind === "requires_edge" && /supports.*intent/.test(b.reason)),
+    ).toBe(true);
   });
 
-  it("a gateway Decision's decided_by is enforced at queued and active, NOT drafting", () => {
-    // Mirrors the performed_by gate: a committed gateway must name its decider
-    // Principal, so a missing `decided_by` blocks at `queued`/`active`, but a
-    // `drafting` sketch may defer it.
-    function gatewayMissingDecidedByBlocks(lifecycle: Lifecycle): boolean {
+  it("a gateway Decision's decider edge is enforced at queued and active, NOT drafting", () => {
+    // Mirrors the performer gate: a committed gateway must name its decider
+    // Principal, so a missing `attributed_to` edge to a Principal blocks at
+    // `queued`/`active`, but a `drafting` sketch may defer it. With `role` gone
+    // the decider is just the gateway Decision's `attributed_to` → principal.
+    function gatewayMissingDeciderBlocks(lifecycle: Lifecycle): boolean {
       const g = buildProcess(SCENARIOS[0], lifecycle);
       const orphan = node(
         "decision",
@@ -852,20 +869,18 @@ describe("business-processes template — all flow-node gates committed-only, dr
         },
         lifecycle,
       );
-      g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves")); // serves wired; no decided_by
+      g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves")); // serves wired; no decider edge
       g.nodes.push(orphan);
-      return deterministicBlocks(evaluate(orphan, g)).some((b) => /decided_by/.test(b.reason));
+      return deterministicBlocks(evaluate(orphan, g)).some((b) =>
+        /attributed_to.*principal/.test(b.reason),
+      );
     }
     expect(
-      gatewayMissingDecidedByBlocks("drafting"),
+      gatewayMissingDeciderBlocks("drafting"),
       "drafting is exempt from the decider rule",
     ).toBe(false);
-    expect(gatewayMissingDecidedByBlocks("queued"), "queued is held to the decider rule").toBe(
-      true,
-    );
-    expect(gatewayMissingDecidedByBlocks("active"), "active is held to the decider rule").toBe(
-      true,
-    );
+    expect(gatewayMissingDeciderBlocks("queued"), "queued is held to the decider rule").toBe(true);
+    expect(gatewayMissingDeciderBlocks("active"), "active is held to the decider rule").toBe(true);
   });
 
   it("probabilistic quality checks also fire at queued, not just active", () => {
@@ -1085,6 +1100,15 @@ describe("business-processes template — gateway branch count", () => {
 });
 
 describe("business-processes template — owner + actor coverage (warnings)", () => {
+  // With `role` gone: the owner gate is requires_edge(attributed_to →
+  // principal) on Intents; the actor-coverage gate is the INCOMING
+  // requires_edge(attributed_to ← action) on Principals, exempt when the
+  // Principal is the target of an attributed_to edge from an Intent (the owner).
+  const ownerMissing = (b: Violation) =>
+    b.sub_kind === "requires_edge" && /attributed_to.*principal/.test(b.reason);
+  const coverageMissing = (b: Violation) =>
+    b.sub_kind === "requires_edge" && /incoming.*attributed_to/.test(b.reason);
+
   it("warns when the process Intent names no accountable owner", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const ownerless = node(
@@ -1095,9 +1119,7 @@ describe("business-processes template — owner + actor coverage (warnings)", ()
     );
     g.nodes.push(ownerless);
     const warns = deterministicWarns(evaluate(ownerless, g));
-    expect(
-      warns.some((b) => b.sub_kind === "requires_edge_role" && /owned_by/.test(b.reason)),
-    ).toBe(true);
+    expect(warns.some(ownerMissing)).toBe(true);
   });
 
   it("warns about an actor Principal that owns no Action", () => {
@@ -1110,12 +1132,10 @@ describe("business-processes template — owner + actor coverage (warnings)", ()
     );
     g.nodes.push(idle);
     const warns = deterministicWarns(evaluate(idle, g));
-    expect(
-      warns.some((b) => b.sub_kind === "requires_edge_role" && /performed_by/.test(b.reason)),
-    ).toBe(true);
+    expect(warns.some(coverageMissing)).toBe(true);
   });
 
-  it("exempts the accountable owner (owned_by) from the actor-coverage warning", () => {
+  it("exempts the accountable owner from the actor-coverage warning", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const ownerOnly = node(
       "principal",
@@ -1123,11 +1143,13 @@ describe("business-processes template — owner + actor coverage (warnings)", ()
       { name: "Process Owner", body_md: "Accountable for the whole process outcome." },
       "active",
     );
-    // Owner edge, but performs no Action.
+    // Owner edge (an Intent's attributed_to → this Principal), but performs no
+    // Action. The endpoint-type exemption (exempt_when_other_node_type: intent)
+    // keeps the incoming actor-coverage gate from firing.
     g.edges.push(edge(g.intent.id, ownerOnly.id, "attributed_to", "owned_by"));
     g.nodes.push(ownerOnly);
     const warns = deterministicWarns(evaluate(ownerOnly, g));
-    expect(warns.some((b) => /performed_by/.test(b.reason))).toBe(false);
+    expect(warns.some(coverageMissing)).toBe(false);
   });
 });
 
@@ -1167,27 +1189,21 @@ describe("business-processes template — flow-wiring end-to-end via runAuthorin
       [id, docoId, nodeType, kind ?? null],
     );
   }
+  // The 6th arg documents what the edge MEANS (e.g. "serves", "performed_by");
+  // it is NOT written into the edge — edge `role` is gone, so the meaning comes
+  // from the edge type + endpoint node types, and the props stay empty.
   async function insertEdge(
     from: string,
     fromType: string,
     to: string,
     toType: string,
     edgeType: string,
-    role?: string,
+    _meaning?: string,
   ): Promise<void> {
     edgeSeq += 1;
     await dbm.db.query(
       "INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, props, lifecycle) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active')",
-      [
-        `edge_e2eflow-${edgeSeq}`,
-        docoId,
-        edgeType,
-        from,
-        fromType,
-        to,
-        toType,
-        JSON.stringify(role ? { role } : {}),
-      ],
+      [`edge_e2eflow-${edgeSeq}`, docoId, edgeType, from, fromType, to, toType, JSON.stringify({})],
     );
   }
 
@@ -1301,12 +1317,15 @@ describe("business-processes template — flow-wiring end-to-end via runAuthorin
 // is left alone.
 
 describe("business-processes template — a flow node serves at most one Intent", () => {
-  it("seeds the limits_edge_role serves ceiling, firing on committed stages only", () => {
+  it("seeds the limits_edge serves ceiling (supports → intent), firing on committed stages only", () => {
+    // With `role` gone the ceiling is a role-free limits_edge on the
+    // supports → intent edge, capped at one (committed stages only).
     const ceiling = policies.find(
       (p) =>
         isDeterministicPredicate(p.predicate) &&
-        p.predicate.sub_kind === "limits_edge_role" &&
-        p.predicate.edge_role === "serves",
+        p.predicate.sub_kind === "limits_edge" &&
+        p.predicate.edge_type === "supports" &&
+        p.predicate.target_node_type === "intent",
     );
     expect(ceiling).toBeDefined();
     expect(ceiling?.on_violation).toBe("block");
@@ -1346,7 +1365,7 @@ describe("business-processes template — a flow node serves at most one Intent"
       const { candidate, graph } = actionServingTwoIntents(lifecycle);
       const blocks = deterministicBlocks(evaluate(candidate, graph));
       expect(
-        blocks.some((b) => b.sub_kind === "limits_edge_role" && /serves/.test(b.reason)),
+        blocks.some((b) => b.sub_kind === "limits_edge" && /supports.*intent/.test(b.reason)),
         `${lifecycle}: expected the serves-ceiling to block, got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
       ).toBe(true);
     });
@@ -1355,9 +1374,9 @@ describe("business-processes template — a flow node serves at most one Intent"
   it("does NOT block an Action serving two Intents while it is a drafting sketch", () => {
     const { candidate, graph } = actionServingTwoIntents("drafting");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
-    expect(blocks.some((b) => b.sub_kind === "limits_edge_role" && /serves/.test(b.reason))).toBe(
-      false,
-    );
+    expect(
+      blocks.some((b) => b.sub_kind === "limits_edge" && /supports.*intent/.test(b.reason)),
+    ).toBe(false);
   });
 
   it("does NOT block flow nodes that each serve exactly one Intent (no false positive)", () => {
@@ -1365,7 +1384,7 @@ describe("business-processes template — a flow node serves at most one Intent"
     for (const candidate of [g.actions[0], g.gateway, g.states[0]]) {
       const blocks = deterministicBlocks(evaluate(candidate, g));
       expect(
-        blocks.some((b) => b.sub_kind === "limits_edge_role"),
+        blocks.some((b) => b.sub_kind === "limits_edge"),
         `${candidate.node_type} ${candidate.id} wrongly tripped the serves ceiling`,
       ).toBe(false);
     }

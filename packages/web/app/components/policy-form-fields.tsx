@@ -70,21 +70,6 @@ function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyF
           {whenField}
         </>
       );
-    case "requires_edge_role":
-      return (
-        <>
-          <Field label="Edge type">
-            <EdgeTypeSelect defaultValue={init.edge_type} />
-          </Field>
-          <Field label="Edge role">
-            <input name="edge_role" defaultValue={init.edge_role} className={INPUT} />
-          </Field>
-          <Field label="Target node type (optional)">
-            <NodeTypeSelect name="target_node_type" defaultValue={init.target_node_type} />
-          </Field>
-          {whenField}
-        </>
-      );
     case "requires_field":
     case "forbids_field":
       return (
@@ -166,7 +151,6 @@ export function PolicyFormFields({
     agent_instruction: "",
     sub_kind: "requires_field",
     edge_type: "",
-    edge_role: "",
     from_node_type: "",
     to_node_type: "",
     target_node_type: "",
@@ -275,9 +259,6 @@ export function PolicyFormFields({
                 <>
                   <Field label="Edge type">
                     <EdgeTypeSelect defaultValue={init.edge_type} />
-                  </Field>
-                  <Field label="Edge role (optional)">
-                    <input name="edge_role" defaultValue={init.edge_role} className={INPUT} />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="From node type (optional)">

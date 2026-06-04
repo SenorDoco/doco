@@ -751,10 +751,28 @@ export function computeNearestIntentByNode(
 
 type OutgoingEdgesByType = Map<string, Map<string, EdgeRow[]>>;
 
+function nodeTypeOf(id: string): string {
+  const i = id.indexOf("_");
+  return i <= 0 ? "" : id.slice(0, i);
+}
+
+// Edge `role` is retired, so the BPMN key a node groups its outgoing edges by
+// is DERIVED from the edge type and its endpoint node types — recovering the old
+// role meaning structurally: a flow node's `supports` → Intent is "serves"; an
+// Action's `attributed_to` → Principal is its performer, a gateway Decision's is
+// its decider, an Intent's is its owner; a `constrained_by` → Rule is "gated_by".
+// Everything else keys on the bare edge type.
 function edgeRole(edge: EdgeRow): string {
-  return typeof edge.edge_props_json?.role === "string"
-    ? edge.edge_props_json.role
-    : edge.edge_type;
+  const from = nodeTypeOf(edge.from_id);
+  const to = nodeTypeOf(edge.to_id);
+  if (edge.edge_type === "supports" && to === "intent") return "serves";
+  if (edge.edge_type === "attributed_to" && to === "principal") {
+    if (from === "action") return "performed_by";
+    if (from === "decision") return "decided_by";
+    if (from === "intent") return "owned_by";
+  }
+  if (edge.edge_type === "constrained_by" && to === "rule") return "gated_by";
+  return edge.edge_type;
 }
 
 function addOutgoingEdge(outgoing: OutgoingEdgesByType, edge: EdgeRow) {

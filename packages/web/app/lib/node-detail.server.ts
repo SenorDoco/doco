@@ -427,10 +427,6 @@ function sequenceFlowLabel(props: Record<string, unknown> | null | undefined): s
   return compact.length > 32 ? `${compact.slice(0, 29)}...` : compact;
 }
 
-function displayEdgeType(edgeType: string, props: Record<string, unknown> | null | undefined) {
-  return typeof props?.role === "string" ? props.role : edgeType;
-}
-
 function compareOutgoingEdges(a: DialogOutgoingEdgeRow, b: DialogOutgoingEdgeRow): number {
   return a.edge_type.localeCompare(b.edge_type) || a.to_id.localeCompare(b.to_id);
 }
@@ -563,7 +559,7 @@ export async function loadNodeDialogDetail(
     const otherNodeType = detail?.entity_type ?? edge.to_node_type;
     return {
       edge_id: edge.edge_id,
-      edge_type: displayEdgeType(edge.edge_type, edge.edge_props_json),
+      edge_type: edge.edge_type,
       edge_label: sequenceFlowLabel(edge.edge_props_json),
       edge_lifecycle: edge.edge_lifecycle ?? "active",
       edge_href: `/${options.handle}/edges/${edge.edge_id}`,
@@ -580,7 +576,7 @@ export async function loadNodeDialogDetail(
     const otherNodeType = detail?.entity_type ?? edge.from_node_type;
     return {
       edge_id: edge.edge_id,
-      edge_type: displayEdgeType(edge.edge_type, edge.edge_props_json),
+      edge_type: edge.edge_type,
       edge_label: sequenceFlowLabel(edge.edge_props_json),
       edge_lifecycle: edge.edge_lifecycle ?? "active",
       edge_href: `/${options.handle}/edges/${edge.edge_id}`,

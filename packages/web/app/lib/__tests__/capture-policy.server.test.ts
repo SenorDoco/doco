@@ -132,7 +132,6 @@ describe("capturePolicy author resolution", () => {
         agent_instruction:
           "A sub-process Intent is the base form of the Action it serves (`Posts a job` → `Post a job`).",
         edge_type: "supports",
-        edge_role: "serves",
         from_node_type: "action",
         to_node_type: "intent",
         created_by_user_id: "user_alice",
@@ -146,12 +145,13 @@ describe("capturePolicy author resolution", () => {
       predicate: {
         agent_instruction: expect.stringContaining("base form"),
         edge_type: "supports",
-        edge_role: "serves",
         from_node_type: "action",
         to_node_type: "intent",
       },
       on_violation: "block",
     });
+    // Edge `role` is gone — the seeded predicate carries no role tag.
+    expect((persistedData().predicate as Record<string, unknown>).edge_role).toBeUndefined();
     // Edge-scoped predicates carry no node-type filter.
     expect((persistedData().predicate as Record<string, unknown>).when_node_type).toBeUndefined();
   });

@@ -79,8 +79,7 @@ export function PolicyView({ item }: { item: PolicyItem }) {
         <div className="space-y-0.5">
           {predicate && isEdgePredicate(predicate) ? (
             <p className="text-[10px] font-mono text-muted-foreground">
-              edge-scoped: {predicate.from_node_type ?? "any"} —{predicate.edge_type}
-              {predicate.edge_role ? `[${predicate.edge_role}]` : ""}→{" "}
+              edge-scoped: {predicate.from_node_type ?? "any"} —{predicate.edge_type}→{" "}
               {predicate.to_node_type ?? "any"}
             </p>
           ) : null}
