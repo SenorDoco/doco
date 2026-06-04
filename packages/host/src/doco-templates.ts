@@ -236,30 +236,15 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
  * nodes straight to `active` (decision-records, glossaries, org-chart)
  * rarely pass through `queued`, so they still fire on `["active"]`.
  *
- * The lone exception is the *attachment* gates — see
- * BUSINESS_PROCESS_ATTACHED_LIFECYCLES below — which fire in `drafting` too.
+ * This covers BOTH the completeness/shape gates and the flow-node
+ * Principal-attachment gates (an Action is `performed_by`, a gateway Decision
+ * `decided_by` a Principal). All of them fire on the committed stages only, so
+ * a `drafting` sketch may be both incomplete AND unowned while the author
+ * iterates — and is held to the full bar once it is committed. (`retired` is
+ * excluded too: a winding-down node isn't re-judged, and the runner's
+ * terminal-skip drops these `requires_edge_role` checks anyway.)
  */
 const BUSINESS_PROCESS_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
-
-/**
- * The flow-node PRINCIPAL-attachment gates — every Action must be attributed
- * to the Principal who performs it, and every gateway Decision to the Principal
- * who decides it, both via an `attributed_to` edge to a Principal — fire at
- * EVERY pre-retirement stage, `drafting` included.
- *
- * Naming the actor/decider is not a completeness nicety a sketch may defer: a
- * business-processes Doco never holds an Action or gateway Decision that floats
- * free of the Principal that owns it, even in draft. Serving an Intent, by
- * contrast, IS deferrable while drafting — that gate fires only on the
- * committed stages (BUSINESS_PROCESS_COMMITTED_LIFECYCLES), so a step can be
- * sketched before its Intent (and BPMN pool) is decided. Authors satisfy this
- * by creating the node and its `attributed_to` edge to a Principal together in
- * one changeset.
- *
- * `retired` is still excluded: a winding-down node isn't re-judged (and the
- * runner's terminal-skip drops these `attributed_to`-edge checks anyway).
- */
-const BUSINESS_PROCESS_ATTACHED_LIFECYCLES: Lifecycle[] = ["drafting", "queued", "active"];
 
 export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   {
@@ -562,13 +547,12 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // treated as BPMN arrows.
     //
     // Lifecycle: nodes default to `drafting` so a process can be sketched
-    // freely; the completeness + shape rules — including serving an Intent —
-    // fire on the committed stages (`queued` and `active`) only, so a step can
-    // be drafted before its Intent/pool is chosen (BUSINESS_PROCESS_COMMITTED_LIFECYCLES).
-    // The exception is the Principal-attachment gates (an Action and a gateway
-    // Decision each carry an `attributed_to` edge to a Principal), which fire
-    // from `drafting` onward — see BUSINESS_PROCESS_ATTACHED_LIFECYCLES — so a
-    // sketch always names its actor/decider even before it serves an Intent.
+    // freely; the completeness + shape rules — including serving an Intent and
+    // naming the actor / decider Principal (an Action's and a gateway Decision's
+    // `attributed_to` edge to a Principal) — fire on the committed stages
+    // (`queued` and `active`) only (BUSINESS_PROCESS_COMMITTED_LIFECYCLES), so a
+    // step can be drafted before its actor, decider, or Intent/pool is chosen,
+    // and is held to the full bar only once it is committed.
     name: "business-processes",
     label: "business-processes",
     icon: "🏭",
@@ -713,21 +697,22 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
 
       // ── Action shape ────────────────────────────────────────────
       {
-        // Attachment, not completeness — fires from `drafting` onward (see
-        // BUSINESS_PROCESS_ATTACHED_LIFECYCLES): an Action never floats free of
-        // the actor who performs it, even in a sketch. With edge roles gone, an
-        // Action's `attributed_to` edge to a Principal IS the performer link —
-        // the source node type (action) carries that meaning. Authors create
-        // the Action and its `attributed_to` edge together in one changeset.
+        // Completeness — fires on the committed stages only (see
+        // BUSINESS_PROCESS_COMMITTED_LIFECYCLES): a `drafting` Action may be
+        // sketched without an actor, but a committed step must be attributed to
+        // the Principal who performs it. With edge roles gone, an Action's
+        // `attributed_to` edge to a Principal IS the performer link — the source
+        // node type (action) carries that meaning. Authors create the Action and
+        // its `attributed_to` edge together in one changeset.
         policy:
-          "Every Action in business-processes is attributed to the Principal who performs it — an `attributed_to` edge from the Action to that Principal — from the moment the Action is drafted, not only once it is committed.",
+          "Every committed (`queued` or `active`) Action in business-processes is attributed to the Principal who performs it — an `attributed_to` edge from the Action to that Principal. A `drafting` sketch may defer this — naming the actor is not required while drafting.",
         predicate: {
           kind: "requires_edge",
           edge_type: "attributed_to",
           target_node_type: "principal",
           when_node_type: ["action"],
         },
-        fires_when_node_lifecycle: BUSINESS_PROCESS_ATTACHED_LIFECYCLES,
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
         // One rule for all three flow-node types, filtered by `when_node_type`.
@@ -743,27 +728,26 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           target_node_type: "intent",
           when_node_type: ["action", "decision", "state"],
         },
-        // Completeness, not Principal-attachment — a flow node need NOT serve an
-        // Intent while it is a `drafting` sketch (so a step can be drafted before
-        // its Intent/pool is chosen); the link is required once the node is
-        // committed. Contrast the actor/decider gates (the `attributed_to` edges
-        // from Actions and gateway Decisions), which DO fire in drafting — see
-        // BUSINESS_PROCESS_ATTACHED_LIFECYCLES.
+        // Completeness — a flow node need NOT serve an Intent while it is a
+        // `drafting` sketch (so a step can be drafted before its Intent/pool is
+        // chosen); the link is required once the node is committed (`queued` or
+        // `active`), like the actor/decider completeness gates.
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
-        // The CEILING that complements the serves FLOOR above. A flow node has
-        // AT MOST one `supports` edge to an Intent, so combined with the ≥1 gate
-        // it belongs to EXACTLY one BPMN pool. A node linked to two Intents is
-        // ambiguous: the renderer can't decide which pool owns it. Fires from
-        // `drafting` onward — a node never serves two Intents even in a sketch
-        // (the cap forces nothing, so it stays compatible with drafting deferring
-        // the floor). A sub-process calling Action links only to its child
-        // purpose Intent (its pool) and is woven into the parent flow by
-        // `flows_to`, so it too stays single-Intent. Re-point by retiring the old
-        // `supports` edge before adding the new one; endpoints are immutable.
+        // The CEILING that complements the serves FLOOR above. With roles gone, a
+        // flow node's `supports` edge to an Intent IS its pool membership; this
+        // caps it at one, so combined with the ≥1 gate a committed flow node
+        // belongs to EXACTLY one BPMN pool. A node linked to two Intents is
+        // ambiguous: the renderer can't decide which pool owns it, and the step's
+        // business purpose is no longer singular. Like the floor it mirrors, it
+        // fires on the committed stages only (BUSINESS_PROCESS_COMMITTED_LIFECYCLES)
+        // — a `drafting` sketch is exempt. A sub-process calling Action links only
+        // to its child purpose Intent (its pool) and is woven into the parent flow
+        // by `flows_to`, so it too stays single-Intent. Re-point by retiring the
+        // old `supports` edge before adding the new one; endpoints are immutable.
         policy:
-          "Every flow node in business-processes — Action, gateway Decision, or milestone/event State — links to AT MOST one Intent via `supports`: it belongs to exactly one process pool, at every stage (drafting, queued, and active). Combined with the gate that requires at least one Intent once committed, a flow node serves exactly one. A node linked to two Intents is ambiguous — the BPMN renderer can't place it in a single pool. Re-point by retiring the old `supports` edge before adding the new one.",
+          "Every committed (`queued` or `active`) flow node in business-processes — Action, gateway Decision, or milestone/event State — links to AT MOST one Intent via `supports`: it belongs to exactly one process pool. Combined with the gate that requires at least one Intent on a committed node, a flow node serves exactly one. A node linked to two Intents is ambiguous — the BPMN renderer can't place it in a single pool. A `drafting` sketch is exempt. Re-point by retiring the old `supports` edge before adding the new one.",
         predicate: {
           kind: "limits_edge",
           edge_type: "supports",
@@ -771,7 +755,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           max_count: 1,
           when_node_type: ["action", "decision", "state"],
         },
-        fires_when_node_lifecycle: BUSINESS_PROCESS_ATTACHED_LIFECYCLES,
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
       {
         // Sub-process naming, enforced on the EDGE (not on either node). A
@@ -844,19 +828,19 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // attributed to the Principal answerable for the call, via an
         // `attributed_to` edge. With roles gone, a Decision's `attributed_to`
         // edge to a Principal IS its decider (source node type = decision).
-        // Mirrors the Action gate, and like it this is an ATTACHMENT gate: it
-        // fires from `drafting` onward (see BUSINESS_PROCESS_ATTACHED_LIFECYCLES),
-        // so a gateway is never sketched unowned — which also keeps it out of
-        // the BPMN "Unassigned" lane.
+        // Mirrors the Action gate, and like it fires on the committed stages only
+        // (see BUSINESS_PROCESS_COMMITTED_LIFECYCLES): a `drafting` gateway may be
+        // sketched without a decider, but a committed one must name it or it
+        // floats into the BPMN "Unassigned" lane.
         policy:
-          "Every gateway Decision in business-processes is attributed to the Principal answerable for the call — an `attributed_to` edge from the Decision to that Principal — from the moment the gateway is drafted, not only once it is committed. A gateway with no such Principal floats into the Unassigned lane.",
+          "Every committed (`queued` or `active`) gateway Decision in business-processes is attributed to the Principal answerable for the call — an `attributed_to` edge from the Decision to that Principal. A `drafting` sketch may defer this. A gateway with no such Principal floats into the Unassigned lane.",
         predicate: {
           kind: "requires_edge",
           edge_type: "attributed_to",
           target_node_type: "principal",
           when_node_type: ["decision"],
         },
-        fires_when_node_lifecycle: BUSINESS_PROCESS_ATTACHED_LIFECYCLES,
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
       },
 
       // ── State shape & sequence wiring ───────────────────────────
@@ -1025,7 +1009,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Walk a process node through the four-stage lifecycle drafting → queued → active → retired. A `drafting` sketch may be incomplete — serving an Intent, forward `flows_to` wiring, gateway exhaustiveness, milestone naming, and quality are all suspended, so a step can be drafted before its Intent (and BPMN pool) is chosen — except that an Action must still name its actor and a gateway Decision its decider, each via an `attributed_to` edge to a Principal, from the moment it is drafted, so neither floats free of a Principal even in draft. `queue` it (changeset op `queue`) once it supports its Intent and its forward `flows_to` wiring is coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).",
+          "Walk a process node through the four-stage lifecycle drafting → queued → active → retired. A `drafting` sketch may be incomplete — serving an Intent, naming the actor or decider Principal (an Action's or gateway Decision's `attributed_to` edge to a Principal), forward `flows_to` wiring, gateway exhaustiveness, milestone naming, and quality are all suspended, so a step can be drafted before its actor, decider, or Intent (and BPMN pool) is chosen. `queue` it (changeset op `queue`) once it supports its Intent and its forward `flows_to` wiring is coherent and the design is ready; `activate` it (op `activate`) when it is the governing, in-force process. Both committed stages — `queued` and `active` — are held to the full shape rules. `retire` a node when it is withdrawn, or `supersede` it when a redesign replaces it (the op creates the replacement and links the two with a `replaces` edge).",
       },
       {
         policy:

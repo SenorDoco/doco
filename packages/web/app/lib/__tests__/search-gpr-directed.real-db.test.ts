@@ -21,8 +21,8 @@ const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf
 
 async function node(db: PGlite, id: string, nodeType: string): Promise<void> {
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data)
-     VALUES ($1,'doco_1',$2,'active',$1,'{}'::jsonb)`,
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose)
+     VALUES ($1,'doco_1',$2,'active',$1)`,
     [id, nodeType],
   );
 }

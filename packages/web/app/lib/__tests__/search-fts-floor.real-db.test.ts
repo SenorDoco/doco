@@ -35,14 +35,14 @@ async function seed(): Promise<Client> {
   );
   // An ordinary, embedded node ...
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes, data)
-     VALUES ('reference_embedded','doco_1','reference','active','Widget calibration runbook', jsonb_build_object('ref_type','url','locator','https://x/1'), '{}'::jsonb)`,
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes)
+     VALUES ('reference_embedded','doco_1','reference','active','Widget calibration runbook', jsonb_build_object('ref_type','url','locator','https://x/1'))`,
   );
   // ... and a DRAFTING node with no embedding row, present only in the
   // (synchronously-built) FTS index.
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes, data)
-     VALUES ('reference_draft','doco_1','reference','drafting','Widget calibration draft notes', jsonb_build_object('ref_type','url','locator','https://x/2'), '{}'::jsonb)`,
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes)
+     VALUES ('reference_draft','doco_1','reference','drafting','Widget calibration draft notes', jsonb_build_object('ref_type','url','locator','https://x/2'))`,
   );
   // FTS rows as the indexer writes them (node body = prose). No embeddings
   // table rows on purpose — that's the whole point.

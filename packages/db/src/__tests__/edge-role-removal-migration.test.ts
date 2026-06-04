@@ -80,9 +80,12 @@ async function predicateOf(id: string): Promise<Record<string, unknown>> {
 }
 
 async function insertNode(id: string, nodeType: string): Promise<void> {
+  // `nodes.data` was dropped (per-node data lives in `attributes` now); the
+  // role-removal migration only touches edges + policies, so a bare node row
+  // (just enough to satisfy edge FKs + carry the entity-type id prefix) is fine.
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data)
-       VALUES ($1, $2, $3, 'active', '', '{}'::jsonb)`,
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose)
+       VALUES ($1, $2, $3, 'active', '')`,
     [id, DOCO, nodeType],
   );
 }

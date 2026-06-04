@@ -470,7 +470,7 @@ export async function loadNodeDialogDetail(
               ${cfg.primaryColumn} AS primary_text,
               ${bodySelect},
               COALESCE(lifecycle, 'active') AS lifecycle,
-              data::text AS raw_json,
+              attributes::text AS raw_json,
               attributes->>'locator' AS locator,
               created_at,
               updated_at,

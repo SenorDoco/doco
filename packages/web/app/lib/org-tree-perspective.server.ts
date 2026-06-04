@@ -179,7 +179,7 @@ export async function loadOrgTreeData(
       // description shown under the label is now the first non-blank
       // line of `body_md`.
       `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle, kind,
-              attributes->>'body_md' AS body_md, data,
+              attributes->>'body_md' AS body_md, attributes AS data,
               (SELECT COUNT(*) FROM nodes
                 WHERE node_type = 'principal' AND doco_id = $1) AS total_count
          FROM nodes

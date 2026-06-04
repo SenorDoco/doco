@@ -43,13 +43,13 @@ async function main(): Promise<void> {
         [docoId, `doco-${generateUlid().slice(0, 10).toLowerCase()}`, workspaceId, workspaceId],
       );
       await c.query(
-        `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data, created_by)
-         VALUES ($1,$2,'decision','active','Adopt first-class edges','{}',$3)`,
+        `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, created_by)
+         VALUES ($1,$2,'decision','active','Adopt first-class edges',$3)`,
         [decisionId, docoId, userId],
       );
       await c.query(
-        `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data, created_by)
-         VALUES ($1,$2,'reference','active','PR #634','{}',$3)`,
+        `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, created_by)
+         VALUES ($1,$2,'reference','active','PR #634',$3)`,
         [refId, docoId, userId],
       );
     } finally {

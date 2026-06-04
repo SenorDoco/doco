@@ -379,15 +379,31 @@ async function loadPopulation(
   // node_type. Filter to active nodes so a retired covering node doesn't
   // satisfy a `graph-completeness` check — retired = no longer trusted to
   // back a relationship.
-  const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
-    `SELECT id, data FROM nodes
+  //
+  // Slim-down: the catch-all `data` jsonb is gone, so rebuild each population
+  // member's field bag from `attributes` (its domain fields, e.g. `chosen`)
+  // plus the real columns the evaluator reads off a candidate — `id`,
+  // `node_type` (the `unique_field` / completeness `when_node_type` filter),
+  // and `lifecycle`.
+  const r = await c.query<{
+    id: string;
+    node_type: string;
+    lifecycle: string;
+    attributes: Record<string, unknown> | null;
+  }>(
+    `SELECT id, node_type, COALESCE(lifecycle, 'active') AS lifecycle, attributes FROM nodes
        WHERE doco_id = $1 AND node_type = ANY($2::text[]) AND id <> $3
          AND COALESCE(lifecycle, 'active') = 'active'`,
     [docoId, [...nodeTypes], excludeId],
   );
   for (const row of r.rows) {
-    const fm = row.data as CandidateFields | null;
-    if (fm && typeof fm === "object") out.push(fm);
+    const attrs = row.attributes && typeof row.attributes === "object" ? row.attributes : {};
+    out.push({
+      ...attrs,
+      id: row.id,
+      node_type: row.node_type,
+      lifecycle: row.lifecycle,
+    } as CandidateFields);
   }
   return out;
 }

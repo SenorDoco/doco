@@ -106,16 +106,14 @@ async function insertNode(
   lifecycle: string,
   data: Record<string, unknown>,
 ): Promise<void> {
+  // Slim-down: the catch-all `data` jsonb is gone; per-node domain fields live
+  // in `attributes`. The glossary loader reads them via `attributes AS data`.
+  // Identity/lifecycle stay in their real columns, so only the domain fields go
+  // into the bag.
   await dbm.db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, data)
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes)
        VALUES ($1, $2, $3, $4, '', $5::jsonb)`,
-    [
-      id,
-      docoId,
-      nodeType,
-      lifecycle,
-      JSON.stringify({ id, doco_id: docoId, node_type: nodeType, lifecycle, ...data }),
-    ],
+    [id, docoId, nodeType, lifecycle, JSON.stringify(data)],
   );
 }
 

@@ -315,7 +315,7 @@ export async function loadGlossaryPerspectiveData(
            split_part(COALESCE(NULLIF(attributes->>'title', ''), prose), E'\n', 1) AS label,
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,
-           data,
+           attributes AS data,
            attributes->>'ref_type' AS ref_type,
            attributes->>'locator' AS locator,
            attributes->>'citation' AS citation,

@@ -229,7 +229,7 @@ export async function loadBpmnGraph(
               t.prose AS summary,
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
-              t.data,
+              t.attributes AS data,
               (SELECT COUNT(*) FROM nodes
                 WHERE doco_id = $1 AND node_type IN (${bpmnStepTypeList})) AS total_count
          FROM nodes t
