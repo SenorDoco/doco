@@ -917,11 +917,17 @@ export function BpmnPerspective({
   // LANE_LABEL_WIDTH); in screen coords that's viewport.x + lo*zoom
   // through viewport.x + hi*zoom. When the right edge is past the
   // rail's right edge the user can already read the lane name.
+  // Below the LOD threshold the in-canvas pool header and lanes drop their
+  // labels (see BpmnPoolHeaderNode / BpmnLaneNode). The sticky rail and
+  // sticky pool-header overlays exist only to keep those labels readable
+  // while panning, so suppress them too — otherwise they'd reintroduce the
+  // very text the canvas just hid.
+  const simplified = bpmnSimplifiedAtZoom(viewport.zoom);
   const SWIM_RAIL_WIDTH = 32;
   const RAIL_LABEL_BASE_FONT = 11;
   const RAIL_BADGE_BASE_FONT = 10;
   const inCanvasLabelRightEdge = viewport.x + (LANE_LEFT_INSET + LANE_LABEL_WIDTH) * viewport.zoom;
-  const showRailLabels = inCanvasLabelRightEdge <= SWIM_RAIL_WIDTH;
+  const showRailLabels = !simplified && inCanvasLabelRightEdge <= SWIM_RAIL_WIDTH;
   const laneRails = showRailLabels
     ? layout.lanes.map((lane) => {
         if (!renderedLaneIds.has(lane.id)) return null;
@@ -1114,7 +1120,7 @@ export function BpmnPerspective({
           {laneRails}
         </div>
       ) : null}
-      {Flow && stickyPools.length > 0 ? (
+      {Flow && !simplified && stickyPools.length > 0 ? (
         <div className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex flex-col">
           {stickyPools.map((pool) => {
             const isUnassigned = pool.intent_id === null;
@@ -1901,12 +1907,17 @@ const BpmnPoolReferenceBadge = memo(function BpmnPoolReferenceBadge({
  * a quieter neutral header so it doesn't compete visually with the
  * real Intent pools above it.
  */
-function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
+export function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
   const isUnassigned = data.pool.intent_id === null;
   const bg = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
   const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
   const topBorderWidth = data.isCenter ? 4 : 2;
   const bottomBorderWidth = data.isCenter ? 2 : 1;
+  // Zoomed out far enough that the band's label and pills are illegible:
+  // drop them so the pool reads as a plain tinted band, matching how the
+  // shape nodes inside it simplify. The subprocess-link Handle stays
+  // mounted at every zoom (it anchors dashed drill-down edges).
+  const simplified = useBpmnSimplified();
   return (
     <div
       style={{
@@ -1926,7 +1937,9 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
         color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
         cursor: !isUnassigned && data.pool.intent_id ? "pointer" : undefined,
       }}
-      title={data.pool.label}
+      // No hover tooltip once simplified — a bare band carries no label,
+      // visible or on hover, just like the simplified shape nodes.
+      title={simplified ? undefined : data.pool.label}
     >
       {data.pool.intent_id ? (
         // Landing point for dashed sub-process links — pinned near the
@@ -1940,21 +1953,25 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
           style={{ background: "transparent", border: "none", left: 24 }}
         />
       ) : null}
-      {data.pool.intent_id ? (
-        <BpmnPoolReferenceBadge intentId={data.pool.intent_id} label={data.pool.label} />
-      ) : null}
-      {!isUnassigned && data.pool.intent_id ? (
-        <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
-          <TypeBadge entityType="intent" lifecycle={data.pool.lifecycle} anchor="inline" />
-          <LifecycleBadge lifecycle={data.pool.lifecycle} anchor="inline" />
-        </span>
-      ) : null}
-      <span
-        className="overflow-hidden text-ellipsis whitespace-nowrap"
-        style={{ maxWidth: "100%" }}
-      >
-        {data.pool.label}
-      </span>
+      {simplified ? null : (
+        <>
+          {data.pool.intent_id ? (
+            <BpmnPoolReferenceBadge intentId={data.pool.intent_id} label={data.pool.label} />
+          ) : null}
+          {!isUnassigned && data.pool.intent_id ? (
+            <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
+              <TypeBadge entityType="intent" lifecycle={data.pool.lifecycle} anchor="inline" />
+              <LifecycleBadge lifecycle={data.pool.lifecycle} anchor="inline" />
+            </span>
+          ) : null}
+          <span
+            className="overflow-hidden text-ellipsis whitespace-nowrap"
+            style={{ maxWidth: "100%" }}
+          >
+            {data.pool.label}
+          </span>
+        </>
+      )}
     </div>
   );
 }
@@ -1981,7 +1998,12 @@ const BpmnLaneReferenceBadge = memo(function BpmnLaneReferenceBadge({
   );
 });
 
-function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
+export function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
+  // Zoomed out past the LOD threshold: collapse the lane to a plain
+  // tinted band — drop the whole label column (label + #N badge +
+  // type/lifecycle pills) so it simplifies in lockstep with the shape
+  // nodes it holds.
+  const simplified = useBpmnSimplified();
   // The milestone band and the artifacts band are both phase / data
   // axes perpendicular to the actor lanes — render each with a
   // distinct tint and solid edges so they read as structurally
@@ -2010,54 +2032,56 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
         borderBottom: edge,
       }}
     >
-      <div
-        className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        style={{
-          width: data.labelWidth,
-          height: "100%",
-          background: labelBg,
-          border: focusBorder ?? undefined,
-          borderRight: focusBorder ?? "1px solid var(--color-border)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-          fontSize: 11,
-          fontWeight: 600,
-          textAlign: "center",
-          padding: "0 8px",
-          boxSizing: "border-box",
-          textTransform: "none",
-          letterSpacing: 0,
-          cursor: isClickableLane ? "pointer" : undefined,
-        }}
-        onClick={
-          isClickableLane
-            ? (event) => {
-                event.stopPropagation();
-                data.onLaneClick?.(data.lane);
-              }
-            : undefined
-        }
-        onKeyDown={
-          isClickableLane
-            ? (event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                event.stopPropagation();
-                data.onLaneClick?.(data.lane);
-              }
-            : undefined
-        }
-        role={isClickableLane ? "button" : undefined}
-        tabIndex={isClickableLane ? 0 : undefined}
-        title={data.lane.label}
-      >
-        <BpmnLaneReferenceBadge laneId={data.lane.id} label={data.lane.label} />
-        <span>{data.lane.label}</span>
-        <LaneBadgeRow lane={data.lane} />
-      </div>
+      {simplified ? null : (
+        <div
+          className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          style={{
+            width: data.labelWidth,
+            height: "100%",
+            background: labelBg,
+            border: focusBorder ?? undefined,
+            borderRight: focusBorder ?? "1px solid var(--color-border)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            fontSize: 11,
+            fontWeight: 600,
+            textAlign: "center",
+            padding: "0 8px",
+            boxSizing: "border-box",
+            textTransform: "none",
+            letterSpacing: 0,
+            cursor: isClickableLane ? "pointer" : undefined,
+          }}
+          onClick={
+            isClickableLane
+              ? (event) => {
+                  event.stopPropagation();
+                  data.onLaneClick?.(data.lane);
+                }
+              : undefined
+          }
+          onKeyDown={
+            isClickableLane
+              ? (event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  data.onLaneClick?.(data.lane);
+                }
+              : undefined
+          }
+          role={isClickableLane ? "button" : undefined}
+          tabIndex={isClickableLane ? 0 : undefined}
+          title={data.lane.label}
+        >
+          <BpmnLaneReferenceBadge laneId={data.lane.id} label={data.lane.label} />
+          <span>{data.lane.label}</span>
+          <LaneBadgeRow lane={data.lane} />
+        </div>
+      )}
     </div>
   );
 }
