@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutAdjacentNodes } from "../bpmn-outside-layout";
+import { layoutAdjacentNodes } from "../process-outside-layout";
 
 const opts = { centerX: 500, poolTopY: 100, poolBottomY: 300, gap: 40, columnGap: 20 };
 

@@ -1,6 +1,4 @@
 import type { OverviewGraphData } from "~/components/overview-graph";
-import type { BpmnGraphData } from "./bpmn-perspective.server";
-import { loadBpmnGraph } from "./bpmn-perspective.server";
 import { loadOverviewGraph } from "./full-graph.server";
 import type { GlossaryPerspectiveData } from "./glossary-perspective.server";
 import { loadGlossaryPerspectiveData } from "./glossary-perspective.server";
@@ -10,6 +8,8 @@ import { pageRank } from "./pagerank";
 import type { PerspectiveWindowSpec } from "./perspective-window.server";
 import { PERSPECTIVE_WINDOW_SPECS, selectPerspectiveWindow } from "./perspective-window.server";
 import type { PerspectiveKind } from "./perspectives.server";
+import type { ProcessGraphData } from "./process-perspective.server";
+import { loadProcessGraph } from "./process-perspective.server";
 import type { PullRequestsPerspectiveData } from "./pull-requests-perspective.server";
 import { loadPullRequestsPerspective } from "./pull-requests-perspective.server";
 import type { SlaPerspectiveData } from "./sla-perspective.server";
@@ -37,7 +37,7 @@ export const DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET: DocoHomePerspectiveBudget = {
 export interface DocoHomePerspectiveData {
   graph: OverviewGraphData | null;
   pageRanks: Record<string, number>;
-  bpmnGraph: BpmnGraphData | null;
+  processGraph: ProcessGraphData | null;
   orgTreeData: OrgTreeData | null;
   slaData: SlaPerspectiveData | null;
   glossaryData: GlossaryPerspectiveData | null;
@@ -63,14 +63,14 @@ export async function loadDocoHomePerspectiveData(
   const empty: DocoHomePerspectiveData = {
     graph: null,
     pageRanks: {},
-    bpmnGraph: null,
+    processGraph: null,
     orgTreeData: null,
     slaData: null,
     glossaryData: null,
     pullRequestsData: null,
   };
   const perspectiveWindow =
-    args.activeKind === "pull-requests"
+    args.activeKind === "pull-requests" || args.activeKind === "process"
       ? null
       : await selectPerspectiveWindow(c, {
           docoId: args.docoId,
@@ -96,14 +96,17 @@ export async function loadDocoHomePerspectiveData(
         pageRanks: Object.fromEntries(pageRankMap.entries()),
       };
     }
-    case "bpmn":
+    case "process":
+      // BPMN renders the whole process: no node budget and no render-window.
+      // Other perspectives cap to a ranked subset on large Docos, but the BPMN
+      // canvas pans/zooms over every step, so windowing or limiting it would
+      // silently drop nodes the author expects to see (e.g. a state that
+      // serves an intent disappearing from its pool's milestone band).
       return {
         ...empty,
-        bpmnGraph: await loadBpmnGraph(c, args.docoId, {
+        processGraph: await loadProcessGraph(c, args.docoId, {
           focusId: focusNodeId,
           handle: args.handle,
-          nodeLimit: budget.nodeLimit,
-          window: perspectiveWindow ?? undefined,
         }),
       };
     case "org-tree":

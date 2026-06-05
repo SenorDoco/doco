@@ -39,10 +39,10 @@ import { PageHeader } from "~/components/page-header";
 import { PerspectiveFrame } from "~/components/perspective-frame";
 import { PerspectiveSearchOverlay } from "~/components/perspective-search-overlay";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
-import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { GlossaryPerspective } from "~/components/perspectives/glossary-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
+import { ProcessPerspective } from "~/components/perspectives/process-perspective";
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SiteHeader } from "~/components/site-header";
@@ -346,7 +346,7 @@ export async function loader({
     // narrows the list server-side. Absent → the full list (parse → null).
     const pullRequestLifecycles =
       parsePrLifecycles(new URL(request.url).searchParams.get("pr_lifecycle")) ?? undefined;
-    const { graph, pageRanks, bpmnGraph, orgTreeData, slaData, glossaryData, pullRequestsData } =
+    const { graph, pageRanks, processGraph, orgTreeData, slaData, glossaryData, pullRequestsData } =
       await loadDocoHomePerspectiveData(c, {
         activeKind,
         docoId: ctx.meta.docoId,
@@ -355,11 +355,14 @@ export async function loader({
         pullRequestLifecycles,
       });
 
-    // Policy count — guidance + node-authoring policies
-    // attached to this Doco.
+    // Active policy count — guidance + node-authoring policies attached to this
+    // Doco. Retired policies are excluded so the button reflects what's actually
+    // in force (matching the Active section on the policies page).
     const policyRow = (
       await c.query<{ n: string }>(
-        "SELECT (SELECT COUNT(*) FROM policies WHERE doco_id = $1)::text AS n",
+        `SELECT (SELECT COUNT(*) FROM policies
+                  WHERE doco_id = $1
+                    AND COALESCE(lifecycle, 'active') = 'active')::text AS n`,
         [ctx.meta.docoId],
       )
     ).rows[0];
@@ -398,7 +401,7 @@ export async function loader({
       activePerspectiveKind: activePerspective?.kind ?? null,
       canAdminPerspectives,
       pageRanks,
-      bpmnGraph,
+      processGraph,
       orgTreeData,
       slaData,
       glossaryData,
@@ -540,7 +543,7 @@ export default function DocoHome({
     activePerspectiveKind,
     canAdminPerspectives,
     pageRanks,
-    bpmnGraph,
+    processGraph,
     orgTreeData,
     slaData,
     glossaryData,
@@ -1358,14 +1361,14 @@ export default function DocoHome({
                       void loadNodeDialog("principal", node.id, node.href);
                     }}
                   />
-                ) : effectivePerspectiveKind === "bpmn" && bpmnGraph ? (
-                  <BpmnPerspective
+                ) : effectivePerspectiveKind === "process" && processGraph ? (
+                  <ProcessPerspective
                     docoHandle={handle}
-                    pools={bpmnGraph.pools}
-                    lanes={bpmnGraph.lanes}
-                    nodes={bpmnGraph.nodes}
-                    totalCount={bpmnGraph.totalCount}
-                    links={bpmnGraph.links}
+                    pools={processGraph.pools}
+                    lanes={processGraph.lanes}
+                    nodes={processGraph.nodes}
+                    totalCount={processGraph.totalCount}
+                    links={processGraph.links}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
                     initialFocusId={perspectiveFocusId}

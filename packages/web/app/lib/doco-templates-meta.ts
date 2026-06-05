@@ -29,11 +29,11 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
-    handle: "business-processes",
-    label: "Business Processes",
+    handle: "process",
+    label: "Process",
     description:
       "Document repeatable business processes — actors, gateways, milestones, outcomes. BPMN-inspired.",
-    updatedAt: "2026-05-26",
+    updatedAt: "2026-06-05",
     owner: TEMPLATE_OWNER,
   },
   {
@@ -41,7 +41,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Glossaries",
     description:
       "Document product and domain terminology — canonical terms, definitions, aliases, replacement links, sources, and consistency checks.",
-    updatedAt: "2026-06-03",
+    updatedAt: "2026-06-05",
     owner: TEMPLATE_OWNER,
   },
   {

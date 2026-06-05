@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { GRAPH_MIN_ZOOM as ENTITY_MIN_ZOOM } from "../../entity-graph";
 import { GRAPH_MIN_ZOOM as OVERVIEW_MIN_ZOOM } from "../../overview-graph";
-import { BPMN_MIN_ZOOM } from "../bpmn-perspective";
 import { ORG_TREE_MIN_ZOOM } from "../org-tree-perspective";
+import { PROCESS_MIN_ZOOM } from "../process-perspective";
 
 // Wide diagrams (long BPMN swim lanes, sprawling org trees, dense overview
 // graphs) only fit on screen if `fitView` — and manual scroll/pinch — can
@@ -13,7 +13,7 @@ const MAX_ALLOWED_MIN_ZOOM = 0.05;
 
 describe("graph perspectives can zoom out to fit large diagrams", () => {
   it.each([
-    ["BPMN", BPMN_MIN_ZOOM],
+    ["BPMN", PROCESS_MIN_ZOOM],
     ["org tree", ORG_TREE_MIN_ZOOM],
     ["overview graph", OVERVIEW_MIN_ZOOM],
     ["entity graph", ENTITY_MIN_ZOOM],

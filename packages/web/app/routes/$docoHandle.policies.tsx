@@ -24,18 +24,22 @@ export async function loader({
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   const { ownerSlug, docoSlug, handle } = ctx;
+  // Load every policy, active and retired — the page splits them into their own
+  // sections below. (A policy's `lifecycle` defaults to 'active' when absent.)
   const rows = await withClient((c) =>
     c
       .query<PolicyRowData>(
         `SELECT id, kind, lifecycle, created_at, data
            FROM policies
           WHERE doco_id = $1
-            AND COALESCE(lifecycle, 'active') = 'active'
           ORDER BY created_at DESC`,
         [ctx.meta.docoId],
       )
       .then((r) => r.rows),
   );
+
+  const policies = rows.map(toPolicyItem);
+  const isRetired = (p: PolicyItem) => (p.lifecycle ?? "active") === "retired";
 
   return {
     ownerSlug,
@@ -44,7 +48,8 @@ export async function loader({
     me: ctx.me,
     host: await loadHostConfig(),
     canEdit: await canEditPolicies(ctx.meta, ctx.me?.id ?? null),
-    policies: rows.map(toPolicyItem),
+    activePolicies: policies.filter((p) => !isRetired(p)),
+    retiredPolicies: policies.filter(isRetired),
   };
 }
 
@@ -57,7 +62,7 @@ export default function Policies({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, handle, me, canEdit, policies } = loaderData;
+  const { ownerSlug, handle, me, canEdit, activePolicies, retiredPolicies } = loaderData;
 
   return (
     <div>
@@ -72,40 +77,78 @@ export default function Policies({
           </p>
         </PageHeader>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle className="flex items-center gap-2">
-                <NodeTypeIcon entityType="policy" className="h-4 w-4" />
-                <span>Policies</span>
-                <span className="font-mono text-xs font-normal text-muted-foreground">
-                  {policies.length}
-                </span>
-              </CardTitle>
-              {canEdit ? (
-                <Link
-                  to={`/${handle}/policies/new`}
-                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
-                >
-                  + Add
-                </Link>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {policies.length === 0 ? (
-              <p className="text-xs italic text-muted-foreground">No policies yet.</p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {policies.map((item) => (
-                  <PolicyRow key={item.id} item={item} handle={handle} canEdit={canEdit} />
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <PolicySection
+          title="Active policies"
+          policies={activePolicies}
+          handle={handle}
+          canEdit={canEdit}
+          emptyLabel="No active policies yet."
+          showAdd={canEdit}
+        />
+
+        {retiredPolicies.length > 0 ? (
+          <PolicySection
+            title="Retired policies"
+            policies={retiredPolicies}
+            handle={handle}
+            canEdit={canEdit}
+            emptyLabel="No retired policies."
+            showAdd={false}
+          />
+        ) : null}
       </main>
     </div>
+  );
+}
+
+function PolicySection({
+  title,
+  policies,
+  handle,
+  canEdit,
+  emptyLabel,
+  showAdd,
+}: {
+  title: string;
+  policies: PolicyItem[];
+  handle: string;
+  canEdit: boolean;
+  emptyLabel: string;
+  showAdd: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardTitle className="flex items-center gap-2">
+            <NodeTypeIcon entityType="policy" className="h-4 w-4" />
+            <span>{title}</span>
+            <span className="font-mono text-xs font-normal text-muted-foreground">
+              {policies.length}
+            </span>
+          </CardTitle>
+          {showAdd ? (
+            <Link
+              to={`/${handle}/policies/new`}
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
+            >
+              + Add
+            </Link>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {policies.length === 0 ? (
+          <p className="text-xs italic text-muted-foreground">{emptyLabel}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {policies.map((item) => (
+              <PolicyRow key={item.id} item={item} handle={handle} canEdit={canEdit} />
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

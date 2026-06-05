@@ -1,4 +1,4 @@
-// Real-life exercise of the `business-processes` Doco template against the
+// Real-life exercise of the `process` Doco template against the
 // REAL authoring stack.
 //
 // The template is the product here: it is meant to be the best abstraction
@@ -121,7 +121,7 @@ beforeAll(async () => {
     workspaceId: WORKSPACE_ID,
     requestedHandle: "orders",
     createdByUserId: USER_ID,
-    templateHandle: "business-processes",
+    templateHandle: "process",
   });
   docoId = created.docoId;
   policies = await loadSeededPolicies(docoId);
@@ -180,7 +180,7 @@ function probabilisticLabels(vs: Violation[]): Set<string> {
   for (const v of vs) {
     if (v.kind !== "probabilistic") continue;
     const s = v.pending_spec ?? v.reason;
-    if (/belongs in business-processes|repeatable structure/i.test(s)) out.add("membership");
+    if (/belongs in process|repeatable structure/i.test(s)) out.add("membership");
     else if (/exclusiveGateway|Implementation status|Source type/i.test(s))
       out.add("imported-metadata");
     else if (/identifies a single repeatable|concise statement of that process/i.test(s))
@@ -586,7 +586,7 @@ const SCENARIOS: ScenarioSpec[] = [
 
 // ─── Suite A: no false positives on ten well-formed processes ─────────────────
 
-describe("business-processes template — ten real-life processes (well-formed, active)", () => {
+describe("process template — ten real-life processes (well-formed, active)", () => {
   it("seeds enforceable policies from the template", () => {
     // Sanity: the template produced a non-trivial set of deterministic +
     // probabilistic policies (the prose guidance lands as suggestions, which
@@ -633,7 +633,7 @@ describe("business-processes template — ten real-life processes (well-formed, 
 
 // ─── Suite B: catches real modeling mistakes (deterministic blocks) ───────────
 
-describe("business-processes template — blocks malformed processes", () => {
+describe("process template — blocks malformed processes", () => {
   it("blocks an Action that names no performer (no attributed_to edge to a Principal)", () => {
     // With `role` gone the performer gate is requires_edge(attributed_to →
     // principal) scoped to Actions; the missing-edge reason names the edge type
@@ -745,7 +745,7 @@ describe("business-processes template — blocks malformed processes", () => {
 //     drafted before its actor, decider, or Intent (pool) is chosen; all are
 //     required once committed.
 
-describe("business-processes template — all flow-node gates committed-only, drafting exempt", () => {
+describe("process template — all flow-node gates committed-only, drafting exempt", () => {
   // The same orphan Action (serves wired, performer edge missing) at each
   // lifecycle. All flow-node attachment gates fire only on the committed stages,
   // so a `drafting` orphan is exempt while `queued`/`active` are blocked. With
@@ -914,7 +914,7 @@ describe("business-processes template — all flow-node gates committed-only, dr
 
 // ─── Suite D: end-to-end through the real runner + a stubbed LLM judge ─────────
 
-describe("business-processes template — end-to-end via runAuthoringPolicies", () => {
+describe("process template — end-to-end via runAuthoringPolicies", () => {
   it("blocks a Log via the node-type allowlist (no judge needed)", async () => {
     const result = await runAuthoringPolicies({
       docoId,
@@ -982,7 +982,7 @@ describe("business-processes template — end-to-end via runAuthoringPolicies", 
 // well-formed processes pass every BLOCK gate; here we also prove they trip no
 // deterministic WARNING, then prove each gate catches its specific defect.
 
-describe("business-processes template — new structural gates (no false positives)", () => {
+describe("process template — new structural gates (no false positives)", () => {
   for (const s of SCENARIOS) {
     it(`${s.key}: a well-formed committed process trips no deterministic warnings`, () => {
       const g = buildProcess(s, "active");
@@ -997,7 +997,7 @@ describe("business-processes template — new structural gates (no false positiv
   }
 });
 
-describe("business-processes template — flow-wiring gate", () => {
+describe("process template — flow-wiring gate", () => {
   // Wire a node into a committed process with serves + performed_by already
   // satisfied, so only the sequence-flow gate is left to (not) fire.
   function wiredAction(
@@ -1063,7 +1063,7 @@ describe("business-processes template — flow-wiring gate", () => {
   });
 });
 
-describe("business-processes template — unique milestone names", () => {
+describe("process template — unique milestone names", () => {
   it("blocks a second committed State that reuses a milestone name", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const dupName = g.states[0].state as string;
@@ -1074,7 +1074,7 @@ describe("business-processes template — unique milestone names", () => {
   });
 });
 
-describe("business-processes template — gateway branch count", () => {
+describe("process template — gateway branch count", () => {
   it("blocks a single-exit gateway Decision", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const stub = node(
@@ -1099,7 +1099,7 @@ describe("business-processes template — gateway branch count", () => {
   });
 });
 
-describe("business-processes template — owner + actor coverage (warnings)", () => {
+describe("process template — owner + actor coverage (warnings)", () => {
   // With `role` gone: the owner gate is requires_edge(attributed_to →
   // principal) on Intents; the actor-coverage gate is the INCOMING
   // requires_edge(attributed_to ← action) on Principals, exempt when the
@@ -1153,7 +1153,7 @@ describe("business-processes template — owner + actor coverage (warnings)", ()
   });
 });
 
-describe("business-processes template — scaffolding floors", () => {
+describe("process template — scaffolding floors", () => {
   it("blocks an Action whose prose carries a raw generated BPMN id", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const scaffold = node(
@@ -1181,7 +1181,7 @@ describe("business-processes template — scaffolding floors", () => {
 // reported bug — queuing a non-initial/non-terminal node with no `flows_to` —
 // proven fixed through the production code path, not a harness shortcut.
 
-describe("business-processes template — flow-wiring end-to-end via runAuthoringPolicies", () => {
+describe("process template — flow-wiring end-to-end via runAuthoringPolicies", () => {
   let edgeSeq = 0;
   async function insertNode(id: string, nodeType: string, kind?: string): Promise<void> {
     await dbm.db.query(
@@ -1316,7 +1316,7 @@ describe("business-processes template — flow-wiring end-to-end via runAuthorin
 // prove it catches a committed node wired into two pools, while a drafting one
 // is left alone.
 
-describe("business-processes template — a flow node serves at most one Intent", () => {
+describe("process template — a flow node serves at most one Intent", () => {
   it("seeds the limits_edge serves ceiling (supports → intent), firing on committed stages only", () => {
     // With `role` gone the ceiling is a role-free limits_edge on the
     // supports → intent edge, capped at one (committed stages only).

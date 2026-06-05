@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
+  getOrCreateDocoConversationForPrincipal: vi.fn(),
   loadConversationByIdForPrincipal: vi.fn(),
   loadOrCreateConversation: vi.fn(),
   patchConversation: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("~/lib/session.server", () => ({
 }));
 
 vi.mock("~/lib/agent-chat.server", () => ({
+  getOrCreateDocoConversationForPrincipal: mocks.getOrCreateDocoConversationForPrincipal,
   loadConversationByIdForPrincipal: mocks.loadConversationByIdForPrincipal,
   loadOrCreateConversation: mocks.loadOrCreateConversation,
   patchConversation: mocks.patchConversation,
@@ -39,6 +41,7 @@ function conversationRow(overrides: Record<string, unknown> = {}) {
     archived: false,
     title: "Ask",
     workspace_id: null,
+    doco_id: null,
     created_at: new Date("2026-01-01T00:00:00Z"),
     updated_at: new Date("2026-01-01T00:00:00Z"),
     active_turn_started_at: null,
@@ -87,6 +90,47 @@ describe("agent chat routes", () => {
         userText: "One more thing",
       }),
     );
+  });
+
+  it("lazily opens the Doco's chat when a first message carries doco_id", async () => {
+    mocks.getOrCreateDocoConversationForPrincipal.mockResolvedValue(
+      conversationRow({ id: "conv_doco", doco_id: "doco_billing" }),
+    );
+
+    const response = await postMessageAction({
+      request: jsonRequest("https://doco.test/api/v1/agent-chat/messages.json", {
+        text: "What changed here?",
+        doco_id: "doco_billing",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.getOrCreateDocoConversationForPrincipal).toHaveBeenCalledWith(
+      "user_alice",
+      "doco_billing",
+    );
+    // No conversation_id → it must not fall back to the rolling active thread.
+    expect(mocks.loadOrCreateConversation).not.toHaveBeenCalled();
+    expect(mocks.runAssistantTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversation: expect.objectContaining({ id: "conv_doco", doco_id: "doco_billing" }),
+        userText: "What changed here?",
+      }),
+    );
+  });
+
+  it("404s when doco_id names a Doco the user can't reach", async () => {
+    mocks.getOrCreateDocoConversationForPrincipal.mockResolvedValue(null);
+
+    const response = await postMessageAction({
+      request: jsonRequest("https://doco.test/api/v1/agent-chat/messages.json", {
+        text: "let me in",
+        doco_id: "doco_secret",
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(mocks.runAssistantTurn).not.toHaveBeenCalled();
   });
 
   it("lets the owner of a thread request that its active turn stop", async () => {

@@ -1,6 +1,6 @@
 // Real-DB exercise of the EDGE-scoped authoring policy path.
 //
-// The `business-processes` template ships an edge-scoped probabilistic policy:
+// The `process` template ships an edge-scoped probabilistic policy:
 // when a calling Action `serves` a child purpose Intent (a sub-process), the
 // Intent's name must be the base (imperative) form of the third-person Action
 // (`Posts a job` → `Post a job`). Unlike a node policy, this fires on EDGE
@@ -74,7 +74,7 @@ beforeAll(async () => {
     workspaceId: WORKSPACE_ID,
     requestedHandle: "orders",
     createdByUserId: USER_ID,
-    templateHandle: "business-processes",
+    templateHandle: "process",
   });
   docoId = created.docoId;
 });
@@ -146,7 +146,7 @@ describe("edge-scoped sub-process naming policy — end-to-end via runEdgeAuthor
 });
 
 describe("edge-type allowlist (requires_edge_type) — end-to-end via runEdgeAuthoringPolicies", () => {
-  // The business-processes template seeds an edge-type allowlist:
+  // The process template seeds an edge-type allowlist:
   // flows_to / supports / attributed_to / constrained_by / replaces / derived_from.
   // It's deterministic (no judge) and a structural gate, so it blocks a
   // disallowed edge type at creation — even for a `drafting` edge.

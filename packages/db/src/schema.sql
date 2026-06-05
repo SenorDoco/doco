@@ -952,7 +952,7 @@ CREATE INDEX IF NOT EXISTS doco_project_tokens_doco_idx
 CREATE TABLE IF NOT EXISTS perspectives (
   id              text PRIMARY KEY,
   slug            text NOT NULL UNIQUE,
-  kind            text NOT NULL CHECK (kind IN ('graph','list','bpmn','org-tree','sla','glossary','pull-requests')),
+  kind            text NOT NULL CHECK (kind IN ('graph','list','process','org-tree','sla','glossary','pull-requests')),
   name            text NOT NULL,
   description     text,
   icon            text,
@@ -970,7 +970,7 @@ CREATE INDEX IF NOT EXISTS perspectives_kind_idx         ON perspectives (kind);
 INSERT INTO perspectives (id, slug, kind, name, description, icon, owner_handle, is_builtin, config) VALUES
   ('perspective_graph','graph','graph','Graph','Force-directed overview of nodes and edges — the original view.','🕸️',NULL,true,'{}'::jsonb),
   ('perspective_list','list','list','List','Sortable list of nodes, with type-aware tiebreakers.','📋',NULL,true,'{"default_sort":"recent_desc"}'::jsonb),
-  ('perspective_bpmn','bpmn','bpmn','BPMN','Business process modeling — swim lanes, gateways, and events. Inspired by BPMN.','🏭','torrenegra',true,'{"lane_axis":"principal"}'::jsonb),
+  ('perspective_bpmn','process','process','Process','Business process modeling — swim lanes, gateways, and events. Inspired by BPMN.','🔁','torrenegra',true,'{"lane_axis":"principal"}'::jsonb),
   ('perspective_glossary','glossary','glossary','Glossary','A dictionary-style reading of the Doco''s terminology — canonical headwords, definitions, senses, and aliases laid out like a printed lexicon.','📖',NULL,true,'{"headword_field":"chosen","primary_entity":"decision","definition_field":"decision"}'::jsonb),
   ('perspective_org_tree','org-tree','org-tree','Org Tree','Organizational chart — Principals as members, `has_parent` edges between principals as reporting lines, with person vs AI agent shown by icon.','🏢',NULL,true,'{"agent_icon":"🤖","person_icon":"👤","root_edge":"has_parent","icon_by_member_kind":true}'::jsonb),
   ('perspective_sla','sla','sla','SLAs','Service-level agreement control plane — commitments, owners, evidence links, remedies, and review gaps.','📜',NULL,true,'{"event_logs":false,"primary_entity":"rule","evidence_sources":["eval","reference"]}'::jsonb),
@@ -1013,6 +1013,14 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
   -- all-reachable context. ON DELETE SET NULL so deleting a Workspace
   -- unassigns its threads rather than destroying chat history.
   workspace_id             text REFERENCES workspaces(id) ON DELETE SET NULL,
+  -- The Doco this thread is attached to. Every in-app Señor Doco chat is
+  -- bound to exactly one Doco (1:1 per user — see the unique index below):
+  -- opening Señor Doco while viewing a Doco starts/opens that Doco's chat.
+  -- workspace_id is derived from this Doco's workspace at creation. Nullable
+  -- so pre-existing (workspace-only) threads keep working, and ON DELETE SET
+  -- NULL so deleting a Doco preserves the chat history rather than destroying
+  -- it (the orphaned thread just loses its Doco tag).
+  doco_id                  text REFERENCES docos(id) ON DELETE SET NULL,
   attached_workspace_handles text[] NOT NULL DEFAULT '{}',
   attached_doco_ids        text[] NOT NULL DEFAULT '{}',
   created_at               timestamptz NOT NULL DEFAULT now(),
@@ -1021,8 +1029,16 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
 -- Migration for DBs created before workspace scoping existed.
 ALTER TABLE chat_conversations
   ADD COLUMN IF NOT EXISTS workspace_id text REFERENCES workspaces(id) ON DELETE SET NULL;
+-- Migration for DBs created before per-Doco chat scoping existed.
+ALTER TABLE chat_conversations
+  ADD COLUMN IF NOT EXISTS doco_id text REFERENCES docos(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_user_active
   ON chat_conversations (user_id, updated_at DESC) WHERE archived = false;
+-- One chat per (user, Doco). Enforces "a Doco can only have a chat" — the
+-- get-or-create path keys on this pair and un-archives rather than minting a
+-- second. Partial (doco_id IS NOT NULL) so Doco-less threads stay exempt.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_conversations_user_doco
+  ON chat_conversations (user_id, doco_id) WHERE doco_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS chat_messages (
   id               text PRIMARY KEY,
@@ -1789,6 +1805,27 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Reference title/body split: PR references were stored prose="title\n\nbody";
+-- move the body into attributes.body_md and leave prose = the title. Idempotent
+-- (skips rows already split) and scoped to PR-URL references so hand-written or
+-- code-locator references are untouched. Re-applied on every boot, so the WHERE
+-- guards must make a second pass a strict no-op:
+--   * body_md IS NULL          → already-split rows are skipped (no re-split)
+--   * a blank line exists       → a title-only PR ref (no body) is skipped
+--   * the locator is a /pull/   → only GitHub PR-URL references are split;
+--     issue URLs, code locators, and hand-written refs are left alone.
+-- The derived FTS / embedding rows for a migrated reference stay valid: they
+-- already contain title+body and are not recomputed here, and `nodeIndexText`
+-- now rebuilds the same title+body text on the next re-capture — so search
+-- recall is unaffected by this migration.
+UPDATE nodes
+   SET attributes = COALESCE(attributes, '{}'::jsonb)
+                    || jsonb_build_object('body_md', substring(prose FROM position(E'\n\n' IN prose) + 2)),
+       prose = left(prose, position(E'\n\n' IN prose) - 1)
+ WHERE node_type = 'reference'
+   AND (attributes->>'body_md') IS NULL
+   AND position(E'\n\n' IN prose) > 0
+   AND attributes->>'locator' ~ '^https?://github\.com/[^/]+/[^/]+/pull/[0-9]+$';
 -- ── torre-bpm policy convergence (older template snapshot → current) ─────────
 -- torre-bpm (doco_01KT7G5PCX4273VHWW8SAAVSJC) was seeded from the business-processes template BEFORE
 -- the "an edge's meaning comes from its type + endpoints, not a role tag"
@@ -1907,3 +1944,63 @@ END $$;
    WHERE EXISTS (SELECT 1 FROM docos WHERE id = 'doco_01KT7G5PCX4273VHWW8SAAVSJC')
      AND NOT EXISTS (SELECT 1 FROM policies WHERE id = 'policy_torrebpm_name_subprocess_guidance');
 -- ── end torre-bpm policy convergence ────────────────────────────────────────
+
+-- ── Rename the "business-processes" template → "process" (handle + perspective) ─
+-- The template handle and its default perspective were renamed from
+-- `business-processes`/`bpmn` to `process`. New Docos seed the new identity at
+-- creation (host.ts / doco-templates.ts) and a fresh DB seeds the perspective
+-- row directly above; this converges already-seeded production data. Every
+-- statement is guarded on the OLD value so a second boot is a no-op, and the
+-- whole section no-ops on a database that never carried the old names.
+--
+-- This runs AFTER the convergence blocks above, which still fingerprint older
+-- Docos by their `business-processes` handle / "belongs in business-processes"
+-- membership prose — they fire first on the upgrade boot, then the rewrites
+-- below carry every row onto the new `process` name.
+
+-- (1) Doco template handle on the doco record. (No `updated_at` touch: the
+-- other `UPDATE docos` convergence statements omit it too, keeping this safe on
+-- pre-`updated_at` database snapshots.)
+UPDATE docos
+   SET data = jsonb_set(data, '{template_handle}', '"process"'::jsonb)
+ WHERE data ->> 'template_handle' = 'business-processes';
+
+-- (2) The `template_handle` stamped on template-seeded policies.
+UPDATE policies
+   SET data = jsonb_set(data, '{template_handle}', '"process"'::jsonb),
+       updated_at = now()
+ WHERE data ->> 'template_handle' = 'business-processes';
+
+-- (3) The membership judge's prose ("A node belongs in business-processes …").
+UPDATE policies
+   SET data = jsonb_set(
+         data,
+         '{predicate,agent_instruction}',
+         to_jsonb(replace(data -> 'predicate' ->> 'agent_instruction',
+                          'belongs in business-processes',
+                          'belongs in process'))
+       ),
+       updated_at = now()
+ WHERE data -> 'predicate' ->> 'agent_instruction' LIKE '%belongs in business-processes%';
+
+-- (4) The built-in perspective row: slug/kind/name/icon. The opaque primary key
+-- `perspective_bpmn` is left untouched (it is referenced by doco_perspectives
+-- and never user-visible), so no foreign keys move.
+--
+-- An already-provisioned database still carries the column CHECK that only
+-- allows the old `bpmn` kind (CREATE TABLE IF NOT EXISTS skips the updated
+-- definition above). Drop it, move the row onto `process`, then re-add the
+-- constraint with the new value — in that order, so the row update is never
+-- blocked by the old constraint and the re-add never trips on the old row.
+ALTER TABLE perspectives DROP CONSTRAINT IF EXISTS perspectives_kind_check;
+UPDATE perspectives
+   SET slug = 'process',
+       kind = 'process',
+       name = 'Process',
+       icon = '🔁',
+       updated_at = now()
+ WHERE id = 'perspective_bpmn'
+   AND slug = 'bpmn';
+ALTER TABLE perspectives ADD CONSTRAINT perspectives_kind_check
+  CHECK (kind IN ('graph','list','process','org-tree','sla','glossary','pull-requests'));
+-- ── end business-processes → process rename ─────────────────────────────────

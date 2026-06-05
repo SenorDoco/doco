@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  bpmnFocusCandidates,
   highestRankedNodeId,
+  processFocusCandidates,
   selectFocusedNodeIds,
   selectPersonalizedNodeIds,
   summarizeExternalConnections,
@@ -188,7 +188,7 @@ describe("focused render selection", () => {
   });
 });
 
-describe("bpmnFocusCandidates", () => {
+describe("processFocusCandidates", () => {
   const node = (id: string, lifecycle: string) => ({ id, lifecycle, created_at: null });
   const filteredNodes = [node("step-1", "active")];
   const pools = [
@@ -199,23 +199,23 @@ describe("bpmnFocusCandidates", () => {
   const defaultVisible = new Set(["drafting", "queued", "active"]);
 
   it("offers pool intents whose lifecycle is visible", () => {
-    const ids = bpmnFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
+    const ids = processFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
     expect(ids).toContain("intent-live");
   });
 
   it("excludes a retired pool intent while retired is hidden, like a retired node", () => {
-    const ids = bpmnFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
+    const ids = processFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
     expect(ids).not.toContain("intent-dead");
   });
 
   it("offers a retired pool intent once retired is toggled visible", () => {
     const visible = new Set(["drafting", "queued", "active", "retired"]);
-    const ids = bpmnFocusCandidates(filteredNodes, pools, visible).map((n) => n.id);
+    const ids = processFocusCandidates(filteredNodes, pools, visible).map((n) => n.id);
     expect(ids).toContain("intent-dead");
   });
 
   it("offers every pool intent when no lifecycle filter is set", () => {
-    const ids = bpmnFocusCandidates(filteredNodes, pools, undefined).map((n) => n.id);
+    const ids = processFocusCandidates(filteredNodes, pools, undefined).map((n) => n.id);
     expect(ids).toEqual(expect.arrayContaining(["intent-live", "intent-dead"]));
   });
 
@@ -227,7 +227,7 @@ describe("bpmnFocusCandidates", () => {
       ["intent-live", 0.5],
       ["step-1", 0.1],
     ]);
-    const candidates = bpmnFocusCandidates(filteredNodes, pools, defaultVisible);
+    const candidates = processFocusCandidates(filteredNodes, pools, defaultVisible);
     expect(highestRankedNodeId(candidates, ranks)).toBe("intent-live");
   });
 });

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { BpmnNode, BpmnPool } from "../bpmn-perspective.server";
-import { topLevelIntentPools } from "../bpmn-top-level-intents";
+import type { ProcessNode, ProcessPool } from "../process-perspective.server";
+import { topLevelIntentPools } from "../process-top-level-intents";
 
-function pool(intentId: string | null, label = intentId ?? "Unassigned"): BpmnPool {
+function pool(intentId: string | null, label = intentId ?? "Unassigned"): ProcessPool {
   return {
     id: intentId ? `pool:${intentId}` : "pool:unassigned",
     intent_id: intentId,
@@ -11,7 +11,7 @@ function pool(intentId: string | null, label = intentId ?? "Unassigned"): BpmnPo
   };
 }
 
-function action(id: string, poolIntentId: string, served: string[]): BpmnNode {
+function action(id: string, poolIntentId: string, served: string[]): ProcessNode {
   return {
     id,
     entity_type: "action",
@@ -53,7 +53,7 @@ describe("topLevelIntentPools", () => {
 
   it("only Actions invoke sub-processes — a Decision serving another Intent does not demote it", () => {
     const pools = [pool("root"), pool("other")];
-    const nodes: BpmnNode[] = [
+    const nodes: ProcessNode[] = [
       {
         id: "dec1",
         entity_type: "decision",

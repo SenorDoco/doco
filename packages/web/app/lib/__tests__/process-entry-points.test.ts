@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeIntentEntryPointIds, topEntryPointId } from "../bpmn-entry-points";
+import { computeIntentEntryPointIds, topEntryPointId } from "../process-entry-points";
 
 describe("computeIntentEntryPointIds", () => {
   it("treats genuine sources (no incoming sequence flow) as entry points", () => {

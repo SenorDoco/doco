@@ -30,18 +30,6 @@ import {
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
-import { bpmnEdgeLabelStyles } from "~/lib/bpmn-edge-label-style";
-import { topEntryPointId } from "~/lib/bpmn-entry-points";
-import { bpmnFocusFlowNodeId, bpmnPoolFitNodeIds } from "~/lib/bpmn-focus-fit";
-import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
-import { bpmnSimplifiedAtZoom } from "~/lib/bpmn-lod";
-import { layoutAdjacentNodes } from "~/lib/bpmn-outside-layout";
-import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
-import { bpmnPriorityReferences } from "~/lib/bpmn-references";
-import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
-import { indexById, reuseStableNodes } from "~/lib/bpmn-stable-nodes";
-import { subprocessTargetIntents } from "~/lib/bpmn-subprocess";
-import { topLevelIntentPools } from "~/lib/bpmn-top-level-intents";
 import { summarizeExternalConnections } from "~/lib/focused-render-selection";
 import {
   computeDepthFromCenter,
@@ -54,6 +42,23 @@ import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
+import { processEdgeLabelStyles } from "~/lib/process-edge-label-style";
+import { topEntryPointId } from "~/lib/process-entry-points";
+import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
+import { packProcessLaneColumns, processLaneColumnKey } from "~/lib/process-lane-packing";
+import { processSimplifiedAtZoom } from "~/lib/process-lod";
+import { layoutAdjacentNodes } from "~/lib/process-outside-layout";
+import type {
+  ProcessLane,
+  ProcessNode,
+  ProcessPool,
+  ProcessShape,
+} from "~/lib/process-perspective.server";
+import { processPriorityReferences } from "~/lib/process-references";
+import { computeForwardSequenceDepths } from "~/lib/process-sequence-depth";
+import { indexById, reuseStableNodes } from "~/lib/process-stable-nodes";
+import { subprocessTargetIntents } from "~/lib/process-subprocess";
+import { topLevelIntentPools } from "~/lib/process-top-level-intents";
 import {
   ReferenceNumberStoreContext,
   createReferenceNumberStore,
@@ -62,13 +67,13 @@ import {
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
-// `~/lib/bpmn-perspective.server`. Can't import the values here —
+// `~/lib/process-perspective.server`. Can't import the values here —
 // `.server.ts` modules are stripped from the client bundle, so
 // value-imports from them fail the build.
 const MILESTONE_LANE_ID = "__milestones__";
 const ARTIFACTS_LANE_ID = "__artifacts__";
 
-interface BpmnPerspectiveProps {
+interface ProcessPerspectiveProps {
   docoHandle?: string | null;
   /**
    * One pool per Intent in the Doco (plus an "Unassigned" pool for
@@ -76,22 +81,22 @@ interface BpmnPerspectiveProps {
    * order given — the server emits them sorted by descending global
    * PageRank, with the Unassigned pool pinned to the bottom.
    */
-  pools: BpmnPool[];
+  pools: ProcessPool[];
   /**
    * Flat list of lanes across all pools; each lane carries its
    * `pool_id` so the renderer can group them. Lane ids are composite
    * (`<pool_id>::<base>`) so the same Principal in two pools is two
    * distinct lanes.
    */
-  lanes: BpmnLane[];
-  nodes: BpmnNode[];
+  lanes: ProcessLane[];
+  nodes: ProcessNode[];
   /** TRUE total of BPMN flow nodes (steps) before the server cap — drives the
    *  "Showing the latest N of M steps" overlay. Defaults to `nodes.length`. */
   totalCount?: number;
   links: OverviewGraphLink[];
-  onNodeClick?: (node: BpmnNode) => void;
-  onPoolClick?: (pool: BpmnPool) => void;
-  onLaneClick?: (lane: BpmnLane) => void;
+  onNodeClick?: (node: ProcessNode) => void;
+  onPoolClick?: (pool: ProcessPool) => void;
+  onLaneClick?: (lane: ProcessLane) => void;
   /**
    * Lift focal-node state to the parent. Clicking a node on the
    * canvas should re-center the graph on it so depth-based opacity
@@ -164,13 +169,13 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
-const BPMN_RENDER_EDGE_BUDGET = 700;
-const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
+const PROCESS_RENDER_EDGE_BUDGET = 700;
+const PROCESS_PLACEHOLDER_STUB_BUDGET = 120;
 // Long swim-lane processes can run far wider than the viewport. ReactFlow
 // clamps the reachable zoom at `minZoom`, so the floor has to sit low enough
 // for `fitView` (and manual scroll/pinch) to pull the whole flow on screen.
-export const BPMN_MIN_ZOOM = 0.02;
-export const BPMN_MAX_ZOOM = 2.0;
+export const PROCESS_MIN_ZOOM = 0.02;
+export const PROCESS_MAX_ZOOM = 2.0;
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -181,7 +186,7 @@ export const BPMN_MAX_ZOOM = 2.0;
  * NODE_WIDTH x NODE_HEIGHT is the floor — short labels keep the
  * default size so existing layouts don't shift unexpectedly.
  */
-function sizeForNode(node: BpmnNode): { width: number; height: number } {
+function sizeForNode(node: ProcessNode): { width: number; height: number } {
   const label = node.name ?? "";
   const N = Math.max(label.length, 1);
   const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
@@ -217,7 +222,7 @@ interface FlowModule {
   ControlButton: typeof import("@xyflow/react").ControlButton;
 }
 
-export function BpmnPerspective({
+export function ProcessPerspective({
   docoHandle,
   pools,
   lanes: lanesRaw,
@@ -237,7 +242,7 @@ export function BpmnPerspective({
   focusedEdgeId,
   focusedNodeIds,
   onEdgeClick,
-}: BpmnPerspectiveProps) {
+}: ProcessPerspectiveProps) {
   const lanes = lanesRaw;
   const nodes = nodesRaw;
   const navigate = useNavigate();
@@ -332,7 +337,7 @@ export function BpmnPerspective({
   // Drop nodes whose lifecycle is filtered out. Lanes are never
   // dropped once the server emits them, so a filtered-out Action
   // does not make its swim lane disappear. Links are still filtered
-  // by the existing nodeSet check inside layOutBpmn.
+  // by the existing nodeSet check inside layOutProcess.
   const { filteredNodes, filteredLanes } = useMemo(() => {
     if (!visibleLifecycles) return { filteredNodes: nodes, filteredLanes: lanes };
     const fn = nodes.filter((n) => visibleLifecycles.has(n.lifecycle ?? "active"));
@@ -445,58 +450,40 @@ export function BpmnPerspective({
     () => resolveIntentToEntry(selectionCenterId),
     [resolveIntentToEntry, selectionCenterId],
   );
-  // The one pool drawn as a swim lane: the focal node's pool. Every other
-  // rendered node lays out *outside* this lane, positioned by graph
-  // distance from the focal node (see layOutBpmn).
-  const focalPoolId = useMemo(() => {
-    if (!effectiveCenterId) return null;
-    const fromIntent = pools.find((pool) => pool.intent_id === effectiveCenterId)?.id;
-    return fromIntent ?? nodeByFullId.get(effectiveCenterId)?.pool_id ?? null;
-  }, [pools, effectiveCenterId, nodeByFullId]);
-
-  // The exact set rendered — no budget, no PageRank windowing, no
-  // buffering. We draw the focal node's whole intent (every node in its
-  // pool) plus the focal node's first-degree sequence-flow neighbours that
-  // live in *other* intents. Those neighbours render above/below the lane
-  // (see layOutBpmn); clicking one makes it the focal node and the whole
-  // set recomputes from scratch.
-  const renderedNodeIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (!focalPoolId) return ids;
-    for (const node of filteredNodes) {
-      if (node.pool_id === focalPoolId) ids.add(node.id);
-    }
-    if (effectiveCenterId) {
-      for (const link of links) {
-        if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
-        const neighborId =
-          link.source === effectiveCenterId
-            ? link.target
-            : link.target === effectiveCenterId
-              ? link.source
-              : null;
-        if (!neighborId) continue;
-        const neighbor = nodeByFullId.get(neighborId);
-        if (neighbor && neighbor.pool_id !== focalPoolId) ids.add(neighborId);
-      }
-    }
-    return ids;
-  }, [filteredNodes, links, effectiveCenterId, focalPoolId, nodeByFullId]);
+  // The pool(s) drawn as swim lanes, and the exact set of nodes rendered —
+  // no budget, no PageRank windowing, no buffering. A node focus (or an
+  // edge within one intent) frames one pool: the focal node's whole intent
+  // plus its first-degree sequence-flow neighbours in *other* intents,
+  // which lay out above/below the lane (see layOutProcess). A focused edge
+  // whose endpoints span two intents frames BOTH pools in full. Clicking a
+  // node makes it the focal node and the whole set recomputes from scratch.
+  const { focalPoolIds, renderedNodeIds } = useMemo(
+    () =>
+      computeProcessRenderedSet({
+        nodes: filteredNodes,
+        pools,
+        links,
+        centerId: effectiveCenterId,
+        focusedEdgeId: focusedEdgeId ?? null,
+        focusedNodeIds: focusedNodeIdSet,
+      }),
+    [filteredNodes, pools, links, effectiveCenterId, focusedEdgeId, focusedNodeIdSet],
+  );
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
     [filteredNodes, renderedNodeIds],
   );
-  // Only the focal pool's lanes are drawn, so only its rendered nodes
-  // contribute swim-lane chrome (rails, reference numbering). Adjacent
+  // Only the focal pool(s) are drawn as swim lanes, so only their rendered
+  // nodes contribute swim-lane chrome (rails, reference numbering). Adjacent
   // cross-intent nodes render above/below the lane and belong to none.
   const renderedLaneIds = useMemo(
     () =>
       new Set(
-        renderedNodes.filter((node) => node.pool_id === focalPoolId).map((node) => node.laneId),
+        renderedNodes.filter((node) => focalPoolIds.has(node.pool_id)).map((node) => node.laneId),
       ),
-    [renderedNodes, focalPoolId],
+    [renderedNodes, focalPoolIds],
   );
-  const renderedPoolIds = useMemo(() => new Set(focalPoolId ? [focalPoolId] : []), [focalPoolId]);
+  const renderedPoolIds = focalPoolIds;
   const renderedLanes = useMemo(
     () => filteredLanes.filter((lane) => renderedLaneIds.has(lane.id)),
     [filteredLanes, renderedLaneIds],
@@ -505,16 +492,16 @@ export function BpmnPerspective({
     () => pools.filter((pool) => renderedPoolIds.has(pool.id)),
     [pools, renderedPoolIds],
   );
-  // Exactly one pool is laid out as a swim lane — the focal node's. Its
-  // lanes anchor the in-lane nodes; the adjacent cross-intent neighbours
-  // are placed above/below it.
+  // The focal pool(s) laid out as swim lanes — one for a node/single-intent
+  // focus, two for a cross-intent edge. Their lanes anchor the in-lane
+  // nodes; any adjacent cross-intent neighbours are placed above/below.
   const layoutPools = useMemo(
-    () => (focalPoolId ? pools.filter((pool) => pool.id === focalPoolId) : []),
-    [pools, focalPoolId],
+    () => pools.filter((pool) => focalPoolIds.has(pool.id)),
+    [pools, focalPoolIds],
   );
   const layoutLanes = useMemo(
-    () => (focalPoolId ? filteredLanes.filter((lane) => lane.pool_id === focalPoolId) : []),
-    [filteredLanes, focalPoolId],
+    () => filteredLanes.filter((lane) => focalPoolIds.has(lane.pool_id)),
+    [filteredLanes, focalPoolIds],
   );
   // Geometry is solved from exactly the rendered set — the layout is
   // recomputed in full on every focus change, nothing is pinned.
@@ -532,9 +519,13 @@ export function BpmnPerspective({
     () => pools.some((pool) => pool.intent_id === selectionCenterId),
     [pools, selectionCenterId],
   );
+  // A cross-intent edge frames two whole intents; singling out one focal
+  // node with a depth-fade would wash the *other* intent out, so suppress
+  // it. The two edge endpoints are still highlighted via `focusedNodeIds`.
+  const highlightFocal = !isIntentFocus && focalPoolIds.size <= 1;
   const layout = useMemo(
     () =>
-      layOutBpmn(
+      layOutProcess(
         layoutPools,
         layoutLanes,
         renderedNodes,
@@ -542,7 +533,7 @@ export function BpmnPerspective({
         effectiveCenterId,
         focusedNodeIdSet,
         focusedEdgeId ?? null,
-        !isIntentFocus,
+        highlightFocal,
       ),
     [
       layoutPools,
@@ -552,7 +543,7 @@ export function BpmnPerspective({
       effectiveCenterId,
       focusedNodeIdSet,
       focusedEdgeId,
-      isIntentFocus,
+      highlightFocal,
     ],
   );
   // memo() so a node/edge component only re-renders when its own props
@@ -561,16 +552,16 @@ export function BpmnPerspective({
   // The maps are built once (empty deps), so the memo wrappers are stable.
   const nodeTypes = useMemo(
     () => ({
-      bpmnLane: memo(BpmnLaneNode),
-      bpmnPoolHeader: memo(BpmnPoolHeaderNode),
-      bpmnCircle: memo(BpmnCircleNode),
-      bpmnDiamond: memo(BpmnDiamondNode),
-      bpmnRectangle: memo(BpmnRectangleNode),
-      bpmnDocument: memo(BpmnDocumentNode),
-      bpmnRounded: memo(BpmnRoundedNode),
-      bpmnTask: memo(BpmnTaskNode),
-      bpmnMilestone: memo(BpmnMilestoneNode),
-      bpmnEdgeStub: memo(BpmnEdgeStubNode),
+      processLane: memo(ProcessLaneNode),
+      processPoolHeader: memo(ProcessPoolHeaderNode),
+      processCircle: memo(ProcessCircleNode),
+      processDiamond: memo(ProcessDiamondNode),
+      processRectangle: memo(ProcessRectangleNode),
+      processDocument: memo(ProcessDocumentNode),
+      processRounded: memo(ProcessRoundedNode),
+      processTask: memo(ProcessTaskNode),
+      processMilestone: memo(ProcessMilestoneNode),
+      processEdgeStub: memo(ProcessEdgeStubNode),
     }),
     [],
   );
@@ -595,7 +586,7 @@ export function BpmnPerspective({
     [renderedPools],
   );
   const openPoolNode = useCallback(
-    (pool: BpmnPool) => {
+    (pool: ProcessPool) => {
       if (!pool.intent_id) return;
       if (onCenterChange) onCenterChange(pool.intent_id);
       onPoolClick?.(pool);
@@ -603,7 +594,7 @@ export function BpmnPerspective({
     [onCenterChange, onPoolClick],
   );
   const openLaneNode = useCallback(
-    (lane: BpmnLane) => {
+    (lane: ProcessLane) => {
       if (!isActorLane(lane) || !lane.base_id.startsWith("principal_")) return;
       if (onCenterChange) onCenterChange(lane.base_id);
       onLaneClick?.(lane);
@@ -618,7 +609,7 @@ export function BpmnPerspective({
   // Passed to the shared hook as `priorityItems`; the hook handles every
   // shape node's numbering (sort, viewport-cull, cap, registry publish).
   const priorityReferences = useMemo<GraphReferenceItem[]>(
-    () => bpmnPriorityReferences(renderedPools, renderedLanes, docoHandle),
+    () => processPriorityReferences(renderedPools, renderedLanes, docoHandle),
     [renderedPools, renderedLanes, docoHandle],
   );
   const nodeReferenceCandidates = useMemo(
@@ -643,7 +634,7 @@ export function BpmnPerspective({
     [renderedNodes, layout.nodePositions],
   );
   const { numberById: referenceNumberByEntityId } = usePerspectiveReferences({
-    source: "bpmn",
+    source: "process",
     viewport,
     size: graphSize,
     candidates: nodeReferenceCandidates,
@@ -665,16 +656,16 @@ export function BpmnPerspective({
     let stubIndex = 0;
 
     const addStub = (
-      anchorNode: BpmnNode,
+      anchorNode: ProcessNode,
       direction: "incoming" | "outgoing",
       count: number,
       summaryIndex: number,
     ) => {
-      if (stubIndex >= BPMN_PLACEHOLDER_STUB_BUDGET) return;
+      if (stubIndex >= PROCESS_PLACEHOLDER_STUB_BUDGET) return;
       const position = layout.nodePositions.get(anchorNode.id);
       if (!position) return;
       const size = sizeForNode(anchorNode);
-      const id = `bpmn-placeholder:${direction}:${anchorNode.id}`;
+      const id = `process-placeholder:${direction}:${anchorNode.id}`;
       const directionSign = direction === "incoming" ? -1 : 1;
       const distance = 132 + (summaryIndex % 3) * 12;
       const y = position.y + size.height / 2;
@@ -693,7 +684,7 @@ export function BpmnPerspective({
 
       nodes.push({
         id,
-        type: "bpmnEdgeStub",
+        type: "processEdgeStub",
         position: { x, y },
         data: {},
         draggable: false,
@@ -710,7 +701,7 @@ export function BpmnPerspective({
         },
       });
       edges.push({
-        id: `bpmn-placeholder-edge:${direction}:${anchorNode.id}`,
+        id: `process-placeholder-edge:${direction}:${anchorNode.id}`,
         source: direction === "incoming" ? id : anchorNode.id,
         target: direction === "incoming" ? anchorNode.id : id,
         type: "fadingPlaceholder",
@@ -750,7 +741,7 @@ export function BpmnPerspective({
   }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
 
   // Sub-process drill-down links. The "+" marker and its reserved room
-  // are decided in layOutBpmn (stable, data-level, rides on the node's
+  // are decided in layOutProcess (stable, data-level, rides on the node's
   // `data.isSubprocess`). Here we build only the dashed links, which are
   // render-gated: one per rendered Action → each served Intent whose
   // pool header is actually mounted, so a link never dangles off-screen.
@@ -802,8 +793,8 @@ export function BpmnPerspective({
   const prevFlowNodesRef = useRef<Map<string, FlowNode>>(new Map());
   const flowNodes = useMemo<FlowNode[]>(() => {
     const windowed = layout.flowNodes.flatMap<FlowNode>((node) => {
-      const laneData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).lane;
-      const poolData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).pool;
+      const laneData = (node.data as { lane?: ProcessLane; pool?: ProcessPool }).lane;
+      const poolData = (node.data as { lane?: ProcessLane; pool?: ProcessPool }).pool;
       const isRendered =
         (laneData && renderedLaneIds.has(laneData.id)) ||
         (poolData && renderedPoolIds.has(poolData.id)) ||
@@ -813,8 +804,8 @@ export function BpmnPerspective({
       // `data` here. The numbering shifts on every pan frame, so injecting
       // it would force this whole array — and thus every React Flow node —
       // to rebuild constantly. Each badge instead subscribes to its own
-      // number from the reference-number store (see BpmnBadgeRow /
-      // BpmnLaneNode), keeping `flowNodes` independent of the viewport.
+      // number from the reference-number store (see ProcessBadgeRow /
+      // ProcessLaneNode), keeping `flowNodes` independent of the viewport.
       if (laneData) {
         const data = {
           ...node.data,
@@ -848,7 +839,7 @@ export function BpmnPerspective({
     () => [
       ...layout.flowEdges
         .filter((edge) => renderedNodeIds.has(edge.source) && renderedNodeIds.has(edge.target))
-        .slice(0, BPMN_RENDER_EDGE_BUDGET)
+        .slice(0, PROCESS_RENDER_EDGE_BUDGET)
         .map((edge) => {
           const className = edge.className
             ? `${edge.className} doco-graph-fade-edge`
@@ -875,7 +866,7 @@ export function BpmnPerspective({
     for (const candidate of pools) {
       if (candidate.intent_id) poolIdByIntentId.set(candidate.intent_id, candidate.id);
     }
-    const direct = bpmnFocusFlowNodeId(rawTarget, poolIdByIntentId, flowNodeIds);
+    const direct = processFocusFlowNodeId(rawTarget, poolIdByIntentId, flowNodeIds);
     if (direct) return direct;
     // Degenerate fallbacks: an intent whose pool header isn't rendered drops
     // to its entry point; an actor-lane target frames that lane.
@@ -896,7 +887,7 @@ export function BpmnPerspective({
   const fitInitialFocus = useCallback(
     (instance: FlowInstance, targetId: string) => {
       const flowNodeIds = new Set(flowNodes.map((node) => node.id));
-      const poolFit = bpmnPoolFitNodeIds(targetId, renderedLanes, laneNodeId, flowNodeIds);
+      const poolFit = processPoolFitNodeIds(targetId, renderedLanes, laneNodeId, flowNodeIds);
       instance.fitView?.(
         poolFit && poolFit.length > 0
           ? { nodes: poolFit.map((id) => ({ id })), padding: 0.15, maxZoom: 1, duration: 0 }
@@ -943,7 +934,7 @@ export function BpmnPerspective({
   if (homeMode && listPools.length > 0) {
     return (
       <div ref={graphRef} className="relative h-full w-full">
-        <BpmnProcessList pools={listPools} onSelect={openIntent} />
+        <ProcessProcessList pools={listPools} onSelect={openIntent} />
       </div>
     );
   }
@@ -954,7 +945,7 @@ export function BpmnPerspective({
   // Mirrors the EntityGraph rail pattern (entity-graph.tsx ~1045).
   //
   // Text + reference badge sizes scale with viewport.zoom so the sticky
-  // label visually matches the in-canvas BpmnLaneNode label (which lives
+  // label visually matches the in-canvas ProcessLaneNode label (which lives
   // inside React Flow's zoom transform). Font family/weight/case mirror
   // the in-canvas styling so the two reads as the same label.
   //
@@ -965,11 +956,11 @@ export function BpmnPerspective({
   // through viewport.x + hi*zoom. When the right edge is past the
   // rail's right edge the user can already read the lane name.
   // Below the LOD threshold the in-canvas pool header and lanes drop their
-  // labels (see BpmnPoolHeaderNode / BpmnLaneNode). The sticky rail and
+  // labels (see ProcessPoolHeaderNode / ProcessLaneNode). The sticky rail and
   // sticky pool-header overlays exist only to keep those labels readable
   // while panning, so suppress them too — otherwise they'd reintroduce the
   // very text the canvas just hid.
-  const simplified = bpmnSimplifiedAtZoom(viewport.zoom);
+  const simplified = processSimplifiedAtZoom(viewport.zoom);
   const SWIM_RAIL_WIDTH = 32;
   const RAIL_LABEL_BASE_FONT = 11;
   const RAIL_BADGE_BASE_FONT = 10;
@@ -1006,7 +997,7 @@ export function BpmnPerspective({
               cursor: isClickableLane ? "pointer" : undefined,
               pointerEvents: isClickableLane ? "auto" : undefined,
             }}
-            data-bpmn-lane-rail={lane.id}
+            data-process-lane-rail={lane.id}
             onClick={isClickableLane && sourceLane ? () => openLaneNode(sourceLane) : undefined}
             onKeyDown={
               isClickableLane && sourceLane
@@ -1096,8 +1087,8 @@ export function BpmnPerspective({
             nodesDraggable={false}
             nodesConnectable={false}
             onlyRenderVisibleElements
-            minZoom={BPMN_MIN_ZOOM}
-            maxZoom={BPMN_MAX_ZOOM}
+            minZoom={PROCESS_MIN_ZOOM}
+            maxZoom={PROCESS_MAX_ZOOM}
             panOnDrag
             zoomOnScroll
             zoomOnPinch
@@ -1156,7 +1147,7 @@ export function BpmnPerspective({
         </ReferenceNumberStoreContext.Provider>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-          Loading BPMN view…
+          Loading process view…
         </div>
       )}
       {Flow ? (
@@ -1173,7 +1164,7 @@ export function BpmnPerspective({
             const isUnassigned = pool.intent_id === null;
             const sourcePool = poolById.get(pool.id);
             const isClickablePool = !isUnassigned && Boolean(sourcePool?.intent_id);
-            // Mirror the in-canvas BpmnPoolHeaderNode look: same overlay
+            // Mirror the in-canvas ProcessPoolHeaderNode look: same overlay
             // color over an opaque card so the sticky band reads as a
             // pinned copy of the natural header (not a different chrome
             // element). Font and padding scale with viewport.zoom —
@@ -1259,41 +1250,46 @@ export function BpmnPerspective({
  * can dive into," the BPMN analogue of the graph's fit-to-everything
  * default.
  */
-function BpmnProcessList({
+export function ProcessProcessList({
   pools,
   onSelect,
 }: {
-  pools: BpmnPool[];
+  pools: ProcessPool[];
   onSelect: (intentId: string) => void;
 }) {
   return (
+    // Center the directory both ways inside the frame. `my-auto` (not
+    // `items-center`) vertically centers a short list while still letting a
+    // tall one scroll from the top without clipping its first rows.
     <div className="flex h-full w-full justify-center overflow-auto p-6">
-      <div className="w-full max-w-md">
-        <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Processes
-        </h2>
-        <ul className="flex flex-col gap-1.5">
-          {pools.map((pool) => {
-            const intentId = pool.intent_id;
-            if (!intentId) return null;
-            return (
-              <li key={pool.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(intentId)}
-                  className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <TypeBadge entityType="intent" lifecycle={pool.lifecycle ?? "active"} />
-                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                    {pool.label}
-                  </span>
-                  <LifecycleBadge lifecycle={pool.lifecycle ?? "active"} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      {/* No standalone "Processes" heading — each row carries its own
+          identity inline, the way a pool header does. The list keeps its
+          accessible name via aria-label so the visible title can go. */}
+      <ul className="my-auto flex w-full max-w-md flex-col gap-1.5" aria-label="Processes">
+        {pools.map((pool) => {
+          const intentId = pool.intent_id;
+          if (!intentId) return null;
+          const lifecycle = pool.lifecycle ?? "active";
+          return (
+            <li key={pool.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(intentId)}
+                // Mirrors ProcessPoolHeaderNode: the type + lifecycle pills sit
+                // inline before the label, vertically centered in the row —
+                // sewn into the band rather than pinned to its top corners.
+                className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <TypeBadge entityType="intent" lifecycle={lifecycle} anchor="inline" />
+                <LifecycleBadge lifecycle={lifecycle} anchor="inline" />
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {pool.label}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -1338,7 +1334,7 @@ interface FlowEdge {
   markerEnd?: { type: MarkerType; width?: number; height?: number; color?: string };
 }
 
-interface BpmnLayout {
+interface ProcessLayout {
   flowNodes: FlowNode[];
   flowEdges: FlowEdge[];
   nodePositions: Map<string, { x: number; y: number }>;
@@ -1373,7 +1369,7 @@ interface BpmnLayout {
 const POOL_HEADER_HEIGHT = 32;
 const POOL_GAP = 16;
 // Vertical gap between the drawn swim lane and the row of adjacent
-// cross-intent neighbours sitting above or below it (see layOutBpmn).
+// cross-intent neighbours sitting above or below it (see layOutProcess).
 const ADJACENT_POOL_GAP = 80;
 
 // Sub-process drill-down link. An Action that `serves` an Intent other
@@ -1392,10 +1388,74 @@ const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
 // area by the same amount so text never enters the marker strip.
 const SUBPROCESS_MARKER_ROOM = 20;
 
-export function layOutBpmn(
-  pools: BpmnPool[],
-  lanes: BpmnLane[],
-  nodes: BpmnNode[],
+// The exact node set the BPMN perspective draws for a given focus, and the
+// pool(s) those nodes belong to. The rule:
+//
+//   • Focusing a node (or an edge whose endpoints share one intent) frames
+//     that one intent — every node in its pool — plus the focal node's
+//     first-degree cross-intent sequence-flow neighbours (drawn adjacent to
+//     the lane).
+//   • Focusing an edge whose endpoints live in *two different intents*
+//     frames BOTH intents in full — every node of each pool — so the
+//     hand-off is shown in the context of both processes it joins.
+//
+// Returns the focal pool ids (one for a single-intent focus, two for a
+// cross-intent edge) and the full set of node ids to render.
+export function computeProcessRenderedSet(params: {
+  nodes: ProcessNode[];
+  pools: ProcessPool[];
+  links: OverviewGraphLink[];
+  centerId: string | null | undefined;
+  focusedEdgeId: string | null;
+  focusedNodeIds: ReadonlySet<string>;
+}): { focalPoolIds: Set<string>; renderedNodeIds: Set<string> } {
+  const { nodes, pools, links, centerId, focusedEdgeId, focusedNodeIds } = params;
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  const focalPoolIds = new Set<string>();
+  // The focal node's own pool — also handles an intent-center that never
+  // resolved to a node (its pool matched by intent_id).
+  if (centerId) {
+    const fromIntent = pools.find((pool) => pool.intent_id === centerId)?.id;
+    const centerPoolId = fromIntent ?? nodeById.get(centerId)?.pool_id ?? null;
+    if (centerPoolId) focalPoolIds.add(centerPoolId);
+  }
+  // An edge focus pulls in the pools of BOTH its endpoints, so an edge that
+  // spans two intents frames both of them — not just the source's. An
+  // endpoint that is itself an Intent (e.g. a `serves` edge into an intent)
+  // resolves to that intent's pool.
+  if (focusedEdgeId) {
+    for (const id of focusedNodeIds) {
+      const poolId = nodeById.get(id)?.pool_id ?? pools.find((pool) => pool.intent_id === id)?.id;
+      if (poolId) focalPoolIds.add(poolId);
+    }
+  }
+
+  const renderedNodeIds = new Set<string>();
+  if (focalPoolIds.size === 0) return { focalPoolIds, renderedNodeIds };
+  for (const node of nodes) {
+    if (focalPoolIds.has(node.pool_id)) renderedNodeIds.add(node.id);
+  }
+  // First-degree cross-intent neighbours fan out only for a single-intent
+  // focus. A cross-intent edge already renders both intents in full, so
+  // there is nothing more to pull in.
+  if (centerId && focalPoolIds.size === 1) {
+    for (const link of links) {
+      if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
+      const neighborId =
+        link.source === centerId ? link.target : link.target === centerId ? link.source : null;
+      if (!neighborId) continue;
+      const neighbor = nodeById.get(neighborId);
+      if (neighbor && !focalPoolIds.has(neighbor.pool_id)) renderedNodeIds.add(neighborId);
+    }
+  }
+  return { focalPoolIds, renderedNodeIds };
+}
+
+export function layOutProcess(
+  pools: ProcessPool[],
+  lanes: ProcessLane[],
+  nodes: ProcessNode[],
   links: OverviewGraphLink[],
   centerId: string | null | undefined,
   focusedNodeIds: ReadonlySet<string>,
@@ -1406,7 +1466,7 @@ export function layOutBpmn(
   // emphasized. `centerId` is still honored for layout (it anchors the
   // adjacent cross-intent neighbours), just not for highlighting.
   highlightFocal: boolean,
-): BpmnLayout {
+): ProcessLayout {
   // Depth from the focal node over the whole rendered graph — drives the
   // opacity fade (positions are unaffected, so re-focusing within a pool
   // never moves a node, only re-fades it).
@@ -1425,7 +1485,7 @@ export function layOutBpmn(
     (link) => poolNodeIds.has(link.source) && poolNodeIds.has(link.target),
   );
 
-  const byLane = new Map<string, BpmnNode[]>();
+  const byLane = new Map<string, ProcessNode[]>();
   for (const lane of lanes) byLane.set(lane.id, []);
   for (const node of poolNodes) {
     const list = byLane.get(node.laneId);
@@ -1443,7 +1503,7 @@ export function layOutBpmn(
   // extra horizontal columns; linear sequence chains still advance
   // rightward because their depths differ.
   const { orderedByLane, columnByNode, stackIndexByNode, laneColumnStacks, maxColumn } =
-    packBpmnLaneColumns(
+    packProcessLaneColumns(
       lanes.map((lane) => lane.id),
       poolNodes,
       depthByNode,
@@ -1513,11 +1573,11 @@ export function layOutBpmn(
   const flowNodes: FlowNode[] = [];
   const laneYById = new Map<string, number>();
   const nodePositions = new Map<string, { x: number; y: number }>();
-  const poolGeometry: BpmnLayout["poolGeometry"] = [];
+  const poolGeometry: ProcessLayout["poolGeometry"] = [];
 
   // Group lanes by pool so each pool can emit its header + its own
   // lanes in display order, then accumulate height.
-  const lanesByPool = new Map<string, BpmnLane[]>();
+  const lanesByPool = new Map<string, ProcessLane[]>();
   for (const pool of pools) lanesByPool.set(pool.id, []);
   for (const lane of lanes) {
     const list = lanesByPool.get(lane.pool_id);
@@ -1535,7 +1595,7 @@ export function layOutBpmn(
     // Pool header band — labeled banner across the full canvas width.
     flowNodes.push({
       id: `pool-header:${pool.id}`,
-      type: "bpmnPoolHeader",
+      type: "processPoolHeader",
       position: { x: LANE_LEFT_INSET, y: cursorY },
       data: {
         pool,
@@ -1568,7 +1628,7 @@ export function layOutBpmn(
       laneHeightById.set(lane.id, laneHeight);
       flowNodes.push({
         id: laneNodeId(lane.id),
-        type: "bpmnLane",
+        type: "processLane",
         position: { x: LANE_LEFT_INSET, y: cursorY },
         data: {
           lane,
@@ -1607,7 +1667,7 @@ export function layOutBpmn(
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
-      const stackKey = bpmnLaneColumnKey(lane.id, column);
+      const stackKey = processLaneColumnKey(lane.id, column);
       const stack = laneColumnStacks.get(stackKey) ?? [node];
       const stackHeight = stackHeightByLaneColumn.get(stackKey) ?? size.height;
       const stackIndex = stackIndexByNode.get(node.id) ?? 0;
@@ -1783,7 +1843,7 @@ export function layOutBpmn(
       const label = link.label?.trim() || "";
       const edgeData: Record<string, unknown> = {};
       if (label) {
-        const { labelBoxStyle, labelStyle } = bpmnEdgeLabelStyles(stroke);
+        const { labelBoxStyle, labelStyle } = processEdgeLabelStyles(stroke);
         edgeData.label = label;
         edgeData.labelOpacity = edgeOpacity;
         edgeData.labelZIndex = 1;
@@ -1832,7 +1892,7 @@ export function layOutBpmn(
       };
     });
 
-  const laneGeometry: BpmnLayout["lanes"] = lanes.map((lane) => {
+  const laneGeometry: ProcessLayout["lanes"] = lanes.map((lane) => {
     const y = laneYById.get(lane.id) ?? 0;
     const height = laneHeightById.get(lane.id) ?? baseLaneHeight;
     return { id: lane.id, pool_id: lane.pool_id, label: lane.label, y, height, kind: lane.kind };
@@ -1850,22 +1910,22 @@ export function layOutBpmn(
  */
 const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["flows_to"]);
 
-function nodeTypeForShape(shape: BpmnShape): string {
+function nodeTypeForShape(shape: ProcessShape): string {
   switch (shape) {
     case "circle":
-      return "bpmnCircle";
+      return "processCircle";
     case "diamond":
-      return "bpmnDiamond";
+      return "processDiamond";
     case "document":
-      return "bpmnDocument";
+      return "processDocument";
     case "rounded":
-      return "bpmnRounded";
+      return "processRounded";
     case "task":
-      return "bpmnTask";
+      return "processTask";
     case "milestone":
-      return "bpmnMilestone";
+      return "processMilestone";
     default:
-      return "bpmnRectangle";
+      return "processRectangle";
   }
 }
 
@@ -1875,7 +1935,7 @@ function laneNodeId(laneId: string): string {
 
 // Used by the outer container sizing — keeps the band-height knowledge
 // in one place rather than scattering ternaries through the layout.
-function heightForLane(lane: BpmnLane): number {
+function heightForLane(lane: ProcessLane): number {
   if (lane.kind === "milestone") return MILESTONE_BAND_HEIGHT;
   if (lane.kind === "artifacts") return ARTIFACTS_BAND_HEIGHT;
   return LANE_HEIGHT;
@@ -1885,39 +1945,39 @@ function heightForLane(lane: BpmnLane): number {
 // base id is `principal_<ulid>`). Reference numbering and "keep on
 // filter" treat actor lanes differently from synthetic bands /
 // catchall lanes.
-function isActorLane(lane: BpmnLane): boolean {
+function isActorLane(lane: ProcessLane): boolean {
   return lane.kind === "actor";
 }
 
 // ─── Custom node components ────────────────────────────────────────
 
-interface BpmnNodeData {
-  node: BpmnNode;
+interface ProcessNodeData {
+  node: ProcessNode;
   isCenter?: boolean;
   /** Action serves an Intent beyond its own pool — render the BPMN
    *  collapsed-subprocess "+" marker and the dashed drill-down handle. */
   isSubprocess?: boolean;
 }
 
-interface BpmnLaneData {
-  lane: BpmnLane;
+interface ProcessLaneData {
+  lane: ProcessLane;
   height: number;
   width: number;
   labelWidth: number;
   isCenter?: boolean;
   isMilestoneBand?: boolean;
   isArtifactsBand?: boolean;
-  onLaneClick?: (lane: BpmnLane) => void;
+  onLaneClick?: (lane: ProcessLane) => void;
 }
 
-interface BpmnPoolHeaderData {
-  pool: BpmnPool;
+interface ProcessPoolHeaderData {
+  pool: ProcessPool;
   width: number;
   height: number;
   isCenter?: boolean;
 }
 
-function BpmnEdgeStubNode() {
+function ProcessEdgeStubNode() {
   const style = {
     width: 1,
     height: 1,
@@ -1940,7 +2000,7 @@ function BpmnEdgeStubNode() {
 // badges, keyed on the Intent id so re-numbering on pan never re-renders
 // the whole header band. Only real Intent pools (non-null intent_id) carry
 // a number; the Unassigned pool gets none.
-const BpmnPoolReferenceBadge = memo(function BpmnPoolReferenceBadge({
+const ProcessPoolReferenceBadge = memo(function ProcessPoolReferenceBadge({
   intentId,
   label,
 }: {
@@ -1966,7 +2026,7 @@ const BpmnPoolReferenceBadge = memo(function BpmnPoolReferenceBadge({
  * a quieter neutral header so it doesn't compete visually with the
  * real Intent pools above it.
  */
-export function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
+export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData }) {
   const isUnassigned = data.pool.intent_id === null;
   const bg = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
   const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
@@ -1976,7 +2036,7 @@ export function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
   // drop them so the pool reads as a plain tinted band, matching how the
   // shape nodes inside it simplify. The subprocess-link Handle stays
   // mounted at every zoom (it anchors dashed drill-down edges).
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   return (
     <div
       style={{
@@ -2015,7 +2075,7 @@ export function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
       {simplified ? null : (
         <>
           {data.pool.intent_id ? (
-            <BpmnPoolReferenceBadge intentId={data.pool.intent_id} label={data.pool.label} />
+            <ProcessPoolReferenceBadge intentId={data.pool.intent_id} label={data.pool.label} />
           ) : null}
           {!isUnassigned && data.pool.intent_id ? (
             <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
@@ -2035,9 +2095,9 @@ export function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
   );
 }
 
-// Lane #N badge — same isolated store subscription as BpmnReferenceBadge,
+// Lane #N badge — same isolated store subscription as ProcessReferenceBadge,
 // so re-numbering on pan never re-renders the whole lane band.
-const BpmnLaneReferenceBadge = memo(function BpmnLaneReferenceBadge({
+const ProcessLaneReferenceBadge = memo(function ProcessLaneReferenceBadge({
   laneId,
   label,
 }: {
@@ -2057,12 +2117,12 @@ const BpmnLaneReferenceBadge = memo(function BpmnLaneReferenceBadge({
   );
 });
 
-export function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
+export function ProcessLaneNode({ data }: { data: ProcessLaneData }) {
   // Zoomed out past the LOD threshold: collapse the lane to a plain
   // tinted band — drop the whole label column (label + #N badge +
   // type/lifecycle pills) so it simplifies in lockstep with the shape
   // nodes it holds.
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   // The milestone band and the artifacts band are both phase / data
   // axes perpendicular to the actor lanes — render each with a
   // distinct tint and solid edges so they read as structurally
@@ -2136,7 +2196,7 @@ export function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           tabIndex={isClickableLane ? 0 : undefined}
           title={data.lane.label}
         >
-          <BpmnLaneReferenceBadge laneId={data.lane.id} label={data.lane.label} />
+          <ProcessLaneReferenceBadge laneId={data.lane.id} label={data.lane.label} />
           <span>{data.lane.label}</span>
           <LaneBadgeRow lane={data.lane} />
         </div>
@@ -2153,7 +2213,7 @@ export function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
  * containers that hold a set of nodes — labelling the band itself
  * with one of those node types is misleading, so we render nothing.
  */
-function LaneBadgeRow({ lane }: { lane: BpmnLane }) {
+function LaneBadgeRow({ lane }: { lane: ProcessLane }) {
   if (lane.kind !== "actor") return null;
   return (
     <span style={{ display: "inline-flex", gap: 4 }}>
@@ -2163,7 +2223,7 @@ function LaneBadgeRow({ lane }: { lane: BpmnLane }) {
   );
 }
 
-function ShapeLabel({ node }: { node: BpmnNode }) {
+function ShapeLabel({ node }: { node: ProcessNode }) {
   // `position: relative` + zIndex puts this in the same paint tier as
   // sibling absolutely-positioned shape outlines (the SVG in the
   // Document shape, the rotated div in the Diamond), so DOM order
@@ -2205,25 +2265,25 @@ function commonHandles() {
 // Subscribe each shape to a *boolean* derived from the live zoom: true
 // once the canvas is zoomed out far enough that labels/badges are
 // illegible. Selecting on the boolean (not the raw zoom) means a shape
-// re-renders at most once as a zoom gesture crosses BPMN_LOD_ZOOM, and
+// re-renders at most once as a zoom gesture crosses PROCESS_LOD_ZOOM, and
 // never during a constant-zoom pan — so the LOD switch itself costs
 // nothing on the frames that matter. Below the threshold the shape drops
 // its label, badges, and shadow and pans as a plain bordered box.
-function useBpmnSimplified(): boolean {
-  return useStore((s) => bpmnSimplifiedAtZoom(s.transform[2]));
+function useProcessSimplified(): boolean {
+  return useStore((s) => processSimplifiedAtZoom(s.transform[2]));
 }
 
-function bpmnStrokeWidth(data: BpmnNodeData, baseWidth = 2): number {
+function processStrokeWidth(data: ProcessNodeData, baseWidth = 2): number {
   return data.isCenter ? baseWidth * 2 : baseWidth;
 }
 
-function bpmnBorder(data: BpmnNodeData, stroke: string, baseWidth = 2): string {
-  return `${bpmnStrokeWidth(data, baseWidth)}px solid ${stroke}`;
+function processBorder(data: ProcessNodeData, stroke: string, baseWidth = 2): string {
+  return `${processStrokeWidth(data, baseWidth)}px solid ${stroke}`;
 }
 
-function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
+function ProcessRectangleNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -2231,7 +2291,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: bpmnBorder(data, stroke),
+        border: processBorder(data, stroke),
         borderRadius: 4,
         position: "relative",
         display: "flex",
@@ -2240,16 +2300,22 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
       {commonHandles()}
     </div>
   );
 }
 
-function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
+// Stadium pill — the State glyph. A State is a milestone/outcome (a
+// condition that holds), so its fully-rounded silhouette reads as
+// distinct from the Action's task rectangle even at low zoom, while
+// staying full-sized and legible. (Ideas, the former pill, are not
+// process content — barred by the process node-type
+// allowlist — so the pill is the State's alone.)
+function ProcessRoundedNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -2257,7 +2323,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: bpmnBorder(data, stroke),
+        border: processBorder(data, stroke),
         borderRadius: 28,
         position: "relative",
         display: "flex",
@@ -2266,7 +2332,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
       {commonHandles()}
     </div>
@@ -2277,7 +2343,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
 // centered "+" (OMG BPMN 2.0 §10.2.4: a collapsed sub-process is a task
 // glyph with a "+" marker). It sits *inside* the box, centered on the
 // bottom edge. The Action reserves SUBPROCESS_MARKER_ROOM of bottom
-// padding (BpmnTaskNode) over a box the layout grew by the same amount,
+// padding (ProcessTaskNode) over a box the layout grew by the same amount,
 // so the marker never overlaps the label. The dashed drill-down link
 // leaves the node's bottom-center handle — just under the marker — on
 // its way down to the sub-process pool.
@@ -2330,12 +2396,12 @@ function SubprocessMarker({ stroke, hideGlyph = false }: { stroke: string; hideG
 }
 
 // BPMN Task — rounded rectangle. Sits between the sharp Rectangle (a
-// policy box) and the fully-pill Rounded (an Idea capsule); the radius
+// policy box) and the fully-pill Rounded (the State stadium); the radius
 // matches the OMG BPMN 2.0 task glyph. When the Action drills into a
 // sub-process it also wears the collapsed-subprocess "+" marker.
-function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
+function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -2343,7 +2409,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: bpmnBorder(data, stroke),
+        border: processBorder(data, stroke),
         borderRadius: 12,
         position: "relative",
         display: "flex",
@@ -2358,7 +2424,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         boxSizing: data.isSubprocess ? "border-box" : undefined,
       }}
     >
-      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
       {/* commonHandles first so the id-less right (source) handle is the
           node's first source handle: xyflow binds an edge with no
@@ -2375,9 +2441,9 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
 // work, so the node itself is intentionally subdued (thin border,
 // uppercase compact label) so a row of milestones reads as a phase
 // timeline rather than a row of flow shapes.
-function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
+function ProcessMilestoneNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -2385,7 +2451,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: bpmnBorder(data, stroke, 1),
+        border: processBorder(data, stroke, 1),
         borderRadius: 4,
         position: "relative",
         display: "flex",
@@ -2395,7 +2461,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
         boxSizing: "border-box",
       }}
     >
-      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : (
         <span
           className="pointer-events-none break-words text-center text-[10px] font-semibold uppercase tracking-wide"
@@ -2410,9 +2476,9 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
   );
 }
 
-function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
+function ProcessCircleNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   // Circle fills the React Flow box (sized per-node via sizeForNode
   // upstream). Because the box is squared for circles, border-radius:50%
   // gives a true round shape; longer summaries grow the box and the
@@ -2429,13 +2495,13 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      {simplified ? null : <BpmnBadgeRow data={data} circular />}
+      {simplified ? null : <ProcessBadgeRow data={data} circular />}
       <div
         style={{
           width: "100%",
           height: "100%",
           background: "#fff",
-          border: bpmnBorder(data, stroke),
+          border: processBorder(data, stroke),
           borderRadius: "50%",
           position: "relative",
           display: "flex",
@@ -2451,9 +2517,9 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
   );
 }
 
-function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
+function ProcessDiamondNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   // The diamond fills the full React Flow box so gateways line up
   // visually with Task rectangles. For a non-square box that means
   // an elongated rhombus rather than a perfect diamond — acceptable
@@ -2470,7 +2536,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ProcessBadgeRow data={data} />}
       <svg
         aria-hidden="true"
         style={{
@@ -2490,7 +2556,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
           points="50,2 98,50 50,98 2,50"
           fill="#fff"
           stroke={stroke}
-          strokeWidth={bpmnStrokeWidth(data)}
+          strokeWidth={processStrokeWidth(data)}
         />
       </svg>
       {simplified ? null : (
@@ -2512,9 +2578,9 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
   );
 }
 
-function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
+function ProcessDocumentNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  const simplified = useBpmnSimplified();
+  const simplified = useProcessSimplified();
   // The "document" look — rectangle with a wavy bottom edge. We draw
   // it as inline SVG behind the label so the shape stays crisp at any
   // zoom.
@@ -2530,7 +2596,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      {simplified ? null : <BpmnBadgeRow data={data} />}
+      {simplified ? null : <ProcessBadgeRow data={data} />}
       <svg
         viewBox="0 0 140 60"
         preserveAspectRatio="none"
@@ -2547,7 +2613,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
           d="M2,2 H138 V48 Q120,62 100,50 Q80,38 60,50 Q40,62 20,50 Q10,44 2,48 Z"
           fill="#fff"
           stroke={stroke}
-          strokeWidth={bpmnStrokeWidth(data)}
+          strokeWidth={processStrokeWidth(data)}
         />
       </svg>
       {simplified ? null : <ShapeLabel node={data.node} />}
@@ -2556,7 +2622,9 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
   );
 }
 
-function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | number | undefined> {
+function graphReferenceAttributes(
+  data: ProcessNodeData,
+): Record<string, string | number | undefined> {
   // The #N reference number is intentionally not emitted here. It lives in
   // the reference-number store (subscribed per-badge) rather than node
   // `data`, so it can shift on every pan frame without rebuilding nodes.
@@ -2575,7 +2643,7 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
 // Subscribes to just this node's #N from the reference-number store, so
 // only the badge re-renders when the numbering shifts (e.g. while
 // panning) — never the surrounding shape (border, handles, SVG, label).
-const BpmnReferenceBadge = memo(function BpmnReferenceBadge({
+const ProcessReferenceBadge = memo(function ProcessReferenceBadge({
   nodeId,
   label,
 }: {
@@ -2598,7 +2666,7 @@ const BpmnReferenceBadge = memo(function BpmnReferenceBadge({
  * doesn't break.
  */
 
-function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
+function ProcessBadgeRow({ data }: { data: ProcessNodeData; circular?: boolean }) {
   return (
     <>
       <NodeBadgeRow
@@ -2607,7 +2675,7 @@ function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
         className="nodrag nopan"
         interactive
       />
-      <BpmnReferenceBadge nodeId={data.node.id} label={data.node.name ?? data.node.id} />
+      <ProcessReferenceBadge nodeId={data.node.id} label={data.node.name ?? data.node.id} />
     </>
   );
 }

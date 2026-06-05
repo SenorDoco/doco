@@ -100,7 +100,7 @@ export async function loader({
       {
         purpose: "Create a BPMN action to the right of an existing gateway branch",
         body: {
-          validate_against: "bpmn",
+          validate_against: "process",
           operations: [
             {
               op: "append",
@@ -127,7 +127,7 @@ export async function loader({
       {
         purpose: "Create an exhaustive gateway branch set without an invalid intermediate state",
         body: {
-          validate_against: "bpmn",
+          validate_against: "process",
           operations: [
             {
               op: "create",

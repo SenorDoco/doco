@@ -1,7 +1,7 @@
 // Visualization perspectives — server-side data access.
 //
 // Mirrors the doco-templates pattern: built-in perspectives ship with
-// the framework (graph, list, bpmn), users can attach any of them to
+// the framework (graph, list, process), users can attach any of them to
 // a Doco's overview page, and owners and writers can flip the default.
 //
 // Gating: read access follows the Doco's read gate (handled by the
@@ -13,7 +13,7 @@ import { withClient } from "@doco/db";
 export type PerspectiveKind =
   | "graph"
   | "list"
-  | "bpmn"
+  | "process"
   | "org-tree"
   | "sla"
   | "glossary"

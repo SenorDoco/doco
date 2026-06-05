@@ -89,14 +89,14 @@ export interface DocoTemplate {
    * Optional perspectives to attach on Doco creation. The built-in
    * perspectives (graph, list) are always attached even
    * if this list is empty; entries here append after them. The
-   * business-processes template ships `[{slug:"bpmn"}]` so a Doco
+   * process template ships `[{slug:"process"}]` so a Doco
    * created from that template arrives with the BPMN tab ready.
    */
   perspectives?: TemplatePerspectiveAttachment[];
   /**
    * When set, captures into a Doco created from this template default
    * the new node's `lifecycle` to this value unless the author
-   * overrides with an explicit flag. The business-processes template
+   * overrides with an explicit flag. The process template
    * uses `"drafting"` so authors can sketch incomplete processes
    * without tripping completeness rules.
    */
@@ -232,7 +232,7 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
 }
 
 /**
- * Business-processes fires its completeness + shape policies on the two
+ * Process fires its completeness + shape policies on the two
  * *committed* lifecycle stages — `queued` (ready, awaiting activation) and
  * `active` (in force) — and exempts only `drafting`.
  *
@@ -244,7 +244,7 @@ function decisionRecordPolicies(opts: DecisionRecordTemplatePolicyOptions): Temp
  * `active` node does — otherwise "ready" is a lie the BPMN renderer can't
  * draw. Only a `drafting` sketch may be incomplete.
  *
- * This is scoped to business-processes on purpose: it is the one template
+ * This is scoped to process on purpose: it is the one template
  * that defaults new nodes to `drafting` and carries a real
  * draft → queue → activate authoring story. Templates that default new
  * nodes straight to `active` (decision-records, glossaries, org-chart)
@@ -382,9 +382,23 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   },
   {
     // Glossaries define product and domain language. Each term entry is a
-    // Decision: `question` names the concept, `chosen` is the canonical
-    // headword, `decision` holds the definition, scope, and examples, and
-    // `alternatives` carries aliases / rejected labels.
+    // Reference whose **prose (`reference`) is the word being defined** — the
+    // bare headword — while the **definition lives in the `definition`
+    // attribute**, off the prose. Keeping the definition out of the prose
+    // matters because a node's name is the first line of its prose
+    // everywhere in Doco (List, Graph, search, the node dialog, and the
+    // Glossary headword all derive from it): if the definition were the
+    // prose, the definition would become the term's name. So the prose holds
+    // only the term, and the meaning sits in `definition`. `alternatives`
+    // carries aliases / rejected labels.
+    //
+    // Why a Reference (not a Decision)? A glossary term is a stable
+    // reference to a named thing, not a choice between alternatives with a
+    // rationale — that is the shape of a Reference, and it is also the node
+    // a glossary already uses to cite an external source. So a single node
+    // type covers both a defined term and the sources it derives from: a
+    // term entry is a Reference with a `definition`, a cited source is a
+    // Reference with a `locator`.
     //
     // Two stages, on purpose. A glossary is a reference work, so a term
     // entry is either the canonical answer (`active`) or a deprecated one
@@ -397,7 +411,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // `defaultNodeLifecycle` override) and the completeness gates fire on
     // `active`; a `drafting` stub is exempt until it is activated, and a
     // `retired` term winds down without re-running the gates. (Contrast
-    // business-processes, which defaults to `drafting` so a flow can be
+    // process, which defaults to `drafting` so a flow can be
     // wired up incrementally.)
     //
     // Term relationships are first-class edges: `relates_to` is the
@@ -421,16 +435,16 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         on_violation: "warn",
         predicate: {
           kind: "probabilistic",
-          spec: "A node belongs in glossaries when it defines product or domain terminology, records a terminology choice, cites an authoritative source, states a terminology usage rule, or checks terminology consistency. PASS for term entries, terminology usage rules, references to source glossaries/specs/docs, and evals that scan terminology consistency. FAIL for glossary scope statements, feature implementation work, process flows, org charts, runtime incidents, or state-machine stages.",
-          when_node_type: ["decision", "rule", "reference", "eval"],
+          spec: "A node belongs in glossaries when it defines product or domain terminology (as a Reference term entry), cites an authoritative source, states a terminology usage rule, or checks terminology consistency. PASS for term-entry References, References to source glossaries/specs/docs, terminology usage Rules, and Evals that scan terminology consistency. FAIL for glossary scope statements, feature implementation work, process flows, org charts, runtime incidents, or state-machine stages.",
+          when_node_type: ["reference", "rule", "eval"],
         },
       },
       {
         policy:
-          "Only Decision, Rule, Reference, and Eval are glossary graph nodes. Intents, Actions, Logs, States, Ideas, and Principals have their own homes.",
+          "Only Reference, Rule, and Eval are glossary graph nodes. Term entries are References (the word in the prose, the meaning in `definition`); Decisions, Intents, Actions, Logs, States, Ideas, and Principals have their own homes.",
         predicate: {
           kind: "requires_node_type",
-          node_types: ["decision", "rule", "reference", "eval"],
+          node_types: ["reference", "rule", "eval"],
         },
       },
       {
@@ -447,50 +461,22 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         },
       },
 
-      // ── Term entry Decisions ───────────────────────────────────
+      // ── Term entry References ──────────────────────────────────
       {
-        policy:
-          "Every active glossary Decision declares `question` and `chosen`: the concept question and the canonical term.",
-        predicate: {
-          kind: "requires_field",
-          fields: ["question", "chosen"],
-          when_node_type: ["decision"],
-        },
-        fires_when_node_lifecycle: ["active"],
-      },
-      {
-        // Warn, not block: a clashing `chosen` is usually a duplicate
-        // entry, but genuine homographs (distinct concepts sharing a
-        // surface form) are legitimate terminology. Surface the clash so
-        // the author either merges the duplicate or disambiguates the
-        // homograph with a qualifier — don't hard-block the correct
-        // modeling choice. See the homograph guidance below.
-        on_violation: "warn",
-        policy:
-          "Active glossary Decisions should have a unique canonical term in `chosen`, compared case-insensitively. A clash is usually a duplicate entry to merge; genuine homographs (distinct concepts sharing a surface form) are allowed when disambiguated with a qualifier.",
-        predicate: {
-          kind: "unique_field",
-          field: "chosen",
-          case_fold: true,
-          when_node_type: ["decision"],
-        },
-        fires_when_node_lifecycle: ["active"],
-      },
-      {
-        // One combined quality judge for term-entry Decisions. This used to
-        // be three separate probabilistic policies (one-concept, definition
-        // completeness, acronym expansion); stress-testing showed three
-        // problems they now fix together: (1) they BLOCKED by default, so a
-        // single judge misfire lost the author's work — a quality nudge, not
-        // an integrity constraint, so it now WARNs; (2) the acronym check
-        // fired on any incidental abbreviation in prose (`rep`, `WIP`), so it
-        // is now scoped to the headword in `chosen`; (3) one combined judge
-        // call replaces three, cutting latency and the misfire surface.
+        // One combined quality judge for term-entry References. It is a
+        // quality nudge, not an integrity constraint, so it WARNs rather
+        // than blocking — a single judge misfire never loses the author's
+        // work. It folds together the two checks this template is built
+        // around — the prose is the *word*, the definition lives in the
+        // *attributes* — plus the one-concept and acronym aspects, in one
+        // judge call (cutting latency and the misfire surface). A Reference
+        // that is purely a cited external source, not a term entry, is OUT
+        // OF SCOPE and PASSES.
         on_violation: "warn",
         predicate: {
           kind: "probabilistic",
-          when_node_type: ["decision"],
-          spec: "Judge a glossary term-entry Decision on three aspects; report each failing aspect with a reason, but treat them as warnings, not hard errors. (a) ONE CONCEPT: PASS when the entry defines one concept or one canonical term; FAIL when it defines multiple independent terms, bundles a term with an unrelated policy, or is a catch-all for several concepts. (b) USABLE DEFINITION: PASS when the `decision` prose gives a concise definition AND the product or domain scope where the term applies AND at least one concrete example OR non-example — EITHER an example or a non-example is sufficient, do not require both; FAIL when one of those three is genuinely absent, or when the prose merely restates the headword instead of explaining it (a circular definition such as `a workspace is a workspace`). (c) ACRONYMS AND ABBREVIATIONS: only inspect the canonical term in `chosen`. If `chosen` is itself an acronym or abbreviation, PASS when the prose expands it at least once and states whether the short form is acceptable in product/docs/UI copy; FAIL when it is left unexpanded. Incidental abbreviations that merely appear in the prose (not the headword) are OUT OF SCOPE — ignore them. If `chosen` is not an acronym, this aspect PASSES.",
+          when_node_type: ["reference"],
+          spec: "Judge a glossary term-entry Reference on four aspects; report each failing aspect with a reason, but treat them as warnings, not hard errors. First decide scope: if this Reference is purely a cited external source (it points at a doc/spec/URL the glossary borrows from, with no term to define), it is OUT OF SCOPE — PASS every aspect. Otherwise judge a term entry. (a) PROSE IS THE TERM: PASS when the prose (`reference`) is the bare word or phrase being defined — the headword — optionally with a disambiguating qualifier like `Order (commerce)`; FAIL when the prose is instead a definition sentence or paragraph. The definition belongs in the `definition` attribute, NOT in the prose, because the prose becomes the node's name and the dictionary headword. (b) DEFINITION IN ATTRIBUTES: PASS when the definition lives in the node's attributes — the `definition` field (or another attribute that carries the meaning) — and reads as a usable definition: a concise definition AND the product or domain scope where the term applies AND at least one concrete example OR non-example (EITHER an example or a non-example is sufficient, do not require both). FAIL when no attribute carries a usable definition, when the definition is crammed into the prose, or when it merely restates the headword instead of explaining it (a circular definition such as `a workspace is a workspace`). (c) ONE CONCEPT: PASS when the entry defines one concept or one canonical term; FAIL when it defines multiple independent terms, bundles a term with an unrelated policy, or is a catch-all for several concepts. (d) ACRONYMS AND ABBREVIATIONS: only inspect the headword in the prose. If the headword is itself an acronym or abbreviation, PASS when the `definition` expands it at least once and states whether the short form is acceptable in product/docs/UI copy; FAIL when it is left unexpanded. Incidental abbreviations that merely appear in the definition body (not the headword) are OUT OF SCOPE — ignore them. If the headword is not an acronym, this aspect PASSES.",
         },
         fires_when_node_lifecycle: ["active"],
       },
@@ -531,6 +517,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
 
       // ── Guidance ───────────────────────────────────────────────
       {
+        // The model this template is built around — see the block comment.
+        policy:
+          "A glossary term entry is a Reference: put the **word being defined** in the prose (it becomes the headword) and the **definition** — meaning, scope, and an example or non-example — in the `definition` attribute, never in the prose itself.",
+      },
+      {
         // The deliberate two-stage stance — see the block comment above.
         policy:
           "A glossary is a reference work: a term entry is either the canonical answer (`active`) or a deprecated one kept for lookup (`retired`). Capture a term and it lands `active`; `retire` it when it is superseded, pointing at the successor with a `replaces` edge. You may stub an unfinished term as `drafting` while you work on it, but it is not part of the glossary — and the completeness checks do not apply — until you `activate` it. The framework's `queued` stage has no glossary meaning, so this template stays two-stage like policies do.",
@@ -541,7 +532,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "When two distinct concepts share a surface form (homographs, e.g. `Order` in commerce vs. `Order` as a sort operation), give each its own Decision and disambiguate `chosen` with a qualifier — `Order (commerce)` vs. `Order (sorting)` — so every entry stays uniquely addressable.",
+          "When two distinct concepts share a surface form (homographs, e.g. `Order` in commerce vs. `Order` as a sort operation), give each its own Reference and disambiguate the headword prose with a qualifier — `Order (commerce)` vs. `Order (sorting)` — so every entry stays uniquely addressable.",
       },
       {
         policy:
@@ -553,7 +544,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Retired glossary Decisions point at the replacement term with a `replaces` edge when an old term appears in historical docs, UI, tickets, APIs, or code. Keep the deprecated term visible so readers still understand old references. Re-point by retiring the old edge and adding a new one.",
+          "Retired glossary term References point at the replacement term with a `replaces` edge when an old term appears in historical docs, UI, tickets, APIs, or code. Keep the deprecated term visible so readers still understand old references. Re-point by retiring the old edge and adding a new one.",
       },
       {
         policy:
@@ -561,7 +552,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Agents read `GET /<handle>/api/authoring-contract.json` for the live field and edge vocabulary, then write terms with `POST /<handle>/api/changesets.json` — creating the term Decision together with its `relates_to`, `derived_from`, or `replaces` edges in the same changeset so an entry never lands isolated.",
+          "Agents read `GET /<handle>/api/authoring-contract.json` for the live field and edge vocabulary, then write terms with `POST /<handle>/api/changesets.json` — creating the term Reference (word in the prose, meaning in `definition`) together with its `relates_to`, `derived_from`, or `replaces` edges in the same changeset so an entry never lands isolated.",
       },
     ],
   },
@@ -580,18 +571,18 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // (`queued` and `active`) only (BUSINESS_PROCESS_COMMITTED_LIFECYCLES), so a
     // step can be drafted before its actor, decider, or Intent/pool is chosen,
     // and is held to the full bar only once it is committed.
-    name: "business-processes",
-    label: "business-processes",
-    icon: "🏭",
+    name: "process",
+    label: "process",
+    icon: "🔁",
     description:
       "Document repeatable business processes — the flow of work through actors, gateways, and milestones to a business outcome. Inspired by BPMN swimlanes and gateways.",
     defaultNodeLifecycle: "drafting",
     // Ship the BPMN perspective pre-attached and as the default tab,
-    // so a freshly-created business-processes Doco opens directly on
+    // so a freshly-created process Doco opens directly on
     // the swim-lane view (where the template's authoring rules are
     // most naturally visible). Graph + list defaults are still
     // attached behind it.
-    perspectives: [{ slug: "bpmn", isDefault: true }],
+    perspectives: [{ slug: "process", isDefault: true }],
     policies: [
       // ── Membership ──────────────────────────────────────────────
       {
@@ -616,7 +607,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         on_violation: "warn",
         predicate: {
           kind: "probabilistic",
-          spec: "A node belongs in business-processes when it describes a workflow — a sequence of steps with actors and an outcome — or a policy/guard for one. Workflows can be commercial, operational, or personal; what matters is that the work is repeatable and the steps can be named. Pass when the candidate describes a step, gateway, milestone, validation, reference, or policy for such a workflow. Fail only when the candidate is a one-off incident with no repeatable structure, a UI-specific user journey, or a pure state machine without a workflow outcome.",
+          spec: "A node belongs in process when it describes a workflow — a sequence of steps with actors and an outcome — or a policy/guard for one. Workflows can be commercial, operational, or personal; what matters is that the work is repeatable and the steps can be named. Pass when the candidate describes a step, gateway, milestone, validation, reference, or policy for such a workflow. Fail only when the candidate is a one-off incident with no repeatable structure, a UI-specific user journey, or a pure state machine without a workflow outcome.",
           when_node_type: ["intent", "action", "decision", "eval", "reference"],
         },
       },
@@ -652,7 +643,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // associative links (`relates_to`) have no BPMN meaning, so they are
         // barred — keeping a process graph drawable as swimlanes + sequence flow.
         policy:
-          "Only these relationship edge types may be used in a business-processes Doco: `flows_to`, `supports`, `attributed_to`, `constrained_by`, `replaces`, `derived_from`. Hierarchy (`has_parent`) and bare `relates_to` links belong in other Doco kinds.",
+          "Only these relationship edge types may be used in a process Doco: `flows_to`, `supports`, `attributed_to`, `constrained_by`, `replaces`, `derived_from`. Hierarchy (`has_parent`) and bare `relates_to` links belong in other Doco kinds.",
         predicate: {
           kind: "requires_edge_type",
           edge_types: [
@@ -673,7 +664,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // deterministically; the ambiguous "is 'source'/'implementation'
         // business language?" calls stay with the judge.
         policy:
-          "Business-process prose must not contain raw BPMN/import scaffolding tokens — camelCase BPMN element types or generated element ids leaked from an importer.",
+          "Process prose must not contain raw BPMN/import scaffolding tokens — camelCase BPMN element types or generated element ids leaked from an importer.",
         predicate: {
           kind: "forbids_field_pattern",
           fields: [
@@ -755,7 +746,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // node type (action) carries that meaning. Authors create the Action and
         // its `attributed_to` edge together in one changeset.
         policy:
-          "Every committed (`queued` or `active`) Action in business-processes is attributed to the Principal who performs it — an `attributed_to` edge from the Action to that Principal. A `drafting` sketch may defer this — naming the actor is not required while drafting.",
+          "Every committed (`queued` or `active`) Action in process is attributed to the Principal who performs it — an `attributed_to` edge from the Action to that Principal. A `drafting` sketch may defer this — naming the actor is not required while drafting.",
         predicate: {
           kind: "requires_edge",
           edge_type: "attributed_to",
@@ -771,7 +762,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // carry the meaning. Without it the BPMN renderer can't place the node
         // in a pool, and the step floats free of the business outcome it advances.
         policy:
-          "Every committed (`queued` or `active`) flow node in business-processes — Action, gateway Decision, or milestone/event State — links to the Intent it serves with a `supports` edge to that Intent. Without it the BPMN renderer can't place the node in a pool, and the step floats free of the business outcome it advances. A `drafting` sketch may defer this link.",
+          "Every committed (`queued` or `active`) flow node in process — Action, gateway Decision, or milestone/event State — links to the Intent it serves with a `supports` edge to that Intent. Without it the BPMN renderer can't place the node in a pool, and the step floats free of the business outcome it advances. A `drafting` sketch may defer this link.",
         predicate: {
           kind: "requires_edge",
           edge_type: "supports",
@@ -797,7 +788,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // by `flows_to`, so it too stays single-Intent. Re-point by retiring the
         // old `supports` edge before adding the new one; endpoints are immutable.
         policy:
-          "Every committed (`queued` or `active`) flow node in business-processes — Action, gateway Decision, or milestone/event State — links to AT MOST one Intent via `supports`: it belongs to exactly one process pool. Combined with the gate that requires at least one Intent on a committed node, a flow node serves exactly one. A node linked to two Intents is ambiguous — the BPMN renderer can't place it in a single pool. A `drafting` sketch is exempt. Re-point by retiring the old `supports` edge before adding the new one.",
+          "Every committed (`queued` or `active`) flow node in process — Action, gateway Decision, or milestone/event State — links to AT MOST one Intent via `supports`: it belongs to exactly one process pool. Combined with the gate that requires at least one Intent on a committed node, a flow node serves exactly one. A node linked to two Intents is ambiguous — the BPMN renderer can't place it in a single pool. A `drafting` sketch is exempt. Re-point by retiring the old `supports` edge before adding the new one.",
         predicate: {
           kind: "limits_edge",
           edge_type: "supports",
@@ -883,7 +874,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // sketched without a decider, but a committed one must name it or it
         // floats into the BPMN "Unassigned" lane.
         policy:
-          "Every committed (`queued` or `active`) gateway Decision in business-processes is attributed to the Principal answerable for the call — an `attributed_to` edge from the Decision to that Principal. A `drafting` sketch may defer this. A gateway with no such Principal floats into the Unassigned lane.",
+          "Every committed (`queued` or `active`) gateway Decision in process is attributed to the Principal answerable for the call — an `attributed_to` edge from the Decision to that Principal. A `drafting` sketch may defer this. A gateway with no such Principal floats into the Unassigned lane.",
         predicate: {
           kind: "requires_edge",
           edge_type: "attributed_to",
@@ -987,7 +978,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       // ── Eval ────────────────────────────────────────────────────
       {
         policy:
-          "Every Eval in business-processes links to the node whose claim it pins with a `supports` edge to that node.",
+          "Every Eval in process links to the node whose claim it pins with a `supports` edge to that node.",
         predicate: {
           kind: "requires_edge",
           edge_type: "supports",
@@ -1055,7 +1046,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Relationships in a business-processes Doco are first-class edges with lifecycle and history. Use `flows_to` for process order and the canonical families (`supports`, `attributed_to`, `constrained_by`, `has_parent`, `derived_from`, `replaces`, `relates_to`); an edge's specialized meaning comes from its type plus the node types it connects, not from a role tag. Re-point by retiring the old edge and adding the new one; endpoints are immutable.",
+          "Relationships in a process Doco are first-class edges with lifecycle and history. Use `flows_to` for process order and the canonical families (`supports`, `attributed_to`, `constrained_by`, `has_parent`, `derived_from`, `replaces`, `relates_to`); an edge's specialized meaning comes from its type plus the node types it connects, not from a role tag. Re-point by retiring the old edge and adding the new one; endpoints are immutable.",
       },
       {
         policy:
@@ -1071,7 +1062,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         policy:
-          "Rules in a business-processes Doco are process policies and guards (`refunds above $5k require manager approval`). Template-authoring rules — meta-rules about how to write process Docos — belong in the template or in `global`, not in any process using it.",
+          "Rules in a process Doco are process policies and guards (`refunds above $5k require manager approval`). Template-authoring rules — meta-rules about how to write process Docos — belong in the template or in `global`, not in any process using it.",
       },
       {
         policy:
@@ -1136,7 +1127,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // announced reorg) as `queued` — it meets the same completeness bar
     // as active but isn't in force yet — and sketch a tentative seat or
     // roster-less team as `drafting`, where the occupant or reporting
-    // line may still be unknown. (Business-processes keeps a `drafting`
+    // line may still be unknown. (Process keeps a `drafting`
     // default so a flow can be wired up incrementally.)
     perspectives: [{ slug: "org-tree", isDefault: true }],
     policies: [
@@ -1151,7 +1142,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         // what they do. Policy records are Doco-scoped metadata and
         // bypass template membership gates in the authoring evaluator.
         policy:
-          "Only Principal, Intent, Decision, Reference, and Rule belong as org-chart nodes. Actions describe activities (use business-processes); States describe stages; Evals describe checks; Logs describe events; Ideas live in their own home.",
+          "Only Principal, Intent, Decision, Reference, and Rule belong as org-chart nodes. Actions describe activities (use process); States describe stages; Evals describe checks; Logs describe events; Ideas live in their own home.",
         predicate: {
           kind: "requires_node_type",
           node_types: ["principal", "intent", "decision", "reference", "rule"],
@@ -1268,7 +1259,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       // ── Guidance (prose-only) ───────────────────────────────────
       {
         policy:
-          "An org chart describes who reports to whom and which teams exist — not what those people do. Activities, processes, and workflows belong in business-processes Docos linked via Reference.",
+          "An org chart describes who reports to whom and which teams exist — not what those people do. Activities, processes, and workflows belong in process Docos linked via Reference.",
       },
       {
         // The `queued` lifecycle stage is org charting's "future-effective"
@@ -1328,7 +1319,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           "Seats persist across routine turnover: when one person leaves and another fills the same seat — or a seat goes vacant and is later refilled by the same kind of occupant — keep the Principal, update `body_md` (and clear or restore `kind` as the seat empties or refills), and record the change as a Decision, so reporting and membership edges stay intact and the seat's history reads continuously. Only when the seat's nature flips between person (`kind: human`) and AI agent (`kind: agent`) do you retire the old Principal and create a new one.",
       },
       {
-        // Mirrors the business-processes authoring rule. Org charts are
+        // Mirrors the process authoring rule. Org charts are
         // frequently bulk-imported or backfilled by agents (from an HRIS, a
         // Slack roster, a headcount sheet), so the changeset batch — create a
         // seat and wire its reporting edge atomically — is exactly right.
@@ -1346,7 +1337,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
  *
  * Templates are stored under plain handles (`global`, `important`,
  * `architectural-decisions`, `product-decisions`, `design-decisions`,
- * `data-decisions`, `glossaries`, `business-processes`, `org-chart`).
+ * `data-decisions`, `glossaries`, `process`, `org-chart`).
  */
 export function findDocoTemplateByName(name: string): DocoTemplate | undefined {
   return DEFAULT_DOCO_TEMPLATES.find((t) => t.name === name);

@@ -8,7 +8,7 @@ import {
   useStore,
 } from "@xyflow/react";
 import type { CSSProperties } from "react";
-import { bpmnSimplifiedAtZoom } from "~/lib/bpmn-lod";
+import { processSimplifiedAtZoom } from "~/lib/process-lod";
 
 // A bezier has no corner radius, so when an edge doubles back — its
 // target sitting to the left of its source, e.g. a gateway's feedback
@@ -168,7 +168,7 @@ export function StableLabeledBezierEdge({
   // with the rest of the node detail once zoomed out (same threshold as
   // the shapes). Selecting on the boolean keeps re-renders to the single
   // frame that crosses the threshold.
-  const simplified = useStore((s) => bpmnSimplifiedAtZoom(s.transform[2]));
+  const simplified = useStore((s) => processSimplifiedAtZoom(s.transform[2]));
   const label = simplified ? "" : rawLabel;
 
   return (

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PerspectiveKind } from "../perspectives.server";
 
 const mocks = vi.hoisted(() => ({
-  loadBpmnGraph: vi.fn(),
+  loadProcessGraph: vi.fn(),
   loadGlossaryPerspectiveData: vi.fn(),
   loadOrgTreeData: vi.fn(),
   loadOverviewGraph: vi.fn(),
@@ -20,14 +20,14 @@ const mocks = vi.hoisted(() => ({
   },
   specs: {
     graph: { key: "graph" },
-    bpmn: { key: "bpmn" },
+    process: { key: "process" },
     "org-tree": { key: "org-tree" },
     sla: { key: "sla" },
     glossary: { key: "glossary" },
   },
 }));
 
-vi.mock("../bpmn-perspective.server", () => ({ loadBpmnGraph: mocks.loadBpmnGraph }));
+vi.mock("../process-perspective.server", () => ({ loadProcessGraph: mocks.loadProcessGraph }));
 vi.mock("../full-graph.server", () => ({ loadOverviewGraph: mocks.loadOverviewGraph }));
 vi.mock("../glossary-perspective.server", () => ({
   loadGlossaryPerspectiveData: mocks.loadGlossaryPerspectiveData,
@@ -53,7 +53,7 @@ import {
 const ALL_KINDS: PerspectiveKind[] = [
   "graph",
   "list",
-  "bpmn",
+  "process",
   "org-tree",
   "sla",
   "glossary",
@@ -72,7 +72,7 @@ describe("loadDocoHomePerspectiveData", () => {
       detailUrl: "/graph-node-details.json",
     });
     mocks.pageRank.mockReturnValue(new Map([["decision_1", 0.5]]));
-    mocks.loadBpmnGraph.mockResolvedValue({ pools: [], lanes: [], nodes: [], links: [] });
+    mocks.loadProcessGraph.mockResolvedValue({ pools: [], lanes: [], nodes: [], links: [] });
     mocks.loadOrgTreeData.mockResolvedValue({ nodes: [] });
     mocks.loadSlaPerspectiveData.mockResolvedValue({ commitments: [], stats: {} });
     mocks.loadGlossaryPerspectiveData.mockResolvedValue({
@@ -100,7 +100,8 @@ describe("loadDocoHomePerspectiveData", () => {
     const budget = DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET;
     const expectedSpec =
       kind === "list" ? mocks.specs.graph : mocks.specs[kind as keyof typeof mocks.specs];
-    if (kind === "pull-requests") {
+    if (kind === "pull-requests" || kind === "process") {
+      // BPMN shows every node, so it neither windows nor caps the node set.
       expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
     } else {
       expect(mocks.selectPerspectiveWindow).toHaveBeenCalledWith(client, {
@@ -122,12 +123,12 @@ describe("loadDocoHomePerspectiveData", () => {
     }
     expect(mocks.loadOverviewGraph).not.toHaveBeenCalled();
 
-    if (kind === "bpmn") {
-      expect(mocks.loadBpmnGraph).toHaveBeenCalledWith(client, "doco_1", {
-        focusId: "decision_window",
+    if (kind === "process") {
+      // No nodeLimit and no window: the full process renders, capped by
+      // neither the page budget nor the ranked render-window.
+      expect(mocks.loadProcessGraph).toHaveBeenCalledWith(client, "doco_1", {
+        focusId: "decision_focus",
         handle: "acme",
-        nodeLimit: budget.nodeLimit,
-        window: mocks.window,
       });
     } else if (kind === "pull-requests") {
       expect(mocks.loadPullRequestsPerspective).toHaveBeenCalledWith(client, "doco_1", {

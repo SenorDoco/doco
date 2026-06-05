@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { BpmnLane, BpmnPool } from "../bpmn-perspective.server";
-import { bpmnPriorityReferences } from "../bpmn-references";
+import type { ProcessLane, ProcessPool } from "../process-perspective.server";
+import { processPriorityReferences } from "../process-references";
 
-function pool(overrides: Partial<BpmnPool> & Pick<BpmnPool, "id">): BpmnPool {
+function pool(overrides: Partial<ProcessPool> & Pick<ProcessPool, "id">): ProcessPool {
   return {
     intent_id: null,
     label: "Pool",
@@ -11,7 +11,7 @@ function pool(overrides: Partial<BpmnPool> & Pick<BpmnPool, "id">): BpmnPool {
   };
 }
 
-function lane(overrides: Partial<BpmnLane> & Pick<BpmnLane, "id" | "kind">): BpmnLane {
+function lane(overrides: Partial<ProcessLane> & Pick<ProcessLane, "id" | "kind">): ProcessLane {
   return {
     pool_id: "pool:intent_1",
     base_id: "principal_1",
@@ -21,9 +21,9 @@ function lane(overrides: Partial<BpmnLane> & Pick<BpmnLane, "id" | "kind">): Bpm
   };
 }
 
-describe("bpmnPriorityReferences", () => {
+describe("processPriorityReferences", () => {
   it("numbers the Intent pool first, then each principal swimlane", () => {
-    const pools: BpmnPool[] = [
+    const pools: ProcessPool[] = [
       pool({
         id: "pool:intent_1",
         intent_id: "intent_1",
@@ -31,7 +31,7 @@ describe("bpmnPriorityReferences", () => {
         lifecycle: "active",
       }),
     ];
-    const lanes: BpmnLane[] = [
+    const lanes: ProcessLane[] = [
       lane({
         id: "pool:intent_1::principal_sales",
         base_id: "principal_sales",
@@ -48,7 +48,7 @@ describe("bpmnPriorityReferences", () => {
       }),
     ];
 
-    const refs = bpmnPriorityReferences(pools, lanes, "demo");
+    const refs = processPriorityReferences(pools, lanes, "demo");
 
     expect(refs.map((r) => `#${r.number} ${r.entity_type}:${r.label}`)).toEqual([
       "#1 intent:Fulfill customer orders",
@@ -67,7 +67,7 @@ describe("bpmnPriorityReferences", () => {
   });
 
   it("skips the Unassigned pool and synthetic / catch-all lanes", () => {
-    const pools: BpmnPool[] = [
+    const pools: ProcessPool[] = [
       pool({
         id: "pool:intent_1",
         intent_id: "intent_1",
@@ -76,7 +76,7 @@ describe("bpmnPriorityReferences", () => {
       }),
       pool({ id: "__unassigned__", intent_id: null, label: "Unassigned" }),
     ];
-    const lanes: BpmnLane[] = [
+    const lanes: ProcessLane[] = [
       lane({
         id: "pool:intent_1::principal_a",
         kind: "actor",
@@ -87,7 +87,7 @@ describe("bpmnPriorityReferences", () => {
       lane({ id: "pool:intent_1::__artifacts__", kind: "artifacts", label: "Artifacts" }),
     ];
 
-    const refs = bpmnPriorityReferences(pools, lanes, "demo");
+    const refs = processPriorityReferences(pools, lanes, "demo");
 
     expect(refs).toHaveLength(2);
     expect(refs.map((r) => r.entity_type)).toEqual(["intent", "principal"]);
@@ -95,7 +95,7 @@ describe("bpmnPriorityReferences", () => {
   });
 
   it("omits the href when no doco handle is known", () => {
-    const refs = bpmnPriorityReferences(
+    const refs = processPriorityReferences(
       [pool({ id: "pool:intent_1", intent_id: "intent_1", label: "Intent", lifecycle: "active" })],
       [],
       null,

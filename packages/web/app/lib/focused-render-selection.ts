@@ -132,7 +132,7 @@ export interface FocusCandidatePool {
  * every retired *node* is filtered out — an inconsistency no "retired is
  * hidden" view should produce.
  */
-export function bpmnFocusCandidates(
+export function processFocusCandidates(
   filteredNodes: readonly FocusSelectableNode[],
   pools: readonly FocusCandidatePool[],
   visibleLifecycles: ReadonlySet<string> | undefined,

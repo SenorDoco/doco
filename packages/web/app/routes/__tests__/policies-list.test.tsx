@@ -14,11 +14,41 @@ vi.mock("~/lib/doco-access.server", () => ({
 vi.mock("~/lib/host.server", () => ({ loadHostConfig: vi.fn() }));
 vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
-import { PolicyRow } from "../$docoHandle.policies";
+import Policies, { PolicyRow } from "../$docoHandle.policies";
 
 function renderRow(props: Parameters<typeof PolicyRow>[0]): string {
   return renderToStaticMarkup(createElement(MemoryRouter, null, createElement(PolicyRow, props)));
 }
+
+function renderPage(loaderData: Parameters<typeof Policies>[0]["loaderData"]): string {
+  return renderToStaticMarkup(
+    createElement(MemoryRouter, null, createElement(Policies, { loaderData })),
+  );
+}
+
+function makeLoaderData(
+  overrides: Partial<Parameters<typeof Policies>[0]["loaderData"]> = {},
+): Parameters<typeof Policies>[0]["loaderData"] {
+  return {
+    ownerSlug: "torre",
+    docoSlug: "runbook",
+    handle: "runbook" as unknown as Parameters<typeof Policies>[0]["loaderData"]["handle"],
+    me: null,
+    host: {} as never,
+    canEdit: false,
+    activePolicies: [],
+    retiredPolicies: [],
+    ...overrides,
+  };
+}
+
+const samplePolicy = (id: string, lifecycle: string) => ({
+  id,
+  kind: "suggestion" as const,
+  predicate: { agent_instruction: "Import nodes as active by default." },
+  lifecycle,
+  createdAt: "2026-06-01T00:00:00.000Z",
+});
 
 function anchorCount(html: string): number {
   return (html.match(/<a\b/g) ?? []).length;
@@ -211,5 +241,63 @@ describe("PolicyRow (policies list)", () => {
     // canEdit=false → no Modify link, but the row still links to the policy page.
     expect(anchorCount(html)).toBe(1);
     expect(html).toContain('href="/runbook/policies/policy_01HZDET"');
+  });
+});
+
+describe("Policies page (active / retired sections)", () => {
+  it("renders an Active policies section listing only active policies", () => {
+    const html = renderPage(
+      makeLoaderData({
+        activePolicies: [samplePolicy("policy_01HZACTIVE", "active")],
+        retiredPolicies: [samplePolicy("policy_01HZRETIRED", "retired")],
+      }),
+    );
+
+    expect(html).toContain("Active policies");
+    expect(html).toContain('href="/runbook/policies/policy_01HZACTIVE"');
+  });
+
+  it("renders a Retired policies section when there are retired policies", () => {
+    const html = renderPage(
+      makeLoaderData({
+        activePolicies: [samplePolicy("policy_01HZACTIVE", "active")],
+        retiredPolicies: [samplePolicy("policy_01HZRETIRED", "retired")],
+      }),
+    );
+
+    expect(html).toContain("Retired policies");
+    expect(html).toContain('href="/runbook/policies/policy_01HZRETIRED"');
+  });
+
+  it("omits the Retired policies section entirely when none are retired", () => {
+    const html = renderPage(
+      makeLoaderData({
+        activePolicies: [samplePolicy("policy_01HZACTIVE", "active")],
+        retiredPolicies: [],
+      }),
+    );
+
+    expect(html).toContain("Active policies");
+    expect(html).not.toContain("Retired policies");
+  });
+
+  it("renders a retired policy struck through in red, but not an active one", () => {
+    const retired = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: samplePolicy("policy_01HZRETIRED", "retired"),
+    });
+    const active = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: samplePolicy("policy_01HZACTIVE", "active"),
+    });
+
+    // Retired policies read as crossed out, in the destructive (red) color, so
+    // it's obvious at a glance they're no longer in force.
+    expect(retired).toContain("line-through");
+    expect(retired).toContain("text-destructive");
+    // Active policies carry no such styling.
+    expect(active).not.toContain("line-through");
   });
 });

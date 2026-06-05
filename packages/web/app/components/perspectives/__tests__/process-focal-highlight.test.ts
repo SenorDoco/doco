@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { layOutBpmn } from "~/components/perspectives/bpmn-perspective";
-import type { BpmnLane, BpmnNode, BpmnPool } from "~/lib/bpmn-perspective.server";
+import { layOutProcess } from "~/components/perspectives/process-perspective";
+import type { ProcessLane, ProcessNode, ProcessPool } from "~/lib/process-perspective.server";
 
 // A minimal single-pool process: Recruiter lane with two sequenced Actions.
-const pools: BpmnPool[] = [{ id: "pool:i1", intent_id: "i1", label: "Hire", lifecycle: "active" }];
-const lanes: BpmnLane[] = [
+const pools: ProcessPool[] = [
+  { id: "pool:i1", intent_id: "i1", label: "Hire", lifecycle: "active" },
+];
+const lanes: ProcessLane[] = [
   {
     id: "pool:i1::principal_a",
     pool_id: "pool:i1",
@@ -14,7 +16,7 @@ const lanes: BpmnLane[] = [
     lifecycle: "active",
   },
 ];
-const node = (id: string): BpmnNode => ({
+const node = (id: string): ProcessNode => ({
   id,
   entity_type: "action",
   name: id,
@@ -28,15 +30,15 @@ const node = (id: string): BpmnNode => ({
 const nodes = [node("a1"), node("a2")];
 const links = [{ source: "a1", target: "a2", edge_type: "flows_to" }];
 
-function shape(layout: ReturnType<typeof layOutBpmn>, id: string) {
+function shape(layout: ReturnType<typeof layOutProcess>, id: string) {
   const n = layout.flowNodes.find((fn) => fn.id === id);
   if (!n) throw new Error(`node ${id} not laid out`);
   return n;
 }
 
-describe("layOutBpmn focal highlight", () => {
+describe("layOutProcess focal highlight", () => {
   it("highlights and depth-fades around the focal node when highlightFocal is true", () => {
-    const layout = layOutBpmn(pools, lanes, nodes, links, "a1", new Set(), null, true);
+    const layout = layOutProcess(pools, lanes, nodes, links, "a1", new Set(), null, true);
     expect((shape(layout, "a1").data as { isCenter?: boolean }).isCenter).toBe(true);
     // The non-focal node fades (depth > 0 ⇒ opacity < 1).
     expect(Number(shape(layout, "a2").style?.opacity)).toBeLessThan(1);
@@ -45,7 +47,7 @@ describe("layOutBpmn focal highlight", () => {
   it("singles out nothing when highlightFocal is false — whole pool reads uniformly", () => {
     // Same focal node, but an Intent focus suppresses the highlight: no node
     // is marked center and every node renders at full opacity.
-    const layout = layOutBpmn(pools, lanes, nodes, links, "a1", new Set(), null, false);
+    const layout = layOutProcess(pools, lanes, nodes, links, "a1", new Set(), null, false);
     expect((shape(layout, "a1").data as { isCenter?: boolean }).isCenter).toBe(false);
     expect((shape(layout, "a2").data as { isCenter?: boolean }).isCenter).toBe(false);
     expect(Number(shape(layout, "a1").style?.opacity)).toBe(1);
@@ -53,7 +55,7 @@ describe("layOutBpmn focal highlight", () => {
   });
 
   it("still honors an explicit focusedNodeIds highlight regardless of highlightFocal", () => {
-    const layout = layOutBpmn(pools, lanes, nodes, links, "a1", new Set(["a2"]), null, false);
+    const layout = layOutProcess(pools, lanes, nodes, links, "a1", new Set(["a2"]), null, false);
     expect((shape(layout, "a2").data as { isCenter?: boolean }).isCenter).toBe(true);
   });
 });

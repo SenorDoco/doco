@@ -4,8 +4,10 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import {
+  DocoChatRef,
   SenorDocoExplainer,
   chatBubbleBlocks,
+  docoHandleFromPath,
   formatThreadUsageLabel,
   mergeCreatedConversationListItem,
   renderInlineLinks,
@@ -23,6 +25,9 @@ function conversation(overrides: Record<string, unknown> = {}) {
     last_message_role: "user" as const,
     workspace_id: null,
     workspace_handle: null,
+    doco_id: null,
+    doco_handle: null,
+    doco_owner_slug: null,
     ...overrides,
   };
 }
@@ -56,6 +61,67 @@ describe("mergeCreatedConversationListItem", () => {
     });
 
     expect(mergeCreatedConversationListItem([staleCreated], created)).toEqual([created]);
+  });
+});
+
+describe("docoHandleFromPath", () => {
+  it("reads the Doco handle off a Doco page so its chat can auto-open", () => {
+    expect(docoHandleFromPath("/billing")).toBe("billing");
+    expect(docoHandleFromPath("/billing/decision/decision_01ABC")).toBe("billing");
+    expect(docoHandleFromPath("/acme-ops/perspectives")).toBe("acme-ops");
+  });
+
+  it("returns null on reserved top-level routes (not Docos)", () => {
+    expect(docoHandleFromPath("/dashboard")).toBeNull();
+    expect(docoHandleFromPath("/workspaces/acme")).toBeNull();
+    expect(docoHandleFromPath("/new-doco")).toBeNull();
+    expect(docoHandleFromPath("/sign-in")).toBeNull();
+    expect(docoHandleFromPath("/api/v1/whoami.json")).toBeNull();
+  });
+
+  it("returns null on host routes that post-date the shared reserved set", () => {
+    expect(docoHandleFromPath("/tokens")).toBeNull();
+    expect(docoHandleFromPath("/integrations/slack/setup")).toBeNull();
+    expect(docoHandleFromPath("/users/alice")).toBeNull();
+    expect(docoHandleFromPath("/api-keys")).toBeNull();
+  });
+
+  it("returns null at the root / empty path", () => {
+    expect(docoHandleFromPath("/")).toBeNull();
+    expect(docoHandleFromPath("")).toBeNull();
+  });
+});
+
+describe("DocoChatRef", () => {
+  function html(props: { workspaceHandle?: string | null; docoHandle: string; asLink?: boolean }) {
+    return renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(DocoChatRef, props)),
+    );
+  }
+
+  it("renders the non-editable 'workspace / doco' reference", () => {
+    const out = html({ workspaceHandle: "acme", docoHandle: "billing" });
+    expect(out).toContain("acme");
+    expect(out).toContain("billing");
+    expect(out).toContain("acme / billing");
+  });
+
+  it("renders plain text (no links) by default — the inbox row handles clicks", () => {
+    const out = html({ workspaceHandle: "acme", docoHandle: "billing" });
+    expect(out).not.toContain("<a ");
+  });
+
+  it("links each segment to its page when asLink (the chat header)", () => {
+    const out = html({ workspaceHandle: "acme", docoHandle: "billing", asLink: true });
+    const anchors = out.match(/<a [^>]*>/g) ?? [];
+    expect(anchors.join(" ")).toContain('href="/workspaces/acme"');
+    expect(anchors.join(" ")).toContain('href="/billing"');
+  });
+
+  it("falls back to just the Doco when there's no workspace", () => {
+    const out = html({ workspaceHandle: null, docoHandle: "billing" });
+    expect(out).toContain("billing");
+    expect(out).not.toContain(" / ");
   });
 });
 

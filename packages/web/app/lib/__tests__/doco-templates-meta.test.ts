@@ -22,7 +22,7 @@ describe("doco template metadata", () => {
 
   it("marks the Glossaries template metadata as updated when its guidance changes", () => {
     const meta = findDocoTemplateMeta("glossaries");
-    expect(meta?.updatedAt).toBe("2026-06-03");
+    expect(meta?.updatedAt).toBe("2026-06-05");
   });
 
   it("describes Glossaries with replacements separate from aliases", () => {

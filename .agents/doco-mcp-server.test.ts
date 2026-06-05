@@ -1609,7 +1609,7 @@ describe("doco-mcp-server", () => {
                     body: { action: "Begin" },
                   },
                 ],
-                validate_against: "bpmn",
+                validate_against: "process",
               },
             },
           },
@@ -1629,7 +1629,7 @@ describe("doco-mcp-server", () => {
         operations: [
           { op: "create", entity_type: "action", alias: "start", body: { action: "Begin" } },
         ],
-        validate_against: "bpmn",
+        validate_against: "process",
       });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));

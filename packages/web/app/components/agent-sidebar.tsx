@@ -6,6 +6,7 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
+import { HOST_RESERVED_SLUGS } from "@doco/shared";
 import {
   type CSSProperties,
   type ReactNode,
@@ -27,18 +28,15 @@ import {
   focusTargetForResourcePath,
   pendingCreateForRequest,
   perspectiveParam,
+  requestRetiresResource,
 } from "~/lib/agent-follow-target";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
-import {
-  CREATED_DOCO_CHAT_ID_SEARCH_PARAM,
-  readCreatedDocoChatIdSearchParams,
-} from "~/lib/post-create-doco-route";
+import { readCreatedDocoChatIdSearchParams } from "~/lib/post-create-doco-route";
 import {
   resolvePublishedRailWidth,
   resolveThinkingActive,
   useNarrowShell,
-  viewOnExpand,
 } from "~/lib/senor-doco-shell";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
@@ -108,12 +106,19 @@ interface ChatMessage {
 }
 
 interface ConversationSnapshot {
-  conversation_id: string;
+  /** Null when a Doco was opened that has no chat yet (lazy creation). */
+  conversation_id: string | null;
   /** User-visible thread name. Null until the first user message lands. */
   title: string | null;
   archived: boolean;
   /** Handle of the Workspace this thread is scoped to; null = unassigned. */
   workspace_handle: string | null;
+  /** The Doco this chat is attached to; null for legacy/orphaned threads. */
+  doco_id: string | null;
+  /** Handle of {@link doco_id} — the in-thread tag links to `/<doco_handle>`. */
+  doco_handle: string | null;
+  /** Owner slug of {@link doco_id}, for the qualified `owner/handle` label. */
+  doco_owner_slug: string | null;
   messages: ChatMessage[];
   has_more: boolean;
   /**
@@ -152,6 +157,12 @@ export interface ConversationListItem {
   workspace_id: string | null;
   /** Handle of {@link workspace_id}, shown as a tag left of the title. */
   workspace_handle: string | null;
+  /** Doco this chat is attached to; null for legacy/orphaned threads. */
+  doco_id: string | null;
+  /** Handle of {@link doco_id}, shown as a tag left of the title (links to it). */
+  doco_handle: string | null;
+  /** Owner slug of {@link doco_id}, for the qualified `owner/handle` title. */
+  doco_owner_slug: string | null;
 }
 
 export function mergeCreatedConversationListItem(
@@ -177,6 +188,90 @@ export function SenorDocoExplainer() {
       </Link>
       .
     </div>
+  );
+}
+
+/**
+ * Top-level routes that aren't Docos but live outside the shared reserved set.
+ * `HOST_RESERVED_SLUGS` governs Doco-handle *creation*; a handful of host
+ * routes (tokens, users, integrations, …) were added to routes.ts after it and
+ * never backfilled there. Listing them keeps the rail from mistaking those
+ * pages for a Doco and firing a doomed snapshot fetch. The server-side 404 is
+ * still the backstop for anything that slips through.
+ */
+const NON_DOCO_TOP_LEVEL: ReadonlySet<string> = new Set([
+  "tokens",
+  "api-keys",
+  "users",
+  "integrations",
+  "access-requests",
+  "device",
+  "oauth",
+  "protocol",
+  "new-workspace",
+  "docs",
+  "setup",
+  "ai",
+  "getting-started",
+  "install",
+]);
+
+/**
+ * The Doco handle implied by a page path, or null when the path isn't a Doco
+ * page. Doco URLs are `/<handle>/…`; the reserved top-level routes are not
+ * Docos. Drives the rail's auto-open: navigating onto a Doco page opens that
+ * Doco's chat.
+ */
+export function docoHandleFromPath(pathname: string): string | null {
+  const first = pathname.split("/").filter(Boolean)[0];
+  if (!first) return null;
+  if (HOST_RESERVED_SLUGS.has(first) || NON_DOCO_TOP_LEVEL.has(first)) return null;
+  return first;
+}
+
+/**
+ * The non-editable reference for a Doco chat: `workspace / doco`. Chats no
+ * longer carry a name — the only label is the Doco they belong to, qualified
+ * by its workspace to avoid ambiguity. Shown in the inbox row and the chat
+ * header. When `asLink` (the chat header, where it isn't nested in a button)
+ * each segment links to its page; inside the inbox row button it renders as
+ * plain text and the row itself handles navigation.
+ */
+export function DocoChatRef({
+  workspaceHandle,
+  docoHandle,
+  asLink = false,
+  className,
+}: {
+  workspaceHandle?: string | null;
+  docoHandle: string;
+  asLink?: boolean;
+  className?: string;
+}) {
+  const ws = workspaceHandle?.trim() || null;
+  const label = ws ? `${ws} / ${docoHandle}` : docoHandle;
+  const base = cn("min-w-0 truncate text-xs font-semibold text-foreground", className);
+  if (!asLink) {
+    return (
+      <span className={base} title={label}>
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span className={base} title={label}>
+      {ws ? (
+        <>
+          <Link to={`/workspaces/${ws}`} className="hover:text-primary hover:underline">
+            {ws}
+          </Link>
+          {" / "}
+        </>
+      ) : null}
+      <Link to={`/${docoHandle}`} className="hover:text-primary hover:underline">
+        {docoHandle}
+      </Link>
+    </span>
   );
 }
 
@@ -379,22 +474,6 @@ function readInitialConversationId(): string | null {
   );
 }
 
-function removeCreatedDocoChatIdFromSearch(search: string): string {
-  const params = new URLSearchParams(search);
-  params.delete(CREATED_DOCO_CHAT_ID_SEARCH_PARAM);
-  const next = params.toString();
-  return next ? `?${next}` : "";
-}
-
-/**
- * Display name for a thread. Server returns null until the first user
- * message is sent (and even then, attachment-only messages leave it
- * null), so the client always has a fallback.
- */
-function displayThreadTitle(title: string | null | undefined): string {
-  return title?.trim() ? title : "New chat";
-}
-
 function readLastSeen(convId: string): number {
   if (typeof window === "undefined") return 0;
   try {
@@ -444,42 +523,49 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
-  // Multi-thread state. `conversationId` is the active thread (null
-  // until the snapshot first responds, then sticky across refreshes
-  // via localStorage). `conversationTitle` mirrors what the server has
-  // — null = "New chat" placeholder. `view` toggles the sidebar
-  // between the chat column and the thread list. `conversations` is
-  // the dropdown contents; loaded on demand when the user opens the
-  // list and refreshed when threads change.
+  // Multi-thread state. `conversationId` is the active thread (null until the
+  // snapshot first responds). `view` is fully path-driven: a Doco's chat shows
+  // only on that Doco's pages, the inbox everywhere else (see the path effect).
+  // `conversations` is the inbox contents; loaded on demand and refreshed when
+  // threads change.
   const [conversationId, setConversationId] = useState<string | null>(() =>
     readInitialConversationId(),
   );
-  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
-  // Handle of the Workspace the open thread is scoped to; drives the in-thread
-  // tag in the chat header (mirrors the inbox list's tag). Null = unassigned.
-  const [currentWorkspaceHandle, setCurrentWorkspaceHandle] = useState<string | null>(null);
-  // WhatsApp-style default — when nothing's open, the user lands on
-  // the thread list. Picking a thread switches into chat view; the
-  // back button in the chat header returns here.
-  //
-  // If the sticky `ACTIVE_CONV_KEY` is already in localStorage (the
-  // user was last in a thread), default to chat view so navigation
-  // or remounts don't bounce them back to the list. The list is the
-  // "nothing open" fallback, not the home page.
+  // The Doco the open chat is attached to; drives the non-editable
+  // "workspace / doco" reference in the chat header. Null off a Doco page.
+  const [currentDoco, setCurrentDoco] = useState<{
+    handle: string;
+    ownerSlug: string | null;
+  } | null>(null);
+  // When the user is viewing a Doco page, the rail scopes its chat to that
+  // Doco (by handle). Drives reload() to fetch `?doco=<handle>` — the
+  // authoritative, lazy get path that opens (and on first send creates) the
+  // Doco's chat. Null when the user isn't on a Doco page (the rail shows the
+  // inbox list).
+  const [docoChatRef, setDocoChatRef] = useState<string | null>(() =>
+    typeof window !== "undefined" ? docoHandleFromPath(window.location.pathname) : null,
+  );
+  // Doco id for the open Doco chat that has no row yet (lazy). Sent with the
+  // first message so the server mints the (user, Doco) thread. Mirrored into a
+  // ref so send() reads the latest without re-binding on every change.
+  const [pendingDocoId, setPendingDocoId] = useState<string | null>(null);
+  const pendingDocoIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    pendingDocoIdRef.current = pendingDocoId;
+  }, [pendingDocoId]);
+  // The chat shows only on a Doco's pages; the inbox shows everywhere else.
+  // Initialize from the path so the first paint already matches (the path
+  // effect keeps it in sync on navigation).
   const [view, setView] = useState<"chat" | "list">(() =>
-    readInitialConversationId() ? "chat" : "list",
+    typeof window !== "undefined" && docoHandleFromPath(window.location.pathname) ? "chat" : "list",
   );
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [conversationsError, setConversationsError] = useState<string | null>(null);
-  // Free-text filter applied to the thread list (title + last-message
+  // Free-text filter applied to the inbox (the Doco reference + last-message
   // preview, case-insensitive). Lives in component state, not URL or
   // localStorage — closing/reopening the sidebar resets it.
   const [searchQuery, setSearchQuery] = useState("");
-  // Inline rename state — keyed by conversation id. When non-null,
-  // the row in the list shows an input instead of the title.
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState<string>("");
   // Another tab on this origin is currently streaming a reply. Used
   // to show a "Señor Doco is replying…" placeholder bubble in tabs
   // that didn't initiate the send.
@@ -520,12 +606,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
-  // Pathname where the user collapsed Señor Doco *in this mount*. null
-  // when the collapsed state was inherited from localStorage on load (a
-  // previous page/session) or after an expand consumes it. Drives
-  // whether expanding restores the open thread or resets to the thread
-  // list — see viewOnExpand and setCollapsedPersistent.
-  const collapseOriginPathRef = useRef<string | null>(null);
   // Publish the rail's current side-rail width as a CSS variable so
   // floating overlays (the node-detail dialog, etc.) can avoid covering
   // it. Below 640px the rail is an overlay drawer floating above the
@@ -567,26 +647,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     (next: boolean) => {
       setCollapsed(next);
       writeBoolFlag(COLLAPSE_KEY, next);
-      if (next) {
-        // Remember where this collapse happened so a later expand on the
-        // same page can restore the open thread (vs. resetting to the list).
-        collapseOriginPathRef.current = location.pathname;
-      } else {
-        // Expanding clears unread.
+      if (!next) {
+        // Expanding clears unread and shows whatever the current page implies:
+        // a Doco's chat on its pages, the inbox everywhere else.
         setUnread(false);
         writeBoolFlag(UNREAD_KEY, false);
-        // Unless the collapse we're undoing happened on this same page,
-        // reset to the thread list rather than dropping the user back into
-        // the last-open (possibly stale) thread.
-        if (
-          viewOnExpand({
-            collapseOriginPath: collapseOriginPathRef.current,
-            currentPath: location.pathname,
-          }) === "list"
-        ) {
-          setView("list");
-        }
-        collapseOriginPathRef.current = null;
+        setView(docoHandleFromPath(location.pathname) ? "chat" : "list");
       }
     },
     [location.pathname],
@@ -629,7 +695,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   }, [inputText]);
 
   const reload = useCallback(async () => {
-    if (!conversationId && skipNextDefaultBootstrapRef.current) {
+    if (!conversationId && !docoChatRef && skipNextDefaultBootstrapRef.current) {
       skipNextDefaultBootstrapRef.current = false;
       setBootstrapped(true);
       setLoadError(null);
@@ -638,10 +704,27 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       return;
     }
     try {
-      const url = conversationId
-        ? `/api/v1/agent-chat/conversation.json?id=${encodeURIComponent(conversationId)}`
-        : "/api/v1/agent-chat/conversation.json";
+      // Doco mode (the user is on a Doco page) is authoritative: fetch the
+      // Doco's chat by handle. Otherwise an explicit thread id, else the
+      // rolling active thread.
+      const url = docoChatRef
+        ? `/api/v1/agent-chat/conversation.json?doco=${encodeURIComponent(docoChatRef)}`
+        : conversationId
+          ? `/api/v1/agent-chat/conversation.json?id=${encodeURIComponent(conversationId)}`
+          : "/api/v1/agent-chat/conversation.json";
       const res = await fetch(url, { credentials: "same-origin" });
+      if (res.status === 404 && docoChatRef) {
+        // The path's first segment looked like a Doco handle but isn't a
+        // reachable Doco (a non-Doco route that slipped past the reserved
+        // filter, or one the user can't see). Leave doco mode and fall back
+        // to the inbox.
+        setDocoChatRef(null);
+        setPendingDocoId(null);
+        setCurrentDoco(null);
+        setLoadError(null);
+        setView("list");
+        return;
+      }
       if (res.status === 404 && conversationId) {
         // The stored thread id no longer exists (archived elsewhere,
         // or a different user signed in on the same device). Drop
@@ -650,7 +733,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         writeStringFlag(ACTIVE_CONV_KEY, null);
         setMessages([]);
         setLoadError(null);
-        setCurrentWorkspaceHandle(null);
+        setCurrentDoco(null);
         return;
       }
       if (!res.ok) {
@@ -661,14 +744,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // Sticky thread id: snapshot fetched with no `?id=` lands the
       // user in their most-recent thread; pin that id so subsequent
       // reloads (cross-tab sync, polling) stay on the same one even
-      // if another tab opens a newer thread.
+      // if another tab opens a newer thread. In Doco mode the row may not
+      // exist yet (lazy) — conversation_id is null until the first message,
+      // and pendingDocoId carries the binding the first send needs.
       if (data.conversation_id !== conversationId) {
         setConversationId(data.conversation_id);
-        writeStringFlag(ACTIVE_CONV_KEY, data.conversation_id);
+        if (data.conversation_id) writeStringFlag(ACTIVE_CONV_KEY, data.conversation_id);
       }
-      setConversationTitle(data.title);
+      setPendingDocoId(data.conversation_id ? null : (data.doco_id ?? null));
       setThreadUsage(data.thread_usage ?? null);
-      setCurrentWorkspaceHandle(data.workspace_handle ?? null);
+      setCurrentDoco(
+        data.doco_handle
+          ? { handle: data.doco_handle, ownerSlug: data.doco_owner_slug ?? null }
+          : null,
+      );
       // Merge — don't overwrite. Two classes of message can sit
       // outside the snapshot's window:
       //
@@ -757,7 +846,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     } finally {
       setBootstrapped(true);
     }
-  }, [busy, conversationId]);
+  }, [busy, conversationId, docoChatRef]);
 
   useEffect(() => {
     if (view !== "chat") {
@@ -810,160 +899,62 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
   }, []);
 
+  // The chat lives on its Doco's pages; the inbox everywhere else. The path is
+  // authoritative: navigating onto `/<docoHandle>/…` binds the rail to that
+  // Doco's chat (which reload fetches via `?doco=`, creating it lazily on the
+  // first message) and shows it; navigating within the same Doco keeps it;
+  // leaving Doco pages drops the binding and returns to the inbox. Reserved /
+  // non-Doco routes resolve to null. Keyed on the derived handle (not raw
+  // pathname) so in-Doco navigation doesn't churn the thread.
+  const lastDocoHandleRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    const createdChatId = readCreatedDocoChatIdFromLocationSearch(location.search);
-    if (!createdChatId) return;
-
-    setCollapsed(false);
-    writeBoolFlag(COLLAPSE_KEY, false);
-    setUnread(false);
-    writeBoolFlag(UNREAD_KEY, false);
-    setView("chat");
-    setRenamingId(null);
-
-    if (createdChatId !== conversationId) {
-      abortRef.current?.abort();
-      setBusy(false);
-      setInFlight(null);
-      setQueuedSends([]);
-      setTurnUsage(null);
-      setRemoteInflight(false);
-      setThinkingEvents([]);
-      setMessages([]);
-      setHasMore(false);
-      earliestRef.current = null;
-      setConversationId(createdChatId);
-      writeStringFlag(ACTIVE_CONV_KEY, createdChatId);
+    const handle = docoHandleFromPath(location.pathname);
+    if (handle === lastDocoHandleRef.current) return;
+    lastDocoHandleRef.current = handle;
+    // Either transition wipes the previous thread's transient state so its
+    // messages don't bleed across.
+    abortRef.current?.abort();
+    setBusy(false);
+    setInFlight(null);
+    setQueuedSends([]);
+    setTurnUsage(null);
+    setRemoteInflight(false);
+    setThinkingEvents([]);
+    setMessages([]);
+    setHasMore(false);
+    earliestRef.current = null;
+    setConversationId(null);
+    if (handle) {
+      // On a Doco page — show its chat; reload(?doco=) repopulates.
+      setView("chat");
+      setDocoChatRef(handle);
     } else {
-      writeStringFlag(ACTIVE_CONV_KEY, createdChatId);
+      // Off Doco pages — show the inbox, never a chat.
+      setDocoChatRef(null);
+      setPendingDocoId(null);
+      setCurrentDoco(null);
+      setView("list");
     }
+  }, [location.pathname]);
 
-    void loadConversationsList();
-    navigate(
-      `${location.pathname}${removeCreatedDocoChatIdFromSearch(location.search)}${location.hash}`,
-      {
-        replace: true,
-      },
-    );
-  }, [
-    conversationId,
-    loadConversationsList,
-    location.hash,
-    location.pathname,
-    location.search,
-    navigate,
-  ]);
-
-  const openThreadList = useCallback(() => {
-    setView("list");
-    setSearchQuery("");
-    void loadConversationsList();
-  }, [loadConversationsList]);
-
-  // Initial list fetch + refetch on conversation change. The list is
-  // the default view so we always want it populated on mount; we also
-  // refetch when the active thread changes so its updated_at / last
-  // message preview reflect the latest send.
+  // Initial inbox fetch + refetch on conversation change. The inbox is always
+  // available off a Doco page, so we keep it populated; we also refetch when
+  // the active thread changes so a row's updated_at / preview reflect the
+  // latest send.
   // biome-ignore lint/correctness/useExhaustiveDependencies: The stable loader must refetch when the active conversation changes.
   useEffect(() => {
     void loadConversationsList();
   }, [loadConversationsList, conversationId]);
 
-  // Switch to a different thread. Wipes the in-memory message list +
-  // thinking events; the next reload() picks up the new thread's
-  // snapshot. Idempotent on no-op (same id) so the dropdown can be
-  // dismissed cheaply.
-  const switchThread = useCallback(
+  // Open a thread from the inbox: navigate to its Doco. The path effect then
+  // binds + shows the chat, so the row effectively links to the Doco. The
+  // inbox only lists Doco-bound threads, so there's always a Doco to open.
+  const selectConversation = useCallback(
     (id: string) => {
-      if (id === conversationId) {
-        setView("chat");
-        return;
-      }
-      // Cancel any in-flight stream on the old thread. The server-side
-      // turn keeps going (keepalive: true on the fetch) so we won't
-      // lose the reply; the user just won't see it in this column
-      // until they switch back.
-      abortRef.current?.abort();
-      setBusy(false);
-      setInFlight(null);
-      setQueuedSends([]);
-      setTurnUsage(null);
-      setRemoteInflight(false);
-      setThinkingEvents([]);
-      setMessages([]);
-      setHasMore(false);
-      earliestRef.current = null;
-      setConversationId(id);
-      writeStringFlag(ACTIVE_CONV_KEY, id);
-      setView("chat");
-      setRenamingId(null);
+      const conv = conversations.find((c) => c.id === id);
+      if (conv?.doco_handle) navigate(`/${conv.doco_handle}`);
     },
-    [conversationId],
-  );
-
-  const newThread = useCallback(async () => {
-    try {
-      setConversationsError(null);
-      const res = await fetch("/api/v1/agent-chat/conversations.json", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) {
-        setConversationsError(`HTTP ${res.status}`);
-        return;
-      }
-      const data = (await res.json()) as { conversation: ConversationListItem };
-      const created = data.conversation;
-      if (!created?.id) return;
-
-      setConversations((prev) => mergeCreatedConversationListItem(prev, created));
-      abortRef.current?.abort();
-      setBusy(false);
-      setInFlight(null);
-      setQueuedSends([]);
-      setTurnUsage(null);
-      setRemoteInflight(false);
-      setThinkingEvents([]);
-      setMessages([]);
-      setHasMore(false);
-      earliestRef.current = null;
-      setConversationId(created.id);
-      setConversationTitle(created.title);
-      writeStringFlag(ACTIVE_CONV_KEY, created.id);
-      setSearchQuery("");
-      setView("chat");
-      setRenamingId(null);
-      void loadConversationsList();
-    } catch (err) {
-      setConversationsError(err instanceof Error ? err.message : String(err));
-    }
-  }, [loadConversationsList]);
-
-  const renameThread = useCallback(
-    async (id: string, nextTitle: string) => {
-      const trimmed = nextTitle.trim().slice(0, 120);
-      try {
-        const res = await fetch(`/api/v1/agent-chat/conversation/${encodeURIComponent(id)}.json`, {
-          method: "PATCH",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: trimmed || null }),
-        });
-        if (!res.ok) {
-          setConversationsError(`HTTP ${res.status}`);
-          return;
-        }
-        setConversations((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, title: trimmed || null } : c)),
-        );
-        if (id === conversationId) setConversationTitle(trimmed || null);
-      } catch (err) {
-        setConversationsError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [conversationId],
+    [conversations, navigate],
   );
 
   const archiveThread = useCallback(
@@ -981,9 +972,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         }
         setConversations((prev) => prev.filter((c) => c.id !== id));
         if (id === conversationId) {
-          // We just archived the active thread. Drop the pin and leave
-          // the user in the thread list with nothing open; the next
-          // explicit selection or "New chat" creates the next active id.
+          // We just archived the active thread. Drop the pin and clear the
+          // open chat; revisiting the Doco revives it.
           skipNextDefaultBootstrapRef.current = true;
           abortRef.current?.abort();
           setBusy(false);
@@ -993,12 +983,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           setRemoteInflight(false);
           setThinkingEvents([]);
           setConversationId(null);
-          setConversationTitle(null);
           setHasMore(false);
           earliestRef.current = null;
           writeStringFlag(ACTIVE_CONV_KEY, null);
           setMessages([]);
-          setView("list");
         }
       } catch (err) {
         setConversationsError(err instanceof Error ? err.message : String(err));
@@ -1279,6 +1267,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // paths fall through.
       const target = focusTargetForResourcePath(path);
       if (!target) return;
+      // …but not when the request makes that node/edge disappear (a
+      // delete or a retire). There'd be nothing to focus, and for an
+      // edge the camera would snap onto its still-live source node — an
+      // unrelated place the user never asked to see. Leave the
+      // perspective where it is.
+      const inp = input as { method?: unknown; body?: unknown };
+      const method = typeof inp.method === "string" ? inp.method : "GET";
+      if (requestRetiresResource(method, inp.body)) return;
       if (location.pathname === target.pathname) return;
       // Don't interrupt active composition — but only when there's
       // actually something half-written. Empty composer = user is
@@ -1418,16 +1414,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       let persistedUserMessageId: string | null = null;
       let persistedAssistantMessageId: string | null = null;
       setMessages((prev) => [...prev, localUser]);
-      // Optimistically backfill the thread title from the first user
-      // message so the header flips from "New chat" → "Hello…" the
-      // instant the user hits Send. The server runs the same
-      // derivation, so the next reload() agrees with what we just
-      // showed. Don't clobber an existing title (rename survives).
-      if (!conversationTitle && text) {
-        const derived = text.replace(/\s+/g, " ").trim().split(" ").slice(0, 6).join(" ");
-        const display = derived.length > 60 ? `${derived.slice(0, 57)}…` : derived;
-        setConversationTitle(display);
-      }
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -1449,7 +1435,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             current_path: location.pathname + location.search,
             attachment_ids: attachmentIds,
             graph_references: graphReferenceGroups,
-            ...(conversationId ? { conversation_id: conversationId } : {}),
+            // An explicit thread id wins; otherwise, when this is the first
+            // message of a Doco's chat (lazy — no row yet), the doco_id binds
+            // the server's get-or-create to that Doco.
+            ...(conversationId
+              ? { conversation_id: conversationId }
+              : pendingDocoIdRef.current
+                ? { doco_id: pendingDocoIdRef.current }
+                : {}),
           }),
           signal: controller.signal,
           // keepalive: the request must survive a tab close / hard
@@ -1697,7 +1690,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       broadcastSync,
       appendThinking,
       conversationId,
-      conversationTitle,
       loadConversationsList,
       maybeFollowToolToNode,
       maybeNoteCreate,
@@ -1787,18 +1779,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
     return map;
   }, [conversations]);
-
-  // Total unread across every thread that ISN'T the one currently
-  // open. Shown next to the back arrow in the chat header so the
-  // user knows whether anything else needs attention.
-  const totalUnreadOthers = useMemo(() => {
-    let total = 0;
-    for (const c of conversations) {
-      if (c.id === conversationId) continue;
-      total += unreadByThread.get(c.id) ?? 0;
-    }
-    return total;
-  }, [conversations, conversationId, unreadByThread]);
 
   // Total unread across every thread, including the active one.
   // Drives the collapsed rail's badge — when the sidebar is closed
@@ -2006,107 +1986,25 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 loading={conversationsLoading}
                 error={conversationsError}
                 activeId={conversationId}
-                renamingId={renamingId}
-                renameDraft={renameDraft}
                 searchQuery={searchQuery}
                 unreadByThread={unreadByThread}
                 onSearchChange={setSearchQuery}
-                onSelect={switchThread}
-                onNew={() => void newThread()}
-                onStartRename={(id, current) => {
-                  setRenamingId(id);
-                  setRenameDraft(current ?? "");
-                }}
-                onCancelRename={() => setRenamingId(null)}
-                onCommitRename={(id) => {
-                  const next = renameDraft;
-                  setRenamingId(null);
-                  void renameThread(id, next);
-                }}
-                onRenameDraftChange={setRenameDraft}
+                onSelect={selectConversation}
                 onArchive={(id) => void archiveThread(id)}
               />
             ) : (
               <>
-                {/* Chat header — back arrow + total-unread badge + thread
-              name. WhatsApp-style: tapping the back arrow returns to
-              the thread list. */}
-                <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 pb-2.5 pt-1.5">
-                  <button
-                    type="button"
-                    onClick={openThreadList}
-                    aria-label={
-                      totalUnreadOthers > 0
-                        ? `Back to threads (${totalUnreadOthers} unread in other threads)`
-                        : "Back to threads"
-                    }
-                    className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-foreground hover:bg-input"
-                  >
-                    <CollapseIcon side="left" />
-                    {totalUnreadOthers > 0 ? (
-                      <span className="rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
-                        {totalUnreadOthers}
-                      </span>
-                    ) : null}
-                  </button>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    {currentWorkspaceHandle ? (
-                      <span
-                        className="max-w-[60%] shrink-0 self-start truncate rounded bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground"
-                        title={`Workspace: ${currentWorkspaceHandle}`}
-                      >
-                        {currentWorkspaceHandle}
-                      </span>
-                    ) : null}
-                    {renamingId === conversationId && conversationId ? (
-                      <input
-                        // biome-ignore lint/a11y/noAutofocus: Inline rename should focus immediately when the user starts renaming.
-                        autoFocus
-                        type="text"
-                        value={renameDraft}
-                        onChange={(e) => setRenameDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const next = renameDraft;
-                            setRenamingId(null);
-                            void renameThread(conversationId, next);
-                          } else if (e.key === "Escape") {
-                            e.preventDefault();
-                            setRenamingId(null);
-                          }
-                        }}
-                        onBlur={() => {
-                          const next = renameDraft;
-                          setRenamingId(null);
-                          void renameThread(conversationId, next);
-                        }}
-                        maxLength={120}
-                        className="min-w-0 flex-1 rounded-md border border-border bg-input/40 px-1.5 py-0.5 text-xs font-semibold text-foreground outline-none focus:bg-input"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!conversationId) return;
-                          setRenameDraft(conversationTitle ?? "");
-                          setRenamingId(conversationId);
-                        }}
-                        title={
-                          conversationId
-                            ? `${displayThreadTitle(conversationTitle)} — click to rename`
-                            : displayThreadTitle(conversationTitle)
-                        }
-                        disabled={!conversationId}
-                        className={cn(
-                          "min-w-0 truncate rounded-md px-1 py-0.5 text-left text-xs font-semibold hover:bg-input/60 disabled:cursor-default disabled:hover:bg-transparent",
-                          conversationTitle ? "text-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {displayThreadTitle(conversationTitle)}
-                      </button>
-                    )}
-                  </div>
+                {/* Chat header — the non-editable "workspace / doco" reference.
+              The chat lives on its Doco's pages, so there's no back-to-inbox
+              control here; leaving the Doco returns to the inbox. */}
+                <div className="flex min-h-[2.25rem] shrink-0 items-center border-b border-border px-3 pb-2 pt-1.5">
+                  {currentDoco ? (
+                    <DocoChatRef
+                      workspaceHandle={currentDoco.ownerSlug}
+                      docoHandle={currentDoco.handle}
+                      asLink
+                    />
+                  ) : null}
                 </div>
 
                 <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -2128,12 +2026,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     {hasMore ? (
                       <div className="mb-2 text-center text-[10px] text-muted-foreground">
                         {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
-                      </div>
-                    ) : null}
-                    {allMessages.length === 0 && !loadError && bootstrapped ? (
-                      <div className="text-[11px] text-muted-foreground">
-                        Ask me anything about your docos — I can search, capture decisions, create
-                        new docos or workspaces, invite users, and take you to any page.
                       </div>
                     ) : null}
                     {allMessages.map((rm, index) => (
@@ -2194,25 +2086,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   );
 }
 
-function CollapseIcon({ side }: { side: "left" | "right" }) {
-  // A small chevron pointing in the collapse direction.
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {side === "left" ? <polyline points="10 4 5 8 10 12" /> : <polyline points="6 4 11 8 6 12" />}
-    </svg>
-  );
-}
-
 function PanelToggleIcon({ side, open }: { side: "left" | "right"; open: boolean }) {
   const isLeftPanel = side === "left";
   const separatorX = isLeftPanel ? 7 : 17;
@@ -2252,17 +2125,10 @@ interface ThreadListViewProps {
   loading: boolean;
   error: string | null;
   activeId: string | null;
-  renamingId: string | null;
-  renameDraft: string;
   searchQuery: string;
   unreadByThread: Map<string, number>;
   onSearchChange: (next: string) => void;
   onSelect: (id: string) => void;
-  onNew: () => void;
-  onStartRename: (id: string, current: string | null) => void;
-  onCancelRename: () => void;
-  onCommitRename: (id: string) => void;
-  onRenameDraftChange: (next: string) => void;
   onArchive: (id: string) => void;
 }
 
@@ -2271,38 +2137,28 @@ function ThreadListView({
   loading,
   error,
   activeId,
-  renamingId,
-  renameDraft,
   searchQuery,
   unreadByThread,
   onSearchChange,
   onSelect,
-  onNew,
-  onStartRename,
-  onCancelRename,
-  onCommitRename,
-  onRenameDraftChange,
   onArchive,
 }: ThreadListViewProps) {
+  // The inbox only lists Doco-bound chats — a chat without a Doco (orphaned by
+  // a deleted Doco, or pre-dating per-Doco scoping) has no page to open and no
+  // "workspace / doco" reference to show, so it's hidden.
+  const docoChats = conversations.filter((c) => c.doco_handle);
   const q = searchQuery.trim().toLowerCase();
   const filtered = q
-    ? conversations.filter((c) => {
-        const title = (c.title ?? "").toLowerCase();
+    ? docoChats.filter((c) => {
+        const ref = `${c.doco_owner_slug ?? ""} / ${c.doco_handle ?? ""}`.toLowerCase();
         const preview = (c.last_message_preview ?? "").toLowerCase();
-        return title.includes(q) || preview.includes(q);
+        return ref.includes(q) || preview.includes(q);
       })
-    : conversations;
+    : docoChats;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
         <div className="text-xs font-semibold text-foreground">Chats</div>
-        <button
-          type="button"
-          onClick={onNew}
-          className="neu-button rounded-md border border-primary bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          + New chat
-        </button>
       </div>
       <div className="shrink-0 px-3 py-1.5">
         <input
@@ -2310,27 +2166,27 @@ function ThreadListView({
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search"
-          aria-label="Search threads"
+          aria-label="Search chats"
           className="w-full rounded-md border border-border bg-input/60 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error ? (
           <div className="m-2 rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-            Couldn't load threads: {error}
+            Couldn't load chats: {error}
           </div>
         ) : null}
-        {loading && conversations.length === 0 ? (
-          <div className="px-3 py-2 text-[11px] text-muted-foreground">Loading threads…</div>
+        {loading && docoChats.length === 0 ? (
+          <div className="px-3 py-2 text-[11px] text-muted-foreground">Loading chats…</div>
         ) : null}
-        {!loading && conversations.length === 0 && !error ? (
+        {!loading && docoChats.length === 0 && !error ? (
           <div className="px-3 py-2 text-[11px] text-muted-foreground">
-            No threads yet — hit “+ New chat” to start one.
+            No chats yet. Open a Doco and Señor Doco starts a chat about it.
           </div>
         ) : null}
-        {!loading && conversations.length > 0 && filtered.length === 0 && q ? (
+        {!loading && docoChats.length > 0 && filtered.length === 0 && q ? (
           <div className="px-3 py-2 text-[11px] text-muted-foreground">
-            No threads match “{searchQuery}”.
+            No chats match “{searchQuery}”.
           </div>
         ) : null}
         <ul>
@@ -2339,14 +2195,8 @@ function ThreadListView({
               key={c.id}
               conv={c}
               isActive={c.id === activeId}
-              isRenaming={c.id === renamingId}
-              renameDraft={renameDraft}
               unread={unreadByThread.get(c.id) ?? 0}
               onSelect={() => onSelect(c.id)}
-              onStartRename={() => onStartRename(c.id, c.title)}
-              onCancelRename={onCancelRename}
-              onCommitRename={() => onCommitRename(c.id)}
-              onRenameDraftChange={onRenameDraftChange}
               onArchive={() => onArchive(c.id)}
             />
           ))}
@@ -2359,33 +2209,14 @@ function ThreadListView({
 interface ThreadRowProps {
   conv: ConversationListItem;
   isActive: boolean;
-  isRenaming: boolean;
-  renameDraft: string;
   unread: number;
   onSelect: () => void;
-  onStartRename: () => void;
-  onCancelRename: () => void;
-  onCommitRename: () => void;
-  onRenameDraftChange: (next: string) => void;
   onArchive: () => void;
 }
 
-function ThreadRow({
-  conv,
-  isActive,
-  isRenaming,
-  renameDraft,
-  unread,
-  onSelect,
-  onStartRename,
-  onCancelRename,
-  onCommitRename,
-  onRenameDraftChange,
-  onArchive,
-}: ThreadRowProps) {
+function ThreadRow({ conv, isActive, unread, onSelect, onArchive }: ThreadRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Dismiss the per-row menu when the user clicks anywhere else on
   // the page. Without this the menu stays open after the user picks
@@ -2401,14 +2232,9 @@ function ThreadRow({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
 
-  // Auto-focus + select the input when entering rename mode.
-  useEffect(() => {
-    if (!isRenaming) return;
-    const el = inputRef.current;
-    if (!el) return;
-    el.focus();
-    el.select();
-  }, [isRenaming]);
+  // Inbox only lists Doco-bound chats; defensively skip a stray row without a
+  // Doco (also narrows the type for DocoChatRef below).
+  if (!conv.doco_handle) return null;
 
   // WhatsApp-style "last message" line. Prefix with "You: " when
   // the most recent message came from the user, so it's easy to tell
@@ -2432,120 +2258,71 @@ function ThreadRow({
       )}
     >
       {isActive ? <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" /> : null}
-      {isRenaming ? (
-        <div className="flex flex-1 items-center gap-1.5 px-3 py-1.5">
-          <input
-            ref={inputRef}
-            type="text"
-            value={renameDraft}
-            onChange={(e) => onRenameDraftChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                onCommitRename();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                onCancelRename();
-              }
-            }}
-            onBlur={onCommitRename}
-            maxLength={120}
-            className="min-w-0 flex-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-xs text-foreground"
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2 text-left"
+      >
+        <span className="flex items-baseline justify-between gap-2">
+          {/* The chat's only label: "workspace / doco" (non-editable). */}
+          <DocoChatRef
+            workspaceHandle={conv.doco_owner_slug}
+            docoHandle={conv.doco_handle}
+            className={unread > 0 ? "font-bold" : undefined}
           />
-        </div>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={onSelect}
-            className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2 text-left"
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            {formatRelativeTime(conv.updated_at)}
+          </span>
+        </span>
+        <span className="flex items-center justify-between gap-2">
+          <span
+            className={cn(
+              "min-w-0 truncate text-[11px]",
+              unread > 0 ? "text-foreground" : "text-muted-foreground",
+            )}
           >
-            <span className="flex items-baseline justify-between gap-2">
-              <span className="flex min-w-0 items-baseline gap-1.5">
-                {conv.workspace_handle ? (
-                  <span
-                    className="max-w-[45%] shrink-0 truncate rounded bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground"
-                    title={`Workspace: ${conv.workspace_handle}`}
-                  >
-                    {conv.workspace_handle}
-                  </span>
-                ) : null}
-                <span
-                  className={cn(
-                    "min-w-0 truncate text-xs font-semibold",
-                    conv.title ? "text-foreground" : "text-muted-foreground",
-                    unread > 0 ? "font-bold" : "",
-                  )}
-                >
-                  {displayThreadTitle(conv.title)}
-                </span>
-              </span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">
-                {formatRelativeTime(conv.updated_at)}
-              </span>
+            {previewLine}
+          </span>
+          {unread > 0 ? (
+            <span
+              aria-label={`${unread} unread`}
+              className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-primary-foreground"
+            >
+              {unread > 99 ? "99+" : unread}
             </span>
-            <span className="flex items-center justify-between gap-2">
-              <span
-                className={cn(
-                  "min-w-0 truncate text-[11px]",
-                  unread > 0 ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {previewLine}
-              </span>
-              {unread > 0 ? (
-                <span
-                  aria-label={`${unread} unread`}
-                  className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-primary-foreground"
-                >
-                  {unread > 99 ? "99+" : unread}
-                </span>
-              ) : null}
-            </span>
-          </button>
-          <div ref={menuRef} className="relative flex items-center pr-1.5">
+          ) : null}
+        </span>
+      </button>
+      <div ref={menuRef} className="relative flex items-center pr-1.5">
+        <button
+          type="button"
+          onClick={() => setMenuOpen((p) => !p)}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-label="Chat actions"
+          className="rounded-md p-1 text-muted-foreground opacity-0 hover:bg-input hover:text-foreground group-hover:opacity-100 aria-expanded:opacity-100"
+        >
+          <DotsIcon />
+        </button>
+        {menuOpen ? (
+          <div
+            role="menu"
+            className="neu-panel absolute right-0 top-full z-10 mt-1 min-w-[120px] rounded-md border border-border bg-card py-1 text-xs shadow"
+          >
             <button
               type="button"
-              onClick={() => setMenuOpen((p) => !p)}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              aria-label="Thread actions"
-              className="rounded-md p-1 text-muted-foreground opacity-0 hover:bg-input hover:text-foreground group-hover:opacity-100 aria-expanded:opacity-100"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                onArchive();
+              }}
+              className="block w-full px-3 py-1 text-left text-destructive hover:bg-destructive/10"
             >
-              <DotsIcon />
+              Archive
             </button>
-            {menuOpen ? (
-              <div
-                role="menu"
-                className="neu-panel absolute right-0 top-full z-10 mt-1 min-w-[120px] rounded-md border border-border bg-card py-1 text-xs shadow"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onStartRename();
-                  }}
-                  className="block w-full px-3 py-1 text-left hover:bg-input"
-                >
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onArchive();
-                  }}
-                  className="block w-full px-3 py-1 text-left text-destructive hover:bg-destructive/10"
-                >
-                  Archive
-                </button>
-              </div>
-            ) : null}
           </div>
-        </>
-      )}
+        ) : null}
+      </div>
     </li>
   );
 }
