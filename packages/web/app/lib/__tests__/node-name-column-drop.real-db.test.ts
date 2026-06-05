@@ -86,9 +86,9 @@ beforeAll(async () => {
     [EDGE, DOCO, STATE, INTENT, USER],
   );
   await db.query(
-    `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, props, created_by)
-     VALUES ($1,$2,'attributed_to',$3,'state',$4,'principal',$5::jsonb,$6)`,
-    [EDGE2, DOCO, STATE, PRINCIPAL, JSON.stringify({ role: "performed_by" }), USER],
+    `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, created_by)
+     VALUES ($1,$2,'attributed_to',$3,'state',$4,'principal',$5)`,
+    [EDGE2, DOCO, STATE, PRINCIPAL, USER],
   );
 });
 

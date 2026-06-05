@@ -104,7 +104,6 @@ export async function action({
       edgeType: "attributed_to",
       fromId: result.id,
       toId: authorPrincipalId,
-      props: { role: "owned_by" },
       reason: `Rule ${result.id} authored by Principal ${authorPrincipalId}`,
       metadata: { route: "rules.new" },
     });
@@ -119,7 +118,6 @@ export async function action({
       edgeType: "supports",
       fromId: result.id,
       toId: intentId,
-      props: { role: "serves" },
       reason: `Rule ${result.id} serves Intent ${intentId}`,
       metadata: { route: "rules.new" },
     });

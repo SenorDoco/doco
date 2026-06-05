@@ -63,7 +63,9 @@ interface EdgeDetailRow {
   to_id: string;
   to_node_type: string;
   edge_type: string;
-  props: Record<string, unknown> | null;
+  label: string | null;
+  condition: string | null;
+  kind: string | null;
   lifecycle: string;
   created_at: Date | string | null;
   created_by: string | null;
@@ -119,7 +121,9 @@ export interface EdgeDialogDetail {
   id: string;
   edge_type: string;
   lifecycle: string;
-  props: Record<string, unknown> | null;
+  label: string | null;
+  condition: string | null;
+  kind: string | null;
   created_at: string | null;
   created_by: string | null;
   updated_at: string | null;
@@ -214,7 +218,7 @@ export async function loadEdgeDialogDetail(
   const edge = (
     await c.query<EdgeDetailRow>(
       `SELECT id, from_id, from_node_type, to_id, to_node_type, edge_type,
-              props, lifecycle, created_at, created_by, updated_at, updated_by, retired_at
+              label, condition, kind, lifecycle, created_at, created_by, updated_at, updated_by, retired_at
          FROM edges
         WHERE doco_id = $1 AND id = $2`,
       [meta.docoId, options.id],
@@ -278,7 +282,9 @@ export async function loadEdgeDialogDetail(
     id: edge.id,
     edge_type: edge.edge_type,
     lifecycle,
-    props: edge.props ?? null,
+    label: edge.label ?? null,
+    condition: edge.condition ?? null,
+    kind: edge.kind ?? null,
     created_at: toIso(edge.created_at),
     created_by: edge.created_by,
     updated_at: toIso(edge.updated_at),

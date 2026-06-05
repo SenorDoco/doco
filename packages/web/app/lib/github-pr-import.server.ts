@@ -351,7 +351,6 @@ export async function findBusinessProcessReferenceTargetsForChangedLines(
          LEFT JOIN edges e
            ON e.doco_id = r.doco_id
           AND e.edge_type = 'supports'
-          AND e.props->>'role' = 'implemented_by'
           AND e.to_id = r.id
           AND e.lifecycle <> 'retired'
         WHERE r.doco_id = $1
@@ -382,7 +381,6 @@ export async function hasBusinessProcessCodeReferences(docoId: string): Promise<
          LEFT JOIN edges e
            ON e.doco_id = r.doco_id
           AND e.edge_type = 'supports'
-          AND e.props->>'role' = 'implemented_by'
           AND e.to_id = r.id
           AND e.lifecycle <> 'retired'
         WHERE r.doco_id = $1
@@ -425,7 +423,7 @@ export async function linkPullRequestToWork(
   const result: PrWorkLinkResult = { linked: 0, existing: 0, skipped: 0 };
   for (const nodeId of nodeIds) {
     if (nodeId === opts.prRefId) continue; // no self-edge
-    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId, "implemented_by")) {
+    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId)) {
       result.existing++;
       continue;
     }
@@ -435,7 +433,6 @@ export async function linkPullRequestToWork(
       edgeType: "supports",
       fromId: nodeId,
       toId: opts.prRefId,
-      props: { role: "implemented_by" },
       reason: "Linked from a GitHub pull request trailer (Doco-Implements / Doco-Fixes).",
     });
     if ("ok" in res) result.linked++;
@@ -467,7 +464,7 @@ export async function linkPullRequestToBusinessProcessReferences(
   const nodeIds = [...new Set(await findTargets(opts.docoId, changedRanges))];
   for (const nodeId of nodeIds) {
     if (nodeId === opts.prRefId) continue;
-    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId, "implemented_by")) {
+    if (await exists(opts.docoId, "supports", nodeId, opts.prRefId)) {
       result.existing++;
       continue;
     }
@@ -477,7 +474,6 @@ export async function linkPullRequestToBusinessProcessReferences(
       edgeType: "supports",
       fromId: nodeId,
       toId: opts.prRefId,
-      props: { role: "implemented_by" },
       reason:
         "Linked from a GitHub pull request touching an existing business-process code reference.",
     });

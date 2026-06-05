@@ -52,9 +52,12 @@ function edge(
   from_id: string,
   to_id: string,
   edge_type: string,
-  edge_props_json: Record<string, unknown> | null = null,
+  meta: { label?: string; condition?: string; kind?: string } = {},
 ) {
-  const roleEdgeTypes: Record<string, string> = {
+  // Friendly aliases map to canonical edge types (edge `role` is gone — an
+  // edge's meaning is its type plus its endpoint node types). flows_to BPMN
+  // metadata rides in the typed label/condition/kind columns.
+  const aliasEdgeTypes: Record<string, string> = {
     serves: "supports",
     enacts: "supports",
     tests: "supports",
@@ -67,17 +70,15 @@ function edge(
     reports_to: "has_parent",
     dotted_reports_to: "has_parent",
   };
-  const canonical = roleEdgeTypes[edge_type];
-  if (canonical) {
-    return {
-      id,
-      from_id,
-      to_id,
-      edge_type: canonical,
-      edge_props_json: { ...(edge_props_json ?? {}), role: edge_type },
-    };
-  }
-  return { id, from_id, to_id, edge_type, edge_props_json };
+  return {
+    id,
+    from_id,
+    to_id,
+    edge_type: aliasEdgeTypes[edge_type] ?? edge_type,
+    label: meta.label ?? null,
+    condition: meta.condition ?? null,
+    kind: meta.kind ?? null,
+  };
 }
 
 describe("loadProcessGraph", () => {
@@ -518,7 +519,7 @@ describe("loadProcessGraph", () => {
     const graph = await loadProcessGraph(client, "doco_01", { handle: "activation" });
     const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
 
-    expect(edgeQuery?.sql).toMatch(/props AS edge_props_json/);
+    expect(edgeQuery?.sql).toMatch(/label, condition/);
     expect(graph.links).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

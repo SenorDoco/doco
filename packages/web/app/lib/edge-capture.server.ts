@@ -36,7 +36,10 @@ export interface CaptureEdgeInput {
   edgeType: string;
   fromId: string;
   toId: string;
-  props?: Record<string, unknown> | null;
+  /** flows_to BPMN metadata (typed edge columns). */
+  label?: string | null;
+  condition?: string | null;
+  kind?: string | null;
   lifecycle?: "drafting" | "active";
   reason?: string | null;
   source?: CommitSource;
@@ -166,7 +169,9 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
         fromNodeType: from.type,
         toId: input.toId,
         toNodeType: to.type,
-        props: input.props ?? null,
+        label: input.label ?? null,
+        condition: input.condition ?? null,
+        kind: input.kind ?? null,
         lifecycle: input.lifecycle ?? "active",
         actor: input.actorId,
       });
@@ -205,24 +210,22 @@ export async function getEdgeById(docoId: string, id: string): Promise<EdgeRow |
 
 /**
  * Whether a live (non-retired) edge of `edgeType` already connects from→to in
- * the Doco. Role metadata participates in identity for broad canonical edge
- * families.
+ * the Doco. The live-unique index (doco, from, to, edge_type) is the edge's
+ * identity — two nodes are connected by at most one live edge of each type.
  */
 export async function edgeExists(
   docoId: string,
   edgeType: string,
   fromId: string,
   toId: string,
-  role?: string | null,
 ): Promise<boolean> {
   return withClient(async (c) => {
     const { rows } = await c.query<{ x: number }>(
       `SELECT 1 AS x FROM edges
         WHERE doco_id = $1 AND edge_type = $2 AND from_id = $3 AND to_id = $4
-          AND COALESCE(props->>'role', '') = COALESCE($5, '')
           AND lifecycle <> 'retired'
         LIMIT 1`,
-      [docoId, edgeType, fromId, toId, role ?? null],
+      [docoId, edgeType, fromId, toId],
     );
     return rows.length > 0;
   });

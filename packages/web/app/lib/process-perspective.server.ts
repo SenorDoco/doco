@@ -192,7 +192,8 @@ interface EdgeRow {
   to_id: string;
   edge_type: string;
   lifecycle: string | null;
-  edge_props_json: Record<string, unknown> | null;
+  label: string | null;
+  condition: string | null;
 }
 
 export async function loadProcessGraph(
@@ -318,7 +319,7 @@ export async function loadProcessGraph(
       // would leave revealed retired nodes disconnected. Matches the
       // Graph/List loader, which applies no lifecycle filter to edges.
       `SELECT id, from_id, to_id, edge_type,
-              COALESCE(lifecycle, 'active') AS lifecycle, props AS edge_props_json
+              COALESCE(lifecycle, 'active') AS lifecycle, label, condition
          FROM edges
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -703,9 +704,8 @@ function lifecycleRank(lifecycle: string | null | undefined): number {
   }
 }
 
-function sequenceFlowLabel(props: Record<string, unknown> | null): string | null {
-  if (!props) return null;
-  const raw = props.label ?? props.condition;
+function sequenceFlowLabel(label: string | null, condition: string | null): string | null {
+  const raw = label ?? condition;
   if (typeof raw !== "string") return null;
   const compact = raw.trim().replace(/\s+/g, " ");
   if (!compact) return null;
@@ -721,7 +721,7 @@ function processLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): Overv
     target: row.to_id,
     edge_type: displayType,
     lifecycle: row.lifecycle ?? "active",
-    label: row.edge_type === "flows_to" ? sequenceFlowLabel(row.edge_props_json) : null,
+    label: row.edge_type === "flows_to" ? sequenceFlowLabel(row.label, row.condition) : null,
     href,
   };
 }

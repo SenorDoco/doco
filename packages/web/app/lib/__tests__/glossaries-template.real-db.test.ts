@@ -134,21 +134,11 @@ async function insertEdge(
   toId: string,
   toType: string,
   edgeType: string,
-  props: Record<string, unknown> = {},
 ): Promise<void> {
   await dbm.db.query(
-    `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, props, lifecycle)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'active')`,
-    [
-      `edge_${fromId}_${toId}`,
-      docoId,
-      edgeType,
-      fromId,
-      fromType,
-      toId,
-      toType,
-      JSON.stringify(props),
-    ],
+    `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, lifecycle)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')`,
+    [`edge_${fromId}_${toId}`, docoId, edgeType, fromId, fromType, toId, toType],
   );
 }
 

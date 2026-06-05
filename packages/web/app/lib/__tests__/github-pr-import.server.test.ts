@@ -74,7 +74,6 @@ describe("linkPullRequestToWork", () => {
         edgeType: "supports",
         fromId: "intent_01BX5ZZKBKACTAV9WEVGEMMVRZ",
         toId: "reference_pr",
-        props: { role: "implemented_by" },
       }),
     );
   });
@@ -169,7 +168,6 @@ describe("PR changed-code business-process links", () => {
         edgeType: "supports",
         fromId: "action_01ARZ3NDEKTSV4RRFFQ69G5FAV",
         toId: "reference_pr",
-        props: { role: "implemented_by" },
         reason:
           "Linked from a GitHub pull request touching an existing business-process code reference.",
       }),

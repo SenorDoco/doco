@@ -266,16 +266,17 @@ describe("changesets write gate", () => {
         edgeType: "attributed_to",
         fromId: "action_01A",
         toId: "principal_01B",
-        props: null,
+        label: null,
+        condition: null,
+        kind: null,
       }),
     );
-    // Dedupe is keyed on the role-free edge (no role component).
+    // Dedupe is keyed on the role-free edge (doco, from, to, type).
     expect(mocks.edgeExists).toHaveBeenCalledWith(
       "doco_acme",
       "attributed_to",
       "action_01A",
       "principal_01B",
-      null,
     );
   });
 

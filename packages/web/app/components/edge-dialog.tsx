@@ -145,7 +145,13 @@ export function EdgeDialog({
   onOpenNode,
 }: EdgeDialogProps) {
   const title = detail ? `${detail.from.summary} ${detail.edge_type} ${detail.to.summary}` : "Edge";
-  const propsEntries = detail?.props ? Object.entries(detail.props) : [];
+  const propsEntries: [string, string][] = detail
+    ? ([
+        ["label", detail.label],
+        ["condition", detail.condition],
+        ["kind", detail.kind],
+      ].filter(([, v]) => typeof v === "string" && v !== "") as [string, string][])
+    : [];
   const disabledReason = detail?.lifecycle_options.find(
     (option) => option.disabled && !option.current,
   )?.reason;
