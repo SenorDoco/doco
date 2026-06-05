@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { indexById, reuseStableNodes, sameFlowNode } from "../bpmn-stable-nodes";
+import { indexById, reuseStableNodes, sameFlowNode } from "../process-stable-nodes";
 
 interface TestNode {
   id: string;
@@ -18,7 +18,7 @@ interface TestNode {
 
 function node(overrides: Partial<TestNode> & { id: string }): TestNode {
   return {
-    type: "bpmnRectangle",
+    type: "processRectangle",
     position: { x: 0, y: 0 },
     style: { opacity: 1 },
     data: {},

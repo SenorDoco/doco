@@ -23,7 +23,7 @@ export const EDGE_LABEL_MAX_CH = 16;
  * font, and only the span carries the monospace label font. A `ch` cap on
  * the box would measure against the inherited canvas font and mis-size.
  */
-export function bpmnEdgeLabelStyles(stroke: string): {
+export function processEdgeLabelStyles(stroke: string): {
   labelBoxStyle: CSSProperties;
   labelStyle: CSSProperties;
 } {

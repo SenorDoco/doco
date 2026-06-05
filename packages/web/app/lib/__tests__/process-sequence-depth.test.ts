@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeForwardSequenceDepths } from "../bpmn-sequence-depth";
+import { computeForwardSequenceDepths } from "../process-sequence-depth";
 
 describe("computeForwardSequenceDepths", () => {
   it("places a flows_to target to the right of its incoming source", () => {

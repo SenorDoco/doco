@@ -1,11 +1,11 @@
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BpmnLane, BpmnPool } from "~/lib/bpmn-perspective.server";
-import { BpmnLaneNode, BpmnPoolHeaderNode } from "../bpmn-perspective";
+import type { ProcessLane, ProcessPool } from "~/lib/process-perspective.server";
+import { ProcessLaneNode, ProcessPoolHeaderNode } from "../process-perspective";
 
-// `useBpmnSimplified` reads the live zoom via
-// `useStore((s) => bpmnSimplifiedAtZoom(s.transform[2]))`. Drive that zoom
+// `useProcessSimplified` reads the live zoom via
+// `useStore((s) => processSimplifiedAtZoom(s.transform[2]))`. Drive that zoom
 // by feeding the selector a fake store whose transform carries our test
 // value. A full mock (rather than importActual) keeps the real Handle /
 // edge components out of SSR — they need a ReactFlow provider we don't
@@ -23,14 +23,14 @@ function render(node: ReactElement): string {
   return renderToStaticMarkup(node);
 }
 
-const intentPool: BpmnPool = {
+const intentPool: ProcessPool = {
   id: "pool:intent_1",
   intent_id: "intent_1",
   label: "Post a job",
   lifecycle: "active",
 };
 
-const actorLane: BpmnLane = {
+const actorLane: ProcessLane = {
   id: "pool:intent_1::principal_1",
   pool_id: "pool:intent_1",
   base_id: "principal_1",
@@ -48,7 +48,7 @@ describe("BPMN pool/lane chrome under LOD", () => {
     it("shows the label and type badge at reading zoom", () => {
       flowMock.zoom = 1;
       const html = render(
-        <BpmnPoolHeaderNode data={{ pool: intentPool, width: 800, height: 32 }} />,
+        <ProcessPoolHeaderNode data={{ pool: intentPool, width: 800, height: 32 }} />,
       );
       expect(html).toContain("Post a job");
       expect(html).toContain("Intent");
@@ -57,7 +57,7 @@ describe("BPMN pool/lane chrome under LOD", () => {
     it("drops the label and badges when zoomed out past the LOD threshold", () => {
       flowMock.zoom = 0.3;
       const html = render(
-        <BpmnPoolHeaderNode data={{ pool: intentPool, width: 800, height: 32 }} />,
+        <ProcessPoolHeaderNode data={{ pool: intentPool, width: 800, height: 32 }} />,
       );
       // The pool collapses to a plain tinted band — no label, no
       // type/lifecycle pills — matching how shape nodes simplify.
@@ -70,7 +70,7 @@ describe("BPMN pool/lane chrome under LOD", () => {
     it("shows the lane label and principal badge at reading zoom", () => {
       flowMock.zoom = 1;
       const html = render(
-        <BpmnLaneNode data={{ lane: actorLane, height: 140, width: 800, labelWidth: 140 }} />,
+        <ProcessLaneNode data={{ lane: actorLane, height: 140, width: 800, labelWidth: 140 }} />,
       );
       expect(html).toContain("Hiring Manager");
       expect(html).toContain("Principal");
@@ -79,7 +79,7 @@ describe("BPMN pool/lane chrome under LOD", () => {
     it("drops the lane label and badges when zoomed out past the LOD threshold", () => {
       flowMock.zoom = 0.3;
       const html = render(
-        <BpmnLaneNode data={{ lane: actorLane, height: 140, width: 800, labelWidth: 140 }} />,
+        <ProcessLaneNode data={{ lane: actorLane, height: 140, width: 800, labelWidth: 140 }} />,
       );
       // The lane collapses to a plain tinted band — no label, no
       // principal/lifecycle pills.

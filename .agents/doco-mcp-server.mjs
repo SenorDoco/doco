@@ -411,7 +411,7 @@ const CHANGESET_TOOL = {
       validate_against: {
         type: "string",
         description:
-          "Optional perspective to check structural integrity against (e.g. 'bpmn'); returns an integrity summary alongside the results.",
+          "Optional perspective to check structural integrity against (e.g. 'process'); returns an integrity summary alongside the results.",
       },
     },
     required: ["operations"],

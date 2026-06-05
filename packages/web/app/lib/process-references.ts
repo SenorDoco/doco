@@ -1,5 +1,5 @@
-import type { BpmnLane, BpmnPool } from "./bpmn-perspective.server";
 import type { GraphReferenceItem } from "./graph-references";
+import type { ProcessLane, ProcessPool } from "./process-perspective.server";
 
 /**
  * Leading "#N" references for the BPMN canvas, in top-to-bottom reading
@@ -12,9 +12,9 @@ import type { GraphReferenceItem } from "./graph-references";
  * catch-all lanes (any non-`actor` kind) have no single owning node, so
  * they get no number — same rule the lane numbering already followed.
  */
-export function bpmnPriorityReferences(
-  pools: BpmnPool[],
-  lanes: BpmnLane[],
+export function processPriorityReferences(
+  pools: ProcessPool[],
+  lanes: ProcessLane[],
   docoHandle: string | null | undefined,
 ): GraphReferenceItem[] {
   const items: GraphReferenceItem[] = [];

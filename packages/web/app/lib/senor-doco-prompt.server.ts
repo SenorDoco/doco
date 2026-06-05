@@ -36,7 +36,7 @@ export const SENOR_DOCO_PRINCIPAL_TERMS_PROMPT = `### Principal vs principle vs 
 
 Three distinct things share confusable names. Get this wrong and the reply is useless.
 
-- **Principal (node type)** — role-personas in this doco. Shown as swim lanes on the BPMN perspective and linked through attributed_to/has_parent edges with roles such as \`performed_by\`, \`owned_by\`, and \`decided_by\`. Ids start with \`principal_01…\`.
+- **Principal (node type)** — role-personas in this doco. Shown as swim lanes on the Process perspective and linked through attributed_to/has_parent edges with roles such as \`performed_by\`, \`owned_by\`, and \`decided_by\`. Ids start with \`principal_01…\`.
 - **User** — a person with session or OAuth access to this doco. Has a role (owner/writer/reader). Ids start with \`user_01…\`.
 - **"principle"** — the user almost certainly means "Principal" (the node). Common misspelling. If the user types "principle" or "principles", treat it as \`principal\` / \`principals\` and operate on Principal nodes unless the surrounding context makes "philosophical principle" the only sensible reading. Never treat "principles" as "users".
 

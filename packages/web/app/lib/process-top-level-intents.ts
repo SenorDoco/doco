@@ -11,8 +11,8 @@
 // with `subprocessTargetIntents`, the single source of truth for "what counts
 // as a sub-process."
 
-import type { BpmnNode, BpmnPool } from "./bpmn-perspective.server";
-import { subprocessTargetIntents } from "./bpmn-subprocess";
+import type { ProcessNode, ProcessPool } from "./process-perspective.server";
+import { subprocessTargetIntents } from "./process-subprocess";
 
 /**
  * The Intent pools that are top-level processes — every pool with an Intent
@@ -20,9 +20,9 @@ import { subprocessTargetIntents } from "./bpmn-subprocess";
  * order; the Unassigned pool (`intent_id === null`) is never top-level.
  */
 export function topLevelIntentPools(
-  pools: readonly BpmnPool[],
-  nodes: readonly BpmnNode[],
-): BpmnPool[] {
+  pools: readonly ProcessPool[],
+  nodes: readonly ProcessNode[],
+): ProcessPool[] {
   // Treat every Intent that has a pool as "rendered" so an Action's served
   // Intent demotes it regardless of which pool the focused canvas is showing.
   const intentIds = new Set<string>();

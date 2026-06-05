@@ -135,7 +135,7 @@ describe("selectPerspectiveWindow", () => {
     // perspective once #821 routed them all through this window). These
     // perspectives all render the lifecycle filter, so retired must stay
     // in the window and let the client decide — like the graph spec.
-    for (const key of ["bpmn", "org-tree", "sla", "glossary"] as const) {
+    for (const key of ["process", "org-tree", "sla", "glossary"] as const) {
       const { client, calls } = makeClient({ counts: [], ranked: [] });
       await selectPerspectiveWindow(client, {
         docoId: "doco_1",

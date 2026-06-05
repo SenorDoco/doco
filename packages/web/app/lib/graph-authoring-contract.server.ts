@@ -51,8 +51,8 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
     constraints: [],
     preferred_operations: ["create"],
   },
-  bpmn: {
-    perspective: "bpmn",
+  process: {
+    perspective: "process",
     primary_relation: "flows_to",
     node_types: ["state", "action", "decision"],
     lane_relation: "attributed_to",

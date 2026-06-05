@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { subprocessTargetIntents } from "../bpmn-subprocess";
+import { subprocessTargetIntents } from "../process-subprocess";
 
 const rendered = (...ids: string[]) => new Set(ids);
 

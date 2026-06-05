@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   computeNearestIntentByNode,
-  loadBpmnGraph,
+  loadProcessGraph,
   shapeForEntityType,
-} from "../bpmn-perspective.server";
+} from "../process-perspective.server";
 
 describe("shapeForEntityType", () => {
   it("renders a State as a pill (rounded), distinct from an Action's task glyph", () => {
@@ -15,7 +15,7 @@ describe("shapeForEntityType", () => {
   });
 
   it("does not reserve the pill for Ideas — Ideas are not process content", () => {
-    // Ideas live in their own home (barred by the business-processes
+    // Ideas live in their own home (barred by the process
     // node-type allowlist), so the pill belongs unambiguously to States.
     expect(shapeForEntityType("idea")).not.toBe("rounded");
   });
@@ -80,7 +80,7 @@ function edge(
   return { id, from_id, to_id, edge_type, edge_props_json };
 }
 
-describe("loadBpmnGraph", () => {
+describe("loadProcessGraph", () => {
   it("selects the full prose as the node summary, not just the first line", async () => {
     // Perspectives render the full node name — the loader must not truncate
     // the summary to the first line of prose with split_part().
@@ -91,7 +91,7 @@ describe("loadBpmnGraph", () => {
       edges: [],
     });
 
-    await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
+    await loadProcessGraph(client, "doco_01", { handle: "refunds" });
 
     const nodeQuery = captured.find((q) => /AS summary/i.test(q.sql));
     expect(nodeQuery?.sql).toMatch(/t\.prose AS summary/);
@@ -132,7 +132,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "refunds" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "refunds" });
 
     const principalQuery = captured.find((q) => /node_type = 'principal'/i.test(q.sql));
     // Drafting Principals must load (the lifecycle filter is the client's
@@ -218,7 +218,7 @@ describe("loadBpmnGraph", () => {
       },
     };
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "torre-bpm", window });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "torre-bpm", window });
 
     expect(graph.lanes).toContainEqual(
       expect.objectContaining({ kind: "actor", label: "Talent seeker" }),
@@ -265,7 +265,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "verify" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "verify" });
 
     expect(graph.lanes).toContainEqual(
       expect.objectContaining({
@@ -340,7 +340,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "retired-flow" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "retired-flow" });
 
     const nodeQuery = captured.find(
       (q) => /FROM nodes t/i.test(q.sql) && /node_type IN/i.test(q.sql),
@@ -445,7 +445,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "activation" });
 
     const actorLabels = graph.lanes
       .filter((lane) => lane.pool_id === `pool:${intentId}` && lane.kind === "actor")
@@ -515,7 +515,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "activation" });
     const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
 
     expect(edgeQuery?.sql).toMatch(/props AS edge_props_json/);
@@ -586,7 +586,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "process" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "process" });
 
     expect(graph.links).toContainEqual(
       expect.objectContaining({
@@ -645,7 +645,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "process" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "process" });
 
     const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
     expect(edgeQuery?.sql).toMatch(/lifecycle/i);
@@ -713,7 +713,7 @@ describe("loadBpmnGraph", () => {
       edges: [],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "field-flow" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "field-flow" });
 
     expect(graph.links).toEqual([]);
     expect(graph.nodes.find((node) => node.id === secondId)?.bfs_depth).toBeUndefined();
@@ -775,7 +775,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "activation" });
     const decision = graph.nodes.find((node) => node.id === decisionId);
     const checkout = graph.nodes.find((node) => node.id === checkoutId);
 
@@ -834,7 +834,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", {
+    const graph = await loadProcessGraph(client, "doco_01", {
       handle: "large",
       nodeLimit: 1,
     });
@@ -895,7 +895,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "proc" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "proc" });
 
     // The action still renders; the Reference is gone entirely.
     expect(graph.nodes.map((n) => n.id)).toContain(actionId);
@@ -949,7 +949,7 @@ describe("loadBpmnGraph", () => {
       ],
     });
 
-    const graph = await loadBpmnGraph(client, "doco_01", { handle: "jobs" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "jobs" });
 
     const orphan = graph.nodes.find((n) => n.id === "action_01ORPHAN");
     const connected = graph.nodes.find((n) => n.id === "action_01CONNECTED");

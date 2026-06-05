@@ -304,7 +304,7 @@ type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]> {
   // COALESCE so a NULL lifecycle column behaves as "active" — the rest of
   // the codebase treats NULL that way (search-filters, doco-stats,
-  // full-graph, bpmn-perspective, agent-chat). Without it, a policy
+  // full-graph, process-perspective, agent-chat). Without it, a policy
   // whose lifecycle column is NULL is silently invisible to the enforcer
   // while looking accepted everywhere else.
   const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(

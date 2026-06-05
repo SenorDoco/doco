@@ -1,9 +1,9 @@
-interface BpmnFocusPoolLike {
+interface ProcessFocusPoolLike {
   id: string;
   intent_id: string | null;
 }
 
-interface BpmnFocusNodeLike {
+interface ProcessFocusNodeLike {
   id: string;
   pool_id: string;
 }
@@ -14,8 +14,8 @@ interface FocusDepthLinkLike {
 }
 
 export function linksWithFocusedPoolMembership(
-  pools: readonly BpmnFocusPoolLike[],
-  nodes: readonly BpmnFocusNodeLike[],
+  pools: readonly ProcessFocusPoolLike[],
+  nodes: readonly ProcessFocusNodeLike[],
   links: readonly FocusDepthLinkLike[],
   centerId: string | null | undefined,
 ): FocusDepthLinkLike[] {

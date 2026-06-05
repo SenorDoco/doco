@@ -75,7 +75,7 @@ export async function capturePrincipal(
   if (!name) return { error: "name is required.", status: 400 };
 
   // Resolve lifecycle: explicit value wins, then the Doco's template default,
-  // then `active`. EXCEPTION — business-processes lane actors must be
+  // then `active`. EXCEPTION — process lane actors must be
   // resolvable the moment they're created (active flow policies only accept
   // non-retired/active principals), so they ignore a `drafting` template
   // default. (Unchanged from the original route logic.)
@@ -93,7 +93,7 @@ export async function capturePrincipal(
     const templateHandle =
       typeof doco?.data?.template_handle === "string" ? doco.data.template_handle : null;
     const dflt = doco?.default_node_lifecycle;
-    if (templateHandle !== "business-processes" && dflt && VALID_PRINCIPAL_LIFECYCLES.has(dflt)) {
+    if (templateHandle !== "process" && dflt && VALID_PRINCIPAL_LIFECYCLES.has(dflt)) {
       lifecycle = dflt;
     }
   }
