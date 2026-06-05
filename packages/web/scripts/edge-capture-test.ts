@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     edgeType: "supports",
     fromId: decisionId,
     toId: refId,
-    props: { role: "implemented_by", note: "ships in PR #634" },
+    label: "ships in PR #634",
     reason: "link decision to the PR that ships it",
   });
   check("captureEdge succeeds", "ok" in created && created.ok === true);
@@ -79,7 +79,6 @@ async function main(): Promise<void> {
     edgeType: "supports",
     fromId: decisionId,
     toId: refId,
-    props: { role: "implemented_by" },
   });
   check("duplicate live edge rejected (409)", "error" in dup && dup.status === 409);
 
@@ -138,7 +137,6 @@ async function main(): Promise<void> {
     edgeType: "supports",
     fromId: decisionId,
     toId: refId,
-    props: { role: "implemented_by" },
   });
   check("recreate after retire succeeds", "ok" in recreated && recreated.ok === true);
 

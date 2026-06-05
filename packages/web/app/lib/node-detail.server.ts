@@ -255,7 +255,8 @@ interface DialogOutgoingEdgeRow {
   to_id: string;
   to_node_type: string;
   edge_type: string;
-  edge_props_json?: Record<string, unknown> | null;
+  label?: string | null;
+  condition?: string | null;
 }
 
 interface DialogIncomingEdgeRow {
@@ -264,7 +265,8 @@ interface DialogIncomingEdgeRow {
   from_id: string;
   from_node_type: string;
   edge_type: string;
-  edge_props_json?: Record<string, unknown> | null;
+  label?: string | null;
+  condition?: string | null;
 }
 
 function relatedDetailsSql(): string {
@@ -430,9 +432,11 @@ async function loadNodeAuthoringRows(
   ).rows;
 }
 
-function sequenceFlowLabel(props: Record<string, unknown> | null | undefined): string | null {
-  if (!props) return null;
-  const raw = props.label ?? props.condition;
+function sequenceFlowLabel(
+  label: string | null | undefined,
+  condition: string | null | undefined,
+): string | null {
+  const raw = label ?? condition;
   if (typeof raw !== "string") return null;
   const compact = raw.trim().replace(/\s+/g, " ");
   if (!compact) return null;
@@ -539,7 +543,7 @@ export async function loadNodeDialogDetail(
   const outgoingRows = (
     await c.query<DialogOutgoingEdgeRow>(
       `SELECT id AS edge_id, COALESCE(lifecycle, 'active') AS edge_lifecycle,
-              to_id, to_node_type, edge_type, props AS edge_props_json
+              to_id, to_node_type, edge_type, label, condition
          FROM edges
         WHERE doco_id = $1 AND from_id = $2
         ORDER BY edge_type, to_id`,
@@ -549,7 +553,7 @@ export async function loadNodeDialogDetail(
   const incomingRows = (
     await c.query<DialogIncomingEdgeRow>(
       `SELECT id AS edge_id, COALESCE(lifecycle, 'active') AS edge_lifecycle,
-              from_id, from_node_type, edge_type, props AS edge_props_json
+              from_id, from_node_type, edge_type, label, condition
          FROM edges
         WHERE doco_id = $1 AND to_id = $2
         ORDER BY edge_type, from_id`,
@@ -573,7 +577,7 @@ export async function loadNodeDialogDetail(
     return {
       edge_id: edge.edge_id,
       edge_type: edge.edge_type,
-      edge_label: sequenceFlowLabel(edge.edge_props_json),
+      edge_label: sequenceFlowLabel(edge.label, edge.condition),
       edge_lifecycle: edge.edge_lifecycle ?? "active",
       edge_href: `/${options.handle}/edges/${edge.edge_id}`,
       other_id: edge.to_id,
@@ -590,7 +594,7 @@ export async function loadNodeDialogDetail(
     return {
       edge_id: edge.edge_id,
       edge_type: edge.edge_type,
-      edge_label: sequenceFlowLabel(edge.edge_props_json),
+      edge_label: sequenceFlowLabel(edge.label, edge.condition),
       edge_lifecycle: edge.edge_lifecycle ?? "active",
       edge_href: `/${options.handle}/edges/${edge.edge_id}`,
       other_id: edge.from_id,

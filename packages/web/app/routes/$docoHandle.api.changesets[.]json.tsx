@@ -645,8 +645,8 @@ async function relateMany(
       };
     }
 
-    const props = relationProps(spec, relation);
-    const captured = await captureRelationEdge(ctx, spec, from, to, props);
+    const meta = relationMetadata(spec, relation);
+    const captured = await captureRelationEdge(ctx, spec, from, to, meta);
     if ("error" in captured) {
       return {
         op_index: index,
@@ -703,8 +703,8 @@ async function relateNodes(
       error: `Could not resolve relation endpoints from="${op.from}" to="${op.to}".`,
     };
   }
-  const props = relationProps(spec, op);
-  const captured = await captureRelationEdge(ctx, spec, from, to, props);
+  const meta = relationMetadata(spec, op);
+  const captured = await captureRelationEdge(ctx, spec, from, to, meta);
   if ("error" in captured) {
     return {
       op_index: index,
@@ -733,14 +733,13 @@ async function captureRelationEdge(
   spec: RelationKindSpec,
   from: string,
   to: string,
-  props: Record<string, unknown>,
+  meta: { label: string | null; condition: string | null; kind: string | null },
 ): Promise<
   { ok: true; id?: string; skipped?: boolean; footer_lines: string[] } | { error: string }
 > {
   const edgeFrom = spec.owner === "from" ? from : to;
   const edgeTo = spec.value === "from" ? from : to;
-  const role = typeof props.role === "string" ? props.role : null;
-  if (await edgeExists(ctx.docoId, spec.kind, edgeFrom, edgeTo, role)) {
+  if (await edgeExists(ctx.docoId, spec.kind, edgeFrom, edgeTo)) {
     return { ok: true, skipped: true, footer_lines: [] };
   }
   const result = await captureEdge({
@@ -749,7 +748,9 @@ async function captureRelationEdge(
     edgeType: spec.kind,
     fromId: edgeFrom,
     toId: edgeTo,
-    props: Object.keys(props).length > 0 ? props : null,
+    label: meta.label,
+    condition: meta.condition,
+    kind: meta.kind,
     reason: `create ${spec.kind} relation`,
     ...(ctx.authoring.source ? { source: ctx.authoring.source } : {}),
     ...(ctx.authoring.metadata ? { metadata: ctx.authoring.metadata } : {}),
@@ -813,20 +814,23 @@ function cleanAlias(alias: string): string {
   return alias.trim().replace(/^\$/, "");
 }
 
-function relationProps(
+function relationMetadata(
   spec: RelationKindSpec,
   op: Pick<RelateOperation, "label" | "condition" | "relation_props">,
-): Record<string, unknown> {
-  const props: Record<string, unknown> = {};
+): { label: string | null; condition: string | null; kind: string | null } {
   const allowed = new Set(spec.acceptsProps ?? []);
-  if (op.relation_props && typeof op.relation_props === "object") {
-    for (const [key, value] of Object.entries(op.relation_props)) {
-      if (allowed.has(key)) props[key] = value;
-    }
-  }
-  if (op.label && allowed.has("label")) props.label = op.label;
-  if (op.condition && allowed.has("condition")) props.condition = op.condition;
-  return props;
+  const bag =
+    op.relation_props && typeof op.relation_props === "object"
+      ? (op.relation_props as Record<string, unknown>)
+      : {};
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+  const field = (key: string, explicit?: unknown): string | null =>
+    allowed.has(key) ? (str(explicit) ?? str(bag[key])) : null;
+  return {
+    label: field("label", op.label),
+    condition: field("condition", op.condition),
+    kind: field("kind"),
+  };
 }
 
 function normalizeEntityType(value: unknown): string | null {

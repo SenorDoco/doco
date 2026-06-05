@@ -220,14 +220,8 @@ function node(
 // 4th arg is kept only as in-test documentation of what the edge MEANS (e.g.
 // "serves", "performed_by") — it is NOT written into the edge, so no role leaks
 // back into the data the evaluator sees.
-function edge(
-  from: string,
-  to: string,
-  edge_type: string,
-  _meaning: string,
-  props: Record<string, unknown> = {},
-): EngineEdge {
-  return { from_id: from, to_id: to, edge_type, edge_props_json: { ...props } };
+function edge(from: string, to: string, edge_type: string, _meaning: string): EngineEdge {
+  return { from_id: from, to_id: to, edge_type };
 }
 
 interface ScenarioSpec {
@@ -302,16 +296,12 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
   const chain = [initial, ...actions, gateway];
   for (let i = 0; i < chain.length - 1; i++)
     edges.push(edge(chain[i].id, chain[i + 1].id, "flows_to", ""));
-  for (const t of terminals)
-    edges.push(edge(gateway.id, t.id, "flows_to", "", { condition: t.state }));
+  for (const t of terminals) edges.push(edge(gateway.id, t.id, "flows_to", ""));
   // A gateway must branch (≥2 outgoing `flows_to`). When the happy path ends
   // at a single terminal, wire the alternative as an explicit rework loop back
   // to the first Action — a BPMN-valid retry path the template allows, and it
   // gives the gateway its second branch.
-  if (terminals.length < 2)
-    edges.push(
-      edge(gateway.id, actions[0].id, "flows_to", "", { condition: "rework", kind: "exception" }),
-    );
+  if (terminals.length < 2) edges.push(edge(gateway.id, actions[0].id, "flows_to", ""));
 
   const nodes = [intent, ...principals, ...actions, gateway, ...states, evalNode];
   return {
@@ -1202,8 +1192,8 @@ describe("process template — flow-wiring end-to-end via runAuthoringPolicies",
   ): Promise<void> {
     edgeSeq += 1;
     await dbm.db.query(
-      "INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, props, lifecycle) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active')",
-      [`edge_e2eflow-${edgeSeq}`, docoId, edgeType, from, fromType, to, toType, JSON.stringify({})],
+      "INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, lifecycle) VALUES ($1,$2,$3,$4,$5,$6,$7,'active')",
+      [`edge_e2eflow-${edgeSeq}`, docoId, edgeType, from, fromType, to, toType],
     );
   }
 

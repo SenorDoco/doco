@@ -125,10 +125,17 @@ const RELATE_TOOL = {
       },
       from_id: { type: "string", description: "Source node id." },
       to_id: { type: "string", description: "Target node id." },
-      props: {
-        type: "object",
-        description: "Optional edge props (e.g. a flows_to label or condition).",
-        additionalProperties: true,
+      label: {
+        type: "string",
+        description: "Optional flows_to branch label (BPMN sequence-flow label).",
+      },
+      condition: {
+        type: "string",
+        description: "Optional flows_to gateway condition.",
+      },
+      kind: {
+        type: "string",
+        description: 'Optional flows_to kind, e.g. "exception" or "timer".',
       },
     },
     required: ["doco", "edge_type", "from_id", "to_id"],
@@ -431,7 +438,9 @@ async function runDocoRelate(
     return toolError("doco_relate requires `doco`, `edge_type`, `from_id`, and `to_id`.");
   }
   const payload: Record<string, unknown> = { edge_type: edgeType, from_id: fromId, to_id: toId };
-  if (args.props && typeof args.props === "object") payload.props = args.props;
+  for (const k of ["label", "condition", "kind"] as const) {
+    if (typeof args[k] === "string") payload[k] = args[k];
+  }
   const origin = new URL(request.url).origin;
   const url = `${origin}/${encodeURIComponent(doco)}/api/edges.json`;
   const req = new Request(url, {

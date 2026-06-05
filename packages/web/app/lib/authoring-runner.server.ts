@@ -369,9 +369,8 @@ async function loadEdges(c: PgClient, docoId: string): Promise<EngineEdge[]> {
     from_id: string;
     to_id: string;
     edge_type: string;
-    edge_props_json: Record<string, unknown> | null;
   }>(
-    "SELECT from_id, to_id, edge_type, props AS edge_props_json FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'",
+    "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'",
     [docoId],
   );
   return r.rows;

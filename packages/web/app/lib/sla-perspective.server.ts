@@ -60,7 +60,6 @@ interface EdgeRow {
   from_id: string;
   to_id: string;
   edge_type: string;
-  props?: Record<string, unknown> | null;
 }
 
 interface SlaLoadOptions {
@@ -340,7 +339,7 @@ export async function loadSlaPerspectiveData(
       ? []
       : (
           await c.query<EdgeRow>(
-            `SELECT from_id, to_id, edge_type, props
+            `SELECT from_id, to_id, edge_type
                FROM edges
               WHERE doco_id = $1
                 AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))`,

@@ -69,7 +69,6 @@ interface OrgTreeRow {
 interface OrgTreeEdgeRow {
   from_id: string;
   to_id: string;
-  props: Record<string, unknown> | null;
 }
 
 interface OrgTreeLoadOptions {
@@ -205,7 +204,7 @@ export async function loadOrgTreeData(
       ? []
       : (
           await c.query<OrgTreeEdgeRow>(
-            `SELECT from_id, to_id, props
+            `SELECT from_id, to_id
                FROM edges
               WHERE doco_id = $1
                 AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))

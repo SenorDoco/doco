@@ -38,7 +38,7 @@ export async function loader({ request, params }: { request: Request; params: Pa
   const rows = await withClient((c) =>
     c.query(
       `SELECT id, edge_type, from_id, from_node_type, to_id, to_node_type,
-              props, lifecycle, created_at, created_by, updated_at, updated_by, retired_at
+              label, condition, kind, lifecycle, created_at, created_by, updated_at, updated_by, retired_at
          FROM edges
         WHERE ${conditions.join(" AND ")}
         ORDER BY created_at DESC
@@ -95,7 +95,9 @@ export async function action({ request, params }: { request: Request; params: Pa
     edgeType,
     fromId,
     toId,
-    props: (body.props as Record<string, unknown> | undefined) ?? null,
+    label: typeof body.label === "string" ? body.label : null,
+    condition: typeof body.condition === "string" ? body.condition : null,
+    kind: typeof body.kind === "string" ? body.kind : null,
     lifecycle: body.lifecycle === "drafting" ? "drafting" : "active",
     reason: typeof body.reason === "string" ? body.reason : null,
     ...(await authoringContextForRequest(request)),
