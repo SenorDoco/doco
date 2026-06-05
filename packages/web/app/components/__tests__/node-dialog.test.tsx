@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import type { NodeDialogDetail, NodeDialogEdge } from "~/lib/node-detail.server";
-import { NodeDialog, isRetiredEdgeRow } from "../node-dialog";
+import { EdgeList, NodeDialog, isRetiredEdgeRow } from "../node-dialog";
 
 /** Strip HTML tags to recover the visible text content. */
 function text(html: string): string {
@@ -131,5 +131,49 @@ describe("NodeDialog retired edges and nodes", () => {
       }),
     );
     expect(text(html)).not.toContain("Show retired edges and nodes");
+  });
+});
+
+function renderEdgeList(edges: NodeDialogEdge[]): string {
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <EdgeList
+        label="Outgoing"
+        direction="outgoing"
+        currentNodeId="decision_01"
+        edges={edges}
+        onOpenNode={() => {}}
+        onOpenEdge={() => {}}
+      />
+    </MemoryRouter>,
+  );
+}
+
+describe("EdgeList retired-edge strikethrough", () => {
+  it("strikes through the edge type when the edge itself is retired", () => {
+    const html = renderEdgeList([
+      edge({ edge_id: "e_dead", edge_type: "flows_to", edge_lifecycle: "retired" }),
+    ]);
+    // The span carrying the edge type must wear the line-through class.
+    expect(html).toMatch(/class="[^"]*line-through[^"]*"[^>]*>flows_to/);
+  });
+
+  it("strikes through the edge label too when the edge is retired", () => {
+    const html = renderEdgeList([
+      edge({
+        edge_id: "e_dead",
+        edge_type: "flows_to",
+        edge_label: "on approval",
+        edge_lifecycle: "retired",
+      }),
+    ]);
+    expect(html).toMatch(/class="[^"]*line-through[^"]*"[^>]*>on approval/);
+  });
+
+  it("does not strike through the edge type of a live edge", () => {
+    const html = renderEdgeList([
+      edge({ edge_id: "e_live", edge_type: "flows_to", edge_lifecycle: "active" }),
+    ]);
+    expect(html).not.toMatch(/class="[^"]*line-through[^"]*"[^>]*>flows_to/);
   });
 });

@@ -355,11 +355,14 @@ export async function loader({
         pullRequestLifecycles,
       });
 
-    // Policy count — guidance + node-authoring policies
-    // attached to this Doco.
+    // Active policy count — guidance + node-authoring policies attached to this
+    // Doco. Retired policies are excluded so the button reflects what's actually
+    // in force (matching the Active section on the policies page).
     const policyRow = (
       await c.query<{ n: string }>(
-        "SELECT (SELECT COUNT(*) FROM policies WHERE doco_id = $1)::text AS n",
+        `SELECT (SELECT COUNT(*) FROM policies
+                  WHERE doco_id = $1
+                    AND COALESCE(lifecycle, 'active') = 'active')::text AS n`,
         [ctx.meta.docoId],
       )
     ).rows[0];

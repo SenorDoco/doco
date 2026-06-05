@@ -10,7 +10,7 @@
 >
 > **What actually shipped (the source of truth):** a PR becomes a `reference`
 > node — `ref_type: "url"`, `locator` = the PR URL (the idempotency key),
-> prose = title + body — with lifecycle `open → drafting`,
+> prose = the PR title (the body lives in `attributes.body_md`) — with lifecycle `open → drafting`,
 > `merged → asserted/succeeded`, `closed-unmerged → retired`, linked to the work
 > it implements via the existing `implemented_by` edge. The importer is
 > idempotent on the PR URL (re-sync upserts, never duplicates). See

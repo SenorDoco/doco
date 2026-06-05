@@ -57,7 +57,6 @@ describe("loadSlaPerspectiveData", () => {
           reference: "Customer contract clause 4.2",
           ref_type: "document",
           locator: "https://example.test/contract",
-          title: "Contract clause 4.2",
           lifecycle: "active",
           created_at: "2026-05-26T00:02:00.000Z",
           data: {},
@@ -124,7 +123,7 @@ describe("loadSlaPerspectiveData", () => {
     expect(c?.target).toBe("99.9%");
     expect(c?.measurementWindow).toBe("monthly UTC");
     expect(c?.evals.map((e) => e.label)).toEqual(["monthly checkout availability calculation"]);
-    expect(c?.sourceRefs.map((r) => r.label)).toEqual(["Contract clause 4.2"]);
+    expect(c?.sourceRefs.map((r) => r.label)).toEqual(["Customer contract clause 4.2"]);
     expect(c?.responseActions.map((a) => a.label)).toEqual([
       "Notify customer and open service-credit review",
     ]);

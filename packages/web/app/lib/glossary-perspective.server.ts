@@ -1,15 +1,15 @@
 // Glossary perspective — server-side data access.
 //
-// A glossary's "term entries" can be modeled with more than one node
-// type. The glossaries template treats a **Decision** as the canonical
-// term (`chosen` = headword, `question` = concept, prose = definition,
-// `alternatives` = aliases), but real glossaries also define terms as
-// **References** (title = headword, prose/citation = definition), and
-// the template additionally allows Rules (terminology usage), Evals
-// (consistency checks), and an Intent (scope). So this loader reads
-// every non-policy content node and reshapes it into a dictionary
-// entry, rather than only Decisions — otherwise a glossary built from
-// References renders as a blank page.
+// The glossaries template models each **term entry as a Reference**: the
+// prose (`reference`) is the *word being defined* — the headword — and the
+// definition lives in the `definition` attribute, off the prose, so the
+// node's name stays the bare term. The template also allows Rules
+// (terminology usage) and Evals (consistency checks), and a glossary can
+// hold cited-source References (the `derived_from` targets). So this loader
+// reads every non-policy content node and reshapes it into a dictionary
+// entry. It still understands legacy **Decision**-based entries (term in the
+// prose's first line, definition in the body) so older glossaries keep
+// rendering, plus stray Intents (scope) — anything but a blank page.
 //
 // It reads the same nodes the List perspective shows; only the
 // presentation differs, so there is no new write surface here.
@@ -34,7 +34,6 @@ interface NodeRow {
   ref_type: string | null;
   locator: string | null;
   citation: string | null;
-  title: string | null;
   /** Scalar-subquery total glossary entries (bigint → string from pg). */
   total_count?: number | string | null;
 }
@@ -248,11 +247,13 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
     alternatives = parseAlternatives(data.alternatives);
     tag = fauxPartOfSpeech(headword);
   } else if (row.entity_type === "reference") {
-    // A Reference used as a glossary entry: title is the term, the prose
-    // body is the definition, and locator/citation is the source line.
-    headword = row.title ?? row.label ?? "(untitled reference)";
-    const body = row.title ? (row.prose ?? "") : stripHeadwordPrefix(row.prose ?? "", headword);
-    definitionProse = body;
+    // A Reference used as a glossary term entry: the prose is the word being
+    // defined (the headword), and the definition lives in the `definition`
+    // attribute — off the prose, so the node name stays the bare term. A
+    // cited-source Reference (a `derived_from` target) instead carries its
+    // source line in citation/locator and has no `definition`.
+    headword = row.label ?? "(untitled reference)";
+    definitionProse = asString(data.definition) ?? "";
     source = row.citation ?? row.locator ?? null;
     tag = row.ref_type ? row.ref_type.toLowerCase() : "ref.";
     alternatives = parseAlternatives(data.alternatives);
@@ -297,10 +298,10 @@ export async function loadGlossaryPerspectiveData(
   // carry the promoted scalar columns.
   // Post-collapse: one `nodes` query over the five glossary node types
   // (decision, reference, rule, eval, intent). Each row's `prose` is the
-  // shared prose column; `label` is its first line, except a Reference
-  // with a non-empty `title` headwords on the title. The promoted
-  // reference scalars (ref_type/locator/citation/title) are NULL for the
-  // other four types, exactly as the per-table legs projected.
+  // shared prose column and `label` is its first line — the headword, for
+  // every type including References (a term entry's prose is the word being
+  // defined). The promoted reference scalars (ref_type/locator/citation) are
+  // NULL for the other four types, exactly as the per-table legs projected.
   //
   // Every lifecycle loads, including retired. Hiding a lifecycle is the
   // client's job: GlossaryPerspective applies the page-level lifecycle filter
@@ -312,14 +313,13 @@ export async function loadGlossaryPerspectiveData(
     `
     SELECT id,
            node_type AS entity_type,
-           split_part(COALESCE(NULLIF(attributes->>'title', ''), prose), E'\n', 1) AS label,
+           split_part(prose, E'\n', 1) AS label,
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,
            attributes AS data,
            attributes->>'ref_type' AS ref_type,
            attributes->>'locator' AS locator,
            attributes->>'citation' AS citation,
-           attributes->>'title' AS title,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1
                AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')) AS total_count
