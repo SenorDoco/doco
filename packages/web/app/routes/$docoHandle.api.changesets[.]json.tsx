@@ -113,6 +113,7 @@ interface ChangesetContext {
   ownerSlug: string;
   docoSlug: string;
   docoHost: string;
+  handle: string;
   actorId: string | null;
   authoring: AuthoringWriteContext;
   me: MeLike;
@@ -213,6 +214,7 @@ export async function action({
     ownerSlug,
     docoSlug,
     docoHost: new URL(request.url).origin,
+    handle: params.docoHandle,
     actorId: me.id,
     authoring: await authoringContextForRequest(request),
     me: { id: me.id, username: me.username },
@@ -752,6 +754,8 @@ async function captureRelationEdge(
     condition: meta.condition,
     kind: meta.kind,
     reason: `create ${spec.kind} relation`,
+    docoHost: ctx.docoHost,
+    handle: ctx.handle,
     ...(ctx.authoring.source ? { source: ctx.authoring.source } : {}),
     ...(ctx.authoring.metadata ? { metadata: ctx.authoring.metadata } : {}),
   });
