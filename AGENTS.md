@@ -1,5 +1,24 @@
 # Project workflow
 
+## Simplify relentlessly — a longer path to a simpler system is the right path
+
+The goal of every change is to leave the system simpler than you found it:
+fewer concepts, one name per thing, one shape per entity, one path through the
+code, and no backward-compatibility shims kept alive "just in case." When you
+face a choice between a quick local patch that adds a special case and a deeper
+change that removes the underlying complexity, choose the deeper change — even
+when it touches many files, needs a migration, or rewrites a whole subsystem.
+It does not matter that simplification takes longer; that time is well spent,
+because what you leave behind is what every future human and agent has to hold
+in their head. Prefer deleting code to adding it, and measure success by how
+much complexity the codebase shed — not by how fast the task closed. And once
+you commit to a simplification, see it through to the end: do not stop partway
+because the work is long or tedious, and never settle for a half-applied change
+that leaves two shapes where there should be one — that is worse than where you
+started.
+
+---
+
 ## Land every task in `main` — don't leave it on a feature branch
 
 When you finish a task that introduces commits, ship it to `main`
