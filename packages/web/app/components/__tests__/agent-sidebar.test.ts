@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import {
-  DocoTag,
+  DocoChatRef,
   SenorDocoExplainer,
   chatBubbleBlocks,
   docoHandleFromPath,
@@ -92,21 +92,36 @@ describe("docoHandleFromPath", () => {
   });
 });
 
-describe("DocoTag", () => {
-  function html(props: { handle: string; ownerSlug?: string | null }) {
-    return renderToStaticMarkup(createElement(MemoryRouter, null, createElement(DocoTag, props)));
+describe("DocoChatRef", () => {
+  function html(props: { workspaceHandle?: string | null; docoHandle: string; asLink?: boolean }) {
+    return renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(DocoChatRef, props)),
+    );
   }
 
-  it("shows the Doco name and links to the Doco", () => {
-    const out = html({ handle: "billing", ownerSlug: "acme" });
+  it("renders the non-editable 'workspace / doco' reference", () => {
+    const out = html({ workspaceHandle: "acme", docoHandle: "billing" });
+    expect(out).toContain("acme");
     expect(out).toContain("billing");
-    const anchor = out.match(/<a [^>]*>/)?.[0] ?? "";
-    expect(anchor).toContain('href="/billing"');
+    expect(out).toContain("acme / billing");
   });
 
-  it("qualifies the title with owner/handle when an owner slug is present", () => {
-    const out = html({ handle: "billing", ownerSlug: "acme" });
-    expect(out).toContain("acme/billing");
+  it("renders plain text (no links) by default — the inbox row handles clicks", () => {
+    const out = html({ workspaceHandle: "acme", docoHandle: "billing" });
+    expect(out).not.toContain("<a ");
+  });
+
+  it("links each segment to its page when asLink (the chat header)", () => {
+    const out = html({ workspaceHandle: "acme", docoHandle: "billing", asLink: true });
+    const anchors = out.match(/<a [^>]*>/g) ?? [];
+    expect(anchors.join(" ")).toContain('href="/workspaces/acme"');
+    expect(anchors.join(" ")).toContain('href="/billing"');
+  });
+
+  it("falls back to just the Doco when there's no workspace", () => {
+    const out = html({ workspaceHandle: null, docoHandle: "billing" });
+    expect(out).toContain("billing");
+    expect(out).not.toContain(" / ");
   });
 });
 
