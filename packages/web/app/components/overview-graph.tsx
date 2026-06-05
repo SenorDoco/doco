@@ -6,7 +6,7 @@ import { isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/node-badges";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
-import { CurvedBezierEdge } from "~/components/stable-labeled-edge";
+import { CurvedBezierEdge, clickableEdgeClassName } from "~/components/stable-labeled-edge";
 import {
   highestRankedNodeId,
   selectMeasuredPersonalizedNodeIds,
@@ -240,7 +240,7 @@ export const OverviewReferenceBadge = memo(function OverviewReferenceBadge({
   return <ReferenceNumberBadge referenceNumber={referenceNumber} referenceLabel={label} />;
 });
 
-function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
+export function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
   const title = overviewNodeDisplayLabel(data.node, detail);
@@ -249,7 +249,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
 
   return (
     <div
-      className="doco-graph-fade relative h-full w-full overflow-visible"
+      className="doco-graph-fade relative h-full w-full cursor-pointer overflow-visible"
       style={{ opacity: data.opacity }}
     >
       <Handle
@@ -832,7 +832,7 @@ export function OverviewGraph({
         source: link.source,
         target: link.target,
         type: "curvedBezier",
-        className: "doco-graph-fade-edge",
+        className: clickableEdgeClassName(clickable, "doco-graph-fade-edge"),
         selectable: false,
         focusable: false,
         interactionWidth: clickable ? 18 : 0,
@@ -841,7 +841,6 @@ export function OverviewGraph({
           stroke: lifecycleColor(sourceLifecycle),
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 4) : baseStrokeWidth,
           strokeOpacity: isFocused ? 0.95 : edgeOpacity * transitionOpacity,
-          cursor: clickable ? "pointer" : undefined,
         },
       };
     });
