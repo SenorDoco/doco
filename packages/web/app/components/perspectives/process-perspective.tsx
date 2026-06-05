@@ -41,7 +41,7 @@ import {
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
-import { processEdgeLabelStyles } from "~/lib/process-edge-label-style";
+import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
 import { packProcessLaneColumns, processLaneColumnKey } from "~/lib/process-lane-packing";
@@ -1814,11 +1814,10 @@ export function layOutProcess(
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
-      const label = link.label?.trim() || "";
       const edgeData: Record<string, unknown> = {};
-      if (label) {
+      {
         const { labelBoxStyle, labelStyle } = processEdgeLabelStyles(stroke);
-        edgeData.label = label;
+        edgeData.label = processEdgeLabelText(link.label, link.edge_type);
         edgeData.labelOpacity = edgeOpacity;
         edgeData.labelZIndex = 1;
         edgeData.labelBoxStyle = labelBoxStyle;
