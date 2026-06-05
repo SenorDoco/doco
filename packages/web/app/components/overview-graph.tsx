@@ -6,7 +6,7 @@ import { isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/node-badges";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
-import { CurvedBezierEdge, clickableEdgeClassName } from "~/components/stable-labeled-edge";
+import { StableLabeledBezierEdge, clickableEdgeClassName } from "~/components/stable-labeled-edge";
 import {
   highestRankedNodeId,
   selectMeasuredPersonalizedNodeIds,
@@ -827,11 +827,28 @@ export function OverviewGraph({
       const isFocused = Boolean(focusedEdgeId && link.id === focusedEdgeId);
       const clickable = Boolean(link.id && (link.href || onEdgeClick));
       const baseStrokeWidth = focalEdgeWidth(link.source, link.target, focusCenterId, 1);
+      const labelOpacity = edgeOpacity * transitionOpacity;
       return {
         id,
         source: link.source,
         target: link.target,
-        type: "curvedBezier",
+        type: "stableLabeledBezier",
+        data: {
+          label: link.edge_type,
+          labelOpacity,
+          labelStyle: {
+            fontSize: 9,
+            color: "#737373",
+            fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
+            fontWeight: 500,
+            pointerEvents: "none" as const,
+          },
+          labelBoxStyle: {
+            background: "#f5f5f5",
+            borderRadius: 4,
+            padding: "2px 4px",
+          },
+        },
         className: clickableEdgeClassName(clickable, "doco-graph-fade-edge"),
         selectable: false,
         focusable: false,
@@ -863,7 +880,10 @@ export function OverviewGraph({
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode, edgeStub: EdgeStubNode }), []);
   const edgeTypes = useMemo(
-    () => ({ fadingPlaceholder: FadingPlaceholderEdge, curvedBezier: CurvedBezierEdge }),
+    () => ({
+      fadingPlaceholder: FadingPlaceholderEdge,
+      stableLabeledBezier: StableLabeledBezierEdge,
+    }),
     [],
   );
   const initialFocusFlowNodeId = useMemo(() => {
