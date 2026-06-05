@@ -48,4 +48,12 @@ describe("BPMN process list (home view)", () => {
     // ...but the list is still named for assistive tech.
     expect(html).toContain('aria-label="Processes"');
   });
+
+  it("hovers a row with the theme accent (primary), not the one-off teal accent token", () => {
+    const html = render(<ProcessProcessList pools={[draftingPool]} onSelect={() => {}} />);
+    // `bg-accent` is the lone teal/green hover in the app and reads as an
+    // arbitrary color; the brand accent everywhere else is `primary`.
+    expect(html).not.toContain("hover:bg-accent");
+    expect(html).toContain("hover:bg-primary");
+  });
 });
