@@ -130,8 +130,8 @@ export function pullRequestToReferenceDraft(
 /**
  * Find an existing, in-scope Reference in this Doco whose `locator` equals the
  * PR URL — the dedupe key for idempotent import. Returns the oldest match's id
- * (or null). Keyed on `attributes->>'locator'`, kept an indexed lookup by the
- * partial expression index `nodes_ref_locator_idx`.
+ * (or null). Keyed on the promoted `locator` column, kept an indexed lookup by
+ * the partial index `nodes_ref_locator_idx`.
  */
 export async function findReferenceIdByLocator(
   docoId: string,
@@ -140,7 +140,7 @@ export async function findReferenceIdByLocator(
   return withClient(async (c) => {
     const r = await c.query<{ id: string }>(
       `SELECT id FROM nodes
-        WHERE doco_id = $1 AND node_type = 'reference' AND attributes->>'locator' = $2
+        WHERE doco_id = $1 AND node_type = 'reference' AND locator = $2
         ORDER BY created_at ASC
         LIMIT 1`,
       [docoId, locator],
@@ -341,7 +341,7 @@ export async function findBusinessProcessReferenceTargetsForChangedLines(
   return withClient(async (c) => {
     const r = await c.query<BusinessProcessReferenceRow>(
       `SELECT r.id AS reference_id,
-              r.attributes->>'locator' AS locator,
+              r.locator AS locator,
               e.from_id AS implemented_by_from_id
          FROM nodes r
          LEFT JOIN edges e
@@ -352,7 +352,7 @@ export async function findBusinessProcessReferenceTargetsForChangedLines(
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
           AND COALESCE(r.lifecycle, 'active') <> 'retired'
-          AND r.attributes->>'locator' IS NOT NULL
+          AND r.locator IS NOT NULL
           AND e.from_id IS NOT NULL`,
       [docoId],
     );
@@ -382,7 +382,7 @@ export async function hasBusinessProcessCodeReferences(docoId: string): Promise<
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
           AND COALESCE(r.lifecycle, 'active') <> 'retired'
-          AND r.attributes->>'locator' IS NOT NULL
+          AND r.locator IS NOT NULL
           AND e.from_id IS NOT NULL
         LIMIT 1`,
       [docoId],

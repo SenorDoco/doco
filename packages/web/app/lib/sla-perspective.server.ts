@@ -288,7 +288,7 @@ export async function loadSlaPerspectiveData(
     c.query<ReferenceRow>(
       `SELECT id, prose AS reference,
               attributes->>'ref_type' AS ref_type,
-              attributes->>'locator' AS locator,
+              locator,
               COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, attributes AS data
          FROM nodes

@@ -318,7 +318,7 @@ export async function loadGlossaryPerspectiveData(
            COALESCE(lifecycle, 'active') AS lifecycle,
            attributes AS data,
            attributes->>'ref_type' AS ref_type,
-           attributes->>'locator' AS locator,
+           locator,
            attributes->>'citation' AS citation,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1

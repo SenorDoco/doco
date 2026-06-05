@@ -168,18 +168,18 @@ export async function loadPullRequestsPerspective(
   const { rows } = await c.query<PullRequestRefRowWithTotal>(
     `SELECT id,
             prose AS reference,
-            attributes->>'locator' AS locator,
+            locator,
             lifecycle,
             updated_at::text AS updated_at,
             (SELECT COUNT(*)
                FROM nodes
               WHERE doco_id = $1
                 AND node_type = 'reference'
-                AND attributes->>'locator' LIKE '%/pull/%'${filterSql}) AS total_count
+                AND locator LIKE '%/pull/%'${filterSql}) AS total_count
        FROM nodes
       WHERE doco_id = $1
         AND node_type = 'reference'
-        AND attributes->>'locator' LIKE '%/pull/%'${filterSql}
+        AND locator LIKE '%/pull/%'${filterSql}
       ORDER BY updated_at DESC, created_at DESC, id ASC
       LIMIT $2`,
     [docoId, queryLimit],
