@@ -1410,7 +1410,6 @@ export default function DocoHome({
                       setEdgeFocus(null);
                       setGraphState((prev) => graphWithCenter(prev, id));
                     }}
-                    onPaneClick={clearPerspectiveFocus}
                     onNodeClick={(node) => {
                       void loadNodeDialog("principal", node.id, node.href);
                     }}
@@ -1431,7 +1430,6 @@ export default function DocoHome({
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onIntentOpen={focusIntentUrl}
                     onHomeReset={clearPerspectiveFocus}
-                    onPaneClick={clearPerspectiveFocus}
                     onEdgeClick={handleGraphEdgeClick}
                     onNodeClick={(node) => {
                       void loadNodeDialog(
@@ -1472,7 +1470,6 @@ export default function DocoHome({
                     focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onHomeReset={clearPerspectiveFocus}
-                    onPaneClick={clearPerspectiveFocus}
                     onNodeClick={handleGraphNodeClick}
                     onEdgeClick={handleGraphEdgeClick}
                   />
