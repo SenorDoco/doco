@@ -1,4 +1,7 @@
-// /workspaces/:workspaceHandle — per-Workspace home. A wide two-column layout.
+// /workspaces/:workspaceHandle — per-Workspace home. A wide two-column layout
+// at `lg` (1024px) and up; below that — the same width at which the nav
+// collapses to a hamburger — it renders as a single column so the constitution
+// keeps a readable measure instead of being crushed beside the 420px sidebar.
 // The header (workspace handle + ULID, +Agent/User on desktop) spans the top.
 // Left column (flexible content area once it widens past the breakpoint):
 //   - Constitution (founding-charter presentation, fills the column)
@@ -323,7 +326,7 @@ export default function WorkspaceHome({
           <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
         </PageHeader>
 
-        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
           {/* Left column — the constitution gets the full available width, with
               the latest activity feed beneath it. */}
           <section className="min-w-0 space-y-4">
