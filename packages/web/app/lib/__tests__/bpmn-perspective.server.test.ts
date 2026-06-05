@@ -136,6 +136,77 @@ describe("loadBpmnGraph", () => {
     );
   });
 
+  it("resolves an actor lane's name even when the Principal is outside the focus window", async () => {
+    // Regression: in a focused/windowed BPMN view the flow nodes that sit in a
+    // Principal's lane make the window, but the Principal node itself often
+    // doesn't — it's a neighbor of an Action, not of the focus Intent, and at a
+    // low type weight rarely survives the ranked-fill budget. The principal
+    // query was window-gated (`AND id = ANY(window)`), so the Principal never
+    // loaded into `principalById`; `resolveLane` then fell through to
+    // `__unresolved__:<id>` and rendered the raw `principal_…` id as the lane
+    // label instead of its name. Principals are lanes, not flow nodes (a
+    // handful per Doco), so the loader must always load all of them.
+    const intentId = "intent_01PROCESS";
+    const actionId = "action_01POST";
+    const principalId = "principal_01TALENT";
+
+    // The window holds the flow nodes but NOT the Principal.
+    const window = { focusNodeId: intentId, nodeIds: [intentId, actionId] };
+
+    const principalRows = [{ id: principalId, name: "Talent seeker", lifecycle: "active" }];
+    const captured: CapturedQuery[] = [];
+    const client: QueryClientLike = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        captured.push({ sql, params });
+        if (/FROM edges/i.test(sql)) {
+          return {
+            rows: [
+              edge("edge_SERVES", actionId, intentId, "serves"),
+              edge("edge_ACTOR", actionId, principalId, "performed_by"),
+            ] as T[],
+          };
+        }
+        if (/FROM users/i.test(sql)) return { rows: [] as T[] };
+        if (/node_type = 'principal'/i.test(sql)) {
+          // The DB honors the window filter when the query carries one.
+          if (/id = ANY\(\$2/i.test(sql)) {
+            const ids = (params?.[1] as string[]) ?? [];
+            return { rows: principalRows.filter((p) => ids.includes(p.id)) as T[] };
+          }
+          return { rows: principalRows as T[] };
+        }
+        return {
+          rows: [
+            {
+              id: intentId,
+              entity_type: "intent",
+              summary: "Post a job",
+              lifecycle: "active",
+              created_at: "2026-06-03T00:00:00.000Z",
+              data: {},
+            },
+            {
+              id: actionId,
+              entity_type: "action",
+              summary: "Talent seeker posts a job",
+              lifecycle: "active",
+              created_at: "2026-06-03T00:01:00.000Z",
+              data: {},
+            },
+          ] as T[],
+        };
+      },
+    };
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "torre-bpm", window });
+
+    expect(graph.lanes).toContainEqual(
+      expect.objectContaining({ kind: "actor", label: "Talent seeker" }),
+    );
+    // The raw principal id must never leak through as a lane label.
+    expect(graph.lanes.map((lane) => lane.label)).not.toContain(principalId);
+  });
+
   it("places a Decision attributed via performed_by in that actor's lane (decided_by ?? performed_by)", async () => {
     // A gateway Decision SHOULD carry `decided_by`, but Señor Doco (and
     // legacy BPMN imports) sometimes wire `performed_by` instead. The lane
