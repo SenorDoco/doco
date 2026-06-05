@@ -4,11 +4,19 @@
 
 import type { PolicyDraft } from "~/lib/capture.server";
 
+// Every deterministic check the engine understands must appear here, or the
+// edit form's check-type menu can't display it — and saving such a policy
+// would silently rewrite it to a different predicate. Keep this in lock-step
+// with `DeterministicPredicate` in @doco/shared.
 export const DETERMINISTIC_SUB_KINDS = [
   "requires_edge",
+  "limits_edge",
   "forbids_edge",
+  "requires_edge_type",
   "requires_field",
   "forbids_field",
+  "forbids_field_pattern",
+  "flow-wiring",
   "unique_field",
   "requires_node_type",
   "requires_entity_type",
@@ -26,14 +34,31 @@ export interface PolicyFormInitial {
   from_node_type: string;
   to_node_type: string;
   target_node_type: string;
+  /** requires_edge: floor on matching edges; the node type that waives it. */
+  min_count: string;
+  exempt_when_other_node_type: string;
+  /** limits_edge: ceiling on matching edges. */
+  max_count: string;
+  /** requires_edge / limits_edge: which way the edge must point. */
+  direction: string;
   fields: string;
   field: string;
+  /** forbids_field_pattern: the regex and its flags. */
+  pattern: string;
+  flags: string;
   case_fold: boolean;
   node_types: string;
+  /** requires_edge_type: the edge-type allowlist (CSV). */
+  edge_types: string;
   entity_types: string;
   list_field: string;
   incoming_node_type: string;
   incoming_field_must_match: string;
+  /** flow-wiring: the field/value pairs that mark initial and terminal nodes. */
+  initial_when_field: string;
+  initial_when_equals: string;
+  terminal_when_field: string;
+  terminal_when_equals: string;
   when_node_type: string;
   on_violation: string;
   fires_when_node_lifecycle: string;
@@ -49,6 +74,10 @@ export function policyFormInitialFromData(data: Record<string, unknown>): Policy
   const joinArr = (v: unknown) =>
     Array.isArray(v) ? v.filter((x) => typeof x === "string").join(", ") : "";
   const s = (v: unknown) => (typeof v === "string" ? v : "");
+  const num = (v: unknown) => (typeof v === "number" ? String(v) : "");
+  // initial_when / terminal_when are nested `{ field, equals }` objects.
+  const condField = (v: unknown, key: "field" | "equals") =>
+    s((v && typeof v === "object" ? (v as Record<string, unknown>) : {})[key]);
   return {
     kind,
     agent_instruction: s(predicate.agent_instruction),
@@ -57,14 +86,25 @@ export function policyFormInitialFromData(data: Record<string, unknown>): Policy
     from_node_type: s(predicate.from_node_type),
     to_node_type: s(predicate.to_node_type),
     target_node_type: s(predicate.target_node_type),
+    min_count: num(predicate.min_count),
+    exempt_when_other_node_type: s(predicate.exempt_when_other_node_type),
+    max_count: num(predicate.max_count),
+    direction: s(predicate.direction),
     fields: joinArr(predicate.fields),
     field: s(predicate.field),
+    pattern: s(predicate.pattern),
+    flags: s(predicate.flags),
     case_fold: predicate.case_fold === true,
     node_types: joinArr(predicate.node_types),
+    edge_types: joinArr(predicate.edge_types),
     entity_types: joinArr(predicate.entity_types),
     list_field: s(predicate.list_field),
     incoming_node_type: s(predicate.incoming_node_type),
     incoming_field_must_match: s(predicate.incoming_field_must_match),
+    initial_when_field: condField(predicate.initial_when, "field"),
+    initial_when_equals: condField(predicate.initial_when, "equals"),
+    terminal_when_field: condField(predicate.terminal_when, "field"),
+    terminal_when_equals: condField(predicate.terminal_when, "equals"),
     when_node_type: joinArr(predicate.when_node_type),
     on_violation: s(data.on_violation) || "block",
     fires_when_node_lifecycle: joinArr(data.fires_when_node_lifecycle),
@@ -80,6 +120,30 @@ function csv(form: FormData, key: string): string[] {
 
 function str(form: FormData, key: string): string {
   return String(form.get(key) ?? "").trim();
+}
+
+/** A non-negative integer field, or undefined when blank/invalid (so it is omitted). */
+function intField(form: FormData, key: string): number | undefined {
+  const raw = str(form, key);
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/** Edge direction, constrained to the two the engine accepts. */
+function directionField(form: FormData): "incoming" | "outgoing" | undefined {
+  const v = str(form, "direction");
+  return v === "incoming" || v === "outgoing" ? v : undefined;
+}
+
+/** A flow-wiring `{ field, equals }` condition — included only when both halves are present. */
+function conditionField(
+  form: FormData,
+  prefix: "initial_when" | "terminal_when",
+): { field: string; equals: string } | undefined {
+  const field = str(form, `${prefix}_field`);
+  const equals = str(form, `${prefix}_equals`);
+  return field && equals ? { field, equals } : undefined;
 }
 
 export function policyDraftFromForm(form: FormData): PolicyDraft | { error: string } {
@@ -144,18 +208,72 @@ function buildDeterministicPredicate(
     predicate: when.length > 0 ? { ...p, when_node_type: when } : p,
   });
   switch (sub_kind) {
-    case "requires_edge":
+    case "requires_edge": {
+      const edge_type = str(form, "edge_type");
+      if (!edge_type) return { error: "edge_type is required." };
+      const target = str(form, "target_node_type");
+      const min_count = intField(form, "min_count");
+      const direction = directionField(form);
+      const exempt = str(form, "exempt_when_other_node_type");
+      return withWhen({
+        sub_kind,
+        edge_type,
+        ...(target ? { target_node_type: target } : {}),
+        ...(min_count !== undefined ? { min_count } : {}),
+        ...(direction ? { direction } : {}),
+        ...(exempt ? { exempt_when_other_node_type: exempt } : {}),
+      });
+    }
+    case "limits_edge": {
+      const edge_type = str(form, "edge_type");
+      if (!edge_type) return { error: "edge_type is required." };
+      const target = str(form, "target_node_type");
+      const direction = directionField(form);
+      const max_count = intField(form, "max_count");
+      return withWhen({
+        sub_kind,
+        edge_type,
+        ...(target ? { target_node_type: target } : {}),
+        ...(direction ? { direction } : {}),
+        ...(max_count !== undefined ? { max_count } : {}),
+      });
+    }
     case "forbids_edge": {
       const edge_type = str(form, "edge_type");
       if (!edge_type) return { error: "edge_type is required." };
       const target = str(form, "target_node_type");
       return withWhen({ sub_kind, edge_type, ...(target ? { target_node_type: target } : {}) });
     }
+    case "requires_edge_type": {
+      const edge_types = csv(form, "edge_types");
+      if (edge_types.length === 0) return { error: "At least one edge type is required." };
+      return { predicate: { sub_kind, edge_types } };
+    }
     case "requires_field":
     case "forbids_field": {
       const fields = csv(form, "fields");
       if (fields.length === 0) return { error: "At least one field is required." };
       return withWhen({ sub_kind, fields });
+    }
+    case "forbids_field_pattern": {
+      const fields = csv(form, "fields");
+      if (fields.length === 0) return { error: "At least one field is required." };
+      const pattern = str(form, "pattern");
+      if (!pattern) return { error: "pattern is required." };
+      const flags = str(form, "flags");
+      return withWhen({ sub_kind, fields, pattern, ...(flags ? { flags } : {}) });
+    }
+    case "flow-wiring": {
+      const edge_type = str(form, "edge_type");
+      if (!edge_type) return { error: "edge_type is required." };
+      const initial_when = conditionField(form, "initial_when");
+      const terminal_when = conditionField(form, "terminal_when");
+      return withWhen({
+        sub_kind,
+        edge_type,
+        ...(initial_when ? { initial_when } : {}),
+        ...(terminal_when ? { terminal_when } : {}),
+      });
     }
     case "unique_field": {
       const field = str(form, "field");

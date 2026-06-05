@@ -1762,7 +1762,11 @@ export async function transitionPolicyLifecycle(opts: {
 
   const fm: Record<string, unknown> = { ...(before.data ?? {}) };
   fm.lifecycle = opts.newLifecycle;
-  if (opts.supersededBy) fm.superseded_by = opts.supersededBy;
+  // An active policy is by definition not superseded — clear any stale pointer
+  // (from a prior supersession or re-seed churn) when re-activating. A
+  // `undefined` value is dropped by JSON.stringify, so the key leaves the blob.
+  if (opts.newLifecycle === "active") fm.superseded_by = undefined;
+  else if (opts.supersededBy) fm.superseded_by = opts.supersededBy;
   const updated_at = new Date().toISOString();
 
   await withClient(async (c) => {
