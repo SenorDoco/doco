@@ -22,7 +22,6 @@ function row(over: Record<string, unknown>) {
     ref_type: null,
     locator: null,
     citation: null,
-    title: null,
     ...over,
   };
 }
@@ -35,7 +34,6 @@ describe("loadGlossaryPerspectiveData", () => {
         entity_type: "reference",
         label: "Torre",
         prose: "The company building this product.",
-        title: "Torre",
         ref_type: "term",
         citation: "Torre.ai handbook",
       }),
