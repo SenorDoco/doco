@@ -601,34 +601,16 @@ export function ProcessPerspective({
     [onCenterChange, onLaneClick],
   );
 
-  // The BPMN numbering is a pure function of the rendered set and its
-  // canvas layout — the Intent pool header(s) first, then each principal
-  // swimlane, then every flow shape in canvas reading order. It takes no
-  // viewport, so unlike the Graph it does NOT renumber on pan/zoom: the
-  // numbers shift only when a different Intent is brought on-screen (the
-  // focal pool changes), which is the only thing that moves the layout.
-  const nodeReferences = useMemo(
-    () =>
-      renderedNodes.flatMap((node) => {
-        const position = layout.nodePositions.get(node.id);
-        if (!position) return [];
-        return [
-          {
-            id: node.id,
-            entity_type: node.entity_type,
-            label: node.name ?? node.id,
-            lifecycle: node.lifecycle ?? "active",
-            href: node.href ?? null,
-            position,
-            height: sizeForNode(node).height,
-          },
-        ];
-      }),
-    [renderedNodes, layout.nodePositions],
-  );
+  // The BPMN #N numbering belongs to the focal *Intent*, not to whatever is
+  // currently on screen. `processReferences` numbers the focal Intent's full
+  // membership — every pool node of every lifecycle, in creation order — so
+  // the numbers are invariant under retire, hide, lifecycle-filter, pan, and
+  // zoom (none of which change the membership). They shift only when a
+  // different Intent comes into focus (`focalPoolIds` changes), or extend by
+  // one when a node is genuinely added (it sorts last → the next free number).
   const references = useMemo(
-    () => processReferences(renderedPools, renderedLanes, nodeReferences, docoHandle),
-    [renderedPools, renderedLanes, nodeReferences, docoHandle],
+    () => processReferences(pools, lanes, nodes, focalPoolIds, docoHandle),
+    [pools, lanes, nodes, focalPoolIds, docoHandle],
   );
   const { numberById: referenceNumberByEntityId } = usePublishedReferences("process", references);
   // Publish the numbering into an external store so each #N badge can
