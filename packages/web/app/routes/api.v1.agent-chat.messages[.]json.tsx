@@ -19,6 +19,7 @@
 import {
   type ChatStreamEvent,
   type VisibleGraphReferenceGroup,
+  getOrCreateDocoConversationForPrincipal,
   loadConversationByIdForPrincipal,
   loadOrCreateConversation,
   runAssistantTurn,
@@ -41,6 +42,12 @@ interface Body {
   attachment_ids?: unknown;
   graph_references?: unknown;
   conversation_id?: unknown;
+  /**
+   * The Doco this chat is attached to. Sent when opening Señor Doco on a Doco
+   * page that has no chat yet; the first message lazily mints the (user, Doco)
+   * thread. Ignored when `conversation_id` is present.
+   */
+  doco_id?: unknown;
 }
 
 function cleanString(value: unknown, maxLength: number): string {
@@ -112,10 +119,17 @@ export async function action({ request }: { request: Request }) {
     typeof parsed.conversation_id === "string" && parsed.conversation_id.length > 0
       ? parsed.conversation_id
       : null;
+  const docoId =
+    typeof parsed.doco_id === "string" && parsed.doco_id.length > 0 ? parsed.doco_id : null;
 
+  // Pick the thread: an explicit id wins; otherwise a Doco reference lazily
+  // gets-or-creates that Doco's chat (the "open Señor Doco in a Doco starts a
+  // chat" path); otherwise fall back to the rolling active thread.
   let conversation = conversationId
     ? await loadConversationByIdForPrincipal(conversationId, me.id)
-    : await loadOrCreateConversation(me.id);
+    : docoId
+      ? await getOrCreateDocoConversationForPrincipal(me.id, docoId)
+      : await loadOrCreateConversation(me.id);
   if (!conversation) {
     return Response.json({ error: "conversation_not_found" }, { status: 404 });
   }
