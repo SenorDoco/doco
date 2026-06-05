@@ -60,7 +60,7 @@ describe("graph authoring contract", () => {
     expect(termConstraint).toBeDefined();
     expect(termConstraint).toMatch(/word being defined/i);
     expect(termConstraint).toMatch(/`definition` attribute/i);
-    expect(termConstraint).toMatch(/never in the prose or `title`/i);
+    expect(termConstraint).toMatch(/never in the prose/i);
 
     const alternativesConstraint = glossary.constraints.find((constraint) =>
       /`alternatives`/i.test(constraint),

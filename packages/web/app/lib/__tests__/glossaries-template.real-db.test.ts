@@ -67,7 +67,7 @@ const ID = {
   retro: "reference_01GLOSSRETROSPECTIVE0001",
   multiConcept: "reference_01GLOSSCHURNRETENTION01",
   proseIsDefinition: "reference_01GLOSSPROSEISDEFN0001",
-  definitionInTitle: "reference_01GLOSSDEFNINTITLE001",
+  circular: "reference_01GLOSSCIRCULAR0000001",
   homograph: "reference_01GLOSSORDERSORTING001",
   acronymOk: "reference_01GLOSSSSOEXPANDED00001",
   borrowed: "reference_01GLOSSIDEMPOTENCY00001",
@@ -83,14 +83,14 @@ const ID = {
 } as const;
 
 // Term-quality FAILs only where the entry's shape is genuinely wrong (acronym
-// unexpanded, two concepts, definition in the prose, definition in the title);
-// membership FAILs only on the off-topic runbook. Everything else PASSes —
-// matching the judge's "be conservative, pass when plausible" contract.
+// unexpanded, two concepts, definition crammed into the prose, circular
+// definition); membership FAILs only on the off-topic runbook. Everything else
+// PASSes — matching the judge's "be conservative, pass when plausible" contract.
 const TERM_QUALITY_FAIL = new Set<string>([
   ID.acronym,
   ID.multiConcept,
   ID.proseIsDefinition,
-  ID.definitionInTitle,
+  ID.circular,
 ]);
 const MEMBERSHIP_FAIL = new Set<string>([ID.offTopic]);
 
@@ -287,14 +287,13 @@ describe("glossaries template — real-life term scenarios", () => {
     expect(r.warnings[0]?.kind).toBe("probabilistic");
   });
 
-  it("6. the definition parked in `title` instead of `definition` → quality WARN (title is not the meaning)", async () => {
+  it("6. a circular definition that merely restates the headword → quality WARN", async () => {
     const r = await run({
-      id: ID.definitionInTitle,
+      id: ID.circular,
       node_type: "reference",
       lifecycle: "active",
       reference: "Backfill",
-      title:
-        "Re-running a job over historical data to populate rows that were missing or wrong. Scope: data pipelines. For example, recomputing last quarter's metrics after a fix.",
+      definition: "A backfill is when you backfill.",
     });
     expect(r.blocking).toBeNull();
     expect(r.warnings).toHaveLength(1);

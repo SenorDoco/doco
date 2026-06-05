@@ -107,7 +107,7 @@ describe("glossaries template", () => {
       expect(spec).toMatch(/bare word or phrase being defined/i);
       expect(spec).toMatch(/definition belongs in the `definition` attribute, NOT in the prose/i);
       expect(spec).toMatch(/DEFINITION IN ATTRIBUTES/i);
-      expect(spec).toMatch(/the `definition` field \(or another non-`title` attribute\)/i);
+      expect(spec).toMatch(/the `definition` field \(or another attribute/i);
       // A pure cited source is out of scope for the term-entry judge.
       expect(spec).toMatch(/cited external source.*OUT OF SCOPE/is);
     });

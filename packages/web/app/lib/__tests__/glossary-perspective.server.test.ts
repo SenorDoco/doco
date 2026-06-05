@@ -22,7 +22,6 @@ function row(over: Record<string, unknown>) {
     ref_type: null,
     locator: null,
     citation: null,
-    title: null,
     ...over,
   };
 }

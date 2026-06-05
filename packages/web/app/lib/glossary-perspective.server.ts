@@ -34,7 +34,6 @@ interface NodeRow {
   ref_type: string | null;
   locator: string | null;
   citation: string | null;
-  title: string | null;
   /** Scalar-subquery total glossary entries (bigint → string from pg). */
   total_count?: number | string | null;
 }
@@ -301,9 +300,8 @@ export async function loadGlossaryPerspectiveData(
   // (decision, reference, rule, eval, intent). Each row's `prose` is the
   // shared prose column and `label` is its first line — the headword, for
   // every type including References (a term entry's prose is the word being
-  // defined). The promoted reference scalars (ref_type/locator/citation/
-  // title) are NULL for the other four types, exactly as the per-table legs
-  // projected.
+  // defined). The promoted reference scalars (ref_type/locator/citation) are
+  // NULL for the other four types, exactly as the per-table legs projected.
   //
   // Every lifecycle loads, including retired. Hiding a lifecycle is the
   // client's job: GlossaryPerspective applies the page-level lifecycle filter
@@ -322,7 +320,6 @@ export async function loadGlossaryPerspectiveData(
            attributes->>'ref_type' AS ref_type,
            attributes->>'locator' AS locator,
            attributes->>'citation' AS citation,
-           attributes->>'title' AS title,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1
                AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')) AS total_count
