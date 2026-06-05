@@ -6,6 +6,7 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
+import { HOST_RESERVED_SLUGS } from "@doco/shared";
 import {
   type CSSProperties,
   type ReactNode,
@@ -29,6 +30,7 @@ import {
   perspectiveParam,
 } from "~/lib/agent-follow-target";
 import { cn } from "~/lib/cn";
+import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
 import {
   CREATED_DOCO_CHAT_ID_SEARCH_PARAM,
@@ -108,12 +110,19 @@ interface ChatMessage {
 }
 
 interface ConversationSnapshot {
-  conversation_id: string;
+  /** Null when a Doco was opened that has no chat yet (lazy creation). */
+  conversation_id: string | null;
   /** User-visible thread name. Null until the first user message lands. */
   title: string | null;
   archived: boolean;
   /** Handle of the Workspace this thread is scoped to; null = unassigned. */
   workspace_handle: string | null;
+  /** The Doco this chat is attached to; null for legacy/orphaned threads. */
+  doco_id: string | null;
+  /** Handle of {@link doco_id} — the in-thread tag links to `/<doco_handle>`. */
+  doco_handle: string | null;
+  /** Owner slug of {@link doco_id}, for the qualified `owner/handle` label. */
+  doco_owner_slug: string | null;
   messages: ChatMessage[];
   has_more: boolean;
   /**
@@ -152,6 +161,12 @@ export interface ConversationListItem {
   workspace_id: string | null;
   /** Handle of {@link workspace_id}, shown as a tag left of the title. */
   workspace_handle: string | null;
+  /** Doco this chat is attached to; null for legacy/orphaned threads. */
+  doco_id: string | null;
+  /** Handle of {@link doco_id}, shown as a tag left of the title (links to it). */
+  doco_handle: string | null;
+  /** Owner slug of {@link doco_id}, for the qualified `owner/handle` title. */
+  doco_owner_slug: string | null;
 }
 
 export function mergeCreatedConversationListItem(
@@ -177,6 +192,75 @@ export function SenorDocoExplainer() {
       </Link>
       .
     </div>
+  );
+}
+
+/**
+ * Top-level routes that aren't Docos but live outside the shared reserved set.
+ * `HOST_RESERVED_SLUGS` governs Doco-handle *creation*; a handful of host
+ * routes (tokens, users, integrations, …) were added to routes.ts after it and
+ * never backfilled there. Listing them keeps the rail from mistaking those
+ * pages for a Doco and firing a doomed snapshot fetch. The server-side 404 is
+ * still the backstop for anything that slips through.
+ */
+const NON_DOCO_TOP_LEVEL: ReadonlySet<string> = new Set([
+  "tokens",
+  "api-keys",
+  "users",
+  "integrations",
+  "access-requests",
+  "device",
+  "oauth",
+  "protocol",
+  "new-workspace",
+  "docs",
+  "setup",
+  "ai",
+  "getting-started",
+  "install",
+]);
+
+/**
+ * The Doco handle implied by a page path, or null when the path isn't a Doco
+ * page. Doco URLs are `/<handle>/…`; the reserved top-level routes are not
+ * Docos. Drives the rail's auto-open: navigating onto a Doco page opens that
+ * Doco's chat.
+ */
+export function docoHandleFromPath(pathname: string): string | null {
+  const first = pathname.split("/").filter(Boolean)[0];
+  if (!first) return null;
+  if (HOST_RESERVED_SLUGS.has(first) || NON_DOCO_TOP_LEVEL.has(first)) return null;
+  return first;
+}
+
+/**
+ * The Doco a chat is attached to, rendered as a small tag that links to the
+ * Doco. Replaces the old workspace tag: every in-app chat now belongs to one
+ * Doco, so the tag names it and clicking it opens the Doco. `stopPropagation`
+ * keeps a click from also firing an enclosing row's select handler.
+ */
+export function DocoTag({
+  handle,
+  ownerSlug,
+  className,
+}: {
+  handle: string;
+  ownerSlug?: string | null;
+  className?: string;
+}) {
+  const label = qualifiedDocoLabel({ ownerSlug, handle });
+  return (
+    <Link
+      to={`/${handle}`}
+      title={`Doco: ${label}`}
+      onClick={(e) => e.stopPropagation()}
+      className={cn(
+        "max-w-[60%] shrink-0 self-start truncate rounded bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground hover:bg-input hover:text-foreground",
+        className,
+      )}
+    >
+      {handle}
+    </Link>
   );
 }
 
@@ -455,9 +539,26 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     readInitialConversationId(),
   );
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
-  // Handle of the Workspace the open thread is scoped to; drives the in-thread
-  // tag in the chat header (mirrors the inbox list's tag). Null = unassigned.
-  const [currentWorkspaceHandle, setCurrentWorkspaceHandle] = useState<string | null>(null);
+  // The Doco the open chat is attached to; drives the in-thread tag in the
+  // chat header (which links to the Doco). Null = legacy/orphaned thread.
+  const [currentDoco, setCurrentDoco] = useState<{
+    handle: string;
+    ownerSlug: string | null;
+  } | null>(null);
+  // When the user is viewing a Doco page, the rail scopes its chat to that
+  // Doco (by handle). Drives reload() to fetch `?doco=<handle>` — the
+  // authoritative, lazy get path that opens (and on first send creates) the
+  // Doco's chat. Null when the user isn't on a Doco page (the rail falls back
+  // to the explicit/active thread, or the inbox list).
+  const [docoChatRef, setDocoChatRef] = useState<string | null>(null);
+  // Doco id for the open Doco chat that has no row yet (lazy). Sent with the
+  // first message so the server mints the (user, Doco) thread. Mirrored into a
+  // ref so send() reads the latest without re-binding on every change.
+  const [pendingDocoId, setPendingDocoId] = useState<string | null>(null);
+  const pendingDocoIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    pendingDocoIdRef.current = pendingDocoId;
+  }, [pendingDocoId]);
   // WhatsApp-style default — when nothing's open, the user lands on
   // the thread list. Picking a thread switches into chat view; the
   // back button in the chat header returns here.
@@ -629,7 +730,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   }, [inputText]);
 
   const reload = useCallback(async () => {
-    if (!conversationId && skipNextDefaultBootstrapRef.current) {
+    if (!conversationId && !docoChatRef && skipNextDefaultBootstrapRef.current) {
       skipNextDefaultBootstrapRef.current = false;
       setBootstrapped(true);
       setLoadError(null);
@@ -638,10 +739,26 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       return;
     }
     try {
-      const url = conversationId
-        ? `/api/v1/agent-chat/conversation.json?id=${encodeURIComponent(conversationId)}`
-        : "/api/v1/agent-chat/conversation.json";
+      // Doco mode (the user is on a Doco page) is authoritative: fetch the
+      // Doco's chat by handle. Otherwise an explicit thread id, else the
+      // rolling active thread.
+      const url = docoChatRef
+        ? `/api/v1/agent-chat/conversation.json?doco=${encodeURIComponent(docoChatRef)}`
+        : conversationId
+          ? `/api/v1/agent-chat/conversation.json?id=${encodeURIComponent(conversationId)}`
+          : "/api/v1/agent-chat/conversation.json";
       const res = await fetch(url, { credentials: "same-origin" });
+      if (res.status === 404 && docoChatRef) {
+        // The path's first segment looked like a Doco handle but isn't a
+        // reachable Doco (a non-Doco route that slipped past the reserved
+        // filter, or one the user can't see). Leave doco mode and fall back
+        // to the inbox/active thread.
+        setDocoChatRef(null);
+        setPendingDocoId(null);
+        setCurrentDoco(null);
+        setLoadError(null);
+        return;
+      }
       if (res.status === 404 && conversationId) {
         // The stored thread id no longer exists (archived elsewhere,
         // or a different user signed in on the same device). Drop
@@ -650,7 +767,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         writeStringFlag(ACTIVE_CONV_KEY, null);
         setMessages([]);
         setLoadError(null);
-        setCurrentWorkspaceHandle(null);
+        setCurrentDoco(null);
         return;
       }
       if (!res.ok) {
@@ -661,14 +778,21 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // Sticky thread id: snapshot fetched with no `?id=` lands the
       // user in their most-recent thread; pin that id so subsequent
       // reloads (cross-tab sync, polling) stay on the same one even
-      // if another tab opens a newer thread.
+      // if another tab opens a newer thread. In Doco mode the row may not
+      // exist yet (lazy) — conversation_id is null until the first message,
+      // and pendingDocoId carries the binding the first send needs.
       if (data.conversation_id !== conversationId) {
         setConversationId(data.conversation_id);
-        writeStringFlag(ACTIVE_CONV_KEY, data.conversation_id);
+        if (data.conversation_id) writeStringFlag(ACTIVE_CONV_KEY, data.conversation_id);
       }
+      setPendingDocoId(data.conversation_id ? null : (data.doco_id ?? null));
       setConversationTitle(data.title);
       setThreadUsage(data.thread_usage ?? null);
-      setCurrentWorkspaceHandle(data.workspace_handle ?? null);
+      setCurrentDoco(
+        data.doco_handle
+          ? { handle: data.doco_handle, ownerSlug: data.doco_owner_slug ?? null }
+          : null,
+      );
       // Merge — don't overwrite. Two classes of message can sit
       // outside the snapshot's window:
       //
@@ -757,7 +881,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     } finally {
       setBootstrapped(true);
     }
-  }, [busy, conversationId]);
+  }, [busy, conversationId, docoChatRef]);
 
   useEffect(() => {
     if (view !== "chat") {
@@ -854,6 +978,44 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     navigate,
   ]);
 
+  // Auto-open the chat for the Doco whose page the user is on. The path is
+  // authoritative: navigating onto `/<docoHandle>/…` binds the rail to that
+  // Doco's chat (which reload fetches via `?doco=`, creating it lazily on the
+  // first message); navigating within the same Doco keeps the chat; leaving
+  // Doco pages drops the binding but keeps the open chat visible. Reserved /
+  // non-Doco routes resolve to null. Keyed on the derived handle (not raw
+  // pathname) so in-Doco navigation doesn't churn the thread.
+  const lastDocoHandleRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const handle = docoHandleFromPath(location.pathname);
+    if (handle === lastDocoHandleRef.current) return;
+    lastDocoHandleRef.current = handle;
+    if (handle) {
+      // Entering a Doco's chat — wipe the previous thread's transient state so
+      // its messages don't bleed across; reload(?doco=) repopulates.
+      abortRef.current?.abort();
+      setBusy(false);
+      setInFlight(null);
+      setQueuedSends([]);
+      setTurnUsage(null);
+      setRemoteInflight(false);
+      setThinkingEvents([]);
+      setMessages([]);
+      setHasMore(false);
+      earliestRef.current = null;
+      setRenamingId(null);
+      setConversationId(null);
+      setConversationTitle(null);
+      setView("chat");
+      setDocoChatRef(handle);
+    } else {
+      // Left Doco pages — keep whatever chat is open, just drop the path
+      // binding so reload falls back to the explicit/active thread.
+      setDocoChatRef(null);
+      setPendingDocoId(null);
+    }
+  }, [location.pathname]);
+
   const openThreadList = useCallback(() => {
     setView("list");
     setSearchQuery("");
@@ -893,6 +1055,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setMessages([]);
       setHasMore(false);
       earliestRef.current = null;
+      // Explicit selection wins over the page's Doco binding until the user
+      // navigates again — otherwise reload(?doco=) would override the pick.
+      setDocoChatRef(null);
+      setPendingDocoId(null);
       setConversationId(id);
       writeStringFlag(ACTIVE_CONV_KEY, id);
       setView("chat");
@@ -901,45 +1067,21 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     [conversationId],
   );
 
-  const newThread = useCallback(async () => {
-    try {
-      setConversationsError(null);
-      const res = await fetch("/api/v1/agent-chat/conversations.json", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) {
-        setConversationsError(`HTTP ${res.status}`);
+  // Open a thread from the inbox list. A Doco-bound thread opens by visiting
+  // its Doco (the path effect binds + opens the chat, and the row thereby
+  // "links" to the Doco); a legacy/orphaned thread opens inline by id.
+  const selectConversation = useCallback(
+    (id: string) => {
+      const conv = conversations.find((c) => c.id === id);
+      if (conv?.doco_handle) {
+        setView("chat");
+        navigate(`/${conv.doco_handle}`);
         return;
       }
-      const data = (await res.json()) as { conversation: ConversationListItem };
-      const created = data.conversation;
-      if (!created?.id) return;
-
-      setConversations((prev) => mergeCreatedConversationListItem(prev, created));
-      abortRef.current?.abort();
-      setBusy(false);
-      setInFlight(null);
-      setQueuedSends([]);
-      setTurnUsage(null);
-      setRemoteInflight(false);
-      setThinkingEvents([]);
-      setMessages([]);
-      setHasMore(false);
-      earliestRef.current = null;
-      setConversationId(created.id);
-      setConversationTitle(created.title);
-      writeStringFlag(ACTIVE_CONV_KEY, created.id);
-      setSearchQuery("");
-      setView("chat");
-      setRenamingId(null);
-      void loadConversationsList();
-    } catch (err) {
-      setConversationsError(err instanceof Error ? err.message : String(err));
-    }
-  }, [loadConversationsList]);
+      switchThread(id);
+    },
+    [conversations, navigate, switchThread],
+  );
 
   const renameThread = useCallback(
     async (id: string, nextTitle: string) => {
@@ -1449,7 +1591,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             current_path: location.pathname + location.search,
             attachment_ids: attachmentIds,
             graph_references: graphReferenceGroups,
-            ...(conversationId ? { conversation_id: conversationId } : {}),
+            // An explicit thread id wins; otherwise, when this is the first
+            // message of a Doco's chat (lazy — no row yet), the doco_id binds
+            // the server's get-or-create to that Doco.
+            ...(conversationId
+              ? { conversation_id: conversationId }
+              : pendingDocoIdRef.current
+                ? { doco_id: pendingDocoIdRef.current }
+                : {}),
           }),
           signal: controller.signal,
           // keepalive: the request must survive a tab close / hard
@@ -2011,8 +2160,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 searchQuery={searchQuery}
                 unreadByThread={unreadByThread}
                 onSearchChange={setSearchQuery}
-                onSelect={switchThread}
-                onNew={() => void newThread()}
+                onSelect={selectConversation}
                 onStartRename={(id, current) => {
                   setRenamingId(id);
                   setRenameDraft(current ?? "");
@@ -2050,13 +2198,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     ) : null}
                   </button>
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    {currentWorkspaceHandle ? (
-                      <span
-                        className="max-w-[60%] shrink-0 self-start truncate rounded bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground"
-                        title={`Workspace: ${currentWorkspaceHandle}`}
-                      >
-                        {currentWorkspaceHandle}
-                      </span>
+                    {currentDoco ? (
+                      <DocoTag handle={currentDoco.handle} ownerSlug={currentDoco.ownerSlug} />
                     ) : null}
                     {renamingId === conversationId && conversationId ? (
                       <input
@@ -2128,12 +2271,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     {hasMore ? (
                       <div className="mb-2 text-center text-[10px] text-muted-foreground">
                         {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
-                      </div>
-                    ) : null}
-                    {allMessages.length === 0 && !loadError && bootstrapped ? (
-                      <div className="text-[11px] text-muted-foreground">
-                        Ask me anything about your docos — I can search, capture decisions, create
-                        new docos or workspaces, invite users, and take you to any page.
                       </div>
                     ) : null}
                     {allMessages.map((rm, index) => (
@@ -2258,7 +2395,6 @@ interface ThreadListViewProps {
   unreadByThread: Map<string, number>;
   onSearchChange: (next: string) => void;
   onSelect: (id: string) => void;
-  onNew: () => void;
   onStartRename: (id: string, current: string | null) => void;
   onCancelRename: () => void;
   onCommitRename: (id: string) => void;
@@ -2277,7 +2413,6 @@ function ThreadListView({
   unreadByThread,
   onSearchChange,
   onSelect,
-  onNew,
   onStartRename,
   onCancelRename,
   onCommitRename,
@@ -2296,13 +2431,6 @@ function ThreadListView({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
         <div className="text-xs font-semibold text-foreground">Chats</div>
-        <button
-          type="button"
-          onClick={onNew}
-          className="neu-button rounded-md border border-primary bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          + New chat
-        </button>
       </div>
       <div className="shrink-0 px-3 py-1.5">
         <input
@@ -2325,7 +2453,7 @@ function ThreadListView({
         ) : null}
         {!loading && conversations.length === 0 && !error ? (
           <div className="px-3 py-2 text-[11px] text-muted-foreground">
-            No threads yet — hit “+ New chat” to start one.
+            No chats yet. Open a Doco and Señor Doco starts a chat about it.
           </div>
         ) : null}
         {!loading && conversations.length > 0 && filtered.length === 0 && q ? (
@@ -2462,12 +2590,12 @@ function ThreadRow({
           >
             <span className="flex items-baseline justify-between gap-2">
               <span className="flex min-w-0 items-baseline gap-1.5">
-                {conv.workspace_handle ? (
+                {conv.doco_handle ? (
                   <span
                     className="max-w-[45%] shrink-0 truncate rounded bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground"
-                    title={`Workspace: ${conv.workspace_handle}`}
+                    title={`Doco: ${qualifiedDocoLabel({ ownerSlug: conv.doco_owner_slug, handle: conv.doco_handle })}`}
                   >
-                    {conv.workspace_handle}
+                    {conv.doco_handle}
                   </span>
                 ) : null}
                 <span

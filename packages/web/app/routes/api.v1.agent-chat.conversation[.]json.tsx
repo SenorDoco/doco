@@ -4,8 +4,12 @@
 // params, returns the user's most-recent active thread (or 404 when
 // they've never chatted). Pass `?id=<conv_id>`
 // to scope to a specific thread; 404 if it doesn't exist or belongs
-// to another user. `?before=<iso8601>` paginates older messages for
-// infinite scroll-up. Signed-out callers get 401.
+// to another user. Pass `?doco=<handle-or-id>` to open the chat
+// attached to a Doco — returns that Doco's chat (or a lazy empty
+// snapshot with the Doco's display fields when no chat exists yet),
+// and 404 when the Doco is unknown or unreachable. `?before=<iso8601>`
+// paginates older messages for infinite scroll-up. Signed-out callers
+// get 401.
 
 import { loadSnapshotForPrincipal } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -23,9 +27,11 @@ export async function loader({ request }: { request: Request }) {
     if (!Number.isNaN(d.getTime())) before = d;
   }
   const conversationId = url.searchParams.get("id");
+  const docoRef = url.searchParams.get("doco");
   const snapshot = await loadSnapshotForPrincipal(me.id, {
     before,
     conversationId: conversationId || null,
+    docoRef: docoRef || null,
   });
   if (!snapshot) {
     return Response.json({ error: "not_found" }, { status: 404 });
