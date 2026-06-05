@@ -49,6 +49,16 @@ function EdgeTypeSelect({ defaultValue }: { defaultValue?: string }) {
   );
 }
 
+function DirectionSelect({ defaultValue }: { defaultValue?: string }) {
+  return (
+    <select name="direction" defaultValue={defaultValue ?? ""} className={INPUT}>
+      <option value="">(either direction)</option>
+      <option value="outgoing">outgoing</option>
+      <option value="incoming">incoming</option>
+    </select>
+  );
+}
+
 /** The inputs that apply to a given deterministic check. */
 function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyFormInitial }) {
   const whenField = (
@@ -58,6 +68,65 @@ function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyF
   );
   switch (subKind) {
     case "requires_edge":
+      return (
+        <>
+          <Field label="Edge type">
+            <EdgeTypeSelect defaultValue={init.edge_type} />
+          </Field>
+          <Field label="Target node type (optional)">
+            <NodeTypeSelect name="target_node_type" defaultValue={init.target_node_type} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Minimum count (optional)">
+              <input
+                name="min_count"
+                type="number"
+                min={1}
+                defaultValue={init.min_count}
+                placeholder="1"
+                className={INPUT}
+              />
+            </Field>
+            <Field label="Direction (optional)">
+              <DirectionSelect defaultValue={init.direction} />
+            </Field>
+          </div>
+          <Field label="Exempt when other endpoint is node type (optional)">
+            <NodeTypeSelect
+              name="exempt_when_other_node_type"
+              defaultValue={init.exempt_when_other_node_type}
+            />
+          </Field>
+          {whenField}
+        </>
+      );
+    case "limits_edge":
+      return (
+        <>
+          <Field label="Edge type">
+            <EdgeTypeSelect defaultValue={init.edge_type} />
+          </Field>
+          <Field label="Target node type (optional)">
+            <NodeTypeSelect name="target_node_type" defaultValue={init.target_node_type} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Maximum count (default 1)">
+              <input
+                name="max_count"
+                type="number"
+                min={0}
+                defaultValue={init.max_count}
+                placeholder="1"
+                className={INPUT}
+              />
+            </Field>
+            <Field label="Direction (optional)">
+              <DirectionSelect defaultValue={init.direction} />
+            </Field>
+          </div>
+          {whenField}
+        </>
+      );
     case "forbids_edge":
       return (
         <>
@@ -70,6 +139,12 @@ function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyF
           {whenField}
         </>
       );
+    case "requires_edge_type":
+      return (
+        <Field label="Allowed edge types (comma-separated)">
+          <input name="edge_types" defaultValue={init.edge_types} className={INPUT} />
+        </Field>
+      );
     case "requires_field":
     case "forbids_field":
       return (
@@ -77,6 +152,62 @@ function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyF
           <Field label="Fields (comma-separated)">
             <input name="fields" defaultValue={init.fields} className={INPUT} />
           </Field>
+          {whenField}
+        </>
+      );
+    case "forbids_field_pattern":
+      return (
+        <>
+          <Field label="Fields (comma-separated)">
+            <input name="fields" defaultValue={init.fields} className={INPUT} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Pattern (regular expression)">
+              <input name="pattern" defaultValue={init.pattern} className={INPUT} />
+            </Field>
+            <Field label="Flags (optional, e.g. i)">
+              <input name="flags" defaultValue={init.flags} className={INPUT} />
+            </Field>
+          </div>
+          {whenField}
+        </>
+      );
+    case "flow-wiring":
+      return (
+        <>
+          <Field label="Edge type">
+            <EdgeTypeSelect defaultValue={init.edge_type} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Initial when — field (optional)">
+              <input
+                name="initial_when_field"
+                defaultValue={init.initial_when_field}
+                className={INPUT}
+              />
+            </Field>
+            <Field label="Initial when — equals">
+              <input
+                name="initial_when_equals"
+                defaultValue={init.initial_when_equals}
+                className={INPUT}
+              />
+            </Field>
+            <Field label="Terminal when — field (optional)">
+              <input
+                name="terminal_when_field"
+                defaultValue={init.terminal_when_field}
+                className={INPUT}
+              />
+            </Field>
+            <Field label="Terminal when — equals">
+              <input
+                name="terminal_when_equals"
+                defaultValue={init.terminal_when_equals}
+                className={INPUT}
+              />
+            </Field>
+          </div>
           {whenField}
         </>
       );
@@ -154,14 +285,25 @@ export function PolicyFormFields({
     from_node_type: "",
     to_node_type: "",
     target_node_type: "",
+    min_count: "",
+    exempt_when_other_node_type: "",
+    max_count: "",
+    direction: "",
     fields: "",
     field: "",
+    pattern: "",
+    flags: "",
     case_fold: false,
     node_types: "",
+    edge_types: "",
     entity_types: "",
     list_field: "",
     incoming_node_type: "",
     incoming_field_must_match: "",
+    initial_when_field: "",
+    initial_when_equals: "",
+    terminal_when_field: "",
+    terminal_when_equals: "",
     when_node_type: "",
     on_violation: "block",
     fires_when_node_lifecycle: "",
