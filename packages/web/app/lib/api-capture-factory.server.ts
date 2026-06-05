@@ -255,7 +255,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         return Response.json({ id, as_of: txId, snapshot });
       }
       // Nodes expose the canonical shape — `prose` + `attributes` — for every
-      // type. Policies surface `body_md`. Principals don't route through here.
+      // type. A policy carries its structured fields in `data`. Principals don't
+      // route through here.
       return Response.json(buildEntityGetResponse(rec));
     },
 

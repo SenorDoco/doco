@@ -92,8 +92,7 @@ describe("principal API", () => {
   it("allows an author to create an arbitrary role principal", async () => {
     const response = await action({
       request: principalRequest({
-        name: "Visitor",
-        body_md: "Human site visitor — no Doco account required.",
+        name: "Visitor — human site visitor, no Doco account required",
       }),
       params: { docoHandle: "acme" } as never,
     });
@@ -115,18 +114,19 @@ describe("principal API", () => {
       expect.objectContaining({
         doco_id: "doco_acme",
         entity_type: "principal",
-        body_md: "Human site visitor — no Doco account required.",
         created_by: "user_author",
         updated_by: "user_author",
         data: expect.objectContaining({
           doco_id: "doco_acme",
           node_type: "principal",
-          prose: "Visitor",
+          prose: "Visitor — human site visitor, no Doco account required",
           created_by: "user_author",
           lifecycle: "active",
         }),
       }),
     );
+    // A principal has no separate body — `body_md` never reaches storage.
+    expect(mocks.upsertEntity.mock.calls[0]?.[0]).not.toHaveProperty("body_md");
     // The slim-down dropped display_name / description / type /
     // summary — confirm they no longer leak into data even when the
     // caller sends them.
@@ -148,20 +148,21 @@ describe("principal API", () => {
         entity_id: expect.stringMatching(/^principal_/),
         op: "entity.create",
         after: expect.objectContaining({
-          name: "Visitor",
-          body_md: "Human site visitor — no Doco account required.",
+          name: "Visitor — human site visitor, no Doco account required",
           lifecycle: "active",
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({ ok: true, name: "Visitor" });
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      name: "Visitor — human site visitor, no Doco account required",
+    });
   });
 
   it("allows duplicate display names and non-slug-shaped names", async () => {
     const response = await action({
       request: principalRequest({
         name: "Alex Smith / Finance",
-        body_md: "Human finance approver.",
       }),
       params: { docoHandle: "acme" } as never,
     });
@@ -185,17 +186,13 @@ describe("principal API", () => {
     });
   });
 
-  it("passes body_md to the authoring policy evaluator (regression — was missing on POST)", async () => {
-    // The org-chart template's "declare person-vs-agent in body_md"
-    // probabilistic gate reads `candidate.body_md`. The first cut of
-    // the POST handler built `raw` without `body_md` (it only wrote
-    // the column on upsertEntity), so the policy evaluator never saw
-    // the prose and rejected every Principal POST with valid prose.
-    // This regression test asserts body_md reaches the evaluator.
+  it("passes the prose (name) to the authoring policy evaluator", async () => {
+    // The org-chart template's person/agent/vacant gate reads `candidate.prose`
+    // (and `kind`). The POST handler must surface the name as `prose` so the
+    // evaluator sees the seat's declaration — a principal has no separate body.
     const response = await action({
       request: principalRequest({
-        name: "gabriela",
-        body_md: "Human director of the Buenos Aires team. Operates under @alex.",
+        name: "Gabriela — Human director of the Buenos Aires team. Operates under @alex.",
       }),
       params: { docoHandle: "acme" } as never,
     });
@@ -204,11 +201,11 @@ describe("principal API", () => {
     expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
       expect.objectContaining({
         candidate: expect.objectContaining({
-          prose: "gabriela",
-          body_md: "Human director of the Buenos Aires team. Operates under @alex.",
+          prose: "Gabriela — Human director of the Buenos Aires team. Operates under @alex.",
         }),
       }),
     );
+    expect(mocks.runAuthoringPolicies.mock.calls[0]?.[0]?.candidate).not.toHaveProperty("body_md");
   });
 
   it("forwards a structured `kind` to the evaluator AND persists it on the node (filled seat declares human/agent)", async () => {
@@ -219,7 +216,6 @@ describe("principal API", () => {
     const response = await action({
       request: principalRequest({
         name: "reviewer-bot",
-        body_md: "Pull-request reviewer for the platform repo.",
         kind: "agent",
       }),
       params: { docoHandle: "acme" } as never,
@@ -254,8 +250,7 @@ describe("principal API", () => {
   it("omits `kind` for a vacant seat — a vacant seat declares no kind", async () => {
     const response = await action({
       request: principalRequest({
-        name: "open-staff-seat",
-        body_md: "Vacant — budgeted Staff Engineer seat, open req.",
+        name: "open-staff-seat — Vacant, budgeted Staff Engineer seat, open req",
       }),
       params: { docoHandle: "acme" } as never,
     });
@@ -274,19 +269,18 @@ describe("principal API", () => {
     expect(response.status).toBe(201);
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        body_md: "",
         data: expect.objectContaining({
           prose: "human",
-          body_md: "",
         }),
       }),
     );
-    // Slim-down: no `type` field anymore, and former reserved names do
-    // not set role_principal.
+    // Slim-down: no `type` / `body_md` field anymore, and former reserved names
+    // do not set role_principal.
     const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
     expect(persistedData).not.toHaveProperty("role_principal");
     expect(persistedData).not.toHaveProperty("type");
     expect(persistedData).not.toHaveProperty("summary");
+    expect(persistedData).not.toHaveProperty("body_md");
   });
 
   it("rejects callers without principal write access even if they can read the Doco", async () => {

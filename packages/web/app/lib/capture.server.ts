@@ -107,7 +107,6 @@ async function enforceAndPersist(args: {
   fm: Record<string, unknown>;
   entityType: string;
   id: string;
-  body?: string;
   authoring?: AuthoringWriteContext;
 }): Promise<AuthoringResult> {
   return withTransaction(async (c) => {
@@ -118,7 +117,6 @@ async function enforceAndPersist(args: {
       id: args.id,
       docoId: args.docoId,
       fm: args.fm,
-      ...(args.body !== undefined ? { body: args.body } : {}),
       ...(args.authoring ? { authoring: args.authoring } : {}),
       client: c,
     });
@@ -184,17 +182,15 @@ function syntheticPath(entityType: string, id: string): string {
 }
 
 /**
- * Read an existing entity's parsed frontmatter + body from Postgres.
+ * Read an existing entity's parsed frontmatter from Postgres.
  */
 async function readEntityFromPostgres(
   entityType: string,
   id: string,
-): Promise<{ fm: Record<string, unknown>; body: string } | null> {
+): Promise<{ fm: Record<string, unknown> } | null> {
   const row = await getEntity(entityType, id);
   if (!row) return null;
-  const fm = row.data;
-  const body = row.body_md ?? "";
-  return { fm, body };
+  return { fm: row.data };
 }
 
 /**
@@ -210,7 +206,6 @@ async function persistEntity(args: {
   id: string;
   docoId: string;
   fm: Record<string, unknown>;
-  body?: string;
   /** When provided, the upsert runs on this client (used to share a
    *  transaction with the authoring enforcer). */
   client?: PoolClient;
@@ -225,7 +220,6 @@ async function persistEntity(args: {
         doco_id: args.docoId,
         entity_type: args.entityType,
         data: fm,
-        body_md: args.body,
         lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
         name: typeof fm.name === "string" ? fm.name : null,
         created_at: typeof fm.created_at === "string" ? fm.created_at : null,
@@ -345,8 +339,6 @@ export type Op =
   | { kind: "added_to"; field: string; names: string[] }
   | { kind: "removed_from"; field: string; names: string[] }
   | { kind: "replaced_list"; field: string; names: string[] }
-  | { kind: "replaced_body" }
-  | { kind: "appended_body"; preview: string }
   | { kind: "renamed"; from: string; to: string }
   | { kind: "deleted" };
 
@@ -608,10 +600,6 @@ export async function renderOperationLines(opts: {
         return `[🔮 Doco] ➖ ${Type} updated: ${mutationAnchor()}.${op.field} removed: ${op.names.join(", ")}`;
       case "replaced_list":
         return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.${op.field} replaced with: ${op.names.join(", ")}`;
-      case "replaced_body":
-        return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.body replaced`;
-      case "appended_body":
-        return `[🔮 Doco] ➕ ${Type} updated: ${mutationAnchor()}.body appended: ${trunc(op.preview, 100)}`;
       case "renamed":
         return `[🔮 Doco] 🏷️ ${Type} renamed: ${op.from} → ${buildAnchor(op.to)}`;
       case "deleted":
@@ -746,11 +734,6 @@ function emitAuditForUpdate(opts: {
   const before: Record<string, unknown> = {};
   const after: Record<string, unknown> = {};
   for (const field of changed) {
-    if (field === "body") {
-      before.body = "<changed>";
-      after.body = "<changed>";
-      continue;
-    }
     before[field] = beforeFm[field] ?? null;
     after[field] = afterFm[field] ?? null;
   }
@@ -1283,20 +1266,13 @@ export async function updateEntity(opts: {
   const existing = await readEntityFromPostgres(entityType, id);
   if (!existing) return { error: `${entityType} not found: ${id}` };
   const fm = existing.fm;
-  const existingBody = existing.body;
   const normalizedPatch = patch;
   const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(patch);
   if (nodeJsonEdgeKeyError) return nodeJsonEdgeKeyError;
-  // Migration-022/023: 9 node types collapsed summary+body_md+extras
-  // into a single type-named prose column. Policies use the `policy`
-  // column (renamed from `summary` by 038) + body_md. Principals use
-  // `name` + `body_md` after 037 dropped the summary column.
-  // Distinguished by whether ALL_ENTITY_TABLES exposes a typeNamedColumn.
+  // Every node carries its text in the single `prose` column (the
+  // typeNamedColumn). Policies carry no type-named prose column — their
+  // structured fields flow through the generic data-jsonb loop below.
   const typeNamedColumn = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
-  // Types with a markdown body get body_md; `reference` is pure YAML
-  // and ignores body operations. For migrated nodes body_md is gone
-  // entirely; only policies/principal still carry it.
-  const isMd = !typeNamedColumn && entityType !== "reference";
 
   // Snapshot pre-mutation values for the audit log.
   const beforeFm: Record<string, unknown> = { ...fm };
@@ -1322,7 +1298,7 @@ export async function updateEntity(opts: {
   if (typeNamedColumn) {
     // A node's text is `prose` (the typeNamedColumn). Also accept the legacy
     // type-named patch key (`state`/`intent`/…) as an alias, mirroring
-    // captureGenericNode — body_md remains the long-form markdown body.
+    // captureGenericNode.
     const raw =
       typeNamedColumn in normalizedPatch
         ? normalizedPatch[typeNamedColumn]
@@ -1335,7 +1311,7 @@ export async function updateEntity(opts: {
   }
   // Policies carry no type-named prose column: their `kind`, `predicate`,
   // `on_violation`, and `fires_when_node_lifecycle` flow through the generic
-  // data-jsonb loop below; `body_md` is handled via the `isMd` body path.
+  // data-jsonb loop below.
   if (normalizedPatch.lifecycle !== undefined) {
     const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "active");
     if (typeof lifecycle !== "string") return lifecycle;
@@ -1351,16 +1327,13 @@ export async function updateEntity(opts: {
   }
   // Apply every other field in the patch to the entity's data jsonb.
   // Step B of the node shape sweep dropped per-type whitelists: any
-  // user-supplied field that isn't system-managed (id/audit columns),
+  // user-supplied field that isn't system-managed (id/audit columns) and
   // isn't a special-cased scalar handled above (lifecycle, outcome,
-  // deprecated), and isn't a prose body operation (body_md /
-  // body_md_append) is written straight through.
+  // deprecated) is written straight through.
   const SPECIAL_CASED_KEYS = new Set<string>([
     "lifecycle",
     "outcome",
     "deprecated",
-    "body_md",
-    "body_md_append",
     "created_by_user_id",
     // Slug is not a node data field.
     "slug",
@@ -1394,11 +1367,11 @@ export async function updateEntity(opts: {
     applyDataField(k, normalizedPatch[k]);
   }
   // A patch may carry a nested `attributes` bag (e.g. the GitHub PR sync sets
-  // `attributes.body_md` for the title/body split). The storage round-trip
-  // keeps per-node domain fields as FLAT keys in `data` (rowToRecord flattens
-  // the attributes jsonb on read; buildAttributes re-collects flat keys on
-  // write), so merge each attribute onto the data bag as a flat key rather than
-  // storing the nested object. A `null` value clears that attribute.
+  // reference scalars there). The storage round-trip keeps per-node domain
+  // fields as FLAT keys in `data` (rowToRecord flattens the attributes jsonb on
+  // read; buildAttributes re-collects flat keys on write), so merge each
+  // attribute onto the data bag as a flat key rather than storing the nested
+  // object. A `null` value clears that attribute.
   const patchAttributes = normalizedPatch.attributes;
   if (patchAttributes && typeof patchAttributes === "object" && !Array.isArray(patchAttributes)) {
     for (const [k, v] of Object.entries(patchAttributes as Record<string, unknown>)) {
@@ -1406,43 +1379,16 @@ export async function updateEntity(opts: {
     }
   }
 
-  let bodyOp: "replace" | "append" | "none" = "none";
-  if (isMd) {
-    if (normalizedPatch.body_md !== undefined) bodyOp = "replace";
-    else if (normalizedPatch.body_md_append !== undefined) bodyOp = "append";
-  }
-  if (bodyOp !== "none") {
-    changed.push("body");
-    if (bodyOp === "replace") ops.push({ kind: "replaced_body" });
-    else ops.push({ kind: "appended_body", preview: String(normalizedPatch.body_md_append ?? "") });
-  }
-
   if (changed.length === 0) {
     return { error: NO_FIELDS_CHANGED };
   }
 
-  // Compute the new body for Postgres storage. Only policies/principal
-  // still have a separate body_md column; the migrated nodes fold
-  // prose into the type-named column above.
-  let nextBody: string | undefined;
-  if (isMd) {
-    if (normalizedPatch.body_md !== undefined) {
-      nextBody = String(normalizedPatch.body_md).trim();
-    } else if (normalizedPatch.body_md_append !== undefined) {
-      nextBody = existingBody
-        ? `${existingBody.replace(/\n+$/, "")}\n\n${String(normalizedPatch.body_md_append).trim()}`
-        : String(normalizedPatch.body_md_append).trim();
-    } else {
-      nextBody = existingBody.trim();
-    }
-  }
   const pred = await enforceAndPersist({
     docoId,
     fm,
     entityType,
     id,
     authoring,
-    ...(nextBody !== undefined ? { body: nextBody } : {}),
   });
   if (pred.blocking) {
     return {
@@ -1647,7 +1593,6 @@ interface PolicyPayload {
   label: string;
   lifecycle: string;
   fm: Record<string, unknown>;
-  body: string;
   authorId: string | null;
   createdById: string | null;
   now: string;
@@ -1732,7 +1677,6 @@ async function buildPolicyPayload(
     label: summarizePredicate(predicate),
     lifecycle,
     fm,
-    body: "",
     authorId: author,
     createdById,
     now,
@@ -1757,7 +1701,6 @@ export async function capturePolicy(
     fm: payload.fm,
     entityType: payload.entityType,
     id: payload.id,
-    body: payload.body,
     authoring: extras.authoring,
   });
   if (pred.blocking) {

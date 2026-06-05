@@ -279,18 +279,6 @@ export function NodeDialog({
               </dl>
             </section>
 
-            {detail.body_text ? (
-              <section className="pt-4">
-                <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                  {detail.body_field ?? "body_md"}
-                </h3>
-                <div className="whitespace-pre-wrap break-words leading-5">
-                  <LinkedProse text={detail.body_text} />
-                </div>
-                {detail.primary_text ? null : <DocoSourceLine doco={detail.doco} />}
-              </section>
-            ) : null}
-
             <section className="pt-4">
               <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
                 Edges
