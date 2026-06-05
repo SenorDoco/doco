@@ -8,7 +8,14 @@ const searchSource = () =>
 const settingsSource = () =>
   readFileSync(new URL("../workspaces.$workspaceHandle.settings.tsx", import.meta.url), "utf8");
 
-const workspaceTwoColumnGrid = "grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_420px]";
+// The two-column split waits for `lg` (1024px) — the same width at which the
+// SiteHeader swaps its inline nav for the hamburger. Below it there isn't room
+// for the 420px sidebar *and* a comfortable left column (the constitution's
+// wide-tracked title would overflow and its body wrap to ~one word per line),
+// so the page renders as a single column, like the rest of the app's
+// two-column pages (integrations, etc.). Anything lower (the old 840px) left a
+// cramped two-column layout in the 840–1024px band.
+const workspaceTwoColumnGrid = "grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]";
 
 describe("/workspaces/:workspaceHandle responsive layout", () => {
   it("uses the shared wide page width and desktop sidebar grid", () => {
@@ -16,6 +23,10 @@ describe("/workspaces/:workspaceHandle responsive layout", () => {
 
     expect(src).toContain("mx-auto w-full max-w-6xl px-6");
     expect(src).toContain(workspaceTwoColumnGrid);
+    // The two-column split must not kick in before there's room for it: the
+    // old 840px breakpoint left a cramped two-column band below the nav's
+    // 1024px collapse. Guard against regressing to it.
+    expect(src).not.toContain("min-[840px]:grid-cols-[minmax(0,1fr)_420px]");
     expect(src).not.toContain("workspace-home-layout-shell");
     expect(src).not.toContain("workspace-home-layout-grid");
   });
