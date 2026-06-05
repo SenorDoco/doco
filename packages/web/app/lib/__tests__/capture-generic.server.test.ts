@@ -70,12 +70,12 @@ describe("captureGenericNode", () => {
     expect(res).toMatchObject({ ok: true, id: expect.stringMatching(/^decision_/) });
     expect(upsertEntity).toHaveBeenCalledTimes(1);
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
-    // prose flows to the type-named value (→ prose column in storage).
-    expect(rec.type_named_value).toBe("Adopt the raw schema");
+    // The text flows under the single canonical key `prose` (→ prose column).
+    expect(rec.data.prose).toBe("Adopt the raw schema");
     // attributes are spread flat onto the data bag (storage re-bags them).
     expect(rec.data).toMatchObject({
       node_type: "decision",
-      decision: "Adopt the raw schema",
+      prose: "Adopt the raw schema",
       question: "What shape does the API expose?",
       chosen: "The row schema.",
     });
@@ -94,7 +94,7 @@ describe("captureGenericNode", () => {
   it("accepts the legacy type-named field as an alias for prose", async () => {
     await capture("action", { action: "Deploy the build", attributes: { verb: "deploy" } });
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
-    expect(rec.type_named_value).toBe("Deploy the build");
+    expect(rec.data.prose).toBe("Deploy the build");
     expect(rec.data).toMatchObject({ verb: "deploy" });
   });
 

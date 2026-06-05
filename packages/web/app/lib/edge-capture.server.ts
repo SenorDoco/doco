@@ -66,9 +66,10 @@ async function resolveEndpoint(
  * the role it plays in the edge.
  */
 function endpointPayload(rec: EntityRecord): Record<string, unknown> {
+  const prose = typeof rec.data?.prose === "string" ? rec.data.prose : null;
   return {
-    name: rec.name ?? null,
-    text: rec.type_named_value ?? null,
+    name: rec.name ?? prose,
+    text: prose,
     ...(rec.data && typeof rec.data === "object" ? rec.data : {}),
   };
 }

@@ -121,7 +121,7 @@ describe("principal API", () => {
         data: expect.objectContaining({
           doco_id: "doco_acme",
           node_type: "principal",
-          name: "Visitor",
+          prose: "Visitor",
           created_by: "user_author",
           lifecycle: "active",
         }),
@@ -174,7 +174,7 @@ describe("principal API", () => {
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          name: "Alex Smith / Finance",
+          prose: "Alex Smith / Finance",
         }),
       }),
     );
@@ -204,7 +204,7 @@ describe("principal API", () => {
     expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
       expect.objectContaining({
         candidate: expect.objectContaining({
-          name: "gabriela",
+          prose: "gabriela",
           body_md: "Human director of the Buenos Aires team. Operates under @alex.",
         }),
       }),
@@ -228,12 +228,12 @@ describe("principal API", () => {
     expect(response.status).toBe(201);
     expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
       expect.objectContaining({
-        candidate: expect.objectContaining({ name: "reviewer-bot", kind: "agent" }),
+        candidate: expect.objectContaining({ prose: "reviewer-bot", kind: "agent" }),
       }),
     );
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ name: "reviewer-bot", kind: "agent" }),
+        data: expect.objectContaining({ prose: "reviewer-bot", kind: "agent" }),
       }),
     );
   });
@@ -276,7 +276,7 @@ describe("principal API", () => {
       expect.objectContaining({
         body_md: "",
         data: expect.objectContaining({
-          name: "human",
+          prose: "human",
           body_md: "",
         }),
       }),

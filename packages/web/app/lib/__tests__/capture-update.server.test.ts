@@ -9,10 +9,10 @@ import {
 
 vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
-    decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
-    idea: { table: "ideas", body: false, typeNamedColumn: "idea" },
-    state: { table: "states", body: false, typeNamedColumn: "state" },
-    action: { table: "actions", body: false, typeNamedColumn: "action" },
+    decision: { table: "nodes", body: false, typeNamedColumn: "prose" },
+    idea: { table: "nodes", body: false, typeNamedColumn: "prose" },
+    state: { table: "nodes", body: false, typeNamedColumn: "prose" },
+    action: { table: "nodes", body: false, typeNamedColumn: "prose" },
     reference: { table: "nodes", body: false, typeNamedColumn: "prose" },
   },
   getDocoById: vi.fn(),
@@ -75,7 +75,7 @@ describe("updateEntity", () => {
         id: STATE_ID,
         doco_id: DOCO_ID,
         node_type: "state",
-        state: "Original state name",
+        prose: "Original state name",
         kind: "intermediate",
         lifecycle: "active",
       },
@@ -99,17 +99,14 @@ describe("updateEntity", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      // Pre-Step-B: `state` (the type-named prose column) was silently
-      // ignored when the route's allowedFields whitelist didn't list
-      // it. After Step B removed whitelists, the prose column edit
-      // now lands alongside `kind`.
-      changed: ["state", "kind"],
+      // The text is `prose`; the legacy `state` patch key is accepted as an
+      // alias and normalized to it, so the change is reported as `prose`.
+      changed: ["prose", "kind"],
     });
     expect(upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        type_named_value: "Renamed state name",
         data: expect.objectContaining({
-          state: "Renamed state name",
+          prose: "Renamed state name",
           kind: "terminal",
         }),
       }),
@@ -129,7 +126,7 @@ describe("updateEntity", () => {
         id: IDEA_ID,
         doco_id: DOCO_ID,
         node_type: "idea",
-        idea: "Original idea name",
+        prose: "Original idea name",
         lifecycle: "active",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
@@ -151,13 +148,12 @@ describe("updateEntity", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      changed: ["idea"],
+      changed: ["prose"],
     });
     expect(upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        type_named_value: "Renamed idea name",
         data: expect.objectContaining({
-          idea: "Renamed idea name",
+          prose: "Renamed idea name",
         }),
       }),
       expect.anything(),
@@ -176,7 +172,7 @@ describe("updateEntity", () => {
         id: DECISION_ID,
         doco_id: DOCO_ID,
         node_type: "decision",
-        decision: "Choose payment path",
+        prose: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
         lifecycle: "active",
@@ -214,7 +210,7 @@ describe("updateEntity", () => {
         id: DECISION_ID,
         doco_id: DOCO_ID,
         node_type: "decision",
-        decision: "Choose payment path",
+        prose: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
         lifecycle: "active",
@@ -258,7 +254,7 @@ describe("updateEntity", () => {
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
         node_type: "reference",
-        reference: "Old title",
+        prose: "Old title",
         ref_type: "url",
         locator: "https://github.com/acme/store/pull/482",
         body_md: "Old body.",
@@ -284,9 +280,9 @@ describe("updateEntity", () => {
 
     expect(result).toMatchObject({ ok: true });
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
-    // The title (type-named prose) and the new body both land as flat keys.
-    expect(rec.type_named_value).toBe("New title");
-    expect(rec.data).toMatchObject({ reference: "New title", body_md: "New body." });
+    // The title (`prose`) and the new body both land as flat keys.
+    expect(rec.data.prose).toBe("New title");
+    expect(rec.data).toMatchObject({ prose: "New title", body_md: "New body." });
     // No nested `attributes` object leaks into the data bag.
     expect(rec.data).not.toHaveProperty("attributes");
   });
@@ -303,7 +299,7 @@ describe("updateEntity", () => {
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
         node_type: "reference",
-        reference: "Title",
+        prose: "Title",
         ref_type: "url",
         locator: "https://github.com/acme/store/pull/482",
         body_md: "Body to be removed.",
@@ -320,7 +316,7 @@ describe("updateEntity", () => {
       pluralDir: "references",
       id: REFERENCE_ID,
       patch: {
-        reference: "Title",
+        prose: "Title",
         attributes: { body_md: null },
       },
       docoHost: "https://doco.test",
@@ -345,7 +341,7 @@ describe("updateEntity", () => {
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
         node_type: "reference",
-        reference: "Stable title",
+        prose: "Stable title",
         ref_type: "url",
         locator: "https://github.com/acme/store/pull/482",
         body_md: "Stable body.",
@@ -362,7 +358,7 @@ describe("updateEntity", () => {
       pluralDir: "references",
       id: REFERENCE_ID,
       patch: {
-        reference: "Stable title",
+        prose: "Stable title",
         lifecycle: "active",
         attributes: { body_md: "Stable body." },
       },
@@ -431,7 +427,7 @@ describe("updateEntity", () => {
         id: IDEA_ID,
         doco_id: DOCO_ID,
         node_type: "idea",
-        idea: "Original idea",
+        prose: "Original idea",
         lifecycle: "drafting",
         created_by: "user_alice",
       },
@@ -471,7 +467,7 @@ describe("updateEntity", () => {
         id: ACTION_ID,
         doco_id: DOCO_ID,
         node_type: "action",
-        action: "Selects type of job",
+        prose: "Selects type of job",
         verb: "select",
         lifecycle: "active",
       },
