@@ -7,6 +7,7 @@ import {
   focusTargetForResourcePath,
   pendingCreateForRequest,
   perspectiveParam,
+  requestRetiresResource,
 } from "../agent-follow-target";
 
 describe("focusTargetForResourcePath", () => {
@@ -164,6 +165,35 @@ describe("focusNavigationUrl", () => {
         "bpmn",
       ),
     ).toBe("/acme/policies/policy_01/edit?dialog=skip");
+  });
+});
+
+describe("requestRetiresResource", () => {
+  // When the agent makes a node/edge disappear, the camera must NOT
+  // auto-focus it: there'd be nothing to look at, and for an edge the
+  // focus snaps onto its still-live source node — an unrelated place
+  // the user never asked to see. These are the request shapes that
+  // mean "this resource is about to vanish".
+  it("treats a DELETE as a retire", () => {
+    expect(requestRetiresResource("DELETE", undefined)).toBe(true);
+    expect(requestRetiresResource("delete", null)).toBe(true);
+  });
+
+  it("treats a PATCH/PUT to lifecycle:retired as a retire", () => {
+    expect(requestRetiresResource("PATCH", { lifecycle: "retired" })).toBe(true);
+    expect(requestRetiresResource("put", { lifecycle: "retired" })).toBe(true);
+  });
+
+  it("treats a POST {op:'retire'} as a retire (DELETE-less edge clients)", () => {
+    expect(requestRetiresResource("POST", { op: "retire" })).toBe(true);
+  });
+
+  it("leaves reads and non-retiring writes alone", () => {
+    expect(requestRetiresResource("GET", undefined)).toBe(false);
+    expect(requestRetiresResource("PATCH", { lifecycle: "active" })).toBe(false);
+    expect(requestRetiresResource("PATCH", { summary: "edit" })).toBe(false);
+    expect(requestRetiresResource("POST", { op: "supersede" })).toBe(false);
+    expect(requestRetiresResource("POST", {})).toBe(false);
   });
 });
 

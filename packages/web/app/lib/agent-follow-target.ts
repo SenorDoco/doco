@@ -132,6 +132,26 @@ export function focusTargetForNavigateUrl(rawUrl: string): FocusTarget | null {
   return { pathname: `/${handle}/${entityType}/${id}`, perspectiveAware: true };
 }
 
+/**
+ * True when a `doco_api` request makes the node/edge it addresses
+ * disappear — a DELETE, a PATCH/PUT that sets `lifecycle: "retired"`,
+ * or a `POST {op:"retire"}` (the DELETE-less edge-retire shape). The
+ * caller uses this to suppress auto-focus: there's no point yanking the
+ * camera onto a resource that's vanishing, and for an edge the focus
+ * would snap onto its still-live source node — an unrelated place the
+ * user never asked to see. When the agent makes a node/edge disappear,
+ * the perspective stays put.
+ */
+export function requestRetiresResource(method: string, body: unknown): boolean {
+  const m = method.toUpperCase();
+  if (m === "DELETE") return true;
+  if (!body || typeof body !== "object") return false;
+  const b = body as { lifecycle?: unknown; op?: unknown };
+  if ((m === "PATCH" || m === "PUT") && b.lifecycle === "retired") return true;
+  if (m === "POST" && b.op === "retire") return true;
+  return false;
+}
+
 /** The active perspective slug from a location search string, or null. */
 export function perspectiveParam(search: string): string | null {
   try {
