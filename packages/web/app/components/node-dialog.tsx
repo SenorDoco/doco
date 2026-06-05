@@ -420,7 +420,7 @@ export function NodeDialog({
   );
 }
 
-function EdgeList({
+export function EdgeList({
   label,
   direction,
   currentNodeId,
@@ -448,6 +448,10 @@ function EdgeList({
           {edges.map((edge) => {
             const edgeTitle = edge.other_name ?? edge.other_summary ?? edge.other_id;
             const retired = edge.other_lifecycle === "retired";
+            // A retired edge strikes through its own type (and label) so the
+            // relationship reads as "no longer current" — mirroring how a
+            // retired node on the other end strikes through its title below.
+            const edgeRetired = edge.edge_lifecycle === "retired";
             // Endpoints from this node's vantage: an outgoing edge runs from
             // this node to the other; an incoming edge runs from the other to
             // this node. The edge dialog re-centers the canvas on `source`.
@@ -470,11 +474,20 @@ function EdgeList({
                   className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] hover:bg-input/40"
                 >
                   <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  <span className="truncate font-mono" style={{ color: edgeColor }}>
+                  <span
+                    className={`truncate font-mono${
+                      edgeRetired ? " line-through decoration-2" : ""
+                    }`}
+                    style={{ color: edgeColor }}
+                  >
                     {edge.edge_type}
                   </span>
                   {edge.edge_label ? (
-                    <span className="truncate font-mono text-muted-foreground">
+                    <span
+                      className={`truncate font-mono text-muted-foreground${
+                        edgeRetired ? " line-through decoration-2" : ""
+                      }`}
+                    >
                       {edge.edge_label}
                     </span>
                   ) : null}
