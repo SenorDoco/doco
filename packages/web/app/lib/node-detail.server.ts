@@ -68,13 +68,10 @@ export interface NodeDialogDetail {
   name: string | null;
   primary_field: string;
   primary_text: string | null;
-  body_field: string | null;
-  body_text: string | null;
   lifecycle: string;
   created_at: string | null;
   updated_at: string | null;
   authoring: AuthoringPair;
-  body_md: string | null;
   // Reference `locator` — the code/source permalink, promoted out of `data`.
   // Linked to GitHub (or the source URL) in the dialog. Null for non-references.
   locator: string | null;
@@ -105,26 +102,22 @@ const UPDATE_SEGMENTS: Record<string, string> = Object.fromEntries(
 type GraphNodeConfig = {
   // node_type discriminator on the unified `nodes` table.
   nodeType: string;
-  // Physical `nodes` column the primary text reads from: `prose` for
-  // the 9 prose types, `name` for principal.
+  // Physical `nodes` column the primary text reads from: always `prose`.
   primaryColumn: string;
   // Logical, client-facing field name. For the 9 prose types this is
   // the old type-named field ("decision", "intent", …); "name" for
   // principal. The `=== "name"` check downstream distinguishes them.
   typeNamedColumn: string | null;
   primaryField: string;
-  bodyColumn: string | null;
-  bodyField: string | null;
   updateSegment: string;
 };
 
 const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
   ...(Object.fromEntries(
     Object.entries(DOCO_NODE_TABLE_BY_TYPE).map(([entityType, _spec]) => {
-      // Post-collapse: all generic prose types live in `nodes` with their
-      // prose in the shared `prose` column. The logical field name
-      // (the old type-named column) is kept for the client-facing
-      // `primary_field`.
+      // Post-collapse: every node lives in `nodes` with its text in the shared
+      // `prose` column. The logical field name (the old type-named column) is
+      // kept for the client-facing `primary_field`.
       const typeNamedField = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType;
       return [
         entityType,
@@ -133,36 +126,18 @@ const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
           primaryColumn: "prose",
           typeNamedColumn: typeNamedField,
           primaryField: typeNamedField,
-          bodyColumn: null,
-          bodyField: null,
           updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
         },
       ];
     }),
   ) as Record<string, GraphNodeConfig>),
-  // A PR reference splits its content: the title lives in `prose` (the primary
-  // text) and the PR body in `attributes.body_md` (a real body section). Without
-  // this override it inherits the generic `bodyColumn: null`, hiding the body.
-  reference: {
-    nodeType: "reference",
-    primaryColumn: "prose",
-    typeNamedColumn: "reference",
-    primaryField: "reference",
-    bodyColumn: "attributes->>'body_md'",
-    bodyField: "body_md",
-    updateSegment: UPDATE_SEGMENTS.reference ?? "references",
-  },
-  // Principal shares the `nodes` table but reads its label/body from
-  // dedicated columns rather than the generic prose column.
+  // Principal shares the `nodes` table but its client-facing label field is
+  // `name` (its `prose` text); it carries no type-named column and no body.
   principal: {
     nodeType: "principal",
-    // Slim-down: principals dropped their `name`/`body_md` columns — the label
-    // is `prose`, and the body folds into the `attributes` bag.
     primaryColumn: "prose",
     typeNamedColumn: null,
     primaryField: "name",
-    bodyColumn: "attributes->>'body_md'",
-    bodyField: "body_md",
     updateSegment: "principals",
   },
 };
@@ -464,16 +439,13 @@ export async function loadNodeDialogDetail(
   const cfg = GRAPH_NODE_TABLES[options.entityType];
   if (!cfg) return null;
 
-  // The 9 prose nodes store their primary text in a type-named column
-  // (intent/decision/...). Principal keeps a real `name` display label
-  // plus optional `body_md`; keep those channels distinct so the dialog
-  // does not promote the body over the label.
-  const bodySelect = cfg.bodyColumn ? `${cfg.bodyColumn} AS body_text` : "NULL::text AS body_text";
+  // Every node stores its text in the shared `prose` column; the client-facing
+  // field name (`name` for principal, the type-named field otherwise) is in
+  // `cfg.primaryField`. There is no separate body column.
   const row = (
     await c.query<{
       id: string;
       primary_text: string | null;
-      body_text: string | null;
       lifecycle: string | null;
       raw_json: string;
       locator: string | null;
@@ -484,7 +456,6 @@ export async function loadNodeDialogDetail(
     }>(
       `SELECT id,
               ${cfg.primaryColumn} AS primary_text,
-              ${bodySelect},
               COALESCE(lifecycle, 'active') AS lifecycle,
               attributes::text AS raw_json,
               attributes->>'locator' AS locator,
@@ -531,14 +502,7 @@ export async function loadNodeDialogDetail(
   const primaryFirstLine = row.primary_text
     ? row.primary_text.split("\n")[0] || row.primary_text
     : null;
-  const bodyFirstLine = row.body_text ? row.body_text.split("\n")[0] || row.body_text : null;
-  const summary =
-    primaryFirstLine ?? stringField(frontmatter, "summary") ?? name ?? bodyFirstLine ?? row.id;
-  // Backwards-compatible field for older client code. Prefer a real body
-  // section when the node has one (Principal's `attributes.body_md`; a PR
-  // Reference's split-out body). For migrated prose nodes with no body section
-  // (decision/intent/…), fall back to the type-named primary text (the prose).
-  const bodyMdCompat = row.body_text ?? (cfg.typeNamedColumn ? row.primary_text : null);
+  const summary = primaryFirstLine ?? stringField(frontmatter, "summary") ?? name ?? row.id;
 
   const outgoingRows = (
     await c.query<DialogOutgoingEdgeRow>(
@@ -663,8 +627,6 @@ export async function loadNodeDialogDetail(
     name,
     primary_field: cfg.primaryField,
     primary_text: row.primary_text,
-    body_field: cfg.bodyField,
-    body_text: row.body_text,
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
@@ -672,7 +634,6 @@ export async function loadNodeDialogDetail(
       created: createdAuthoring,
       updated: updatedAuthoring,
     },
-    body_md: bodyMdCompat,
     locator: row.locator ?? null,
     github_repo: githubRepo,
     doco: {

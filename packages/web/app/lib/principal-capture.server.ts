@@ -1,11 +1,11 @@
 // Principal create — the shared core behind BOTH the bespoke
 // /<doco>/api/principals.json route AND the generic capture machinery
 // (registry → changeset, authoring contract). Principals are a real
-// NODE_CATALOG node type (role-personas / process actors), but their body is
-// `name` + `body_md` rather than the shared `prose` column, so they get a
-// captureFn of their own here instead of a generic one. Same CaptureResult |
-// CaptureError contract as every other captureFn, so changeset, the route, and
-// the contract all treat principal as just another node type.
+// NODE_CATALOG node type (role-personas / process actors); their text is the
+// display `name` (stored in the shared `prose` column, like every node), so
+// they get a captureFn of their own here instead of a generic one. Same
+// CaptureResult | CaptureError contract as every other captureFn, so changeset,
+// the route, and the contract all treat principal as just another node type.
 
 import { getDocoById, upsertEntity } from "@doco/db";
 import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, generateUlid, makeEntityId, nowIso } from "@doco/shared";
@@ -22,7 +22,6 @@ import {
 
 export interface PrincipalDraft {
   name?: string;
-  body_md?: string;
   /** Seat occupant kind — "human" or "agent" (optional; vacant declares none). */
   kind?: string;
   lifecycle?: string;
@@ -100,7 +99,6 @@ export async function capturePrincipal(
 
   const id = makeEntityId("principal", generateUlid());
   const now = nowIso();
-  const bodyMd = draft.body_md?.trim() || "";
   const kind = draft.kind?.trim();
   if (kind && kind !== "human" && kind !== "agent") {
     return { error: 'kind must be "human" or "agent" when set.', status: 400 };
@@ -111,9 +109,8 @@ export async function capturePrincipal(
     doco_id: docoId,
     node_type: "principal",
     // A principal's name is its text — one canonical key, `prose`, like every
-    // other node. (Its description rides along in `body_md`.)
+    // other node. There is no separate body.
     prose: name,
-    body_md: bodyMd,
     ...(kind ? { kind } : {}),
     created_at: now,
     created_by: createdBy,
@@ -138,7 +135,6 @@ export async function capturePrincipal(
     doco_id: docoId,
     entity_type: "principal",
     data: raw,
-    body_md: bodyMd,
     lifecycle,
     created_at: now,
     created_by: createdBy,
@@ -154,7 +150,7 @@ export async function capturePrincipal(
     entity_type: "principal",
     entity_id: id,
     op: "entity.create",
-    after: { name, body_md: bodyMd, lifecycle },
+    after: { name, lifecycle },
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);

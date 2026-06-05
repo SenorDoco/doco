@@ -98,13 +98,18 @@ Principal = Node where node_type = 'principal'
 - **`severity` gone** → remove any severity-based rendering.
 - **Policy specs** migrate from the type-named word (`intent`/…) to `prose`.
 
-## Refined principle (after seeing each entity's bag)
+## The one sanctioned exception (does NOT soften the principle)
 
-Drop **empty / cruft** bags — bags that held only dead representations or were
-never read. **Keep** bags that hold genuine nested config the app depends on:
-re-homing those into columns/tables is real work with real risk and little
-payoff while the jsonb shape is doing its job. So the goal sharpened to "no
-*cruft* bags," not "no bags anywhere."
+The principle above stands exactly as written. A node's only bag is the
+author-owned **`extra`** — empty by default, never written to by the system —
+and config/identity entities carry no bag at all. There is exactly ONE
+carve-out: **`docos.data` and `users.data` stay as jsonb**, by deliberate,
+owner-approved decision (2026-06-05), because they hold genuinely load-bearing
+nested config (`github_integration` / `template_handle` on docos; `preferences`
+/ `name` / `display_name` on users) whose re-homing is large, risky, and
+low-payoff while the jsonb is doing its job. That is a *named exception for two
+tables*, not a general relaxation to "no *cruft* bags": every node is still held
+to one shape, one name per field, and no system-written bag.
 
 ## Execution — staged, test-first, each its own PR squash-merged to `main`
 
@@ -113,10 +118,13 @@ intended shape/behavior and watch it go red; (2) make it green; (3) land on
 `main` via feature branch → PR → CI green → auto-merge squash; (4) verify live
 on `doco.to` (dev-signin recipe in `AGENTS.md`) with a screenshot.
 
-1. **Nodes — DONE (#1068).** Collapsed to the canonical `Node`: read `prose`
-   directly, deleted `type_named_value` / `computeTypeNamedValue` / the
-   type-named keys; kept `locator`; `attributes` → `extra`; migrated policy
-   specs → `prose`. **Landed the live re-evaluation bug fix.**
+1. **Nodes — PARTIAL (#1068 landed the prose collapse).** Read `prose` directly,
+   deleted `type_named_value` / `computeTypeNamedValue` / the type-named keys;
+   migrated policy specs → `prose`; **landed the live re-evaluation bug fix.**
+   NOT yet done: the node bag is still named `attributes` (not `extra`) and still
+   holds folded domain fields (`body_md`, `locator`, `ref_type`, …). The
+   node-bag normalization slices below (6.A–6.E) finish it — until they land,
+   slice 1 is not complete.
 2. **Edges — DONE (#1069).** Promoted the flows_to metadata to typed columns
    (`label`/`condition`/`kind`); dropped `role` and the `props` jsonb; deleted
    the `edge_props_json` alias.
@@ -129,9 +137,19 @@ on `doco.to` (dev-signin recipe in `AGENTS.md`) with a screenshot.
    migrations). Normalizing it is large, risky, low-payoff — leave the jsonb.
 5. **Users — KEEP AS IS (same reasoning).** `data` holds `preferences` (UI
    state) and `name`/`display_name` (read for display). Real config; leave it.
-6. **Teardown (optional).** With docos/users keeping their bags, the
-   `EntityRecord`/mapper consolidation is partial; the highest-value piece left
-   is folding the duplicate `PrincipalRow` read into the node path.
+6. **Node-bag normalization — REMAINING (the real rest of slice 1).** The node
+   bag is not yet the empty, author-owned `extra`; it still holds system fields.
+   Finish it as ordered, test-first, squash-merged slices:
+   - **A. Drop `body_md` — DONE.** Principals and PR references lose their body;
+     a node's only text is `prose`. Org-chart vacancy reads `kind` + `prose`.
+   - **B. Promote `locator` to its own `nodes.locator` column** (it lives in the
+     bag today; the reference-dedup index reads it there).
+   - **C. Drop `ref_type` / `citation` / `severity` / `title` / `body` for good**
+     — earlier migrations folded them into the bag instead of deleting them.
+   - **D. Rename the node bag `attributes` → `extra`** — the big mechanical
+     rename, once the bag holds no system fields.
+   - **E. Collapse `EntityRecord` + the bespoke mappers to one `rowToEntity`**
+     (the `PrincipalRow` fold, #1071, is the template).
 
 
 ## Verification regime (run after each UI-touching slice; exhaustively at the end)

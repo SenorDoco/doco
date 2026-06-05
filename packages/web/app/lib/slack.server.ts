@@ -1950,7 +1950,6 @@ function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> 
     updated_at: row.updated_at ?? null,
     updated_by: row.updated_by ?? null,
     data: row.data,
-    body_md: row.body_md ?? null,
   };
 }
 

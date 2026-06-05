@@ -55,7 +55,6 @@ export async function loader({
       updated_at: r.updated_at ?? null,
       updated_by: r.updated_by ?? null,
       data: r.data,
-      body_md: r.body_md ?? null,
     })),
   });
 }

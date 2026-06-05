@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildEntityGetResponse } from "../api-capture-shape";
 
 // The READ side exposes the canonical row shape — `{prose, attributes}` — for
-// every node type. There is no type-named key. Policies keep `body_md`.
+// every node type. There is no type-named key. A policy carries its structured
+// fields in `data` (no `prose`/`attributes`).
 
 describe("buildEntityGetResponse — expose the canonical row shape on read", () => {
   it("returns prose + attributes for a node, with no type-named key", () => {
@@ -36,10 +37,9 @@ describe("buildEntityGetResponse — expose the canonical row shape on read", ()
       entity_type: "policy",
       doco_id: "doco_1",
       data: { kind: "suggestion" },
-      body_md: "B",
     });
     expect(res).not.toHaveProperty("prose");
     expect(res).not.toHaveProperty("attributes");
-    expect(res.body_md).toBe("B");
+    expect(res.data).toEqual({ kind: "suggestion" });
   });
 });
