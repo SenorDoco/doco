@@ -55,6 +55,31 @@ describe("/workspaces/:workspaceHandle responsive layout", () => {
     expect(src).not.toContain("max-w-4xl");
   });
 
+  it("drops the latest activity feed to the bottom of the stacked (narrow) view", () => {
+    const src = routeSource();
+
+    // Below `lg` the page is a single column. Readers want the constitution
+    // and the workspace's Docos first, so the cross-Doco activity feed should
+    // fall to the very bottom — after the docos sidebar — instead of wedging
+    // between the constitution and the sidebar.
+    //
+    // The left column dissolves into the grid (`contents`) below `lg` so its
+    // children become direct grid items that can be ordered past the sidebar,
+    // then reflows as a real column (`lg:block`) beneath the constitution at
+    // `lg`, where the feed sits in its natural spot again.
+    expect(src).toContain("contents lg:block");
+
+    // The feed card carries `order-last` so it sorts after the sidebar in the
+    // stacked grid, and resets to natural flow (`lg:order-none`) in the
+    // two-column layout.
+    const feedTitle = src.indexOf('<CardTitle className="text-sm">Latest activity</CardTitle>');
+    expect(feedTitle).toBeGreaterThan(-1);
+    // `<Card ` (trailing space) matches the card's opening tag, not the
+    // `<CardHeader`/`<CardTitle` that nest inside it.
+    const feedCardOpen = src.lastIndexOf("<Card ", feedTitle);
+    expect(src.slice(feedCardOpen, feedTitle)).toContain("order-last");
+  });
+
   it("lists the workspace's Docos by name without the redundant owner prefix", () => {
     const src = routeSource();
     const docosCard = src.indexOf('"Docos in this workspace"');

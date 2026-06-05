@@ -328,15 +328,19 @@ export default function WorkspaceHome({
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
           {/* Left column — the constitution gets the full available width, with
-              the latest activity feed beneath it. */}
-          <section className="min-w-0 space-y-4">
+              the latest activity feed beneath it. Below `lg` this column
+              dissolves into the grid (`contents`) so the feed can be ordered
+              past the sidebar to the bottom of the stacked page; at `lg` it
+              reflows as a real column and the feed returns to its spot beneath
+              the constitution. */}
+          <section className="contents lg:block lg:min-w-0 lg:space-y-4">
             <WorkspaceConstitutionCard
               workspaceHandle={workspace.handle}
               constitution={workspace.constitution}
               canEdit={canEditConstitution}
             />
 
-            <Card>
+            <Card className="order-last lg:order-none">
               <CardHeader className="px-4 py-3">
                 <CardTitle className="text-sm">Latest activity</CardTitle>
               </CardHeader>
