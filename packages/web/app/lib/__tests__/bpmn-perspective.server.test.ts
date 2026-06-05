@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { computeNearestIntentByNode, loadBpmnGraph } from "../bpmn-perspective.server";
+import {
+  computeNearestIntentByNode,
+  loadBpmnGraph,
+  shapeForEntityType,
+} from "../bpmn-perspective.server";
+
+describe("shapeForEntityType", () => {
+  it("renders a State as a pill (rounded), distinct from an Action's task glyph", () => {
+    // States are milestones/outcomes — a condition that holds — and read
+    // as a stadium pill, visually separate from the work-in-flight Action.
+    expect(shapeForEntityType("state")).toBe("rounded");
+    expect(shapeForEntityType("action")).toBe("task");
+    expect(shapeForEntityType("state")).not.toBe(shapeForEntityType("action"));
+  });
+
+  it("does not reserve the pill for Ideas — Ideas are not process content", () => {
+    // Ideas live in their own home (barred by the business-processes
+    // node-type allowlist), so the pill belongs unambiguously to States.
+    expect(shapeForEntityType("idea")).not.toBe("rounded");
+  });
+});
 
 interface CapturedQuery {
   sql: string;

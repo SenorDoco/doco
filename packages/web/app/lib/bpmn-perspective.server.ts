@@ -147,12 +147,16 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 // signal (the host they re-home onto, or the Unassigned pool).
 const ARTIFACT_TYPES = new Set(["eval", "idea", "rule"]);
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
-  state: "task", // same glyph as Action — full-sized, readable, not a compact band label
+  // State is a milestone/outcome — a condition that holds — so it wears the
+  // stadium pill, full-sized and readable but unmistakably not the Action's
+  // task glyph. The pill is the State's alone: Ideas (the former pill) are
+  // not process content and are barred by the business-processes node-type
+  // allowlist, so reusing "rounded" here carries no ambiguity.
+  state: "rounded",
   decision: "diamond",
   action: "task",
   rule: "rectangle",
   eval: "document",
-  idea: "rounded",
 };
 
 export function shapeForEntityType(entityType: string): BpmnShape {

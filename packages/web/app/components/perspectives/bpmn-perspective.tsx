@@ -1245,7 +1245,7 @@ export function BpmnPerspective({
  * can dive into," the BPMN analogue of the graph's fit-to-everything
  * default.
  */
-function BpmnProcessList({
+export function BpmnProcessList({
   pools,
   onSelect,
 }: {
@@ -1253,33 +1253,38 @@ function BpmnProcessList({
   onSelect: (intentId: string) => void;
 }) {
   return (
+    // Center the directory both ways inside the frame. `my-auto` (not
+    // `items-center`) vertically centers a short list while still letting a
+    // tall one scroll from the top without clipping its first rows.
     <div className="flex h-full w-full justify-center overflow-auto p-6">
-      <div className="w-full max-w-md">
-        <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Processes
-        </h2>
-        <ul className="flex flex-col gap-1.5">
-          {pools.map((pool) => {
-            const intentId = pool.intent_id;
-            if (!intentId) return null;
-            return (
-              <li key={pool.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(intentId)}
-                  className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <TypeBadge entityType="intent" lifecycle={pool.lifecycle ?? "active"} />
-                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                    {pool.label}
-                  </span>
-                  <LifecycleBadge lifecycle={pool.lifecycle ?? "active"} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      {/* No standalone "Processes" heading — each row carries its own
+          identity inline, the way a pool header does. The list keeps its
+          accessible name via aria-label so the visible title can go. */}
+      <ul className="my-auto flex w-full max-w-md flex-col gap-1.5" aria-label="Processes">
+        {pools.map((pool) => {
+          const intentId = pool.intent_id;
+          if (!intentId) return null;
+          const lifecycle = pool.lifecycle ?? "active";
+          return (
+            <li key={pool.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(intentId)}
+                // Mirrors BpmnPoolHeaderNode: the type + lifecycle pills sit
+                // inline before the label, vertically centered in the row —
+                // sewn into the band rather than pinned to its top corners.
+                className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <TypeBadge entityType="intent" lifecycle={lifecycle} anchor="inline" />
+                <LifecycleBadge lifecycle={lifecycle} anchor="inline" />
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {pool.label}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -2297,6 +2302,12 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
   );
 }
 
+// Stadium pill — the State glyph. A State is a milestone/outcome (a
+// condition that holds), so its fully-rounded silhouette reads as
+// distinct from the Action's task rectangle even at low zoom, while
+// staying full-sized and legible. (Ideas, the former pill, are not
+// process content — barred by the business-processes node-type
+// allowlist — so the pill is the State's alone.)
 function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   const simplified = useBpmnSimplified();
@@ -2380,7 +2391,7 @@ function SubprocessMarker({ stroke, hideGlyph = false }: { stroke: string; hideG
 }
 
 // BPMN Task — rounded rectangle. Sits between the sharp Rectangle (a
-// policy box) and the fully-pill Rounded (an Idea capsule); the radius
+// policy box) and the fully-pill Rounded (the State stadium); the radius
 // matches the OMG BPMN 2.0 task glyph. When the Action drills into a
 // sub-process it also wears the collapsed-subprocess "+" marker.
 function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
