@@ -30,9 +30,8 @@ vi.mock("@doco/db", () => ({
       handle: string;
       name: string;
       constitution: string;
-      data: Record<string, unknown>;
     }>(
-      `SELECT o.id, o.handle, o.name, o.constitution, o.data
+      `SELECT o.id, o.handle, o.name, o.constitution
          FROM workspaces o
          JOIN workspace_users m ON m.workspace_id = o.id
         WHERE m.user_id = $1 AND m.role = ANY($2::text[])
@@ -114,17 +113,17 @@ describe("Señor Doco bootstrap — workspace constitution", () => {
     await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
     // A workspace the user belongs to, with a non-empty charter.
     await dbm.db.query(
-      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,$2,$3,$4,'{}')",
+      "INSERT INTO workspaces (id, handle, name, constitution) VALUES ($1, $2, $3, $4)",
       [WS_REACHABLE, "acme", "Acme", CHARTER],
     );
     // A workspace the user belongs to but with NO charter — must not surface.
     await dbm.db.query(
-      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,$2,$3,$4,'{}')",
+      "INSERT INTO workspaces (id, handle, name, constitution) VALUES ($1, $2, $3, $4)",
       [WS_EMPTY, "beta", "Beta", ""],
     );
     // A workspace with a charter the user is NOT a member of — must not leak.
     await dbm.db.query(
-      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,$2,$3,$4,'{}')",
+      "INSERT INTO workspaces (id, handle, name, constitution) VALUES ($1, $2, $3, $4)",
       [WS_UNREACHABLE, "ghost", "Ghost", "Members only: never show this to outsiders."],
     );
     for (const ws of [WS_REACHABLE, WS_EMPTY]) {
@@ -169,7 +168,7 @@ describe("Señor Doco bootstrap — workspace constitution", () => {
     const WS_DELTA = "workspace_deltacharter0000000";
     const DELTA_CHARTER = "Delta charter: write an ADR before you build.";
     await dbm.db.query(
-      "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,'delta','Delta',$2,'{}')",
+      "INSERT INTO workspaces (id, handle, name, constitution) VALUES ($1, 'delta', 'Delta', $2)",
       [WS_DELTA, DELTA_CHARTER],
     );
     await dbm.db.query(

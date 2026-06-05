@@ -46,9 +46,7 @@ async function edge(
 async function seed(): Promise<Client> {
   const db = new PGlite();
   await db.exec(schemaSql);
-  await db.query(
-    "INSERT INTO workspaces (id, handle, name, data) VALUES ('ws','ws','WS','{}'::jsonb)",
-  );
+  await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS')");
   await db.query(
     "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",
   );

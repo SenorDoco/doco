@@ -68,7 +68,7 @@ async function seedWorkspaceAndUser(): Promise<void> {
     USER_ID,
   ]);
   await dbm.db.query(
-    "INSERT INTO workspaces (id, handle, name, data) VALUES ($1,'bp-test','BP Test','{}')",
+    "INSERT INTO workspaces (id, handle, name) VALUES ($1, 'bp-test', 'BP Test')",
     [WORKSPACE_ID],
   );
   // Owner role → createDocoInWorkspace skips the redundant doco_users grant.

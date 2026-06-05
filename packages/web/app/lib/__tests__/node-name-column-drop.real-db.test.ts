@@ -46,10 +46,9 @@ beforeAll(async () => {
   db = new PGlite();
   await db.exec(schemaSql);
 
-  await db.query(
-    `INSERT INTO workspaces (id, handle, name, data) VALUES ($1,'torre','torre','{}'::jsonb)`,
-    [OWNER],
-  );
+  await db.query(`INSERT INTO workspaces (id, handle, name) VALUES ($1, 'torre', 'torre')`, [
+    OWNER,
+  ]);
   await db.query(`INSERT INTO users (id, data) VALUES ($1, '{}'::jsonb)`, [USER]);
   await db.query(
     `INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, goal, data)

@@ -166,7 +166,7 @@ beforeEach(async () => {
     [USER_ID],
   );
   await dbm.db.query(
-    `INSERT INTO workspaces (id, handle, name, data) VALUES ($1, 'glossary-ws', 'Glossary WS', '{}'::jsonb)`,
+    `INSERT INTO workspaces (id, handle, name) VALUES ($1, 'glossary-ws', 'Glossary WS')`,
     [WS_ID],
   );
   await dbm.db.query(
