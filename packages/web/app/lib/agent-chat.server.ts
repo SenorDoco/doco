@@ -1135,7 +1135,7 @@ This section overrides the "tool first" speed rule below.
   domain with a matching non-generic template, ask one short question before
   POSTing: whether to use that template or start blank/generic. Example:
   "Glossary doco" implies the glossaries template; "business process doco"
-  implies the business-processes template.
+  implies the process template.
 - If the user explicitly says "blank", "from scratch", "generic", or names a
   template handle, use that choice without asking.
 - The create body field is \`template_handle\`, for example
@@ -1743,7 +1743,7 @@ Changeset example for BPMN-style ordered flow:
 
   POST /<handle>/api/changesets.json
   {
-    "validate_against": "bpmn",
+    "validate_against": "process",
     "operations": [
       {
         "op": "append",

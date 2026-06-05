@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { linksWithFocusedPoolMembership } from "../bpmn-focused-pool-links";
 import { computeDepthFromCenter } from "../graph-depth";
+import { linksWithFocusedPoolMembership } from "../process-focused-pool-links";
 
 describe("linksWithFocusedPoolMembership", () => {
   it("treats every node in the focused intent pool as one hop away", () => {

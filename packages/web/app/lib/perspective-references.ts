@@ -77,7 +77,7 @@ export interface ReferenceCandidate {
   height: number;
 }
 
-export type GraphReferenceSource = "overview" | "bpmn" | "org-tree";
+export type GraphReferenceSource = "overview" | "process" | "org-tree";
 
 interface UsePerspectiveReferencesArgs {
   /** Identifies which perspective is publishing — feeds the sidebar. */

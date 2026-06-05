@@ -1,10 +1,10 @@
-export interface BpmnLanePackingNode {
+export interface ProcessLanePackingNode {
   id: string;
   laneId: string;
   created_at?: string | null;
 }
 
-export interface BpmnLanePackingResult<TNode extends BpmnLanePackingNode> {
+export interface ProcessLanePackingResult<TNode extends ProcessLanePackingNode> {
   orderedByLane: Map<string, TNode[]>;
   columnByNode: Map<string, number>;
   stackIndexByNode: Map<string, number>;
@@ -12,11 +12,11 @@ export interface BpmnLanePackingResult<TNode extends BpmnLanePackingNode> {
   maxColumn: number;
 }
 
-export function packBpmnLaneColumns<TNode extends BpmnLanePackingNode>(
+export function packProcessLaneColumns<TNode extends ProcessLanePackingNode>(
   laneIds: readonly string[],
   nodes: readonly TNode[],
   depthByNode: ReadonlyMap<string, number>,
-): BpmnLanePackingResult<TNode> {
+): ProcessLanePackingResult<TNode> {
   const orderedByLane = new Map<string, TNode[]>();
   for (const laneId of laneIds) orderedByLane.set(laneId, []);
 
@@ -39,7 +39,7 @@ export function packBpmnLaneColumns<TNode extends BpmnLanePackingNode>(
       maxColumn = Math.max(maxColumn, column);
       columnByNode.set(node.id, column);
 
-      const key = bpmnLaneColumnKey(laneId, column);
+      const key = processLaneColumnKey(laneId, column);
       const stack = laneColumnStacks.get(key) ?? [];
       stackIndexByNode.set(node.id, stack.length);
       stack.push(node);
@@ -50,11 +50,11 @@ export function packBpmnLaneColumns<TNode extends BpmnLanePackingNode>(
   return { orderedByLane, columnByNode, stackIndexByNode, laneColumnStacks, maxColumn };
 }
 
-export function bpmnLaneColumnKey(laneId: string, column: number): string {
+export function processLaneColumnKey(laneId: string, column: number): string {
   return `${laneId}\u0000${column}`;
 }
 
-function compareLaneNodes<TNode extends BpmnLanePackingNode>(
+function compareLaneNodes<TNode extends ProcessLanePackingNode>(
   a: TNode,
   b: TNode,
   depthByNode: ReadonlyMap<string, number>,

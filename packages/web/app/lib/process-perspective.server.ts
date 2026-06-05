@@ -41,16 +41,16 @@
 // background material, not a process step).
 
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
 import { highestRanked } from "./pagerank";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
+import { computeForwardSequenceDepths } from "./process-sequence-depth";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-export type BpmnShape =
+export type ProcessShape =
   | "circle"
   | "diamond"
   | "rectangle"
@@ -59,9 +59,9 @@ export type BpmnShape =
   | "task"
   | "milestone";
 
-export type BpmnLaneKind = "milestone" | "actor" | "artifacts" | "unassigned" | "unresolved";
+export type ProcessLaneKind = "milestone" | "actor" | "artifacts" | "unassigned" | "unresolved";
 
-export interface BpmnPool {
+export interface ProcessPool {
   id: string; // "pool:<intent_id>" or POOL_UNASSIGNED_ID
   intent_id: string | null; // null for the Unassigned pool
   label: string; // Intent prose (first line), or "Unassigned"
@@ -71,7 +71,7 @@ export interface BpmnPool {
   lifecycle: string | null;
 }
 
-export interface BpmnLane {
+export interface ProcessLane {
   /** Composite id: `${pool_id}::${base}`. Unique across the canvas. */
   id: string;
   pool_id: string;
@@ -81,7 +81,7 @@ export interface BpmnLane {
    *  e.g. to look up the Principal row for an actor lane. */
   base_id: string;
   label: string;
-  kind: BpmnLaneKind;
+  kind: ProcessLaneKind;
   /** Underlying entity's lifecycle when the lane represents a node
    *  (actor lanes carry the Principal's lifecycle). Null for bands
    *  and synthetic catch-all lanes — they have no single owning
@@ -89,14 +89,14 @@ export interface BpmnLane {
   lifecycle: string | null;
 }
 
-export interface BpmnNode {
+export interface ProcessNode {
   id: string;
   entity_type: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
   href: string | null;
-  shape: BpmnShape;
+  shape: ProcessShape;
   laneId: string;
   pool_id: string;
   /** Full list of served Intent ids so the client can recompute the primary
@@ -110,10 +110,10 @@ export interface BpmnNode {
   bfs_depth?: number;
 }
 
-export interface BpmnGraphData {
-  pools: BpmnPool[];
-  lanes: BpmnLane[];
-  nodes: BpmnNode[];
+export interface ProcessGraphData {
+  pools: ProcessPool[];
+  lanes: ProcessLane[];
+  nodes: ProcessNode[];
   links: OverviewGraphLink[];
   /**
    * TRUE total of BPMN flow nodes ("steps") for this Doco, counted before the
@@ -124,7 +124,7 @@ export interface BpmnGraphData {
   totalCount?: number;
 }
 
-const BPMN_TABLES: { table: string; entityType: string }[] = [
+const PROCESS_TABLES: { table: string; entityType: string }[] = [
   { table: "decisions", entityType: "decision" },
   { table: "intents", entityType: "intent" },
   { table: "actions", entityType: "action" },
@@ -146,11 +146,11 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 // Non-actor node types: their pool placement comes from a different
 // signal (the host they re-home onto, or the Unassigned pool).
 const ARTIFACT_TYPES = new Set(["eval", "idea", "rule"]);
-const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
+const SHAPE_BY_TYPE: Record<string, ProcessShape> = {
   // State is a milestone/outcome — a condition that holds — so it wears the
   // stadium pill, full-sized and readable but unmistakably not the Action's
   // task glyph. The pill is the State's alone: Ideas (the former pill) are
-  // not process content and are barred by the business-processes node-type
+  // not process content and are barred by the process node-type
   // allowlist, so reusing "rounded" here carries no ambiguity.
   state: "rounded",
   decision: "diamond",
@@ -159,7 +159,7 @@ const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   eval: "document",
 };
 
-export function shapeForEntityType(entityType: string): BpmnShape {
+export function shapeForEntityType(entityType: string): ProcessShape {
   return SHAPE_BY_TYPE[entityType] ?? "rectangle";
 }
 
@@ -195,7 +195,7 @@ interface EdgeRow {
   edge_props_json: Record<string, unknown> | null;
 }
 
-export async function loadBpmnGraph(
+export async function loadProcessGraph(
   c: QueryClient,
   docoId: string,
   opts: {
@@ -204,26 +204,26 @@ export async function loadBpmnGraph(
     nodeLimit?: number;
     window?: PerspectiveWindowSelection;
   } = {},
-): Promise<BpmnGraphData> {
+): Promise<ProcessGraphData> {
   // Post-collapse: one `nodes` query over the eight BPMN node types
-  // (BPMN_TABLES deliberately excludes logs and principals — principals
+  // (PROCESS_TABLES deliberately excludes logs and principals — principals
   // are loaded separately below as actor lanes). `summary` is the node's
   // full `prose` — perspectives render the complete node name, not just its
   // first line (the box auto-sizes to the label via sizeForNode).
   //
   // Every lifecycle is loaded — including retired. Hiding a lifecycle is
   // the client's job: the page-level lifecycle filter (`visibleLifecycles`,
-  // retired hidden by default) is applied in BpmnPerspective. Pre-filtering
+  // retired hidden by default) is applied in ProcessPerspective. Pre-filtering
   // retired here would make toggling "Retired" on a no-op, leaving the
   // canvas "So empty" for a retired process. This mirrors the Graph/List
   // loader (full-graph.server), which also returns every lifecycle.
-  const allowedNodeTypes = new Set(BPMN_TABLES.map((entry) => entry.entityType));
-  const bpmnTypeList = BPMN_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
+  const allowedNodeTypes = new Set(PROCESS_TABLES.map((entry) => entry.entityType));
+  const processTypeList = PROCESS_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
   // Flow nodes ("steps") are every BPMN type except Intent — Intents render as
   // pool headers, not steps. The true total is a scalar subquery (immune to the
   // result-row cap that truncates the node query's returned rows), matching the
   // same all-lifecycle domain the node query loads.
-  const bpmnStepTypeList = BPMN_TABLES.filter((entry) => entry.entityType !== "intent")
+  const processStepTypeList = PROCESS_TABLES.filter((entry) => entry.entityType !== "intent")
     .map((entry) => `'${entry.entityType}'`)
     .join(", ");
   const windowIds = windowNodeIds(opts.window);
@@ -236,10 +236,10 @@ export async function loadBpmnGraph(
               t.created_at::text AS created_at,
               t.attributes AS data,
               (SELECT COUNT(*) FROM nodes
-                WHERE doco_id = $1 AND node_type IN (${bpmnStepTypeList})) AS total_count
+                WHERE doco_id = $1 AND node_type IN (${processStepTypeList})) AS total_count
          FROM nodes t
         WHERE t.doco_id = $1
-          AND t.node_type IN (${bpmnTypeList})
+          AND t.node_type IN (${processTypeList})
           ${windowIds.length > 0 ? "AND t.id = ANY($2::text[])" : ""}`;
 
   const [nodeRows, principalRows, userRows] = await Promise.all([
@@ -289,7 +289,7 @@ export async function loadBpmnGraph(
     userById.set(cr.id, cr);
   }
 
-  // BPMN_TABLES is the single source of truth for which node types this
+  // PROCESS_TABLES is the single source of truth for which node types this
   // perspective renders. The SQL above already restricts to those types
   // (so References and other excluded types are never fetched); this guard
   // keeps the JS in lockstep with that list — a References row that somehow
@@ -328,7 +328,7 @@ export async function loadBpmnGraph(
     for (const row of edgeRows.rows) addOutgoingEdge(outgoingByType, row);
     links = edgeRows.rows
       .filter((r) => nodeIdSet.has(r.to_id))
-      .map((r) => bpmnLinkFromEdgeRow(r, opts.handle));
+      .map((r) => processLinkFromEdgeRow(r, opts.handle));
   }
 
   // ── Deterministic intent precedence (no PageRank) ──────────────
@@ -442,14 +442,14 @@ export async function loadBpmnGraph(
   // and alice in pool 2 are different lanes with the same `base_id`
   // (`principal_alice`) but different pool_id. The renderer keys off
   // `id` and walks `pool_id` to group.
-  const lanesById = new Map<string, BpmnLane>();
-  const nodes: BpmnNode[] = [];
+  const lanesById = new Map<string, ProcessLane>();
+  const nodes: ProcessNode[] = [];
 
   for (const row of allRows) {
     if (row.entity_type === "intent") continue; // pool header, not a node
     const poolId = poolByNode.get(row.id) ?? POOL_UNASSIGNED_ID;
     let baseId: string;
-    let kind: BpmnLaneKind;
+    let kind: ProcessLaneKind;
     let label: string;
 
     if (row.entity_type === "state") {
@@ -507,7 +507,7 @@ export async function loadBpmnGraph(
       });
     }
 
-    const node: BpmnNode = {
+    const node: ProcessNode = {
       id: row.id,
       entity_type: row.entity_type,
       name: row.summary,
@@ -534,7 +534,7 @@ export async function loadBpmnGraph(
   }
 
   // ── Build pools[] ─────────────────────────────────────────────────
-  const pools: BpmnPool[] = [];
+  const pools: ProcessPool[] = [];
   const usedPoolIds = new Set<string>();
   for (const id of poolByNode.values()) usedPoolIds.add(id);
   for (const intentId of intentsById.keys()) usedPoolIds.add(`pool:${intentId}`);
@@ -597,7 +597,7 @@ export async function loadBpmnGraph(
   //   5. Unassigned catchall
   // Sorting the flat list here lets the renderer iterate in display
   // order without needing to re-sort per pool.
-  const KIND_ORDER: Record<BpmnLaneKind, number> = {
+  const KIND_ORDER: Record<ProcessLaneKind, number> = {
     milestone: 0,
     actor: 1,
     unresolved: 2,
@@ -616,15 +616,15 @@ export async function loadBpmnGraph(
   });
 
   const stepTotal = Number(nodeRows.rows[0]?.total_count ?? nodes.length);
-  return limitBpmnGraph({ pools, lanes, nodes, links }, opts.nodeLimit, opts.focusId, stepTotal);
+  return limitProcessGraph({ pools, lanes, nodes, links }, opts.nodeLimit, opts.focusId, stepTotal);
 }
 
-function limitBpmnGraph(
-  graph: BpmnGraphData,
+function limitProcessGraph(
+  graph: ProcessGraphData,
   nodeLimit: number | undefined,
   focusId: string | undefined,
   totalCountOverride?: number,
-): BpmnGraphData {
+): ProcessGraphData {
   // The true total of flow nodes ("steps"), counted via a scalar subquery in
   // the loader. The node query's returned rows hit a result-row cap, so
   // graph.nodes.length can undercount the real total — prefer the override.
@@ -632,7 +632,7 @@ function limitBpmnGraph(
   if (!nodeLimit || graph.nodes.length <= nodeLimit) return { ...graph, totalCount };
 
   const limit = Math.max(1, Math.floor(nodeLimit));
-  const selected = selectBpmnNodeIds(graph.nodes, graph.links, limit, focusId);
+  const selected = selectProcessNodeIds(graph.nodes, graph.links, limit, focusId);
   const nodes = graph.nodes.filter((node) => selected.has(node.id));
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links = graph.links.filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target));
@@ -643,8 +643,8 @@ function limitBpmnGraph(
   return { pools, lanes, nodes, links, totalCount };
 }
 
-function selectBpmnNodeIds(
-  nodes: readonly BpmnNode[],
+function selectProcessNodeIds(
+  nodes: readonly ProcessNode[],
   links: readonly OverviewGraphLink[],
   limit: number,
   focusId: string | undefined,
@@ -672,7 +672,7 @@ function selectBpmnNodeIds(
     }
   }
 
-  const ordered = [...nodes].sort(compareBpmnNodesForLargeDoco);
+  const ordered = [...nodes].sort(compareProcessNodesForLargeDoco);
   for (const node of ordered) {
     add(node.id);
     if (selected.size >= limit) break;
@@ -680,7 +680,7 @@ function selectBpmnNodeIds(
   return selected;
 }
 
-function compareBpmnNodesForLargeDoco(a: BpmnNode, b: BpmnNode): number {
+function compareProcessNodesForLargeDoco(a: ProcessNode, b: ProcessNode): number {
   const lifecycleDiff = lifecycleRank(a.lifecycle) - lifecycleRank(b.lifecycle);
   if (lifecycleDiff !== 0) return lifecycleDiff;
   const dateDiff = Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "");
@@ -712,7 +712,7 @@ function sequenceFlowLabel(props: Record<string, unknown> | null): string | null
   return compact.length > 32 ? `${compact.slice(0, 29)}...` : compact;
 }
 
-function bpmnLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): OverviewGraphLink {
+function processLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): OverviewGraphLink {
   const href = handle ? `/${handle}/edges/${row.id}` : null;
   const displayType = edgeRole(row);
   return {
@@ -916,7 +916,7 @@ interface LaneEntryOrder {
 }
 
 function computeLaneEntryOrder(
-  nodes: readonly BpmnNode[],
+  nodes: readonly ProcessNode[],
   links: readonly OverviewGraphLink[],
 ): Map<string, LaneEntryOrder> {
   const depthByNode = computeForwardSequenceDepths(nodes, links);

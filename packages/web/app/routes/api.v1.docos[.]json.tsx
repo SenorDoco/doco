@@ -12,7 +12,7 @@
 // one Doco never enumerates Docos in a different workspace.
 //
 // POST body (JSON):
-//   { template_handle?: string,        // "generic" | "business-processes" | ...
+//   { template_handle?: string,        // "generic" | "process" | ...
 //     template?: string,               // accepted compatibility alias
 //     workspace_id: string,                  // ULID of the owning workspace
 //     name: string,                    // requested globally-unique handle

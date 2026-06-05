@@ -1,8 +1,8 @@
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { BpmnPool } from "~/lib/bpmn-perspective.server";
-import { BpmnProcessList } from "../bpmn-perspective";
+import type { ProcessPool } from "~/lib/process-perspective.server";
+import { ProcessProcessList } from "../process-perspective";
 
 // The process list renders only badges + buttons (no React Flow), but the
 // module imports `@xyflow/react` at the top level. Stub it so the component
@@ -19,7 +19,7 @@ function render(node: ReactElement): string {
   return renderToStaticMarkup(node);
 }
 
-const draftingPool: BpmnPool = {
+const draftingPool: ProcessPool = {
   id: "pool:intent_1",
   intent_id: "intent_1",
   label: "Post a job",
@@ -28,13 +28,13 @@ const draftingPool: BpmnPool = {
 
 describe("BPMN process list (home view)", () => {
   it("renders the type + lifecycle badges inline like a pool title — not pinned to the card corners", () => {
-    const html = render(<BpmnProcessList pools={[draftingPool]} onSelect={() => {}} />);
+    const html = render(<ProcessProcessList pools={[draftingPool]} onSelect={() => {}} />);
     // The process and its identity badges still read...
     expect(html).toContain("Post a job");
     expect(html).toContain("Intent");
     expect(html).toContain("drafting");
     // ...but they flow inline (vertically centered in the row), exactly how
-    // BpmnPoolHeaderNode renders them — never absolutely positioned at
+    // ProcessPoolHeaderNode renders them — never absolutely positioned at
     // `top:-7px` over the card's top corners (the "yellow thingies").
     expect(html).toContain("display:inline-block");
     expect(html).not.toContain("position:absolute");
@@ -42,7 +42,7 @@ describe("BPMN process list (home view)", () => {
   });
 
   it("drops the standalone visible 'Processes' heading (keeps only the a11y name)", () => {
-    const html = render(<BpmnProcessList pools={[draftingPool]} onSelect={() => {}} />);
+    const html = render(<ProcessProcessList pools={[draftingPool]} onSelect={() => {}} />);
     // No visible heading element...
     expect(html).not.toContain("<h2");
     // ...but the list is still named for assistive tech.

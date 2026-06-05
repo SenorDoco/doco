@@ -228,7 +228,7 @@ function EdgeStubNode() {
 // carried in the React Flow node `data`: that would rebuild the whole
 // `nodes` array on every pan frame and re-render every card (see
 // `~/lib/reference-number-store`). The same pattern backs the BPMN
-// perspective's `BpmnReferenceBadge`.
+// perspective's `ProcessReferenceBadge`.
 export const OverviewReferenceBadge = memo(function OverviewReferenceBadge({
   nodeId,
   label,

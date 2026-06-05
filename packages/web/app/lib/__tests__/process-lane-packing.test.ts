@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { bpmnLaneColumnKey, packBpmnLaneColumns } from "../bpmn-lane-packing";
+import { packProcessLaneColumns, processLaneColumnKey } from "../process-lane-packing";
 
-describe("packBpmnLaneColumns", () => {
+describe("packProcessLaneColumns", () => {
   it("stacks same-lane nodes that share a sequence depth", () => {
     const depths = new Map([
       ["gateway", 1],
@@ -9,7 +9,7 @@ describe("packBpmnLaneColumns", () => {
       ["branch_b", 2],
     ]);
 
-    const packed = packBpmnLaneColumns(
+    const packed = packProcessLaneColumns(
       ["lane:system"],
       [
         { id: "gateway", laneId: "lane:system", created_at: "2026-05-26T00:00:00.000Z" },
@@ -25,7 +25,7 @@ describe("packBpmnLaneColumns", () => {
     expect(packed.stackIndexByNode.get("branch_b")).toBe(1);
     expect(packed.maxColumn).toBe(2);
     expect(
-      packed.laneColumnStacks.get(bpmnLaneColumnKey("lane:system", 2))?.map((n) => n.id),
+      packed.laneColumnStacks.get(processLaneColumnKey("lane:system", 2))?.map((n) => n.id),
     ).toEqual(["branch_a", "branch_b"]);
   });
 
@@ -36,7 +36,7 @@ describe("packBpmnLaneColumns", () => {
       ["third", 2],
     ]);
 
-    const packed = packBpmnLaneColumns(
+    const packed = packProcessLaneColumns(
       ["lane:actor"],
       [
         { id: "third", laneId: "lane:actor" },

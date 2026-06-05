@@ -62,7 +62,7 @@ const ALL_NODE_TYPES = [
   "idea",
   "principal",
 ] as const;
-const BPMN_NODE_TYPES = [
+const PROCESS_NODE_TYPES = [
   "decision",
   "intent",
   "action",
@@ -95,9 +95,9 @@ export const PERSPECTIVE_WINDOW_SPECS = {
     nodeTypes: ALL_NODE_TYPES,
     typeWeights: DEFAULT_TYPE_WEIGHTS,
   },
-  bpmn: {
-    key: "bpmn",
-    nodeTypes: BPMN_NODE_TYPES,
+  process: {
+    key: "process",
+    nodeTypes: PROCESS_NODE_TYPES,
     typeWeights: {
       intent: 100,
       action: 90,

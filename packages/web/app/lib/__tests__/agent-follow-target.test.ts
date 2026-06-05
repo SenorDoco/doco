@@ -141,9 +141,9 @@ describe("focusNavigationUrl", () => {
     expect(
       focusNavigationUrl(
         { pathname: "/acme/decision/decision_01", perspectiveAware: true },
-        "bpmn",
+        "process",
       ),
-    ).toBe("/acme/decision/decision_01?perspective=bpmn&dialog=skip");
+    ).toBe("/acme/decision/decision_01?perspective=process&dialog=skip");
   });
 
   it("carries the active perspective for an edge focus too", () => {
@@ -162,7 +162,7 @@ describe("focusNavigationUrl", () => {
     expect(
       focusNavigationUrl(
         { pathname: "/acme/policies/policy_01/edit", perspectiveAware: false },
-        "bpmn",
+        "process",
       ),
     ).toBe("/acme/policies/policy_01/edit?dialog=skip");
   });
@@ -199,7 +199,7 @@ describe("requestRetiresResource", () => {
 
 describe("perspectiveParam", () => {
   it("reads the active perspective from a search string", () => {
-    expect(perspectiveParam("?perspective=bpmn&dialog=skip")).toBe("bpmn");
+    expect(perspectiveParam("?perspective=process&dialog=skip")).toBe("process");
   });
 
   it("returns null when no perspective is present", () => {

@@ -5,7 +5,7 @@
 //   • full-graph.server  → the overview graph (home / graph / list perspective)
 //   • node-detail.server → a node detail page with related nodes (relatedDetailsSql)
 //   • edge-detail.server → an edge detail page
-// Reported as "/<doco>/state/<id> 500": a BPMN Doco's home renders the bpmn
+// Reported as "/<doco>/state/<id> 500": a BPMN Doco's home renders the process
 // perspective (which never touched `name`), so the home page looked fine, but
 // opening any node that has an edge dragged in relatedDetailsSql and threw
 // `column "name" does not exist`.
@@ -131,13 +131,13 @@ describe("torre-bpm state node page focus path (post name-column drop)", () => {
     expect(principalNode?.name).toBe("Alex Torrenegra");
   });
 
-  it("loads the bpmn perspective focused on the state node", async () => {
+  it("loads the process perspective focused on the state node", async () => {
     const data = await loadDocoHomePerspectiveData(db as never, {
-      activeKind: "bpmn",
+      activeKind: "process",
       docoId: DOCO,
       handle: "torre-bpm",
       focusNodeId: STATE,
     });
-    expect(data.bpmnGraph).not.toBeNull();
+    expect(data.processGraph).not.toBeNull();
   });
 });

@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import { computeBpmnRenderedSet } from "~/components/perspectives/bpmn-perspective";
-import type { BpmnNode, BpmnPool } from "~/lib/bpmn-perspective.server";
+import { computeProcessRenderedSet } from "~/components/perspectives/process-perspective";
+import type { ProcessNode, ProcessPool } from "~/lib/process-perspective.server";
 
 // Two intents (pools), each with two sequenced Actions, joined by a single
 // cross-intent hand-off edge (a2 → b1).
-const pools: BpmnPool[] = [
+const pools: ProcessPool[] = [
   { id: "pool:i1", intent_id: "i1", label: "Hire", lifecycle: "active" },
   { id: "pool:i2", intent_id: "i2", label: "Onboard", lifecycle: "active" },
 ];
-const node = (id: string, poolId: string): BpmnNode => ({
+const node = (id: string, poolId: string): ProcessNode => ({
   id,
   entity_type: "action",
   name: id,
@@ -32,9 +32,9 @@ const links: OverviewGraphLink[] = [
   { id: "e:b1-b2", source: "b1", target: "b2", edge_type: "flows_to" },
 ];
 
-describe("computeBpmnRenderedSet", () => {
+describe("computeProcessRenderedSet", () => {
   it("renders the focal node's whole intent plus first-degree cross-intent neighbours", () => {
-    const { focalPoolIds, renderedNodeIds } = computeBpmnRenderedSet({
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
       links,
@@ -48,7 +48,7 @@ describe("computeBpmnRenderedSet", () => {
   });
 
   it("renders only the one intent for an edge whose endpoints share an intent", () => {
-    const { focalPoolIds, renderedNodeIds } = computeBpmnRenderedSet({
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
       links,
@@ -61,7 +61,7 @@ describe("computeBpmnRenderedSet", () => {
   });
 
   it("renders BOTH intents in full for an edge spanning two intents", () => {
-    const { focalPoolIds, renderedNodeIds } = computeBpmnRenderedSet({
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
       links,
@@ -78,7 +78,7 @@ describe("computeBpmnRenderedSet", () => {
 
   it("resolves an edge endpoint that is itself an Intent to its pool", () => {
     // A `serves` edge from action a2 into intent i2 (the pool, not a node).
-    const { focalPoolIds, renderedNodeIds } = computeBpmnRenderedSet({
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
       links,
@@ -91,7 +91,7 @@ describe("computeBpmnRenderedSet", () => {
   });
 
   it("renders nothing focal when there is no center", () => {
-    const { focalPoolIds, renderedNodeIds } = computeBpmnRenderedSet({
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
       links,
