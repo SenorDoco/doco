@@ -280,4 +280,24 @@ describe("Policies page (active / retired sections)", () => {
     expect(html).toContain("Active policies");
     expect(html).not.toContain("Retired policies");
   });
+
+  it("renders a retired policy struck through in red, but not an active one", () => {
+    const retired = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: samplePolicy("policy_01HZRETIRED", "retired"),
+    });
+    const active = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: samplePolicy("policy_01HZACTIVE", "active"),
+    });
+
+    // Retired policies read as crossed out, in the destructive (red) color, so
+    // it's obvious at a glance they're no longer in force.
+    expect(retired).toContain("line-through");
+    expect(retired).toContain("text-destructive");
+    // Active policies carry no such styling.
+    expect(active).not.toContain("line-through");
+  });
 });
