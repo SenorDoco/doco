@@ -100,6 +100,19 @@ describe("PolicyDetail (render)", () => {
     expect(html).not.toContain('value="revoke"');
     expect(html).toContain("retired");
   });
+
+  it("renders a retired policy's content struck through in red", () => {
+    const retired = render(
+      baseLoaderData({ canEdit: false, item: { ...baseItem, lifecycle: "retired" } }),
+    );
+    const active = render(baseLoaderData({ canEdit: false }));
+
+    // On the policy's own page, a retired policy reads as crossed out in the
+    // destructive (red) color — same treatment as in the list.
+    expect(retired).toContain("line-through");
+    expect(retired).toContain("text-destructive");
+    expect(active).not.toContain("line-through");
+  });
 });
 
 describe("policies/$policyId loader", () => {
