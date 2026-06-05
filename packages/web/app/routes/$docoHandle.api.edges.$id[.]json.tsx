@@ -113,6 +113,8 @@ export async function action({ request, params }: { request: Request; params: Pa
       id,
       lifecycle: lifecycle as EdgeLifecycle,
       reason: typeof body.reason === "string" ? body.reason : null,
+      docoHost: new URL(request.url).origin,
+      handle: params.docoHandle,
       ...authoring,
     });
     if ("error" in result) {
@@ -141,6 +143,8 @@ export async function action({ request, params }: { request: Request; params: Pa
     actorId: me.id,
     id,
     reason,
+    docoHost: new URL(request.url).origin,
+    handle: params.docoHandle,
     ...authoring,
   });
   if ("error" in result) {

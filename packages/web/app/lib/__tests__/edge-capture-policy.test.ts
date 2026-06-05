@@ -26,6 +26,7 @@ vi.mock("@doco/db", () => ({
   createChangeset: vi.fn(async () => "tx_test"),
   createEdge: dbStub.createEdge,
   retireEdge: vi.fn(),
+  getDocoById: vi.fn(async () => ({ handle: "owner-doco" })),
   withClient: vi.fn(async (fn: (c: unknown) => unknown) => fn({})),
   withTransaction: vi.fn(async (fn: (c: unknown) => unknown) => fn({})),
 }));
@@ -35,6 +36,7 @@ import { captureEdge } from "../edge-capture.server";
 const DOCO_ID = makeEntityId("doco", generateUlid());
 const ACTION_ID = makeEntityId("action", generateUlid());
 const INTENT_ID = makeEntityId("intent", generateUlid());
+const EDGE_ID = makeEntityId("edge", generateUlid());
 
 function makeInput(over: Record<string, unknown> = {}) {
   return {
@@ -52,8 +54,16 @@ function makeInput(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   runEdge.fn.mockReset();
   dbStub.createEdge.mockReset();
+  // Mirror the real createEdge return — the footer renderer reads the edge's
+  // endpoints and type off this row.
   dbStub.createEdge.mockResolvedValue({
-    id: makeEntityId("edge", generateUlid()),
+    id: EDGE_ID,
+    doco_id: DOCO_ID,
+    edge_type: "supports",
+    from_id: ACTION_ID,
+    from_node_type: "action",
+    to_id: INTENT_ID,
+    to_node_type: "intent",
     lifecycle: "active",
   });
 });
@@ -107,6 +117,39 @@ describe("captureEdge — edge-scoped policy wiring", () => {
     expect(runEdge.fn).toHaveBeenCalledTimes(1);
     expect(runEdge.fn.mock.calls[0][0].includeProbabilistic).toBe(false);
     expect(dbStub.createEdge).toHaveBeenCalledTimes(1);
+  });
+
+  it("emits a friendly footer: named endpoints, markdown links, and the policy summary", async () => {
+    // Edges must report the SAME shape as nodes — an emoji marker, the
+    // human-readable endpoint names, a markdown link per entity, and the
+    // authoring-policy pass count + timing — not a raw `edge … created (…)` line.
+    runEdge.fn.mockResolvedValue({
+      evaluated: 5,
+      passed: 5,
+      violations: [],
+      blocking: null,
+      warnings: [],
+    });
+    const res = await captureEdge(
+      makeInput({ docoHost: "https://doco.test", handle: "owner-doco" }),
+    );
+    expect("ok" in res && res.ok).toBe(true);
+    const line = (res as { footer_lines: string[] }).footer_lines[0];
+
+    // Human-readable endpoint names, not bare ids.
+    expect(line).toContain("Posts a job");
+    // Markdown links: both endpoints AND the edge's own detail page.
+    expect(line).toContain(`(https://doco.test/owner-doco/action/${ACTION_ID})`);
+    expect(line).toContain(`(https://doco.test/owner-doco/intent/${INTENT_ID})`);
+    expect(line).toContain(`(https://doco.test/owner-doco/edges/${EDGE_ID})`);
+    // Emoji marker + relation (linked) + endpoint arrow + authoring trailer.
+    expect(line).toContain("[🔮 Doco] 🔗");
+    expect(line).toContain("[supports](");
+    expect(line).toContain(") edge added:");
+    expect(line).toContain("→");
+    expect(line).toMatch(/5 authoring policies passed in \d+(\.\d+)?s/);
+    // The old raw shape is gone.
+    expect(line).not.toContain("created (supports:");
   });
 
   it("blocks a drafting edge whose type the allowlist bars (structural gate fires in draft)", async () => {

@@ -99,6 +99,10 @@ describe("edge-scoped sub-process naming policy — end-to-end via runEdgeAuthor
       intent: { text: "Post a job" },
     });
     expect(result.blocking).toBeNull();
+    // The footer's "N authoring policies passed" count: every applicable
+    // policy is evaluated, and a clean edge passes all of them.
+    expect(result.evaluated).toBeGreaterThan(0);
+    expect(result.passed).toBe(result.evaluated);
   });
 
   it("BLOCKS when the judge rejects a third-person Intent name", async () => {
@@ -115,6 +119,8 @@ describe("edge-scoped sub-process naming policy — end-to-end via runEdgeAuthor
     expect(result.blocking?.kind).toBe("probabilistic");
     expect(result.blocking?.on_violation).toBe("block");
     expect(result.blocking?.reason).toMatch(/base form of the action/i);
+    // One applicable policy violated → the pass count drops by exactly one.
+    expect(result.passed).toBe(result.evaluated - 1);
   });
 
   it("does NOT fire on an ordinary flow-step serves edge from a non-Action (decision → intent)", async () => {

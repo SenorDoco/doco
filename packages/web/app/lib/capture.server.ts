@@ -627,6 +627,79 @@ export async function renderOperationLines(opts: {
   return lines;
 }
 
+/** One endpoint of an edge, as the footer renderer needs it. */
+export interface EdgeFooterEndpoint {
+  id: string;
+  /** Node type — the URL segment for the endpoint's page (e.g. `action`). */
+  type: string;
+  /** Human-readable label (the node's name or the first line of its prose). */
+  label: string;
+}
+
+/** Which edge mutation a footer line describes. */
+export type EdgeFooterOp =
+  | { kind: "added" }
+  | { kind: "retired" }
+  | { kind: "lifecycle"; to: string };
+
+/**
+ * Render the footer line for an edge mutation — the edge peer of
+ * `renderOperationLines`. It mirrors the node footer shape so an agent emits
+ * the SAME canonical record for an edge as for a node: an emoji marker,
+ * human-readable endpoint names, a markdown link per entity, and the
+ * authoring-policy + timing trailer. An edge joins two nodes through a typed
+ * relation, so the line names both endpoints and links each to its node page,
+ * with the relation type linking to the edge's own detail page
+ * (`/<handle>/edges/<id>`). Without this, agents pasted raw ids
+ * (`edge edge_01… created (flows_to: action_01… → action_01…)`) — unreadable,
+ * with nothing to click through to the node or the edge.
+ */
+export async function renderEdgeOperationLine(opts: {
+  /** Canonical handle for link URLs. Falls back to a `docoId` lookup. */
+  handle?: string | undefined;
+  docoId?: string | undefined;
+  /** Absolute base URL for links; when omitted the body renders without links. */
+  docoHost?: string | undefined;
+  edgeId: string;
+  edgeType: string;
+  op: EdgeFooterOp;
+  from: EdgeFooterEndpoint;
+  to: EdgeFooterEndpoint;
+  duration_ms?: number | undefined;
+  authoringPoliciesPassed?: number | undefined;
+}): Promise<string> {
+  let handle = opts.handle;
+  if (!handle && opts.docoHost && opts.docoId) {
+    handle = (await getDocoById(opts.docoId))?.handle ?? undefined;
+  }
+  const link = (segment: string, text: string): string => {
+    const label = mdLinkText(trunc(text));
+    return opts.docoHost && handle ? `[${label}](${opts.docoHost}/${handle}/${segment})` : label;
+  };
+  const relation = link(`edges/${opts.edgeId}`, opts.edgeType);
+  const fromAnchor = link(`${opts.from.type}/${opts.from.id}`, firstLine(opts.from.label));
+  const toAnchor = link(`${opts.to.type}/${opts.to.id}`, firstLine(opts.to.label));
+  const endpoints = `${fromAnchor} → ${toAnchor}`;
+  let line: string;
+  switch (opts.op.kind) {
+    case "added":
+      line = `[🔮 Doco] 🔗 ${relation} edge added: ${endpoints}`;
+      break;
+    case "retired":
+      line = `[🔮 Doco] 🗑️ ${relation} edge retired: ${endpoints}`;
+      break;
+    case "lifecycle":
+      line = `[🔮 Doco] 🔁 ${relation} edge → ${opts.op.to}: ${endpoints}`;
+      break;
+  }
+  const timing: { duration_ms?: number; authoringPoliciesPassed?: number } = {};
+  if (typeof opts.duration_ms === "number") timing.duration_ms = opts.duration_ms;
+  if (typeof opts.authoringPoliciesPassed === "number") {
+    timing.authoringPoliciesPassed = opts.authoringPoliciesPassed;
+  }
+  return appendOperationTiming(line, timing);
+}
+
 export interface CaptureError {
   error: string;
   /** HTTP status the route should return. Defaults to 400 when absent. */

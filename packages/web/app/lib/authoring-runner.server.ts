@@ -23,6 +23,7 @@ import {
   type PrincipalIndex,
   type Violation,
   agentInstructionOf,
+  edgePolicyAppliesToEdge,
   evaluateEdgePolicies,
   evaluatePolicies,
   isDeterministicPredicate,
@@ -171,6 +172,10 @@ export async function runAuthoringPolicies(opts: {
 }
 
 export interface EdgeAuthoringResult {
+  /** Edge-scoped policies that applied to (were evaluated against) this edge. */
+  evaluated: number;
+  /** How many of those passed — `evaluated` minus the resolved violations. */
+  passed: number;
   /** Every violation produced (after judge resolution). */
   violations: Violation[];
   /** First blocking violation, or null. */
@@ -202,20 +207,31 @@ export async function runEdgeAuthoringPolicies(opts: {
   includeProbabilistic?: boolean;
   client?: PoolClient;
 }): Promise<EdgeAuthoringResult> {
-  const empty: EdgeAuthoringResult = { violations: [], blocking: null, warnings: [] };
+  const empty: EdgeAuthoringResult = {
+    evaluated: 0,
+    passed: 0,
+    violations: [],
+    blocking: null,
+    warnings: [],
+  };
   const run = async (c: PoolClient): Promise<EdgeAuthoringResult> => {
     const policies = await loadPolicies(c, opts.docoId);
     if (policies.length === 0) return empty;
-    const raw = evaluateEdgePolicies({
-      edge: opts.edge,
-      policies,
-      includeProbabilistic: opts.includeProbabilistic ?? true,
-    });
-    if (raw.length === 0) return empty;
-    const violations = await resolveProbabilistic(raw, policies, opts.judgeCandidate);
+    const includeProbabilistic = opts.includeProbabilistic ?? true;
+    // Count every applicable policy — not just the ones that produced a
+    // violation — so a clean edge still reports "N authoring policies passed".
+    const evaluated = policies.filter((p) =>
+      edgePolicyAppliesToEdge(p, opts.edge, includeProbabilistic),
+    ).length;
+    if (evaluated === 0) return empty;
+    const raw = evaluateEdgePolicies({ edge: opts.edge, policies, includeProbabilistic });
+    const violations = raw.length
+      ? await resolveProbabilistic(raw, policies, opts.judgeCandidate)
+      : [];
     const blocking = violations.find((v) => v.on_violation === "block") ?? null;
     const warnings = violations.filter((v) => v.on_violation === "warn");
-    return { violations, blocking, warnings };
+    const passed = Math.max(0, evaluated - violations.length);
+    return { evaluated, passed, violations, blocking, warnings };
   };
   return opts.client ? run(opts.client) : withClient(run);
 }

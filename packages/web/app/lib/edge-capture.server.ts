@@ -26,6 +26,7 @@ import {
   parseEntityId,
 } from "@doco/shared";
 import { runEdgeAuthoringPolicies } from "./authoring-runner.server";
+import { type EdgeFooterOp, renderEdgeOperationLine } from "./capture.server";
 
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
 const NODE_TYPE_SET: ReadonlySet<string> = new Set(NODE_TYPES);
@@ -44,6 +45,10 @@ export interface CaptureEdgeInput {
   reason?: string | null;
   source?: CommitSource;
   metadata?: Record<string, unknown> | null;
+  /** Absolute base URL for footer entity links (e.g. the request origin). */
+  docoHost?: string;
+  /** Canonical handle for footer link URLs (falls back to a `docoId` lookup). */
+  handle?: string;
 }
 
 export type EdgeCaptureResult =
@@ -77,8 +82,55 @@ function endpointPayload(rec: EntityRecord): Record<string, unknown> {
   };
 }
 
+/** Human-readable label for an edge endpoint: its name, else its prose, else id. */
+function endpointLabel(rec: EntityRecord | null, fallbackId: string): string {
+  if (!rec) return fallbackId;
+  const prose = typeof rec.data?.prose === "string" ? rec.data.prose : null;
+  return rec.name ?? prose ?? fallbackId;
+}
+
+/**
+ * Build the friendly footer line(s) for an edge mutation: the same emoji +
+ * named-and-linked endpoints + authoring/timing shape a node mutation emits.
+ * Endpoint records are resolved from the DB unless the caller already holds
+ * them (creation does, via `resolveEndpoint`), sparing two reads.
+ */
+async function edgeFooterLines(
+  edge: EdgeRow,
+  op: EdgeFooterOp,
+  opts: {
+    docoHost?: string | undefined;
+    handle?: string | undefined;
+    duration_ms?: number | undefined;
+    authoringPoliciesPassed?: number | undefined;
+    fromRec?: EntityRecord | null;
+    toRec?: EntityRecord | null;
+  },
+): Promise<string[]> {
+  const fromRec = opts.fromRec ?? (await getEntity(edge.from_node_type, edge.from_id));
+  const toRec = opts.toRec ?? (await getEntity(edge.to_node_type, edge.to_id));
+  const line = await renderEdgeOperationLine({
+    handle: opts.handle,
+    docoId: edge.doco_id,
+    docoHost: opts.docoHost,
+    edgeId: edge.id,
+    edgeType: edge.edge_type,
+    op,
+    from: {
+      id: edge.from_id,
+      type: edge.from_node_type,
+      label: endpointLabel(fromRec, edge.from_id),
+    },
+    to: { id: edge.to_id, type: edge.to_node_type, label: endpointLabel(toRec, edge.to_id) },
+    duration_ms: opts.duration_ms,
+    authoringPoliciesPassed: opts.authoringPoliciesPassed,
+  });
+  return [line];
+}
+
 /** Create a first-class edge through the commit() boundary. */
 export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureResult> {
+  const started = performance.now();
   if (!EDGE_TYPE_SET.has(input.edgeType)) {
     return {
       error: `Unknown edge_type '${input.edgeType}'. Valid: ${EDGE_TYPES.join(", ")}.`,
@@ -181,9 +233,18 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
       id: edge.id,
       path: `/api/edges/${edge.id}.json`,
       edge,
-      footer_lines: [
-        `edge ${edge.id} created (${input.edgeType}: ${input.fromId} → ${input.toId})`,
-      ],
+      footer_lines: await edgeFooterLines(
+        edge,
+        { kind: "added" },
+        {
+          docoHost: input.docoHost,
+          handle: input.handle,
+          duration_ms: performance.now() - started,
+          authoringPoliciesPassed: pred.passed,
+          fromRec: from.rec,
+          toRec: to.rec,
+        },
+      ),
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -243,15 +304,19 @@ export async function retireEdgeRequest(input: {
   reason?: string | null;
   source?: CommitSource;
   metadata?: Record<string, unknown> | null;
+  docoHost?: string;
+  handle?: string;
 }): Promise<EdgeRetireResult> {
+  const started = performance.now();
   const existing = await getEdgeById(input.docoId, input.id);
   if (!existing) return { error: `edge not found: ${input.id}`, status: 404 };
+  const footerOpts = { docoHost: input.docoHost, handle: input.handle };
   if (existing.lifecycle === "retired") {
     return {
       ok: true,
       id: existing.id,
       edge: existing,
-      footer_lines: [`edge ${existing.id} already retired`],
+      footer_lines: await edgeFooterLines(existing, { kind: "retired" }, footerOpts),
     };
   }
   const edge = await withTransaction(async (c) => {
@@ -264,7 +329,16 @@ export async function retireEdgeRequest(input: {
     });
     return retireEdge(c, txId, { id: input.id, actor: input.actorId });
   });
-  return { ok: true, id: edge.id, edge, footer_lines: [`edge ${edge.id} retired`] };
+  return {
+    ok: true,
+    id: edge.id,
+    edge,
+    footer_lines: await edgeFooterLines(
+      edge,
+      { kind: "retired" },
+      { ...footerOpts, duration_ms: performance.now() - started },
+    ),
+  };
 }
 
 export const EDGE_LIFECYCLES = ["drafting", "active", "retired"] as const;
@@ -288,7 +362,10 @@ export async function setEdgeLifecycleRequest(input: {
   reason?: string | null;
   source?: CommitSource;
   metadata?: Record<string, unknown> | null;
+  docoHost?: string;
+  handle?: string;
 }): Promise<EdgeLifecycleResult> {
+  const started = performance.now();
   if (!EDGE_LIFECYCLES.includes(input.lifecycle)) {
     return {
       error: `Unknown edge lifecycle '${input.lifecycle}'. Valid: ${EDGE_LIFECYCLES.join(", ")}.`,
@@ -302,6 +379,7 @@ export async function setEdgeLifecycleRequest(input: {
   // Narrowed past the `retired` early return; pin it in a local so the
   // transaction closure below keeps the non-retired type.
   const lifecycle: "drafting" | "active" = input.lifecycle;
+  const footerOpts = { docoHost: input.docoHost, handle: input.handle };
 
   const existing = await getEdgeById(input.docoId, input.id);
   if (!existing) return { error: `edge not found: ${input.id}`, status: 404 };
@@ -310,7 +388,11 @@ export async function setEdgeLifecycleRequest(input: {
       ok: true,
       id: existing.id,
       edge: existing,
-      footer_lines: [`edge ${existing.id} already ${lifecycle}`],
+      footer_lines: await edgeFooterLines(
+        existing,
+        { kind: "lifecycle", to: lifecycle },
+        footerOpts,
+      ),
     };
   }
 
@@ -333,7 +415,11 @@ export async function setEdgeLifecycleRequest(input: {
       ok: true,
       id: edge.id,
       edge,
-      footer_lines: [`edge ${edge.id} lifecycle → ${lifecycle}`],
+      footer_lines: await edgeFooterLines(
+        edge,
+        { kind: "lifecycle", to: lifecycle },
+        { ...footerOpts, duration_ms: performance.now() - started },
+      ),
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
