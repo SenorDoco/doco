@@ -1297,13 +1297,17 @@ export async function updateEntity(opts: {
     "created_by_user_id",
     // Slug is not a node data field.
     "slug",
+    // `attributes` is flattened onto the data bag below, never stored as a
+    // nested object (storage re-bags the flat keys into the attributes jsonb).
+    "attributes",
     ...(typeNamedColumn ? [typeNamedColumn] : []),
   ]);
-  for (const k of Object.keys(normalizedPatch)) {
-    if (SPECIAL_CASED_KEYS.has(k)) continue;
-    if (isSystemManagedField(k)) continue;
-    const v = normalizedPatch[k];
-    if (v === undefined) continue;
+  // Apply a flat key onto the data bag with set/clear semantics, tracking the
+  // change + op. Shared by the generic top-level loop and the `attributes`
+  // flatten below.
+  const applyDataField = (k: string, v: unknown) => {
+    if (isSystemManagedField(k)) return;
+    if (v === undefined) return;
     if (v === null || v === "") {
       if (k in fm) {
         delete fm[k];
@@ -1314,6 +1318,22 @@ export async function updateEntity(opts: {
       fm[k] = v;
       changed.push(k);
       ops.push({ kind: "set", field: k, value: typeof v === "string" ? v : JSON.stringify(v) });
+    }
+  };
+  for (const k of Object.keys(normalizedPatch)) {
+    if (SPECIAL_CASED_KEYS.has(k)) continue;
+    applyDataField(k, normalizedPatch[k]);
+  }
+  // A patch may carry a nested `attributes` bag (e.g. the GitHub PR sync sets
+  // `attributes.body_md` for the title/body split). The storage round-trip
+  // keeps per-node domain fields as FLAT keys in `data` (rowToRecord flattens
+  // the attributes jsonb on read; buildAttributes re-collects flat keys on
+  // write), so merge each attribute onto the data bag as a flat key rather than
+  // storing the nested object. A `null` value clears that attribute.
+  const patchAttributes = normalizedPatch.attributes;
+  if (patchAttributes && typeof patchAttributes === "object" && !Array.isArray(patchAttributes)) {
+    for (const [k, v] of Object.entries(patchAttributes as Record<string, unknown>)) {
+      applyDataField(k, v);
     }
   }
 
