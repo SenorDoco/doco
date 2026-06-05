@@ -1,6 +1,16 @@
 import type { CSSProperties } from "react";
 
 /**
+ * The text shown on a process (BPMN) edge. When the edge carries a
+ * user-defined condition ("Yes", "If approved", …) that condition is
+ * the most informative label. When no condition exists the edge type
+ * ("flows_to") fills in so every rendered arrow shows its type.
+ */
+export function processEdgeLabelText(label: string | null | undefined, edgeType: string): string {
+  return label?.trim() || edgeType;
+}
+
+/**
  * Max characters per line before a process-arrow tag wraps. The canvas
  * label font is monospace, so a `ch` cap maps one-to-one onto characters:
  * a tag up to this many characters stays on one line, anything longer

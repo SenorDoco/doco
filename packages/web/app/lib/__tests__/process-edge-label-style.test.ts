@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { EDGE_LABEL_MAX_CH, processEdgeLabelStyles } from "../process-edge-label-style";
+import {
+  EDGE_LABEL_MAX_CH,
+  processEdgeLabelStyles,
+  processEdgeLabelText,
+} from "../process-edge-label-style";
 
 describe("processEdgeLabelStyles", () => {
   it("lets a long arrow tag wrap onto multiple lines instead of one wide ribbon", () => {
@@ -31,5 +35,23 @@ describe("processEdgeLabelStyles", () => {
   it("keeps the pill border tinted with the edge's stroke color", () => {
     const { labelBoxStyle } = processEdgeLabelStyles("#123456");
     expect(labelBoxStyle.border).toBe("1px solid #123456");
+  });
+});
+
+describe("processEdgeLabelText", () => {
+  it("shows the condition text when it exists", () => {
+    expect(processEdgeLabelText("Yes", "flows_to")).toBe("Yes");
+    expect(processEdgeLabelText("If approved", "flows_to")).toBe("If approved");
+  });
+
+  it("falls back to the edge type when no condition is set", () => {
+    expect(processEdgeLabelText(null, "flows_to")).toBe("flows_to");
+    expect(processEdgeLabelText(undefined, "flows_to")).toBe("flows_to");
+    expect(processEdgeLabelText("", "flows_to")).toBe("flows_to");
+  });
+
+  it("trims whitespace from the condition before deciding", () => {
+    expect(processEdgeLabelText("  ", "flows_to")).toBe("flows_to");
+    expect(processEdgeLabelText("  Yes  ", "flows_to")).toBe("Yes");
   });
 });
