@@ -57,8 +57,16 @@ export function PolicyView({ item }: { item: PolicyItem }) {
         <dd className="font-mono text-foreground">{firesOn.join(", ")}</dd>
       </div>
     ) : null;
+  // A retired policy is no longer in force, so it's shown crossed out in the
+  // destructive (red) color — the strike-through and red apply to all of its
+  // content (`[&_*]:` overrides the per-element colors below) so the "retired"
+  // state reads at a glance on both the list and the policy's own page.
+  const isRetired = (item.lifecycle ?? "active") === "retired";
+  const retiredClass = isRetired
+    ? "text-destructive line-through decoration-destructive [&_*]:text-destructive"
+    : "";
   return (
-    <div className="min-w-0 space-y-1.5">
+    <div className={`min-w-0 space-y-1.5 ${retiredClass}`}>
       <span className="neu-surface inline-block rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         {POLICY_KIND_LABEL[item.kind]}
       </span>
