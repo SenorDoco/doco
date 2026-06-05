@@ -29,9 +29,7 @@ const ALL: SearchFilters = { lifecycle: null, entityType: null, limit: 100 };
 async function seed(): Promise<Client> {
   const db = new PGlite();
   await db.exec(schemaSql);
-  await db.query(
-    "INSERT INTO workspaces (id, handle, name, data) VALUES ('ws','ws','WS','{}'::jsonb)",
-  );
+  await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS')");
   await db.query(
     "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",
   );
@@ -171,9 +169,7 @@ describe("title/body split keeps a body-only keyword findable", () => {
   async function seedSplitReference(): Promise<Client> {
     const db = new PGlite();
     await db.exec(schemaSql);
-    await db.query(
-      "INSERT INTO workspaces (id, handle, name, data) VALUES ('ws','ws','WS','{}'::jsonb)",
-    );
+    await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS')");
     await db.query(
       "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",
     );
@@ -214,9 +210,7 @@ describe("title/body split keeps a body-only keyword findable", () => {
     // (what a naive split would store), the body keyword finds nothing.
     const db = new PGlite();
     await db.exec(schemaSql);
-    await db.query(
-      "INSERT INTO workspaces (id, handle, name, data) VALUES ('ws','ws','WS','{}'::jsonb)",
-    );
+    await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS')");
     await db.query(
       "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",
     );

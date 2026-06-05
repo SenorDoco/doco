@@ -79,7 +79,7 @@ const WS_B = "workspace_beta000000000000000";
 
 async function member(workspaceId: string, handle: string) {
   await dbm.db.query(
-    "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,$2,$3,'','{}')",
+    "INSERT INTO workspaces (id, handle, name, constitution) VALUES ($1, $2, $3, '')",
     [workspaceId, handle, handle],
   );
   await dbm.db.query(

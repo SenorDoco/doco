@@ -67,45 +67,36 @@ export async function listUsers(): Promise<HostUser[]> {
 export async function listWorkspaces(): Promise<HostWorkspace[]> {
   const rows = await listWorkspaceRows();
   return rows.map((r) => {
-    const fm = r.data;
-    const out: HostWorkspace = {
+    return {
       id: r.id,
       handle: r.handle,
-      display_name: (fm.display_name as string) ?? r.name,
+      display_name: r.name,
       member_count: r.member_count,
     };
-    if (typeof fm.description === "string") out.description = fm.description;
-    return out;
   });
 }
 
 export async function listMyWorkspaces(userId: string): Promise<HostWorkspace[]> {
   const rows = await listWorkspacesForUser(userId);
   return rows.map((r) => {
-    const fm = r.data;
-    const out: HostWorkspace = {
+    return {
       id: r.id,
       handle: r.handle,
-      display_name: (fm.display_name as string) ?? r.name,
+      display_name: r.name,
       member_count: r.member_count,
     };
-    if (typeof fm.description === "string") out.description = fm.description;
-    return out;
   });
 }
 
 export async function listWorkspacesOwnedOrAdminedBy(userId: string): Promise<HostWorkspace[]> {
   const rows = await listWorkspacesForUser(userId, ["owner"]);
   return rows.map((r) => {
-    const fm = r.data;
-    const out: HostWorkspace = {
+    return {
       id: r.id,
       handle: r.handle,
-      display_name: (fm.display_name as string) ?? r.name,
+      display_name: r.name,
       member_count: r.member_count,
     };
-    if (typeof fm.description === "string") out.description = fm.description;
-    return out;
   });
 }
 

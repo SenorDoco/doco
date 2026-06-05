@@ -63,7 +63,7 @@ beforeAll(async () => {
     USER_ID,
   ]);
   await dbm.db.query(
-    "INSERT INTO workspaces (id, handle, name, data) VALUES ($1,'edge-test','Edge Test','{}')",
+    "INSERT INTO workspaces (id, handle, name) VALUES ($1, 'edge-test', 'Edge Test')",
     [WORKSPACE_ID],
   );
   await dbm.db.query(

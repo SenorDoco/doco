@@ -80,23 +80,21 @@ async function renameWorkspaceHandle(opts: {
       throw new Error(`Workspace handle "${opts.nextHandle}" is already taken.`);
     }
 
-    const current = await c.query<{ data: Record<string, unknown> | null }>(
-      "SELECT data FROM workspaces WHERE id = $1 LIMIT 1",
+    const current = await c.query<{ id: string }>(
+      "SELECT id FROM workspaces WHERE id = $1 LIMIT 1",
       [opts.workspaceId],
     );
-    const existing = current.rows[0]?.data;
-    if (!existing) throw new Error(`Workspace "${opts.currentHandle}" not found.`);
-    const yaml: Record<string, unknown> = { ...existing };
-    yaml.handle = opts.nextHandle;
+    if ((current.rowCount ?? 0) === 0) {
+      throw new Error(`Workspace "${opts.currentHandle}" not found.`);
+    }
 
     await c.query(
       `UPDATE workspaces
           SET handle = $2,
               name = $2,
-              data = $3::jsonb,
               updated_at = now()
         WHERE id = $1`,
-      [opts.workspaceId, opts.nextHandle, JSON.stringify(yaml)],
+      [opts.workspaceId, opts.nextHandle],
     );
   });
 }

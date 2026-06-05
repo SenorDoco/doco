@@ -99,7 +99,7 @@ const DOCO = "doco_scope0000000000000000000";
 
 async function seedDoco(handle: string, docoId = DOCO, workspaceId = WS) {
   await dbm.db.query(
-    "INSERT INTO workspaces (id, handle, name, constitution, data) VALUES ($1,'scopews','scopews','','{}') ON CONFLICT (id) DO NOTHING",
+    "INSERT INTO workspaces (id, handle, name, constitution) VALUES ($1, 'scopews', 'scopews', '') ON CONFLICT (id) DO NOTHING",
     [workspaceId],
   );
   await dbm.db.query(

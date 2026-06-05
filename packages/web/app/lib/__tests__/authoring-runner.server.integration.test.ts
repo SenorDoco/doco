@@ -56,8 +56,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
   await withClient(async (c) => {
     // Insert an workspace — required for the FK on docos.workspace_id.
     await c.query(
-      `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
-         VALUES ($1, 'test-workspace', 'Test Workspace', '{}'::jsonb, now(), now())`,
+      `INSERT INTO workspaces (id, handle, name, created_at, updated_at) VALUES ($1, 'test-workspace', 'Test Workspace', now(), now())`,
       [WORKSPACE_ID],
     );
 
@@ -435,8 +434,7 @@ describe("authoring runner — integration", () => {
     // invisible to the enforcer.
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'null-life-workspace', 'Null-Life Workspace', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, created_at, updated_at) VALUES ($1, 'null-life-workspace', 'Null-Life Workspace', now(), now())`,
         [WORKSPACE_ID],
       );
       await c.query(
@@ -526,8 +524,7 @@ describe("authoring runner — integration", () => {
     // with the principals filter.
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'gc-workspace', 'GC Workspace', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, created_at, updated_at) VALUES ($1, 'gc-workspace', 'GC Workspace', now(), now())`,
         [WORKSPACE_ID],
       );
       await c.query(
@@ -638,8 +635,7 @@ describe("capturePolicy — edge_type validation", () => {
   async function seedDoco(): Promise<void> {
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'val-workspace', 'Val Workspace', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, created_at, updated_at) VALUES ($1, 'val-workspace', 'Val Workspace', now(), now())`,
         [WORKSPACE_ID],
       );
       await c.query(
@@ -785,8 +781,7 @@ describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
     // data value wins.
     await withClient(async (c) => {
       await c.query(
-        `INSERT INTO workspaces (id, handle, name, data, created_at, updated_at)
-           VALUES ($1, 'drift-workspace', 'Drift Workspace', '{}'::jsonb, now(), now())`,
+        `INSERT INTO workspaces (id, handle, name, created_at, updated_at) VALUES ($1, 'drift-workspace', 'Drift Workspace', now(), now())`,
         [WORKSPACE_ID],
       );
       await c.query(
