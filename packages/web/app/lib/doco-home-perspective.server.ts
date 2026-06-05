@@ -70,7 +70,7 @@ export async function loadDocoHomePerspectiveData(
     pullRequestsData: null,
   };
   const perspectiveWindow =
-    args.activeKind === "pull-requests"
+    args.activeKind === "pull-requests" || args.activeKind === "bpmn"
       ? null
       : await selectPerspectiveWindow(c, {
           docoId: args.docoId,
@@ -97,13 +97,16 @@ export async function loadDocoHomePerspectiveData(
       };
     }
     case "bpmn":
+      // BPMN renders the whole process: no node budget and no render-window.
+      // Other perspectives cap to a ranked subset on large Docos, but the BPMN
+      // canvas pans/zooms over every step, so windowing or limiting it would
+      // silently drop nodes the author expects to see (e.g. a state that
+      // serves an intent disappearing from its pool's milestone band).
       return {
         ...empty,
         bpmnGraph: await loadBpmnGraph(c, args.docoId, {
           focusId: focusNodeId,
           handle: args.handle,
-          nodeLimit: budget.nodeLimit,
-          window: perspectiveWindow ?? undefined,
         }),
       };
     case "org-tree":

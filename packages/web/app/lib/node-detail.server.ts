@@ -140,6 +140,18 @@ const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
       ];
     }),
   ) as Record<string, GraphNodeConfig>),
+  // A PR reference splits its content: the title lives in `prose` (the primary
+  // text) and the PR body in `attributes.body_md` (a real body section). Without
+  // this override it inherits the generic `bodyColumn: null`, hiding the body.
+  reference: {
+    nodeType: "reference",
+    primaryColumn: "prose",
+    typeNamedColumn: "reference",
+    primaryField: "reference",
+    bodyColumn: "attributes->>'body_md'",
+    bodyField: "body_md",
+    updateSegment: UPDATE_SEGMENTS.reference ?? "references",
+  },
   // Principal shares the `nodes` table but reads its label/body from
   // dedicated columns rather than the generic prose column.
   principal: {
@@ -518,10 +530,11 @@ export async function loadNodeDialogDetail(
   const bodyFirstLine = row.body_text ? row.body_text.split("\n")[0] || row.body_text : null;
   const summary =
     primaryFirstLine ?? stringField(frontmatter, "summary") ?? name ?? bodyFirstLine ?? row.id;
-  // Backwards-compatible field for older client code. For migrated
-  // nodes, this remains the type-named primary text; for Principal it
-  // remains the secondary markdown body.
-  const bodyMdCompat = cfg.typeNamedColumn ? (row.primary_text ?? null) : row.body_text;
+  // Backwards-compatible field for older client code. Prefer a real body
+  // section when the node has one (Principal's `attributes.body_md`; a PR
+  // Reference's split-out body). For migrated prose nodes with no body section
+  // (decision/intent/…), fall back to the type-named primary text (the prose).
+  const bodyMdCompat = row.body_text ?? (cfg.typeNamedColumn ? row.primary_text : null);
 
   const outgoingRows = (
     await c.query<DialogOutgoingEdgeRow>(
