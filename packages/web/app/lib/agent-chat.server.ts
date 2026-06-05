@@ -39,7 +39,13 @@ import type {
   ToolUseBlock,
   Usage,
 } from "@anthropic-ai/sdk/resources/messages";
-import { getDocoByIdOrHandle, getWorkspaceById, listWorkspacesForUser, withClient } from "@doco/db";
+import {
+  getDocoById,
+  getDocoByIdOrHandle,
+  getWorkspaceById,
+  listWorkspacesForUser,
+  withClient,
+} from "@doco/db";
 import {
   type PolicyPredicate,
   generateUlid,
@@ -158,6 +164,12 @@ export interface ChatConversationRow {
   title: string | null;
   /** Workspace this thread is hard-scoped to; null = unassigned (broad context). */
   workspace_id: string | null;
+  /**
+   * Doco this thread is attached to; null only for legacy workspace-only
+   * threads (and threads whose Doco was deleted). New in-app chats are 1:1
+   * with a Doco — see {@link loadOrCreateConversationForDoco}.
+   */
+  doco_id: string | null;
   created_at: Date;
   updated_at: Date;
   active_turn_started_at: Date | null;
@@ -291,7 +303,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, user_id, archived, title, workspace_id, created_at, updated_at, active_turn_started_at";
+  "id, user_id, archived, title, workspace_id, doco_id, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -367,26 +379,109 @@ export async function createConversation(
   opts: {
     title?: string | null;
     workspaceId?: string | null;
+    /**
+     * The Doco this thread is attached to. When set, the thread's
+     * `workspace_id` is derived from the Doco's workspace (unless an explicit
+     * `workspaceId` is also passed) so the existing workspace-scoped bootstrap
+     * keeps working without a separate assignment step.
+     */
+    docoId?: string | null;
   } = {},
 ): Promise<ChatConversationRow> {
+  const docoId = typeof opts.docoId === "string" && opts.docoId.trim() ? opts.docoId.trim() : null;
+  let workspaceId =
+    typeof opts.workspaceId === "string" && opts.workspaceId.trim()
+      ? opts.workspaceId.trim()
+      : null;
+  if (docoId && !workspaceId) {
+    const doco = await getDocoById(docoId);
+    workspaceId = doco?.workspace_id ?? null;
+  }
   return await withClient(async (c) => {
     const id = `conv_${generateUlid()}`;
     const title = typeof opts.title === "string" && opts.title.trim() ? opts.title.trim() : null;
-    const workspaceId =
-      typeof opts.workspaceId === "string" && opts.workspaceId.trim()
-        ? opts.workspaceId.trim()
-        : null;
     const r = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations
-         (id, user_id, title, workspace_id)
-       VALUES ($1, $2, $3, $4)
+         (id, user_id, title, workspace_id, doco_id)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING ${CONV_COLS}`,
-      [id, principalId, title, workspaceId],
+      [id, principalId, title, workspaceId, docoId],
     );
     const row = r.rows[0];
     if (!row) throw new Error("failed to create conversation row");
     return row;
   });
+}
+
+/**
+ * The user's one chat for a Doco, or null when they haven't opened it yet.
+ * Prefers a live thread over an archived one. Read-only — used by the snapshot
+ * loader (which must not mint rows) and by {@link loadOrCreateConversationForDoco}.
+ */
+async function loadConversationForDoco(
+  principalId: string,
+  docoId: string,
+): Promise<ChatConversationRow | null> {
+  return await withClient(async (c) => {
+    const r = await c.query<ChatConversationRow>(
+      `SELECT ${CONV_COLS}
+         FROM chat_conversations
+        WHERE user_id = $1 AND doco_id = $2
+        ORDER BY archived ASC, updated_at DESC
+        LIMIT 1`,
+      [principalId, docoId],
+    );
+    return r.rows[0] ?? null;
+  });
+}
+
+/**
+ * Get-or-create the one chat a user has for a Doco. Enforces "a Doco can only
+ * have a chat": returns the existing (user, Doco) thread if there is one —
+ * un-archiving it if it was archived — and only mints a fresh row when none
+ * exists. The partial unique index `idx_chat_conversations_user_doco` is the
+ * backstop against a concurrent double-create.
+ */
+export async function loadOrCreateConversationForDoco(
+  principalId: string,
+  docoId: string,
+): Promise<ChatConversationRow> {
+  const existing = await loadConversationForDoco(principalId, docoId);
+  if (existing) {
+    if (existing.archived) {
+      // Revive rather than mint a second — the Doco's chat is its rolling
+      // memory; archiving was a soft hide, and re-opening the Doco brings it
+      // back.
+      await withClient((c) =>
+        c.query("UPDATE chat_conversations SET archived = false WHERE id = $1", [existing.id]),
+      );
+      existing.archived = false;
+    }
+    await clearStaleTurnMarker(existing);
+    return existing;
+  }
+  return await createConversation(principalId, { docoId });
+}
+
+/**
+ * Resolve a Doco reference (id or handle) to the caller's chat for it,
+ * get-or-creating the chat. Guards reachability first — a caller can't mint a
+ * chat for a Doco they can't see — so this is the safe entry point for the
+ * message route's lazy create. Returns null when the Doco is unknown or out of
+ * reach (the route should 404, not leak existence).
+ */
+export async function getOrCreateDocoConversationForPrincipal(
+  principalId: string,
+  docoRef: string,
+): Promise<ChatConversationRow | null> {
+  const doco = await getDocoByIdOrHandle(docoRef);
+  if (!doco) return null;
+  const reachable = await canAccessDoco(
+    { ownerId: doco.owner_id, visibility: doco.visibility, docoId: doco.id },
+    principalId,
+  );
+  if (!reachable) return null;
+  return await loadOrCreateConversationForDoco(principalId, doco.id);
 }
 
 /**
@@ -537,6 +632,12 @@ export interface ConversationListItem {
   workspace_id: string | null;
   /** Handle of {@link workspace_id}, for the row's tag; null = unassigned. */
   workspace_handle: string | null;
+  /** The Doco this thread is attached to; null for legacy/orphaned threads. */
+  doco_id: string | null;
+  /** Handle of {@link doco_id} — the row's tag links to `/<doco_handle>`. */
+  doco_handle: string | null;
+  /** Owner slug of {@link doco_id}, for the qualified `owner/handle` label. */
+  doco_owner_slug: string | null;
 }
 
 /**
@@ -587,10 +688,16 @@ export async function listConversationsForPrincipal(
       last_message_role: "user" | "assistant" | null;
       workspace_id: string | null;
       workspace_handle: string | null;
+      doco_id: string | null;
+      doco_handle: string | null;
+      doco_owner_slug: string | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
               c.workspace_id,
               w.handle AS workspace_handle,
+              c.doco_id,
+              d.handle AS doco_handle,
+              COALESCE(du.github_login, dw.handle, '') AS doco_owner_slug,
               COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
               (SELECT m.content
                  FROM chat_messages m
@@ -604,6 +711,9 @@ export async function listConversationsForPrincipal(
                 LIMIT 1) AS last_message_role
          FROM chat_conversations c
          LEFT JOIN workspaces w ON w.id = c.workspace_id
+         LEFT JOIN docos d ON d.id = c.doco_id
+         LEFT JOIN users du ON du.id = d.owner_id
+         LEFT JOIN workspaces dw ON dw.id = d.owner_id
         WHERE c.user_id = $1
           ${opts.includeArchived ? "" : "AND c.archived = false"}
         ORDER BY c.updated_at DESC
@@ -621,6 +731,9 @@ export async function listConversationsForPrincipal(
       last_message_role: row.last_message_role,
       workspace_id: row.workspace_id,
       workspace_handle: row.workspace_handle,
+      doco_id: row.doco_id,
+      doco_handle: row.doco_handle,
+      doco_owner_slug: row.doco_owner_slug || null,
     }));
   });
 }
@@ -2786,7 +2899,13 @@ async function* streamAssistantTurn(args: {
 // ---------------------------------------------------------------------------
 
 export interface ConversationSnapshot {
-  conversation_id: string;
+  /**
+   * The thread id, or `null` when a Doco was opened that has no chat yet.
+   * Chats are created lazily — the first message mints the row — so a fresh
+   * Doco returns its display fields with `conversation_id: null` and no
+   * messages. Every other path returns a real id.
+   */
+  conversation_id: string | null;
   /** User-visible thread name. Null until the first user message is sent. */
   title: string | null;
   archived: boolean;
@@ -2795,6 +2914,12 @@ export interface ConversationSnapshot {
    * Drives the in-thread workspace tag (mirrors the inbox list's tag).
    */
   workspace_handle: string | null;
+  /** The Doco this chat is attached to; null for legacy/orphaned threads. */
+  doco_id: string | null;
+  /** Handle of {@link doco_id} — the in-thread tag links to `/<doco_handle>`. */
+  doco_handle: string | null;
+  /** Owner slug of {@link doco_id}, for the qualified `owner/handle` label. */
+  doco_owner_slug: string | null;
   messages: {
     id: string;
     role: "user" | "assistant";
@@ -2827,42 +2952,29 @@ export interface ConversationSnapshot {
   thread_usage: ThreadUsage;
 }
 
-/**
- * Load a snapshot for a specific thread or the user's active thread.
- *
- * - `conversationId` omitted: most-recent non-archived thread, or
- *   `null` when the user has never chatted. Snapshot reads never mint
- *   empty rows; POST /messages.json creates the first thread.
- * - `conversationId` provided: that thread, scoped to the calling
- *   principal. Returns `null` when the id doesn't exist or belongs
- *   to a different user — callers should 404 in that case.
- */
-export async function loadSnapshotForPrincipal(
-  principalId: string,
-  opts: { before?: Date | null; conversationId?: string | null } = {},
-): Promise<ConversationSnapshot | null> {
-  let conv: ChatConversationRow | null;
-  if (opts.conversationId) {
-    conv = await loadConversationByIdForPrincipal(opts.conversationId, principalId);
-    if (!conv) return null;
-  } else {
-    conv = await loadActiveConversation(principalId);
-    if (!conv) return null;
-  }
-  const [{ messages: rows, hasMore }, events, threadUsage, workspace] = await Promise.all([
+/** Hydrate a full snapshot for a loaded conversation row. */
+async function buildConversationSnapshot(
+  conv: ChatConversationRow,
+  before: Date | null,
+): Promise<ConversationSnapshot> {
+  const [{ messages: rows, hasMore }, events, threadUsage, workspace, doco] = await Promise.all([
     loadMessagesPage(conv.id, {
-      before: opts.before ?? null,
+      before,
       limit: CHAT_MESSAGES_PAGE_SIZE,
     }),
     loadActiveTurnEvents(conv.id),
     loadThreadUsage(conv.id),
     conv.workspace_id ? getWorkspaceById(conv.workspace_id) : Promise.resolve(null),
+    conv.doco_id ? getDocoById(conv.doco_id) : Promise.resolve(null),
   ]);
   return {
     conversation_id: conv.id,
     title: conv.title,
     archived: conv.archived,
     workspace_handle: workspace?.handle ?? null,
+    doco_id: conv.doco_id,
+    doco_handle: doco?.handle ?? null,
+    doco_owner_slug: doco?.owner_slug || null,
     messages: rows.map((r) => ({
       id: r.id,
       role: r.role,
@@ -2874,6 +2986,68 @@ export async function loadSnapshotForPrincipal(
     active_turn_events: events,
     thread_usage: threadUsage,
   };
+}
+
+/**
+ * Load a snapshot for a Doco's chat, a specific thread, or the user's active
+ * thread.
+ *
+ * - `docoRef` provided: the chat attached to that Doco (id or handle), scoped
+ *   to the caller. Returns `null` when the Doco doesn't exist or the caller
+ *   can't reach it (no existence leak). When the Doco has no chat yet, returns
+ *   a lazy snapshot — the Doco's display fields, `conversation_id: null`, and
+ *   no messages — so opening Señor Doco on a Doco page shows its chat without
+ *   minting a row (the first message creates it).
+ * - `conversationId` omitted: most-recent non-archived thread, or `null` when
+ *   the user has never chatted. Snapshot reads never mint empty rows; POST
+ *   /messages.json creates the first thread.
+ * - `conversationId` provided: that thread, scoped to the calling principal.
+ *   Returns `null` when the id doesn't exist or belongs to a different user —
+ *   callers should 404 in that case.
+ */
+export async function loadSnapshotForPrincipal(
+  principalId: string,
+  opts: { before?: Date | null; conversationId?: string | null; docoRef?: string | null } = {},
+): Promise<ConversationSnapshot | null> {
+  if (opts.docoRef) {
+    const doco = await getDocoByIdOrHandle(opts.docoRef);
+    if (!doco) return null;
+    const reachable = await canAccessDoco(
+      { ownerId: doco.owner_id, visibility: doco.visibility, docoId: doco.id },
+      principalId,
+    );
+    if (!reachable) return null;
+    const existing = await loadConversationForDoco(principalId, doco.id);
+    if (existing) {
+      await clearStaleTurnMarker(existing);
+      return await buildConversationSnapshot(existing, opts.before ?? null);
+    }
+    // Lazy: no chat yet — hand back the Doco's display fields so the rail can
+    // show the tag + composer; the first message mints the row.
+    return {
+      conversation_id: null,
+      title: null,
+      archived: false,
+      workspace_handle: null,
+      doco_id: doco.id,
+      doco_handle: doco.handle,
+      doco_owner_slug: doco.owner_slug || null,
+      messages: [],
+      has_more: false,
+      active_turn_started_at: null,
+      active_turn_events: [],
+      thread_usage: aggregateThreadUsage([]),
+    };
+  }
+  let conv: ChatConversationRow | null;
+  if (opts.conversationId) {
+    conv = await loadConversationByIdForPrincipal(opts.conversationId, principalId);
+    if (!conv) return null;
+  } else {
+    conv = await loadActiveConversation(principalId);
+    if (!conv) return null;
+  }
+  return await buildConversationSnapshot(conv, opts.before ?? null);
 }
 
 /**
