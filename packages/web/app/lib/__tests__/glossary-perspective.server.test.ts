@@ -28,16 +28,19 @@ function row(over: Record<string, unknown>) {
 }
 
 describe("loadGlossaryPerspectiveData", () => {
-  it("renders Reference nodes as entries (regression: glossary was blank with only References)", async () => {
+  it("renders a Reference term entry: the prose is the word, the `definition` attribute is the meaning", async () => {
+    // The model: prose = the word being defined (the headword, the first line
+    // of prose), and the definition lives in the `definition` attribute — off
+    // the prose, so the node name stays the bare term and the definition
+    // never leaks into the headword.
     const client = makeClient([
       row({
         id: "reference_01",
         entity_type: "reference",
-        label: "Torre",
-        prose: "The company building this product.",
-        title: "Torre",
+        label: "Torre", // first line of prose = the word being defined
+        prose: "Torre",
         ref_type: "term",
-        citation: "Torre.ai handbook",
+        data: { definition: "The company building this product." },
       }),
     ]);
 
@@ -48,9 +51,29 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(entry.headword).toBe("Torre");
     expect(entry.entityType).toBe("reference");
     expect(entry.href).toBe("/acme/glossary/reference/reference_01");
+    // The definition comes from the attribute, never the prose/headword.
     expect(entry.senses).toEqual(["The company building this product."]);
-    expect(entry.source).toBe("Torre.ai handbook");
     expect(entry.tag).toBe("term"); // ref_type used as the register label
+  });
+
+  it("renders a cited-source Reference's source line from citation/locator", async () => {
+    // A `derived_from` target: no `definition`, but a source line to show.
+    const client = makeClient([
+      row({
+        id: "reference_src",
+        entity_type: "reference",
+        label: "RFC 7231",
+        prose: "RFC 7231",
+        ref_type: "document",
+        citation: "HTTP/1.1 Semantics",
+        locator: "https://www.rfc-editor.org/rfc/rfc7231",
+      }),
+    ]);
+
+    const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+    const entry = groups[0].entries[0];
+    expect(entry.headword).toBe("RFC 7231");
+    expect(entry.source).toBe("HTTP/1.1 Semantics");
   });
 
   it("maps Decisions to chosen=headword, question lead-in, and alternatives", async () => {

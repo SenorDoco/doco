@@ -516,6 +516,16 @@ export interface Reference extends CommonFields {
   citation?: string | null;
   /** Display title distinct from `reference` when the source title matters. */
   title?: string | null;
+  /**
+   * The definition body when a Reference is used as a glossary term entry.
+   * In the glossaries template the prose (`reference`) is the *word being
+   * defined* — the headword — and the meaning lives here, off the prose,
+   * so the node's name stays the bare term. None of the other Reference
+   * attributes fit: `citation` is the in-prose-mention shortcut, `locator`
+   * points at where a source lives, and `title` is a display title — so a
+   * dedicated field is the honest home for the definition.
+   */
+  definition?: string | null;
   content_hash?: string | null;
 }
 

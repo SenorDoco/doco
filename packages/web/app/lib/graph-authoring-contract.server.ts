@@ -89,11 +89,11 @@ export const PERSPECTIVE_CONTRACTS: Record<string, PerspectiveAuthoringContract>
   },
   glossary: {
     perspective: "glossary",
-    node_types: ["decision", "rule", "reference", "eval"],
+    node_types: ["reference", "rule", "eval"],
     constraints: [
-      "Each term entry is a Decision: `chosen` is the canonical headword, `question` the concept, and the prose the definition. A term is canonical (`active`) or deprecated (`retired`) — there is no draft/queue stage.",
-      "Keep one concept per Decision; record aliases, synonyms, and rejected labels in `alternatives`.",
-      "Use Rules for terminology usage policies; cite a borrowed or standards-based term's source by linking the term to a Reference with `derived_from`.",
+      "Each term entry is a Reference: the prose is the word being defined (it becomes the headword), and the definition — meaning, scope, an example or non-example — lives in the `definition` attribute, never in the prose or `title`. A term is canonical (`active`) or deprecated (`retired`) — there is no draft/queue stage.",
+      "Keep one concept per Reference; record aliases, synonyms, and rejected labels in `alternatives`.",
+      "Use Rules for terminology usage policies; cite a borrowed or standards-based term's source by linking the term to a source Reference with `derived_from`.",
       "Link related, confusable, or homograph terms with `relates_to`; point deprecated terms at their replacement with `replaces`.",
     ],
     preferred_operations: ["create", "relate"],

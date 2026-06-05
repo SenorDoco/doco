@@ -1,5 +1,6 @@
 // Glossary perspective — the Doco's terminology rendered as a printed
-// dictionary page. Decisions become headword entries; the layout leans
+// dictionary page. Term-entry References become headword entries (the prose
+// is the word, the `definition` attribute the meaning); the layout leans
 // into the lexicon metaphor on purpose: serif type, a faux pronunciation
 // respelling, guide words in the running head, an A–Z thumb index, and a
 // two-column text flow with drop-cap letter dividers.
@@ -79,9 +80,10 @@ export function GlossaryPerspective({
           The pages are blank.
         </p>
         <p className="max-w-md text-sm italic" style={{ color: INK_SOFT }}>
-          No terms have been defined yet. Capture a Decision — its{" "}
-          <span className="font-semibold not-italic">chosen</span> term becomes the headword and its
-          prose the definition — and it will be set in type here.
+          No terms have been defined yet. Capture a Reference — its{" "}
+          <span className="font-semibold not-italic">prose</span> is the word being defined (the
+          headword) and its <span className="font-semibold not-italic">definition</span> attribute
+          holds the meaning — and it will be set in type here.
         </p>
       </div>
     );
