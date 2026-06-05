@@ -6,13 +6,19 @@
 // every page, every perspective (with random node exploration), the API, MCP,
 // and a doco created from each template + exercised. It specifically re-walks
 // the paths the recent entity-shape normalization touched:
-//   • Slice 1 (nodes): capture an intent with `prose`, read it back as the
-//     canonical { prose, attributes } shape (no type-named key), then run a
-//     LIFECYCLE TRANSITION — the re-evaluation path the original bug lived in
+//   • Slice 1 (nodes): capture a node with `prose` (using the first node type
+//     the template's allowlist accepts), read it back as the canonical
+//     { prose, attributes } shape (no type-named key), then EDIT it to force a
+//     re-evaluation of the stored candidate — the path the original bug lived in
 //     ("the candidate lacks a `prose` field") — and assert it does NOT fail.
 //   • Slice 2 (edges): create a flows_to edge with label/condition/kind and
-//     read them back from the typed columns; assert no `props` bag.
+//     read them back from the typed columns; assert no `props` bag (skipped on
+//     templates whose allowlist forbids action/state).
 //   • Slice 3 (workspaces/host): workspace + dashboard pages render.
+//
+// Template-aware throughout: an authoring-policy allowlist rejection (HTTP 400
+// "not in allowlist") is the policy WORKING, so the harness adapts to each
+// template rather than reporting it as a failure.
 //
 // Usage:
 //   node scripts/verify-live.mjs [baseUrl] [username]
@@ -115,7 +121,9 @@ const STATIC_PAGES = [
   "/api-keys",
   "/access-requests",
   "/onboarding/join",
-  "/feedback",
+  // NB: /feedback is intentionally admin-only (404 for anyone but `torrenegra`,
+  // see routes/feedback.tsx), so it is NOT a general signed-in page — listing it
+  // here would be a guaranteed false failure for the test user.
 ];
 
 async function pageOk(path) {
@@ -165,46 +173,92 @@ async function createDoco(workspaceId, template) {
   return handle;
 }
 
-// Capture an intent with prose, then exercise the SLICE-1 re-evaluation path.
-async function exerciseIntentReeval(handle) {
-  const create = await json(`/${handle}/api/intents.json`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prose: "Find candidates", lifecycle: "drafting" }),
-  });
-  assert(
-    create.status < 400,
-    `capture intent → ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`,
-  );
-  const id = create.body.id ?? create.body.intent?.id;
-  assert(typeof id === "string", "captured intent has no id");
+// A doco's template enforces authoring policies: a node-type allowlist
+// ("node_type … not in allowlist"), or structural gates ("missing required
+// `attributed_to` edge to a principal", "missing required `supports` edge to a
+// intent"). A 400 carrying "Authoring policy violation" is the policy WORKING,
+// not a failure — detect it so the harness adapts to the template (skipping the
+// exercises a stricter template can't satisfy without elaborate setup) instead
+// of crying wolf. The typed-column / re-eval behavior under test is
+// template-independent, so coverage on a permissive template (generic) suffices.
+function isPolicyViolation(res) {
+  return res.status === 400 && /Authoring policy violation/i.test(JSON.stringify(res.body));
+}
 
-  // Read back: canonical { prose, attributes }, NO type-named `intent` key.
-  const got = await json(`/${handle}/api/intents/${id}.json`);
-  assert(got.status === 200, `read intent → ${got.status}`);
+/** The human-readable policy message, for a skip detail line. */
+function policyReason(res) {
+  const e = res.body?.error;
+  return typeof e === "string"
+    ? e.replace(/^Authoring policy violation:\s*/i, "")
+    : `HTTP ${res.status}`;
+}
+
+// Capture a node carrying `prose`, then exercise the SLICE-1 re-evaluation path
+// (the original bug: a re-eval of the STORED node must surface its `prose`, not
+// fail with "the candidate lacks a `prose` field entirely"). Template-aware:
+// tries node types in order and uses the first the template's allowlist accepts,
+// so it runs on EVERY template (glossaries only allows reference/rule/eval).
+async function exerciseReeval(handle) {
+  const candidates = [
+    { type: "intent", collection: "intents" },
+    { type: "reference", collection: "references" },
+    { type: "rule", collection: "rules" },
+  ];
+  let chosen;
+  let create;
+  for (const c of candidates) {
+    create = await json(`/${handle}/api/${c.collection}.json`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prose: "Find candidates" }),
+    });
+    if (create.status < 400) {
+      chosen = c;
+      break;
+    }
+    if (!isPolicyViolation(create)) {
+      throw new Error(
+        `capture ${c.type} → ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`,
+      );
+    }
+  }
+  assert(chosen, "no candidate node type accepted by this template's authoring policies");
+  const id = create.body.id ?? create.body[chosen.type]?.id;
+  assert(typeof id === "string", "captured node has no id");
+
+  // Read back: canonical { prose, attributes }, NO type-named key.
+  const got = await json(`/${handle}/api/${chosen.collection}/${id}.json`);
+  assert(got.status === 200, `read ${chosen.type} → ${got.status}`);
+  const node = got.body[chosen.type] ?? got.body;
   assert(
-    got.body.prose === "Find candidates",
+    node.prose === "Find candidates",
     `read-back prose mismatch: ${JSON.stringify(got.body).slice(0, 200)}`,
   );
-  assert(!("intent" in got.body), "read-back still carries the legacy type-named `intent` key");
+  assert(
+    !(chosen.type in got.body),
+    `read-back still carries the legacy type-named \`${chosen.type}\` key`,
+  );
 
-  // THE ORIGINAL BUG: a lifecycle transition re-evaluates the STORED node. It
+  // THE ORIGINAL BUG: editing the node re-evaluates the STORED candidate. It
   // must NOT fail with "the candidate lacks a `prose` field entirely".
-  const patch = await json(`/${handle}/api/intents/${id}.json`, {
+  const patch = await json(`/${handle}/api/${chosen.collection}/${id}.json`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ lifecycle: "queued" }),
+    body: JSON.stringify({ prose: "Find candidates (edited)" }),
   });
   const blob = JSON.stringify(patch.body);
   assert(
     !/lacks a .?prose.? field/i.test(blob),
     `re-evaluation regressed the original bug: ${blob.slice(0, 240)}`,
   );
-  assert(patch.status < 500, `lifecycle transition → ${patch.status}: ${blob.slice(0, 200)}`);
-  return `intent ${id}: capture/read/re-eval ok`;
+  assert(patch.status < 500, `re-eval (prose edit) → ${patch.status}: ${blob.slice(0, 200)}`);
+  return `${chosen.type} ${id}: capture/read/re-eval ok`;
 }
 
 // Create a flows_to edge with the SLICE-2 typed columns and read them back.
+// Returns a "skipped" sentinel when the template's allowlist forbids the
+// action/state endpoints a flow needs (e.g. glossaries) — that's the policy
+// working, not an edge regression.
 async function exerciseEdgeColumns(handle) {
   const a = await json(`/${handle}/api/actions.json`, {
     method: "POST",
@@ -216,6 +270,10 @@ async function exerciseEdgeColumns(handle) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ prose: "Approved", kind: "terminal", lifecycle: "active" }),
   });
+  if (isPolicyViolation(a) || isPolicyViolation(b)) {
+    const why = isPolicyViolation(a) ? policyReason(a) : policyReason(b);
+    return `skipped — template policy blocks bare action/state (${why}); flows_to typed columns covered on generic`;
+  }
   assert(a.status < 400 && b.status < 400, `capture flow nodes → ${a.status}/${b.status}`);
   const fromId = a.body.id;
   const toId = b.body.id;
@@ -239,11 +297,14 @@ async function exerciseEdgeColumns(handle) {
   if (edgeId) {
     const got = await json(`/${handle}/api/edges/${edgeId}.json`);
     assert(got.status === 200, `read edge → ${got.status}`);
+    // The detail endpoint nests the edge under `{ edge: { … } }`; the list under
+    // `{ edges: [ … ] }`. Unwrap before reading the typed columns.
+    const e = got.body.edge ?? got.body;
     assert(
-      got.body.label === "Yes",
-      `edge label not on the typed column: ${JSON.stringify(got.body).slice(0, 200)}`,
+      e.label === "Yes" && e.condition === "score > 0" && e.kind === "exception",
+      `flows_to metadata not on the typed columns: ${JSON.stringify(got.body).slice(0, 200)}`,
     );
-    assert(!("props" in got.body), "edge still carries a `props` bag");
+    assert(!("props" in e), "edge still carries a `props` bag");
   }
   return "flows_to edge created with typed label/condition/kind";
 }
@@ -265,8 +326,10 @@ async function walkDocoPages(handle) {
   ]) {
     await check(`page ${p}`, () => pageOk(p));
   }
-  // Node list + a random node detail for each node type that has rows.
-  for (const type of ["intents", "actions", "decisions", "states", "principals"]) {
+  // Node list + a random node detail for each node type that has a list page.
+  // (Principals have no HTML list route — they surface via the org-tree
+  // perspective; their API is covered by api/principals.json above.)
+  for (const type of ["intents", "actions", "decisions", "states"]) {
     await check(`list /${handle}/${type}`, () => pageOk(`/${handle}/${type}`));
     const listing = await json(`/${handle}/api/${type}.json`);
     const rows = Array.isArray(listing.body)
@@ -376,9 +439,7 @@ async function main() {
         const handle = await createDoco(workspaceId, t);
         handles.push(handle);
         record(`created "${t}" → ${handle}`, true);
-        await check(`[${t}] intent capture + re-eval (original bug)`, () =>
-          exerciseIntentReeval(handle),
-        );
+        await check(`[${t}] node capture + re-eval (original bug)`, () => exerciseReeval(handle));
         await check(`[${t}] flows_to edge typed columns`, () => exerciseEdgeColumns(handle));
         await walkDocoPages(handle);
       } catch (err) {
