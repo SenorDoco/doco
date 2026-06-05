@@ -72,7 +72,7 @@ export const ORG_TREE_MAX_ZOOM = 1.5;
 //
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
-function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
+export function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
   const { org, isCenter } = data;
   const kindIcon =
     org.type === "agent"
@@ -92,7 +92,7 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
           : null;
   return (
     <div
-      className={`relative flex flex-col justify-between rounded-md border bg-white px-3 py-2 shadow-sm transition ${
+      className={`relative flex cursor-pointer flex-col justify-between rounded-md border bg-white px-3 py-2 shadow-sm transition ${
         isCenter ? "border-4 border-foreground" : "border-border"
       }`}
       style={{ width: ORG_TREE_NODE_W, height: ORG_TREE_NODE_H }}
