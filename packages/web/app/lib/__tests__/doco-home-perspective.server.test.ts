@@ -100,7 +100,8 @@ describe("loadDocoHomePerspectiveData", () => {
     const budget = DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET;
     const expectedSpec =
       kind === "list" ? mocks.specs.graph : mocks.specs[kind as keyof typeof mocks.specs];
-    if (kind === "pull-requests") {
+    if (kind === "pull-requests" || kind === "bpmn") {
+      // BPMN shows every node, so it neither windows nor caps the node set.
       expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
     } else {
       expect(mocks.selectPerspectiveWindow).toHaveBeenCalledWith(client, {
@@ -123,11 +124,11 @@ describe("loadDocoHomePerspectiveData", () => {
     expect(mocks.loadOverviewGraph).not.toHaveBeenCalled();
 
     if (kind === "bpmn") {
+      // No nodeLimit and no window: the full process renders, capped by
+      // neither the page budget nor the ranked render-window.
       expect(mocks.loadBpmnGraph).toHaveBeenCalledWith(client, "doco_1", {
-        focusId: "decision_window",
+        focusId: "decision_focus",
         handle: "acme",
-        nodeLimit: budget.nodeLimit,
-        window: mocks.window,
       });
     } else if (kind === "pull-requests") {
       expect(mocks.loadPullRequestsPerspective).toHaveBeenCalledWith(client, "doco_1", {
