@@ -100,6 +100,8 @@ export async function action({ request, params }: { request: Request; params: Pa
     kind: typeof body.kind === "string" ? body.kind : null,
     lifecycle: body.lifecycle === "drafting" ? "drafting" : "active",
     reason: typeof body.reason === "string" ? body.reason : null,
+    docoHost: new URL(request.url).origin,
+    handle: params.docoHandle,
     ...(await authoringContextForRequest(request)),
   });
   if ("error" in result) {
