@@ -1,8 +1,9 @@
 // Pull requests perspective — server-side data access.
 //
 // A Doco's imported GitHub pull requests are stored as `reference` nodes
-// (ref_type "url", locator = the canonical PR URL, prose = title + body —
-// see github-pr-import.server.ts). This perspective reads the latest of those
+// (ref_type "url", locator = the canonical PR URL, prose = the PR title; the
+// body lives in attributes.body_md — see github-pr-import.server.ts). This
+// perspective reads the latest of those
 // References back as a flat, newest-first list — every stage (Merged / Open /
 // Closed) shown together, NOT grouped by lifecycle.
 //
@@ -25,7 +26,8 @@ type QueryClient = {
 /** Raw `nodes` row for a PR-shaped Reference. */
 export interface PullRequestRefRow {
   id: string;
-  /** The Reference prose: first line = PR title, rest = body. */
+  /** The Reference prose — the PR title (single line; the body lives in
+   *  attributes.body_md). */
   reference: string | null;
   /** Promoted `locator` column — the canonical PR URL. */
   locator: string | null;
@@ -99,10 +101,10 @@ function prLifecycleFilterSql(stages: readonly string[]): string {
 
 /**
  * Map PR-shaped Reference rows to a flat list of items, preserving input order
- * (newest first from the query) regardless of stage. The PR title is the full
- * Reference prose (the node name renders in full, not a first-line
- * truncation), falling back to the locator (PR URL) when the prose is empty.
- * An unknown/null lifecycle is normalized to `queued`. Pure.
+ * (newest first from the query) regardless of stage. The PR title is the
+ * Reference prose (now the title only — the body lives in attributes.body_md),
+ * falling back to the locator (PR URL) when the prose is empty. An unknown/null
+ * lifecycle is normalized to `queued`. Pure.
  */
 export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequestItem[] {
   return rows.map((row) => {

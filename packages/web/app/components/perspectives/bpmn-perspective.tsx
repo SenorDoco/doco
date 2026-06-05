@@ -445,58 +445,40 @@ export function BpmnPerspective({
     () => resolveIntentToEntry(selectionCenterId),
     [resolveIntentToEntry, selectionCenterId],
   );
-  // The one pool drawn as a swim lane: the focal node's pool. Every other
-  // rendered node lays out *outside* this lane, positioned by graph
-  // distance from the focal node (see layOutBpmn).
-  const focalPoolId = useMemo(() => {
-    if (!effectiveCenterId) return null;
-    const fromIntent = pools.find((pool) => pool.intent_id === effectiveCenterId)?.id;
-    return fromIntent ?? nodeByFullId.get(effectiveCenterId)?.pool_id ?? null;
-  }, [pools, effectiveCenterId, nodeByFullId]);
-
-  // The exact set rendered — no budget, no PageRank windowing, no
-  // buffering. We draw the focal node's whole intent (every node in its
-  // pool) plus the focal node's first-degree sequence-flow neighbours that
-  // live in *other* intents. Those neighbours render above/below the lane
-  // (see layOutBpmn); clicking one makes it the focal node and the whole
-  // set recomputes from scratch.
-  const renderedNodeIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (!focalPoolId) return ids;
-    for (const node of filteredNodes) {
-      if (node.pool_id === focalPoolId) ids.add(node.id);
-    }
-    if (effectiveCenterId) {
-      for (const link of links) {
-        if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
-        const neighborId =
-          link.source === effectiveCenterId
-            ? link.target
-            : link.target === effectiveCenterId
-              ? link.source
-              : null;
-        if (!neighborId) continue;
-        const neighbor = nodeByFullId.get(neighborId);
-        if (neighbor && neighbor.pool_id !== focalPoolId) ids.add(neighborId);
-      }
-    }
-    return ids;
-  }, [filteredNodes, links, effectiveCenterId, focalPoolId, nodeByFullId]);
+  // The pool(s) drawn as swim lanes, and the exact set of nodes rendered —
+  // no budget, no PageRank windowing, no buffering. A node focus (or an
+  // edge within one intent) frames one pool: the focal node's whole intent
+  // plus its first-degree sequence-flow neighbours in *other* intents,
+  // which lay out above/below the lane (see layOutBpmn). A focused edge
+  // whose endpoints span two intents frames BOTH pools in full. Clicking a
+  // node makes it the focal node and the whole set recomputes from scratch.
+  const { focalPoolIds, renderedNodeIds } = useMemo(
+    () =>
+      computeBpmnRenderedSet({
+        nodes: filteredNodes,
+        pools,
+        links,
+        centerId: effectiveCenterId,
+        focusedEdgeId: focusedEdgeId ?? null,
+        focusedNodeIds: focusedNodeIdSet,
+      }),
+    [filteredNodes, pools, links, effectiveCenterId, focusedEdgeId, focusedNodeIdSet],
+  );
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
     [filteredNodes, renderedNodeIds],
   );
-  // Only the focal pool's lanes are drawn, so only its rendered nodes
-  // contribute swim-lane chrome (rails, reference numbering). Adjacent
+  // Only the focal pool(s) are drawn as swim lanes, so only their rendered
+  // nodes contribute swim-lane chrome (rails, reference numbering). Adjacent
   // cross-intent nodes render above/below the lane and belong to none.
   const renderedLaneIds = useMemo(
     () =>
       new Set(
-        renderedNodes.filter((node) => node.pool_id === focalPoolId).map((node) => node.laneId),
+        renderedNodes.filter((node) => focalPoolIds.has(node.pool_id)).map((node) => node.laneId),
       ),
-    [renderedNodes, focalPoolId],
+    [renderedNodes, focalPoolIds],
   );
-  const renderedPoolIds = useMemo(() => new Set(focalPoolId ? [focalPoolId] : []), [focalPoolId]);
+  const renderedPoolIds = focalPoolIds;
   const renderedLanes = useMemo(
     () => filteredLanes.filter((lane) => renderedLaneIds.has(lane.id)),
     [filteredLanes, renderedLaneIds],
@@ -505,16 +487,16 @@ export function BpmnPerspective({
     () => pools.filter((pool) => renderedPoolIds.has(pool.id)),
     [pools, renderedPoolIds],
   );
-  // Exactly one pool is laid out as a swim lane — the focal node's. Its
-  // lanes anchor the in-lane nodes; the adjacent cross-intent neighbours
-  // are placed above/below it.
+  // The focal pool(s) laid out as swim lanes — one for a node/single-intent
+  // focus, two for a cross-intent edge. Their lanes anchor the in-lane
+  // nodes; any adjacent cross-intent neighbours are placed above/below.
   const layoutPools = useMemo(
-    () => (focalPoolId ? pools.filter((pool) => pool.id === focalPoolId) : []),
-    [pools, focalPoolId],
+    () => pools.filter((pool) => focalPoolIds.has(pool.id)),
+    [pools, focalPoolIds],
   );
   const layoutLanes = useMemo(
-    () => (focalPoolId ? filteredLanes.filter((lane) => lane.pool_id === focalPoolId) : []),
-    [filteredLanes, focalPoolId],
+    () => filteredLanes.filter((lane) => focalPoolIds.has(lane.pool_id)),
+    [filteredLanes, focalPoolIds],
   );
   // Geometry is solved from exactly the rendered set — the layout is
   // recomputed in full on every focus change, nothing is pinned.
@@ -532,6 +514,10 @@ export function BpmnPerspective({
     () => pools.some((pool) => pool.intent_id === selectionCenterId),
     [pools, selectionCenterId],
   );
+  // A cross-intent edge frames two whole intents; singling out one focal
+  // node with a depth-fade would wash the *other* intent out, so suppress
+  // it. The two edge endpoints are still highlighted via `focusedNodeIds`.
+  const highlightFocal = !isIntentFocus && focalPoolIds.size <= 1;
   const layout = useMemo(
     () =>
       layOutBpmn(
@@ -542,7 +528,7 @@ export function BpmnPerspective({
         effectiveCenterId,
         focusedNodeIdSet,
         focusedEdgeId ?? null,
-        !isIntentFocus,
+        highlightFocal,
       ),
     [
       layoutPools,
@@ -552,7 +538,7 @@ export function BpmnPerspective({
       effectiveCenterId,
       focusedNodeIdSet,
       focusedEdgeId,
-      isIntentFocus,
+      highlightFocal,
     ],
   );
   // memo() so a node/edge component only re-renders when its own props
@@ -1391,6 +1377,70 @@ const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
 // layout grows the node by this much; the node component pads its label
 // area by the same amount so text never enters the marker strip.
 const SUBPROCESS_MARKER_ROOM = 20;
+
+// The exact node set the BPMN perspective draws for a given focus, and the
+// pool(s) those nodes belong to. The rule:
+//
+//   • Focusing a node (or an edge whose endpoints share one intent) frames
+//     that one intent — every node in its pool — plus the focal node's
+//     first-degree cross-intent sequence-flow neighbours (drawn adjacent to
+//     the lane).
+//   • Focusing an edge whose endpoints live in *two different intents*
+//     frames BOTH intents in full — every node of each pool — so the
+//     hand-off is shown in the context of both processes it joins.
+//
+// Returns the focal pool ids (one for a single-intent focus, two for a
+// cross-intent edge) and the full set of node ids to render.
+export function computeBpmnRenderedSet(params: {
+  nodes: BpmnNode[];
+  pools: BpmnPool[];
+  links: OverviewGraphLink[];
+  centerId: string | null | undefined;
+  focusedEdgeId: string | null;
+  focusedNodeIds: ReadonlySet<string>;
+}): { focalPoolIds: Set<string>; renderedNodeIds: Set<string> } {
+  const { nodes, pools, links, centerId, focusedEdgeId, focusedNodeIds } = params;
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  const focalPoolIds = new Set<string>();
+  // The focal node's own pool — also handles an intent-center that never
+  // resolved to a node (its pool matched by intent_id).
+  if (centerId) {
+    const fromIntent = pools.find((pool) => pool.intent_id === centerId)?.id;
+    const centerPoolId = fromIntent ?? nodeById.get(centerId)?.pool_id ?? null;
+    if (centerPoolId) focalPoolIds.add(centerPoolId);
+  }
+  // An edge focus pulls in the pools of BOTH its endpoints, so an edge that
+  // spans two intents frames both of them — not just the source's. An
+  // endpoint that is itself an Intent (e.g. a `serves` edge into an intent)
+  // resolves to that intent's pool.
+  if (focusedEdgeId) {
+    for (const id of focusedNodeIds) {
+      const poolId = nodeById.get(id)?.pool_id ?? pools.find((pool) => pool.intent_id === id)?.id;
+      if (poolId) focalPoolIds.add(poolId);
+    }
+  }
+
+  const renderedNodeIds = new Set<string>();
+  if (focalPoolIds.size === 0) return { focalPoolIds, renderedNodeIds };
+  for (const node of nodes) {
+    if (focalPoolIds.has(node.pool_id)) renderedNodeIds.add(node.id);
+  }
+  // First-degree cross-intent neighbours fan out only for a single-intent
+  // focus. A cross-intent edge already renders both intents in full, so
+  // there is nothing more to pull in.
+  if (centerId && focalPoolIds.size === 1) {
+    for (const link of links) {
+      if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
+      const neighborId =
+        link.source === centerId ? link.target : link.target === centerId ? link.source : null;
+      if (!neighborId) continue;
+      const neighbor = nodeById.get(neighborId);
+      if (neighbor && !focalPoolIds.has(neighbor.pool_id)) renderedNodeIds.add(neighborId);
+    }
+  }
+  return { focalPoolIds, renderedNodeIds };
+}
 
 export function layOutBpmn(
   pools: BpmnPool[],

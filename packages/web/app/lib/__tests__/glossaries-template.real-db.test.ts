@@ -2,26 +2,33 @@
 //
 // Points `@doco/db`'s `withClient` at an in-process PGlite loaded with the
 // REAL schema, seeds a Doco from the `glossaries` template through the REAL
-// host seeder (`createDocoInWorkspace`), then drives ten real-life term
-// scenarios (plus a few structural guards) through the REAL authoring
-// evaluator (`runAuthoringPolicies`). The ONLY stubbed boundary is the LLM
-// judge (`judgeProbabilisticPredicate`) — it has no API key in CI, so each
+// host seeder (`createDocoInWorkspace`), then drives real-life term scenarios
+// (plus a few structural guards) through the REAL authoring evaluator
+// (`runAuthoringPolicies`). The ONLY stubbed boundary is the LLM judge
+// (`judgeProbabilisticPredicate`) — it has no API key in CI, so each
 // probabilistic verdict is scripted from a careful reading of the policy's
 // spec against the candidate (see the judge mock below).
 //
+// The model under test: a glossary **term entry is a Reference** whose prose
+// (`reference`) is the *word being defined* — the headword — while the
+// **definition lives in the `definition` attribute**, off the prose. There is
+// no `chosen`/`question` shape and no deterministic uniqueness gate anymore;
+// the prose-is-the-word / definition-in-attributes checks are folded into the
+// combined term-quality judge, which WARNs rather than blocking.
+//
 // What this pins, machine-checked:
-//   • the deterministic gates (node-type allowlist, required `question`/
-//     `chosen`, case-folded unique headword, Eval `supports` edge + `how_to_run`)
+//   • the deterministic gates (node-type allowlist; Eval `supports` edge +
+//     `how_to_run`)
 //   • the two-stage lifecycle: gates fire on `active`, a `drafting` stub is
 //     exempt, and a `retired` term winds down without re-running the gates
-//   • warn-vs-block routing (a clashing headword or a quality miss WARNs;
-//     a missing headword or a wrong node type BLOCKs)
+//   • warn-vs-block routing (a quality miss WARNs; a wrong node type or a
+//     missing Eval edge BLOCKs)
 //
 // What it documents (judge scripted): the probabilistic specs — membership,
-// the combined term-quality judge (one-concept / usable-definition /
-// acronym-on-the-headword), and the Eval rerun-path judge — produce the
-// right verdict on each scenario, including the acronym-scoping false-positive
-// probe (scenario 3).
+// the combined term-quality judge (prose-is-the-word / definition-in-
+// attributes / one-concept / acronym-on-the-headword), and the Eval rerun-path
+// judge — produce the right verdict on each scenario, including the acronym-
+// scoping false-positive probe (scenario 3).
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -55,32 +62,36 @@ let docoId = "";
 
 // ── Scenario candidate ids. The judge mock routes its scripted verdicts by id.
 const ID = {
-  workspace: "decision_01GLOSSWORKSPACE000000001",
-  acronym: "decision_01GLOSSACRONYMMRR0000001",
-  retro: "decision_01GLOSSRETROSPECTIVE00001",
-  multiConcept: "decision_01GLOSSCHURNRETENTION001",
-  noHeadword: "decision_01GLOSSNOHEADWORD000001",
-  dupHeadword: "decision_01GLOSSDUPWORKSPACE00001",
-  homograph: "decision_01GLOSSORDERSORTING00001",
-  acronymOk: "decision_01GLOSSSSOEXPANDED000001",
-  borrowed: "decision_01GLOSSIDEMPOTENCY000001",
-  retiredTerm: "decision_01GLOSSORGRETIRED0000001",
-  draftStub: "decision_01GLOSSPRINCIPALDRAFT001",
+  workspace: "reference_01GLOSSWORKSPACE00000001",
+  acronym: "reference_01GLOSSACRONYMMRR000001",
+  retro: "reference_01GLOSSRETROSPECTIVE0001",
+  multiConcept: "reference_01GLOSSCHURNRETENTION01",
+  proseIsDefinition: "reference_01GLOSSPROSEISDEFN0001",
+  circular: "reference_01GLOSSCIRCULAR0000001",
+  homograph: "reference_01GLOSSORDERSORTING001",
+  acronymOk: "reference_01GLOSSSSOEXPANDED00001",
+  borrowed: "reference_01GLOSSIDEMPOTENCY00001",
+  retiredTerm: "reference_01GLOSSORGRETIRED000001",
+  draftStub: "reference_01GLOSSPRINCIPALDRAFT01",
   // structural guards
   action: "action_01GLOSSSENDINVOICE0000001",
   evalGood: "eval_01GLOSSEVALGOOD000000001",
   evalNoEdge: "eval_01GLOSSEVALNOEDGE00000001",
-  offTopic: "decision_01GLOSSDEPLOYPROD0000001",
+  offTopic: "reference_01GLOSSDEPLOYPROD00001",
   // seeded population / edge endpoints
-  seededWorkspace: "decision_01GLOSSSEEDWORKSPACE0001",
-  seededOrderCommerce: "decision_01GLOSSSEEDORDERCOMM0001",
-  evalTermTarget: "decision_01GLOSSEVALTARGET00000001",
+  evalTermTarget: "reference_01GLOSSEVALTARGET00001",
 } as const;
 
-// Term-quality FAILs only where the headword/structure is genuinely wrong;
-// membership FAILs only on the off-topic runbook. Everything else PASSes —
-// matching the judge's "be conservative, pass when plausible" contract.
-const TERM_QUALITY_FAIL = new Set<string>([ID.acronym, ID.multiConcept]);
+// Term-quality FAILs only where the entry's shape is genuinely wrong (acronym
+// unexpanded, two concepts, definition crammed into the prose, circular
+// definition); membership FAILs only on the off-topic runbook. Everything else
+// PASSes — matching the judge's "be conservative, pass when plausible" contract.
+const TERM_QUALITY_FAIL = new Set<string>([
+  ID.acronym,
+  ID.multiConcept,
+  ID.proseIsDefinition,
+  ID.circular,
+]);
 const MEMBERSHIP_FAIL = new Set<string>([ID.offTopic]);
 
 function scriptedJudge(spec: string, candidate: Record<string, unknown>) {
@@ -188,25 +199,27 @@ describe("glossaries template — seeded shape (real host seeder)", () => {
       [docoId],
     );
     const byKind = Object.fromEntries(rows.map((r) => [r.kind, r.n]));
-    // 6 deterministic gates (incl. the requires_edge_type allowlist), 3
-    // probabilistic judges, 8 prose suggestions.
-    expect(byKind.deterministic).toBe(6);
+    // 4 deterministic gates (node-type allowlist, edge-type allowlist, Eval
+    // `supports` edge, Eval `how_to_run`), 3 probabilistic judges (membership,
+    // term-quality, Eval rerun), 9 prose suggestions. Dropping the
+    // Decision-era `requires_field` + `unique_field` gates took deterministic
+    // from 6 → 4; the new term-model guidance took suggestions from 8 → 9.
+    expect(byKind.deterministic).toBe(4);
     expect(byKind.probabilistic).toBe(3);
-    expect(byKind.suggestion).toBe(8);
-    // The enforcer loads only the 6 + 3 enforceable policies; suggestions
+    expect(byKind.suggestion).toBe(9);
+    // The enforcer loads only the 4 + 3 enforceable policies; suggestions
     // are advisory and never reach it.
   });
 });
 
-describe("glossaries template — 10 real-life term scenarios", () => {
-  it("1. defines a clean canonical term → passes everything", async () => {
+describe("glossaries template — real-life term scenarios", () => {
+  it("1. a clean term entry (word in prose, meaning in `definition`) → passes everything", async () => {
     const r = await run({
       id: ID.workspace,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "What is a Workspace in Doco?",
-      chosen: "Workspace",
-      decision:
+      reference: "Workspace",
+      definition:
         "A Workspace is the top-level container that groups related Docos and the people and agents who can reach them. Scope: Doco's access model. For example, the `acme` workspace holds Acme's product and engineering Docos. Not to be confused with a Doco, which lives inside a workspace.",
     });
     expect(r.blocking).toBeNull();
@@ -216,11 +229,10 @@ describe("glossaries template — 10 real-life term scenarios", () => {
   it("2. an acronym headword left unexpanded → quality WARN (not block)", async () => {
     const r = await run({
       id: ID.acronym,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "What does MRR track?",
-      chosen: "MRR",
-      decision:
+      reference: "MRR",
+      definition:
         "MRR is the headline growth number finance reviews every month. Scope: Doco's billing analytics. For example, 50 seats on the $20/mo plan contribute $1,000.",
     });
     expect(r.blocking).toBeNull();
@@ -228,16 +240,16 @@ describe("glossaries template — 10 real-life term scenarios", () => {
     expect(r.warnings[0]?.kind).toBe("probabilistic");
   });
 
-  it("3. a full-word headword whose prose uses casual abbreviations → passes (acronym check is scoped to the headword)", async () => {
-    // Misfire probe: `chosen` is NOT an acronym, so aspect (c) must ignore the
-    // incidental `retro` / `Fri` / `PMs` / `async` in the prose.
+  it("3. a full-word headword whose definition uses casual abbreviations → passes (acronym check is scoped to the headword)", async () => {
+    // Misfire probe: the headword `Retrospective` is NOT an acronym, so aspect
+    // (d) must ignore the incidental `retro` / `Fri` / `PMs` / `async` in the
+    // definition body.
     const r = await run({
       id: ID.retro,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "What is a retro?",
-      chosen: "Retrospective",
-      decision:
+      reference: "Retrospective",
+      definition:
         "A Retrospective is the team's recurring meeting to reflect on the last sprint and agree on improvements. Scope: Doco's agile rituals. For example, eng runs a 60-min retro every other Fri and PMs join async. Not a status update.",
     });
     expect(r.blocking).toBeNull();
@@ -247,11 +259,10 @@ describe("glossaries template — 10 real-life term scenarios", () => {
   it("4. one entry bundling two concepts → quality WARN", async () => {
     const r = await run({
       id: ID.multiConcept,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "What do churn and retention mean?",
-      chosen: "Churn and Retention",
-      decision:
+      reference: "Churn and Retention",
+      definition:
         "Churn is the rate at which customers cancel; retention is the share who stay. Together they describe account health.",
     });
     expect(r.blocking).toBeNull();
@@ -259,45 +270,43 @@ describe("glossaries template — 10 real-life term scenarios", () => {
     expect(r.warnings[0]?.kind).toBe("probabilistic");
   });
 
-  it("5. a term entry missing its headword → BLOCK (requires_field)", async () => {
+  it("5. the definition crammed into the prose instead of the `definition` attribute → quality WARN", async () => {
+    // The central new check: the prose is a definition sentence, not the bare
+    // term, and no `definition` attribute carries the meaning. The first line
+    // of prose would become the node name, so this is exactly the shape the
+    // template now warns against — a WARN, never a hard block.
     const r = await run({
-      id: ID.noHeadword,
-      node_type: "decision",
+      id: ID.proseIsDefinition,
+      node_type: "reference",
       lifecycle: "active",
-      question: "What is an Eval?",
-      // `chosen` omitted
-      decision: "An Eval is a check that verifies a claim still holds.",
-    });
-    expect(r.blocking).not.toBeNull();
-    expect(r.blocking?.kind).toBe("deterministic");
-    expect(r.blocking?.sub_kind).toBe("requires_field");
-  });
-
-  it("6. re-adding a term that already exists (case-folded) → unique WARN", async () => {
-    await insertNode(ID.seededWorkspace, "decision", "active", { chosen: "Workspace" });
-    const r = await run({
-      id: ID.dupHeadword,
-      node_type: "decision",
-      lifecycle: "active",
-      question: "What's a workspace?",
-      chosen: "workspace",
-      decision:
-        "A workspace groups related Docos and their members. Scope: access control. For example, the `acme` workspace. Not a single Doco.",
+      reference:
+        "An Eval is a check that verifies a terminology claim still holds across the docs.",
     });
     expect(r.blocking).toBeNull();
-    expect(hasSubKind(r.warnings, "unique_field")).toBe(true);
     expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]?.kind).toBe("probabilistic");
   });
 
-  it("7. a disambiguated homograph → no clash, passes", async () => {
-    await insertNode(ID.seededOrderCommerce, "decision", "active", { chosen: "Order (commerce)" });
+  it("6. a circular definition that merely restates the headword → quality WARN", async () => {
+    const r = await run({
+      id: ID.circular,
+      node_type: "reference",
+      lifecycle: "active",
+      reference: "Backfill",
+      definition: "A backfill is when you backfill.",
+    });
+    expect(r.blocking).toBeNull();
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]?.kind).toBe("probabilistic");
+  });
+
+  it("7. a disambiguated homograph → passes", async () => {
     const r = await run({
       id: ID.homograph,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "What is Order as a sort operation?",
-      chosen: "Order (sorting)",
-      decision:
+      reference: "Order (sorting)",
+      definition:
         "Order (sorting) is the arrangement of rows by a key, ascending or descending. Scope: Doco's list views. For example, ordering decisions by `decided_at` descending. Distinct from Order (commerce), a customer purchase.",
     });
     expect(r.blocking).toBeNull();
@@ -307,11 +316,10 @@ describe("glossaries template — 10 real-life term scenarios", () => {
   it("8. a borrowed/standards term with a cited source → passes", async () => {
     const r = await run({
       id: ID.borrowed,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "What does idempotent mean here?",
-      chosen: "Idempotency",
-      decision:
+      reference: "Idempotency",
+      definition:
         "Idempotency means an operation can be applied repeatedly without changing the result beyond the first application — a standard distributed-systems property cited from the HTTP semantics RFC. Scope: Doco's write API, where retried changeset POSTs must not double-apply. For example, re-POSTing the same changeset id is a no-op.",
     });
     expect(r.blocking).toBeNull();
@@ -321,15 +329,14 @@ describe("glossaries template — 10 real-life term scenarios", () => {
   it("9. retiring a deprecated term → winds down, gates do not re-run", async () => {
     // `retired` is the OTHER stage a glossary uses. The runner keeps only
     // lifecycle-independent invariants (the node-type allowlist) on the way
-    // out — required-field / quality / membership gates are skipped — so a
-    // term closes out cleanly even if it predates today's bar.
+    // out — term-quality / membership gates are skipped — so a term closes
+    // out cleanly even if it predates today's bar.
     const r = await run({
       id: ID.retiredTerm,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "retired",
-      question: "What did Org mean?",
-      chosen: "Org",
-      decision:
+      reference: "Org",
+      definition:
         "Org was the old name for a Workspace before the 2026 rename. Deprecated — use Workspace. Kept so old tickets and URLs still resolve.",
     });
     expect(r.blocking).toBeNull();
@@ -338,15 +345,13 @@ describe("glossaries template — 10 real-life term scenarios", () => {
 
   it("10. a rough drafting stub → exempt until activated", async () => {
     // A `drafting` sketch is not part of the glossary yet, so the
-    // completeness gates (which fire on `active`) skip it — even with no
-    // headword and a throwaway definition.
+    // completeness gates (which fire on `active`) skip it — even with the
+    // definition still sitting in the prose and no `definition` attribute.
     const r = await run({
       id: ID.draftStub,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "drafting",
-      question: "rough: what's a 'principal'?",
-      // `chosen` omitted on purpose
-      decision: "jot: principal = a role/persona that participates in flows. flesh out later.",
+      reference: "principal = a role/persona that participates in flows. flesh out later.",
     });
     expect(r.blocking).toBeNull();
     expect(r.warnings).toEqual([]);
@@ -367,16 +372,15 @@ describe("glossaries template — structural guards", () => {
   });
 
   it("accepts an acronym headword that IS expanded (paired with scenario 2)", async () => {
-    // The complement of scenario 2: aspect (c) must PASS when the acronym
-    // headword is spelled out and the short-form's use is stated, so the
-    // check doesn't false-positive on a well-formed acronym entry.
+    // The complement of scenario 2: aspect (d) must PASS when the acronym
+    // headword is spelled out in the definition and the short-form's use is
+    // stated, so the check doesn't false-positive on a well-formed acronym.
     const r = await run({
       id: ID.acronymOk,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "What is SSO?",
-      chosen: "SSO",
-      decision:
+      reference: "SSO",
+      definition:
         "SSO, or single sign-on, lets a user authenticate once and then reach every connected app without re-entering credentials. Scope: Doco's auth. For example, signing in with GitHub then reaching the dashboard and the API without another prompt. Spell out `single sign-on` on first mention in UI copy; the short form `SSO` is fine thereafter. Not the same as social login.",
     });
     expect(r.blocking).toBeNull();
@@ -384,9 +388,11 @@ describe("glossaries template — structural guards", () => {
   });
 
   it("accepts a consistency Eval with a supports edge and a concrete how_to_run", async () => {
-    await insertNode(ID.evalTermTarget, "decision", "active", { chosen: "Sign in" });
+    await insertNode(ID.evalTermTarget, "reference", "active", {
+      definition: "the canonical term",
+    });
     await insertNode(ID.evalGood, "eval", "active", {});
-    await insertEdge(ID.evalGood, "eval", ID.evalTermTarget, "decision", "supports");
+    await insertEdge(ID.evalGood, "eval", ID.evalTermTarget, "reference", "supports");
     const r = await run({
       id: ID.evalGood,
       node_type: "eval",
@@ -410,14 +416,13 @@ describe("glossaries template — structural guards", () => {
     expect(r.blocking?.sub_kind).toBe("requires_edge");
   });
 
-  it("warns on an off-topic Decision that isn't terminology → membership WARN", async () => {
+  it("warns on an off-topic Reference that isn't terminology → membership WARN", async () => {
     const r = await run({
       id: ID.offTopic,
-      node_type: "decision",
+      node_type: "reference",
       lifecycle: "active",
-      question: "How do we deploy to prod?",
-      chosen: "Deploy to prod",
-      decision:
+      reference: "Deploy to prod",
+      definition:
         "Run the deploy pipeline: build the image, run migrations, flip traffic. On failure, roll back to the previous release.",
     });
     expect(r.blocking).toBeNull();

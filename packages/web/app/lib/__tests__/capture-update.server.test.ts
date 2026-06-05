@@ -13,6 +13,7 @@ vi.mock("@doco/db", () => ({
     idea: { table: "ideas", body: false, typeNamedColumn: "idea" },
     state: { table: "states", body: false, typeNamedColumn: "state" },
     action: { table: "actions", body: false, typeNamedColumn: "action" },
+    reference: { table: "nodes", body: false, typeNamedColumn: "prose" },
   },
   getDocoById: vi.fn(),
   getEntity: vi.fn(),
@@ -236,6 +237,140 @@ describe("updateEntity", () => {
     expect(result).toMatchObject({
       error: expect.stringContaining("implemented_by is not a node JSON field"),
     });
+    expect(upsertEntity).not.toHaveBeenCalled();
+  });
+
+  const REFERENCE_ID = "reference_01TEST000000000000000001";
+
+  it("flattens an attributes patch onto the node data (reference body_md update)", async () => {
+    // The title/body split: on PR re-sync the import patch carries the new body
+    // in `attributes.body_md`. updateEntity must merge those keys onto the data
+    // bag as FLAT keys (so storage re-bags them into the attributes jsonb), not
+    // store a nested `attributes` object.
+    vi.mocked(getEntity).mockResolvedValue({
+      id: REFERENCE_ID,
+      entity_type: "reference",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "active",
+      body_md: "",
+      data: {
+        id: REFERENCE_ID,
+        doco_id: DOCO_ID,
+        node_type: "reference",
+        reference: "Old title",
+        ref_type: "url",
+        locator: "https://github.com/acme/store/pull/482",
+        body_md: "Old body.",
+        lifecycle: "active",
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateEntity({
+      docoDir: "/tmp/doco",
+      docoId: DOCO_ID,
+      ownerSlug: "test",
+      docoSlug: "doco",
+      entityType: "reference",
+      pluralDir: "references",
+      id: REFERENCE_ID,
+      patch: {
+        reference: "New title",
+        attributes: { body_md: "New body." },
+      },
+      docoHost: "https://doco.test",
+      actorId: null,
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    const rec = vi.mocked(upsertEntity).mock.calls[0][0];
+    // The title (type-named prose) and the new body both land as flat keys.
+    expect(rec.type_named_value).toBe("New title");
+    expect(rec.data).toMatchObject({ reference: "New title", body_md: "New body." });
+    // No nested `attributes` object leaks into the data bag.
+    expect(rec.data).not.toHaveProperty("attributes");
+  });
+
+  it("clears body_md when the attributes patch sets it to null (PR body emptied)", async () => {
+    vi.mocked(getEntity).mockResolvedValue({
+      id: REFERENCE_ID,
+      entity_type: "reference",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "active",
+      body_md: "",
+      data: {
+        id: REFERENCE_ID,
+        doco_id: DOCO_ID,
+        node_type: "reference",
+        reference: "Title",
+        ref_type: "url",
+        locator: "https://github.com/acme/store/pull/482",
+        body_md: "Body to be removed.",
+        lifecycle: "active",
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateEntity({
+      docoDir: "/tmp/doco",
+      docoId: DOCO_ID,
+      ownerSlug: "test",
+      docoSlug: "doco",
+      entityType: "reference",
+      pluralDir: "references",
+      id: REFERENCE_ID,
+      patch: {
+        reference: "Title",
+        attributes: { body_md: null },
+      },
+      docoHost: "https://doco.test",
+      actorId: null,
+    });
+
+    expect(result).toMatchObject({ ok: true, changed: ["body_md"] });
+    const rec = vi.mocked(upsertEntity).mock.calls[0][0];
+    // body_md is gone from the data bag (storage drops null/absent keys).
+    expect(rec.data).not.toHaveProperty("body_md");
+  });
+
+  it("is a no-op when title + body are unchanged (idempotent re-sync)", async () => {
+    vi.mocked(getEntity).mockResolvedValue({
+      id: REFERENCE_ID,
+      entity_type: "reference",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "active",
+      body_md: "",
+      data: {
+        id: REFERENCE_ID,
+        doco_id: DOCO_ID,
+        node_type: "reference",
+        reference: "Stable title",
+        ref_type: "url",
+        locator: "https://github.com/acme/store/pull/482",
+        body_md: "Stable body.",
+        lifecycle: "active",
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateEntity({
+      docoDir: "/tmp/doco",
+      docoId: DOCO_ID,
+      ownerSlug: "test",
+      docoSlug: "doco",
+      entityType: "reference",
+      pluralDir: "references",
+      id: REFERENCE_ID,
+      patch: {
+        reference: "Stable title",
+        lifecycle: "active",
+        attributes: { body_md: "Stable body." },
+      },
+      docoHost: "https://doco.test",
+      actorId: null,
+    });
+
+    expect(result).toMatchObject({ error: "No fields changed." });
     expect(upsertEntity).not.toHaveBeenCalled();
   });
 

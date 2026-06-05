@@ -1013,6 +1013,14 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
   -- all-reachable context. ON DELETE SET NULL so deleting a Workspace
   -- unassigns its threads rather than destroying chat history.
   workspace_id             text REFERENCES workspaces(id) ON DELETE SET NULL,
+  -- The Doco this thread is attached to. Every in-app Señor Doco chat is
+  -- bound to exactly one Doco (1:1 per user — see the unique index below):
+  -- opening Señor Doco while viewing a Doco starts/opens that Doco's chat.
+  -- workspace_id is derived from this Doco's workspace at creation. Nullable
+  -- so pre-existing (workspace-only) threads keep working, and ON DELETE SET
+  -- NULL so deleting a Doco preserves the chat history rather than destroying
+  -- it (the orphaned thread just loses its Doco tag).
+  doco_id                  text REFERENCES docos(id) ON DELETE SET NULL,
   attached_workspace_handles text[] NOT NULL DEFAULT '{}',
   attached_doco_ids        text[] NOT NULL DEFAULT '{}',
   created_at               timestamptz NOT NULL DEFAULT now(),
@@ -1021,8 +1029,16 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
 -- Migration for DBs created before workspace scoping existed.
 ALTER TABLE chat_conversations
   ADD COLUMN IF NOT EXISTS workspace_id text REFERENCES workspaces(id) ON DELETE SET NULL;
+-- Migration for DBs created before per-Doco chat scoping existed.
+ALTER TABLE chat_conversations
+  ADD COLUMN IF NOT EXISTS doco_id text REFERENCES docos(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_user_active
   ON chat_conversations (user_id, updated_at DESC) WHERE archived = false;
+-- One chat per (user, Doco). Enforces "a Doco can only have a chat" — the
+-- get-or-create path keys on this pair and un-archives rather than minting a
+-- second. Partial (doco_id IS NOT NULL) so Doco-less threads stay exempt.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_conversations_user_doco
+  ON chat_conversations (user_id, doco_id) WHERE doco_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS chat_messages (
   id               text PRIMARY KEY,
@@ -1789,6 +1805,27 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Reference title/body split: PR references were stored prose="title\n\nbody";
+-- move the body into attributes.body_md and leave prose = the title. Idempotent
+-- (skips rows already split) and scoped to PR-URL references so hand-written or
+-- code-locator references are untouched. Re-applied on every boot, so the WHERE
+-- guards must make a second pass a strict no-op:
+--   * body_md IS NULL          → already-split rows are skipped (no re-split)
+--   * a blank line exists       → a title-only PR ref (no body) is skipped
+--   * the locator is a /pull/   → only GitHub PR-URL references are split;
+--     issue URLs, code locators, and hand-written refs are left alone.
+-- The derived FTS / embedding rows for a migrated reference stay valid: they
+-- already contain title+body and are not recomputed here, and `nodeIndexText`
+-- now rebuilds the same title+body text on the next re-capture — so search
+-- recall is unaffected by this migration.
+UPDATE nodes
+   SET attributes = COALESCE(attributes, '{}'::jsonb)
+                    || jsonb_build_object('body_md', substring(prose FROM position(E'\n\n' IN prose) + 2)),
+       prose = left(prose, position(E'\n\n' IN prose) - 1)
+ WHERE node_type = 'reference'
+   AND (attributes->>'body_md') IS NULL
+   AND position(E'\n\n' IN prose) > 0
+   AND attributes->>'locator' ~ '^https?://github\.com/[^/]+/[^/]+/pull/[0-9]+$';
 -- ── torre-bpm policy convergence (older template snapshot → current) ─────────
 -- torre-bpm (doco_01KT7G5PCX4273VHWW8SAAVSJC) was seeded from the business-processes template BEFORE
 -- the "an edge's meaning comes from its type + endpoints, not a role tag"

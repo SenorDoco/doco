@@ -5,10 +5,12 @@ vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
     action: { table: "actions", body: false, typeNamedColumn: "action" },
     decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
+    reference: { table: "nodes", body: false, typeNamedColumn: "prose" },
   },
   DOCO_NODE_TABLE_BY_TYPE: {
     action: { table: "actions", entityType: "action", body: false },
     decision: { table: "decisions", entityType: "decision", body: false },
+    reference: { table: "nodes", entityType: "reference", body: false },
   },
   roleAtLeast: () => true,
 }));
@@ -95,6 +97,46 @@ describe("loadNodeDialogDetail", () => {
       body_field: null,
       body_text: null,
       body_md: "Use display labels\n\nRationale follows.",
+    });
+  });
+
+  it("splits a PR reference: prose → primary_text (title), attributes.body_md → body_text", async () => {
+    // Title/body split: a PR reference stores the title in prose and the body in
+    // attributes.body_md. The dialog must surface the title as primary_text and
+    // the body as a real body_text section (body_field "body_md", body_md = body).
+    const detail = await loadNodeDialogDetail(
+      clientWithRow({
+        id: "reference_01TEST",
+        primary_text: "Fix the retry idempotency key on 409",
+        body_text: "### Problem\n\nThe key wasn't idempotent on retry.",
+        lifecycle: "active",
+        raw_json: JSON.stringify({
+          ref_type: "url",
+          locator: "https://github.com/acme/store/pull/482",
+          body_md: "### Problem\n\nThe key wasn't idempotent on retry.",
+        }),
+        locator: "https://github.com/acme/store/pull/482",
+        created_at: "2026-05-26T17:01:00.000Z",
+        updated_at: "2026-05-26T17:01:00.000Z",
+      }),
+      meta,
+      {
+        handle: "test-doco",
+        entityType: "reference",
+        id: "reference_01TEST",
+        principalId: "principal_owner",
+      },
+    );
+
+    expect(detail).toMatchObject({
+      summary: "Fix the retry idempotency key on 409",
+      primary_field: "reference",
+      primary_text: "Fix the retry idempotency key on 409",
+      body_field: "body_md",
+      body_text: "### Problem\n\nThe key wasn't idempotent on retry.",
+      // body_md compat must be the actual BODY, not the title.
+      body_md: "### Problem\n\nThe key wasn't idempotent on retry.",
+      locator: "https://github.com/acme/store/pull/482",
     });
   });
 

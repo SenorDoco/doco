@@ -48,10 +48,19 @@ describe("graph authoring contract", () => {
     });
   });
 
-  it("keeps the glossary contract focused on term entries and separates aliases from replacements", () => {
+  it("keeps the glossary contract focused on Reference term entries and separates aliases from replacements", () => {
     const glossary = PERSPECTIVE_CONTRACTS.glossary;
-    expect(glossary.node_types).toEqual(["decision", "rule", "reference", "eval"]);
+    // Term entries are References (not Decisions); the prose is the word, the
+    // meaning lives in the `definition` attribute.
+    expect(glossary.node_types).toEqual(["reference", "rule", "eval"]);
+    expect(glossary.node_types).not.toContain("decision");
     expect(glossary.node_types).not.toContain("intent");
+
+    const termConstraint = glossary.constraints.find((c) => /term entry is a Reference/i.test(c));
+    expect(termConstraint).toBeDefined();
+    expect(termConstraint).toMatch(/word being defined/i);
+    expect(termConstraint).toMatch(/`definition` attribute/i);
+    expect(termConstraint).toMatch(/never in the prose/i);
 
     const alternativesConstraint = glossary.constraints.find((constraint) =>
       /`alternatives`/i.test(constraint),

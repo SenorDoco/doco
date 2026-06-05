@@ -284,7 +284,10 @@ This is enforced **agent-neutrally**, not by any single tool's config:
 `.github/workflows/ci.yml` runs `pnpm verify` on every PR to `main`, so a
 red suite blocks the merge for every agent *and* every human — even for
 commits pushed through the GitHub API, which bypass all local and
-per-tool hooks. (Mark the check required in branch protection to make it
-blocking.) With auto-merge (`gh pr merge --auto --squash`) the PR lands
-itself the moment that run goes green, so the single CI pass is both your
-verification and your merge trigger — no local rerun, no idle watching.
+per-tool hooks. The `build · typecheck · test · lint` check is a
+**required status check** in a `main` ruleset, so a red or pending run
+holds `mergeable_state` at `blocked` until it goes green — which is also
+what lets `enable_pr_auto_merge` arm. With auto-merge
+(`gh pr merge --auto --squash`) the PR lands itself the moment that run
+goes green, so the single CI pass is both your verification and your
+merge trigger — no local rerun, no idle watching.
