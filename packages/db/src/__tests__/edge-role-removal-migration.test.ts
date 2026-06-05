@@ -216,9 +216,7 @@ describe("edge `role` removal migration", () => {
     // label/condition/kind live in props. On re-exec, the migration must FIRST
     // re-add the typed columns (else the fold's `SET label = …` aborts the whole
     // schema apply), then dedup, fold props.{label,condition,kind}, and DROP props.
-    await db.exec(
-      "ALTER TABLE edges DROP COLUMN label, DROP COLUMN condition, DROP COLUMN kind;",
-    );
+    await db.exec("ALTER TABLE edges DROP COLUMN label, DROP COLUMN condition, DROP COLUMN kind;");
     await db.exec("ALTER TABLE edges ADD COLUMN IF NOT EXISTS props jsonb;");
     await db.exec("DROP INDEX IF EXISTS edges_live_uniq;");
     await db.exec(
