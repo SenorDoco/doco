@@ -394,13 +394,19 @@ export async function loadBpmnGraph(
     }
   }
 
-  // ── No-Unassigned-pool policy ─────────────────────────────────────
-  // Every node lands in *some* Intent's pool. Direct-host rules above
-  // win. Remaining nodes use a single multi-source BFS from all
-  // Intents over the edge graph; disconnected nodes fall back to
-  // the highest-global-PR Intent. Avoid per-node personalized
-  // PageRank here — that multiplied render cost by every homeless
-  // node and made medium Docos feel huge.
+  // ── Nearest-Intent re-homing (connected nodes only) ──────────────
+  // Homeless flow/artifact nodes are pulled into the pool of the
+  // nearest Intent they actually reach through the edge graph, via a
+  // single multi-source BFS from all Intents. Direct-host rules above
+  // win. Avoid per-node personalized PageRank here — that multiplied
+  // render cost by every homeless node and made medium Docos feel huge.
+  //
+  // Crucially, a node with NO path to any Intent is left in the real
+  // Unassigned pool rather than force-homed into an arbitrary Intent.
+  // The old policy fell back to the highest-ranked (oldest) Intent,
+  // which dropped wholly unrelated work — e.g. a disconnected crawler
+  // sub-process — into the first goal's pool, making that Intent
+  // appear to own steps it has nothing to do with.
   if (intentsById.size > 0) {
     const intentIds = Array.from(intentsById.keys());
     const homeless: NodeRow[] = [];
@@ -410,9 +416,8 @@ export async function loadBpmnGraph(
     }
     if (homeless.length > 0) {
       const nearestIntentByNode = computeNearestIntentByNode(intentIds, links, intentPrecedence);
-      const defaultIntent = highestRanked(intentIds, intentPrecedence);
       for (const row of homeless) {
-        const bestIntent = nearestIntentByNode.get(row.id) ?? defaultIntent;
+        const bestIntent = nearestIntentByNode.get(row.id);
         if (bestIntent) poolByNode.set(row.id, `pool:${bestIntent}`);
       }
     }
