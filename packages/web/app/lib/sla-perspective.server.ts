@@ -29,7 +29,6 @@ interface ReferenceRow {
   reference: string;
   ref_type: string | null;
   locator: string | null;
-  title: string | null;
   lifecycle: string | null;
   created_at: string | null;
   data: Record<string, unknown> | null;
@@ -291,7 +290,6 @@ export async function loadSlaPerspectiveData(
       `SELECT id, prose AS reference,
               attributes->>'ref_type' AS ref_type,
               attributes->>'locator' AS locator,
-              attributes->>'title' AS title,
               COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, attributes AS data
          FROM nodes
@@ -418,7 +416,7 @@ export async function loadSlaPerspectiveData(
     const sourceRefs = [...linkedReferenceIds].flatMap((id) => {
       const row = referencesById.get(id);
       if (!row) return [];
-      return [linkFor(handle, "reference", row, row.title ?? row.reference)];
+      return [linkFor(handle, "reference", row, row.reference)];
     });
     const responseActions = [...linkedActionIds].flatMap((id) => {
       const row = actionsById.get(id);

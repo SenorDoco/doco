@@ -34,7 +34,6 @@ interface NodeRow {
   ref_type: string | null;
   locator: string | null;
   citation: string | null;
-  title: string | null;
   /** Scalar-subquery total glossary entries (bigint → string from pg). */
   total_count?: number | string | null;
 }
@@ -248,11 +247,10 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
     alternatives = parseAlternatives(data.alternatives);
     tag = fauxPartOfSpeech(headword);
   } else if (row.entity_type === "reference") {
-    // A Reference used as a glossary entry: title is the term, the prose
-    // body is the definition, and locator/citation is the source line.
-    headword = row.title ?? row.label ?? "(untitled reference)";
-    const body = row.title ? (row.prose ?? "") : stripHeadwordPrefix(row.prose ?? "", headword);
-    definitionProse = body;
+    // A Reference used as a glossary entry: the first prose line is the term,
+    // the rest is the definition, and locator/citation is the source line.
+    headword = row.label ?? "(untitled reference)";
+    definitionProse = stripHeadwordPrefix(row.prose ?? "", headword);
     source = row.citation ?? row.locator ?? null;
     tag = row.ref_type ? row.ref_type.toLowerCase() : "ref.";
     alternatives = parseAlternatives(data.alternatives);
@@ -297,9 +295,8 @@ export async function loadGlossaryPerspectiveData(
   // carry the promoted scalar columns.
   // Post-collapse: one `nodes` query over the five glossary node types
   // (decision, reference, rule, eval, intent). Each row's `prose` is the
-  // shared prose column; `label` is its first line, except a Reference
-  // with a non-empty `title` headwords on the title. The promoted
-  // reference scalars (ref_type/locator/citation/title) are NULL for the
+  // shared prose column; `label` is its first line. The promoted
+  // reference scalars (ref_type/locator/citation) are NULL for the
   // other four types, exactly as the per-table legs projected.
   //
   // Every lifecycle loads, including retired. Hiding a lifecycle is the
@@ -312,14 +309,13 @@ export async function loadGlossaryPerspectiveData(
     `
     SELECT id,
            node_type AS entity_type,
-           split_part(COALESCE(NULLIF(attributes->>'title', ''), prose), E'\n', 1) AS label,
+           split_part(prose, E'\n', 1) AS label,
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,
            attributes AS data,
            attributes->>'ref_type' AS ref_type,
            attributes->>'locator' AS locator,
            attributes->>'citation' AS citation,
-           attributes->>'title' AS title,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1
                AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')) AS total_count
