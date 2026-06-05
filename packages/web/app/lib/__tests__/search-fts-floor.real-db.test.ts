@@ -12,6 +12,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { nodeIndexText } from "@doco/index";
+import type { LoadedEntity } from "@doco/shared";
 import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 import type { SearchFilters } from "../search-filters.server";
@@ -138,5 +140,96 @@ describe("mergeSearchHits (reciprocal rank fusion)", () => {
   it("caps to the limit after fusing", () => {
     const merged = mergeSearchHits([hit("a", 0.9)], [hit("b", null), hit("c", null)], 2);
     expect(merged).toHaveLength(2);
+  });
+});
+
+// Title/body split — search recall is preserved.
+//
+// After the split a PR reference stores ONLY the title in `prose`; the body
+// lives in `attributes.body_md`. The indexer's FTS `body` is `nodeIndexText`,
+// which now appends body_md to the prose — so a keyword that appears ONLY in the
+// PR body must still find the reference. This drives the REAL `nodeIndexText`
+// (the function the production indexer calls) to build the FTS body, then runs
+// real Postgres FTS over it.
+describe("title/body split keeps a body-only keyword findable", () => {
+  // A reference as the Postgres loader hydrates it: `typeNamedValue` is the
+  // prose (the PR title), and the `attributes.body_md` is surfaced as a flat
+  // `body_md` key on `data` (rowToRecord flattens the attributes bag on read).
+  function referenceLe(id: string, title: string, bodyMd: string): LoadedEntity {
+    return {
+      entity: { id } as unknown as LoadedEntity["entity"],
+      filePath: `<postgres>:reference/${id}`,
+      parsed: {
+        data: { id, node_type: "reference", ref_type: "url", body_md: bodyMd },
+        body: "",
+        format: "postgres",
+        typeNamedValue: title,
+      },
+    } as LoadedEntity;
+  }
+
+  async function seedSplitReference(): Promise<Client> {
+    const db = new PGlite();
+    await db.exec(schemaSql);
+    await db.query(
+      "INSERT INTO workspaces (id, handle, name, data) VALUES ('ws','ws','WS','{}'::jsonb)",
+    );
+    await db.query(
+      "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",
+    );
+    const title = "Fix the retry on 409";
+    // The distinctive word "thundering" lives ONLY in the body, never the title.
+    const bodyMd = "### Problem\n\nA thundering herd of retries overwhelmed the gateway.";
+    await db.query(
+      `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes)
+       VALUES ('reference_split','doco_1','reference','active',$1,
+               jsonb_build_object('ref_type','url','locator','https://github.com/o/r/pull/9','body_md',$2::text))`,
+      [title, bodyMd],
+    );
+    // FTS body exactly as the indexer writes it — via the REAL nodeIndexText.
+    const ftsBody = nodeIndexText(referenceLe("reference_split", title, bodyMd));
+    // Guard the recall-identity: the indexed text is the pre-split merged prose.
+    expect(ftsBody).toBe(`${title}\n\n${bodyMd}`);
+    await db.query(
+      `INSERT INTO entity_fts_nodes (entity_id, doco_id, node_type, summary, body)
+       VALUES ('reference_split','doco_1','reference',NULL,$1)`,
+      [ftsBody],
+    );
+    return db as unknown as Client;
+  }
+
+  it("finds the reference by a word that only appears in the PR body", async () => {
+    const hits = await rankSearchFts(
+      await seedSplitReference(),
+      "doco_1",
+      "thundering herd",
+      ALL,
+      50,
+    );
+    expect(hits.map((h) => h.id)).toContain("reference_split");
+  });
+
+  it("a title-only FTS body (the pre-fix regression) would NOT match the body word", async () => {
+    // Pin the regression the fix prevents: if the FTS body were the title alone
+    // (what a naive split would store), the body keyword finds nothing.
+    const db = new PGlite();
+    await db.exec(schemaSql);
+    await db.query(
+      "INSERT INTO workspaces (id, handle, name, data) VALUES ('ws','ws','WS','{}'::jsonb)",
+    );
+    await db.query(
+      "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",
+    );
+    await db.query(
+      `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes)
+       VALUES ('reference_titleonly','doco_1','reference','active','Fix the retry on 409',
+               jsonb_build_object('ref_type','url','locator','https://github.com/o/r/pull/9'))`,
+    );
+    await db.query(
+      `INSERT INTO entity_fts_nodes (entity_id, doco_id, node_type, summary, body)
+       VALUES ('reference_titleonly','doco_1','reference',NULL,'Fix the retry on 409')`,
+    );
+    const hits = await rankSearchFts(db as unknown as Client, "doco_1", "thundering herd", ALL, 50);
+    expect(hits.map((h) => h.id)).not.toContain("reference_titleonly");
   });
 });
