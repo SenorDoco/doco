@@ -300,53 +300,6 @@ describe("principal retire API", () => {
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("updates a Principal's body_md without lifecycle change", async () => {
-    const response = await action({
-      request: retireRequest({
-        body_md: "Updated bio prose.",
-      }),
-      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
-    });
-
-    expect(response.status).toBe(200);
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: PRINCIPAL_ID,
-        entity_type: "principal",
-        lifecycle: "active",
-        body_md: "Updated bio prose.",
-        data: expect.objectContaining({
-          name: "visitor",
-          lifecycle: "active",
-        }),
-        updated_by: "user_author",
-      }),
-    );
-    expect(mocks.reindexAndScheduleAttach).toHaveBeenCalledWith(
-      expect.stringContaining("acme"),
-      "doco_acme",
-      PRINCIPAL_ID,
-    );
-    await expect(response.json()).resolves.toMatchObject({
-      ok: true,
-      id: PRINCIPAL_ID,
-      lifecycle: "active",
-      footer_lines: [expect.stringContaining("Principal updated: [visitor]")],
-    });
-    expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        docoDir: "/tmp/docos/acme",
-        docoId: "doco_acme",
-        by: "user_author",
-        entity_type: "principal",
-        entity_id: PRINCIPAL_ID,
-        op: "entity.update",
-        before: expect.objectContaining({ body_md: "" }),
-        after: expect.objectContaining({ body_md: "Updated bio prose." }),
-      }),
-    );
-  });
-
   it("rejects reports_to because reporting lines are edge-only", async () => {
     const response = await action({
       request: retireRequest({ reports_to: "principal_manager" }),
@@ -386,32 +339,22 @@ describe("principal retire API", () => {
     });
   });
 
-  it("surfaces body_md to the authoring policy evaluator (regression — was merged-from-data)", async () => {
-    // body_md lives on its own text column on principals (not inside
-    // data jsonb). The first cut of this handler built the candidate
-    // by merging `existing.data` with the patch, so the candidate
-    // never carried body_md — the org-chart "declare person-vs-agent
-    // in body_md" probabilistic gate rejected every PATCH that didn't
-    // re-supply body_md, even when the existing prose already
-    // declared it.
+  it("surfaces the existing prose to the authoring policy evaluator on a name-only edit", async () => {
+    // The org-chart person/agent/vacant gate reads the candidate's `prose`. On a
+    // name-only edit the handler must surface the merged candidate to the
+    // evaluator (here, the existing `name` carried in data).
     mocks.getEntity.mockResolvedValue({
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
       entity_type: "principal",
       data: { node_type: "principal", name: "visitor" },
-      body_md: "Human walking the public site. Operates under @alex.",
       lifecycle: "active",
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "user_admin",
     });
 
-    // Trigger the PATCH with a name-only edit so the patch doesn't supply
-    // body_md. The handler must still
-    // surface the EXISTING body_md to the policy evaluator from the
-    // typed column, not silently drop it because it isn't in the
-    // patch object.
     const response = await action({
-      request: retireRequest({ name: "visitor" }),
+      request: retireRequest({ name: "visitor — human walking the public site" }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 
@@ -419,11 +362,11 @@ describe("principal retire API", () => {
     expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
       expect.objectContaining({
         candidate: expect.objectContaining({
-          name: "visitor",
-          body_md: "Human walking the public site. Operates under @alex.",
+          name: "visitor — human walking the public site",
         }),
       }),
     );
+    expect(mocks.runAuthoringPolicies.mock.calls[0]?.[0]?.candidate).not.toHaveProperty("body_md");
   });
 
   it("blocks an edit when an authoring policy is violating", async () => {
@@ -431,7 +374,7 @@ describe("principal retire API", () => {
       evaluated: 1,
       passed: 0,
       blocking: {
-        reason: "Principal must declare person vs agent in body_md",
+        reason: "Principal must declare person vs agent",
         policy_id: "policy_xyz",
       },
       violations: [],
@@ -439,7 +382,7 @@ describe("principal retire API", () => {
     });
 
     const response = await action({
-      request: retireRequest({ body_md: "Updated bio." }),
+      request: retireRequest({ name: "Updated name" }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 

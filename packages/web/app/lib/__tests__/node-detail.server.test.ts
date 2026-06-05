@@ -5,7 +5,9 @@ vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
     action: { table: "actions", body: false, typeNamedColumn: "action" },
     decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
-    reference: { table: "nodes", body: false, typeNamedColumn: "prose" },
+    // Reference is now an ordinary prose node (no bespoke override); its logical
+    // primary field is "reference", like decision's "decision".
+    reference: { table: "nodes", body: false, typeNamedColumn: "reference" },
   },
   DOCO_NODE_TABLE_BY_TYPE: {
     action: { table: "actions", entityType: "action", body: false },
@@ -43,7 +45,6 @@ describe("loadNodeDialogDetail", () => {
       clientWithRow({
         id: "principal_01TEST",
         primary_text: "Renan Peixoto",
-        body_text: "Person. Head of Engineering. Reports to Alexander Torrenegra (CEO).",
         lifecycle: "active",
         raw_json: JSON.stringify({ name: "Renan Peixoto" }),
         created_at: "2026-05-26T17:01:00.000Z",
@@ -63,9 +64,6 @@ describe("loadNodeDialogDetail", () => {
       name: "Renan Peixoto",
       primary_field: "name",
       primary_text: "Renan Peixoto",
-      body_field: "body_md",
-      body_text: "Person. Head of Engineering. Reports to Alexander Torrenegra (CEO).",
-      body_md: "Person. Head of Engineering. Reports to Alexander Torrenegra (CEO).",
       doco: { handle: "test-doco", href: "/test-doco" },
     });
   });
@@ -94,26 +92,20 @@ describe("loadNodeDialogDetail", () => {
       summary: "Use display labels",
       primary_field: "decision",
       primary_text: "Use display labels\n\nRationale follows.",
-      body_field: null,
-      body_text: null,
-      body_md: "Use display labels\n\nRationale follows.",
     });
   });
 
-  it("splits a PR reference: prose → primary_text (title), attributes.body_md → body_text", async () => {
-    // Title/body split: a PR reference stores the title in prose and the body in
-    // attributes.body_md. The dialog must surface the title as primary_text and
-    // the body as a real body_text section (body_field "body_md", body_md = body).
+  it("surfaces a PR reference's title as primary_text — no separate body section", async () => {
+    // A PR reference's only text is the title in `prose`; the PR body is not
+    // stored, so there is no body section.
     const detail = await loadNodeDialogDetail(
       clientWithRow({
         id: "reference_01TEST",
         primary_text: "Fix the retry idempotency key on 409",
-        body_text: "### Problem\n\nThe key wasn't idempotent on retry.",
         lifecycle: "active",
         raw_json: JSON.stringify({
           ref_type: "url",
           locator: "https://github.com/acme/store/pull/482",
-          body_md: "### Problem\n\nThe key wasn't idempotent on retry.",
         }),
         locator: "https://github.com/acme/store/pull/482",
         created_at: "2026-05-26T17:01:00.000Z",
@@ -132,10 +124,6 @@ describe("loadNodeDialogDetail", () => {
       summary: "Fix the retry idempotency key on 409",
       primary_field: "reference",
       primary_text: "Fix the retry idempotency key on 409",
-      body_field: "body_md",
-      body_text: "### Problem\n\nThe key wasn't idempotent on retry.",
-      // body_md compat must be the actual BODY, not the title.
-      body_md: "### Problem\n\nThe key wasn't idempotent on retry.",
       locator: "https://github.com/acme/store/pull/482",
     });
   });

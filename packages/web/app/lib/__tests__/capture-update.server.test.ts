@@ -70,7 +70,6 @@ describe("updateEntity", () => {
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: STATE_ID,
         doco_id: DOCO_ID,
@@ -121,7 +120,6 @@ describe("updateEntity", () => {
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: IDEA_ID,
         doco_id: DOCO_ID,
@@ -167,7 +165,6 @@ describe("updateEntity", () => {
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: DECISION_ID,
         doco_id: DOCO_ID,
@@ -205,7 +202,6 @@ describe("updateEntity", () => {
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: DECISION_ID,
         doco_id: DOCO_ID,
@@ -238,18 +234,17 @@ describe("updateEntity", () => {
 
   const REFERENCE_ID = "reference_01TEST000000000000000001";
 
-  it("flattens an attributes patch onto the node data (reference body_md update)", async () => {
-    // The title/body split: on PR re-sync the import patch carries the new body
-    // in `attributes.body_md`. updateEntity must merge those keys onto the data
-    // bag as FLAT keys (so storage re-bags them into the attributes jsonb), not
-    // store a nested `attributes` object.
+  it("flattens an attributes patch onto the node data (reference content_hash update)", async () => {
+    // On PR re-sync the import patch carries reference scalars (ref_type /
+    // locator / content_hash) in `attributes`. updateEntity must merge those
+    // keys onto the data bag as FLAT keys (so storage re-bags them into the
+    // attributes jsonb), not store a nested `attributes` object.
     vi.mocked(getEntity).mockResolvedValue({
       id: REFERENCE_ID,
       entity_type: "reference",
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
@@ -257,7 +252,7 @@ describe("updateEntity", () => {
         prose: "Old title",
         ref_type: "url",
         locator: "https://github.com/acme/store/pull/482",
-        body_md: "Old body.",
+        content_hash: "old_hash",
         lifecycle: "active",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
@@ -272,7 +267,7 @@ describe("updateEntity", () => {
       id: REFERENCE_ID,
       patch: {
         reference: "New title",
-        attributes: { body_md: "New body." },
+        attributes: { content_hash: "new_hash" },
       },
       docoHost: "https://doco.test",
       actorId: null,
@@ -280,21 +275,20 @@ describe("updateEntity", () => {
 
     expect(result).toMatchObject({ ok: true });
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
-    // The title (`prose`) and the new body both land as flat keys.
+    // The title (`prose`) and the new attribute both land as flat keys.
     expect(rec.data.prose).toBe("New title");
-    expect(rec.data).toMatchObject({ prose: "New title", body_md: "New body." });
+    expect(rec.data).toMatchObject({ prose: "New title", content_hash: "new_hash" });
     // No nested `attributes` object leaks into the data bag.
     expect(rec.data).not.toHaveProperty("attributes");
   });
 
-  it("clears body_md when the attributes patch sets it to null (PR body emptied)", async () => {
+  it("clears a flat attribute when the attributes patch sets it to null", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: REFERENCE_ID,
       entity_type: "reference",
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
@@ -302,7 +296,7 @@ describe("updateEntity", () => {
         prose: "Title",
         ref_type: "url",
         locator: "https://github.com/acme/store/pull/482",
-        body_md: "Body to be removed.",
+        content_hash: "hash_to_remove",
         lifecycle: "active",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
@@ -317,26 +311,25 @@ describe("updateEntity", () => {
       id: REFERENCE_ID,
       patch: {
         prose: "Title",
-        attributes: { body_md: null },
+        attributes: { content_hash: null },
       },
       docoHost: "https://doco.test",
       actorId: null,
     });
 
-    expect(result).toMatchObject({ ok: true, changed: ["body_md"] });
+    expect(result).toMatchObject({ ok: true, changed: ["content_hash"] });
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
-    // body_md is gone from the data bag (storage drops null/absent keys).
-    expect(rec.data).not.toHaveProperty("body_md");
+    // content_hash is gone from the data bag (storage drops null/absent keys).
+    expect(rec.data).not.toHaveProperty("content_hash");
   });
 
-  it("is a no-op when title + body are unchanged (idempotent re-sync)", async () => {
+  it("is a no-op when title + attributes are unchanged (idempotent re-sync)", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: REFERENCE_ID,
       entity_type: "reference",
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
@@ -344,7 +337,7 @@ describe("updateEntity", () => {
         prose: "Stable title",
         ref_type: "url",
         locator: "https://github.com/acme/store/pull/482",
-        body_md: "Stable body.",
+        content_hash: "stable_hash",
         lifecycle: "active",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
@@ -360,7 +353,7 @@ describe("updateEntity", () => {
       patch: {
         prose: "Stable title",
         lifecycle: "active",
-        attributes: { body_md: "Stable body." },
+        attributes: { content_hash: "stable_hash" },
       },
       docoHost: "https://doco.test",
       actorId: null,
@@ -422,7 +415,6 @@ describe("updateEntity", () => {
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "drafting",
-      body_md: "",
       data: {
         id: IDEA_ID,
         doco_id: DOCO_ID,
@@ -462,7 +454,6 @@ describe("updateEntity", () => {
       doco_id: DOCO_ID,
       summary: null,
       lifecycle: "active",
-      body_md: "",
       data: {
         id: ACTION_ID,
         doco_id: DOCO_ID,

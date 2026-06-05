@@ -247,9 +247,7 @@ interface BuiltProcess extends Graph {
 /** Materialize a fully-wired BPMN process at the given lifecycle. */
 function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
   const intent = node("intent", s.key, { intent: s.intent }, lifecycle);
-  const principals = s.principals.map((p) =>
-    node("principal", s.key, { name: p.name, body_md: p.body }, lifecycle),
-  );
+  const principals = s.principals.map((p) => node("principal", s.key, { name: p.name }, lifecycle));
   const actions = s.actions.map((a) =>
     node("action", s.key, { action: a.text, verb: a.verb }, lifecycle),
   );
@@ -1114,12 +1112,7 @@ describe("process template — owner + actor coverage (warnings)", () => {
 
   it("warns about an actor Principal that owns no Action", () => {
     const g = buildProcess(SCENARIOS[0], "active");
-    const idle = node(
-      "principal",
-      "loan-approval",
-      { name: "Compliance Auditor", body_md: "Reviews the process for compliance." },
-      "active",
-    );
+    const idle = node("principal", "loan-approval", { name: "Compliance Auditor" }, "active");
     g.nodes.push(idle);
     const warns = deterministicWarns(evaluate(idle, g));
     expect(warns.some(coverageMissing)).toBe(true);
@@ -1127,12 +1120,7 @@ describe("process template — owner + actor coverage (warnings)", () => {
 
   it("exempts the accountable owner from the actor-coverage warning", () => {
     const g = buildProcess(SCENARIOS[0], "active");
-    const ownerOnly = node(
-      "principal",
-      "loan-approval",
-      { name: "Process Owner", body_md: "Accountable for the whole process outcome." },
-      "active",
-    );
+    const ownerOnly = node("principal", "loan-approval", { name: "Process Owner" }, "active");
     // Owner edge (an Intent's attributed_to → this Principal), but performs no
     // Action. The endpoint-type exemption (exempt_when_other_node_type: intent)
     // keeps the incoming actor-coverage gate from firing.

@@ -60,7 +60,6 @@ interface OrgTreeRow {
   lifecycle: string | null;
   /** Promoted seat kind — "human" | "agent" (null for vacant/undeclared). */
   kind: string | null;
-  body_md: string | null;
   data: Record<string, unknown>;
   /** Scalar-subquery total principals (bigint → string from pg). */
   total_count?: number | string | null;
@@ -83,16 +82,16 @@ function normalizeLimit(value: number | null | undefined): number | null {
 }
 
 /**
- * Infer person / AI-agent / vacant from the Principal's prose. Cheap regex
- * scan — the canonical phrases the org-chart guidance suggests ("AI agent",
- * "Operates under:", "Autonomous agent", "Human director", "Person",
- * "Vacant — budgeted …", etc.) light up the right bucket. When the prose is
- * silent or mixes signals the function returns null so the perspective omits
- * the icon — better than guessing wrong.
+ * Infer person / AI-agent / vacant from the Principal's `prose` (its name + any
+ * vacancy declaration). Cheap regex scan — the canonical phrases the org-chart
+ * guidance suggests ("AI agent", "Operates under:", "Autonomous agent", "Human
+ * director", "Person", "Vacant — budgeted …", etc.) light up the right bucket.
+ * When the prose is silent or mixes signals the function returns null so the
+ * perspective omits the icon — better than guessing wrong.
  */
-function inferKindFromProse(body: string | null): "person" | "agent" | "vacant" | null {
-  if (!body) return null;
-  const text = body.toLowerCase();
+function inferKindFromProse(prose: string | null): "person" | "agent" | "vacant" | null {
+  if (!prose) return null;
+  const text = prose.toLowerCase();
   // Vacant takes precedence: a budgeted-but-unfilled seat reads as vacant even
   // when its prose names the kind of occupant it is waiting for ("Vacant —
   // budgeted Staff Engineer seat …"). We key on explicit vacancy markers, not a
@@ -132,35 +131,6 @@ function mapPrincipalKind(kind: string | null): "person" | "agent" | null {
   return null;
 }
 
-function roleFromProse(
-  body: string | null,
-  name: string,
-  type: "person" | "agent" | "vacant" | null,
-): string | null {
-  if (!body) return null;
-  const firstLine = body
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  if (!firstLine || firstLine.toLowerCase() === name.toLowerCase()) return null;
-
-  // Strip the leading kind marker plus any trailing punctuation (including the
-  // em dash the guidance examples use, e.g. "Vacant — budgeted …") so the role
-  // label reads as the role, not the kind.
-  const withoutKind =
-    type === "agent"
-      ? firstLine.replace(
-          /^(?:ai[\s-]?agent|autonomous\s+(?:agent|bot|role)|agent|bot)\b[\s:.;,—-]*/i,
-          "",
-        )
-      : type === "vacant"
-        ? firstLine.replace(/^(?:vacant|unfilled|open)\b[\s:.;,—-]*/i, "")
-        : firstLine.replace(/^(?:human|person|people|employee|contractor)\b[\s:.;,—-]*/i, "");
-  const role = withoutKind.trim();
-  if (!role) return null;
-  return role.length > 72 ? `${role.slice(0, 69)}...` : role;
-}
-
 export async function loadOrgTreeData(
   c: QueryClient,
   docoId: string,
@@ -174,11 +144,11 @@ export async function loadOrgTreeData(
   else if (limit != null) params.push(limit);
   const rows = (
     await c.query<OrgTreeRow>(
-      // Migration 037 dropped `summary` from principals; the
-      // description shown under the label is now the first non-blank
-      // line of `body_md`.
+      // A principal's text is its `prose` (its name). The seat kind comes from
+      // the promoted `kind` column, falling back to a vacancy/person/agent read
+      // of the prose when unset.
       `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle, kind,
-              attributes->>'body_md' AS body_md, attributes AS data,
+              attributes AS data,
               (SELECT COUNT(*) FROM nodes
                 WHERE node_type = 'principal' AND doco_id = $1) AS total_count
          FROM nodes
@@ -222,8 +192,9 @@ export async function loadOrgTreeData(
   }
 
   const nodes: OrgTreeNode[] = rows.map((r) => {
-    const type = mapPrincipalKind(r.kind) ?? inferKindFromProse(r.body_md);
-    const role = roleFromProse(r.body_md, r.name, type);
+    const type = mapPrincipalKind(r.kind) ?? inferKindFromProse(r.name);
+    // No separate body to derive a role sub-label from — the prose IS the name.
+    const role = null;
     const reports_to = reportsToByPrincipal.get(r.id) ?? null;
     // Dotted-line / matrix reporting is no longer modeled (edge roles retired).
     const dotted_reports_to: string[] = [];
