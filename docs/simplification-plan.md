@@ -69,44 +69,42 @@ when there is a concrete need (YAGNI), never speculatively. The presence of
 - nodes: `ref_type`, `citation`, `body_md`, `body`, `severity`, `verb`,
   `happened_at`, `title`, `performed_at`, `phase`, `on_violation`
 - edges: `role` and the entire `props` column
-- users: `name`, `display_name`, and the `data` bag
 - workspaces / host: the `data` bag
-- docos: `template_handle` and the `data` bag
 
-**Restructured into normalized tables (no jsonb):**
-- doco `github_integration` → `doco_github_connections` (the connection list)
-  plus a small table for the backfill/installation bits
-- user `preferences` → `user_preferences`
+**Kept as is (decided 2026-06-05 — real load-bearing config, not cruft):**
+- docos `data` — `github_integration` + `template_handle`
+- users `data` — `preferences` + `name`/`display_name`
 
-## Target schemas
+## Target schemas (as landed)
 
 ```
 Node      = { id, doco_id, node_type, lifecycle, prose, kind?, locator?,
               extra, created_at, created_by, updated_at, updated_by }
 Edge      = { id, doco_id, edge_type, from_id, from_node_type, to_id,
-              to_node_type, lifecycle, created_at, created_by,
-              updated_at, updated_by }                       // no bag
-Doco      = { id, handle, owner_id, workspace_id, visibility,
-              default_node_lifecycle, goal, …audit }         // no bag
-              + doco_github_connections
-User      = { id, github_id, github_login, email, avatar_url, …audit } // no bag
-              + user_preferences
-Workspace = { id, handle, name, constitution, …audit }       // no bag
-Host      = { id, name, visibility, …audit }                 // no bag
-Token     = { id, …defined columns, …audit }                 // no bag
-Principal = Node where node_type = 'principal'   // not a separate type/mapper
+              to_node_type, lifecycle, label?, condition?, kind?, …audit }
+Workspace = { id, handle, name, constitution, …audit }       // bag dropped
+Host      = { id, name, visibility, …audit }                 // bag dropped
+Doco      = { …columns, goal, data }   // data kept: github_integration, template_handle
+User      = { …columns, data }         // data kept: preferences, name, display_name
+Principal = Node where node_type = 'principal'
 ```
 
 ## Consequences absorbed as part of the work
 
-- **`template_handle` gone** → template policies seed only at doco creation;
-  remove the retroactive `data->>'template_handle'`-scoped policy migrations.
 - **`ref_type` / `citation` gone** → glossary & SLA perspectives drop those
   fields.
 - **`body_md` / `body` gone** → org-tree & node-detail stop rendering a body;
   authors who want one put it in `extra`.
 - **`severity` gone** → remove any severity-based rendering.
 - **Policy specs** migrate from the type-named word (`intent`/…) to `prose`.
+
+## Refined principle (after seeing each entity's bag)
+
+Drop **empty / cruft** bags — bags that held only dead representations or were
+never read. **Keep** bags that hold genuine nested config the app depends on:
+re-homing those into columns/tables is real work with real risk and little
+payoff while the jsonb shape is doing its job. So the goal sharpened to "no
+*cruft* bags," not "no bags anywhere."
 
 ## Execution — staged, test-first, each its own PR squash-merged to `main`
 
@@ -115,21 +113,26 @@ intended shape/behavior and watch it go red; (2) make it green; (3) land on
 `main` via feature branch → PR → CI green → auto-merge squash; (4) verify live
 on `doco.to` (dev-signin recipe in `AGENTS.md`) with a screenshot.
 
-1. **Nodes.** Collapse to the canonical `Node`: read `prose` directly, delete
-   `type_named_value` / `computeTypeNamedValue` / `typeNamedColumn` / the
-   type-named keys; keep `locator`; drop the rest of `attributes`; rename
-   `attributes` → `extra` (now empty); migrate policy specs → `prose`. Update
-   node-detail/perspectives that read dropped fields. **Lands the live bug fix.**
-2. **Edges.** Drop `role` and the `props` column; delete the `edge_props_json`
-   alias.
-3. **Docos.** Drop `template_handle` + the `data` bag; create
-   `doco_github_connections` and migrate `github_integration`; fix the stale
-   `slack.server.ts` goal read.
-4. **Users.** Drop `name`/`display_name` + the `data` bag; create
-   `user_preferences` and migrate `preferences`.
-5. **Workspaces / Host / Tokens.** Drop the `data` bag(s); defined columns only.
-6. **Teardown.** Delete the `EntityRecord` god-type and every bespoke mapper
-   down to one generic `rowToEntity`; fold `PrincipalRow` into the node path.
+1. **Nodes — DONE (#1068).** Collapsed to the canonical `Node`: read `prose`
+   directly, deleted `type_named_value` / `computeTypeNamedValue` / the
+   type-named keys; kept `locator`; `attributes` → `extra`; migrated policy
+   specs → `prose`. **Landed the live re-evaluation bug fix.**
+2. **Edges — DONE (#1069).** Promoted the flows_to metadata to typed columns
+   (`label`/`condition`/`kind`); dropped `role` and the `props` jsonb; deleted
+   the `edge_props_json` alias.
+3. **Workspaces + Host — DONE (#1070).** Dropped the never-read `data` bag on
+   both; defined columns only.
+4. **Docos — KEEP AS IS (decided 2026-06-05).** Its `data` bag holds genuinely
+   load-bearing nested config: `github_integration` (a ~47-site read/write in
+   `github-connection.server.ts`) and `template_handle` (runtime principal
+   lifecycle, the agent create-doco contract/response, 13 template-scoped policy
+   migrations). Normalizing it is large, risky, low-payoff — leave the jsonb.
+5. **Users — KEEP AS IS (same reasoning).** `data` holds `preferences` (UI
+   state) and `name`/`display_name` (read for display). Real config; leave it.
+6. **Teardown (optional).** With docos/users keeping their bags, the
+   `EntityRecord`/mapper consolidation is partial; the highest-value piece left
+   is folding the duplicate `PrincipalRow` read into the node path.
+
 
 ## Verification regime (run after each UI-touching slice; exhaustively at the end)
 
