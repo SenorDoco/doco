@@ -44,8 +44,8 @@ async function seed(): Promise<Client> {
   let minutesAgo = 1;
   for (const node of PR_NODES) {
     await db.query(
-      `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes, created_at, updated_at)
-       VALUES ($1,'doco_1','reference',$2,$3, jsonb_build_object('ref_type','url','locator',$4::text),
+      `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, locator, attributes, created_at, updated_at)
+       VALUES ($1,'doco_1','reference',$2,$3,$4, jsonb_build_object('ref_type','url'),
                now() - ($5 || ' minutes')::interval, now() - ($5 || ' minutes')::interval)`,
       [
         node.id,
@@ -59,8 +59,8 @@ async function seed(): Promise<Client> {
   }
   // A non-PR reference (no /pull/ in the locator) must never surface here.
   await db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes)
-     VALUES ('reference_doc','doco_1','reference','active','Some doc', jsonb_build_object('ref_type','url','locator','https://example.com/doc'))`,
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, locator, attributes)
+     VALUES ('reference_doc','doco_1','reference','active','Some doc','https://example.com/doc', jsonb_build_object('ref_type','url'))`,
   );
   return db as unknown as Client;
 }
