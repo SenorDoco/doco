@@ -14,10 +14,12 @@
 //     already-ordered, numbered list it applies the cap
 //     (MAX_GRAPH_REFERENCES), derives the id→number map the badges
 //     subscribe to, and keeps the sidebar registry in sync (publish +
-//     per-unmount clear). The BPMN perspective builds its list from its
-//     canvas layout (`processReferences`, viewport-independent) and
-//     calls this directly, so its numbers shift only when the rendered
-//     Intent set changes — never on a pan.
+//     per-unmount clear). The BPMN perspective builds its list from the
+//     focal Intent's membership (`processReferences`, in creation order —
+//     no viewport, no layout) and calls this directly, so its numbers are
+//     fixed to the Intent: they shift only when a different Intent comes
+//     into focus, never on a pan and never when a node is retired, hidden,
+//     or lifecycle-filtered.
 //
 // Perspectives still own the shape-specific work — what their
 // candidates are, their canvas-space positions, their rendered
@@ -135,9 +137,10 @@ interface PerspectiveReferences {
  *
  * `references` must already be in the intended order, numbered 1..N.
  * `usePerspectiveReferences` produces that list from a viewport-culled
- * sort; the BPMN perspective produces it from its canvas layout
- * (`processReferences`). Either way, this is the single place the cap is
- * enforced and the only place the registry is touched.
+ * sort; the BPMN perspective produces it from the focal Intent's
+ * membership in creation order (`processReferences`). Either way, this is
+ * the single place the cap is enforced and the only place the registry is
+ * touched.
  */
 export function usePublishedReferences(
   source: GraphReferenceSource,
