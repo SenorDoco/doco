@@ -2247,6 +2247,12 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
   );
 }
 
+// Stadium pill — the State glyph. A State is a milestone/outcome (a
+// condition that holds), so its fully-rounded silhouette reads as
+// distinct from the Action's task rectangle even at low zoom, while
+// staying full-sized and legible. (Ideas, the former pill, are not
+// process content — barred by the business-processes node-type
+// allowlist — so the pill is the State's alone.)
 function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   const simplified = useBpmnSimplified();
@@ -2330,7 +2336,7 @@ function SubprocessMarker({ stroke, hideGlyph = false }: { stroke: string; hideG
 }
 
 // BPMN Task — rounded rectangle. Sits between the sharp Rectangle (a
-// policy box) and the fully-pill Rounded (an Idea capsule); the radius
+// policy box) and the fully-pill Rounded (the State stadium); the radius
 // matches the OMG BPMN 2.0 task glyph. When the Action drills into a
 // sub-process it also wears the collapsed-subprocess "+" marker.
 function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
