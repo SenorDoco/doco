@@ -29,7 +29,7 @@ import {
 } from "~/components/node-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
-import { StableLabeledBezierEdge } from "~/components/stable-labeled-edge";
+import { StableLabeledBezierEdge, clickableEdgeClassName } from "~/components/stable-labeled-edge";
 import { summarizeExternalConnections } from "~/lib/focused-render-selection";
 import {
   computeDepthFromCenter,
@@ -1864,6 +1864,7 @@ export function layOutProcess(
         // that would otherwise cut through intervening nodes are bowed
         // vertically by the renderer (see StableLabeledBezierEdge).
         type: "stableLabeledBezier",
+        className: clickableEdgeClassName(clickable),
         zIndex: isFocused ? 3 : 0,
         data: Object.keys(edgeData).length > 0 ? edgeData : undefined,
         selectable: false,
@@ -1873,7 +1874,6 @@ export function layOutProcess(
           stroke,
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 5) : baseStrokeWidth,
           opacity: isFocused ? 1 : edgeOpacity,
-          cursor: clickable ? "pointer" : undefined,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -2273,7 +2273,7 @@ function processBorder(data: ProcessNodeData, stroke: string, baseWidth = 2): st
   return `${processStrokeWidth(data, baseWidth)}px solid ${stroke}`;
 }
 
-function ProcessRectangleNode({ data }: { data: ProcessNodeData }) {
+export function ProcessRectangleNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   const simplified = useProcessSimplified();
   return (
@@ -2623,7 +2623,14 @@ function graphReferenceAttributes(
   // objects. The sidebar reads numbering from the *published* references
   // (usePublishedReferences), which is the canonical source; this DOM
   // attribute was only a fallback for perspectives that don't publish.
+  //
+  // `cursor-pointer`: every shape is clickable (onNodeClick re-focuses the
+  // process around it). React Flow paints `cursor: default` on the node
+  // wrapper unless the node is `selectable`, which we opt out of — so the
+  // shape's own root has to declare the pointer affordance. This is the one
+  // place every shape root shares, so it lands the cursor on all of them.
   return {
+    className: "cursor-pointer",
     "data-node-href": data.node.href ?? undefined,
     "data-node-id": data.node.id,
     "data-node-label": data.node.name ?? data.node.id,

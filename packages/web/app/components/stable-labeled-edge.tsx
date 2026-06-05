@@ -63,6 +63,25 @@ function bezierOrLoopPath(p: {
   return [`${toApex} ${fromApex.slice(fromApex.indexOf("C"))}`, apexX, apexY];
 }
 
+// Marker class for a React Flow edge model that should read as clickable.
+//
+// React Flow only paints the pointer cursor for `.selectable` edges (base.css
+// `.react-flow__edge.selectable { cursor: pointer }`), and we set
+// `selectable: false` to keep its selection behavior off. An inline `cursor`
+// on the edge `style` doesn't help either: `BaseEdge` applies that style to
+// the visible `.react-flow__edge-path`, but layers a wider transparent
+// `.react-flow__edge-interaction` path on top to catch the hover — so the
+// cursor on the visible stroke is never seen. Clickable edges instead carry
+// this class, and app.css sets the cursor on the edge group, which inherits
+// down to the interaction path. This mirrors React Flow's own `.selectable`
+// shape without opting into selection.
+export const CLICKABLE_EDGE_CLASS = "doco-clickable-edge";
+
+export function clickableEdgeClassName(clickable: boolean, base?: string): string | undefined {
+  if (!clickable) return base;
+  return base ? `${base} ${CLICKABLE_EDGE_CLASS}` : CLICKABLE_EDGE_CLASS;
+}
+
 export interface StableLabeledEdgeData extends Record<string, unknown> {
   label?: string | null;
   labelClassName?: string;

@@ -653,6 +653,19 @@ button[class*="bg-primary"]:active {
   }
 }
 
+/* Pointer affordance for clickable edges. React Flow only sets the pointer
+   cursor for `.selectable` edges, and our clickable edges opt out of
+   selection (`selectable: false`). Setting `cursor` inline on the edge
+   `style` doesn't reach the hover target either: `BaseEdge` paints that
+   style on the visible `.react-flow__edge-path` but layers a wider
+   transparent `.react-flow__edge-interaction` path on top to catch the
+   pointer. So set the cursor on the edge group (it inherits down to the
+   interaction path) for edges the builder marked clickable — mirroring
+   React Flow's own `.selectable` rule without enabling selection. */
+.react-flow__edge.doco-clickable-edge {
+  cursor: pointer;
+}
+
 /* Morphic styling for React Flow's top-right zoom-controls stack. True
    neumorphism — the panel uses the SAME colour as the page background
    and gets its "raised" feel entirely from the shadow + highlight pair,
