@@ -32,17 +32,38 @@ The PR just sits there.
 When the squash-merge in step 3 is gated on CI, **default to enabling
 auto-merge** before you end the turn:
 
-- **Enable auto-merge** — `gh pr merge --auto --squash`. The merge
-  fires by itself once checks pass; no further turn required, and no
-  idle waiting. This is the default — use it whenever the required
-  checks are wired into branch protection.
-- **Block on the checks in-turn** — `gh pr checks --watch` (or
-  `gh run watch`), then squash-merge once it returns green. Reserve
-  this for when auto-merge isn't available (e.g. the check isn't
-  marked required, so `--auto` would never fire), since it spends the
-  whole turn idling on the pipeline.
+- **Enable auto-merge** — `gh pr merge --auto --squash` (or the
+  `enable_pr_auto_merge` MCP tool). The merge fires by itself once
+  checks pass; no further turn required, and no idle waiting. **This is
+  the default — always reach for it first.**
+- **If enabling auto-merge errors** with "auto-merge is not enabled for
+  this repository," that is a **one-time repo setting** (Settings →
+  General → Pull Requests → Allow auto-merge), not a signal to start
+  polling. Surface it to the user so they flip it once, and for *this*
+  PR fall through to the in-turn watch below — but never substitute a
+  sleep-timer loop for the setting.
+- **Block on the checks in-turn** (only when auto-merge is genuinely
+  unavailable) — `gh pr checks --watch` / `gh run watch` if `gh` is
+  installed. **When `gh` isn't in the sandbox, do NOT improvise with
+  chained `sleep N; end-turn` polls** — that burns a turn every couple
+  of minutes and is the idle-babysitting this whole section exists to
+  prevent. Instead arm **one** background `until`-loop waiter that exits
+  on a *terminal* CI state, then squash-merge when it wakes you:
 
-Never say you'll merge "when CI passes" and then end the turn.
+  ```sh
+  # One wake when CI reaches a terminal state — not N sleep-end-turn cycles.
+  until s=$(gh api repos/torrenegra/doco/commits/<sha>/check-runs \
+              --jq '[.check_runs[]|select(.name|test("build · typecheck"))][0].conclusion') \
+        && [ -n "$s" ] && [ "$s" != "null" ]; do sleep 30; done
+  echo "CI concluded: $s"   # success → squash-merge; failure → diagnose once
+  ```
+
+  Run it with Bash `run_in_background` (one notification on exit), or use
+  the `Monitor` tool. The point is a single armed waiter, never a
+  per-turn `sleep`.
+
+Never say you'll merge "when CI passes" and then end the turn — and
+never *poll* your way there with sleeps either.
 
 ---
 
