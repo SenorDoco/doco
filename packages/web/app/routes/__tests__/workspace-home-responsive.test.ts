@@ -72,9 +72,7 @@ describe("/workspaces/:workspaceHandle responsive layout", () => {
     // The feed card carries `order-last` so it sorts after the sidebar in the
     // stacked grid, and resets to natural flow (`lg:order-none`) in the
     // two-column layout.
-    const feedTitle = src.indexOf(
-      '<CardTitle className="text-sm">Latest activity</CardTitle>',
-    );
+    const feedTitle = src.indexOf('<CardTitle className="text-sm">Latest activity</CardTitle>');
     expect(feedTitle).toBeGreaterThan(-1);
     // `<Card ` (trailing space) matches the card's opening tag, not the
     // `<CardHeader`/`<CardTitle` that nest inside it.
