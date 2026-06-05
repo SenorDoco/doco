@@ -27,6 +27,7 @@ import {
   focusTargetForResourcePath,
   pendingCreateForRequest,
   perspectiveParam,
+  requestRetiresResource,
 } from "~/lib/agent-follow-target";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
@@ -1279,6 +1280,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // paths fall through.
       const target = focusTargetForResourcePath(path);
       if (!target) return;
+      // …but not when the request makes that node/edge disappear (a
+      // delete or a retire). There'd be nothing to focus, and for an
+      // edge the camera would snap onto its still-live source node — an
+      // unrelated place the user never asked to see. Leave the
+      // perspective where it is.
+      const inp = input as { method?: unknown; body?: unknown };
+      const method = typeof inp.method === "string" ? inp.method : "GET";
+      if (requestRetiresResource(method, inp.body)) return;
       if (location.pathname === target.pathname) return;
       // Don't interrupt active composition — but only when there's
       // actually something half-written. Empty composer = user is
