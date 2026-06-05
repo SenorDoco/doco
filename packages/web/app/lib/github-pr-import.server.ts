@@ -1,8 +1,8 @@
 // GitHub PR → Doco Reference import (References model — no dedicated node type).
 //
 // A pull request is stored as a `reference` node: ref_type "url", locator = the
-// canonical PR URL (the idempotency key), prose = title; the PR body lives in
-// attributes.body_md (omitted when the PR has no body). Re-importing
+// canonical PR URL (the idempotency key), prose = title. The PR body is not
+// stored on the Reference — a node's only text is its `prose`. Re-importing
 // the same PR upserts the existing Reference (open->queued, merged->active,
 // closed->retired) rather than duplicating - possible because the node freeze
 // was removed, so References are editable. Decisions/Actions link to the PR via
@@ -91,8 +91,6 @@ export function pullRequestRefLifecycle(
 export interface ReferenceDraft {
   /** The Reference's prose: the PR title only (single line). */
   reference: string;
-  /** The PR body → attributes.body_md. Undefined when the PR has no body. */
-  body?: string;
   ref_type: string;
   locator: string;
   content_hash?: string | null;
@@ -102,9 +100,9 @@ export interface ReferenceDraft {
 }
 
 /**
- * Reference prose for a PR: the title ONLY (the node label). The PR body is
- * split out to attributes.body_md (see `pullRequestToReferenceDraft`), so the
- * prose is a single line. Pure.
+ * Reference prose for a PR: the title ONLY (the node label). The PR body is not
+ * stored on the Reference — a node's only text is its `prose` — so the prose is
+ * a single line. Pure.
  */
 export function pullRequestReferenceProse(pr: Pick<GitHubPullRequest, "title" | "body">): string {
   return pr.title.trim();
@@ -120,10 +118,8 @@ export function pullRequestToReferenceDraft(
   opts?: { approved?: boolean },
 ): ReferenceDraft {
   const { lifecycle, outcome } = pullRequestRefLifecycle(pr, opts);
-  const body = (pr.body ?? "").trim();
   return {
     reference: pr.title.trim(),
-    ...(body ? { body } : {}),
     ref_type: "url",
     locator: pr.html_url,
     lifecycle,
@@ -522,16 +518,12 @@ export async function upsertPullRequestReference(
       entityType: "reference",
       pluralDir: "references",
       id: existingId,
-      // Patch the title prose AND the body. The body rides in
-      // `attributes.body_md`; updateEntity flattens that onto the node's data
-      // bag. Always send the key — set to the body, or `null` to CLEAR it when
-      // the PR body became empty — so a body→empty edit doesn't leave a stale
-      // body_md behind. When title+body+lifecycle are all unchanged the patch
-      // is a no-op (NO_FIELDS_CHANGED → `unchanged`), preserving idempotence.
+      // Patch the title prose (the Reference's only text — the PR body is not
+      // stored). When title+lifecycle are unchanged the patch is a no-op
+      // (NO_FIELDS_CHANGED → `unchanged`), preserving idempotence.
       patch: {
         reference: draft.reference,
         lifecycle: draft.lifecycle,
-        attributes: { body_md: draft.body ?? null },
         ...(draft.outcome ? { outcome: draft.outcome } : {}),
       },
       ...(opts.docoHost ? { docoHost: opts.docoHost } : {}),
@@ -590,7 +582,6 @@ export async function upsertPullRequestReference(
         ref_type: draft.ref_type,
         locator: draft.locator,
         ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
-        ...(draft.body ? { body_md: draft.body } : {}),
       },
       ...(draft.lifecycle ? { lifecycle: draft.lifecycle } : {}),
       ...(draft.outcome ? { outcome: draft.outcome } : {}),

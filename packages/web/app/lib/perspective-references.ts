@@ -2,25 +2,29 @@
 // that renders #N badges on its canvas (Graph, BPMN, and any future
 // React-Flow-based perspective).
 //
-// Behaviour every perspective gets by being routed through
-// `usePerspectiveReferences`:
+// Two layers, so a perspective can take only what it needs:
 //
-//   • Same zoom threshold below which numbers vanish
-//     (REFERENCE_ZOOM_THRESHOLD). One knob, not one per perspective.
-//   • Same visibility check — a candidate must be on-screen (with a
-//     scaled padding equal to its own size) to receive a number.
-//   • Same sort order — top-to-bottom by screen-row, then
-//     left-to-right within a row, then by id for determinism.
-//   • Same cap (MAX_GRAPH_REFERENCES) so the sidebar list stays
-//     manageable on dense Dococs.
-//   • Same registry publish + per-unmount clear so the sidebar
-//     references list stays in sync without each perspective
-//     re-implementing the wiring.
+//   • `usePerspectiveReferences` — viewport-driven numbering. Culls
+//     candidates to what's on-screen, sorts them in reading order (via
+//     `compareReadingOrder`), and renumbers on every pan/zoom so #N
+//     tracks on-screen reading order. Used by the Graph and org-tree.
+//     Numbers below REFERENCE_ZOOM_THRESHOLD vanish — one knob, not one
+//     per perspective.
+//   • `usePublishedReferences` — the plumbing under that: given an
+//     already-ordered, numbered list it applies the cap
+//     (MAX_GRAPH_REFERENCES), derives the id→number map the badges
+//     subscribe to, and keeps the sidebar registry in sync (publish +
+//     per-unmount clear). The BPMN perspective builds its list from the
+//     focal Intent's membership (`processReferences`, in creation order —
+//     no viewport, no layout) and calls this directly, so its numbers are
+//     fixed to the Intent: they shift only when a different Intent comes
+//     into focus, never on a pan and never when a node is retired, hidden,
+//     or lifecycle-filtered.
 //
 // Perspectives still own the shape-specific work — what their
 // candidates are, their canvas-space positions, their rendered
-// width/height in canvas units. Anything orthogonal to those (the
-// sort, the cap, the registry plumbing) lives here.
+// width/height in canvas units. The sort rule, the cap, and the registry
+// plumbing live here.
 
 import { useEffect, useMemo, useRef } from "react";
 import {
@@ -79,6 +83,27 @@ export interface ReferenceCandidate {
 
 export type GraphReferenceSource = "overview" | "process" | "org-tree";
 
+/**
+ * The reading order every perspective numbers by: top-to-bottom by row,
+ * then left-to-right within a row, then by id for a deterministic tie
+ * break. Two items share a row when their vertical gap is within the
+ * taller one's height. The coordinates are screen-space for the
+ * viewport-driven perspectives (Graph, org-tree — re-sorted each pan) and
+ * canvas-space for the BPMN perspective (fixed to the layout); the rule
+ * itself is identical, so it lives here once.
+ */
+export function compareReadingOrder(
+  a: { x: number; y: number; height: number; id: string },
+  b: { x: number; y: number; height: number; id: string },
+): number {
+  const rowDiff = a.y - b.y;
+  const tolerance = Math.max(a.height, b.height);
+  if (Math.abs(rowDiff) > tolerance) return rowDiff;
+  const colDiff = a.x - b.x;
+  if (colDiff !== 0) return colDiff;
+  return a.id.localeCompare(b.id);
+}
+
 interface UsePerspectiveReferencesArgs {
   /** Identifies which perspective is publishing — feeds the sidebar. */
   source: GraphReferenceSource;
@@ -104,6 +129,44 @@ interface PerspectiveReferences {
   numberById: Map<string, number>;
 }
 
+/**
+ * The wiring every perspective shares once it has an *ordered, numbered*
+ * reference list: apply the cap, derive the id→number map the badges
+ * subscribe to, mirror the list into the sidebar registry under a stable
+ * id, and clear that id on unmount.
+ *
+ * `references` must already be in the intended order, numbered 1..N.
+ * `usePerspectiveReferences` produces that list from a viewport-culled
+ * sort; the BPMN perspective produces it from the focal Intent's
+ * membership in creation order (`processReferences`). Either way, this is
+ * the single place the cap is enforced and the only place the registry is
+ * touched.
+ */
+export function usePublishedReferences(
+  source: GraphReferenceSource,
+  references: GraphReferenceItem[],
+): PerspectiveReferences {
+  const capped = useMemo(
+    () =>
+      references.length > MAX_GRAPH_REFERENCES
+        ? references.slice(0, MAX_GRAPH_REFERENCES)
+        : references,
+    [references],
+  );
+  const numberById = useMemo(() => new Map(capped.map((r) => [r.id, r.number])), [capped]);
+
+  const graphIdRef = useRef(`${source}-${Math.random().toString(36).slice(2)}`);
+  useEffect(() => {
+    publishGraphReferences(graphIdRef.current, source, capped);
+  }, [capped, source]);
+  useEffect(() => {
+    const graphId = graphIdRef.current;
+    return () => clearGraphReferences(graphId);
+  }, []);
+
+  return { references: capped, numberById };
+}
+
 export function usePerspectiveReferences({
   source,
   viewport,
@@ -115,8 +178,6 @@ export function usePerspectiveReferences({
 
   const references = useMemo<GraphReferenceItem[]>(() => {
     if (viewport.zoom < REFERENCE_ZOOM_THRESHOLD) return [];
-    const remaining = Math.max(0, MAX_GRAPH_REFERENCES - priority.length);
-    if (remaining === 0) return priority;
 
     const visible = candidates
       .flatMap((c) => {
@@ -134,15 +195,12 @@ export function usePerspectiveReferences({
         }
         return [{ candidate: c, screenX, screenY, scaledH }];
       })
-      .sort((a, b) => {
-        const rowDiff = a.screenY - b.screenY;
-        const tolerance = Math.max(a.scaledH, b.scaledH);
-        if (Math.abs(rowDiff) > tolerance) return rowDiff;
-        const colDiff = a.screenX - b.screenX;
-        if (colDiff !== 0) return colDiff;
-        return a.candidate.id.localeCompare(b.candidate.id);
-      })
-      .slice(0, remaining)
+      .sort((a, b) =>
+        compareReadingOrder(
+          { x: a.screenX, y: a.screenY, height: a.scaledH, id: a.candidate.id },
+          { x: b.screenX, y: b.screenY, height: b.scaledH, id: b.candidate.id },
+        ),
+      )
       .map<GraphReferenceItem>((entry, index) => ({
         number: priority.length + index + 1,
         id: entry.candidate.id,
@@ -155,16 +213,5 @@ export function usePerspectiveReferences({
     return [...priority, ...visible];
   }, [viewport, size, candidates, priority]);
 
-  const numberById = useMemo(() => new Map(references.map((r) => [r.id, r.number])), [references]);
-
-  const graphIdRef = useRef(`${source}-${Math.random().toString(36).slice(2)}`);
-  useEffect(() => {
-    publishGraphReferences(graphIdRef.current, source, references);
-  }, [references, source]);
-  useEffect(() => {
-    const graphId = graphIdRef.current;
-    return () => clearGraphReferences(graphId);
-  }, []);
-
-  return { references, numberById };
+  return usePublishedReferences(source, references);
 }

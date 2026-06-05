@@ -815,28 +815,44 @@ export default function DocoHome({
     };
   }, [revalidator]);
 
+  // Refs that capture the current dialog state without being reactive deps,
+  // so the revalidation effect (defined after the callbacks below) can read
+  // the latest dialog without listing it as a dep.
+  const nodeDialogRef = useRef(nodeDialog);
+  nodeDialogRef.current = nodeDialog;
+  const edgeDialogRef = useRef(edgeDialog);
+  edgeDialogRef.current = edgeDialog;
+  const prevRevalidatorStateRef = useRef(revalidator.state);
+
   const loadNodeDialog = useCallback(
     async (
       entityType: string,
       id: string,
       href: string,
-      options: { pushUrl?: boolean; keepDetail?: boolean; focusPerspective?: boolean } = {},
+      options: {
+        pushUrl?: boolean;
+        keepDetail?: boolean;
+        focusPerspective?: boolean;
+        silent?: boolean;
+      } = {},
     ) => {
       const pushUrl = options.pushUrl ?? true;
-      if (pushUrl && typeof window !== "undefined") {
-        clientDialogOverrideRef.current = true;
-        // Tag the entry so a Back/Forward popstate can re-open this exact
-        // overlay (it's client-only — React Router's location never moves).
-        window.history.pushState(nodeDialogHistoryState(id, entityType, href), "", href);
+      if (!options.silent) {
+        if (pushUrl && typeof window !== "undefined") {
+          clientDialogOverrideRef.current = true;
+          // Tag the entry so a Back/Forward popstate can re-open this exact
+          // overlay (it's client-only — React Router's location never moves).
+          window.history.pushState(nodeDialogHistoryState(id, entityType, href), "", href);
+        }
+        setEdgeDialog(null);
+        setEdgeFocus(null);
+        setLifecycleError(null);
+        setNodeDialog((prev) => ({
+          detail: options.keepDetail ? (prev?.detail ?? null) : null,
+          loading: true,
+          error: null,
+        }));
       }
-      setEdgeDialog(null);
-      setEdgeFocus(null);
-      setLifecycleError(null);
-      setNodeDialog((prev) => ({
-        detail: options.keepDetail ? (prev?.detail ?? null) : null,
-        loading: true,
-        error: null,
-      }));
       try {
         const detailUrl = new URL(`/${handle}/graph-node-details.json`, window.location.origin);
         detailUrl.searchParams.set("type", entityType);
@@ -852,17 +868,21 @@ export default function DocoHome({
         const node = json.node;
         if (!node) throw new Error(`Node not found: ${id}`);
         setNodeDialog({ detail: node, loading: false, error: null });
-        setGraphState((prev) => graphWithCenter(prev, node.id));
-        // Panel opens (dialog edge rows) re-center the camera on the node,
-        // like opening its URL from scratch; canvas clicks leave it be.
-        if (options.focusPerspective) setClientFocusId(node.id);
+        if (!options.silent) {
+          setGraphState((prev) => graphWithCenter(prev, node.id));
+          // Panel opens (dialog edge rows) re-center the camera on the node,
+          // like opening its URL from scratch; canvas clicks leave it be.
+          if (options.focusPerspective) setClientFocusId(node.id);
+        }
         setVisibleLifecycles((prev) => new Set([...prev, node.lifecycle ?? "active"]));
       } catch (err) {
-        setNodeDialog((prev) => ({
-          detail: options.keepDetail ? (prev?.detail ?? null) : null,
-          loading: false,
-          error: err instanceof Error ? err.message : String(err),
-        }));
+        if (!options.silent) {
+          setNodeDialog((prev) => ({
+            detail: options.keepDetail ? (prev?.detail ?? null) : null,
+            loading: false,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
       }
     },
     [handle],
@@ -871,31 +891,33 @@ export default function DocoHome({
   const loadEdgeDialog = useCallback(
     async (
       edge: Pick<OverviewGraphLink, "id" | "href" | "source" | "target">,
-      options: { pushUrl?: boolean; keepDetail?: boolean } = {},
+      options: { pushUrl?: boolean; keepDetail?: boolean; silent?: boolean } = {},
     ) => {
       if (!edge.id) return;
       const href = edge.href ?? `/${handle}/edges/${edge.id}`;
       const pushUrl = options.pushUrl ?? true;
-      if (pushUrl && typeof window !== "undefined") {
-        clientDialogOverrideRef.current = true;
-        window.history.pushState(
-          edgeDialogHistoryState(edge.id, edge.source ?? null, edge.target ?? null, href),
-          "",
-          href,
-        );
+      if (!options.silent) {
+        if (pushUrl && typeof window !== "undefined") {
+          clientDialogOverrideRef.current = true;
+          window.history.pushState(
+            edgeDialogHistoryState(edge.id, edge.source ?? null, edge.target ?? null, href),
+            "",
+            href,
+          );
+        }
+        if (edge.source && edge.target) {
+          setEdgeFocus({ id: edge.id, source: edge.source, target: edge.target });
+          setGraphState((prev) => graphWithCenter(prev, edge.source));
+        }
+        setNodeDialog(null);
+        setLifecycleError(null);
+        setEdgeLifecycleError(null);
+        setEdgeDialog((prev) => ({
+          detail: options.keepDetail ? (prev?.detail ?? null) : null,
+          loading: true,
+          error: null,
+        }));
       }
-      if (edge.source && edge.target) {
-        setEdgeFocus({ id: edge.id, source: edge.source, target: edge.target });
-        setGraphState((prev) => graphWithCenter(prev, edge.source));
-      }
-      setNodeDialog(null);
-      setLifecycleError(null);
-      setEdgeLifecycleError(null);
-      setEdgeDialog((prev) => ({
-        detail: options.keepDetail ? (prev?.detail ?? null) : null,
-        loading: true,
-        error: null,
-      }));
       try {
         const detailUrl = new URL(`/${handle}/graph-edge-details.json`, window.location.origin);
         detailUrl.searchParams.set("id", edge.id);
@@ -910,21 +932,53 @@ export default function DocoHome({
         const detail = json.edge;
         if (!detail) throw new Error(`Edge not found: ${edge.id}`);
         setEdgeDialog({ detail, loading: false, error: null });
-        setEdgeFocus(edgeFocusFromDetail(detail));
-        setGraphState((prev) => graphWithCenter(prev, detail.from.id));
+        if (!options.silent) {
+          setEdgeFocus(edgeFocusFromDetail(detail));
+          setGraphState((prev) => graphWithCenter(prev, detail.from.id));
+        }
         setVisibleLifecycles(
           (prev) => new Set([...prev, detail.from.lifecycle, detail.to.lifecycle]),
         );
       } catch (err) {
-        setEdgeDialog((prev) => ({
-          detail: options.keepDetail ? (prev?.detail ?? null) : null,
-          loading: false,
-          error: err instanceof Error ? err.message : String(err),
-        }));
+        if (!options.silent) {
+          setEdgeDialog((prev) => ({
+            detail: options.keepDetail ? (prev?.detail ?? null) : null,
+            loading: false,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
       }
     },
     [handle],
   );
+
+  // Silently refresh the open dialog whenever the live feed poll completes,
+  // so any external changes (another user, an AI agent) appear in real time.
+  useEffect(() => {
+    const prev = prevRevalidatorStateRef.current;
+    prevRevalidatorStateRef.current = revalidator.state;
+    if (prev !== "loading" || revalidator.state !== "idle") return;
+    const nd = nodeDialogRef.current;
+    if (nd?.detail && !nd.loading) {
+      void loadNodeDialog(nd.detail.entity_type, nd.detail.id, nd.detail.href, {
+        pushUrl: false,
+        silent: true,
+      });
+      return;
+    }
+    const ed = edgeDialogRef.current;
+    if (ed?.detail && !ed.loading) {
+      void loadEdgeDialog(
+        {
+          id: ed.detail.id,
+          href: ed.detail.href,
+          source: ed.detail.from.id,
+          target: ed.detail.to.id,
+        },
+        { pushUrl: false, silent: true },
+      );
+    }
+  }, [revalidator.state, loadNodeDialog, loadEdgeDialog]);
 
   const handleGraphNodeClick = useCallback(
     (node: OverviewGraphNode) => {

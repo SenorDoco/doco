@@ -38,7 +38,6 @@ export async function action({
 
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
-    body_md?: string;
     /** Seat occupant kind — "human" or "agent" (a vacant seat sets none). */
     kind?: string;
     lifecycle?: string;
@@ -128,7 +127,6 @@ export async function loader({
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
     data: r.data,
-    body_md: r.body_md ?? null,
   }));
   return Response.json({
     ok: true,

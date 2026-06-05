@@ -836,7 +836,7 @@ describe("slack.server", () => {
         input: {
           method: "POST",
           path: "/torre-org-chart/api/principals.json",
-          body: { name: "Francisco Laso", body_md: "Algorithms Engineer" },
+          body: { name: "Francisco Laso — Algorithms Engineer", kind: "human" },
         },
       } as never,
       {
@@ -870,7 +870,7 @@ describe("slack.server", () => {
       path: "/torre-org-chart/api/principals.json",
       origin: "https://doco.test",
       cookieHeader: "doco_session=user_01ABC",
-      body: { name: "Francisco Laso", body_md: "Algorithms Engineer" },
+      body: { name: "Francisco Laso — Algorithms Engineer", kind: "human" },
       userAgent: "Doco-Slack-Assistant/1",
       authoringSurface: "slack",
     });

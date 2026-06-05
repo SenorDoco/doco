@@ -66,8 +66,7 @@ export const ORG_TREE_MAX_ZOOM = 1.5;
 
 // Custom React Flow node — the principal card.
 //
-// Visual hierarchy: icon, Principal name, and a compact role label
-// derived from the first body_md line. Lifecycle and reference badges
+// Visual hierarchy: icon and Principal name. Lifecycle and reference badges
 // stay out of the card so the org chart reads like an org chart.
 //
 // Sized via inline style (Tailwind's JIT can't see template-literal
