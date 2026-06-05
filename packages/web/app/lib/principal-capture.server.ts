@@ -110,7 +110,9 @@ export async function capturePrincipal(
     id,
     doco_id: docoId,
     node_type: "principal",
-    name,
+    // A principal's name is its text — one canonical key, `prose`, like every
+    // other node. (Its description rides along in `body_md`.)
+    prose: name,
     body_md: bodyMd,
     ...(kind ? { kind } : {}),
     created_at: now,
@@ -135,8 +137,6 @@ export async function capturePrincipal(
     id,
     doco_id: docoId,
     entity_type: "principal",
-    // Principal name now lives in `prose` like every other node's label.
-    type_named_value: name,
     data: raw,
     body_md: bodyMd,
     lifecycle,

@@ -228,7 +228,6 @@ async function persistEntity(args: {
         body_md: args.body,
         lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
         name: typeof fm.name === "string" ? fm.name : null,
-        type_named_value: computeTypeNamedValue(args.entityType, fm),
         created_at: typeof fm.created_at === "string" ? fm.created_at : null,
         created_by: typeof fm.created_by === "string" ? fm.created_by : null,
         updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
@@ -260,20 +259,6 @@ async function persistEntity(args: {
   } finally {
     recordPhase("persist_ms", performance.now() - start);
   }
-}
-
-/**
- * Migration-022/023: derive the type-named column value for a migrated
- * node (`intent` for intent rows, `decision` for decision rows, …).
- * After PR #80 every captureX path populates `fm[entityType]` directly
- * with the full prose content; the value is whatever the caller stored
- * there. Non-migrated entities (policies, principal) have no
- * type-named column and the empty string is fine — `upsertEntity` only
- * binds this column when the table spec declares one.
- */
-function computeTypeNamedValue(entityType: string, fm: Record<string, unknown>): string {
-  const direct = fm[entityType];
-  return typeof direct === "string" ? direct : "";
 }
 
 /**
@@ -999,9 +984,10 @@ export async function captureGenericNode(
     id,
     doco_id: docoId,
     node_type: entityType,
-    // Prose lands under the type-named key so storage's `computeTypeNamedValue`
-    // promotes it to the `prose` column.
-    [entityType]: prose,
+    // The node's text has one canonical name — `prose` — matching the `prose`
+    // column storage promotes it to and the key every authoring-policy spec
+    // reads. No type-named key.
+    prose,
     // Flatten attributes onto the data bag; storage re-bags them into the
     // `attributes` jsonb (excluding the envelope/promoted columns).
     ...attributes,
@@ -1260,11 +1246,19 @@ export async function updateEntity(opts: {
     }
   };
 
-  if (typeNamedColumn && typeNamedColumn in normalizedPatch) {
-    // Node prose lives in the type-named field; body_md remains the
-    // long-form markdown body.
-    const v = normalizedPatch[typeNamedColumn];
-    setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
+  if (typeNamedColumn) {
+    // A node's text is `prose` (the typeNamedColumn). Also accept the legacy
+    // type-named patch key (`state`/`intent`/…) as an alias, mirroring
+    // captureGenericNode — body_md remains the long-form markdown body.
+    const raw =
+      typeNamedColumn in normalizedPatch
+        ? normalizedPatch[typeNamedColumn]
+        : entityType in normalizedPatch
+          ? normalizedPatch[entityType]
+          : undefined;
+    if (raw !== undefined) {
+      setScalar(typeNamedColumn, typeof raw === "string" ? raw.trim() : undefined);
+    }
   }
   // Policies carry no type-named prose column: their `kind`, `predicate`,
   // `on_violation`, and `fires_when_node_lifecycle` flow through the generic
@@ -1300,7 +1294,9 @@ export async function updateEntity(opts: {
     // `attributes` is flattened onto the data bag below, never stored as a
     // nested object (storage re-bags the flat keys into the attributes jsonb).
     "attributes",
-    ...(typeNamedColumn ? [typeNamedColumn] : []),
+    // `prose` (the typeNamedColumn) and the legacy type-named alias are handled
+    // above as the node's text — keep both out of the generic attributes loop.
+    ...(typeNamedColumn ? [typeNamedColumn, entityType] : []),
   ]);
   // Apply a flat key onto the data bag with set/clear semantics, tracking the
   // change + op. Shared by the generic top-level loop and the `attributes`

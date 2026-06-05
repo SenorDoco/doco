@@ -254,11 +254,9 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         const snapshot = await withClient((c) => entityAsOf(c, "node", id, txId));
         return Response.json({ id, as_of: txId, snapshot });
       }
-      // The 9 migrated nodes expose their prose under a single key matching
-      // the entity type (intent/decision/rule/...) AND, in the raw-schema
-      // phase, under `prose` + `attributes`. Policies surface `policy` +
-      // optional `body_md`. Principals don't route through this factory.
-      return Response.json(buildEntityGetResponse(rec, cfg.entityType));
+      // Nodes expose the canonical shape — `prose` + `attributes` — for every
+      // type. Policies surface `body_md`. Principals don't route through here.
+      return Response.json(buildEntityGetResponse(rec));
     },
 
     async action({
