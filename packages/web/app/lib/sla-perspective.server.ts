@@ -262,7 +262,7 @@ export async function loadSlaPerspectiveData(
   const [rules, evals, references, actions, decisions, principals] = await Promise.all([
     c.query<RuleRow>(
       `SELECT id, prose AS rule, COALESCE(lifecycle, 'active') AS lifecycle,
-              created_at::text AS created_at, created_by, attributes AS data,
+              created_at::text AS created_at, created_by, extra AS data,
               (SELECT COUNT(*) FROM nodes
                 WHERE node_type = 'rule' AND doco_id = $1) AS total_count
          FROM nodes
@@ -275,7 +275,7 @@ export async function loadSlaPerspectiveData(
     ),
     c.query<EvalRow>(
       `SELECT id, prose AS eval, COALESCE(lifecycle, 'active') AS lifecycle,
-              created_at::text AS created_at, attributes AS data
+              created_at::text AS created_at, extra AS data
          FROM nodes
         WHERE node_type = 'eval'
           AND doco_id = $1
@@ -288,7 +288,7 @@ export async function loadSlaPerspectiveData(
       `SELECT id, prose AS reference,
               locator,
               COALESCE(lifecycle, 'active') AS lifecycle,
-              created_at::text AS created_at, attributes AS data
+              created_at::text AS created_at, extra AS data
          FROM nodes
         WHERE node_type = 'reference'
           AND doco_id = $1
@@ -299,7 +299,7 @@ export async function loadSlaPerspectiveData(
     ),
     c.query<ActionRow>(
       `SELECT id, prose AS action, COALESCE(lifecycle, 'active') AS lifecycle,
-              created_at::text AS created_at, attributes AS data
+              created_at::text AS created_at, extra AS data
          FROM nodes
         WHERE node_type = 'action'
           AND doco_id = $1
@@ -310,7 +310,7 @@ export async function loadSlaPerspectiveData(
     ),
     c.query<DecisionRow>(
       `SELECT id, prose AS decision, COALESCE(lifecycle, 'active') AS lifecycle,
-              created_at::text AS created_at, attributes AS data
+              created_at::text AS created_at, extra AS data
          FROM nodes
         WHERE node_type = 'decision'
           AND doco_id = $1

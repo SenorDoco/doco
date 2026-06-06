@@ -314,7 +314,7 @@ export async function loadGlossaryPerspectiveData(
            split_part(prose, E'\n', 1) AS label,
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,
-           attributes AS data,
+           extra AS data,
            locator,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1

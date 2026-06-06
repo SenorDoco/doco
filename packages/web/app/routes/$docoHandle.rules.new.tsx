@@ -74,11 +74,11 @@ export async function action({
   const authorPrincipalId = me?.id ? await resolvePrincipalIdForUser(meta.docoId, me.id) : null;
 
   // Raw row shape: prose → prose; the predicate/enforced_by conventional
-  // attribute keys → the attributes bag (per CAPTURE_SCHEMAS).
+  // attribute keys → the extra bag (per CAPTURE_SCHEMAS).
   const draft: GenericNodeDraft = stampAuthenticatedCreator(
     {
       prose: ruleText,
-      attributes: { predicate, enforced_by: enforcedBy },
+      extra: { predicate, enforced_by: enforcedBy },
     } satisfies GenericNodeDraft,
     me?.id,
   );

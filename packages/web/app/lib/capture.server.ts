@@ -351,12 +351,12 @@ const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
 
 /**
  * Envelope keys on a `GenericNodeDraft` that the generic capture path
- * consumes itself — they must never be folded into the `attributes` bag.
+ * consumes itself — they must never be folded into the `extra` bag.
  * (The legacy type-named prose key is excluded separately, by entityType.)
  */
 const RESERVED_DRAFT_KEYS: ReadonlySet<string> = new Set([
   "prose",
-  "attributes",
+  "extra",
   "kind",
   "lifecycle",
   "deprecated",
@@ -930,7 +930,7 @@ async function finishNodeCapture(args: {
  *
  *   - `prose`       → the node's prose (→ the `prose` column).
  *   - `kind`        → the promoted `kind` column (eval/state classifiers).
- *   - `attributes`  → the free-form per-type bag (→ the `attributes` jsonb).
+ *   - `extra`  → the free-form per-type bag (→ the `extra` jsonb).
  *   - lifecycle / deprecated / outcome → the lifecycle envelope.
  *
  * For backward compatibility a legacy type-named prose field
@@ -945,7 +945,7 @@ export interface GenericNodeDraft {
   /** Promoted classifier (eval/state). */
   kind?: string;
   /** Free-form per-type metadata bag. */
-  attributes?: Record<string, unknown>;
+  extra?: Record<string, unknown>;
   /** Internal route-filled user id that created this entry. */
   created_by_user_id?: string;
   lifecycle?: string;
@@ -977,7 +977,7 @@ function defaultOutcomeForType(entityType: string): "succeeded" | undefined {
 /**
  * Single generic node-capture path (node-shape slim-down, contract step).
  * Replaces the 9 per-type capture functions + the `normalizeRawCaptureDraft`
- * translation shim: it writes prose→prose, kind→kind, attributes→attributes
+ * translation shim: it writes prose→prose, kind→kind, extra→extra
  * with NO per-type branching for the write. Domain validation (required
  * fields, enums) is delegated to authoring policies.
  */
@@ -1004,22 +1004,22 @@ export async function captureGenericNode(
   if (!proseRaw?.trim()) return { error: "prose is required." };
   const prose = proseRaw.trim();
 
-  // Gather the attributes bag: explicit `attributes` keys plus any flat
+  // Gather the extra bag: explicit `extra` keys plus any flat
   // top-level keys that aren't envelope/identity fields. An explicit
-  // top-level key wins over the same key nested in `attributes`.
-  const attributes: Record<string, unknown> = {};
-  const nested = draft.attributes;
+  // top-level key wins over the same key nested in `extra`.
+  const extra: Record<string, unknown> = {};
+  const nested = draft.extra;
   if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-    Object.assign(attributes, nested);
+    Object.assign(extra, nested);
   }
   for (const [k, v] of Object.entries(draft)) {
     if (RESERVED_DRAFT_KEYS.has(k) || k === entityType) continue;
-    attributes[k] = v;
+    extra[k] = v;
   }
 
   // Reject first-class-edge keys wherever they appear (top-level or bag).
   const edgeKeyError =
-    rejectNodeJsonEdgeKeys(draft as Record<string, unknown>) ?? rejectNodeJsonEdgeKeys(attributes);
+    rejectNodeJsonEdgeKeys(draft as Record<string, unknown>) ?? rejectNodeJsonEdgeKeys(extra);
   if (edgeKeyError) return edgeKeyError;
 
   const id = `${entityType}_${generateUlid()}`;
@@ -1044,11 +1044,11 @@ export async function captureGenericNode(
     // column storage promotes it to and the key every authoring-policy spec
     // reads. No type-named key.
     prose,
-    // Flatten attributes onto the data bag; storage re-bags them into the
-    // `attributes` jsonb (excluding the envelope/promoted columns).
-    ...attributes,
+    // Flatten extra onto the data bag; storage re-bags them into the
+    // `extra` jsonb (excluding the envelope/promoted columns).
+    ...extra,
     // A top-level `kind` is the promoted classifier (eval/state); it wins
-    // over any `kind` that slipped into the attributes bag.
+    // over any `kind` that slipped into the extra bag.
     ...(typeof draft.kind === "string" ? { kind: draft.kind } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
@@ -1337,15 +1337,15 @@ export async function updateEntity(opts: {
     "created_by_user_id",
     // Slug is not a node data field.
     "slug",
-    // `attributes` is flattened onto the data bag below, never stored as a
-    // nested object (storage re-bags the flat keys into the attributes jsonb).
-    "attributes",
+    // `extra` is flattened onto the data bag below, never stored as a
+    // nested object (storage re-bags the flat keys into the extra jsonb).
+    "extra",
     // `prose` (the typeNamedColumn) and the legacy type-named alias are handled
-    // above as the node's text — keep both out of the generic attributes loop.
+    // above as the node's text — keep both out of the generic extra loop.
     ...(typeNamedColumn ? [typeNamedColumn, entityType] : []),
   ]);
   // Apply a flat key onto the data bag with set/clear semantics, tracking the
-  // change + op. Shared by the generic top-level loop and the `attributes`
+  // change + op. Shared by the generic top-level loop and the `extra`
   // flatten below.
   const applyDataField = (k: string, v: unknown) => {
     if (isSystemManagedField(k)) return;
@@ -1366,15 +1366,15 @@ export async function updateEntity(opts: {
     if (SPECIAL_CASED_KEYS.has(k)) continue;
     applyDataField(k, normalizedPatch[k]);
   }
-  // A patch may carry a nested `attributes` bag (e.g. the GitHub PR sync sets
+  // A patch may carry a nested `extra` bag (e.g. the GitHub PR sync sets
   // reference scalars there). The storage round-trip keeps per-node domain
-  // fields as FLAT keys in `data` (rowToRecord flattens the attributes jsonb on
-  // read; buildAttributes re-collects flat keys on write), so merge each
+  // fields as FLAT keys in `data` (rowToRecord flattens the extra jsonb on
+  // read; buildExtra re-collects flat keys on write), so merge each
   // attribute onto the data bag as a flat key rather than storing the nested
   // object. A `null` value clears that attribute.
-  const patchAttributes = normalizedPatch.attributes;
-  if (patchAttributes && typeof patchAttributes === "object" && !Array.isArray(patchAttributes)) {
-    for (const [k, v] of Object.entries(patchAttributes as Record<string, unknown>)) {
+  const patchExtra = normalizedPatch.extra;
+  if (patchExtra && typeof patchExtra === "object" && !Array.isArray(patchExtra)) {
+    for (const [k, v] of Object.entries(patchExtra as Record<string, unknown>)) {
       applyDataField(k, v);
     }
   }

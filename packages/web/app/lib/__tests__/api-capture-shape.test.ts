@@ -1,26 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { buildEntityGetResponse } from "../api-capture-shape";
 
-// The READ side exposes the canonical row shape — `{prose, attributes}` — for
+// The READ side exposes the canonical row shape — `{prose, extra}` — for
 // every node type. There is no type-named key. A policy carries its structured
-// fields in `data` (no `prose`/`attributes`).
+// fields in `data` (no `prose`/`extra`).
 
 describe("buildEntityGetResponse — expose the canonical row shape on read", () => {
-  it("returns prose + attributes for a node, with no type-named key", () => {
+  it("returns prose + extra for a node, with no type-named key", () => {
     const res = buildEntityGetResponse({
       id: "reference_1",
       entity_type: "reference",
       doco_id: "doco_1",
       lifecycle: "active",
       data: { prose: "ACME PR #1" },
-      attributes: { ref_type: "url", locator: "https://x", pr_body: "…" },
+      extra: { ref_type: "url", locator: "https://x", pr_body: "…" },
     });
     expect(res.prose).toBe("ACME PR #1");
     expect(res).not.toHaveProperty("reference"); // no legacy type-named key
-    expect(res.attributes).toEqual({ ref_type: "url", locator: "https://x", pr_body: "…" });
+    expect(res.extra).toEqual({ ref_type: "url", locator: "https://x", pr_body: "…" });
   });
 
-  it("defaults attributes to {} and prose to '' when absent", () => {
+  it("defaults extra to {} and prose to '' when absent", () => {
     const res = buildEntityGetResponse({
       id: "intent_1",
       entity_type: "intent",
@@ -28,10 +28,10 @@ describe("buildEntityGetResponse — expose the canonical row shape on read", ()
       data: {},
     });
     expect(res.prose).toBe("");
-    expect(res.attributes).toEqual({});
+    expect(res.extra).toEqual({});
   });
 
-  it("does not add prose/attributes for a policy row", () => {
+  it("does not add prose/extra for a policy row", () => {
     const res = buildEntityGetResponse({
       id: "policy_1",
       entity_type: "policy",
@@ -39,7 +39,7 @@ describe("buildEntityGetResponse — expose the canonical row shape on read", ()
       data: { kind: "suggestion" },
     });
     expect(res).not.toHaveProperty("prose");
-    expect(res).not.toHaveProperty("attributes");
+    expect(res).not.toHaveProperty("extra");
     expect(res.data).toEqual({ kind: "suggestion" });
   });
 });
