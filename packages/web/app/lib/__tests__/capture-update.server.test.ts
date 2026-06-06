@@ -234,11 +234,11 @@ describe("updateEntity", () => {
 
   const REFERENCE_ID = "reference_01TEST000000000000000001";
 
-  it("flattens an attributes patch onto the node data (reference content_hash update)", async () => {
+  it("flattens an extra patch onto the node data (reference content_hash update)", async () => {
     // On PR re-sync the import patch carries reference scalars (ref_type /
-    // locator / content_hash) in `attributes`. updateEntity must merge those
+    // locator / content_hash) in `extra`. updateEntity must merge those
     // keys onto the data bag as FLAT keys (so storage re-bags them into the
-    // attributes jsonb), not store a nested `attributes` object.
+    // extra jsonb), not store a nested `extra` object.
     vi.mocked(getEntity).mockResolvedValue({
       id: REFERENCE_ID,
       entity_type: "reference",
@@ -267,7 +267,7 @@ describe("updateEntity", () => {
       id: REFERENCE_ID,
       patch: {
         reference: "New title",
-        attributes: { content_hash: "new_hash" },
+        extra: { content_hash: "new_hash" },
       },
       docoHost: "https://doco.test",
       actorId: null,
@@ -278,11 +278,11 @@ describe("updateEntity", () => {
     // The title (`prose`) and the new attribute both land as flat keys.
     expect(rec.data.prose).toBe("New title");
     expect(rec.data).toMatchObject({ prose: "New title", content_hash: "new_hash" });
-    // No nested `attributes` object leaks into the data bag.
-    expect(rec.data).not.toHaveProperty("attributes");
+    // No nested `extra` object leaks into the data bag.
+    expect(rec.data).not.toHaveProperty("extra");
   });
 
-  it("clears a flat attribute when the attributes patch sets it to null", async () => {
+  it("clears a flat attribute when the extra patch sets it to null", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: REFERENCE_ID,
       entity_type: "reference",
@@ -311,7 +311,7 @@ describe("updateEntity", () => {
       id: REFERENCE_ID,
       patch: {
         prose: "Title",
-        attributes: { content_hash: null },
+        extra: { content_hash: null },
       },
       docoHost: "https://doco.test",
       actorId: null,
@@ -323,7 +323,7 @@ describe("updateEntity", () => {
     expect(rec.data).not.toHaveProperty("content_hash");
   });
 
-  it("is a no-op when title + attributes are unchanged (idempotent re-sync)", async () => {
+  it("is a no-op when title + extra are unchanged (idempotent re-sync)", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: REFERENCE_ID,
       entity_type: "reference",
@@ -353,7 +353,7 @@ describe("updateEntity", () => {
       patch: {
         prose: "Stable title",
         lifecycle: "active",
-        attributes: { content_hash: "stable_hash" },
+        extra: { content_hash: "stable_hash" },
       },
       docoHost: "https://doco.test",
       actorId: null,
@@ -372,7 +372,7 @@ describe("updateEntity", () => {
       "decision",
       {
         prose: "Use user provenance",
-        attributes: {
+        extra: {
           question: "Who created this node?",
           chosen: "The authenticated user.",
           created_by_principal_id: "principal_creator",
@@ -397,7 +397,7 @@ describe("updateEntity", () => {
       "decision",
       {
         prose: "Adopt the new vocabulary",
-        attributes: { question: "What lifecycle is stored?", chosen: "asserted" },
+        extra: { question: "What lifecycle is stored?", chosen: "asserted" },
         lifecycle: "asserted",
         created_by_user_id: "user_alice",
       },

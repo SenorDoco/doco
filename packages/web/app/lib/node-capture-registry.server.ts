@@ -63,7 +63,7 @@ function entry<TDraft>(
  * Generic node-capture entry: every generic node type routes through the
  * single `captureGenericNode` writer (node-shape slim-down), bound to its
  * entity_type. No per-type capture function — the API exposes the row
- * schema (`{prose, kind?, attributes}`) directly.
+ * schema (`{prose, kind?, extra}`) directly.
  */
 function genericEntry(entityType: string): RegistryEntry {
   return entry<GenericNodeDraft>(

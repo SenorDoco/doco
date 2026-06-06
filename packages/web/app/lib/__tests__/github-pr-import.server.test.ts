@@ -292,9 +292,9 @@ describe("upsertPullRequestReference", () => {
     mocks.updateEntity.mockResolvedValue({ id: "reference_existing", changed: ["prose"] });
     await upsertPullRequestReference({ ...basePr, body: "Updated rationale." }, opts);
     const patch = mocks.updateEntity.mock.calls[0][0].patch;
-    // prose = title only; the body is dropped, so the patch carries no attributes.
+    // prose = title only; the body is dropped, so the patch carries no extra.
     expect(patch.reference).toBe(basePr.title);
-    expect(patch).not.toHaveProperty("attributes");
+    expect(patch).not.toHaveProperty("extra");
   });
 
   it("reports a no-op re-import as unchanged — NOT a failure", async () => {
@@ -329,7 +329,7 @@ describe("upsertPullRequestReference", () => {
     expect(res).toEqual({ status: "error", error: "locator is required." });
   });
 
-  it("attributes a created Reference to the PR author resolved from github_login", async () => {
+  it("extra a created Reference to the PR author resolved from github_login", async () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
@@ -342,18 +342,18 @@ describe("upsertPullRequestReference", () => {
     expect(resolveAuthorUserId).toHaveBeenCalledWith("octocat");
     // captureGenericNode(dir, docoId, ownerSlug, docoSlug, entityType, draft, …):
     // the PR maps onto the raw row shape — prose = title; locator lands in
-    // attributes (promoted to its column by the writer). The PR body is not stored.
+    // extra (promoted to its column by the writer). The PR body is not stored.
     expect(mocks.captureGenericNode.mock.calls[0][4]).toBe("reference");
     expect(mocks.captureGenericNode.mock.calls[0][5]).toMatchObject({
       prose: basePr.title,
-      attributes: {
+      extra: {
         locator: basePr.html_url,
       },
       created_by_user_id: "user_octocat",
     });
     // prose carries ONLY the title, and the body is never stored.
     expect(mocks.captureGenericNode.mock.calls[0][5].prose).not.toContain("idempotent");
-    expect(mocks.captureGenericNode.mock.calls[0][5].attributes).not.toHaveProperty("body_md");
+    expect(mocks.captureGenericNode.mock.calls[0][5].extra).not.toHaveProperty("body_md");
   });
 
   it("stores no body on create even when the PR has a body", async () => {
@@ -364,7 +364,7 @@ describe("upsertPullRequestReference", () => {
     await upsertPullRequestReference({ ...basePr, body: "Some body text." }, opts);
     const draft = mocks.captureGenericNode.mock.calls[0][5];
     expect(draft.prose).toBe(basePr.title);
-    expect(draft.attributes).not.toHaveProperty("body_md");
+    expect(draft.extra).not.toHaveProperty("body_md");
   });
 
   it("creates without attribution when the author's github_login is unknown", async () => {

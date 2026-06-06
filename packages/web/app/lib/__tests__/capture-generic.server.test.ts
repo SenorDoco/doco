@@ -4,7 +4,7 @@ import { captureGenericNode } from "../capture.server";
 
 // Node-shape slim-down (raw-schema phase, contract step): the API exposes the
 // row schema directly. A single generic capture path writes prose→prose,
-// kind→kind, attributes→attributes — no per-type translation. These pin the
+// kind→kind, extra→extra — no per-type translation. These pin the
 // generic writer's behaviour against a mocked storage layer.
 
 vi.mock("@doco/db", () => ({
@@ -62,17 +62,17 @@ describe("captureGenericNode", () => {
     } as Awaited<ReturnType<typeof getDocoById>>);
   });
 
-  it("writes prose → the type-named column and attributes → the bag", async () => {
+  it("writes prose → the type-named column and extra → the bag", async () => {
     const res = await capture("decision", {
       prose: "Adopt the raw schema",
-      attributes: { question: "What shape does the API expose?", chosen: "The row schema." },
+      extra: { question: "What shape does the API expose?", chosen: "The row schema." },
     });
     expect(res).toMatchObject({ ok: true, id: expect.stringMatching(/^decision_/) });
     expect(upsertEntity).toHaveBeenCalledTimes(1);
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
     // The text flows under the single canonical key `prose` (→ prose column).
     expect(rec.data.prose).toBe("Adopt the raw schema");
-    // attributes are spread flat onto the data bag (storage re-bags them).
+    // extra are spread flat onto the data bag (storage re-bags them).
     expect(rec.data).toMatchObject({
       node_type: "decision",
       prose: "Adopt the raw schema",
@@ -85,14 +85,14 @@ describe("captureGenericNode", () => {
     await capture("eval", {
       prose: "Slug normalization returns the canonical handle",
       kind: "unit",
-      attributes: { criterion: { kind: "exact" } },
+      extra: { criterion: { kind: "exact" } },
     });
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
     expect(rec.data).toMatchObject({ node_type: "eval", kind: "unit" });
   });
 
   it("accepts the legacy type-named field as an alias for prose", async () => {
-    await capture("action", { action: "Deploy the build", attributes: { verb: "deploy" } });
+    await capture("action", { action: "Deploy the build", extra: { verb: "deploy" } });
     const rec = vi.mocked(upsertEntity).mock.calls[0][0];
     expect(rec.data.prose).toBe("Deploy the build");
     expect(rec.data).toMatchObject({ verb: "deploy" });
@@ -106,7 +106,7 @@ describe("captureGenericNode", () => {
   });
 
   it("rejects a missing prose body up front", async () => {
-    const res = await capture("intent", { attributes: {} });
+    const res = await capture("intent", { extra: {} });
     expect(res).toMatchObject({ error: expect.stringContaining("prose is required") });
     expect(upsertEntity).not.toHaveBeenCalled();
   });
@@ -114,7 +114,7 @@ describe("captureGenericNode", () => {
   it("rejects first-class-edge keys in the body", async () => {
     const res = await capture("decision", {
       prose: "x",
-      attributes: { implemented_by: ["reference_1"] },
+      extra: { implemented_by: ["reference_1"] },
     });
     expect(res).toMatchObject({
       error: expect.stringContaining("implemented_by is not a node JSON field"),

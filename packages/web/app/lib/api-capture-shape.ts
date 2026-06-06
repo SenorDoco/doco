@@ -1,5 +1,5 @@
 // The read helper that lets the node API speak the canonical row shape —
-// `{prose, kind?, attributes}` — for every node type. There is no type-named
+// `{prose, kind?, extra}` — for every node type. There is no type-named
 // key: a node's text is `prose`, full stop.
 //
 // Kept dependency-free (only types) so it unit-tests without dragging the
@@ -15,12 +15,12 @@ export interface EntityGetRecord {
   created_at?: string | null;
   updated_at?: string | null;
   data: Record<string, unknown>;
-  attributes?: Record<string, unknown> | null;
+  extra?: Record<string, unknown> | null;
 }
 
 /**
  * Build the GET response body for a node/policy entity. Node rows expose the
- * canonical shape (`prose` + `attributes`); a policy carries its structured
+ * canonical shape (`prose` + `extra`); a policy carries its structured
  * fields in `data`.
  */
 export function buildEntityGetResponse(rec: EntityGetRecord): Record<string, unknown> {
@@ -36,7 +36,7 @@ export function buildEntityGetResponse(rec: EntityGetRecord): Record<string, unk
 
   if (rec.entity_type !== "policy") {
     response.prose = typeof rec.data.prose === "string" ? rec.data.prose : "";
-    response.attributes = rec.attributes ?? {};
+    response.extra = rec.extra ?? {};
   }
 
   return response;

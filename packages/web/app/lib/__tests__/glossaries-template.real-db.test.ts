@@ -13,7 +13,7 @@
 // (`reference`) is the *word being defined* — the headword — while the
 // **definition lives in the `definition` attribute**, off the prose. There is
 // no `chosen`/`question` shape and no deterministic uniqueness gate anymore;
-// the prose-is-the-word / definition-in-attributes checks are folded into the
+// the prose-is-the-word / definition-in-extra checks are folded into the
 // combined term-quality judge, which WARNs rather than blocking.
 //
 // What this pins, machine-checked:
@@ -26,7 +26,7 @@
 //
 // What it documents (judge scripted): the probabilistic specs — membership,
 // the combined term-quality judge (prose-is-the-word / definition-in-
-// attributes / one-concept / acronym-on-the-headword), and the Eval rerun-path
+// extra / one-concept / acronym-on-the-headword), and the Eval rerun-path
 // judge — produce the right verdict on each scenario, including the acronym-
 // scoping false-positive probe (scenario 3).
 
@@ -118,11 +118,11 @@ async function insertNode(
   data: Record<string, unknown>,
 ): Promise<void> {
   // Slim-down: the catch-all `data` jsonb is gone; per-node domain fields live
-  // in `attributes`. The glossary loader reads them via `attributes AS data`.
+  // in `extra`. The glossary loader reads them via `extra AS data`.
   // Identity/lifecycle stay in their real columns, so only the domain fields go
   // into the bag.
   await dbm.db.query(
-    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, attributes)
+    `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, extra)
        VALUES ($1, $2, $3, $4, '', $5::jsonb)`,
     [id, docoId, nodeType, lifecycle, JSON.stringify(data)],
   );

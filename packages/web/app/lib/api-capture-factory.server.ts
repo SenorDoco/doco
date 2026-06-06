@@ -132,7 +132,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
           }
 
           // The generic node writer speaks the raw row shape directly:
-          // `{prose, kind?, attributes:{…}}`, with the legacy type-named prose
+          // `{prose, kind?, extra:{…}}`, with the legacy type-named prose
           // field (`decision`/`intent`/…) still accepted as a `prose` alias —
           // no translation shim needed here.
           const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(
@@ -254,7 +254,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         const snapshot = await withClient((c) => entityAsOf(c, "node", id, txId));
         return Response.json({ id, as_of: txId, snapshot });
       }
-      // Nodes expose the canonical shape — `prose` + `attributes` — for every
+      // Nodes expose the canonical shape — `prose` + `extra` — for every
       // type. A policy carries its structured fields in `data`. Principals don't
       // route through here.
       return Response.json(buildEntityGetResponse(rec));
