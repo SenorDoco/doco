@@ -315,7 +315,6 @@ EXAMPLE
       "prose": "Capture API requests put relationships in edges.",
       "attributes": {
         "predicate": "POST and PATCH request bodies use first-class edges for relationships.",
-        "severity": "hard",
         "enforced_by": "review"
       }
     }'
@@ -407,7 +406,6 @@ EXAMPLE
     -d '{
       "prose": "Plain-text capture API specs",
       "attributes": {
-        "ref_type": "file",
         "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx"
       }
     }'

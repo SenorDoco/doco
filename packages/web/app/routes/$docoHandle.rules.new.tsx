@@ -64,10 +64,8 @@ export async function action({
   const ruleText = String(form.get("rule") ?? form.get("summary") ?? "").trim();
   const predicate = String(form.get("predicate") ?? "").trim();
   const intentId = String(form.get("intent_id") ?? "").trim();
-  const severityRaw = String(form.get("severity") ?? "hard");
   const enforcedByRaw = String(form.get("enforced_by") ?? "review");
 
-  const severity = severityRaw === "soft" ? "soft" : "hard";
   const enforcedBy = (["runtime", "review", "manual"] as const).includes(
     enforcedByRaw as "runtime" | "review" | "manual",
   )
@@ -75,12 +73,12 @@ export async function action({
     : "review";
   const authorPrincipalId = me?.id ? await resolvePrincipalIdForUser(meta.docoId, me.id) : null;
 
-  // Raw row shape: prose → prose; the predicate/severity/enforced_by
-  // conventional attribute keys → the attributes bag (per CAPTURE_SCHEMAS).
+  // Raw row shape: prose → prose; the predicate/enforced_by conventional
+  // attribute keys → the attributes bag (per CAPTURE_SCHEMAS).
   const draft: GenericNodeDraft = stampAuthenticatedCreator(
     {
       prose: ruleText,
-      attributes: { predicate, severity, enforced_by: enforcedBy },
+      attributes: { predicate, enforced_by: enforcedBy },
     } satisfies GenericNodeDraft,
     me?.id,
   );
@@ -204,19 +202,6 @@ export default function NewRule({
                 </select>
               </label>
               <div className="flex gap-6">
-                <fieldset>
-                  <legend className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Severity
-                  </legend>
-                  <label className="mt-1 flex items-center gap-1 text-xs">
-                    <input type="radio" name="severity" value="hard" defaultChecked />
-                    hard (blocker)
-                  </label>
-                  <label className="mt-1 flex items-center gap-1 text-xs">
-                    <input type="radio" name="severity" value="soft" />
-                    soft (warning)
-                  </label>
-                </fieldset>
                 <fieldset>
                   <legend className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Enforced by

@@ -241,10 +241,9 @@ describe("pullRequestReferenceProse", () => {
 });
 
 describe("pullRequestToReferenceDraft", () => {
-  it("maps to a url Reference keyed on the PR URL", () => {
+  it("maps to a Reference keyed on the PR URL", () => {
     const d = pullRequestToReferenceDraft({ ...basePr, state: "closed", merged: true });
     expect(d).toMatchObject({
-      ref_type: "url",
       locator: "https://github.com/acme/store/pull/482",
       lifecycle: "active",
       outcome: "succeeded",
@@ -342,13 +341,12 @@ describe("upsertPullRequestReference", () => {
     );
     expect(resolveAuthorUserId).toHaveBeenCalledWith("octocat");
     // captureGenericNode(dir, docoId, ownerSlug, docoSlug, entityType, draft, …):
-    // the PR maps onto the raw row shape — prose = title; ref_type/locator land
-    // in attributes. The PR body is not stored.
+    // the PR maps onto the raw row shape — prose = title; locator lands in
+    // attributes (promoted to its column by the writer). The PR body is not stored.
     expect(mocks.captureGenericNode.mock.calls[0][4]).toBe("reference");
     expect(mocks.captureGenericNode.mock.calls[0][5]).toMatchObject({
       prose: basePr.title,
       attributes: {
-        ref_type: "url",
         locator: basePr.html_url,
       },
       created_by_user_id: "user_octocat",

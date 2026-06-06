@@ -1,7 +1,7 @@
 // GitHub PR → Doco Reference import (References model — no dedicated node type).
 //
-// A pull request is stored as a `reference` node: ref_type "url", locator = the
-// canonical PR URL (the idempotency key), prose = title. The PR body is not
+// A pull request is stored as a `reference` node: locator = the canonical PR
+// URL (the idempotency key), prose = title. The PR body is not
 // stored on the Reference — a node's only text is its `prose`. Re-importing
 // the same PR upserts the existing Reference (open->queued, merged->active,
 // closed->retired) rather than duplicating - possible because the node freeze
@@ -91,7 +91,6 @@ export function pullRequestRefLifecycle(
 export interface ReferenceDraft {
   /** The Reference's prose: the PR title only (single line). */
   reference: string;
-  ref_type: string;
   locator: string;
   content_hash?: string | null;
   created_by_user_id?: string;
@@ -109,9 +108,9 @@ export function pullRequestReferenceProse(pr: Pick<GitHubPullRequest, "title" | 
 }
 
 /**
- * Map a GitHub PR → a ReferenceDraft (ref_type "url"; locator = PR URL, the
- * idempotency key). Pure. The caller fills `created_by_user_id` from the PR
- * author's github_login → Doco user mapping.
+ * Map a GitHub PR → a ReferenceDraft (locator = PR URL, the idempotency key).
+ * Pure. The caller fills `created_by_user_id` from the PR author's
+ * github_login → Doco user mapping.
  */
 export function pullRequestToReferenceDraft(
   pr: GitHubPullRequest,
@@ -120,7 +119,6 @@ export function pullRequestToReferenceDraft(
   const { lifecycle, outcome } = pullRequestRefLifecycle(pr, opts);
   return {
     reference: pr.title.trim(),
-    ref_type: "url",
     locator: pr.html_url,
     lifecycle,
     ...(outcome ? { outcome } : {}),
@@ -568,8 +566,8 @@ export async function upsertPullRequestReference(
       createdByUserId = null;
     }
   }
-  // Map the import struct onto the generic row shape: prose → prose, the
-  // ref_type/locator/content_hash scalars → attributes.
+  // Map the import struct onto the generic row shape: prose → prose, locator →
+  // its promoted column, content_hash → attributes.
   const res = await captureGenericNode(
     opts.docoDir,
     opts.docoId,
@@ -579,7 +577,6 @@ export async function upsertPullRequestReference(
     {
       prose: draft.reference,
       attributes: {
-        ref_type: draft.ref_type,
         locator: draft.locator,
         ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
       },

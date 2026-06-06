@@ -19,9 +19,7 @@ function row(over: Record<string, unknown>) {
     prose: null,
     lifecycle: "active",
     data: {},
-    ref_type: null,
     locator: null,
-    citation: null,
     ...over,
   };
 }
@@ -38,7 +36,6 @@ describe("loadGlossaryPerspectiveData", () => {
         entity_type: "reference",
         label: "Torre", // first line of prose = the word being defined
         prose: "Torre",
-        ref_type: "term",
         data: { definition: "The company building this product." },
       }),
     ]);
@@ -52,10 +49,10 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(entry.href).toBe("/acme/glossary/reference/reference_01");
     // The definition comes from the attribute, never the prose/headword.
     expect(entry.senses).toEqual(["The company building this product."]);
-    expect(entry.tag).toBe("term"); // ref_type used as the register label
+    expect(entry.tag).toBe("ref."); // references share one register label now
   });
 
-  it("renders a cited-source Reference's source line from citation/locator", async () => {
+  it("renders a cited-source Reference's source line from its locator", async () => {
     // A `derived_from` target: no `definition`, but a source line to show.
     const client = makeClient([
       row({
@@ -63,8 +60,6 @@ describe("loadGlossaryPerspectiveData", () => {
         entity_type: "reference",
         label: "RFC 7231",
         prose: "RFC 7231",
-        ref_type: "document",
-        citation: "HTTP/1.1 Semantics",
         locator: "https://www.rfc-editor.org/rfc/rfc7231",
       }),
     ]);
@@ -72,7 +67,7 @@ describe("loadGlossaryPerspectiveData", () => {
     const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
     const entry = groups[0].entries[0];
     expect(entry.headword).toBe("RFC 7231");
-    expect(entry.source).toBe("HTTP/1.1 Semantics");
+    expect(entry.source).toBe("https://www.rfc-editor.org/rfc/rfc7231");
   });
 
   it("maps Decisions to chosen=headword, question lead-in, and alternatives", async () => {

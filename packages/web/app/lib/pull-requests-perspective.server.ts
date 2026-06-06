@@ -1,7 +1,7 @@
 // Pull requests perspective — server-side data access.
 //
 // A Doco's imported GitHub pull requests are stored as `reference` nodes
-// (ref_type "url", locator = the canonical PR URL, prose = the PR title; the PR
+// (locator = the canonical PR URL, prose = the PR title; the PR
 // body is not stored — see github-pr-import.server.ts). This
 // perspective reads the latest of those
 // References back as a flat, newest-first list — every stage (Merged / Open /
