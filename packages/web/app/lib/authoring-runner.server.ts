@@ -406,7 +406,7 @@ async function loadPopulation(
   // back a relationship.
   //
   // Slim-down: the catch-all `data` jsonb is gone, so rebuild each population
-  // member's field bag from `attributes` (its domain fields, e.g. `chosen`)
+  // member's field bag from `extra` (its domain fields, e.g. `chosen`)
   // plus the real columns the evaluator reads off a candidate — `id`,
   // `node_type` (the `unique_field` / completeness `when_node_type` filter),
   // and `lifecycle`.
@@ -414,15 +414,15 @@ async function loadPopulation(
     id: string;
     node_type: string;
     lifecycle: string;
-    attributes: Record<string, unknown> | null;
+    extra: Record<string, unknown> | null;
   }>(
-    `SELECT id, node_type, COALESCE(lifecycle, 'active') AS lifecycle, attributes FROM nodes
+    `SELECT id, node_type, COALESCE(lifecycle, 'active') AS lifecycle, extra FROM nodes
        WHERE doco_id = $1 AND node_type = ANY($2::text[]) AND id <> $3
          AND COALESCE(lifecycle, 'active') = 'active'`,
     [docoId, [...nodeTypes], excludeId],
   );
   for (const row of r.rows) {
-    const attrs = row.attributes && typeof row.attributes === "object" ? row.attributes : {};
+    const attrs = row.extra && typeof row.extra === "object" ? row.extra : {};
     out.push({
       ...attrs,
       id: row.id,

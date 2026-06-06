@@ -1691,10 +1691,10 @@ Required fields marked *; everything else is optional. lifecycle
 defaults to "active" except where noted.
 
 **Raw row shape.** A node capture body is the storage row itself:
-\`{ prose, kind?, attributes }\`. \`prose\` is the node's full markdown
+\`{ prose, kind?, extra }\`. \`prose\` is the node's full markdown
 text (first line = the label shown in lists and BPMN swim lanes);
 \`kind\` is the promoted classifier a couple of types carry (eval,
-state); every other per-type field goes inside \`attributes\`. There
+state); every other per-type field goes inside \`extra\`. There
 is no separate \`summary\` / \`body_md\` / \`title\` / \`description\`
 field. The legacy type-named prose key (\`intent\` / \`decision\` / …)
 is still accepted as an alias for \`prose\`.
@@ -1712,8 +1712,8 @@ that shows up in lists and BPMN swim lanes. Example:
 
 More examples (minimal — first line of \`prose\` is the label):
 { "prose": "Checkout can be completed without support.\\n\\nBackground: support tickets averaged 3/week before this work." }   ← Intent
-{ "prose": "Implement principal-id capture fields.\\n\\nReplaced the username-based path…", "attributes": { "verb": "implement", "outputs": { "commit": "abc123" } } }   ← Action
-{ "prose": "Use ULIDs for all entity ids.", "attributes": { "question": "What identifier scheme should every entity use?", "chosen": "ULID — time-sortable, URL-safe, no collisions in practice." } } ← Decision
+{ "prose": "Implement principal-id capture fields.\\n\\nReplaced the username-based path…", "extra": { "verb": "implement", "outputs": { "commit": "abc123" } } }   ← Action
+{ "prose": "Use ULIDs for all entity ids.", "extra": { "question": "What identifier scheme should every entity use?", "chosen": "ULID — time-sortable, URL-safe, no collisions in practice." } } ← Decision
 
 Only call GET /<handle>/api/<type>.txt when you need detail beyond
 this cheatsheet (long-form error semantics, deep PATCH field list,

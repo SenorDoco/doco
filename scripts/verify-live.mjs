@@ -8,7 +8,7 @@
 // the paths the recent entity-shape normalization touched:
 //   • Slice 1 (nodes): capture a node with `prose` (using the first node type
 //     the template's allowlist accepts), read it back as the canonical
-//     { prose, attributes } shape (no type-named key), then EDIT it to force a
+//     { prose, extra } shape (no type-named key), then EDIT it to force a
 //     re-evaluation of the stored candidate — the path the original bug lived in
 //     ("the candidate lacks a `prose` field") — and assert it does NOT fail.
 //   • Slice 2 (edges): create a flows_to edge with label/condition/kind and
@@ -226,7 +226,7 @@ async function exerciseReeval(handle) {
   const id = create.body.id ?? create.body[chosen.type]?.id;
   assert(typeof id === "string", "captured node has no id");
 
-  // Read back: canonical { prose, attributes }, NO type-named key.
+  // Read back: canonical { prose, extra }, NO type-named key.
   const got = await json(`/${handle}/api/${chosen.collection}/${id}.json`);
   assert(got.status === 200, `read ${chosen.type} → ${got.status}`);
   const node = got.body[chosen.type] ?? got.body;

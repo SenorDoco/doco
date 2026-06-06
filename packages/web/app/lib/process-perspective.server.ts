@@ -235,7 +235,7 @@ export async function loadProcessGraph(
               t.prose AS summary,
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
-              t.attributes AS data,
+              t.extra AS data,
               (SELECT COUNT(*) FROM nodes
                 WHERE doco_id = $1 AND node_type IN (${processStepTypeList})) AS total_count
          FROM nodes t

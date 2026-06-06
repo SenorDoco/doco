@@ -237,9 +237,9 @@ const CAPTURE_TOOL = {
     "request write access from an owner, then retry — it's a grant change,",
     "not a different login.",
     "",
-    "The body is the raw node row: { prose, kind?, attributes }. `prose` is",
-    "the node's text (first line = label); per-type fields go in `attributes`",
-    "(e.g. an action: { prose, attributes: { verb } }). Read GET",
+    "The body is the raw node row: { prose, kind?, extra }. `prose` is",
+    "the node's text (first line = label); per-type fields go in `extra`",
+    "(e.g. an action: { prose, extra: { verb } }). Read GET",
     "/<handle>/api/<type>.txt for the conventional attribute keys first.",
     "Singular or plural `type` is accepted.",
   ].join("\n"),
@@ -254,7 +254,7 @@ const CAPTURE_TOOL = {
       body: {
         type: "object",
         description:
-          "Raw node row: { prose, kind?, attributes:{…} } — prose is the node text, per-type fields live in attributes (the legacy type-named field like { decision } is still accepted). See /<handle>/api/<type>.txt.",
+          "Raw node row: { prose, kind?, extra:{…} } — prose is the node text, per-type fields live in extra (the legacy type-named field like { decision } is still accepted). See /<handle>/api/<type>.txt.",
         additionalProperties: true,
       },
     },

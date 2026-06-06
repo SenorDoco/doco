@@ -567,7 +567,7 @@ export async function upsertPullRequestReference(
     }
   }
   // Map the import struct onto the generic row shape: prose → prose, locator →
-  // its promoted column, content_hash → attributes.
+  // its promoted column, content_hash → extra.
   const res = await captureGenericNode(
     opts.docoDir,
     opts.docoId,
@@ -576,7 +576,7 @@ export async function upsertPullRequestReference(
     "reference",
     {
       prose: draft.reference,
-      attributes: {
+      extra: {
         locator: draft.locator,
         ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
       },
