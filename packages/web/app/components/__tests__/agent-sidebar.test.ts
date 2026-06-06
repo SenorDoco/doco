@@ -12,6 +12,7 @@ import {
   docoHandleFromPath,
   formatThreadUsageLabel,
   mergeCreatedConversationListItem,
+  planSend,
   renderInlineLinks,
 } from "../agent-sidebar";
 
@@ -284,6 +285,38 @@ describe("applyComposerEchoGuard", () => {
       value: "typing…",
       guard: null,
     });
+  });
+});
+
+describe("planSend", () => {
+  const ctx = (
+    o: Partial<{ busy: boolean; remoteInflight: boolean; isOverride: boolean }> = {},
+  ) => ({ busy: false, remoteInflight: false, isOverride: false, ...o });
+
+  it("ignores a send with no text and no attachments", () => {
+    expect(planSend(false, ctx())).toBe("ignore");
+    expect(planSend(false, ctx({ busy: true }))).toBe("ignore");
+  });
+
+  it("sends immediately when Señor Doco is idle", () => {
+    expect(planSend(true, ctx())).toBe("send");
+  });
+
+  it("queues a message sent while Señor Doco is mid-reply", () => {
+    // The whole point of the queue: don't abort the in-flight turn to race a
+    // second one against the API's user→assistant→user alternation — park it
+    // and let the drain fire it once the turn settles.
+    expect(planSend(true, ctx({ busy: true }))).toBe("queue");
+  });
+
+  it("queues when another tab is mid-reply", () => {
+    expect(planSend(true, ctx({ remoteInflight: true }))).toBe("queue");
+  });
+
+  it("lets a queue drain (override) bypass the queue and send", () => {
+    // The drain replays a queued message with an override; it must send even
+    // if something still reads as busy mid-transition.
+    expect(planSend(true, ctx({ busy: true, isOverride: true }))).toBe("send");
   });
 });
 
