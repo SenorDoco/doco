@@ -1,8 +1,8 @@
 // Pull requests perspective — server-side data access.
 //
 // A Doco's imported GitHub pull requests are stored as `reference` nodes
-// (ref_type "url", locator = the canonical PR URL, prose = the PR title; the
-// body lives in attributes.body_md — see github-pr-import.server.ts). This
+// (locator = the canonical PR URL, prose = the PR title; the PR
+// body is not stored — see github-pr-import.server.ts). This
 // perspective reads the latest of those
 // References back as a flat, newest-first list — every stage (Merged / Open /
 // Closed) shown together, NOT grouped by lifecycle.
@@ -26,8 +26,8 @@ type QueryClient = {
 /** Raw `nodes` row for a PR-shaped Reference. */
 export interface PullRequestRefRow {
   id: string;
-  /** The Reference prose — the PR title (single line; the body lives in
-   *  attributes.body_md). */
+  /** The Reference prose — the PR title (single line; the PR body is not
+   *  stored). */
   reference: string | null;
   /** Promoted `locator` column — the canonical PR URL. */
   locator: string | null;
@@ -102,8 +102,8 @@ function prLifecycleFilterSql(stages: readonly string[]): string {
 /**
  * Map PR-shaped Reference rows to a flat list of items, preserving input order
  * (newest first from the query) regardless of stage. The PR title is the
- * Reference prose (now the title only — the body lives in attributes.body_md),
- * falling back to the locator (PR URL) when the prose is empty. An unknown/null
+ * Reference prose (the title only — the PR body is not stored), falling back to
+ * the locator (PR URL) when the prose is empty. An unknown/null
  * lifecycle is normalized to `queued`. Pure.
  */
 export function pullRequestItemsFromRows(rows: PullRequestRefRow[]): PullRequestItem[] {
@@ -168,18 +168,18 @@ export async function loadPullRequestsPerspective(
   const { rows } = await c.query<PullRequestRefRowWithTotal>(
     `SELECT id,
             prose AS reference,
-            attributes->>'locator' AS locator,
+            locator,
             lifecycle,
             updated_at::text AS updated_at,
             (SELECT COUNT(*)
                FROM nodes
               WHERE doco_id = $1
                 AND node_type = 'reference'
-                AND attributes->>'locator' LIKE '%/pull/%'${filterSql}) AS total_count
+                AND locator LIKE '%/pull/%'${filterSql}) AS total_count
        FROM nodes
       WHERE doco_id = $1
         AND node_type = 'reference'
-        AND attributes->>'locator' LIKE '%/pull/%'${filterSql}
+        AND locator LIKE '%/pull/%'${filterSql}
       ORDER BY updated_at DESC, created_at DESC, id ASC
       LIMIT $2`,
     [docoId, queryLimit],

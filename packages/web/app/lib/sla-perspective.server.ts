@@ -27,7 +27,6 @@ interface EvalRow {
 interface ReferenceRow {
   id: string;
   reference: string;
-  ref_type: string | null;
   locator: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -287,8 +286,7 @@ export async function loadSlaPerspectiveData(
     ),
     c.query<ReferenceRow>(
       `SELECT id, prose AS reference,
-              attributes->>'ref_type' AS ref_type,
-              attributes->>'locator' AS locator,
+              locator,
               COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, attributes AS data
          FROM nodes
@@ -477,7 +475,7 @@ export async function loadSlaPerspectiveData(
     missingOwner: commitments.filter((cmt) => !cmt.owner).length,
     missingRemedy: commitments.filter((cmt) => !cmt.remedy).length,
     reviewDue: commitments.filter((cmt) => isDue(cmt.reviewDate)).length,
-    externalRefs: references.rows.filter((row) => row.locator || row.ref_type === "url").length,
+    externalRefs: references.rows.filter((row) => Boolean(row.locator)).length,
   };
 
   const totalCount = Number(rules.rows[0]?.total_count ?? 0);

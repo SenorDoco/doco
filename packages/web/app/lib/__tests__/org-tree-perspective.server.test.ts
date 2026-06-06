@@ -2,20 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { loadOrgTreeData } from "../org-tree-perspective.server";
 
 describe("loadOrgTreeData", () => {
-  it("derives compact role labels from Principal body prose", async () => {
+  it("infers person/agent from the Principal's prose (its name), with no role sub-label", async () => {
+    // A principal's only text is its `prose` (the name); the org-tree reads the
+    // person/agent signal from it. There is no separate body, so no role label.
     const rows = [
       {
         id: "principal_alex",
-        name: "Alexander Torrenegra",
+        name: "Alexander Torrenegra — Person, CEO and founder",
         lifecycle: "active",
-        body_md: "Person. CEO and top-of-chain - founder.",
         data: {},
       },
       {
         id: "principal_research",
-        name: "Research Agent",
+        name: "Research Agent for synthesis and brief generation",
         lifecycle: "active",
-        body_md: "AI agent: research synthesis and brief generation.",
         data: {},
       },
     ];
@@ -27,7 +27,6 @@ describe("loadOrgTreeData", () => {
               {
                 from_id: "principal_research",
                 to_id: "principal_alex",
-                props: { role: "reports_to" },
               },
             ] as T[],
           };
@@ -42,12 +41,12 @@ describe("loadOrgTreeData", () => {
       expect.objectContaining({
         id: "principal_alex",
         type: "person",
-        role: "CEO and top-of-chain - founder.",
+        role: null,
       }),
       expect.objectContaining({
         id: "principal_research",
         type: "agent",
-        role: "research synthesis and brief generation.",
+        role: null,
         reports_to: "principal_alex",
       }),
     ]);
@@ -61,10 +60,8 @@ describe("loadOrgTreeData", () => {
     const rows = [
       {
         id: "principal_staff",
-        name: "Staff Engineer",
+        name: "Staff Engineer — Vacant, budgeted seat reporting to the Director of Engineering. Open req for a Q3 start.",
         lifecycle: "active",
-        body_md:
-          "Vacant — budgeted Staff Engineer seat, reporting to the Director of Engineering. Open req for a Q3 start.",
         data: {},
       },
     ];
@@ -79,30 +76,28 @@ describe("loadOrgTreeData", () => {
       expect.objectContaining({
         id: "principal_staff",
         type: "vacant",
-        // The leading "Vacant —" marker is stripped from the role label.
-        role: "budgeted Staff Engineer seat, reporting to the Director of Engineerin...",
+        role: null,
       }),
     );
   });
 
   it("prefers the explicit `kind` column over prose inference", async () => {
     // A principal that declares `kind` takes its seat type from the column,
-    // even when the prose would infer the opposite — the structured field wins.
+    // even when the prose (name) would infer the opposite — the structured
+    // field wins.
     const rows = [
       {
         id: "principal_bot",
-        name: "Ops Bot",
+        name: "Ops Bot — human operator on the platform team",
         lifecycle: "active",
         kind: "agent",
-        body_md: "Human operator on the platform team.",
         data: {},
       },
       {
         id: "principal_dana",
-        name: "Dana",
+        name: "Dana — drafts weekly reports like an AI agent",
         lifecycle: "active",
         kind: "human",
-        body_md: "AI agent that drafts weekly reports.",
         data: {},
       },
     ];
@@ -144,9 +139,8 @@ describe("loadOrgTreeData", () => {
           rows: [
             {
               id: "principal_alex",
-              name: "Alex",
+              name: "Alex — Person, CEO",
               lifecycle: "active",
-              body_md: "Person. CEO.",
               data: {},
               // pg returns the windowed bigint as a string.
               total_count: "830",
@@ -175,15 +169,13 @@ describe("loadOrgTreeData", () => {
         queries.push(sql);
         if (/FROM edges/i.test(sql)) {
           return {
-            rows: [
-              { from_id: "principal_b", to_id: "principal_a", props: { role: "reports_to" } },
-            ] as T[],
+            rows: [{ from_id: "principal_b", to_id: "principal_a" }] as T[],
           };
         }
         return {
           rows: [
-            { id: "principal_a", name: "A", lifecycle: "active", body_md: "Person.", data: {} },
-            { id: "principal_b", name: "B", lifecycle: "retired", body_md: "Person.", data: {} },
+            { id: "principal_a", name: "A — Person", lifecycle: "active", data: {} },
+            { id: "principal_b", name: "B — Person", lifecycle: "retired", data: {} },
           ] as T[],
         };
       },

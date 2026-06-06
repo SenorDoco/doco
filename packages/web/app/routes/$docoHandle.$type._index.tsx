@@ -49,7 +49,6 @@ export async function loader({
       return {
         id: r.id,
         summary: r.summary,
-        title: (ent.title as string | undefined) ?? null,
         name: (ent.name as string | undefined) ?? null,
       };
     });
@@ -114,7 +113,7 @@ export default function ListByTypeInDoco({
                       to={entityUrl({ docoHandle: handle, entityType: type, id: it.id })}
                       className="text-primary hover:underline"
                     >
-                      {it.title ?? it.name ?? it.id}
+                      {it.name ?? it.id}
                     </Link>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{it.summary}</TableCell>

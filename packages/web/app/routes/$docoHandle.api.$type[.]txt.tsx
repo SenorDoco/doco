@@ -315,7 +315,6 @@ EXAMPLE
       "prose": "Capture API requests put relationships in edges.",
       "attributes": {
         "predicate": "POST and PATCH request bodies use first-class edges for relationships.",
-        "severity": "hard",
         "enforced_by": "review"
       }
     }'
@@ -407,7 +406,6 @@ EXAMPLE
     -d '{
       "prose": "Plain-text capture API specs",
       "attributes": {
-        "ref_type": "file",
         "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx"
       }
     }'
@@ -470,7 +468,7 @@ ${renderCapturePatchFields("state")}
 
 Principals are the role-personas a Doco links to through attributed_to
 and has_parent edges. A
-Principal's fields — \`name\`, body_md, lifecycle — stay editable across
+Principal's fields — \`name\`, \`kind\`, lifecycle — stay editable across
 its lifecycle. Other nodes reference Principals by id, so a rename never
 breaks edges.
 
@@ -479,17 +477,15 @@ CREATE
   Content-Type: application/json
 
 BODY (JSON)
-  name                required   display name for the Principal. Stored
-                                  after trimming surrounding whitespace;
-                                  not required to be slug-shaped or unique.
-  body_md             optional   markdown body — the only narrative field
-                                  on a Principal. Defaults to empty.
-                                  The org-chart template expects person-
-                                  vs-agent to be declared here in prose
-                                  ("Operates under: @alice", "Autonomous
-                                  research agent", "Human director of …");
-                                  the org-tree perspective infers the icon
-                                  from these signals.
+  name                required   display name for the Principal — its only
+                                  text. Stored after trimming surrounding
+                                  whitespace; not required to be slug-shaped
+                                  or unique. A vacant org-chart seat states
+                                  its vacancy here (e.g. "Vacant — budgeted
+                                  Staff Engineer seat").
+  kind                optional   "human" or "agent". A filled org-chart seat
+                                  declares which; a vacant seat omits it. The
+                                  org-tree perspective draws the icon from it.
 
 SUCCESS RESPONSE — create (HTTP 201, application/json)
   {
@@ -505,7 +501,7 @@ ERROR RESPONSES
   HTTP 401  authentication required
   HTTP 403  write access required
   HTTP 422  authoring policy violation (e.g. org-chart template
-            requires body_md to declare person vs agent)
+            requires the seat to declare person vs agent)
 
 EXAMPLE — create
   curl -sS -X POST \\
@@ -513,8 +509,8 @@ EXAMPLE — create
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/principals.json \\
     -d '{
-      "name": "alice",
-      "body_md": "Human director of engineering. Owns roadmap planning and hiring for the engineering workspace."
+      "name": "Alice — Director of Engineering",
+      "kind": "human"
     }'
 
 EDIT
@@ -527,8 +523,6 @@ EDIT
 BODY (JSON) — at least one field required
   name                optional   new display name. Trimmed; must be
                                   non-empty. Not required to be unique.
-  body_md             optional   markdown body — the only narrative
-                                  field on a Principal.
   lifecycle           optional   only "retired" accepted; see RETIRE.
 
 SUCCESS RESPONSE — edit (HTTP 200, application/json)
@@ -552,7 +546,7 @@ EXAMPLE — edit
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/principals/principal_01...json \\
-    -d '{ "body_md": "Updated bio prose." }'
+    -d '{ "name": "Alice — VP of Engineering" }'
 
 RETIRE
   PATCH ${baseUrl}/${handle}/api/principals/<id>.json
@@ -652,7 +646,6 @@ ENDPOINT (list)
         "agent_instruction": "...",
         "predicate": null,
         "lifecycle": "active",
-        "body_md": "...",
         "created_at": "...",
         "updated_at": "..."
       },

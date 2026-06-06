@@ -30,10 +30,8 @@ interface NodeRow {
   prose: string | null;
   lifecycle: string | null;
   data: Record<string, unknown> | null;
-  // Reference scalars promoted out of `data` (NULL for other types).
-  ref_type: string | null;
+  // The Reference dedup key (promoted column); NULL for other node types.
   locator: string | null;
-  citation: string | null;
   /** Scalar-subquery total glossary entries (bigint → string from pg). */
   total_count?: number | string | null;
 }
@@ -66,7 +64,7 @@ export interface GlossaryEntry {
   question: string | null;
   /** Definition prose, split into numbered senses on blank lines. */
   senses: string[];
-  /** Source line for cited terms (e.g. a Reference's locator / citation). */
+  /** Source line for cited terms (e.g. a Reference's locator). */
   source: string | null;
   alternatives: GlossaryAlternative[];
   lifecycle: string;
@@ -251,11 +249,11 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
     // defined (the headword), and the definition lives in the `definition`
     // attribute — off the prose, so the node name stays the bare term. A
     // cited-source Reference (a `derived_from` target) instead carries its
-    // source line in citation/locator and has no `definition`.
+    // source line in its `locator` and has no `definition`.
     headword = row.label ?? "(untitled reference)";
     definitionProse = asString(data.definition) ?? "";
-    source = row.citation ?? row.locator ?? null;
-    tag = row.ref_type ? row.ref_type.toLowerCase() : "ref.";
+    source = row.locator ?? null;
+    tag = "ref.";
     alternatives = parseAlternatives(data.alternatives);
   } else {
     // Rule / Eval / Intent: the first line is the headword, the rest the body.
@@ -300,8 +298,8 @@ export async function loadGlossaryPerspectiveData(
   // (decision, reference, rule, eval, intent). Each row's `prose` is the
   // shared prose column and `label` is its first line — the headword, for
   // every type including References (a term entry's prose is the word being
-  // defined). The promoted reference scalars (ref_type/locator/citation) are
-  // NULL for the other four types, exactly as the per-table legs projected.
+  // defined). The promoted `locator` column is NULL for the other four types,
+  // exactly as the per-table legs projected.
   //
   // Every lifecycle loads, including retired. Hiding a lifecycle is the
   // client's job: GlossaryPerspective applies the page-level lifecycle filter
@@ -317,9 +315,7 @@ export async function loadGlossaryPerspectiveData(
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,
            attributes AS data,
-           attributes->>'ref_type' AS ref_type,
-           attributes->>'locator' AS locator,
-           attributes->>'citation' AS citation,
+           locator,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1
                AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')) AS total_count

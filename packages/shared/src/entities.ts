@@ -65,12 +65,9 @@ export interface SummarizedFields extends CommonFields {
 }
 
 /**
- * Migration-022: each node type gains a type-named prose field
- * (`intent` on intents, `rule` on rules, etc.). During the additive
- * window the field is optional and parallel to `summary` + `body_md`;
- * once the rename completes it becomes the single required prose
- * carrier and `summary` / `body_md` / `title` / `name` / `description`
- * are dropped.
+ * Every node carries its text in the one canonical `prose` column. The
+ * historical parallel carriers (`summary` / `body_md` / `title` / `name` /
+ * `description`) are gone — a node has exactly one text home, no second body.
  */
 
 // ─── User (OAuth identity — new category) ─────────────────────────
@@ -101,14 +98,13 @@ export interface User {
  * Related to work through edge rows. Slimmed from the pre-rename Principal
  * which also held OAuth identity; that concern is now `User`.
  */
-// Principal carries `name` (display label) + `body_md` (everything else), so it
-// extends CommonFields rather than SummarizedFields.
+// Principal carries a display label (`name`) and an optional seat `kind`; like
+// every node its text lives in the one canonical `prose` column — there is no
+// second `body_md` field. Extends CommonFields rather than SummarizedFields.
 export interface Principal extends CommonFields {
   node_type: "principal";
-  /** Markdown body — the canonical narrative for the Principal. */
-  body_md?: string;
-  /** Display label for the Principal. Other nodes reference Principals
-   *  by id; duplicate names are allowed. */
+  /** Display label for the Principal — stored as its `prose` text. Other nodes
+   *  reference Principals by id; duplicate names are allowed. */
   name: string;
   /** Seat occupant kind — "human" or "agent". Optional; a vacant seat
    *  declares no kind. Drives the org-tree seat icon. */
@@ -306,7 +302,6 @@ export interface Rule extends CommonFields {
    *  carried by `Policy` records, not by this string). */
   predicate?: string;
   fires_when_node_lifecycle?: Lifecycle[];
-  severity?: "blocker" | "warning" | "info";
   phase?: "declared" | "pre" | "post" | "invariant";
   on_violation?: "block" | "warn" | "log";
 }
@@ -510,18 +505,15 @@ export interface Reference extends CommonFields {
   node_type: "reference";
   /** Full prose: human-readable label for the external thing. */
   reference: string;
-  ref_type: "file" | "url" | "ticket" | "commit" | "document" | "other";
+  /** Where the source lives — a path, URL, ticket id, or commit sha. The
+   *  reference's kind is implied by the locator's shape (no separate type). */
   locator: string;
-  /** Short citation string used as the in-prose-mention shortcut. */
-  citation?: string | null;
   /**
    * The definition body when a Reference is used as a glossary term entry.
    * In the glossaries template the prose (`reference`) is the *word being
-   * defined* — the headword — and the meaning lives here, off the prose,
-   * so the node's name stays the bare term. The other Reference attributes
-   * don't fit: `citation` is the in-prose-mention shortcut and `locator`
-   * points at where a source lives — so a dedicated field is the honest
-   * home for the definition.
+   * defined* — the headword — and the meaning lives here, off the prose, so the
+   * node's name stays the bare term: `locator` points at where a source lives,
+   * so a dedicated field is the honest home for the definition.
    */
   definition?: string | null;
   content_hash?: string | null;

@@ -230,36 +230,31 @@ describe("pullRequestRefLifecycle", () => {
 });
 
 describe("pullRequestReferenceProse", () => {
-  // The split: prose is now the PR TITLE ONLY. The body moves to
-  // attributes.body_md, so the prose helper never merges the two anymore.
+  // The PR title is the Reference's only text (`prose`); the PR body is not
+  // stored.
   it("is the title only when there's no body", () => {
     expect(pullRequestReferenceProse({ title: "T", body: null })).toBe("T");
   });
-  it("is the title only even when the PR has a body (body goes to body_md)", () => {
+  it("is the title only even when the PR has a body", () => {
     expect(pullRequestReferenceProse({ title: "T", body: "why" })).toBe("T");
   });
 });
 
 describe("pullRequestToReferenceDraft", () => {
-  it("maps to a url Reference keyed on the PR URL", () => {
+  it("maps to a Reference keyed on the PR URL", () => {
     const d = pullRequestToReferenceDraft({ ...basePr, state: "closed", merged: true });
     expect(d).toMatchObject({
-      ref_type: "url",
       locator: "https://github.com/acme/store/pull/482",
       lifecycle: "active",
       outcome: "succeeded",
     });
     expect(d.reference.split("\n")[0]).toBe(basePr.title);
   });
-  it("carries the title in `reference` (single line) and the body in `body`", () => {
+  it("carries the title in `reference` (single line) — the PR body is not stored", () => {
     const d = pullRequestToReferenceDraft(basePr);
     expect(d.reference).toBe(basePr.title);
     expect(d.reference).not.toContain("\n");
-    expect(d.body).toBe("Makes the key idempotent.");
-  });
-  it("leaves `body` undefined when the PR has no body", () => {
-    expect(pullRequestToReferenceDraft({ ...basePr, body: null }).body).toBeUndefined();
-    expect(pullRequestToReferenceDraft({ ...basePr, body: "   " }).body).toBeUndefined();
+    expect(d).not.toHaveProperty("body");
   });
 });
 
@@ -292,24 +287,14 @@ describe("upsertPullRequestReference", () => {
     expect(mocks.captureGenericNode).not.toHaveBeenCalled();
   });
 
-  it("re-sync patches BOTH the title prose AND attributes.body_md", async () => {
+  it("re-sync patches the title prose only — the PR body is not stored", async () => {
     existing("reference_existing");
-    mocks.updateEntity.mockResolvedValue({ id: "reference_existing", changed: ["body"] });
+    mocks.updateEntity.mockResolvedValue({ id: "reference_existing", changed: ["prose"] });
     await upsertPullRequestReference({ ...basePr, body: "Updated rationale." }, opts);
     const patch = mocks.updateEntity.mock.calls[0][0].patch;
-    // prose = title only; the body rides in attributes.body_md (not the prose).
+    // prose = title only; the body is dropped, so the patch carries no attributes.
     expect(patch.reference).toBe(basePr.title);
-    expect(patch.attributes).toMatchObject({ body_md: "Updated rationale." });
-  });
-
-  it("clears attributes.body_md when the PR body becomes empty", async () => {
-    existing("reference_existing");
-    mocks.updateEntity.mockResolvedValue({ id: "reference_existing", changed: ["body"] });
-    await upsertPullRequestReference({ ...basePr, body: "" }, opts);
-    const patch = mocks.updateEntity.mock.calls[0][0].patch;
-    expect(patch.reference).toBe(basePr.title);
-    // An empty body must CLEAR body_md, not leave a stale value behind.
-    expect(patch.attributes).toHaveProperty("body_md", null);
+    expect(patch).not.toHaveProperty("attributes");
   });
 
   it("reports a no-op re-import as unchanged — NOT a failure", async () => {
@@ -356,28 +341,27 @@ describe("upsertPullRequestReference", () => {
     );
     expect(resolveAuthorUserId).toHaveBeenCalledWith("octocat");
     // captureGenericNode(dir, docoId, ownerSlug, docoSlug, entityType, draft, …):
-    // the PR maps onto the raw row shape — prose = title; the body lands in
-    // attributes.body_md (the title/body split).
+    // the PR maps onto the raw row shape — prose = title; locator lands in
+    // attributes (promoted to its column by the writer). The PR body is not stored.
     expect(mocks.captureGenericNode.mock.calls[0][4]).toBe("reference");
     expect(mocks.captureGenericNode.mock.calls[0][5]).toMatchObject({
       prose: basePr.title,
       attributes: {
-        ref_type: "url",
         locator: basePr.html_url,
-        body_md: "Makes the key idempotent.",
       },
       created_by_user_id: "user_octocat",
     });
-    // prose carries ONLY the title — never the merged body.
+    // prose carries ONLY the title, and the body is never stored.
     expect(mocks.captureGenericNode.mock.calls[0][5].prose).not.toContain("idempotent");
+    expect(mocks.captureGenericNode.mock.calls[0][5].attributes).not.toHaveProperty("body_md");
   });
 
-  it("omits body_md on create when the PR has no body", async () => {
+  it("stores no body on create even when the PR has a body", async () => {
     mocks.withClient.mockImplementation((fn: (c: unknown) => unknown) =>
       fn({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
     );
     mocks.captureGenericNode.mockResolvedValue({ id: "reference_new" });
-    await upsertPullRequestReference({ ...basePr, body: null }, opts);
+    await upsertPullRequestReference({ ...basePr, body: "Some body text." }, opts);
     const draft = mocks.captureGenericNode.mock.calls[0][5];
     expect(draft.prose).toBe(basePr.title);
     expect(draft.attributes).not.toHaveProperty("body_md");

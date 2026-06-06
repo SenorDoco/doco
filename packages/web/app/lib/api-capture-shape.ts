@@ -15,13 +15,13 @@ export interface EntityGetRecord {
   created_at?: string | null;
   updated_at?: string | null;
   data: Record<string, unknown>;
-  body_md?: string;
   attributes?: Record<string, unknown> | null;
 }
 
 /**
  * Build the GET response body for a node/policy entity. Node rows expose the
- * canonical shape (`prose` + `attributes`); policies keep their `body_md`.
+ * canonical shape (`prose` + `attributes`); a policy carries its structured
+ * fields in `data`.
  */
 export function buildEntityGetResponse(rec: EntityGetRecord): Record<string, unknown> {
   const response: Record<string, unknown> = {
@@ -34,9 +34,7 @@ export function buildEntityGetResponse(rec: EntityGetRecord): Record<string, unk
     data: rec.data,
   };
 
-  if (rec.entity_type === "policy") {
-    response.body_md = rec.body_md ?? null;
-  } else {
+  if (rec.entity_type !== "policy") {
     response.prose = typeof rec.data.prose === "string" ? rec.data.prose : "";
     response.attributes = rec.attributes ?? {};
   }

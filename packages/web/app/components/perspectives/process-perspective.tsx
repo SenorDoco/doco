@@ -38,11 +38,10 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
-import { usePerspectiveReferences } from "~/lib/perspective-references";
-import { processEdgeLabelStyles } from "~/lib/process-edge-label-style";
+import { usePublishedReferences } from "~/lib/perspective-references";
+import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
 import { packProcessLaneColumns, processLaneColumnKey } from "~/lib/process-lane-packing";
@@ -54,7 +53,7 @@ import type {
   ProcessPool,
   ProcessShape,
 } from "~/lib/process-perspective.server";
-import { processPriorityReferences } from "~/lib/process-references";
+import { processReferences } from "~/lib/process-references";
 import { computeForwardSequenceDepths } from "~/lib/process-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/process-stable-nodes";
 import { subprocessTargetIntents } from "~/lib/process-subprocess";
@@ -602,48 +601,23 @@ export function ProcessPerspective({
     [onCenterChange, onLaneClick],
   );
 
-  // The Intent pool and its principal-owned swimlanes are first-class
-  // references — they take the leading numbers (Intent first, then each
-  // swimlane owner, in top-to-bottom reading order) before any shape, so a
-  // viewer can jump from the sidebar straight to the pool or lane owner.
-  // Passed to the shared hook as `priorityItems`; the hook handles every
-  // shape node's numbering (sort, viewport-cull, cap, registry publish).
-  const priorityReferences = useMemo<GraphReferenceItem[]>(
-    () => processPriorityReferences(renderedPools, renderedLanes, docoHandle),
-    [renderedPools, renderedLanes, docoHandle],
+  // The BPMN #N numbering belongs to the focal *Intent*, not to whatever is
+  // currently on screen. `processReferences` numbers the focal Intent's full
+  // membership — every pool node of every lifecycle, in creation order — so
+  // the numbers are invariant under retire, hide, lifecycle-filter, pan, and
+  // zoom (none of which change the membership). They shift only when a
+  // different Intent comes into focus (`focalPoolIds` changes), or extend by
+  // one when a node is genuinely added (it sorts last → the next free number).
+  const references = useMemo(
+    () => processReferences(pools, lanes, nodes, focalPoolIds, docoHandle),
+    [pools, lanes, nodes, focalPoolIds, docoHandle],
   );
-  const nodeReferenceCandidates = useMemo(
-    () =>
-      renderedNodes.flatMap((node) => {
-        const position = layout.nodePositions.get(node.id);
-        if (!position) return [];
-        const size = sizeForNode(node);
-        return [
-          {
-            id: node.id,
-            entity_type: node.entity_type,
-            label: node.name ?? node.id,
-            lifecycle: node.lifecycle ?? "active",
-            href: node.href ?? null,
-            position,
-            width: size.width,
-            height: size.height,
-          },
-        ];
-      }),
-    [renderedNodes, layout.nodePositions],
-  );
-  const { numberById: referenceNumberByEntityId } = usePerspectiveReferences({
-    source: "process",
-    viewport,
-    size: graphSize,
-    candidates: nodeReferenceCandidates,
-    priorityItems: priorityReferences,
-  });
+  const { numberById: referenceNumberByEntityId } = usePublishedReferences("process", references);
   // Publish the numbering into an external store so each #N badge can
   // subscribe to its own number. Keeping the number out of node `data`
-  // is what lets `flowNodes` stay referentially stable across pans — the
-  // numbers shift on every frame, the node objects no longer do.
+  // is what lets `flowNodes` stay referentially stable across pans — and
+  // because the numbering itself no longer depends on the viewport, a pan
+  // leaves the store untouched and not even the badges re-render.
   const referenceNumberStore = useRef(createReferenceNumberStore()).current;
   useEffect(() => {
     referenceNumberStore.setNumbers(referenceNumberByEntityId);
@@ -1840,11 +1814,10 @@ export function layOutProcess(
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
-      const label = link.label?.trim() || "";
       const edgeData: Record<string, unknown> = {};
-      if (label) {
+      {
         const { labelBoxStyle, labelStyle } = processEdgeLabelStyles(stroke);
-        edgeData.label = label;
+        edgeData.label = processEdgeLabelText(link.label, link.edge_type);
         edgeData.labelOpacity = edgeOpacity;
         edgeData.labelZIndex = 1;
         edgeData.labelBoxStyle = labelBoxStyle;
@@ -2627,9 +2600,9 @@ function graphReferenceAttributes(
 ): Record<string, string | number | undefined> {
   // The #N reference number is intentionally not emitted here. It lives in
   // the reference-number store (subscribed per-badge) rather than node
-  // `data`, so it can shift on every pan frame without rebuilding nodes.
-  // The sidebar reads numbering from the *published* references
-  // (usePerspectiveReferences), which is the canonical source; this DOM
+  // `data`, so a focus change that renumbers never has to rebuild the node
+  // objects. The sidebar reads numbering from the *published* references
+  // (usePublishedReferences), which is the canonical source; this DOM
   // attribute was only a fallback for perspectives that don't publish.
   //
   // `cursor-pointer`: every shape is clickable (onNodeClick re-focuses the

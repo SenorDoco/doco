@@ -58,20 +58,23 @@ describe("node attributes column (Stage 1 — expand)", () => {
     } as unknown as EntityRecord;
     await upsertEntity(rec, db as never);
 
-    const { rows } = await db.query<{ attributes: Record<string, unknown> }>(
-      "SELECT attributes FROM nodes WHERE id = $1",
-      [id],
-    );
+    const { rows } = await db.query<{
+      locator: string | null;
+      attributes: Record<string, unknown>;
+    }>("SELECT locator, attributes FROM nodes WHERE id = $1", [id]);
     const attrs = rows[0].attributes;
-    // Every per-type field lands in the unified bag…
+    // `locator` is promoted to its own typed column, not the bag.
+    expect(rows[0].locator).toBe("https://example.com/acme/pull/1");
+    expect(attrs).not.toHaveProperty("locator");
+    // The free-form per-type fields land in the unified bag…
     expect(attrs).toMatchObject({
-      ref_type: "url",
-      locator: "https://example.com/acme/pull/1",
-      citation: "PR#1",
-      title: "Add the widget",
       content_hash: "abc123",
       pr_body: "The full body of the pull request goes here.",
     });
+    // …the retired reference scalars (slice C) never reach it…
+    expect(attrs).not.toHaveProperty("ref_type");
+    expect(attrs).not.toHaveProperty("citation");
+    expect(attrs).not.toHaveProperty("title");
     // …and prose / identity / lifecycle never leak into it.
     expect(attrs).not.toHaveProperty("reference");
     expect(attrs).not.toHaveProperty("prose");
@@ -132,17 +135,19 @@ describe("node attributes column (Stage 1 — expand)", () => {
     // every boot.
     await db.exec(schemaSql);
 
-    const { rows } = await db.query<{ attributes: Record<string, unknown> }>(
-      "SELECT attributes FROM nodes WHERE id = $1",
-      [id],
-    );
-    expect(rows[0].attributes).toMatchObject({
-      ref_type: "url",
-      locator: "https://example.com/acme/pull/9",
-      title: "Legacy title",
-      // the stray field that lived only in `data` survived the backfill.
-      note: "kept",
-    });
+    const { rows } = await db.query<{
+      locator: string | null;
+      attributes: Record<string, unknown>;
+    }>("SELECT locator, attributes FROM nodes WHERE id = $1", [id]);
+    // `locator` is folded out of the legacy column AND promoted to its own
+    // typed column (Slice B), not left in the bag.
+    expect(rows[0].locator).toBe("https://example.com/acme/pull/9");
+    expect(rows[0].attributes).not.toHaveProperty("locator");
+    // ref_type / title fold out of the legacy columns but are then dropped from
+    // the bag (slice C); only the stray `data`-only field survives the backfill.
+    expect(rows[0].attributes).toMatchObject({ note: "kept" });
+    expect(rows[0].attributes).not.toHaveProperty("ref_type");
+    expect(rows[0].attributes).not.toHaveProperty("title");
     const after = await db.query<{ column_name: string }>(
       "SELECT column_name FROM information_schema.columns WHERE table_name = 'nodes'",
     );
@@ -165,7 +170,6 @@ describe("node attributes column (Stage 1 — expand)", () => {
       "phase",
       "on_violation",
       "ref_type",
-      "locator",
       "citation",
       "title",
       // principal columns folded into prose / attributes
@@ -177,8 +181,10 @@ describe("node attributes column (Stage 1 — expand)", () => {
     ]) {
       expect(names).not.toContain(dropped);
     }
-    // `kind` is the last promoted scalar (eval/state/principal).
+    // The promoted scalars that keep their own column: `kind` (eval/state/
+    // principal) and `locator` (the reference dedup key).
     expect(names).toContain("kind");
+    expect(names).toContain("locator");
 
     const id = "action_contract00000000000000000";
     await upsertEntity(

@@ -10,11 +10,11 @@ import {
 import { docoPath } from "~/lib/db.server";
 import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
 
-// Principals keep a small positive patch allowlist: name, body_md, lifecycle.
+// Principals keep a small positive patch allowlist: name, lifecycle.
 // `name` is editable — renames are recorded in the audit log, and other nodes
 // reference principals by id (not name), so a rename never breaks edges; only
-// hand-written prose mentions go stale. body_md carries the narrative.
-const PATCHABLE_KEYS = new Set(["name", "body_md", "lifecycle"]);
+// hand-written prose mentions go stale.
+const PATCHABLE_KEYS = new Set(["name", "lifecycle"]);
 
 // Mirror principalLine in /api/principals.json.tsx — wrap the name
 // in a markdown link to the principal's perspective view so the chat
@@ -33,7 +33,6 @@ function principalLine(
 interface PrincipalPatch {
   /** Display name. Trimmed before storage; must be non-empty. Not required to be unique. */
   name?: string;
-  body_md?: string;
   /** Only `"retired"` is accepted; the lifecycle path is one-way. */
   lifecycle?: "retired";
 }
@@ -101,7 +100,6 @@ export async function loader({
       id: existing.id,
       doco_id: existing.doco_id,
       lifecycle: existing.lifecycle,
-      body_md: existing.body_md ?? null,
       ...existing.data,
     },
   });
@@ -236,17 +234,6 @@ export async function action({
     merged.name = patch.name.trim();
   }
 
-  const nextBodyMd =
-    patch.body_md !== undefined ? (patch.body_md ?? "") : (existing.body_md ?? undefined);
-
-  // Surface `body_md` to the policy evaluator. It lives on its own
-  // text column on principals (not inside the data jsonb), so the
-  // merged-from-data candidate would miss it — the org-chart
-  // template's "declare person-vs-agent in body_md" probabilistic
-  // gate would then reject every PATCH that didn't supply a fresh
-  // body_md, even when the existing body already declared it.
-  merged.body_md = nextBodyMd ?? "";
-
   // Run authoring policies against the merged candidate so org-chart
   // templates can block transitions that would leave the Principal in
   // an invalid state. Field updates use the same evaluator that the
@@ -272,7 +259,6 @@ export async function action({
     doco_id: existing.doco_id,
     entity_type: "principal",
     data: merged,
-    body_md: nextBodyMd,
     lifecycle: nextLifecycle,
     created_at: existing.created_at ?? undefined,
     created_by: existing.created_by ?? undefined,
@@ -283,10 +269,6 @@ export async function action({
   await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, existing.id);
   const before: Record<string, unknown> = {};
   const after: Record<string, unknown> = {};
-  if (patch.body_md !== undefined) {
-    before.body_md = existing.body_md ?? "";
-    after.body_md = nextBodyMd ?? "";
-  }
   if (patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle) {
     before.lifecycle = existing.lifecycle ?? "active";
     after.lifecycle = nextLifecycle;

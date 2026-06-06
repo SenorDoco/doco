@@ -1,8 +1,8 @@
 // GitHub PR → Doco Reference import (References model — no dedicated node type).
 //
-// A pull request is stored as a `reference` node: ref_type "url", locator = the
-// canonical PR URL (the idempotency key), prose = title; the PR body lives in
-// attributes.body_md (omitted when the PR has no body). Re-importing
+// A pull request is stored as a `reference` node: locator = the canonical PR
+// URL (the idempotency key), prose = title. The PR body is not
+// stored on the Reference — a node's only text is its `prose`. Re-importing
 // the same PR upserts the existing Reference (open->queued, merged->active,
 // closed->retired) rather than duplicating - possible because the node freeze
 // was removed, so References are editable. Decisions/Actions link to the PR via
@@ -91,9 +91,6 @@ export function pullRequestRefLifecycle(
 export interface ReferenceDraft {
   /** The Reference's prose: the PR title only (single line). */
   reference: string;
-  /** The PR body → attributes.body_md. Undefined when the PR has no body. */
-  body?: string;
-  ref_type: string;
   locator: string;
   content_hash?: string | null;
   created_by_user_id?: string;
@@ -102,29 +99,26 @@ export interface ReferenceDraft {
 }
 
 /**
- * Reference prose for a PR: the title ONLY (the node label). The PR body is
- * split out to attributes.body_md (see `pullRequestToReferenceDraft`), so the
- * prose is a single line. Pure.
+ * Reference prose for a PR: the title ONLY (the node label). The PR body is not
+ * stored on the Reference — a node's only text is its `prose` — so the prose is
+ * a single line. Pure.
  */
 export function pullRequestReferenceProse(pr: Pick<GitHubPullRequest, "title" | "body">): string {
   return pr.title.trim();
 }
 
 /**
- * Map a GitHub PR → a ReferenceDraft (ref_type "url"; locator = PR URL, the
- * idempotency key). Pure. The caller fills `created_by_user_id` from the PR
- * author's github_login → Doco user mapping.
+ * Map a GitHub PR → a ReferenceDraft (locator = PR URL, the idempotency key).
+ * Pure. The caller fills `created_by_user_id` from the PR author's
+ * github_login → Doco user mapping.
  */
 export function pullRequestToReferenceDraft(
   pr: GitHubPullRequest,
   opts?: { approved?: boolean },
 ): ReferenceDraft {
   const { lifecycle, outcome } = pullRequestRefLifecycle(pr, opts);
-  const body = (pr.body ?? "").trim();
   return {
     reference: pr.title.trim(),
-    ...(body ? { body } : {}),
-    ref_type: "url",
     locator: pr.html_url,
     lifecycle,
     ...(outcome ? { outcome } : {}),
@@ -134,8 +128,8 @@ export function pullRequestToReferenceDraft(
 /**
  * Find an existing, in-scope Reference in this Doco whose `locator` equals the
  * PR URL — the dedupe key for idempotent import. Returns the oldest match's id
- * (or null). Keyed on `attributes->>'locator'`, kept an indexed lookup by the
- * partial expression index `nodes_ref_locator_idx`.
+ * (or null). Keyed on the promoted `locator` column, kept an indexed lookup by
+ * the partial index `nodes_ref_locator_idx`.
  */
 export async function findReferenceIdByLocator(
   docoId: string,
@@ -144,7 +138,7 @@ export async function findReferenceIdByLocator(
   return withClient(async (c) => {
     const r = await c.query<{ id: string }>(
       `SELECT id FROM nodes
-        WHERE doco_id = $1 AND node_type = 'reference' AND attributes->>'locator' = $2
+        WHERE doco_id = $1 AND node_type = 'reference' AND locator = $2
         ORDER BY created_at ASC
         LIMIT 1`,
       [docoId, locator],
@@ -345,7 +339,7 @@ export async function findBusinessProcessReferenceTargetsForChangedLines(
   return withClient(async (c) => {
     const r = await c.query<BusinessProcessReferenceRow>(
       `SELECT r.id AS reference_id,
-              r.attributes->>'locator' AS locator,
+              r.locator AS locator,
               e.from_id AS implemented_by_from_id
          FROM nodes r
          LEFT JOIN edges e
@@ -356,7 +350,7 @@ export async function findBusinessProcessReferenceTargetsForChangedLines(
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
           AND COALESCE(r.lifecycle, 'active') <> 'retired'
-          AND r.attributes->>'locator' IS NOT NULL
+          AND r.locator IS NOT NULL
           AND e.from_id IS NOT NULL`,
       [docoId],
     );
@@ -386,7 +380,7 @@ export async function hasBusinessProcessCodeReferences(docoId: string): Promise<
         WHERE r.doco_id = $1
           AND r.node_type = 'reference'
           AND COALESCE(r.lifecycle, 'active') <> 'retired'
-          AND r.attributes->>'locator' IS NOT NULL
+          AND r.locator IS NOT NULL
           AND e.from_id IS NOT NULL
         LIMIT 1`,
       [docoId],
@@ -522,16 +516,12 @@ export async function upsertPullRequestReference(
       entityType: "reference",
       pluralDir: "references",
       id: existingId,
-      // Patch the title prose AND the body. The body rides in
-      // `attributes.body_md`; updateEntity flattens that onto the node's data
-      // bag. Always send the key — set to the body, or `null` to CLEAR it when
-      // the PR body became empty — so a body→empty edit doesn't leave a stale
-      // body_md behind. When title+body+lifecycle are all unchanged the patch
-      // is a no-op (NO_FIELDS_CHANGED → `unchanged`), preserving idempotence.
+      // Patch the title prose (the Reference's only text — the PR body is not
+      // stored). When title+lifecycle are unchanged the patch is a no-op
+      // (NO_FIELDS_CHANGED → `unchanged`), preserving idempotence.
       patch: {
         reference: draft.reference,
         lifecycle: draft.lifecycle,
-        attributes: { body_md: draft.body ?? null },
         ...(draft.outcome ? { outcome: draft.outcome } : {}),
       },
       ...(opts.docoHost ? { docoHost: opts.docoHost } : {}),
@@ -576,8 +566,8 @@ export async function upsertPullRequestReference(
       createdByUserId = null;
     }
   }
-  // Map the import struct onto the generic row shape: prose → prose, the
-  // ref_type/locator/content_hash scalars → attributes.
+  // Map the import struct onto the generic row shape: prose → prose, locator →
+  // its promoted column, content_hash → attributes.
   const res = await captureGenericNode(
     opts.docoDir,
     opts.docoId,
@@ -587,10 +577,8 @@ export async function upsertPullRequestReference(
     {
       prose: draft.reference,
       attributes: {
-        ref_type: draft.ref_type,
         locator: draft.locator,
         ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
-        ...(draft.body ? { body_md: draft.body } : {}),
       },
       ...(draft.lifecycle ? { lifecycle: draft.lifecycle } : {}),
       ...(draft.outcome ? { outcome: draft.outcome } : {}),
