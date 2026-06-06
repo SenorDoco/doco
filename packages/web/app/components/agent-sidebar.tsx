@@ -81,6 +81,23 @@ interface QueuedSend {
   staged: StagedAttachment[];
 }
 
+export type SendPlan = "ignore" | "queue" | "send";
+
+// Decides what a Send does. With nothing to send it's a no-op. While Señor
+// Doco is mid-reply — here or in another tab — the message is queued rather
+// than sent, so we never race a second turn against the Anthropic API's strict
+// user→assistant→user alternation; the drain replays it once the turn settles.
+// A drain replay carries an override, which bypasses the queue so it actually
+// sends.
+export function planSend(
+  hasContent: boolean,
+  ctx: { busy: boolean; remoteInflight: boolean; isOverride: boolean },
+): SendPlan {
+  if (!hasContent) return "ignore";
+  if ((ctx.busy || ctx.remoteInflight) && !ctx.isOverride) return "queue";
+  return "send";
+}
+
 interface UploadAcceptedMeta {
   id: string;
   filename: string;
@@ -1337,17 +1354,26 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const text = (override?.text ?? inputText).trim();
       const sentAttachments = override?.staged ?? staged;
       const attachmentIds = sentAttachments.map((a) => a.id);
+      const plan = planSend(text.length > 0 || attachmentIds.length > 0, {
+        busy,
+        remoteInflight,
+        isOverride: override != null,
+      });
+      if (plan === "ignore") return;
+      if (plan === "queue") {
+        // Señor Doco is mid-reply (this tab or another). Park the message and
+        // its attachments and clear the composer; the drain effect fires it
+        // once the current turn settles. We deliberately don't abort the
+        // in-flight turn to slip a second one in — that would break the API's
+        // user→assistant→user alternation.
+        setQueuedSends((prev) => [...prev, { text, staged: sentAttachments }]);
+        setInputText("");
+        setStaged([]);
+        return;
+      }
       const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
-      if (!text && attachmentIds.length === 0) return;
       const sendSeq = sendSeqRef.current + 1;
       sendSeqRef.current = sendSeq;
-      if ((busy || remoteInflight) && !override) {
-        abortRef.current?.abort();
-        abortRef.current = null;
-        setInFlight(null);
-        setTurnUsage(null);
-        setRemoteInflight(false);
-      }
       // Crash-safe pending-send. Write to localStorage SYNCHRONOUSLY
       // before any await. If the tab dies (reload, network drop)
       // before the SSE response confirms persistence, the recovery
