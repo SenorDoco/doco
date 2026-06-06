@@ -14,6 +14,7 @@ vi.mock("~/lib/doco-access.server", () => ({
 vi.mock("~/lib/host.server", () => ({ loadHostConfig: vi.fn() }));
 vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
+import { toPolicyItem } from "~/components/policy-view";
 import Policies, { PolicyRow } from "../$docoHandle.policies";
 
 function renderRow(props: Parameters<typeof PolicyRow>[0]): string {
@@ -215,6 +216,94 @@ describe("PolicyRow (policies list)", () => {
     expect(html).not.toContain("fires on lifecycle");
   });
 
+  it("shows the node type a node-scoped probabilistic policy judges (when_node_type)", () => {
+    // The screenshot's probabilistic policies judge one node type ("the
+    // Principal's prose") — that scope lives in `when_node_type` but was never
+    // rendered for prose policies, so two policies judging different node types
+    // looked identical. Surface it as a labeled part.
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZSCOPE",
+        kind: "probabilistic",
+        predicate: {
+          agent_instruction: "Check the Principal's prose.",
+          when_node_type: ["principal"],
+        },
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    expect(html).toContain('<dt class="text-muted-foreground">when node type</dt>');
+    expect(html).toContain('<dd class="font-mono text-foreground">principal</dd>');
+    expect(html).toContain("Check the Principal&#x27;s prose.");
+  });
+
+  it("shows the edge an edge-scoped probabilistic policy fires on, as labeled parts", () => {
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZEDGE",
+        kind: "probabilistic",
+        predicate: {
+          agent_instruction: "Judge the relationship.",
+          edge_type: "supports",
+          from_node_type: "intent",
+          to_node_type: "decision",
+        },
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    expect(html).toContain('<dt class="text-muted-foreground">edge type</dt>');
+    expect(html).toContain('<dd class="font-mono text-foreground">supports</dd>');
+    expect(html).toContain('<dt class="text-muted-foreground">from node type</dt>');
+    expect(html).toContain('<dd class="font-mono text-foreground">intent</dd>');
+    expect(html).toContain('<dt class="text-muted-foreground">to node type</dt>');
+    expect(html).toContain('<dd class="font-mono text-foreground">decision</dd>');
+  });
+
+  it("shows the on-violation action for an enforced (non-suggestion) policy", () => {
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZVIOL",
+        kind: "probabilistic",
+        predicate: { agent_instruction: "Judge the node." },
+        onViolation: "warn",
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    expect(html).toContain('<dt class="text-muted-foreground">on violation</dt>');
+    expect(html).toContain('<dd class="font-mono text-foreground">warn</dd>');
+  });
+
+  it("omits the on-violation action for a suggestion (advisory only)", () => {
+    // Suggestions never block — `on_violation` is meaningless for them, so it is
+    // not shown even when present on the stored data.
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: false,
+      item: {
+        id: "policy_01HZADV",
+        kind: "suggestion",
+        predicate: { agent_instruction: "Prefer concise names." },
+        onViolation: "block",
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    expect(html).not.toContain("on violation");
+  });
+
   it("renders the kind label and, for deterministic, the structured parts", () => {
     const html = renderRow({
       handle: "runbook",
@@ -241,6 +330,38 @@ describe("PolicyRow (policies list)", () => {
     // canEdit=false → no Modify link, but the row still links to the policy page.
     expect(anchorCount(html)).toBe(1);
     expect(html).toContain('href="/runbook/policies/policy_01HZDET"');
+  });
+});
+
+describe("toPolicyItem", () => {
+  it("carries the on-violation action off the stored policy data", () => {
+    const item = toPolicyItem({
+      id: "policy_01HZMAP",
+      kind: "deterministic",
+      lifecycle: "active",
+      created_at: "2026-06-01T00:00:00.000Z",
+      data: {
+        kind: "deterministic",
+        predicate: { sub_kind: "requires_node_type", node_types: ["action"] },
+        on_violation: "warn",
+        fires_when_node_lifecycle: ["active"],
+      },
+    });
+
+    expect(item.onViolation).toBe("warn");
+    expect(item.firesWhenNodeLifecycle).toEqual(["active"]);
+  });
+
+  it("leaves on-violation null when the data omits it", () => {
+    const item = toPolicyItem({
+      id: "policy_01HZNONE",
+      kind: "suggestion",
+      lifecycle: "active",
+      created_at: "2026-06-01T00:00:00.000Z",
+      data: { kind: "suggestion", predicate: { agent_instruction: "Be concise." } },
+    });
+
+    expect(item.onViolation).toBeNull();
   });
 });
 
