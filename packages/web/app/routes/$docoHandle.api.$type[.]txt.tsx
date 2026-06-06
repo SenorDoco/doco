@@ -80,7 +80,7 @@ EXAMPLE
     "${baseUrl}/${handle}/api/decisions.json" \\
     -d '{
       "prose": "Render success cards at each creation entry point.",
-      "attributes": {
+      "extra": {
         "question": "Where should the Doco-created confirmation live?",
         "chosen": "Each creation entry point renders its own success card.",
         "alternatives": [
@@ -222,7 +222,7 @@ EXAMPLE
     ${baseUrl}/${handle}/api/actions.json \\
     -d '{
       "prose": "Use first-class edges in the capture API.",
-      "attributes": { "verb": "update", "outputs": { "commit": "abc123" } }
+      "extra": { "verb": "update", "outputs": { "commit": "abc123" } }
     }'
 
 UPDATE AN EXISTING ACTION
@@ -266,7 +266,7 @@ EXAMPLE
     ${baseUrl}/${handle}/api/logs.json \\
     -d '{
       "prose": "Pushed edge-only capture docs.",
-      "attributes": {
+      "extra": {
         "verb": "pushed",
         "happened_at": "2026-05-23T12:00:00.000Z",
         "outputs": { "branch": "main", "commit": "abc123" }
@@ -313,7 +313,7 @@ EXAMPLE
     ${baseUrl}/${handle}/api/rules.json \\
     -d '{
       "prose": "Capture API requests put relationships in edges.",
-      "attributes": {
+      "extra": {
         "predicate": "POST and PATCH request bodies use first-class edges for relationships.",
         "enforced_by": "review"
       }
@@ -358,7 +358,7 @@ EXAMPLE
     ${baseUrl}/${handle}/api/evals.json \\
     -d '{
       "prose": "Intent capture body shape — verify intents reject graph relationship keys.",
-      "attributes": {
+      "extra": {
         "criterion": {
           "kind": "shape",
           "spec": "Intents put relationships in first-class edges."
@@ -405,7 +405,7 @@ EXAMPLE
     ${baseUrl}/${handle}/api/references.json \\
     -d '{
       "prose": "Plain-text capture API specs",
-      "attributes": {
+      "extra": {
         "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx"
       }
     }'
@@ -452,7 +452,7 @@ EXAMPLE
     -d '{
       "prose": "Capture API contract documented",
       "kind": "terminal",
-      "attributes": { "invariants": ["Agents can discover the expected body shape."] }
+      "extra": { "invariants": ["Agents can discover the expected body shape."] }
     }'
 
 UPDATE AN EXISTING STATE

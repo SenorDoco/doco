@@ -4,12 +4,15 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPOSER_ECHO_GUARD_MS,
   DocoChatRef,
   SenorDocoExplainer,
+  applyComposerEchoGuard,
   chatBubbleBlocks,
   docoHandleFromPath,
   formatThreadUsageLabel,
   mergeCreatedConversationListItem,
+  planSend,
   renderInlineLinks,
 } from "../agent-sidebar";
 
@@ -237,6 +240,83 @@ describe("renderInlineLinks", () => {
     expect(out).toContain("my state");
     expect(out).not.toContain("line-through");
     expect(out).not.toContain("~~");
+  });
+});
+
+describe("applyComposerEchoGuard", () => {
+  const guard = (text: string, at: number) => ({ text, at });
+
+  it("drops the post-send echo that would refill a just-cleared composer", () => {
+    // send() clears the box and arms the guard with what it cleared; macOS
+    // autocorrect / IME then fires a trailing change carrying that same text a
+    // few ms later. That echo is the reported bug — it must be swallowed, not
+    // applied, so the textarea stays empty after Send.
+    expect(applyComposerEchoGuard("Ship it", guard("Ship it", 1000), 1010)).toEqual({
+      value: "",
+      guard: null,
+    });
+  });
+
+  it("still guards at the exact window boundary", () => {
+    expect(
+      applyComposerEchoGuard("Ship it", guard("Ship it", 1000), 1000 + COMPOSER_ECHO_GUARD_MS),
+    ).toEqual({ value: "", guard: null });
+  });
+
+  it("passes a genuine edit through and spends the guard", () => {
+    // The first change after a send that ISN'T the echo is a real edit — apply
+    // it verbatim and disarm, so the guard never lingers to eat later input.
+    expect(applyComposerEchoGuard("Ship", guard("Ship it", 1000), 1010)).toEqual({
+      value: "Ship",
+      guard: null,
+    });
+  });
+
+  it("does not swallow the same text re-typed after the guard window", () => {
+    // A real echo lands within milliseconds; the same text arriving much later
+    // is the user deliberately re-typing it, and must go through.
+    expect(
+      applyComposerEchoGuard("Ship it", guard("Ship it", 1000), 1000 + COMPOSER_ECHO_GUARD_MS + 1),
+    ).toEqual({ value: "Ship it", guard: null });
+  });
+
+  it("passes input through untouched when no guard is armed", () => {
+    expect(applyComposerEchoGuard("typing…", null, 5000)).toEqual({
+      value: "typing…",
+      guard: null,
+    });
+  });
+});
+
+describe("planSend", () => {
+  const ctx = (
+    o: Partial<{ busy: boolean; remoteInflight: boolean; isOverride: boolean }> = {},
+  ) => ({ busy: false, remoteInflight: false, isOverride: false, ...o });
+
+  it("ignores a send with no text and no attachments", () => {
+    expect(planSend(false, ctx())).toBe("ignore");
+    expect(planSend(false, ctx({ busy: true }))).toBe("ignore");
+  });
+
+  it("sends immediately when Señor Doco is idle", () => {
+    expect(planSend(true, ctx())).toBe("send");
+  });
+
+  it("queues a message sent while Señor Doco is mid-reply", () => {
+    // The whole point of the queue: don't abort the in-flight turn to race a
+    // second one against the API's user→assistant→user alternation — park it
+    // and let the drain fire it once the turn settles.
+    expect(planSend(true, ctx({ busy: true }))).toBe("queue");
+  });
+
+  it("queues when another tab is mid-reply", () => {
+    expect(planSend(true, ctx({ remoteInflight: true }))).toBe("queue");
+  });
+
+  it("lets a queue drain (override) bypass the queue and send", () => {
+    // The drain replays a queued message with an override; it must send even
+    // if something still reads as busy mid-transition.
+    expect(planSend(true, ctx({ busy: true, isOverride: true }))).toBe("send");
   });
 });
 

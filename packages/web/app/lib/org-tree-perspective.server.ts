@@ -148,7 +148,7 @@ export async function loadOrgTreeData(
       // the promoted `kind` column, falling back to a vacancy/person/agent read
       // of the prose when unset.
       `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle, kind,
-              attributes AS data,
+              extra AS data,
               (SELECT COUNT(*) FROM nodes
                 WHERE node_type = 'principal' AND doco_id = $1) AS total_count
          FROM nodes

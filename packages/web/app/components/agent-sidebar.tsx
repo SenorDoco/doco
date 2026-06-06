@@ -81,6 +81,23 @@ interface QueuedSend {
   staged: StagedAttachment[];
 }
 
+export type SendPlan = "ignore" | "queue" | "send";
+
+// Decides what a Send does. With nothing to send it's a no-op. While Señor
+// Doco is mid-reply — here or in another tab — the message is queued rather
+// than sent, so we never race a second turn against the Anthropic API's strict
+// user→assistant→user alternation; the drain replays it once the turn settles.
+// A drain replay carries an override, which bypasses the queue so it actually
+// sends.
+export function planSend(
+  hasContent: boolean,
+  ctx: { busy: boolean; remoteInflight: boolean; isOverride: boolean },
+): SendPlan {
+  if (!hasContent) return "ignore";
+  if ((ctx.busy || ctx.remoteInflight) && !ctx.isOverride) return "queue";
+  return "send";
+}
+
 interface UploadAcceptedMeta {
   id: string;
   filename: string;
@@ -1337,17 +1354,26 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const text = (override?.text ?? inputText).trim();
       const sentAttachments = override?.staged ?? staged;
       const attachmentIds = sentAttachments.map((a) => a.id);
+      const plan = planSend(text.length > 0 || attachmentIds.length > 0, {
+        busy,
+        remoteInflight,
+        isOverride: override != null,
+      });
+      if (plan === "ignore") return;
+      if (plan === "queue") {
+        // Señor Doco is mid-reply (this tab or another). Park the message and
+        // its attachments and clear the composer; the drain effect fires it
+        // once the current turn settles. We deliberately don't abort the
+        // in-flight turn to slip a second one in — that would break the API's
+        // user→assistant→user alternation.
+        setQueuedSends((prev) => [...prev, { text, staged: sentAttachments }]);
+        setInputText("");
+        setStaged([]);
+        return;
+      }
       const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
-      if (!text && attachmentIds.length === 0) return;
       const sendSeq = sendSeqRef.current + 1;
       sendSeqRef.current = sendSeq;
-      if ((busy || remoteInflight) && !override) {
-        abortRef.current?.abort();
-        abortRef.current = null;
-        setInFlight(null);
-        setTurnUsage(null);
-        setRemoteInflight(false);
-      }
       // Crash-safe pending-send. Write to localStorage SYNCHRONOUSLY
       // before any await. If the tab dies (reload, network drop)
       // before the SSE response confirms persistence, the recovery
@@ -3097,6 +3123,28 @@ function toolLabel(name: string, input: unknown): string {
   return name;
 }
 
+// Composer echo guard. A controlled textarea cleared by send() can be refilled
+// by a trailing `change` that some input stacks (macOS autocorrect, IME
+// composition) dispatch *after* the clear, carrying the text we just sent — so
+// the message lands in the thread yet stays stuck in the box. send() arms the
+// guard with the cleared text; the single matching change that follows within
+// this window is the echo and gets dropped. Comfortably longer than the
+// few-millisecond echo, short enough never to swallow a deliberate re-type.
+export const COMPOSER_ECHO_GUARD_MS = 500;
+
+export function applyComposerEchoGuard(
+  incoming: string,
+  guard: { text: string; at: number } | null,
+  now: number,
+): { value: string; guard: { text: string; at: number } | null } {
+  if (guard && incoming === guard.text && now - guard.at <= COMPOSER_ECHO_GUARD_MS) {
+    // The post-send echo of the text we just cleared — swallow it once.
+    return { value: "", guard: null };
+  }
+  // A real edit (or a stale guard): apply it and disarm so nothing lingers.
+  return { value: incoming, guard: null };
+}
+
 function Composer({
   value,
   onChange,
@@ -3122,6 +3170,7 @@ function Composer({
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const echoGuardRef = useRef<{ text: string; at: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   useEffect(() => {
     const el = ref.current;
@@ -3132,6 +3181,19 @@ function Composer({
   const canSend = value.trim().length > 0 || staged.length > 0;
   const queuedLabel = queuedCount === 0 ? null : `${queuedCount} queued`;
   const helperLabel = "⏎ to send · ⇧⏎ for newline";
+  // Arm the echo guard with the text we're about to clear, then send. The
+  // trailing autocorrect/IME change that some setups fire right after is then
+  // recognized and dropped by handleChange, so the box doesn't refill itself.
+  const submit = () => {
+    if (!canSend) return;
+    echoGuardRef.current = { text: value, at: Date.now() };
+    onSend();
+  };
+  const handleChange = (next: string) => {
+    const r = applyComposerEchoGuard(next, echoGuardRef.current, Date.now());
+    echoGuardRef.current = r.guard;
+    onChange(r.value);
+  };
   return (
     <div
       className={cn(
@@ -3181,14 +3243,14 @@ function Composer({
       <textarea
         ref={ref}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
         placeholder={`Ask Señor Doco as ${username}…`}
         rows={2}
         className="min-h-[44px] w-full resize-none rounded-md px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            onSend();
+            submit();
           }
         }}
       />
@@ -3219,7 +3281,7 @@ function Composer({
         </div>
         <button
           type="button"
-          onClick={onSend}
+          onClick={submit}
           disabled={!canSend}
           aria-label="Send message"
           className={cn(
