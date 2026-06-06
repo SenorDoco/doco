@@ -6,11 +6,12 @@
 import {
   POLICY_KIND_LABEL,
   type PolicyPredicate,
+  type PredicatePart,
   agentInstructionOf,
+  agentInstructionParts,
   deterministicHeadline,
   deterministicParts,
   isDeterministicPredicate,
-  isEdgePredicate,
 } from "@doco/shared";
 import { LinkedProse } from "~/components/linked-text";
 
@@ -36,27 +37,52 @@ export interface PolicyItem {
    * to surface.
    */
   firesWhenNodeLifecycle?: string[] | null;
+  /**
+   * What happens when the policy is violated (`block` | `warn` | `log`).
+   * `null`/absent — and always for suggestions, which are advisory only — means
+   * there's nothing to surface.
+   */
+  onViolation?: string | null;
   lifecycle: string | null;
   createdAt: string | null;
 }
 
 export function PolicyView({ item }: { item: PolicyItem }) {
   const predicate = item.predicate;
+
+  // Every policy renders the same "labeled rows" below its headline/instruction:
+  // the predicate's own structure (deterministic checks, or the node/edge scope
+  // of a prose policy), then the lifecycle stages it fires on, then its
+  // on-violation action. One shape for all the fields, so nothing a policy
+  // carries is hidden.
+  const parts: PredicatePart[] = predicate
+    ? isDeterministicPredicate(predicate)
+      ? deterministicParts(predicate)
+      : agentInstructionParts(predicate)
+    : [];
   // An empty / absent `fires_when_node_lifecycle` means the policy fires
   // regardless of lifecycle, so there's nothing to surface. When it IS scoped,
   // show the stages — otherwise editing that filter (e.g. removing "drafting")
   // leaves the card unchanged and the edit looks like it never saved.
   const firesOn = (item.firesWhenNodeLifecycle ?? []).filter((s) => typeof s === "string" && s);
-  // Rendered as just another labeled row (`fires on lifecycle` → stages),
-  // identical to the deterministic predicate parts — there's nothing special
-  // about it.
-  const firesRow =
-    firesOn.length > 0 ? (
-      <div className="contents">
-        <dt className="text-muted-foreground">fires on lifecycle</dt>
-        <dd className="font-mono text-foreground">{firesOn.join(", ")}</dd>
-      </div>
+  if (firesOn.length > 0) parts.push({ label: "fires on lifecycle", value: firesOn.join(", ") });
+  // Suggestions are advisory and never block, so their on-violation action is
+  // meaningless — show it only for the kinds it governs.
+  if (item.onViolation && item.kind !== "suggestion")
+    parts.push({ label: "on violation", value: item.onViolation });
+
+  const metaRows =
+    parts.length > 0 ? (
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
+        {parts.map((part) => (
+          <div key={part.label} className="contents">
+            <dt className="text-muted-foreground">{part.label}</dt>
+            <dd className="font-mono text-foreground">{part.value}</dd>
+          </div>
+        ))}
+      </dl>
     ) : null;
+
   // A retired policy is no longer in force, so it's shown crossed out in the
   // destructive (red) color — the strike-through and red apply to all of its
   // content (`[&_*]:` overrides the per-element colors below) so the "retired"
@@ -73,35 +99,17 @@ export function PolicyView({ item }: { item: PolicyItem }) {
       {predicate && isDeterministicPredicate(predicate) ? (
         <div className="space-y-1">
           <p className="text-sm font-semibold leading-6">{deterministicHeadline(predicate)}</p>
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
-            {deterministicParts(predicate).map((part) => (
-              <div key={part.label} className="contents">
-                <dt className="text-muted-foreground">{part.label}</dt>
-                <dd className="font-mono text-foreground">{part.value}</dd>
-              </div>
-            ))}
-            {firesRow}
-          </dl>
+          {metaRows}
         </div>
       ) : (
-        <div className="space-y-0.5">
-          {predicate && isEdgePredicate(predicate) ? (
-            <p className="text-[10px] font-mono text-muted-foreground">
-              edge-scoped: {predicate.from_node_type ?? "any"} —{predicate.edge_type}→{" "}
-              {predicate.to_node_type ?? "any"}
-            </p>
-          ) : null}
+        <div className="space-y-1">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Agent instruction:
           </p>
           <p className="whitespace-pre-wrap break-words text-sm leading-6">
             {predicate ? <LinkedProse text={agentInstructionOf(predicate) ?? ""} /> : null}
           </p>
-          {firesRow ? (
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
-              {firesRow}
-            </dl>
-          ) : null}
+          {metaRows}
         </div>
       )}
     </div>
@@ -123,11 +131,13 @@ export function toPolicyItem(row: PolicyRowData): PolicyItem {
   const firesWhenNodeLifecycle = Array.isArray(data.fires_when_node_lifecycle)
     ? data.fires_when_node_lifecycle.filter((v): v is string => typeof v === "string")
     : null;
+  const onViolation = typeof data.on_violation === "string" ? data.on_violation : null;
   return {
     id: row.id,
     kind,
     predicate,
     firesWhenNodeLifecycle,
+    onViolation,
     lifecycle: row.lifecycle,
     createdAt: toIso(row.created_at),
   };
