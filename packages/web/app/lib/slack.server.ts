@@ -1939,11 +1939,7 @@ async function readSlackDocoApiAuthoringContract(
 function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> {
   return {
     id: row.id,
-    summary:
-      row.summary ??
-      (typeof row.data?.prose === "string" ? row.data.prose : null) ??
-      row.name ??
-      null,
+    summary: typeof row.data?.prose === "string" ? row.data.prose : null,
     lifecycle: row.lifecycle ?? null,
     created_at: row.created_at ?? null,
     created_by: row.created_by ?? null,

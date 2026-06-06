@@ -221,7 +221,6 @@ async function persistEntity(args: {
         entity_type: args.entityType,
         data: fm,
         lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
-        name: typeof fm.name === "string" ? fm.name : null,
         created_at: typeof fm.created_at === "string" ? fm.created_at : null,
         created_by: typeof fm.created_by === "string" ? fm.created_by : null,
         updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
