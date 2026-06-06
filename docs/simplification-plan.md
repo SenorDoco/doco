@@ -118,13 +118,13 @@ intended shape/behavior and watch it go red; (2) make it green; (3) land on
 `main` via feature branch → PR → CI green → auto-merge squash; (4) verify live
 on `doco.to` (dev-signin recipe in `AGENTS.md`) with a screenshot.
 
-1. **Nodes — PARTIAL (#1068 landed the prose collapse).** Read `prose` directly,
-   deleted `type_named_value` / `computeTypeNamedValue` / the type-named keys;
-   migrated policy specs → `prose`; **landed the live re-evaluation bug fix.**
-   NOT yet done: the node bag is still named `attributes` (not `extra`) and still
-   holds folded domain fields (`body_md`, `locator`, `ref_type`, …). The
-   node-bag normalization slices below (6.A–6.E) finish it — until they land,
-   slice 1 is not complete.
+1. **Nodes — DONE (#1068 + the node-bag normalization #1081/#1084/#1086/#1088).**
+   Read `prose` directly, deleted `type_named_value` / `computeTypeNamedValue` /
+   the type-named keys; migrated policy specs → `prose`; **landed the live
+   re-evaluation bug fix.** The node bag is now the empty, author-owned `extra`
+   (renamed from `attributes`); every system field is a real typed column. The
+   node-bag normalization slices below (6.A–6.D) finished it; only the optional
+   mapper-teardown (6.E) remains.
 2. **Edges — DONE (#1069).** Promoted the flows_to metadata to typed columns
    (`label`/`condition`/`kind`); dropped `role` and the `props` jsonb; deleted
    the `edge_props_json` alias.
@@ -137,19 +137,27 @@ on `doco.to` (dev-signin recipe in `AGENTS.md`) with a screenshot.
    migrations). Normalizing it is large, risky, low-payoff — leave the jsonb.
 5. **Users — KEEP AS IS (same reasoning).** `data` holds `preferences` (UI
    state) and `name`/`display_name` (read for display). Real config; leave it.
-6. **Node-bag normalization — REMAINING (the real rest of slice 1).** The node
-   bag is not yet the empty, author-owned `extra`; it still holds system fields.
-   Finish it as ordered, test-first, squash-merged slices:
-   - **A. Drop `body_md` — DONE.** Principals and PR references lose their body;
-     a node's only text is `prose`. Org-chart vacancy reads `kind` + `prose`.
-   - **B. Promote `locator` to its own `nodes.locator` column** (it lives in the
-     bag today; the reference-dedup index reads it there).
-   - **C. Drop `ref_type` / `citation` / `severity` / `title` / `body` for good**
-     — earlier migrations folded them into the bag instead of deleting them.
-   - **D. Rename the node bag `attributes` → `extra`** — the big mechanical
-     rename, once the bag holds no system fields.
-   - **E. Collapse `EntityRecord` + the bespoke mappers to one `rowToEntity`**
-     (the `PrincipalRow` fold, #1071, is the template).
+6. **Node-bag normalization — A–D DONE; E optional.** The node bag is now the
+   empty, author-owned `extra`; every system field is a real typed column. Done
+   as ordered, test-first, squash-merged slices (each with a real-DB
+   upgrade-path migration test):
+   - **A. Drop `body_md` — DONE (#1081).** Principals and PR references lose their
+     body; a node's only text is `prose`. Org-chart vacancy reads `kind` +
+     `prose`.
+   - **B. Promote `locator` to its own `nodes.locator` column — DONE (#1084).**
+     The reference-dedup index now reads the column, not the bag.
+   - **C. Drop `ref_type` / `citation` / `severity` / `title` / `body` for good —
+     DONE (#1086).** Earlier migrations had folded them into the bag instead of
+     deleting them; the capture contract, the rule severity UI, and the
+     SLA/glossary rendering of those fields are gone too (owner-approved full
+     drop).
+   - **D. Rename the node bag `attributes` → `extra` — DONE (#1088).** The
+     guarded in-place column rename, once the bag held no system fields.
+   - **E. Collapse `EntityRecord` + the bespoke mappers to one `rowToEntity` —
+     OPTIONAL, not yet done** (the `PrincipalRow` fold, #1071, is the template).
+     Quality-only cleanup with no shape change; the identity-table mappers
+     (`users`/`workspaces`/`docos`) are genuinely distinct, so this needs care,
+     not a mechanical sweep.
 
 
 ## Verification regime (run after each UI-touching slice; exhaustively at the end)
