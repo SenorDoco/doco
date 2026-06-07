@@ -96,6 +96,7 @@ export async function loader({ request }: { request: Request }) {
       count: stats?.nodes ?? 0,
       counts: stats?.counts ?? EMPTY_LIFECYCLE_COUNTS,
       lastUpdatedAt: stats?.lastUpdatedAt ?? null,
+      visibility: d.visibility,
     };
 
     let group = accessGroupsByOwner.get(d.ownerId);

@@ -25,6 +25,7 @@ const items: AccessListItem[] = [
         label: "meta-pull-requests",
         count: 911,
         lastUpdatedAt: DOCO_ISO,
+        visibility: "private",
       },
     ],
   },
@@ -65,5 +66,14 @@ describe("AccessListCard", () => {
     const html = render();
     expect(html).toContain(DOCO_ISO);
     expect(html).toContain("last updated");
+  });
+
+  it("marks a Doco's visibility with an explained icon, but not workspace rows", () => {
+    const html = render();
+    // Leaf Doco rows carry a visibility marker whose hover title explains it.
+    expect(html).toContain('data-visibility="private"');
+    expect(html).toContain("only owner / workspace members can view");
+    // Group (workspace) rows have no visibility, so no marker leaks onto them.
+    expect(html).not.toContain('data-visibility="public"');
   });
 });
