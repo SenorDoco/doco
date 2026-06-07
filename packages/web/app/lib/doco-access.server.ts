@@ -336,7 +336,7 @@ async function loadDocoOwnerIds(docoIds: readonly string[]): Promise<Map<string,
   if (ids.length === 0) return out;
   await withClient(async (c) => {
     const r = await c.query<{ id: string; owner_id: string }>(
-      "SELECT id, owner_id FROM docos WHERE id = ANY($1::text[])",
+      "SELECT id, owner_id FROM docos WHERE id = ANY($1::text[]) AND deleted_at IS NULL",
       [ids],
     );
     for (const row of r.rows) out.set(String(row.id), String(row.owner_id));
@@ -536,16 +536,17 @@ export async function listInvitedDocoIdsForPrincipal(principalId: string): Promi
 export async function listAccessibleDocoIdsForPrincipal(principalId: string): Promise<string[]> {
   const ids = new Set<string>();
   await withClient(async (c) => {
-    const direct = await c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1", [
-      principalId,
-    ]);
+    const direct = await c.query<{ id: string }>(
+      "SELECT id FROM docos WHERE owner_id = $1 AND deleted_at IS NULL",
+      [principalId],
+    );
     for (const row of direct.rows) {
       ids.add(String(row.id));
     }
     const viaWorkspace = await c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
          SELECT workspace_id FROM workspace_users WHERE user_id = $1
-       )`,
+       ) AND deleted_at IS NULL`,
       [principalId],
     );
     for (const row of viaWorkspace.rows) {
@@ -576,7 +577,7 @@ export async function listAccessibleDocoIdsInWorkspace(
   if (all.length === 0) return [];
   return withClient(async (c) => {
     const r = await c.query<{ id: string }>(
-      "SELECT id FROM docos WHERE id = ANY($1::text[]) AND workspace_id = $2",
+      "SELECT id FROM docos WHERE id = ANY($1::text[]) AND workspace_id = $2 AND deleted_at IS NULL",
       [all, workspaceId],
     );
     return r.rows.map((row) => String(row.id));

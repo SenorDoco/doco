@@ -711,7 +711,7 @@ export async function listConversationsForPrincipal(
                 LIMIT 1) AS last_message_role
          FROM chat_conversations c
          LEFT JOIN workspaces w ON w.id = c.workspace_id
-         LEFT JOIN docos d ON d.id = c.doco_id
+         LEFT JOIN docos d ON d.id = c.doco_id AND d.deleted_at IS NULL
          LEFT JOIN users du ON du.id = d.owner_id
          LEFT JOIN workspaces dw ON dw.id = d.owner_id
         WHERE c.user_id = $1

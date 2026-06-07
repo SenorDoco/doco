@@ -236,7 +236,7 @@ export async function assertSingleWorkspaceGrant(grants: {
   if (realDocoIds.length > 0 && touched.size <= 1) {
     await withClient(async (c) => {
       const r = await c.query<{ owner_id: string }>(
-        "SELECT owner_id FROM docos WHERE id = ANY($1::text[])",
+        "SELECT owner_id FROM docos WHERE id = ANY($1::text[]) AND deleted_at IS NULL",
         [realDocoIds],
       );
       for (const row of r.rows) {

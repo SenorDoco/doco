@@ -91,7 +91,7 @@ export async function loader({
     // Docos owned by this workspace.
     const docoRows = (
       await c.query<{ id: string; handle: string; visibility: "public" | "private" }>(
-        "SELECT id, handle, visibility FROM docos WHERE workspace_id = $1 ORDER BY handle",
+        "SELECT id, handle, visibility FROM docos WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY handle",
         [workspace.id],
       )
     ).rows;
