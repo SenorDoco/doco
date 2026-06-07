@@ -84,6 +84,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-06-07",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "org-chart",
+    label: "Org chart",
+    description:
+      "Document who reports to whom — seats as roles, one solid reporting line per seat, teams, dotted-line coordination, and decision authority. Renders as an org tree.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
