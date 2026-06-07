@@ -2,7 +2,7 @@ import type { DocoRole } from "@doco/db";
 
 export const ALL_ROLES: DocoRole[] = ["owner", "writer", "reader"];
 
-export type InviteLevel = "account" | "workspace" | "doco";
+export type InviteLevel = "workspace" | "doco";
 export type InviteOption = {
   id: string;
   label: string;
@@ -77,13 +77,12 @@ export function resolveInviteDefaultSelection(args: {
 
 /**
  * One grant carried by a multi-grant invite (one link, all grants). The
- * redeemer receives every spec on consume. `account_grantor_user_id` is set
- * only on account-level specs (whose account the redeemer joins).
+ * redeemer receives every spec on consume. Every spec names a concrete,
+ * existing target — a person is only ever granted specific workspaces or docos.
  */
 export interface InviteGrantSpec {
-  level: "account" | "workspace" | "doco";
+  level: "workspace" | "doco";
   target_id: string;
   role: DocoRole;
   write_types: string[];
-  account_grantor_user_id?: string;
 }

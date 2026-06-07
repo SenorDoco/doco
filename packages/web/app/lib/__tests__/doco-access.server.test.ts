@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ValidAccessToken } from "../oauth-server.server";
 
 const mocks = vi.hoisted(() => ({
-  getAccountGrant: vi.fn(),
   getDocoUserGrant: vi.fn(),
   getWorkspaceGrant: vi.fn(),
   getPrincipalById: vi.fn(),
   listDocoIdsForUser: vi.fn(),
-  listWorkspaceOwnerUserIds: vi.fn(),
   query: vi.fn(),
   validateAccessToken: vi.fn(),
   withClient: vi.fn(),
@@ -17,7 +15,6 @@ vi.mock("@doco/db", () => {
   const rank = (role: "owner" | "writer" | "reader" | null | undefined) =>
     role === "owner" ? 2 : role === "writer" ? 1 : role === "reader" ? 0 : -1;
   return {
-    getAccountGrant: mocks.getAccountGrant,
     getDocoByIdOrHandle: vi.fn(),
     getDocoUserGrant: mocks.getDocoUserGrant,
     getDocoUserRole: vi.fn(),
@@ -26,7 +23,6 @@ vi.mock("@doco/db", () => {
     getPrincipalById: mocks.getPrincipalById,
     isWorkspaceUser: vi.fn(),
     listDocoIdsForUser: mocks.listDocoIdsForUser,
-    listWorkspaceOwnerUserIds: mocks.listWorkspaceOwnerUserIds,
     maxRole: (...roles: ("owner" | "writer" | "reader" | null | undefined)[]) =>
       roles.reduce<"owner" | "writer" | "reader" | null>(
         (best, role) => (rank(role) > rank(best) ? (role ?? null) : best),
@@ -92,11 +88,9 @@ function token(overrides: Partial<ValidAccessToken>): ValidAccessToken {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getAccountGrant.mockResolvedValue(null);
   mocks.getDocoUserGrant.mockResolvedValue(null);
   mocks.getWorkspaceGrant.mockResolvedValue(null);
   mocks.getPrincipalById.mockResolvedValue(null);
-  mocks.listWorkspaceOwnerUserIds.mockResolvedValue([]);
   mocks.validateAccessToken.mockResolvedValue(null);
   mocks.listDocoIdsForUser.mockResolvedValue([]);
   mocks.query.mockResolvedValue({ rows: [] });
