@@ -17,46 +17,42 @@ If a user just told you something like "let's start using Doco" or
 
 ## Connect via the hosted MCP server (easiest)
 
-Doco hosts a remote MCP server PER WORKSPACE — there is no app-wide MCP.
-Each workspace has its own endpoint, and a connector's token is bound to
-that ONE workspace; it can reach no other:
+Doco hosts ONE remote MCP server, at:
 
-    ${baseUrl}/<workspace-id>/mcp
+    ${baseUrl}/mcp
 
-A workspace id looks like \`workspace_01…\`. Your project owner finds it on
-the workspace's Settings page (or the Tokens/MCP page under "Add MCP
-manually"). Substitute it for \`<workspace-id>\` below.
+Connect once — it reaches every workspace you belong to. Each session
+works in exactly ONE workspace, pinned by the repo's \`.doco/connections.md\`
+or the \`doco_select_workspace\` tool; it can never touch two workspaces in
+the same session (the access token a session uses is single-workspace).
 
 It speaks MCP over Streamable HTTP (JSON-RPC 2.0), gated by the same
 OAuth 2.1 server described below. An unauthenticated request gets a 401
 with a \`WWW-Authenticate\` header pointing at
-\`${baseUrl}/.well-known/oauth-protected-resource/<workspace-id>/mcp\`
-(RFC 9728); a connector client follows that to discover the authorization
-server (RFC 8414) and run the flow — no repo, no local files.
+\`${baseUrl}/.well-known/oauth-protected-resource/mcp\` (RFC 9728); a
+connector client follows that to discover the authorization server
+(RFC 8414) and run the flow — no repo, no local files.
 
 Per client:
 
   - claude.ai / Claude Desktop / Claude mobile / Cursor: add a custom
-    connector with the URL ${baseUrl}/<workspace-id>/mcp — the client runs
-    OAuth for you.
-  - Claude Code: bridge with \`npx mcp-remote ${baseUrl}/<workspace-id>/mcp\`.
+    connector with the URL ${baseUrl}/mcp — the client runs OAuth for you.
+  - Claude Code: bridge with \`npx mcp-remote ${baseUrl}/mcp\`.
   - ChatGPT and other MCP clients: add the same URL as a connector.
 
 Tools available now: \`doco_whoami\` (identity + the Docos you can reach in
-this workspace), \`doco_search\` + \`doco_get\` (read), \`doco_capture\`,
+this session's workspace), \`doco_search\` + \`doco_get\` (read), \`doco_capture\`,
 \`doco_relate\` + \`doco_changeset\` (write), and \`doco_request_access\` (ask an
-owner for a grant). Every tool operates only on Docos inside this one
+owner for a grant). Every tool operates only on Docos inside the session's
 workspace; doco_whoami lists them, so find a project's Doco there rather
 than guessing the handle. Read vs write is a live grant on the same token,
 so stepping up read→write never needs a re-auth — request it and an owner
 approves. There are no auth tools here — the bearer token is the auth.
 
-A token is scoped to a single workspace at most: to work across several
-workspaces, add one connector per workspace. Remote MCP auth is the
-connector client's job. Do not ask the user to paste localhost callback
-URLs back into chat; if the callback listener fails, restart the client MCP
-auth flow. Use the direct OAuth recipes below only when you are not
-connecting through a workspace MCP endpoint.
+Remote MCP auth is the connector client's job. Do not ask the user to
+paste localhost callback URLs back into chat; if the callback listener
+fails, restart the client MCP auth flow. Use the direct OAuth recipes
+below only when you are not connecting through the MCP endpoint.
 
 If your client cannot speak remote MCP at all, drive the OAuth recipes
 below directly.
