@@ -120,7 +120,6 @@ const STATIC_PAGES = [
   "/tokens",
   "/api-keys",
   "/access-requests",
-  "/onboarding/join",
   // NB: /feedback is intentionally admin-only (404 for anyone but `torrenegra`,
   // see routes/feedback.tsx), so it is NOT a general signed-in page — listing it
   // here would be a guaranteed false failure for the test user.
