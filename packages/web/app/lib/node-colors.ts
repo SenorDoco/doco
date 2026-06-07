@@ -49,6 +49,30 @@ export function lifecycleDescription(lifecycle: string | null | undefined): stri
  */
 export const LIFECYCLE_ORDER = ["drafting", "queued", "active", "retired"] as const;
 
+/**
+ * Render-preference rank for a lifecycle stage: lower = "more live", so
+ * `active` sorts first and `retired` last. Use this — NOT `LIFECYCLE_ORDER`,
+ * which is the drafting→…→retired *progression* — whenever several entities
+ * compete for a single slot and the live one should win. Example: choosing
+ * the one `has_parent` edge that places an org-tree seat when a re-point has
+ * left an old retired line beside the current active one. Unknown stages sort
+ * after the four known ones.
+ */
+export function lifecycleRenderRank(lifecycle: string | null | undefined): number {
+  switch (lifecycle ?? "active") {
+    case "active":
+      return 0;
+    case "queued":
+      return 1;
+    case "drafting":
+      return 2;
+    case "retired":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
 /** A node count broken out by lifecycle stage. */
 export interface LifecycleCounts {
   drafting: number;

@@ -14,6 +14,7 @@
 // regardless of whether it reports to anyone — orphan seats (no manager and no
 // reports) still render as standalone nodes so the author can wire them up.
 
+import { lifecycleRenderRank } from "./node-colors";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 
@@ -72,6 +73,8 @@ interface OrgTreeEdgeRow {
   to_id: string;
   /** "has_parent" (solid reporting line) or "relates_to" (dotted / matrix). */
   edge_type: string;
+  /** Edge lifecycle (COALESCEd to "active"); picks the live parent on re-point. */
+  lifecycle: string;
 }
 
 interface OrgTreeLoadOptions {
@@ -186,8 +189,10 @@ export async function loadOrgTreeData(
           await c.query<OrgTreeEdgeRow>(
             // Two reporting relationships ride on edges between principals:
             // `has_parent` is the solid primary line; `relates_to` is the
-            // dotted-line / matrix line. Pull both in one query.
-            `SELECT from_id, to_id, edge_type
+            // dotted-line / matrix line. Pull both in one query. `lifecycle`
+            // rides along so the loader can prefer the live (active) parent
+            // when a re-point has left an old retired line beside it.
+            `SELECT from_id, to_id, edge_type, COALESCE(lifecycle, 'active') AS lifecycle
                FROM edges
               WHERE doco_id = $1
                 AND (from_id = ANY($2::text[]) OR to_id = ANY($2::text[]))
@@ -197,14 +202,21 @@ export async function loadOrgTreeData(
           )
         ).rows;
   const principalIdSet = new Set(principalIds);
-  const reportsToByPrincipal = new Map<string, string>();
+  // Best `has_parent` per principal: to_id + the lifecycle rank that won it.
+  const reportsToByPrincipal = new Map<string, { to: string; rank: number }>();
   const dottedByPrincipal = new Map<string, string[]>();
   for (const edge of edgeRows) {
     if (edge.edge_type === "has_parent") {
-      // Every `has_parent` edge between principals is a solid reporting line;
-      // the first parent wins so the primary tree stays a clean hierarchy.
-      if (!reportsToByPrincipal.has(edge.from_id))
-        reportsToByPrincipal.set(edge.from_id, edge.to_id);
+      // A seat can carry several `has_parent` edges — re-pointing a reporting
+      // line retires the old edge and adds a new active one (edges are
+      // immutable). The primary tree stays a clean hierarchy by keeping ONE
+      // parent: the most-live line wins (active over retired), and among edges
+      // of equal liveness the first/oldest wins, since they arrive ordered by
+      // created_at and we only replace on a strictly better rank.
+      const rank = lifecycleRenderRank(edge.lifecycle);
+      const current = reportsToByPrincipal.get(edge.from_id);
+      if (!current || rank < current.rank)
+        reportsToByPrincipal.set(edge.from_id, { to: edge.to_id, rank });
     } else {
       // A `relates_to` edge between TWO principals is a dotted-line / matrix
       // report (from the seat to its secondary manager). A relate to a
@@ -221,7 +233,7 @@ export async function loadOrgTreeData(
     const type = mapPrincipalKind(r.kind) ?? inferKindFromProse(r.name);
     // No separate body to derive a role sub-label from — the prose IS the name.
     const role = null;
-    const reports_to = reportsToByPrincipal.get(r.id) ?? null;
+    const reports_to = reportsToByPrincipal.get(r.id)?.to ?? null;
     // Dotted-line / matrix managers — `relates_to` edges to other principals,
     // minus any that merely duplicate the solid reporting line.
     const dotted_reports_to = (dottedByPrincipal.get(r.id) ?? []).filter((id) => id !== reports_to);
