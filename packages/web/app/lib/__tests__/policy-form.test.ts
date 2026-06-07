@@ -272,6 +272,24 @@ describe("every deterministic check type is editable (no silent corruption)", ()
         exempt_when_other_node_type: "intent",
       },
     ],
+    // The exact shape of the process-membership policy in the bug report: an
+    // OUTGOING `has_parent` floor with BOTH structural exemptions. The earlier
+    // requires_edge case above never exercised `exempt_when_incoming_edge_type`
+    // or `exempt_when_field_truthy`, so the prefill silently dropped them on
+    // "Save changes" — turning a correctly-exempted floor into one that blocks
+    // every top-level process and entry-point Action.
+    [
+      "requires_edge (process membership, both exemptions)",
+      {
+        sub_kind: "requires_edge",
+        edge_type: "has_parent",
+        target_node_type: "action",
+        direction: "outgoing",
+        exempt_when_incoming_edge_type: "has_parent",
+        exempt_when_field_truthy: "entry_point",
+        when_node_type: ["action", "decision", "state"],
+      },
+    ],
   ];
   for (const [name, predicate] of ROUND_TRIP) {
     it(`round-trips a stored ${name} predicate unchanged (prefill → resubmit)`, () => {
@@ -315,6 +333,33 @@ describe("policyFormInitialFromData — prefills the new deterministic shapes", 
     });
     expect(init.sub_kind).toBe("requires_edge_type");
     expect(init.edge_types).toBe("flows_to, supports");
+  });
+
+  it("prefills the requires_edge structural exemptions (regression: dropped on edit)", () => {
+    // The membership floor from the bug report. Before the fix, the prefill
+    // hand-listed predicate fields and forgot these two, so opening the policy
+    // showed blank inputs and saving erased the exemptions.
+    const init = policyFormInitialFromData({
+      kind: "deterministic",
+      predicate: {
+        sub_kind: "requires_edge",
+        edge_type: "has_parent",
+        target_node_type: "action",
+        direction: "outgoing",
+        exempt_when_incoming_edge_type: "has_parent",
+        exempt_when_field_truthy: "entry_point",
+        when_node_type: ["action", "decision", "state"],
+      },
+    });
+    expect(init).toMatchObject({
+      sub_kind: "requires_edge",
+      edge_type: "has_parent",
+      target_node_type: "action",
+      direction: "outgoing",
+      exempt_when_incoming_edge_type: "has_parent",
+      exempt_when_field_truthy: "entry_point",
+      when_node_type: "action, decision, state",
+    });
   });
 
   it("prefills flow-wiring initial/terminal conditions", () => {

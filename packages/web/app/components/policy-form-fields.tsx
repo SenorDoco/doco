@@ -15,7 +15,11 @@ import {
 } from "@doco/shared";
 import { useState } from "react";
 import { POLICY_KIND_HELP } from "~/lib/policy-copy";
-import { DETERMINISTIC_SUB_KINDS, type PolicyFormInitial } from "~/lib/policy-form";
+import {
+  DETERMINISTIC_SUB_KINDS,
+  EMPTY_POLICY_FORM_INITIAL,
+  type PolicyFormInitial,
+} from "~/lib/policy-form";
 
 type PolicyKind = "suggestion" | "deterministic" | "probabilistic";
 
@@ -172,38 +176,7 @@ export function PolicyFormFields({
 }: {
   initial?: Partial<PolicyFormInitial>;
 }) {
-  const init: PolicyFormInitial = {
-    kind: "suggestion",
-    agent_instruction: "",
-    sub_kind: "requires_field",
-    edge_type: "",
-    from_node_type: "",
-    to_node_type: "",
-    target_node_type: "",
-    min_count: "",
-    exempt_when_other_node_type: "",
-    max_count: "",
-    direction: "",
-    fields: "",
-    field: "",
-    pattern: "",
-    flags: "",
-    case_fold: false,
-    node_types: "",
-    edge_types: "",
-    entity_types: "",
-    list_field: "",
-    incoming_node_type: "",
-    incoming_field_must_match: "",
-    initial_when_field: "",
-    initial_when_equals: "",
-    terminal_when_field: "",
-    terminal_when_equals: "",
-    when_node_type: "",
-    on_violation: "block",
-    fires_when_node_lifecycle: "",
-    ...initial,
-  };
+  const init: PolicyFormInitial = { ...EMPTY_POLICY_FORM_INITIAL, ...initial };
   const [kind, setKind] = useState<PolicyKind>(init.kind);
   const [subKind, setSubKind] = useState<string>(init.sub_kind);
   // A probabilistic policy can be node-scoped (judge one node) or edge-scoped
