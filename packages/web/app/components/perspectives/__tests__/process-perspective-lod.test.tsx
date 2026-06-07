@@ -23,16 +23,16 @@ function render(node: ReactElement): string {
   return renderToStaticMarkup(node);
 }
 
-const intentPool: ProcessPool = {
-  id: "pool:intent_1",
-  intent_id: "intent_1",
+const processPool: ProcessPool = {
+  id: "pool:action_1",
+  process_id: "action_1",
   label: "Post a job",
   lifecycle: "active",
 };
 
 const actorLane: ProcessLane = {
-  id: "pool:intent_1::principal_1",
-  pool_id: "pool:intent_1",
+  id: "pool:action_1::principal_1",
+  pool_id: "pool:action_1",
   base_id: "principal_1",
   label: "Hiring Manager",
   kind: "actor",
@@ -48,21 +48,21 @@ describe("BPMN pool/lane chrome under LOD", () => {
     it("shows the label and type badge at reading zoom", () => {
       flowMock.zoom = 1;
       const html = render(
-        <ProcessPoolHeaderNode data={{ pool: intentPool, width: 800, height: 32 }} />,
+        <ProcessPoolHeaderNode data={{ pool: processPool, width: 800, height: 32 }} />,
       );
       expect(html).toContain("Post a job");
-      expect(html).toContain("Intent");
+      expect(html).toContain("Action");
     });
 
     it("drops the label and badges when zoomed out past the LOD threshold", () => {
       flowMock.zoom = 0.3;
       const html = render(
-        <ProcessPoolHeaderNode data={{ pool: intentPool, width: 800, height: 32 }} />,
+        <ProcessPoolHeaderNode data={{ pool: processPool, width: 800, height: 32 }} />,
       );
       // The pool collapses to a plain tinted band — no label, no
       // type/lifecycle pills — matching how shape nodes simplify.
       expect(html).not.toContain("Post a job");
-      expect(html).not.toContain("Intent");
+      expect(html).not.toContain("Action");
     });
   });
 

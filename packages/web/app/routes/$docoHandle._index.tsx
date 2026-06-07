@@ -1095,19 +1095,19 @@ export default function DocoHome({
     return () => window.removeEventListener("popstate", onPopState);
   }, [loadNodeDialog, loadEdgeDialog]);
 
-  // Picking a process from the BPMN home list focuses that Intent. Reflect it
-  // in the URL as a focus-only intent link (`?dialog=skip` centers/drills
-  // without popping the detail overlay) so the view is shareable and Back
-  // returns to the list. The canvas itself drills in via onCenterChange; this
-  // only syncs the address bar (no loader refetch).
-  const focusIntentUrl = useCallback(
-    (intentId: string) => {
+  // Picking a process from the BPMN home list focuses that process Action.
+  // Reflect it in the URL as a focus-only action link (`?dialog=skip`
+  // centers/drills without popping the detail overlay) so the view is
+  // shareable and Back returns to the list. The canvas itself drills in via
+  // onCenterChange; this only syncs the address bar (no loader refetch).
+  const focusProcessUrl = useCallback(
+    (processId: string) => {
       if (typeof window === "undefined") return;
       clientDialogOverrideRef.current = true;
       const params = new URLSearchParams();
       if (activeSlug && activeSlug !== "graph") params.set("perspective", activeSlug);
       params.set("dialog", "skip");
-      window.history.pushState({}, "", `/${handle}/intent/${intentId}?${params.toString()}`);
+      window.history.pushState({}, "", `/${handle}/action/${processId}?${params.toString()}`);
     },
     [activeSlug, handle],
   );
@@ -1428,7 +1428,7 @@ export default function DocoHome({
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    onIntentOpen={focusIntentUrl}
+                    onProcessOpen={focusProcessUrl}
                     onHomeReset={clearPerspectiveFocus}
                     onEdgeClick={handleGraphEdgeClick}
                     onNodeClick={(node) => {
@@ -1439,11 +1439,11 @@ export default function DocoHome({
                       );
                     }}
                     onPoolClick={(pool) => {
-                      if (!pool.intent_id) return;
+                      if (!pool.process_id) return;
                       void loadNodeDialog(
-                        "intent",
-                        pool.intent_id,
-                        `/${handle}/intent/${pool.intent_id}`,
+                        "action",
+                        pool.process_id,
+                        `/${handle}/action/${pool.process_id}`,
                       );
                     }}
                     onLaneClick={(lane) => {
