@@ -41,6 +41,41 @@ authorized it directly.
 
 ---
 
+## Don't chase `main` — a green PR merges even when `main` moved on
+
+`main` is busy: during a burst a new commit lands every few minutes,
+while CI (`pnpm verify`) takes ~4 minutes. The trap to avoid: if you act
+as though the PR must be *up to date* with `main` before it can merge,
+every new `main` commit knocks you "behind," so you re-merge
+`origin/main`, which restarts your ~4-min CI, during which `main` moves
+again — an unwinnable chase (the #1103 → #1107 → … loop that motivated
+this note).
+
+You never have to win that chase, because the required status check is
+**non-strict**: `build · typecheck · test · lint` must be *green*, but
+the branch does **not** have to be up to date with `main`. So:
+
+- **Enable auto-merge and stop.** `gh pr merge --auto --squash` (or the
+  `enable_pr_auto_merge` MCP tool) lands the PR the moment its check is
+  green — even if `main` advanced meanwhile. No rebase, no rerun.
+- **Never `git merge origin/main` into your PR branch to "get up to
+  date."** There is no up-to-date gate to satisfy. Catching yourself
+  re-merging `main` and re-running CI in a loop *is* the anti-pattern
+  this section exists to kill — stop and let auto-merge fire.
+- **The honest tradeoff:** because your CI ran against your base, not the
+  post-merge result, two independently-green PRs can land a *semantic*
+  conflict (each passes alone, together they break). The `push: [main]`
+  CI run catches it on `main` immediately after — an acceptable trade at
+  this repo's pace, and the price of not having the livelock.
+
+GitHub's merge queue would manage up-to-dateness automatically instead,
+but it's offered only on **organization-owned** repositories and `doco`
+lives under a personal account — so non-strict checks is the mechanism
+here. The one setting that must stay off is "Require branches to be up to
+date before merging"; turning it on is exactly what re-creates the chase.
+
+---
+
 ## You can't wait for CI across turns — auto-merge or watch in-turn
 
 You can't be woken by webhooks or block on async events across turns.
