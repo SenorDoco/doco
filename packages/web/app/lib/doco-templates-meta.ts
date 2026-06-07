@@ -45,6 +45,38 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
+    handle: "architectural-decisions",
+    label: "Architectural decisions (ADR)",
+    description:
+      "Record architecturally significant decisions (ADRs) — context, options, choice, and consequences — as an append-only log.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
+    handle: "product-decisions",
+    label: "Product decisions",
+    description:
+      "Record product decisions — what to build and why, for which users, with the expected impact — and revisit them as context changes.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
+    handle: "design-decisions",
+    label: "Design decisions",
+    description:
+      "Record design decisions — UX, interaction, and visual choices — grounded in user needs, evidence, and design principles.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
+    handle: "data-decisions",
+    label: "Data decisions",
+    description:
+      "Record data decisions — models, schema, storage, pipelines, governance, and retention — with lineage and compliance impact.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
     handle: "glossary",
     label: "Glossary",
     description:
