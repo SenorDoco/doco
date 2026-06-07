@@ -35,18 +35,10 @@ describe("orphaned pre-unification templates are gone", () => {
 });
 
 describe("removed templates are gone", () => {
-  // The glossaries, org-chart, and four decision-record templates were
-  // deleted; only `process` and `github-pull-requests` ship now. Keep them
-  // out so a request for a removed handle can't resurrect a half-wired
-  // template.
-  for (const name of [
-    "glossaries",
-    "org-chart",
-    "architectural-decisions",
-    "product-decisions",
-    "design-decisions",
-    "data-decisions",
-  ]) {
+  // The glossaries and org-chart templates were deleted and stay deleted. The
+  // four decision-record templates, by contrast, are now shipped again on a
+  // shared core (see `decision-record-templates.ts`) — asserted below.
+  for (const name of ["glossaries", "org-chart"]) {
     it(`does not register the removed \`${name}\` template`, () => {
       expect(findDocoTemplateByName(name)).toBeUndefined();
       expect(DEFAULT_DOCO_TEMPLATES.some((t) => t.name === name)).toBe(false);
@@ -55,8 +47,12 @@ describe("removed templates are gone", () => {
 
   it("ships exactly the surviving templates", () => {
     expect(DEFAULT_DOCO_TEMPLATES.map((t) => t.name).sort()).toEqual([
+      "architectural-decisions",
+      "data-decisions",
+      "design-decisions",
       "github-pull-requests",
       "process",
+      "product-decisions",
     ]);
   });
 });
