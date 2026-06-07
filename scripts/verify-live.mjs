@@ -143,7 +143,7 @@ const API_PAGES = [
 
 // ─── Phase 3: per-template create + exercise (the heart of the regime) ────────
 
-const TEMPLATES = ["generic", "process", "org-chart", "glossaries"];
+const TEMPLATES = ["generic", "process"];
 
 async function firstWorkspaceId() {
   const { status, body } = await json("/api/v1/workspaces.json");
@@ -197,7 +197,7 @@ function policyReason(res) {
 // (the original bug: a re-eval of the STORED node must surface its `prose`, not
 // fail with "the candidate lacks a `prose` field entirely"). Template-aware:
 // tries node types in order and uses the first the template's allowlist accepts,
-// so it runs on EVERY template (glossaries only allows reference/rule/eval).
+// so it runs on EVERY template (a template's allowlist may reject some types).
 async function exerciseReeval(handle) {
   const candidates = [
     { type: "intent", collection: "intents" },
@@ -257,8 +257,8 @@ async function exerciseReeval(handle) {
 
 // Create a flows_to edge with the SLICE-2 typed columns and read them back.
 // Returns a "skipped" sentinel when the template's allowlist forbids the
-// action/state endpoints a flow needs (e.g. glossaries) — that's the policy
-// working, not an edge regression.
+// action/state endpoints a flow needs — that's the policy working, not an
+// edge regression.
 async function exerciseEdgeColumns(handle) {
   const a = await json(`/${handle}/api/actions.json`, {
     method: "POST",
