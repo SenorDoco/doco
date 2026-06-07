@@ -99,12 +99,14 @@ const STEPS: ReadonlyArray<{ n: string; title: string; body: string }> = [
 ];
 
 /**
- * The two primary calls to action, kept from the original landing page.
- * Reused verbatim in the hero and the closing band, so they live in one place.
+ * The primary call to action. Reused verbatim in the hero and the closing
+ * band, so it lives in one place. Joining a workspace is no longer a wizard —
+ * humans arrive via an invite link, agents via the per-workspace MCP connector
+ * — so the only landing-page action is creating a workspace.
  */
 function PrimaryCtas() {
   return (
-    <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+    <div className="flex w-full max-w-md flex-col gap-3">
       <Link
         to="/new-workspace"
         className="neu-surface-interactive group rounded-lg border border-primary bg-card px-6 py-8 text-left transition-colors hover:border-primary"
@@ -112,15 +114,6 @@ function PrimaryCtas() {
         <div className="text-base font-semibold">Create a new workspace</div>
         <div className="mt-2 text-xs text-muted-foreground">
           Start a shared memory for your team and its agents.
-        </div>
-      </Link>
-      <Link
-        to="/onboarding/join"
-        className="neu-surface-interactive group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
-      >
-        <div className="text-base font-semibold">Join a workspace</div>
-        <div className="mt-2 text-xs text-muted-foreground">
-          Collaborate in a workspace you've been invited to.
         </div>
       </Link>
     </div>
