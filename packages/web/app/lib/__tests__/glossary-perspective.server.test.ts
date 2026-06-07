@@ -70,23 +70,29 @@ describe("loadGlossaryPerspectiveData", () => {
     ]);
   });
 
-  it("renders a cited-source Reference's source line from its locator and tags it `src.`", async () => {
-    // A `derived_from` target: no `definition`, but a source line to show.
+  it("renders a term's cited source from its `locator` alongside the definition", async () => {
+    // Provenance is a property of the entry: the term carries its definition
+    // AND a `locator` citing where the definition is drawn from.
     const client = makeClient([
       row({
-        id: "reference_src",
-        label: "RFC 7231",
-        prose: "RFC 7231",
+        id: "reference_idempotent",
+        label: "idempotent",
+        prose: "idempotent",
+        data: {
+          definition: "An operation that has the same effect whether applied once or many times.",
+        },
         locator: "https://www.rfc-editor.org/rfc/rfc7231",
       }),
     ]);
 
     const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
     const entry = groups[0].entries[0];
-    expect(entry.headword).toBe("RFC 7231");
+    expect(entry.headword).toBe("idempotent");
     expect(entry.source).toBe("https://www.rfc-editor.org/rfc/rfc7231");
-    expect(entry.senses).toEqual([]);
-    expect(entry.tag).toBe("src.");
+    expect(entry.senses).toEqual([
+      "An operation that has the same effect whether applied once or many times.",
+    ]);
+    expect(entry.tag).toBe("n.");
   });
 
   it("reads synonyms and deprecated variants from the `alternatives` attribute", async () => {
