@@ -22,21 +22,12 @@ import {
 } from "~/lib/doco-access.server";
 import { unsupportedNodeJsonEdgeKeyError } from "~/lib/graph-authoring-contract.server";
 import { withIdempotency } from "~/lib/idempotency.server";
-import { NODE_TYPE_META } from "~/lib/node-types";
 import { recordCaptureTiming, withCaptureTelemetry } from "~/lib/telemetry.server";
 
 interface MeLike {
   id: string | null;
   username: string;
 }
-
-// The type-named prose field each captureX function calls `.trim()` on.
-// Used by the factory to reject non-string values with a 400 instead of
-// letting `.trim()` throw a 500 deep in the capture function. Derived from
-// the shared per-type registry (`NODE_TYPE_META`).
-const PROSE_FIELD: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(NODE_TYPE_META).map(([type, meta]) => [type, meta.proseField]),
-);
 
 type RouteParams = DocoRouteParams;
 
@@ -132,9 +123,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
           }
 
           // The generic node writer speaks the raw row shape directly:
-          // `{prose, kind?, extra:{…}}`, with the legacy type-named prose
-          // field (`decision`/`intent`/…) still accepted as a `prose` alias —
-          // no translation shim needed here.
+          // `{prose, kind?, extra:{…}}` — no translation shim needed here.
           const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(
             cfg.entityType,
             draft as Record<string, unknown>,
@@ -145,14 +134,10 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
 
           // Reject a non-string prose value up front: the capture writer trims
           // prose, which would throw TypeError → 500 when a client sends an
-          // object or array. A typed boundary check turns that into a clean
-          // 400. Accept it via either `prose` or the legacy type-named field.
-          const proseField = PROSE_FIELD[cfg.entityType];
-          for (const key of ["prose", ...(proseField ? [proseField] : [])]) {
-            const v = (draft as Record<string, unknown>)[key];
-            if (v !== undefined && typeof v !== "string") {
-              return Response.json({ error: `'${key}' must be a string.` }, { status: 400 });
-            }
+          // object or array. A typed boundary check turns that into a clean 400.
+          const proseValue = (draft as Record<string, unknown>).prose;
+          if (proseValue !== undefined && typeof proseValue !== "string") {
+            return Response.json({ error: "'prose' must be a string." }, { status: 400 });
           }
 
           // Per-type write enforcement (decision_per_type_write_grants):
