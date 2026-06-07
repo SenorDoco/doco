@@ -91,12 +91,6 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   },
 ];
 
-const FILTER_PARAM_NAMES = ["lifecycle", "entity_type"] as const;
-
-export function hasExplicitSearchFilter(params: URLSearchParams): boolean {
-  return FILTER_PARAM_NAMES.some((name) => params.has(name));
-}
-
 export async function loadFilteredSearchHits(
   c: PoolClient,
   docoId: string,

@@ -7,7 +7,6 @@ export {
   ensurePersonalWorkspace,
   findAvailableDocoHandle,
   findAvailableWorkspaceHandle,
-  findDocoTemplate,
   renameDocoHandle,
   softDeleteDoco,
   updateDocoMeta,
