@@ -76,7 +76,7 @@ export interface CommonFields {
 /**
  * Principal — documented role/persona that participates in flows.
  * Related to work through edge rows. Slimmed from the pre-rename Principal
- * which also held OAuth identity; that concern is now `User`.
+ * which also held OAuth identity; that concern is now the `UserRow` in @doco/db.
  */
 // Principal carries a display label (`name`) and an optional seat `kind`; like
 // every node its text lives in the one canonical `prose` column — there is no
@@ -89,8 +89,6 @@ export interface Principal extends CommonFields {
   /** Seat occupant kind — "human" or "agent". Optional; a vacant seat
    *  declares no kind. Drives the org-tree seat icon. */
   kind?: "human" | "agent";
-  /** Principal role marker used by system-authored templates. */
-  role_principal?: boolean;
 }
 
 // ─── Doco (root entity) ───────────────────────────────────────────────────
