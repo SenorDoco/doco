@@ -246,8 +246,16 @@ interface BuiltProcess extends Graph {
 /** Materialize a fully-wired BPMN process at the given lifecycle. */
 function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
   // The process IS an Action — the container/pool that its members point at
-  // with `has_parent`. It carries no `flows_to` (it is not a sequenced step).
-  const process = node("action", s.key, { action: s.process, verb: "run" }, lifecycle);
+  // with `has_parent`. It carries no `flows_to` (it is not a sequenced step), so
+  // it is flagged `top_level_process`: the root pool has no parent and is not
+  // reached by the flow, which exempts it from the membership and reachability
+  // floors.
+  const process = node(
+    "action",
+    s.key,
+    { action: s.process, verb: "run", top_level_process: true },
+    lifecycle,
+  );
   const principals = s.principals.map((p) => node("principal", s.key, { name: p.name }, lifecycle));
   const actions = s.actions.map((a) =>
     node("action", s.key, { action: a.text, verb: a.verb }, lifecycle),
@@ -263,7 +271,15 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
     },
     lifecycle,
   );
-  const initial = node("state", s.key, { state: s.initialState, kind: "initial" }, lifecycle);
+  // The initial State is the flow's entry point: it has no incoming `flows_to`,
+  // so it is flagged `entry_point` (exempt from the reachability floor) and must
+  // lead somewhere — which it does, flowing to the first Action below.
+  const initial = node(
+    "state",
+    s.key,
+    { state: s.initialState, kind: "initial", entry_point: true },
+    lifecycle,
+  );
   const terminals = s.terminalStates.map((t) =>
     node("state", s.key, { state: t, kind: "terminal" }, lifecycle),
   );
@@ -1026,33 +1042,33 @@ describe("process template — gateway branch count", () => {
   });
 });
 
-describe("process template — an Action catalogued as an entry point", () => {
-  // An Action explicitly catalogued as an entry point (an `entry_point` flag in
-  // its `extra`, surfaced flat on the candidate) is excused from the
-  // `has_parent` membership floor — it stands on its own as a way into the work
-  // and needs no parent process. A plain Action with neither a parent nor the
-  // flag is still blocked once committed.
-  it("is NOT blocked by the membership floor even with no parent process (committed)", () => {
+describe("process template — top-level-process and entry-point flags", () => {
+  // The `has_parent` membership floor is excused ONLY by the explicit
+  // `top_level_process` flag (the structural incoming-`has_parent` exemption is
+  // gone). The `entry_point` flag is a separate, sequence-flow concept: it
+  // excuses a node from the reachability floor (no incoming `flows_to` needed)
+  // but obliges it to LEAD somewhere (≥1 outgoing `flows_to`).
+  it("a top_level_process Action with no parent is NOT blocked by the membership floor (committed)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
-    const entry = node(
+    const root = node(
       "action",
       "loan-approval",
-      { action: "intake the application", verb: "intake", entry_point: true },
+      { action: "run a sub-process", verb: "run", top_level_process: true, entry_point: true },
       "active",
     );
-    // Attribute it to a Principal so the only thing that could fire is the
-    // membership floor — which the entry_point flag exempts.
-    g.edges.push(edge(entry.id, g.principals[0].id, "attributed_to", "performed_by"));
-    g.nodes.push(entry); // deliberately NO has_parent edge
-    const blocks = deterministicBlocks(evaluate(entry, g));
+    // Attribute it so per-step attribution can't fire; it leads somewhere so the
+    // entry-point "leads somewhere" floor is satisfied; it has no parent on purpose.
+    g.edges.push(edge(root.id, g.principals[0].id, "attributed_to", "owned_by"));
+    g.edges.push(edge(root.id, g.actions[0].id, "flows_to", ""));
+    g.nodes.push(root); // deliberately NO has_parent edge
+    const blocks = deterministicBlocks(evaluate(root, g));
     expect(
-      blocks.some((b) => b.sub_kind === "requires_edge" && /has_parent.*action/.test(b.reason)),
-      `entry-point Action wrongly blocked: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
-    ).toBe(false);
-    expect(blocks).toEqual([]);
+      blocks,
+      `top_level_process Action wrongly blocked: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
+    ).toEqual([]);
   });
 
-  it("an ordinary committed Action with no parent and no flag IS still blocked", () => {
+  it("an ordinary committed Action with no parent and no flag IS still blocked (membership)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const orphan = node(
       "action",
@@ -1061,10 +1077,50 @@ describe("process template — an Action catalogued as an entry point", () => {
       "active",
     );
     g.edges.push(edge(orphan.id, g.principals[0].id, "attributed_to", "performed_by"));
-    g.nodes.push(orphan); // no has_parent, no entry_point flag
+    g.edges.push(edge(g.actions[0].id, orphan.id, "flows_to", "")); // reachable, so only membership can fire
+    g.nodes.push(orphan); // no has_parent, no top_level_process flag
     const blocks = deterministicBlocks(evaluate(orphan, g));
     expect(
       blocks.some((b) => b.sub_kind === "requires_edge" && /has_parent.*action/.test(b.reason)),
+    ).toBe(true);
+  });
+
+  it("a non-entry committed flow node with no incoming flows_to is blocked (reachability)", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const stranded = node(
+      "action",
+      "loan-approval",
+      { action: "reconcile the ledger", verb: "reconcile" },
+      "active",
+    );
+    g.edges.push(edge(stranded.id, g.process.id, "has_parent", "member_of")); // belongs to the pool
+    g.edges.push(edge(stranded.id, g.principals[0].id, "attributed_to", "performed_by"));
+    g.edges.push(edge(stranded.id, g.states[1].id, "flows_to", "")); // leads somewhere, but nothing reaches it
+    g.nodes.push(stranded); // no incoming flows_to, not an entry point
+    const blocks = deterministicBlocks(evaluate(stranded, g));
+    expect(
+      blocks.some(
+        (b) => b.sub_kind === "requires_edge" && /incoming.*flows_to|flows_to.*from/.test(b.reason),
+      ),
+      `expected a reachability block; got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
+    ).toBe(true);
+  });
+
+  it("an entry_point flow node with no OUTGOING flows_to is blocked (must lead somewhere)", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const deadStart = node(
+      "action",
+      "loan-approval",
+      { action: "kick things off", verb: "start", entry_point: true },
+      "active",
+    );
+    g.edges.push(edge(deadStart.id, g.process.id, "has_parent", "member_of"));
+    g.edges.push(edge(deadStart.id, g.principals[0].id, "attributed_to", "performed_by"));
+    g.nodes.push(deadStart); // entry point, but flows nowhere
+    const blocks = deterministicBlocks(evaluate(deadStart, g));
+    expect(
+      blocks.some((b) => b.sub_kind === "requires_edge" && /flows_to/.test(b.reason)),
+      `expected a "leads somewhere" block; got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
     ).toBe(true);
   });
 });
