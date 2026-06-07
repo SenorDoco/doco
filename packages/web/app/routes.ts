@@ -100,6 +100,18 @@ export default [
   // by every MCP client that lands on a workspace MCP endpoint without a valid bearer.
   route(".well-known/oauth-authorization-server", "routes/oauth-metadata-authorization-server.tsx"),
   route(".well-known/oauth-protected-resource", "routes/oauth-metadata-protected-resource.tsx"),
+  // User-level MCP endpoint + its RFC 9728 metadata. One connection per user,
+  // reaching every workspace they belong to; each session is pinned to ONE
+  // workspace by the (single-workspace) access token. Registered BEFORE the
+  // :workspaceId variants so the literal `me` segment matches first — otherwise
+  // :workspaceId would capture it.
+  route(
+    ".well-known/oauth-protected-resource/me/mcp",
+    "routes/oauth-metadata-protected-resource.me.tsx",
+  ),
+  // Same handler as the per-workspace endpoint; the absence of a :workspaceId
+  // segment is what selects the user-level gate (see the action).
+  route("me/mcp", "routes/$workspaceId.mcp.tsx", { id: "user-mcp" }),
   // Per-workspace RFC 9728 protected-resource metadata. The per-workspace MCP
   // 401 points connectors here (path-specific, one resource per workspace).
   route(
