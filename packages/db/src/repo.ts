@@ -22,7 +22,6 @@ const NODE_TYPE_SET: ReadonlySet<string> = new Set(Object.keys(NODE_TABLES));
 
 function tableFor(entityType: string): {
   table: string;
-  body: boolean;
   typeNamedColumn?: string;
 } {
   const spec = ALL_ENTITY_TABLES[entityType];

@@ -8,14 +8,15 @@
  *     decision, action, log, eval, reference, state, principal)
  *   - Policies (1): Doco-level authoring metadata — one `policies` table,
  *     classified by `kind: "suggestion" | "deterministic" | "probabilistic"`
- *   - User (1): OAuth identity layer (separate from principal)
- *   - Doco, Workspace: workspace + workspace containers
+ *   - Doco: the root container
  *
- * Per-category discriminator fields (matches stored data jsonb):
- *   - Nodes   → `node_type: NodeType`
+ * The OAuth identity layer and the workspace container have no entity shape
+ * here; their honest types are `UserRow` / `WorkspaceRow` in `@doco/db`.
+ *
+ * Per-category discriminator fields:
+ *   - Nodes    → `node_type: NodeType`
  *   - Policies → `kind: "suggestion" | "deterministic" | "probabilistic"`
- *   - User → human OAuth identity
- *   - Doco, Workspace → no per-row discriminator
+ *   - Doco     → no per-row discriminator
  *
  * `created_by` / `updated_by` reference users (the OAuth identity).
  * Graph relationships live in first-class edge rows.
@@ -59,37 +60,16 @@ export interface CommonFields {
   outcome?: Outcome;
 }
 
-/** Common fields for readable claim entities that carry a one-line summary. */
-export interface SummarizedFields extends CommonFields {
-  summary: string;
-}
-
 /**
  * Every node carries its text in the one canonical `prose` column. The
  * historical parallel carriers (`summary` / `body_md` / `title` / `name` /
  * `description`) are gone — a node has exactly one text home, no second body.
- */
-
-// ─── User (OAuth identity — new category) ─────────────────────────
-
-/**
- * User — host-scoped human OAuth identity.
- * Authored nodes via `created_by` / `updated_by`. Member of workspaces/docos
- * via `member_of` edges.
  *
- * NOT on the graph as a node — users are an identity layer.
- * Use `Principal` (the node) when documenting a role/persona that
- * participates in a flow.
+ * The OAuth identity layer (`User`) and the workspace container are NOT entity
+ * shapes here — their honest in-memory types are `UserRow` / `WorkspaceRow` in
+ * `@doco/db`, which mirror their tables 1:1. There is no parallel `User` /
+ * `Workspace` interface to drift from those rows.
  */
-export interface User {
-  id: EntityId<"user">;
-  github_id?: string;
-  github_login: string;
-  email?: string;
-  avatar_url?: string;
-  created_at: string;
-  deactivated_at?: string;
-}
 
 // ─── Principal (role-persona — node type) ───────────────────────────────
 
@@ -100,7 +80,7 @@ export interface User {
  */
 // Principal carries a display label (`name`) and an optional seat `kind`; like
 // every node its text lives in the one canonical `prose` column — there is no
-// second `body_md` field. Extends CommonFields rather than SummarizedFields.
+// second `body_md` field.
 export interface Principal extends CommonFields {
   node_type: "principal";
   /** Display label for the Principal — stored as its `prose` text. Other nodes
@@ -531,22 +511,6 @@ export interface State extends CommonFields {
   invariants?: string[];
 }
 
-// ─── Workspace ─────────────────────────────────────────────────────────
-
-export interface WorkspaceMember {
-  user_id: EntityId<"user">;
-  role: "owner" | "admin" | "member" | "viewer";
-  permissions?: ("read" | "write" | "execute" | "admin")[];
-}
-
-export interface Workspace extends SummarizedFields {
-  handle: string;
-  display_name: string;
-  description?: string;
-  visibility?: "private" | "public";
-  members?: WorkspaceMember[];
-}
-
 // ─── Discriminated unions ─────────────────────────────────────────────────
 
 /** The 10 node types. */
@@ -562,5 +526,9 @@ export type Node =
   | Reference
   | State;
 
-/** Every entity across all categories. (`Policy` is a single interface now.) */
-export type Entity = Node | Policy | User | Doco | Workspace;
+/**
+ * A graph-knowledge entity the index loader hydrates. Containers (`Doco`) and
+ * the OAuth identity / workspace rows are read through their own `@doco/db`
+ * row types, not this union.
+ */
+export type Entity = Node | Policy | Doco;
