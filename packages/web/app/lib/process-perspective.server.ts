@@ -1,10 +1,12 @@
 // BPMN perspective server-side data loader.
 //
-// The canvas is partitioned into **pools** — one per Intent in the
-// Doco. A pool is a bordered horizontal section with its own internal
-// structure (milestone band on top, actor lanes in the middle,
-// artifacts band on the bottom). Pools stack vertically. An
-// "Unassigned" pool catches nodes that don't cite an Intent.
+// The canvas is partitioned into **pools** — one per **process**. A
+// process is an Action that has one or more flow nodes linked to it by a
+// `has_parent` edge (its members); the process Action itself is the pool,
+// never a member of its own pool. A pool is a bordered horizontal section
+// with its own internal structure (milestone band on top, actor lanes in
+// the middle, artifacts band on the bottom). Pools stack vertically. An
+// "Unassigned" pool catches flow nodes with no `has_parent`.
 //
 // Inside each pool, lane assignment follows a three-category model:
 //   - Milestone band (top of the pool): States.
@@ -18,30 +20,28 @@
 //   - Artifacts band (bottom): Ideas, plus any Rule/Eval that didn't
 //     re-home onto an Action via constrained_by/supports role edges.
 //
-// Intents themselves are *not* rendered as flow nodes — they're pool
-// headers. The Intent's prose labels its pool.
+// A **subprocess** is a member Action that is itself a process (it has its
+// own `has_parent` children). It renders as an ordinary member of its
+// parent's pool, and can be expanded into its own pool — there is no
+// separate "calling Action ↔ purpose Intent" pairing anymore.
 //
-// Pool selection for flow nodes that serve multiple Intents uses
-// **PageRank**: the candidate Intent with the highest score on the doco's
-// edge graph wins. With no focal node, this is plain global PageRank; the
-// personalized variant (teleport biased to a focal node) is computed
-// client-side from `centerId` so the same graph can re-pool around
-// whichever node the user clicked into.
+// Membership is single-valued: a flow node points at AT MOST one parent
+// process via `has_parent`, so it belongs to exactly one pool. There is no
+// PageRank pool tie-break to run.
 //
 // Shape map:
-//   intent                  → (pool header, no shape)
 //   decision                → diamond     (BPMN gateway)
 //   action                  → task        (BPMN rounded-rect task)
 //   rule                    → rectangle   (policy box)
-//   state                   → task        (milestone-band task)
+//   state                   → rounded     (milestone-band pill)
 //   eval                    → document    (BPMN data object)
 //   idea                    → rounded     (capsule)
 //
-// Not rendered: Log (instances, not designs) or Reference (source/
-// background material, not a process step).
+// Not rendered: Intent (goals live outside the process model now), Log
+// (instances, not designs), or Reference (source/background material, not
+// a process step).
 
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import { highestRanked } from "./pagerank";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 import { computeForwardSequenceDepths } from "./process-sequence-depth";
@@ -62,11 +62,11 @@ export type ProcessShape =
 export type ProcessLaneKind = "milestone" | "actor" | "artifacts" | "unassigned" | "unresolved";
 
 export interface ProcessPool {
-  id: string; // "pool:<intent_id>" or POOL_UNASSIGNED_ID
-  intent_id: string | null; // null for the Unassigned pool
-  label: string; // Intent prose (first line), or "Unassigned"
-  /** Intent's lifecycle (drafting / proposed / active / retired). Null
-   *  for the Unassigned pool. Drives the lifecycle badge on the pool
+  id: string; // "pool:<process_action_id>" or POOL_UNASSIGNED_ID
+  process_id: string | null; // the process Action's id; null for the Unassigned pool
+  label: string; // the process Action's prose, or "Unassigned"
+  /** The process Action's lifecycle (drafting / queued / active / retired).
+   *  Null for the Unassigned pool. Drives the lifecycle badge on the pool
    *  header. */
   lifecycle: string | null;
 }
@@ -99,9 +99,11 @@ export interface ProcessNode {
   shape: ProcessShape;
   laneId: string;
   pool_id: string;
-  /** Full list of served Intent ids so the client can recompute the primary
-   *  Intent under personalized PageRank without re-fetching. */
-  served_intent_ids?: string[];
+  /** True when this node is itself a process — an Action with one or more
+   *  `has_parent` children. Such a node renders as a collapsed subprocess
+   *  (a task with a "View subprocess" affordance) inside its parent's pool,
+   *  and can be expanded into its own pool (`pool:<id>`). */
+  is_process?: boolean;
   /**
    * Server-side sequence-flow depth. The renderer uses this as a floor
    * for horizontal sequence layout so incoming flow targets stay to
@@ -126,13 +128,17 @@ export interface ProcessGraphData {
 
 const PROCESS_TABLES: { table: string; entityType: string }[] = [
   { table: "decisions", entityType: "decision" },
-  { table: "intents", entityType: "intent" },
   { table: "actions", entityType: "action" },
   { table: "rules", entityType: "rule" },
   { table: "evals", entityType: "eval" },
   { table: "states", entityType: "state" },
   { table: "ideas", entityType: "idea" },
 ];
+
+// Flow nodes carry process sequence and pool membership: Action, gateway
+// Decision, milestone/event State. Artifacts (Eval / Idea / Rule) attach
+// alongside the flow rather than sitting in it.
+const FLOW_TYPES = new Set(["action", "decision", "state"]);
 
 // Lane id "bases" (the part after the `pool_id::` prefix). The same
 // base lives in every pool that uses it; the composite lane id ties
@@ -220,13 +226,11 @@ export async function loadProcessGraph(
   // loader (full-graph.server), which also returns every lifecycle.
   const allowedNodeTypes = new Set(PROCESS_TABLES.map((entry) => entry.entityType));
   const processTypeList = PROCESS_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
-  // Flow nodes ("steps") are every BPMN type except Intent — Intents render as
-  // pool headers, not steps. The true total is a scalar subquery (immune to the
+  // Every BPMN node type is a "step" now (Intent is no longer part of the
+  // process model). The true total is a scalar subquery (immune to the
   // result-row cap that truncates the node query's returned rows), matching the
   // same all-lifecycle domain the node query loads.
-  const processStepTypeList = PROCESS_TABLES.filter((entry) => entry.entityType !== "intent")
-    .map((entry) => `'${entry.entityType}'`)
-    .join(", ");
+  const processStepTypeList = processTypeList;
   const windowIds = windowNodeIds(opts.window);
   const nodeParams: unknown[] = [docoId];
   if (windowIds.length > 0) nodeParams.push(windowIds);
@@ -298,11 +302,11 @@ export async function loadProcessGraph(
   // dropped before it can reach the node cap, PageRank, pooling, or layout.
   const allRows = nodeRows.rows.filter((row) => allowedNodeTypes.has(row.entity_type));
 
-  // Index of every Intent row by id — Intents define pools (and don't
-  // render as flow nodes themselves).
-  const intentsById = new Map<string, NodeRow>();
+  // Index of every Action row by id — Actions are the process containers
+  // (a process is an Action with `has_parent` children) and label their pools.
+  const actionsById = new Map<string, NodeRow>();
   for (const row of allRows) {
-    if (row.entity_type === "intent") intentsById.set(row.id, row);
+    if (row.entity_type === "action") actionsById.set(row.id, row);
   }
 
   // Load outgoing edges up front: rendered links use the rows whose target is
@@ -332,49 +336,55 @@ export async function loadProcessGraph(
       .map((r) => processLinkFromEdgeRow(r, opts.handle));
   }
 
-  // ── Deterministic intent precedence (no PageRank) ──────────────
-  // A stable ordering over intents used for:
-  //   1. Pool order (oldest Intent's pool first).
-  //   2. Primary-intent picks for multi-intent nodes.
-  //   3. The homeless-node nearest-intent fallback.
-  // Score is higher for older intents (negated created_at), so the same
-  // `highestRanked` "max wins" call now picks the oldest intent; missing
-  // timestamps sort last. Ties fall through to id order downstream.
-  const intentPrecedence = new Map<string, number>();
-  for (const [id, row] of intentsById) {
-    const ms = row.created_at ? Date.parse(row.created_at) : Number.NaN;
-    intentPrecedence.set(id, Number.isFinite(ms) ? -ms : Number.NEGATIVE_INFINITY);
+  // ── Process membership (`has_parent`) ───────────────────────────
+  // A flow node belongs to the process it points at with a `has_parent`
+  // edge whose other endpoint is an Action. That parent Action is the
+  // process (its pool); membership is single-valued, so the first such
+  // parent wins (the template caps `has_parent` at one). Every Action that
+  // is the target of ≥1 child `has_parent` is a process — it gets a pool.
+  const parentProcessByNode = new Map<string, string>();
+  const processIds = new Set<string>();
+  for (const row of allRows) {
+    if (!FLOW_TYPES.has(row.entity_type)) continue;
+    const parent = edgeTargets(outgoingByType, row.id, "has_parent").find(
+      (id) => actionsById.has(id),
+    );
+    if (!parent) continue;
+    parentProcessByNode.set(row.id, parent);
+    processIds.add(parent);
+  }
+
+  // ── Deterministic process precedence (no PageRank) ──────────────
+  // A stable ordering over process Actions used for pool order (oldest
+  // process first) and the homeless-node nearest-process fallback. Score is
+  // higher for older processes (negated created_at); missing timestamps sort
+  // last. Ties fall through to id order downstream.
+  const processPrecedence = new Map<string, number>();
+  for (const id of processIds) {
+    const ms = actionsById.get(id)?.created_at ? Date.parse(actionsById.get(id)?.created_at ?? "") : Number.NaN;
+    processPrecedence.set(id, Number.isFinite(ms) ? -ms : Number.NEGATIVE_INFINITY);
   }
 
   // ── Pool assignment per node ────────────────────────────────────
-  // 1. Intents themselves are pool headers, not nodes — they live in
-  //    their own pool ("pool:<intent_id>").
-  // 2. Flow nodes (Action / Decision / State / Log) with serving Intent edges
-  //    go in their primary Intent's pool (PR-picked).
-  // 3. Flow nodes with no serving Intent edges → Unassigned.
-  // 4. Non-actor nodes (Reference / Idea / Rule / Eval) start
-  //    in Unassigned; Rules and Evals get re-homed below if they have
-  //    a host node whose pool is known.
+  // 1. A flow node with a parent process goes in that process's pool
+  //    ("pool:<process_action_id>").
+  // 2. A flow node with no parent process → Unassigned (nearest-process BFS
+  //    below may still re-home it).
+  // 3. Artifacts (Idea / Rule / Eval) start in Unassigned; Rules and Evals
+  //    get re-homed below if they have a host node whose pool is known.
   const poolByNode = new Map<string, string>();
-  const intentIdsByNode = new Map<string, string[]>();
 
   for (const row of allRows) {
-    if (row.entity_type === "intent") {
-      poolByNode.set(row.id, `pool:${row.id}`);
-      continue;
-    }
-    if (
-      row.entity_type === "action" ||
-      row.entity_type === "decision" ||
-      row.entity_type === "state" ||
-      row.entity_type === "log"
-    ) {
-      const intentIds = edgeTargets(outgoingByType, row.id, "serves").filter((id) =>
-        intentsById.has(id),
-      );
-      if (intentIds.length > 0) intentIdsByNode.set(row.id, intentIds);
-      const primary = intentIds.length > 0 ? highestRanked(intentIds, intentPrecedence) : null;
-      poolByNode.set(row.id, primary ? `pool:${primary}` : POOL_UNASSIGNED_ID);
+    if (FLOW_TYPES.has(row.entity_type)) {
+      const parent = parentProcessByNode.get(row.id);
+      if (parent) {
+        poolByNode.set(row.id, `pool:${parent}`);
+      } else if (processIds.has(row.id)) {
+        // A top-level process Action is a pool header, not a member: it gets
+        // no pool *membership* (its own pool is built from processIds below).
+      } else {
+        poolByNode.set(row.id, POOL_UNASSIGNED_ID);
+      }
     } else {
       poolByNode.set(row.id, POOL_UNASSIGNED_ID);
     }
@@ -409,31 +419,30 @@ export async function loadProcessGraph(
     }
   }
 
-  // ── Nearest-Intent re-homing (connected nodes only) ──────────────
-  // Homeless flow/artifact nodes are pulled into the pool of the
-  // nearest Intent they actually reach through the edge graph, via a
-  // single multi-source BFS from all Intents. Direct-host rules above
-  // win. Avoid per-node personalized PageRank here — that multiplied
-  // render cost by every homeless node and made medium Docos feel huge.
+  // ── Nearest-process re-homing (connected nodes only) ─────────────
+  // Homeless flow/artifact nodes are pulled into the pool of the nearest
+  // process they actually reach through the edge graph, via a single
+  // multi-source BFS from all process Actions. Direct membership/host rules
+  // above win. A process Action itself is never re-homed — it is its own
+  // pool's header — so it is excluded from the homeless set.
   //
-  // Crucially, a node with NO path to any Intent is left in the real
-  // Unassigned pool rather than force-homed into an arbitrary Intent.
-  // The old policy fell back to the highest-ranked (oldest) Intent,
-  // which dropped wholly unrelated work — e.g. a disconnected crawler
-  // sub-process — into the first goal's pool, making that Intent
-  // appear to own steps it has nothing to do with.
-  if (intentsById.size > 0) {
-    const intentIds = Array.from(intentsById.keys());
+  // Crucially, a node with NO path to any process is left in the real
+  // Unassigned pool rather than force-homed into an arbitrary process.
+  if (processIds.size > 0) {
     const homeless: NodeRow[] = [];
     for (const row of allRows) {
-      if (row.entity_type === "intent") continue;
+      if (processIds.has(row.id)) continue;
       if (poolByNode.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
     }
     if (homeless.length > 0) {
-      const nearestIntentByNode = computeNearestIntentByNode(intentIds, links, intentPrecedence);
+      const nearestProcessByNode = computeNearestProcessByNode(
+        Array.from(processIds),
+        links,
+        processPrecedence,
+      );
       for (const row of homeless) {
-        const bestIntent = nearestIntentByNode.get(row.id);
-        if (bestIntent) poolByNode.set(row.id, `pool:${bestIntent}`);
+        const bestProcess = nearestProcessByNode.get(row.id);
+        if (bestProcess) poolByNode.set(row.id, `pool:${bestProcess}`);
       }
     }
   }
@@ -447,7 +456,10 @@ export async function loadProcessGraph(
   const nodes: ProcessNode[] = [];
 
   for (const row of allRows) {
-    if (row.entity_type === "intent") continue; // pool header, not a node
+    // A top-level process Action (a process with no parent of its own) is a
+    // pool header, never a member node. A subprocess (a process Action that
+    // *does* have a parent) still renders as a member of its parent's pool.
+    if (processIds.has(row.id) && !parentProcessByNode.has(row.id)) continue;
     const poolId = poolByNode.get(row.id) ?? POOL_UNASSIGNED_ID;
     let baseId: string;
     let kind: ProcessLaneKind;
@@ -519,8 +531,7 @@ export async function loadProcessGraph(
       laneId,
       pool_id: poolId,
     };
-    const intentIds = intentIdsByNode.get(row.id);
-    if (intentIds && intentIds.length > 0) node.served_intent_ids = intentIds;
+    if (processIds.has(row.id)) node.is_process = true;
     nodes.push(node);
   }
 
@@ -535,52 +546,50 @@ export async function loadProcessGraph(
   }
 
   // ── Build pools[] ─────────────────────────────────────────────────
+  // One pool per process Action (every Action with ≥1 `has_parent` child),
+  // plus the Unassigned pool when any orphan landed there.
   const pools: ProcessPool[] = [];
   const usedPoolIds = new Set<string>();
   for (const id of poolByNode.values()) usedPoolIds.add(id);
-  for (const intentId of intentsById.keys()) usedPoolIds.add(`pool:${intentId}`);
+  for (const processId of processIds) usedPoolIds.add(`pool:${processId}`);
 
   for (const id of usedPoolIds) {
     if (id === POOL_UNASSIGNED_ID) {
       pools.push({
         id: POOL_UNASSIGNED_ID,
-        intent_id: null,
+        process_id: null,
         label: "Unassigned",
         lifecycle: null,
       });
       continue;
     }
-    const intentId = id.startsWith("pool:") ? id.slice("pool:".length) : null;
-    if (!intentId) continue;
-    const intentRow = intentsById.get(intentId);
-    const label = intentRow?.summary?.trim() || "(unnamed intent)";
+    const processId = id.startsWith("pool:") ? id.slice("pool:".length) : null;
+    if (!processId) continue;
+    const processRow = actionsById.get(processId);
+    const label = processRow?.summary?.trim() || "(unnamed process)";
     pools.push({
       id,
-      intent_id: intentId,
+      process_id: processId,
       label,
-      lifecycle: intentRow?.lifecycle ?? null,
+      lifecycle: processRow?.lifecycle ?? null,
     });
   }
 
-  // Pool order: real Intent pools oldest-first (deterministic, no
-  // PageRank), ties broken by intent id; Unassigned pinned to the bottom.
+  // Pool order: process pools oldest-first (deterministic, no PageRank),
+  // ties broken by process id; Unassigned pinned to the bottom.
   pools.sort((a, b) => {
     if (a.id === POOL_UNASSIGNED_ID) return 1;
     if (b.id === POOL_UNASSIGNED_ID) return -1;
-    const pa = a.intent_id ? (intentPrecedence.get(a.intent_id) ?? Number.NEGATIVE_INFINITY) : 0;
-    const pb = b.intent_id ? (intentPrecedence.get(b.intent_id) ?? Number.NEGATIVE_INFINITY) : 0;
+    const pa = a.process_id ? (processPrecedence.get(a.process_id) ?? Number.NEGATIVE_INFINITY) : 0;
+    const pb = b.process_id ? (processPrecedence.get(b.process_id) ?? Number.NEGATIVE_INFINITY) : 0;
     if (pa !== pb) return pb - pa;
-    return (a.intent_id ?? "").localeCompare(b.intent_id ?? "");
+    return (a.process_id ?? "").localeCompare(b.process_id ?? "");
   });
 
-  // Drop pools with no nodes assigned (a freshly-captured Intent
-  // gets a pool the moment any Action/Decision serves it; an Intent
-  // with zero serving nodes would otherwise show an empty pool).
-  // EXCEPTION: we keep an Intent's pool even when empty IF the
-  // intent_id is in usedPoolIds via the intentsById loop above —
-  // that's deliberately how authors see "I have a goal but no work
-  // serving it yet." So no additional filter here; the pools[] array
-  // already only contains pools we want to display.
+  // The Unassigned pool is dropped automatically when empty: it only enters
+  // `usedPoolIds` if some node was assigned to it. Process pools always have
+  // ≥1 member by construction (an Action becomes a process only when a child
+  // points at it). No extra filtering needed here.
 
   // Within each pool, ensure principal lanes for every Principal who
   // owns at least one node in that pool (already added above as nodes
@@ -726,12 +735,12 @@ function processLinkFromEdgeRow(row: EdgeRow, handle: string | undefined): Overv
   };
 }
 
-export function computeNearestIntentByNode(
-  intentIds: readonly string[],
+export function computeNearestProcessByNode(
+  processIds: readonly string[],
   links: readonly OverviewGraphLink[],
   ranks: ReadonlyMap<string, number>,
 ): Map<string, string> {
-  const uniqueIntentIds = Array.from(new Set(intentIds));
+  const uniqueProcessIds = Array.from(new Set(processIds));
   const adjacency = new Map<string, Set<string>>();
   const connect = (from: string, to: string) => {
     const existing = adjacency.get(from);
@@ -744,26 +753,26 @@ export function computeNearestIntentByNode(
     connect(link.target, link.source);
   }
 
-  const orderedIntents = uniqueIntentIds.sort((a, b) => {
+  const orderedProcesses = uniqueProcessIds.sort((a, b) => {
     const rankDiff = (ranks.get(b) ?? 0) - (ranks.get(a) ?? 0);
     if (rankDiff !== 0) return rankDiff;
     return a.localeCompare(b);
   });
   const nearest = new Map<string, string>();
   const queue: string[] = [];
-  for (const intentId of orderedIntents) {
-    nearest.set(intentId, intentId);
-    queue.push(intentId);
+  for (const processId of orderedProcesses) {
+    nearest.set(processId, processId);
+    queue.push(processId);
   }
 
   for (let i = 0; i < queue.length; i++) {
     const current = queue[i];
-    const currentIntent = nearest.get(current);
-    if (!currentIntent) continue;
+    const currentProcess = nearest.get(current);
+    if (!currentProcess) continue;
     const neighbors = Array.from(adjacency.get(current) ?? []).sort();
     for (const neighbor of neighbors) {
       if (nearest.has(neighbor)) continue;
-      nearest.set(neighbor, currentIntent);
+      nearest.set(neighbor, currentProcess);
       queue.push(neighbor);
     }
   }
@@ -835,8 +844,7 @@ function laneReferenceFor(
       // Prefer the decision's own `decided_by` decider, but fall back to a
       // `performed_by` actor so a Decision attributed with the activity role
       // (as Señor Doco and legacy imports sometimes emit) still resolves to a
-      // lane instead of "Unassigned" — mirroring intent's performed_by ??
-      // owned_by fallback below.
+      // lane instead of "Unassigned".
       const ref =
         firstEdgeTarget(outgoing, rowId, "decided_by") ??
         firstEdgeTarget(outgoing, rowId, "performed_by");
@@ -847,11 +855,6 @@ function laneReferenceFor(
       }
       return ref;
     }
-    case "intent":
-      return (
-        firstEdgeTarget(outgoing, rowId, "performed_by") ??
-        firstEdgeTarget(outgoing, rowId, "owned_by")
-      );
     default:
       return null;
   }

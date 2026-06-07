@@ -4,22 +4,22 @@ import { computeDepthFromCenter } from "../graph-depth";
 import { linksWithFocusedPoolMembership } from "../process-focused-pool-links";
 
 describe("linksWithFocusedPoolMembership", () => {
-  it("treats every node in the focused intent pool as one hop away", () => {
+  it("treats every node in the focused process pool as one hop away", () => {
     const pools = [
-      { id: "pool_intent", intent_id: "intent_1" },
-      { id: "pool_other", intent_id: "intent_2" },
+      { id: "pool:action_p", process_id: "action_p" },
+      { id: "pool:action_q", process_id: "action_q" },
     ];
     const nodes = [
-      { id: "action_1", pool_id: "pool_intent" },
-      { id: "decision_1", pool_id: "pool_intent" },
-      { id: "action_2", pool_id: "pool_other" },
+      { id: "action_1", pool_id: "pool:action_p" },
+      { id: "decision_1", pool_id: "pool:action_p" },
+      { id: "action_2", pool_id: "pool:action_q" },
     ];
 
-    const focusLinks = linksWithFocusedPoolMembership(pools, nodes, [], "intent_1");
+    const focusLinks = linksWithFocusedPoolMembership(pools, nodes, [], "action_p");
     const depthByNode = computeDepthFromCenter(
-      [...nodes.map((node) => ({ id: node.id })), { id: "intent_1" }, { id: "intent_2" }],
+      [...nodes.map((node) => ({ id: node.id })), { id: "action_p" }, { id: "action_q" }],
       focusLinks,
-      "intent_1",
+      "action_p",
     );
 
     expect(depthByNode.get("action_1")).toBe(1);
@@ -28,20 +28,20 @@ describe("linksWithFocusedPoolMembership", () => {
   });
 
   it("does not add pool membership links when the focus is a rendered node", () => {
-    const pools = [{ id: "pool_intent", intent_id: "intent_1" }];
+    const pools = [{ id: "pool:action_p", process_id: "action_p" }];
     const nodes = [
-      { id: "action_1", pool_id: "pool_intent" },
-      { id: "decision_1", pool_id: "pool_intent" },
+      { id: "action_1", pool_id: "pool:action_p" },
+      { id: "decision_1", pool_id: "pool:action_p" },
     ];
 
     expect(linksWithFocusedPoolMembership(pools, nodes, [], "action_1")).toEqual([]);
   });
 
-  it("does not duplicate an existing intent-to-node link", () => {
-    const pools = [{ id: "pool_intent", intent_id: "intent_1" }];
-    const nodes = [{ id: "action_1", pool_id: "pool_intent" }];
-    const links = [{ source: "action_1", target: "intent_1" }];
+  it("does not duplicate an existing process-to-node link", () => {
+    const pools = [{ id: "pool:action_p", process_id: "action_p" }];
+    const nodes = [{ id: "action_1", pool_id: "pool:action_p" }];
+    const links = [{ source: "action_1", target: "action_p" }];
 
-    expect(linksWithFocusedPoolMembership(pools, nodes, links, "intent_1")).toEqual(links);
+    expect(linksWithFocusedPoolMembership(pools, nodes, links, "action_p")).toEqual(links);
   });
 });
