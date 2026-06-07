@@ -375,6 +375,23 @@ describe("slack.server", () => {
     expect(prompt).toContain("Keep the answer under 900 characters");
   });
 
+  it("renders the bound workspace's constitution into the system prompt when given one", () => {
+    const charter = "Ship small, reversible changes; write the decision down.";
+    const prompt = slackLlmSystemPrompt({ constitution: charter });
+
+    expect(prompt).toContain(charter);
+    expect(prompt).toContain("This workspace's constitution");
+    // The persona/limits are still present — the constitution is additive.
+    expect(prompt).toContain("You are Señor Doco");
+  });
+
+  it("omits the constitution block when none is provided (or it's blank)", () => {
+    expect(slackLlmSystemPrompt()).not.toContain("This workspace's constitution");
+    expect(slackLlmSystemPrompt({ constitution: "   " })).not.toContain(
+      "This workspace's constitution",
+    );
+  });
+
   it("formats Doco answer hits instead of the default permission prompt", () => {
     expect(
       formatSlackDocoAnswerResponse(
