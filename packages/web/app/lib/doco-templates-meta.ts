@@ -92,6 +92,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-06-07",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "test-scenarios",
+    label: "Test scenarios",
+    description:
+      "Document test scenarios for websites and apps and log every run — each scenario captures preconditions, steps, and the expected result; each run records the environment, outcome, and evidence.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
