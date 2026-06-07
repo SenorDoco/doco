@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -20,10 +21,12 @@ import {
   type GrantSets,
   approveDeviceAuthorization,
   assertSingleWorkspaceGrant,
+  consumeAuthorizationCode,
   issueAuthorizationCode,
   issueTokens,
   mergeGrantSets,
   normalizeTokenName,
+  pollDeviceAuthorization,
   refreshTokens,
 } from "../oauth-server.server";
 
@@ -270,6 +273,154 @@ describe("OAuth token authorization", () => {
     expect(roles).toEqual({ doco_new: "writer" });
     const writeTypes = JSON.parse((update?.[1] as unknown[])[5] as string);
     expect(writeTypes).toEqual({ doco_new: ["intent"] });
+  });
+});
+
+// The consent screens can mint an "act as me" credential: grant_type='actor',
+// no explicit grants, breadth resolved (one workspace per access token) at
+// refresh time. These tests pin the value as it threads through the
+// authorization-code and device-code paths.
+describe("actor grant_type threads through the consent paths", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.generateUlid.mockReturnValue("01AGENT0000000000000000000");
+    mocks.query.mockResolvedValue({ rows: [], rowCount: 1 });
+    mocks.withTransaction.mockImplementation(async (callback) => callback({ query: mocks.query }));
+    mocks.withClient.mockImplementation(async (callback) => callback({ query: mocks.query }));
+  });
+
+  it("issueAuthorizationCode persists grant_type (actor), defaulting to regular", async () => {
+    await issueAuthorizationCode({
+      client_id: "doco_client_browser",
+      approver_user_id: "user_owner",
+      token_name: "Claude",
+      redirect_uri: "http://127.0.0.1:4321/callback",
+      code_challenge: "challenge",
+      granted_doco_ids: [],
+      granted_workspace_ids: [],
+      grant_type: "actor",
+      scope: "doco",
+    });
+    const actorInsert = callsTo("INSERT INTO oauth_authorization_codes")[0]?.[1] as unknown[];
+    // …grant_type lands right after scope, before expires_at.
+    expect(actorInsert[12]).toBe("doco"); // scope
+    expect(actorInsert[13]).toBe("actor"); // grant_type
+
+    vi.clearAllMocks();
+    await issueAuthorizationCode({
+      client_id: "doco_client_browser",
+      approver_user_id: "user_owner",
+      token_name: "Claude",
+      redirect_uri: "http://127.0.0.1:4321/callback",
+      code_challenge: "challenge",
+      granted_doco_ids: ["doco_bpms"],
+      granted_workspace_ids: [],
+      scope: "doco",
+    });
+    const regularInsert = callsTo("INSERT INTO oauth_authorization_codes")[0]?.[1] as unknown[];
+    expect(regularInsert[13]).toBe("regular");
+  });
+
+  it("consumeAuthorizationCode returns the stored grant_type", async () => {
+    const verifier = "consume-test-verifier-0123456789";
+    const code_challenge = createHash("sha256").update(verifier).digest("base64url");
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("FROM oauth_authorization_codes")) {
+        return {
+          rows: [
+            {
+              client_id: "doco_client_browser",
+              user_id: "user_owner",
+              token_name: "Claude",
+              redirect_uri: "http://127.0.0.1:4321/callback",
+              code_challenge,
+              granted_doco_ids: [],
+              granted_doco_roles: {},
+              granted_doco_write_types: {},
+              granted_workspace_ids: [],
+              granted_workspace_roles: {},
+              granted_workspace_write_types: {},
+              grant_type: "actor",
+              scope: "doco",
+              expires_at: new Date(Date.now() + 10_000_000),
+              consumed_at: null,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const claim = await consumeAuthorizationCode({
+      code: "doco_code_actor",
+      client_id: "doco_client_browser",
+      redirect_uri: "http://127.0.0.1:4321/callback",
+      code_verifier: verifier,
+    });
+    expect(claim.grant_type).toBe("actor");
+    expect(claim.granted_doco_ids).toEqual([]);
+  });
+
+  it("approveDeviceAuthorization persists grant_type (actor)", async () => {
+    mocks.query.mockImplementation(async (sql: string) =>
+      sql.includes("SELECT client_id")
+        ? { rows: [{ client_id: "doco_client_device" }], rowCount: 1 }
+        : { rows: [], rowCount: 1 },
+    );
+
+    await approveDeviceAuthorization({
+      device_code: "doco_dc_123",
+      approver_user_id: "user_owner",
+      token_name: "Codex",
+      granted_doco_ids: [],
+      granted_workspace_ids: [],
+      grant_type: "actor",
+    });
+    const update = callsTo("UPDATE oauth_device_authorizations")[0]?.[1] as unknown[];
+    expect(update[9]).toBe("actor"); // grant_type, last in the SET list
+  });
+
+  it("pollDeviceAuthorization carries an actor grant_type into the minted refresh token", async () => {
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("FROM oauth_device_authorizations") && sql.includes("FOR UPDATE")) {
+        return {
+          rows: [
+            {
+              device_code: "doco_dc_123",
+              user_code: "WXYZ-1234",
+              client_id: "doco_client_device",
+              scope: "doco",
+              status: "approved",
+              user_id: "user_owner",
+              token_name: "Codex",
+              granted_doco_ids: [],
+              granted_doco_roles: {},
+              granted_doco_write_types: {},
+              granted_workspace_ids: [],
+              granted_workspace_roles: {},
+              granted_workspace_write_types: {},
+              grant_type: "actor",
+              target_doco_handle: null,
+              requested_role: null,
+              expires_at: new Date(Date.now() + 10_000_000),
+              last_polled_at: null,
+              created_at: new Date(),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await pollDeviceAuthorization({
+      device_code: "doco_dc_123",
+      client_id: "doco_client_device",
+    });
+    expect(result.kind).toBe("approved");
+    const refreshInsert = callsTo("INSERT INTO oauth_refresh_tokens")[0]?.[1] as unknown[];
+    expect(refreshInsert[12]).toBe("actor"); // grant_type, last param
   });
 });
 

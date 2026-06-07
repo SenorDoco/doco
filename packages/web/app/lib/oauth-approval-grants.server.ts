@@ -61,10 +61,17 @@ export interface OAuthApprovalGrantSets {
   granted_workspace_ids: string[];
   granted_workspace_roles: Record<string, string>;
   granted_workspace_write_types: Record<string, string[]>;
+  /**
+   * 'actor' = the human approved an "act as me" credential whose breadth is
+   * their LIVE workspace membership, down-scoped to one workspace per access
+   * token at refresh time. It carries NO explicit grants. 'regular' (default)
+   * copies the granted_* sets through to the token verbatim.
+   */
+  grant_type: "regular" | "actor";
 }
 
 interface ParsedApprovalGrant {
-  level: "account" | "workspace" | "doco";
+  level: "account" | "workspace" | "doco" | "actor";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
@@ -77,9 +84,16 @@ export async function readOAuthApprovalGrants(
   const rawGrants = String(form.get("grants") ?? "").trim();
   if (rawGrants) {
     const parsed = parseGrantPayload(rawGrants);
-    // Whatever the approver picked, the minted token is capped at a single
-    // workspace by assertSingleWorkspaceGrant at issuance — there is no
-    // full-access ("identity") grant anymore.
+    // An actor ("act as me") pick is the user's whole live membership — it
+    // carries no explicit targets and resolves per-workspace at refresh time,
+    // so it short-circuits the per-target ownership checks below. If the human
+    // chose it, it wins over any workspace/doco picks bundled in the same form.
+    if (parsed.some((g) => g.level === "actor")) {
+      return { ...emptyGrantSets(), grant_type: "actor" };
+    }
+    // Otherwise the minted token is capped at a single workspace by
+    // assertSingleWorkspaceGrant at issuance — there is no full-access
+    // ("identity") grant anymore.
     return serializeApprovalGrants(parsed, principalId);
   }
   return serializeLegacyApprovalFields(form, principalId);
@@ -109,12 +123,16 @@ function parseGrantPayload(rawGrants: string): ParsedApprovalGrant[] {
       write_types?: unknown;
     };
     const level =
-      grant.level === "account" || grant.level === "workspace" || grant.level === "doco"
+      grant.level === "account" ||
+      grant.level === "workspace" ||
+      grant.level === "doco" ||
+      grant.level === "actor"
         ? grant.level
         : null;
     const role = readRole(grant.role);
     const targetId = String(grant.targetId ?? grant.target_id ?? "").trim();
-    if (!level || (level !== "account" && !targetId)) {
+    // Account- and actor-level grants are target-less; every other level needs one.
+    if (!level || (level !== "account" && level !== "actor" && !targetId)) {
       throw approvalError("Grant missing a target.", 400);
     }
     const rawWriteTypes = grant.writeTypes ?? grant.write_types;
@@ -274,6 +292,7 @@ function emptyGrantSets(): OAuthApprovalGrantSets {
     granted_workspace_ids: [],
     granted_workspace_roles: {},
     granted_workspace_write_types: {},
+    grant_type: "regular",
   };
 }
 

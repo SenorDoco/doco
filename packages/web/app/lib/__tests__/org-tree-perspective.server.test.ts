@@ -193,6 +193,49 @@ describe("loadOrgTreeData", () => {
     expect(data.nodes.find((n) => n.id === "principal_b")?.reports_to).toBe("principal_a");
   });
 
+  it("picks the ACTIVE has_parent over a retired one when a seat is re-pointed", async () => {
+    // Re-pointing a reporting line retires the old `has_parent` edge and adds a
+    // new active one (edges are immutable, so you don't mutate in place). The
+    // tree must follow the live (active) line, not the dead (retired) one — even
+    // though the retired edge was created first and arrives first in created_at
+    // order. Regression: "first parent wins" picked the older retired edge, so a
+    // re-pointed seat rendered under its FORMER manager.
+    const rows = [
+      { id: "principal_alex", name: "Alex — CEO", lifecycle: "active", data: {} },
+      { id: "principal_juanfer", name: "Juanfer — Head of Growth", lifecycle: "active", data: {} },
+      { id: "principal_daniel", name: "Daniel — Head of Crawling", lifecycle: "active", data: {} },
+    ];
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      query: async <T>(sql: string) => {
+        if (/FROM edges/i.test(sql)) {
+          // Ordered by created_at: the retired edge (the old line) comes first.
+          return {
+            rows: [
+              {
+                from_id: "principal_daniel",
+                to_id: "principal_alex",
+                edge_type: "has_parent",
+                lifecycle: "retired",
+              },
+              {
+                from_id: "principal_daniel",
+                to_id: "principal_juanfer",
+                edge_type: "has_parent",
+                lifecycle: "active",
+              },
+            ] as T[],
+          };
+        }
+        return { rows: rows as T[] };
+      },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme");
+    expect(data.nodes.find((n) => n.id === "principal_daniel")?.reports_to).toBe(
+      "principal_juanfer",
+    );
+  });
+
   it("queries BOTH solid (has_parent) and dotted (relates_to) reporting edges", async () => {
     // The org-chart template gives `relates_to` between two seats the
     // dotted-line / matrix meaning, so the loader must pull it alongside the

@@ -131,54 +131,34 @@ describe("/tokens page action", () => {
     );
   });
 
-  it("asks which workspace first and reveals nothing concrete until one is picked", () => {
+  it("shows ONE /mcp connector URL with the one-workspace-per-session copy (no picker)", () => {
     const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, {
-        host: "https://doco.test",
-        workspaces: [
-          { id: "workspace_01A", handle: "acme" },
-          { id: "workspace_01B", handle: "beta" },
-        ],
-      }),
+      createElement(ManualMcpPanel, { host: "https://doco.test" }),
     );
 
     expect(markup).toContain("Connect an agent to Doco");
-    expect(markup).toContain("per workspace");
-    // The selector offers every workspace by handle…
-    expect(markup).toContain("acme");
-    expect(markup).toContain("beta");
-    // …but with two to choose from, nothing is picked yet, so neither the
-    // URL nor the client setup is shown until the user selects one.
-    expect(markup).not.toContain("https://doco.test/workspace_01A/mcp");
-    expect(markup).not.toContain("https://doco.test/workspace_01B/mcp");
+    // One endpoint at /mcp — no per-workspace picker, no workspace in the URL.
+    expect(markup).toContain("https://doco.test/mcp");
+    expect(markup).not.toContain("per workspace");
+    expect(markup).not.toContain("Select a workspace");
+    expect(markup).not.toContain("WORKSPACE_ID");
+    expect(markup).not.toContain("/workspace_");
+    // Capabilities note + provider options still render.
+    expect(markup).toContain("doco_request_access");
+    expect(markup).toContain("Claude Code");
   });
 
-  it("auto-selects and shows the URL when the user has exactly one workspace", () => {
+  it("trims a trailing slash on the host when building the /mcp URL", () => {
     const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, {
-        host: "https://doco.test",
-        workspaces: [{ id: "workspace_01ABC", handle: "acme" }],
-      }),
+      createElement(ManualMcpPanel, { host: "https://doco.test/" }),
     );
-
-    // One workspace: no need to ask — its URL is shown right away.
-    expect(markup).toContain("https://doco.test/workspace_01ABC/mcp");
-    // Client setup steps stay behind the provider options until one is clicked.
-    expect(markup).not.toContain("claude mcp add doco -- npx -y mcp-remote");
-    // No app-wide /mcp endpoint is advertised anymore.
-    expect(markup).not.toContain("https://doco.test/mcp");
-    // The clickable provider options are present, and so is the capabilities note.
-    expect(markup).toContain("Claude Desktop");
-    expect(markup).toContain("ChatGPT");
-    expect(markup).toContain("doco_request_access");
+    expect(markup).toContain("https://doco.test/mcp");
+    expect(markup).not.toContain("https://doco.test//mcp");
   });
 
   it("renders the MCP URL copy row with room for a primary copy button", () => {
     const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, {
-        host: "https://doco.test",
-        workspaces: [{ id: "workspace_01ABC", handle: "acme" }],
-      }),
+      createElement(ManualMcpPanel, { host: "https://doco.test" }),
     );
 
     const urlBlock = markup.match(/<pre class="([^"]*)" data-testid="mcp-url">/)?.[1] ?? "";
@@ -190,15 +170,6 @@ describe("/tokens page action", () => {
     expect(urlBlock).toContain("pr-24");
     expect(copyButton).toContain("bg-primary");
     expect(copyButton).toContain("text-primary-foreground");
-  });
-
-  it("falls back to the WORKSPACE_ID placeholder when the user has no workspace", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, { host: "https://doco.test" }),
-    );
-
-    expect(markup).toContain("https://doco.test/WORKSPACE_ID/mcp");
-    expect(markup).not.toContain("https://doco.test/mcp");
   });
 
   it("renders client-specific setup only for the chosen provider", () => {
@@ -234,10 +205,7 @@ describe("/tokens page action", () => {
 
   it("groups Claude Desktop with the connector clients and gives Claude Code its own tab", () => {
     const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, {
-        host: "https://doco.test",
-        workspaces: [{ id: "workspace_01ABC", handle: "acme" }],
-      }),
+      createElement(ManualMcpPanel, { host: "https://doco.test" }),
     );
 
     // Claude Desktop now shares the custom-connector button with Claude.ai…

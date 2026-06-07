@@ -42,6 +42,7 @@
 // a process step).
 
 import type { OverviewGraphLink } from "~/components/overview-graph";
+import { lifecycleRenderRank } from "./node-colors";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 import { computeForwardSequenceDepths } from "./process-sequence-depth";
@@ -707,26 +708,11 @@ function selectProcessNodeIds(
 }
 
 function compareProcessNodesForLargeDoco(a: ProcessNode, b: ProcessNode): number {
-  const lifecycleDiff = lifecycleRank(a.lifecycle) - lifecycleRank(b.lifecycle);
+  const lifecycleDiff = lifecycleRenderRank(a.lifecycle) - lifecycleRenderRank(b.lifecycle);
   if (lifecycleDiff !== 0) return lifecycleDiff;
   const dateDiff = Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "");
   if (Number.isFinite(dateDiff) && dateDiff !== 0) return dateDiff;
   return a.id.localeCompare(b.id);
-}
-
-function lifecycleRank(lifecycle: string | null | undefined): number {
-  switch (lifecycle ?? "active") {
-    case "active":
-      return 0;
-    case "queued":
-      return 1;
-    case "drafting":
-      return 2;
-    case "retired":
-      return 3;
-    default:
-      return 4;
-  }
 }
 
 function sequenceFlowLabel(label: string | null, condition: string | null): string | null {

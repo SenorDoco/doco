@@ -710,10 +710,10 @@ export async function action({
     const metadataUrl = `${origin}/.well-known/oauth-protected-resource/${workspaceId}/mcp`;
     return runGatedMcp(request, gate, metadataUrl);
   }
-  // User-level endpoint (/me/mcp): no `:workspaceId` segment. The session
-  // workspace comes from the token, not the URL. Lazy-import keeps the
+  // The hosted endpoint at `/mcp`: no `:workspaceId` segment. The session
+  // workspace comes from the token, not the URL. Lazy-import keeps the legacy
   // per-workspace path — and its tests — free of the user-gate's deps.
   const { gateUserMcp } = await import("~/lib/user-mcp.server");
   const gate = await gateUserMcp(request);
-  return runGatedMcp(request, gate, `${origin}/.well-known/oauth-protected-resource/me/mcp`);
+  return runGatedMcp(request, gate, `${origin}/.well-known/oauth-protected-resource/mcp`);
 }

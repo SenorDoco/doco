@@ -18,15 +18,14 @@ export function loader({ request }: { request: Request }) {
 ## Use the hosted MCP connector first (recommended)
 
 The simplest path is the hosted MCP connector — no OAuth code to write.
-MCP is per-workspace (no app-wide endpoint): point any MCP-capable client
-at your workspace's URL (a workspace id looks like \`workspace_01…\`; find
-it on the workspace's Settings page):
+There is one endpoint; point any MCP-capable client at it. It reaches
+every workspace you belong to, one per session:
 
-    ${baseUrl}/<workspace-id>/mcp
+    ${baseUrl}/mcp
 
 It speaks MCP over Streamable HTTP. An unauthenticated request returns
 401 + a \`WWW-Authenticate\` header pointing at
-\`${baseUrl}/.well-known/oauth-protected-resource/<workspace-id>/mcp\`
+\`${baseUrl}/.well-known/oauth-protected-resource/mcp\`
 (RFC 9728); a connector client follows that to discover the OAuth server
 (RFC 8414) and run the flow for you. The resulting token is bound to that
 one workspace. The connector is read + write —

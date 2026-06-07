@@ -260,12 +260,7 @@ function TokensTabs({
         className="neu-surface relative z-50 rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card p-6"
       >
         {tab === "add-mcp" ? (
-          <ManualMcpPanel
-            host={host}
-            workspaces={scopeOptions
-              .filter((o) => o.level === "workspace")
-              .map((o) => ({ id: o.id, handle: o.label }))}
-          />
+          <ManualMcpPanel host={host} />
         ) : tab === "generate" ? (
           <div className="space-y-4">
             <GenerateKeyPanel scopeOptions={scopeOptions} />
@@ -440,34 +435,25 @@ export function ProviderInstructions({ providerId, url }: { providerId: string; 
   return null;
 }
 
-export function ManualMcpPanel({
-  host,
-  workspaces = [],
-}: {
-  host: string;
-  workspaces?: { id: string; handle: string }[];
-}) {
+export function ManualMcpPanel({ host }: { host: string }) {
   const baseUrl = host.replace(/\/+$/, "");
-  const hasWorkspaces = workspaces.length > 0;
-  // MCP is per-workspace: each workspace has its own endpoint at
-  // /<workspace-id>/mcp, and a connector's token reaches only that
-  // workspace. So the flow is: pick a workspace → copy its URL → pick a
-  // client. With exactly one workspace there's nothing to ask, so it's
-  // pre-selected; with none, fall back to the WORKSPACE_ID placeholder.
-  const [selectedId, setSelectedId] = useState(workspaces.length === 1 ? workspaces[0].id : "");
+  // ONE hosted MCP endpoint at /mcp. Connect once; the connection reaches every
+  // workspace the user belongs to, and each session is pinned to a single one
+  // (by .doco/connections.md or the doco_select_workspace tool). No
+  // per-workspace URL to pick anymore.
+  const url = `${baseUrl}/mcp`;
   const [provider, setProvider] = useState("");
-  const selectionResolved = !hasWorkspaces || selectedId !== "";
-  const effectiveId = hasWorkspaces ? selectedId : "WORKSPACE_ID";
-  const url = mcpUrlForWorkspace(baseUrl, effectiveId);
 
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
       <div className="space-y-1.5">
         <h2 className="text-base font-semibold">Connect an agent to Doco</h2>
         <p className="text-xs text-muted-foreground">
-          Doco hosts a remote MCP server <strong>per workspace</strong> — each connector is bound to
-          one workspace and its token reaches no other. Pick a workspace, copy its URL, then choose
-          your client for setup steps. Machine-readable version:{" "}
+          Doco hosts <strong>one</strong> remote MCP server at <Code>/mcp</Code> — connect once and
+          it reaches every workspace you belong to. Each session works in just one workspace, pinned
+          by <Code>.doco/connections.md</Code> or the <Code>doco_select_workspace</Code> tool; it
+          can never touch two in the same session. Copy the URL, then choose your client for setup
+          steps. Machine-readable version:{" "}
           <a href="/llms.txt" className="underline hover:opacity-80">
             /llms.txt
           </a>
@@ -475,83 +461,51 @@ export function ManualMcpPanel({
         </p>
       </div>
 
-      {/* Step 1 — which workspace? */}
+      {/* The URL */}
       <div className="space-y-1.5 border-t border-border pt-3">
-        <FieldLabel>Workspace</FieldLabel>
-        {hasWorkspaces ? (
-          <select
-            data-testid="mcp-workspace-select"
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.currentTarget.value)}
-            className="block w-full max-w-md rounded-md px-2 py-1.5 text-xs"
-          >
-            {workspaces.length > 1 ? <option value="">Select a workspace…</option> : null}
-            {workspaces.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.handle}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            You're not in a workspace yet. Find a workspace's id on its <strong>Settings</strong>{" "}
-            page (it looks like <Code>workspace_01…</Code>) and drop it into the URL below in place
-            of <Code>WORKSPACE_ID</Code>.
-          </p>
-        )}
+        <FieldLabel>Your MCP URL</FieldLabel>
+        <CopyableCode value={url} testid="mcp-url" />
       </div>
 
-      {selectionResolved ? (
-        <>
-          {/* Step 2 — the URL */}
-          <div className="space-y-1.5 border-t border-border pt-3">
-            <FieldLabel>Your MCP URL</FieldLabel>
-            <CopyableCode value={url} testid="mcp-url" />
+      {/* Per-client setup, revealed on click */}
+      <div className="space-y-2 border-t border-border pt-3">
+        <FieldLabel>Set up your client</FieldLabel>
+        <p className="text-xs text-muted-foreground">Pick your client for step-by-step setup.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {MCP_PROVIDERS.map((p) => {
+            const active = p.id === provider;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={active}
+                data-testid={`mcp-provider-${p.id}`}
+                onClick={() => setProvider(active ? "" : p.id)}
+                className={cn(
+                  "neu-button rounded-md px-3 py-1.5 text-xs font-semibold",
+                  active ? "bg-primary text-primary-foreground" : "",
+                )}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        {provider ? (
+          <div className="rounded-md border border-border bg-background/40 p-3">
+            <ProviderInstructions providerId={provider} url={url} />
           </div>
+        ) : null}
+      </div>
 
-          {/* Step 3 — per-client setup, revealed on click */}
-          <div className="space-y-2 border-t border-border pt-3">
-            <FieldLabel>Set up your client</FieldLabel>
-            <p className="text-xs text-muted-foreground">
-              Pick your client for step-by-step setup.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {MCP_PROVIDERS.map((p) => {
-                const active = p.id === provider;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    aria-pressed={active}
-                    data-testid={`mcp-provider-${p.id}`}
-                    onClick={() => setProvider(active ? "" : p.id)}
-                    className={cn(
-                      "neu-button rounded-md px-3 py-1.5 text-xs font-semibold",
-                      active ? "bg-primary text-primary-foreground" : "",
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-            {provider ? (
-              <div className="rounded-md border border-border bg-background/40 p-3">
-                <ProviderInstructions providerId={provider} url={url} />
-              </div>
-            ) : null}
-          </div>
-
-          {/* What you get */}
-          <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-            The connector is read <em>and</em> write — <Code>doco_search</Code>,{" "}
-            <Code>doco_get</Code> (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>,{" "}
-            <Code>doco_changeset</Code> (write), and <Code>doco_request_access</Code> — all scoped
-            to this one workspace. Read vs write is a live permission on the same token, so stepping
-            up never means reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration).
-          </p>
-        </>
-      ) : null}
+      {/* What you get */}
+      <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+        The connector is read <em>and</em> write — <Code>doco_search</Code>, <Code>doco_get</Code>{" "}
+        (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, <Code>doco_changeset</Code>{" "}
+        (write), and <Code>doco_request_access</Code> — all scoped to the session's workspace. Read
+        vs write is a live permission on the same token, so stepping up never means reconnecting.
+        Auth is OAuth 2.1 (PKCE + dynamic client registration).
+      </p>
     </section>
   );
 }
