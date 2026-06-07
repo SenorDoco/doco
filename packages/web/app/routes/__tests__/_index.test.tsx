@@ -31,12 +31,13 @@ afterAll(() => {
 });
 
 describe("Home (anonymous landing)", () => {
-  it("preserves both primary CTAs (create + join) with their destinations", () => {
+  it("offers the create-workspace CTA and drops the removed join-wizard link", () => {
     const html = render();
     expect(html).toContain('href="/new-workspace"');
-    expect(html).toContain('href="/onboarding/join"');
     expect(html).toContain("Create a new workspace");
-    expect(html).toContain("Join a workspace");
+    // The "Join a workspace" wizard is gone — joining is invite- or MCP-based.
+    expect(html).not.toContain('href="/onboarding/join"');
+    expect(html).not.toContain("Join a workspace");
   });
 
   it("uses the shared-memory line as the hero headline", () => {

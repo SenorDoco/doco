@@ -64,13 +64,6 @@ importers:
       '@doco/shared':
         specifier: workspace:*
         version: link:../shared
-    devDependencies:
-      '@types/pg':
-        specifier: ^8.13.0
-        version: 8.20.0
-      pg:
-        specifier: ^8.13.1
-        version: 8.20.0
 
   packages/index:
     dependencies:

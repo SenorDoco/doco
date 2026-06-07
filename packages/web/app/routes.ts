@@ -171,12 +171,9 @@ export default [
   // grant) + the landing for a just-sent request. Agents request via the
   // doco_request_access MCP tool; humans via the private-doco 403 page.
   route("access-requests", "routes/access-requests.tsx"),
-  // Onboarding (human paths only — agents authenticate via OAuth +
-  // install the per-workspace MCP connector at /<workspace-id>/mcp, no
-  // recipe to walk through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
-  route("onboarding/join", "routes/onboarding.join._index.tsx"),
-  route("onboarding/join/human", "routes/onboarding.join.human.tsx"),
-  // API
+  // Invites: humans accept in the browser; agents authenticate via OAuth and
+  // install the per-workspace MCP connector at /<workspace-id>/mcp. There is
+  // no separate join wizard. decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
   route("invite/:code", "routes/invite.$code.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
   // an invite URL ("redeem this") fetch this to learn the MCP-OAuth
