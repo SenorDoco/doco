@@ -99,39 +99,6 @@ export interface StableLabeledEdgeData extends Record<string, unknown> {
 }
 
 export type StableLabeledEdgeModel = Edge<StableLabeledEdgeData>;
-export type CurvedBezierEdgeModel = Edge<Record<string, unknown>>;
-
-export function CurvedBezierEdge({
-  id,
-  sourceX,
-  sourceY,
-  sourcePosition,
-  targetX,
-  targetY,
-  targetPosition,
-  markerEnd,
-  interactionWidth,
-  style,
-}: EdgeProps<CurvedBezierEdgeModel>) {
-  const [path] = bezierOrLoopPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
-
-  return (
-    <BaseEdge
-      id={id}
-      path={path}
-      markerEnd={markerEnd}
-      interactionWidth={interactionWidth ?? 0}
-      style={style}
-    />
-  );
-}
 
 /**
  * A Bezier edge with a stable HTML label. React Flow's built-in edge

@@ -24,7 +24,6 @@ import {
   edgeExists,
 } from "./edge-capture.server";
 
-export type { CodeReferenceLocator } from "./code-locator";
 export { parseCodeReferenceLocator };
 
 /** The subset of the GitHub `pull_request` payload Doco maps to a Reference. */
