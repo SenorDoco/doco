@@ -31,13 +31,13 @@
 // accessible — no re-auth needed). Cookie callers see `oauth_grant:
 // null`.
 
+import { buildAgentBootstrapBody } from "~/lib/agent-bootstrap-body";
 import {
   loadBootstrapForPrincipal,
   loadBootstrapForProjectToken,
 } from "~/lib/agent-bootstrap.server";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
 import { getOauthTokenForRequest } from "~/lib/doco-access.server";
-import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import {
   type ProjectToken,
   isProjectToken,
@@ -54,21 +54,16 @@ export async function loader({ request }: { request: Request }) {
   if (projectToken) {
     const { docoPolicies, workspaceConstitutions } =
       await loadBootstrapForProjectToken(projectToken);
-    return Response.json({
-      principal: null,
-      canonical_instructions_url: new URL(
-        "/protocol/canonical-instructions",
-        new URL(request.url).origin,
-      ).toString(),
-      canonical_instructions: CANONICAL_INSTRUCTIONS,
-      oauth_grant: null,
-      project_token_grant: {
-        doco_id: projectToken.doco_id,
-        role: "reader",
-      },
-      doco_policies: docoPolicies,
-      workspace_constitutions: workspaceConstitutions,
-    });
+    return Response.json(
+      buildAgentBootstrapBody({
+        origin: new URL(request.url).origin,
+        principal: null,
+        oauthGrant: null,
+        projectTokenGrant: { doco_id: projectToken.doco_id, role: "reader" },
+        docoPolicies,
+        workspaceConstitutions,
+      }),
+    );
   }
 
   const me = await getCurrentPrincipalAsync(request);
@@ -80,28 +75,26 @@ export async function loader({ request }: { request: Request }) {
     oauthGrant,
   );
 
-  return Response.json({
-    principal,
-    canonical_instructions_url: new URL(
-      "/protocol/canonical-instructions",
-      new URL(request.url).origin,
-    ).toString(),
-    canonical_instructions: CANONICAL_INSTRUCTIONS,
-    oauth_grant: oauthGrant
-      ? {
-          client_id: oauthGrant.client_id,
-          scope: oauthGrant.scope,
-          granted_doco_ids: oauthGrant.granted_doco_ids,
-          granted_doco_roles: oauthGrant.granted_doco_roles,
-          granted_workspace_ids: oauthGrant.granted_workspace_ids,
-          granted_workspace_roles: oauthGrant.granted_workspace_roles,
-          expires_at: oauthGrant.expires_at.toISOString(),
-        }
-      : null,
-    project_token_grant: null,
-    doco_policies: docoPolicies,
-    workspace_constitutions: workspaceConstitutions,
-  });
+  return Response.json(
+    buildAgentBootstrapBody({
+      origin: new URL(request.url).origin,
+      principal,
+      oauthGrant: oauthGrant
+        ? {
+            client_id: oauthGrant.client_id,
+            scope: oauthGrant.scope,
+            granted_doco_ids: oauthGrant.granted_doco_ids,
+            granted_doco_roles: oauthGrant.granted_doco_roles,
+            granted_workspace_ids: oauthGrant.granted_workspace_ids,
+            granted_workspace_roles: oauthGrant.granted_workspace_roles,
+            expires_at: oauthGrant.expires_at.toISOString(),
+          }
+        : null,
+      projectTokenGrant: null,
+      docoPolicies,
+      workspaceConstitutions,
+    }),
+  );
 }
 
 async function getProjectTokenFromRequest(request: Request): Promise<ProjectToken | null> {
