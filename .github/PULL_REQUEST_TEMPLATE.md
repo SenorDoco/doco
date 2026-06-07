@@ -19,12 +19,10 @@ tracked Reference carries the context. Reference nodes by id (or doco.to URL):
 - Fixes:      <bug_…>              — the bug this closes
 - Enacts:     <decision_…>         — the decision this puts into effect
 
-(These are read by humans and agents today. Automatic edge-wiring from
-`Doco-Implements:` / `Doco-Fixes:` trailers is proposed, not yet implemented —
-see docs/proposals/pull-request-node-and-template.md.)
+(These are read by humans and agents today.)
 -->
 
 ## Checklist
 
 - [ ] Behavior change is covered by a test that was **red before, green after** (`pnpm verify`)
-- [ ] Updated docs/proposals if this changes a documented convention
+- [ ] Updated AGENTS.md or a decision record if this changes a documented convention
