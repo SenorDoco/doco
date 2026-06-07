@@ -1,15 +1,17 @@
 # Proposal: User-level MCP credential + one-workspace-per-session
 
-> **Status: Proposed — direction confirmed by the project owner, not yet
-> implemented.** The shape below (a user-level durable credential, with each
-> *session* confined to one workspace) is the agreed target. Two design forks
-> were decided by the owner: enforcement is **both-layered** (protocol invariant
-> *and* host-enforced single-workspace access token), and the per-session
-> workspace is selected **connections.md-default, tool-override**. This file is
-> the design record and the sequencing plan; it describes what we intend to
-> build, not what exists today. It supersedes the reasoning in
-> `decision_01KS14CW9ZN23FF5CGG0Z7TH4G` ("no app-wide /mcp, for security") — see
-> [Security](#security-why-this-can-reverse-the-old-decision).
+> **Status: Implemented — Phases 1–4 shipped to `main`; the supersession is
+> now IN EFFECT.** A user-level durable credential with each *session* confined
+> to one workspace is live. Both owner-decided forks held: enforcement is
+> **both-layered** (protocol invariant + host-enforced single-workspace access
+> token) and the per-session workspace is **connections.md-default,
+> tool-override**. The reasoning in `decision_01KS14CW9ZN23FF5CGG0Z7TH4G` ("no
+> app-wide /mcp, for security") is hereby **superseded**: see
+> [Security](#security-why-this-can-reverse-the-old-decision) for the argument
+> and [Implementation status](#implementation-status) for what shipped — plus
+> the one deliberate deferral (the per-workspace endpoint **coexists**, not
+> retired, so existing connectors don't break). The sections below are the
+> design record; they describe the system as built.
 
 ## TL;DR
 
@@ -166,3 +168,32 @@ least-privilege by role.*
   `/u/<user-id>/mcp`. Detail; pick in Phase 3.
 - **Open:** how aggressively to deprecate the per-workspace `/<workspace-id>/mcp`
   endpoint vs keep it as an alias indefinitely.
+
+## Implementation status
+
+Shipped to `main` as a sequence of phased PRs, each test-first:
+
+| Phase | PR | What landed |
+|---|---|---|
+| 1 | #1107 | Slack Señor Doco renders the workspace constitution (ends the prompt divergence) — `slack.server.ts`. |
+| 2 | #1109 | The token model: `oauth_refresh_tokens.grant_type` (`'regular'`\|`'actor'`); `refreshTokens(resource?)` down-scopes an **actor** refresh to one workspace per access token at the user's live role; `assertSingleWorkspaceGrant` runs on the minted access token as a backstop — `oauth-server.server.ts`, `schema.sql`. |
+| 3 | #1111 | The user-level endpoint `/me/mcp` + RFC 9728 metadata; `gateUserMcp` derives the session workspace from the token's lone `granted_workspace_ids[0]`; reuses the per-workspace handler via a shared `runGatedMcp` (no duplication) — `$workspaceId.mcp.tsx`, `user-mcp.server.ts`. |
+| 4 | #1112 | Minting an **actor** token from `/tokens` (the scope toggle); `mintApiKey({ grantType: 'actor' })` → `issueTokens` with `grant_type='actor'` + empty grants — `tokens.tsx`, `api-keys.server.ts`. |
+
+**The supersession of `decision_01KS14CW9ZN23FF5CGG0Z7TH4G` is in effect.** The
+hard guarantee is no longer "a token can't cross workspaces" but "a **session**
+can't cross workspaces" — enforced host-side by the single-workspace access
+token (`refreshTokens` + `assertSingleWorkspaceGrant`) and the `gateUserMcp`
+confinement, while the durable credential is least-privilege by role. The
+per-workspace `/<workspace-id>/mcp` endpoint **coexists** with `/me/mcp` rather
+than being retired, so existing connectors keep working; retiring it (and the
+broader migration / `verify-live` E2E) is deferred follow-up, not a blocker.
+
+### Deferred (not shipped)
+- Retiring `/<workspace-id>/mcp` and migrating the bundled client / `.mcp.json`
+  to `/me/mcp`.
+- The `doco_select_workspace` override tool (the connections.md default works
+  today; the explicit override is the open escape hatch).
+- Device-flow / OAuth-authorize **consent copy** for the agent-initiated grant
+  (the self-service `/tokens` actor mint is the path that shipped).
+- `verify-live.mjs` end-to-end coverage of the actor mint → `/me/mcp` flow.
