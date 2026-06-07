@@ -649,7 +649,7 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
                 data-testid="scope-mode-actor"
               />
               <span>
-                <span className="font-semibold">All my workspaces — one at a time</span>
+                <span className="font-semibold">All your workspaces — one at a time</span>
                 <span className="block text-xs text-muted-foreground">
                   A user-level credential that reaches every workspace you belong to, but each
                   session works in just one — pinned by <code>.doco/connections.md</code> or the{" "}
