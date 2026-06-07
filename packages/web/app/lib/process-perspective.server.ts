@@ -354,13 +354,25 @@ export async function loadProcessGraph(
     processIds.add(parent);
   }
 
-  // ── Deterministic process precedence (no PageRank) ──────────────
-  // A stable ordering over process Actions used for pool order (oldest
-  // process first) and the homeless-node nearest-process fallback. Score is
-  // higher for older processes (negated created_at); missing timestamps sort
-  // last. Ties fall through to id order downstream.
+  // An Action HEADS its own pool when it is a process (has `has_parent`
+  // children) OR a root (no parent process of its own). The latter is what
+  // surfaces every top-level Action in the BPMN home view — even one with no
+  // sub-steps yet — so a freshly-sketched flat process isn't invisible. A
+  // subprocess (an Action with both a parent and children) heads a pool too, so
+  // it can be expanded. Leaf member Actions (a parent, no children) do not.
+  const poolActionIds = new Set<string>(processIds);
+  for (const row of allRows) {
+    if (row.entity_type !== "action") continue;
+    if (!parentProcessByNode.has(row.id)) poolActionIds.add(row.id);
+  }
+
+  // ── Deterministic pool-action precedence (no PageRank) ──────────────
+  // A stable ordering over pool-heading Actions used for pool order (oldest
+  // first) and the homeless-node nearest-pool fallback. Score is higher for
+  // older actions (negated created_at); missing timestamps sort last. Ties fall
+  // through to id order downstream.
   const processPrecedence = new Map<string, number>();
-  for (const id of processIds) {
+  for (const id of poolActionIds) {
     const ms = actionsById.get(id)?.created_at
       ? Date.parse(actionsById.get(id)?.created_at ?? "")
       : Number.NaN;
@@ -381,9 +393,10 @@ export async function loadProcessGraph(
       const parent = parentProcessByNode.get(row.id);
       if (parent) {
         poolByNode.set(row.id, `pool:${parent}`);
-      } else if (processIds.has(row.id)) {
-        // A top-level process Action is a pool header, not a member: it gets
-        // no pool *membership* (its own pool is built from processIds below).
+      } else if (poolActionIds.has(row.id)) {
+        // A top-level Action (a root, whether or not it has children) is a pool
+        // header, not a member: it gets no pool *membership* (its own pool is
+        // built from poolActionIds below).
       } else {
         poolByNode.set(row.id, POOL_UNASSIGNED_ID);
       }
@@ -430,15 +443,15 @@ export async function loadProcessGraph(
   //
   // Crucially, a node with NO path to any process is left in the real
   // Unassigned pool rather than force-homed into an arbitrary process.
-  if (processIds.size > 0) {
+  if (poolActionIds.size > 0) {
     const homeless: NodeRow[] = [];
     for (const row of allRows) {
-      if (processIds.has(row.id)) continue;
+      if (poolActionIds.has(row.id)) continue;
       if (poolByNode.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
     }
     if (homeless.length > 0) {
       const nearestProcessByNode = computeNearestProcessByNode(
-        Array.from(processIds),
+        Array.from(poolActionIds),
         links,
         processPrecedence,
       );
@@ -458,10 +471,10 @@ export async function loadProcessGraph(
   const nodes: ProcessNode[] = [];
 
   for (const row of allRows) {
-    // A top-level process Action (a process with no parent of its own) is a
-    // pool header, never a member node. A subprocess (a process Action that
+    // A top-level Action (a pool head with no parent of its own) is a pool
+    // header, never a member node. A subprocess (a pool-heading Action that
     // *does* have a parent) still renders as a member of its parent's pool.
-    if (processIds.has(row.id) && !parentProcessByNode.has(row.id)) continue;
+    if (poolActionIds.has(row.id) && !parentProcessByNode.has(row.id)) continue;
     const poolId = poolByNode.get(row.id) ?? POOL_UNASSIGNED_ID;
     let baseId: string;
     let kind: ProcessLaneKind;
@@ -548,12 +561,13 @@ export async function loadProcessGraph(
   }
 
   // ── Build pools[] ─────────────────────────────────────────────────
-  // One pool per process Action (every Action with ≥1 `has_parent` child),
-  // plus the Unassigned pool when any orphan landed there.
+  // One pool per pool-heading Action (every Action with ≥1 `has_parent` child,
+  // plus every root Action), so the home view lists every top-level Action.
+  // The Unassigned pool appears only when some orphan landed there.
   const pools: ProcessPool[] = [];
   const usedPoolIds = new Set<string>();
   for (const id of poolByNode.values()) usedPoolIds.add(id);
-  for (const processId of processIds) usedPoolIds.add(`pool:${processId}`);
+  for (const poolActionId of poolActionIds) usedPoolIds.add(`pool:${poolActionId}`);
 
   for (const id of usedPoolIds) {
     if (id === POOL_UNASSIGNED_ID) {
