@@ -941,12 +941,16 @@ function TokenAddAccessForm({
 }
 
 function grantsToPayload(grants: ComposedGrant[]): ApiKeyGrantInput[] {
-  return grants.map((g) => ({
-    level: g.level,
-    target_id: g.targetId,
-    role: g.role,
-    write_types: resolveWriteTypes(g.role, g.writeTypes),
-  }));
+  // The add-grants picker never offers the actor scope (no `offerActor`), so an
+  // actor grant can't appear here — narrow it out to keep the payload honest.
+  return grants
+    .filter((g): g is ComposedGrant & { level: ApiKeyGrantInput["level"] } => g.level !== "actor")
+    .map((g) => ({
+      level: g.level,
+      target_id: g.targetId,
+      role: g.role,
+      write_types: resolveWriteTypes(g.role, g.writeTypes),
+    }));
 }
 
 function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {
