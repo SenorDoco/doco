@@ -198,10 +198,16 @@ describe("process template", () => {
       ]);
     });
 
-    it("makes the membership gate a warning so a top-level process Action is never blocked", () => {
-      // The root process has no parent of its own; a deterministic floor can't
-      // tell a root from a stray step, so membership is a `warn`, not a block.
-      expect(requiresEdge("has_parent", "action", "action")?.on_violation).toBe("warn");
+    it("exempts a process container (incoming has_parent) from the membership floor", () => {
+      // The membership floor is a hard block, but a top-level process Action —
+      // the TARGET of its children's `has_parent` — is the root and is excused
+      // via exempt_when_incoming_edge_type so it is never falsely blocked.
+      const floor = requiresEdge("has_parent", "action", "action");
+      expect(floor?.predicate?.kind).toBe("requires_edge");
+      if (floor?.predicate?.kind !== "requires_edge") return;
+      expect(floor.predicate.exempt_when_incoming_edge_type).toBe("has_parent");
+      // A hard block (default), not a warn.
+      expect(floor.on_violation ?? "block").toBe("block");
     });
 
     it("describes edge meaning by type + endpoint node types, never a role tag", () => {

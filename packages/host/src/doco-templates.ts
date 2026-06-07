@@ -732,19 +732,20 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         // Process membership — one rule for all three flow-node types. A flow
         // node belongs to a process through a `has_parent` edge to the process
-        // Action; that edge IS its BPMN pool membership. A `warn` (not block)
-        // because a top-level process Action legitimately has NO parent of its
-        // own — it is the root — and the deterministic engine can't tell a root
-        // process from a stray unattached step. The renderer drops genuinely
-        // unattached nodes into the Unassigned pool, and this nudges authors to
-        // wire each step into its process.
-        on_violation: "warn",
+        // Action; that edge IS its BPMN pool membership. A hard block once
+        // committed: an unattached step has no pool. The one structural
+        // exemption (`exempt_when_incoming_edge_type: has_parent`) excuses a
+        // top-level process Action — the root, which is the TARGET of its
+        // children's `has_parent` and so needs no parent of its own.
         policy:
-          "Every committed (`queued` or `active`) flow node in process — Action, gateway Decision, or milestone/event State — links to the process it belongs to with a `has_parent` edge to that process Action. Without it the BPMN renderer can't place the node in a pool and it floats into the Unassigned pool. A top-level process Action (the root) has no parent and is exempt; a `drafting` sketch may defer the link.",
+          "Every committed (`queued` or `active`) flow node in process — Action, gateway Decision, or milestone/event State — links to the process it belongs to with a `has_parent` edge to that process Action. Without it the BPMN renderer can't place the node in a pool. A top-level process Action (the target of its members' `has_parent`) is the root and is exempt; a `drafting` sketch may defer the link.",
         predicate: {
           kind: "requires_edge",
           edge_type: "has_parent",
           target_node_type: "action",
+          // A process Action (the target of incoming `has_parent` children) is a
+          // pool, not a member — it needs no parent of its own.
+          exempt_when_incoming_edge_type: "has_parent",
           when_node_type: ["action", "decision", "state"],
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
@@ -870,6 +871,9 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           edge_type: "flows_to",
           initial_when: { field: "kind", equals: "initial" },
           terminal_when: { field: "kind", equals: "terminal" },
+          // A process container Action (with `has_parent` children) is a pool,
+          // not a sequenced step — it carries no `flows_to` and is exempt.
+          exempt_when_incoming_edge_type: "has_parent",
           when_node_type: ["action", "decision", "state"],
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,

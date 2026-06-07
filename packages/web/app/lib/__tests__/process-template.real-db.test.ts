@@ -183,8 +183,6 @@ function probabilisticLabels(vs: Violation[]): Set<string> {
     if (/belongs in process|repeatable structure/i.test(s)) out.add("membership");
     else if (/exclusiveGateway|Implementation status|Source type/i.test(s))
       out.add("imported-metadata");
-    else if (/identifies a single repeatable|concise statement of that process/i.test(s))
-      out.add("intent-shape");
     else if (/single business activity|atomic/i.test(s)) out.add("atomic-activity");
     else if (/enumeration|exhaustive|default\/else/i.test(s)) out.add("gateway-exhaustive");
     else if (/milestone or entry\/exit condition/i.test(s)) out.add("milestone-naming");
@@ -226,7 +224,7 @@ function edge(from: string, to: string, edge_type: string, _meaning: string): En
 
 interface ScenarioSpec {
   key: string;
-  intent: string;
+  process: string;
   principals: { name: string; body: string }[];
   actions: { text: string; verb: string; actor: number }[];
   gateway: { decision: string; question: string; chosen: string; alternatives: { name: string }[] };
@@ -236,7 +234,8 @@ interface ScenarioSpec {
 }
 
 interface BuiltProcess extends Graph {
-  intent: CandidateFields;
+  /** The process container Action — the pool, never a member of its own pool. */
+  process: CandidateFields;
   principals: CandidateFields[];
   actions: CandidateFields[];
   gateway: CandidateFields;
@@ -246,7 +245,9 @@ interface BuiltProcess extends Graph {
 
 /** Materialize a fully-wired BPMN process at the given lifecycle. */
 function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
-  const intent = node("intent", s.key, { intent: s.intent }, lifecycle);
+  // The process IS an Action — the container/pool that its members point at
+  // with `has_parent`. It carries no `flows_to` (it is not a sequenced step).
+  const process = node("action", s.key, { action: s.process, verb: "run" }, lifecycle);
   const principals = s.principals.map((p) => node("principal", s.key, { name: p.name }, lifecycle));
   const actions = s.actions.map((a) =>
     node("action", s.key, { action: a.text, verb: a.verb }, lifecycle),
@@ -275,15 +276,18 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
   );
 
   const edges: EngineEdge[] = [];
-  // Every flow node `serves` the process Intent (supports / role:serves).
+  // Every member flow node belongs to the process via `has_parent` (→ the
+  // process Action). That edge IS its pool membership.
   for (const n of [...actions, gateway, ...states])
-    edges.push(edge(n.id, intent.id, "supports", "serves"));
-  // Every Action is `performed_by` a Principal (attributed_to / role:performed_by).
+    edges.push(edge(n.id, process.id, "has_parent", "member_of"));
+  // Every member Action is `performed_by` a Principal (attributed_to).
   actions.forEach((a, i) =>
     edges.push(edge(a.id, principals[s.actions[i].actor].id, "attributed_to", "performed_by")),
   );
-  // The process owner is `owned_by` the first Principal.
-  edges.push(edge(intent.id, principals[0].id, "attributed_to", "owned_by"));
+  // The process owner is the first Principal — the process Action is
+  // `attributed_to` them (the accountable owner). This also satisfies the
+  // per-Action attribution floor on the container Action itself.
+  edges.push(edge(process.id, principals[0].id, "attributed_to", "owned_by"));
   // The gateway Decision is `decided_by` a Principal — the actor accountable
   // for the call (here, the process owner). Mirrors the Action performed_by
   // wiring so a well-formed gateway is never stranded in the Unassigned lane.
@@ -301,12 +305,12 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
   // gives the gateway its second branch.
   if (terminals.length < 2) edges.push(edge(gateway.id, actions[0].id, "flows_to", ""));
 
-  const nodes = [intent, ...principals, ...actions, gateway, ...states, evalNode];
+  const nodes = [process, ...principals, ...actions, gateway, ...states, evalNode];
   return {
     nodes,
     edges,
     principalIds: principals.map((p) => p.id),
-    intent,
+    process,
     principals,
     actions,
     gateway,
@@ -320,7 +324,7 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
 const SCENARIOS: ScenarioSpec[] = [
   {
     key: "loan-approval",
-    intent:
+    process:
       "Approve a consumer loan\n\nTrigger: an applicant submits a loan request. Outcome: funds are disbursed or the request is declined. Out of scope: collections and servicing after disbursement.",
     principals: [
       {
@@ -349,7 +353,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "employee-onboarding",
-    intent:
+    process:
       "Onboard a new employee\n\nTrigger: a candidate accepts an offer. Outcome: the new hire is active with accounts, equipment, and orientation complete. Out of scope: recruiting and offer negotiation.",
     principals: [
       {
@@ -376,7 +380,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "order-fulfillment",
-    intent:
+    process:
       "Fulfill an e-commerce order\n\nTrigger: a customer places an order. Outcome: the order is delivered or cancelled. Out of scope: returns and refunds after delivery.",
     principals: [
       { name: "Warehouse Operator", body: "Picks and packs orders on the fulfillment floor." },
@@ -402,7 +406,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "insurance-claim",
-    intent:
+    process:
       "Adjudicate an insurance claim\n\nTrigger: a policyholder files a claim. Outcome: the claim is paid or denied. Out of scope: premium billing and policy renewal.",
     principals: [
       { name: "Claims Adjuster", body: "Assesses claim validity and sets the payout amount." },
@@ -430,7 +434,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "expense-reimbursement",
-    intent:
+    process:
       "Reimburse an expense report\n\nTrigger: an employee submits an expense report. Outcome: the employee is reimbursed or the report is rejected. Out of scope: corporate card reconciliation.",
     principals: [
       { name: "Line Manager", body: "Approves or rejects their reports' expense submissions." },
@@ -456,7 +460,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "support-ticket",
-    intent:
+    process:
       "Resolve a customer support ticket\n\nTrigger: a customer opens a ticket. Outcome: the ticket is resolved and closed. Out of scope: product bug fixes tracked in engineering.",
     principals: [
       { name: "Support Agent", body: "First responder who triages and resolves customer tickets." },
@@ -479,7 +483,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "recruitment",
-    intent:
+    process:
       "Hire a candidate\n\nTrigger: a hiring manager opens a requisition. Outcome: a candidate is hired or the requisition is closed unfilled. Out of scope: onboarding the new hire.",
     principals: [
       { name: "Recruiter", body: "Sources and screens candidates against the requisition." },
@@ -502,7 +506,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "procure-to-pay",
-    intent:
+    process:
       "Pay a supplier invoice\n\nTrigger: a supplier submits an invoice against a purchase order. Outcome: the invoice is paid or disputed. Out of scope: supplier onboarding.",
     principals: [
       { name: "Procurement Officer", body: "Owns the purchase order and supplier relationship." },
@@ -525,7 +529,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "content-publishing",
-    intent:
+    process:
       "Publish an article\n\nTrigger: an author submits a draft. Outcome: the article is published or archived unpublished. Out of scope: content ideation and assignment.",
     principals: [
       { name: "Author", body: "Writes the draft and revises it after review." },
@@ -548,7 +552,7 @@ const SCENARIOS: ScenarioSpec[] = [
   },
   {
     key: "patient-intake",
-    intent:
+    process:
       "Admit a patient\n\nTrigger: a patient arrives at the clinic. Outcome: the patient is treated and discharged. Out of scope: billing and insurance claims.",
     principals: [
       { name: "Receptionist", body: "Registers arriving patients and collects intake details." },
@@ -599,8 +603,10 @@ describe("process template — ten real-life processes (well-formed, active)", (
 
   it("queues exactly the right probabilistic checks per node type (loan-approval)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
-    expect(probabilisticLabels(evaluate(g.intent, g))).toEqual(
-      new Set(["membership", "intent-shape", "imported-metadata"]),
+    // The process container is an Action, so it queues the same probabilistic
+    // checks any Action does — there is no separate Intent-shape check anymore.
+    expect(probabilisticLabels(evaluate(g.process, g))).toEqual(
+      new Set(["membership", "imported-metadata", "atomic-activity"]),
     );
     expect(probabilisticLabels(evaluate(g.actions[0], g))).toEqual(
       new Set(["membership", "imported-metadata", "atomic-activity"]),
@@ -634,7 +640,7 @@ describe("process template — blocks malformed processes", () => {
       "active",
     );
     // Wire serves only; omit the attributed_to → principal performer edge.
-    g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(orphan.id, g.process.id, "has_parent", "member_of"));
     g.nodes.push(orphan);
     const blocks = deterministicBlocks(evaluate(orphan, g));
     expect(blocks.map((b) => b.sub_kind)).toContain("requires_edge");
@@ -658,14 +664,14 @@ describe("process template — blocks malformed processes", () => {
       "active",
     );
     // Wire serves only; omit the attributed_to → principal decider edge.
-    g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(orphan.id, g.process.id, "has_parent", "member_of"));
     g.nodes.push(orphan);
     const blocks = deterministicBlocks(evaluate(orphan, g));
     expect(blocks.map((b) => b.sub_kind)).toContain("requires_edge");
     expect(blocks.some((b) => /attributed_to.*principal/.test(b.reason))).toBe(true);
   });
 
-  it("blocks a flow node (State) that does not serve any Intent", () => {
+  it("blocks a flow node (State) that does not belong to any process", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const floating = node(
       "state",
@@ -673,10 +679,10 @@ describe("process template — blocks malformed processes", () => {
       { state: "in limbo", kind: "intermediate" },
       "active",
     );
-    g.nodes.push(floating); // no serves edge
+    g.nodes.push(floating); // no has_parent edge
     const blocks = deterministicBlocks(evaluate(floating, g));
     expect(
-      blocks.some((b) => b.sub_kind === "requires_edge" && /supports.*intent/.test(b.reason)),
+      blocks.some((b) => b.sub_kind === "requires_edge" && /has_parent.*action/.test(b.reason)),
     ).toBe(true);
   });
 
@@ -727,11 +733,11 @@ describe("process template — blocks malformed processes", () => {
 //   - PRINCIPAL ATTACHMENT — an Action is `performed_by`, a gateway Decision
 //     `decided_by` a Principal — fires only on the committed stages, so a
 //     `drafting` sketch may name no actor/decider yet.
-//   - INTENT (`serves`) + COMPLETENESS / SHAPE — serving an Intent, forward
-//     `flows_to` wiring, gateway exhaustiveness, milestone naming, … — likewise
-//     fires only on the committed stages (`queued`, `active`). So a step can be
-//     drafted before its actor, decider, or Intent (pool) is chosen; all are
-//     required once committed.
+//   - MEMBERSHIP (`has_parent`) + COMPLETENESS / SHAPE — belonging to a
+//     process, forward `flows_to` wiring, gateway exhaustiveness, milestone
+//     naming, … — likewise fires only on the committed stages (`queued`,
+//     `active`). So a step can be drafted before its actor, decider, or parent
+//     process (pool) is chosen; all are required once committed.
 
 describe("process template — all flow-node gates committed-only, drafting exempt", () => {
   // The same orphan Action (serves wired, performer edge missing) at each
@@ -748,7 +754,7 @@ describe("process template — all flow-node gates committed-only, drafting exem
       { action: "file the paperwork", verb: "file" },
       lifecycle,
     );
-    g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves")); // serves wired; no performer edge
+    g.edges.push(edge(orphan.id, g.process.id, "has_parent", "member_of")); // serves wired; no performer edge
     g.nodes.push(orphan);
     return { candidate: orphan, graph: g };
   }
@@ -771,9 +777,9 @@ describe("process template — all flow-node gates committed-only, drafting exem
     expect(blocks.some(missingPerformer)).toBe(true);
   });
 
-  it("a drafting flow node with actor + Intent wired still has no blocks", () => {
-    // serves + performed_by satisfied and the forward `flows_to` wiring still
-    // missing — the flow-wiring gate is committed-only too, so a drafting
+  it("a drafting flow node with actor + process membership wired still has no blocks", () => {
+    // has_parent + performed_by satisfied and the forward `flows_to` wiring
+    // still missing — the flow-wiring gate is committed-only too, so a drafting
     // sketch is free to defer it. (A fully-bare draft is likewise exempt; see
     // the orphan test above.)
     const g = buildProcess(SCENARIOS[0], "drafting");
@@ -783,59 +789,59 @@ describe("process template — all flow-node gates committed-only, drafting exem
       { action: "stamp the form", verb: "stamp" },
       "drafting",
     );
-    g.edges.push(edge(attached.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(attached.id, g.process.id, "has_parent", "member_of"));
     g.edges.push(edge(attached.id, g.principals[0].id, "attributed_to", "performed_by"));
     // No incoming/outgoing flows_to wired.
     g.nodes.push(attached);
     expect(deterministicBlocks(evaluate(attached, g))).toEqual([]);
   });
 
-  it("a drafting flow node need NOT serve an Intent (intent not required in drafting)", () => {
+  it("a drafting flow node need NOT belong to a process (membership not required in drafting)", () => {
     // An Action that names its actor (an `attributed_to` edge to a Principal)
-    // but has no `supports` edge to an Intent is fine while drafting — the
-    // Intent link is deferrable until it commits.
+    // but has no `has_parent` edge to a process is fine while drafting — the
+    // membership link is deferrable until it commits.
     const g = buildProcess(SCENARIOS[0], "drafting");
-    const noIntent = node(
+    const noParent = node(
       "action",
       "loan-approval",
       { action: "stamp the form", verb: "stamp" },
       "drafting",
     );
-    g.edges.push(edge(noIntent.id, g.principals[0].id, "attributed_to", "performed_by")); // actor only; no serves
-    g.nodes.push(noIntent);
-    const blocks = deterministicBlocks(evaluate(noIntent, g));
-    expect(blocks.some((b) => /supports.*intent/.test(b.reason))).toBe(false);
+    g.edges.push(edge(noParent.id, g.principals[0].id, "attributed_to", "performed_by")); // actor only; no has_parent
+    g.nodes.push(noParent);
+    const blocks = deterministicBlocks(evaluate(noParent, g));
+    expect(blocks.some((b) => /has_parent.*action/.test(b.reason))).toBe(false);
     expect(blocks).toEqual([]);
 
-    // A milestone State (whose only attachment gate is the serves link) likewise
-    // needs no Intent while drafting.
+    // A milestone State (whose only attachment gate is the membership link)
+    // likewise needs no process while drafting.
     const draftState = node(
       "state",
       "loan-approval",
       { state: "paperwork stamped", kind: "intermediate" },
       "drafting",
     );
-    g.nodes.push(draftState); // no serves edge
+    g.nodes.push(draftState); // no has_parent edge
     expect(deterministicBlocks(evaluate(draftState, g))).toEqual([]);
   });
 
-  it("the same unattached-to-Intent flow node IS blocked once committed (queued)", () => {
-    // The Intent link is required at the committed stages — the drafting
+  it("the same unattached flow node IS blocked once committed (queued)", () => {
+    // The membership link is required at the committed stages — the drafting
     // exemption above is lifecycle-scoped, not a blanket drop of the gate.
     const g = buildProcess(SCENARIOS[0], "queued");
-    const noIntent = node(
+    const noParent = node(
       "action",
       "loan-approval",
       { action: "stamp the form", verb: "stamp" },
       "queued",
     );
-    g.edges.push(edge(noIntent.id, g.principals[0].id, "attributed_to", "performed_by"));
-    g.edges.push(edge(g.states[0].id, noIntent.id, "flows_to", ""));
-    g.edges.push(edge(noIntent.id, g.gateway.id, "flows_to", ""));
-    g.nodes.push(noIntent);
-    const blocks = deterministicBlocks(evaluate(noIntent, g));
+    g.edges.push(edge(noParent.id, g.principals[0].id, "attributed_to", "performed_by"));
+    g.edges.push(edge(g.states[0].id, noParent.id, "flows_to", ""));
+    g.edges.push(edge(noParent.id, g.gateway.id, "flows_to", ""));
+    g.nodes.push(noParent);
+    const blocks = deterministicBlocks(evaluate(noParent, g));
     expect(
-      blocks.some((b) => b.sub_kind === "requires_edge" && /supports.*intent/.test(b.reason)),
+      blocks.some((b) => b.sub_kind === "requires_edge" && /has_parent.*action/.test(b.reason)),
     ).toBe(true);
   });
 
@@ -857,7 +863,7 @@ describe("process template — all flow-node gates committed-only, drafting exem
         },
         lifecycle,
       );
-      g.edges.push(edge(orphan.id, g.intent.id, "supports", "serves")); // serves wired; no decider edge
+      g.edges.push(edge(orphan.id, g.process.id, "has_parent", "member_of")); // serves wired; no decider edge
       g.nodes.push(orphan);
       return deterministicBlocks(evaluate(orphan, g)).some((b) =>
         /attributed_to.*principal/.test(b.reason),
@@ -874,10 +880,11 @@ describe("process template — all flow-node gates committed-only, drafting exem
   it("probabilistic quality checks also fire at queued, not just active", () => {
     const draftG = buildProcess(SCENARIOS[0], "drafting");
     const queuedG = buildProcess(SCENARIOS[0], "queued");
-    // The intent-shape / imported-metadata checks are committed-stage only.
-    expect(probabilisticLabels(evaluate(draftG.intent, draftG))).toEqual(new Set(["membership"]));
-    expect(probabilisticLabels(evaluate(queuedG.intent, queuedG))).toEqual(
-      new Set(["membership", "intent-shape", "imported-metadata"]),
+    // The imported-metadata / atomic-activity checks are committed-stage only;
+    // the soft membership gate fires at every stage.
+    expect(probabilisticLabels(evaluate(draftG.process, draftG))).toEqual(new Set(["membership"]));
+    expect(probabilisticLabels(evaluate(queuedG.process, queuedG))).toEqual(
+      new Set(["membership", "imported-metadata", "atomic-activity"]),
     );
   });
 
@@ -918,44 +925,44 @@ describe("process template — end-to-end via runAuthoringPolicies", () => {
     expect(result.blocking?.sub_kind).toBe("requires_node_type");
   });
 
-  it("blocks a process Intent when the judge rejects its purpose", async () => {
+  it("blocks a node when a blocking probabilistic check is rejected by the judge", async () => {
+    // The imported-metadata judge (a blocking probabilistic) fires on a
+    // committed Principal. A bare Principal carries no deterministic block
+    // (its coverage gate is a warn), so a judge rejection is what blocks.
     judge.run.mockResolvedValue({
       ok: false,
-      reason: "does not identify a single repeatable process",
+      reason: "exposes imported BPMN/source metadata in visible prose",
     });
     const result = await runAuthoringPolicies({
       docoId,
       candidate: {
-        id: "intent_e2e-1",
-        node_type: "intent",
+        id: "principal_e2e-1",
+        node_type: "principal",
         doco_id: docoId,
-        intent:
-          "this sprawls across several unrelated processes and never settles on one repeatable purpose",
+        name: "Loan Officer",
         lifecycle: "active",
       },
     });
     expect(judge.run).toHaveBeenCalled();
     expect(result.blocking).not.toBeNull();
     expect(result.blocking?.kind).toBe("probabilistic");
-    expect(result.blocking?.reason).toMatch(/process|purpose/i);
   });
 
-  it("passes a well-formed process Intent when the judge approves", async () => {
+  it("passes a node when the judge approves (only advisory warns remain)", async () => {
     judge.run.mockResolvedValue({ ok: true });
     const result = await runAuthoringPolicies({
       docoId,
       candidate: {
-        id: "intent_e2e-2",
-        node_type: "intent",
+        id: "principal_e2e-2",
+        node_type: "principal",
         doco_id: docoId,
-        intent: SCENARIOS[0].intent,
+        name: "Loan Officer",
         lifecycle: "active",
       },
     });
-    // Not blocked, and the judge-gated intent-shape check passes. The bare
-    // synthetic intent has no graph wired, so it trips only the advisory owner
-    // nudge (`owned_by`, a warn) — a real queued process Intent carries that
-    // edge. Nothing here is a hard block.
+    // Not blocked. The bare synthetic Principal has no Action attributed to it,
+    // so it trips only the advisory actor-coverage nudge (a warn) — a real
+    // process Principal performs steps. Nothing here is a hard block.
     expect(result.blocking).toBeNull();
     expect(result.violations.every((v) => v.on_violation === "warn")).toBe(true);
   });
@@ -999,7 +1006,7 @@ describe("process template — flow-wiring gate", () => {
       { action: "stamp the form", verb: "stamp" },
       lifecycle,
     );
-    g.edges.push(edge(a.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(a.id, g.process.id, "has_parent", "member_of"));
     g.edges.push(edge(a.id, g.principals[0].id, "attributed_to", "performed_by"));
     if (opts.incoming) g.edges.push(edge(g.states[0].id, a.id, "flows_to", ""));
     if (opts.outgoing) g.edges.push(edge(a.id, g.gateway.id, "flows_to", ""));
@@ -1076,7 +1083,7 @@ describe("process template — gateway branch count", () => {
       },
       "active",
     );
-    g.edges.push(edge(stub.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(stub.id, g.process.id, "has_parent", "member_of"));
     g.edges.push(edge(g.actions[0].id, stub.id, "flows_to", "")); // one incoming
     g.edges.push(edge(stub.id, g.states[1].id, "flows_to", "")); // a single outgoing branch
     g.nodes.push(stub);
@@ -1087,28 +1094,13 @@ describe("process template — gateway branch count", () => {
   });
 });
 
-describe("process template — owner + actor coverage (warnings)", () => {
-  // With `role` gone: the owner gate is requires_edge(attributed_to →
-  // principal) on Intents; the actor-coverage gate is the INCOMING
-  // requires_edge(attributed_to ← action) on Principals, exempt when the
-  // Principal is the target of an attributed_to edge from an Intent (the owner).
-  const ownerMissing = (b: Violation) =>
-    b.sub_kind === "requires_edge" && /attributed_to.*principal/.test(b.reason);
+describe("process template — actor coverage (warnings)", () => {
+  // The actor-coverage gate is the INCOMING requires_edge(attributed_to ←
+  // action) on Principals. A process is an Action, so a Principal that is only
+  // the process owner (the target of the process Action's attributed_to) is
+  // covered too — no special Intent exemption is needed anymore.
   const coverageMissing = (b: Violation) =>
     b.sub_kind === "requires_edge" && /incoming.*attributed_to/.test(b.reason);
-
-  it("warns when the process Intent names no accountable owner", () => {
-    const g = buildProcess(SCENARIOS[0], "active");
-    const ownerless = node(
-      "intent",
-      "loan-approval",
-      { intent: "Approve a thing\n\nTrigger: x. Outcome: y. Out of scope: z." },
-      "active",
-    );
-    g.nodes.push(ownerless);
-    const warns = deterministicWarns(evaluate(ownerless, g));
-    expect(warns.some(ownerMissing)).toBe(true);
-  });
 
   it("warns about an actor Principal that owns no Action", () => {
     const g = buildProcess(SCENARIOS[0], "active");
@@ -1118,13 +1110,13 @@ describe("process template — owner + actor coverage (warnings)", () => {
     expect(warns.some(coverageMissing)).toBe(true);
   });
 
-  it("exempts the accountable owner from the actor-coverage warning", () => {
+  it("covers the accountable owner — a Principal the process Action is attributed to", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const ownerOnly = node("principal", "loan-approval", { name: "Process Owner" }, "active");
-    // Owner edge (an Intent's attributed_to → this Principal), but performs no
-    // Action. The endpoint-type exemption (exempt_when_other_node_type: intent)
-    // keeps the incoming actor-coverage gate from firing.
-    g.edges.push(edge(g.intent.id, ownerOnly.id, "attributed_to", "owned_by"));
+    // The process Action's `attributed_to` → this Principal IS an incoming
+    // attributed_to from an Action, so the coverage gate is satisfied even
+    // though the owner performs no individual step.
+    g.edges.push(edge(g.process.id, ownerOnly.id, "attributed_to", "owned_by"));
     g.nodes.push(ownerOnly);
     const warns = deterministicWarns(evaluate(ownerOnly, g));
     expect(warns.some(coverageMissing)).toBe(false);
@@ -1140,7 +1132,7 @@ describe("process template — scaffolding floors", () => {
       { action: "route the case through Gateway_0x1f3a", verb: "route" },
       "active",
     );
-    g.edges.push(edge(scaffold.id, g.intent.id, "supports", "serves"));
+    g.edges.push(edge(scaffold.id, g.process.id, "has_parent", "member_of"));
     g.edges.push(edge(scaffold.id, g.principals[0].id, "attributed_to", "performed_by"));
     g.edges.push(edge(g.states[0].id, scaffold.id, "flows_to", ""));
     g.edges.push(edge(scaffold.id, g.gateway.id, "flows_to", ""));
@@ -1186,22 +1178,30 @@ describe("process template — flow-wiring end-to-end via runAuthoringPolicies",
   }
 
   beforeAll(async () => {
-    // A minimal real process: init → mid → term, plus a dangling sibling.
-    await insertNode("intent_e2eflow", "intent");
+    // A minimal real process: the process Action (container) + init → mid →
+    // term members linked to it by has_parent, plus a dangling sibling.
+    await insertNode("action_e2eflowproc", "action");
     await insertNode("principal_e2eflow", "principal");
     await insertNode("state_e2eflowinit", "state", "initial");
     await insertNode("action_e2eflowmid", "action");
     await insertNode("state_e2eflowterm", "state", "terminal");
     await insertNode("action_e2eflowdangle", "action");
-    // The wired mid Action: serves + performed_by + incoming + outgoing flow.
+    // The container Action is attributed to its owner (satisfies the per-Action
+    // attribution floor) and is a process by virtue of incoming has_parent.
     await insertEdge(
-      "action_e2eflowmid",
+      "action_e2eflowproc",
       "action",
-      "intent_e2eflow",
-      "intent",
-      "supports",
-      "serves",
+      "principal_e2eflow",
+      "principal",
+      "attributed_to",
+      "owned_by",
     );
+    // Members belong to the process via has_parent.
+    for (const m of ["state_e2eflowinit", "action_e2eflowmid", "state_e2eflowterm"]) {
+      const mType = m.startsWith("state_") ? "state" : "action";
+      await insertEdge(m, mType, "action_e2eflowproc", "action", "has_parent", "member_of");
+    }
+    // The wired mid Action: member_of + performed_by + incoming + outgoing flow.
     await insertEdge(
       "action_e2eflowmid",
       "action",
@@ -1212,14 +1212,14 @@ describe("process template — flow-wiring end-to-end via runAuthoringPolicies",
     );
     await insertEdge("state_e2eflowinit", "state", "action_e2eflowmid", "action", "flows_to");
     await insertEdge("action_e2eflowmid", "action", "state_e2eflowterm", "state", "flows_to");
-    // The dangling Action: serves + performed_by wired, but NO flows_to at all.
+    // The dangling Action: member_of + performed_by wired, but NO flows_to at all.
     await insertEdge(
       "action_e2eflowdangle",
       "action",
-      "intent_e2eflow",
-      "intent",
-      "supports",
-      "serves",
+      "action_e2eflowproc",
+      "action",
+      "has_parent",
+      "member_of",
     );
     await insertEdge(
       "action_e2eflowdangle",
@@ -1284,43 +1284,42 @@ describe("process template — flow-wiring end-to-end via runAuthoringPolicies",
   });
 });
 
-// ─── Suite G: a flow node serves AT MOST one Intent (the serves ceiling) ───────
+// ─── Suite G: a flow node belongs to AT MOST one process (membership ceiling) ──
 //
-// The `serves` FLOOR (≥1 Intent) gets a matching CEILING (≤1): every committed
-// flow node belongs to exactly one BPMN pool. Like the floor, the ceiling fires
-// on the committed stages only (`queued`, `active`) — a `drafting` sketch is
-// exempt. Suite A already proves the ten well-formed processes (one serves edge
-// per node) pass every block gate; here we add the explicit ceiling check and
-// prove it catches a committed node wired into two pools, while a drafting one
-// is left alone.
+// The membership FLOOR (≥1 process) gets a matching CEILING (≤1): every
+// committed flow node belongs to exactly one BPMN pool. Like the floor, the
+// ceiling fires on the committed stages only (`queued`, `active`) — a
+// `drafting` sketch is exempt. Suite A already proves the ten well-formed
+// processes (one has_parent per member) pass every block gate; here we add the
+// explicit ceiling check and prove it catches a committed node wired into two
+// processes, while a drafting one is left alone.
 
-describe("process template — a flow node serves at most one Intent", () => {
-  it("seeds the limits_edge serves ceiling (supports → intent), firing on committed stages only", () => {
-    // With `role` gone the ceiling is a role-free limits_edge on the
-    // supports → intent edge, capped at one (committed stages only).
+describe("process template — a flow node belongs to at most one process", () => {
+  it("seeds the limits_edge membership ceiling (has_parent → action), firing on committed stages only", () => {
     const ceiling = policies.find(
       (p) =>
         isDeterministicPredicate(p.predicate) &&
         p.predicate.sub_kind === "limits_edge" &&
-        p.predicate.edge_type === "supports" &&
-        p.predicate.target_node_type === "intent",
+        p.predicate.edge_type === "has_parent" &&
+        p.predicate.target_node_type === "action",
     );
     expect(ceiling).toBeDefined();
     expect(ceiling?.on_violation).toBe("block");
     expect(ceiling?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
   });
 
-  // Wire a SECOND process Intent into the Doco, then an Action that serves BOTH
-  // it and the original process Intent — the ambiguous two-pool case.
-  function actionServingTwoIntents(lifecycle: Lifecycle): {
+  // Wire a SECOND process Action into the Doco, then a member Action whose
+  // `has_parent` points at BOTH it and the original process — the ambiguous
+  // two-pool case.
+  function actionInTwoProcesses(lifecycle: Lifecycle): {
     candidate: CandidateFields;
     graph: BuiltProcess;
   } {
     const g = buildProcess(SCENARIOS[0], lifecycle);
     const second = node(
-      "intent",
+      "action",
       "loan-servicing",
-      { intent: "Service a disbursed loan" },
+      { action: "Service a disbursed loan", verb: "run" },
       lifecycle,
     );
     const twoPool = node(
@@ -1329,8 +1328,8 @@ describe("process template — a flow node serves at most one Intent", () => {
       { action: "reconcile the ledger", verb: "reconcile" },
       lifecycle,
     );
-    g.edges.push(edge(twoPool.id, g.intent.id, "supports", "serves"));
-    g.edges.push(edge(twoPool.id, second.id, "supports", "serves"));
+    g.edges.push(edge(twoPool.id, g.process.id, "has_parent", "member_of"));
+    g.edges.push(edge(twoPool.id, second.id, "has_parent", "member_of"));
     // Attach a performing Principal so the failure is unambiguously the ceiling,
     // not the performed_by floor.
     g.edges.push(edge(twoPool.id, g.principals[0].id, "attributed_to", "performed_by"));
@@ -1339,31 +1338,31 @@ describe("process template — a flow node serves at most one Intent", () => {
   }
 
   for (const lifecycle of ["queued", "active"] as const) {
-    it(`blocks an Action serving two Intents at ${lifecycle}`, () => {
-      const { candidate, graph } = actionServingTwoIntents(lifecycle);
+    it(`blocks an Action belonging to two processes at ${lifecycle}`, () => {
+      const { candidate, graph } = actionInTwoProcesses(lifecycle);
       const blocks = deterministicBlocks(evaluate(candidate, graph));
       expect(
-        blocks.some((b) => b.sub_kind === "limits_edge" && /supports.*intent/.test(b.reason)),
-        `${lifecycle}: expected the serves-ceiling to block, got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
+        blocks.some((b) => b.sub_kind === "limits_edge" && /has_parent.*action/.test(b.reason)),
+        `${lifecycle}: expected the membership ceiling to block, got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
       ).toBe(true);
     });
   }
 
-  it("does NOT block an Action serving two Intents while it is a drafting sketch", () => {
-    const { candidate, graph } = actionServingTwoIntents("drafting");
+  it("does NOT block an Action in two processes while it is a drafting sketch", () => {
+    const { candidate, graph } = actionInTwoProcesses("drafting");
     const blocks = deterministicBlocks(evaluate(candidate, graph));
     expect(
-      blocks.some((b) => b.sub_kind === "limits_edge" && /supports.*intent/.test(b.reason)),
+      blocks.some((b) => b.sub_kind === "limits_edge" && /has_parent.*action/.test(b.reason)),
     ).toBe(false);
   });
 
-  it("does NOT block flow nodes that each serve exactly one Intent (no false positive)", () => {
+  it("does NOT block flow nodes that each belong to exactly one process (no false positive)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     for (const candidate of [g.actions[0], g.gateway, g.states[0]]) {
       const blocks = deterministicBlocks(evaluate(candidate, g));
       expect(
         blocks.some((b) => b.sub_kind === "limits_edge"),
-        `${candidate.node_type} ${candidate.id} wrongly tripped the serves ceiling`,
+        `${candidate.node_type} ${candidate.id} wrongly tripped the membership ceiling`,
       ).toBe(false);
     }
   });

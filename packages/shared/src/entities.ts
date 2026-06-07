@@ -194,6 +194,13 @@ export type AuthoringPredicate =
        * an Intent, is exempt from the per-step actor-coverage gate).
        */
       exempt_when_other_node_type?: string;
+      /**
+       * Skip the check when the candidate is the target of ≥1 INCOMING edge of
+       * this type — i.e. it is a container/parent. A process Action with
+       * `has_parent` children is a pool, not a step, so it is excused from the
+       * per-step membership floor.
+       */
+      exempt_when_incoming_edge_type?: string;
       when_node_type?: NodeType[];
     }
   | {
@@ -243,6 +250,12 @@ export type AuthoringPredicate =
       edge_type: string;
       initial_when?: { field: string; equals: string };
       terminal_when?: { field: string; equals: string };
+      /**
+       * Skip wiring checks when the candidate is the target of ≥1 INCOMING edge
+       * of this type — a process container (an Action with `has_parent`
+       * children) is a pool, not a sequenced step, so it carries no `flows_to`.
+       */
+      exempt_when_incoming_edge_type?: string;
       when_node_type?: NodeType[];
     }
   | { kind: "unique_field"; field: string; case_fold?: boolean; when_node_type?: NodeType[] }
@@ -335,6 +348,7 @@ export type DeterministicPredicate =
       min_count?: number;
       direction?: "incoming" | "outgoing";
       exempt_when_other_node_type?: string;
+      exempt_when_incoming_edge_type?: string;
       when_node_type?: NodeType[];
     }
   | {
@@ -365,6 +379,7 @@ export type DeterministicPredicate =
       edge_type: string;
       initial_when?: { field: string; equals: string };
       terminal_when?: { field: string; equals: string };
+      exempt_when_incoming_edge_type?: string;
       when_node_type?: NodeType[];
     }
   | { sub_kind: "unique_field"; field: string; case_fold?: boolean; when_node_type?: NodeType[] }

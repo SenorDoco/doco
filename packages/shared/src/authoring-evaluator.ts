@@ -323,6 +323,18 @@ function evaluatePredicate(p: LoadedPolicy, opts: EvaluateOpts): Violation | nul
         });
         if (exempt) return null;
       }
+      // Container exemption: a candidate that is the TARGET of ≥1 incoming edge
+      // of `exempt_when_incoming_edge_type` is a parent/process container, not a
+      // per-step member — excuse it from the floor (e.g. a process Action with
+      // `has_parent` children needs no `has_parent` of its own).
+      if (
+        pred.exempt_when_incoming_edge_type &&
+        opts.edges.some(
+          (s) => s.to_id === candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
+        )
+      ) {
+        return null;
+      }
       const direction = pred.direction ?? "outgoing";
       const pool =
         direction === "incoming"
@@ -411,6 +423,17 @@ function evaluatePredicate(p: LoadedPolicy, opts: EvaluateOpts): Violation | nul
       return fail(`field \`${hit}\` contains forbidden pattern /${pred.pattern}/`);
     }
     case "flow-wiring": {
+      // A process container (the target of ≥1 incoming `has_parent`) is a pool,
+      // not a sequenced step, so it carries no `flows_to` and is excused from
+      // the wiring checks below.
+      if (
+        pred.exempt_when_incoming_edge_type &&
+        opts.edges.some(
+          (s) => s.to_id === candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
+        )
+      ) {
+        return null;
+      }
       const isInitial =
         pred.initial_when !== undefined &&
         candidate[pred.initial_when.field] === pred.initial_when.equals;
