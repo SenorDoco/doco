@@ -45,33 +45,37 @@ beforeAll(async () => {
 
 describe("promoted columns — single source of truth round-trips", () => {
   it("surfaces every genuinely promoted column on read", async () => {
-    const cases: { type: string; id: string; data: Record<string, unknown>; expect: [string, unknown] }[] =
-      [
-        {
-          type: "eval",
-          id: "eval_promoted00000000000000000000",
-          data: { eval: "check it", kind: "unit" },
-          expect: ["kind", "unit"],
-        },
-        {
-          type: "state",
-          id: "state_promoted0000000000000000000",
-          data: { state: "ready", kind: "initial" },
-          expect: ["kind", "initial"],
-        },
-        {
-          type: "idea",
-          id: "idea_promoted00000000000000000000",
-          data: { idea: "an idea", proposer_id: "user_promoted0000000000000000000" },
-          expect: ["proposer_id", "user_promoted0000000000000000000"],
-        },
-        {
-          type: "reference",
-          id: "reference_promoted000000000000000",
-          data: { reference: "a doc", locator: "https://example.com/doc" },
-          expect: ["locator", "https://example.com/doc"],
-        },
-      ];
+    const cases: {
+      type: string;
+      id: string;
+      data: Record<string, unknown>;
+      expect: [string, unknown];
+    }[] = [
+      {
+        type: "eval",
+        id: "eval_promoted00000000000000000000",
+        data: { eval: "check it", kind: "unit" },
+        expect: ["kind", "unit"],
+      },
+      {
+        type: "state",
+        id: "state_promoted0000000000000000000",
+        data: { state: "ready", kind: "initial" },
+        expect: ["kind", "initial"],
+      },
+      {
+        type: "idea",
+        id: "idea_promoted00000000000000000000",
+        data: { idea: "an idea", proposer_id: "user_promoted0000000000000000000" },
+        expect: ["proposer_id", "user_promoted0000000000000000000"],
+      },
+      {
+        type: "reference",
+        id: "reference_promoted000000000000000",
+        data: { reference: "a doc", locator: "https://example.com/doc" },
+        expect: ["locator", "https://example.com/doc"],
+      },
+    ];
 
     for (const c of cases) {
       await upsertEntity(
