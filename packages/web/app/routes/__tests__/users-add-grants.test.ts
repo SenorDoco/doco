@@ -5,10 +5,8 @@ const mocks = vi.hoisted(() => ({
   getDocoById: vi.fn(),
   getDocoLevelRole: vi.fn(),
   getWorkspaceRole: vi.fn(),
-  removeAccountGrant: vi.fn(),
   removeDocoUser: vi.fn(),
   removeWorkspaceUser: vi.fn(),
-  upsertAccountGrant: vi.fn(),
   upsertDocoUser: vi.fn(),
   upsertWorkspaceUser: vi.fn(),
   handleUserInviteAction: vi.fn(),
@@ -19,10 +17,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@doco/db", () => ({
   getDocoById: mocks.getDocoById,
   getWorkspaceRole: mocks.getWorkspaceRole,
-  removeAccountGrant: mocks.removeAccountGrant,
   removeDocoUser: mocks.removeDocoUser,
   removeWorkspaceUser: mocks.removeWorkspaceUser,
-  upsertAccountGrant: mocks.upsertAccountGrant,
   upsertDocoUser: mocks.upsertDocoUser,
   upsertWorkspaceUser: mocks.upsertWorkspaceUser,
 }));

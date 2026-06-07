@@ -1302,10 +1302,10 @@ export default function DocoHome({
           ]}
           title={
             <span className="inline-flex items-center gap-2">
+              <VisibilityIcon visibility={visibility} />
               <Link to={allSearchHref} className="hover:text-primary">
                 {handle}
               </Link>
-              <VisibilityIcon visibility={visibility} />
             </span>
           }
           actions={

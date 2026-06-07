@@ -22,6 +22,24 @@ describe("computeForwardSequenceDepths", () => {
     );
   });
 
+  it("pins a marked entry point to column 0 even with an incoming flows_to", () => {
+    // An entry point is the start of the flow. Even if another node flows into
+    // it, it stays in the first column (and its target advances rightward).
+    const depths = computeForwardSequenceDepths(
+      [
+        { id: "action_upstream", created_at: "2026-05-26T00:00:00.000Z" },
+        { id: "state_start", created_at: "2026-05-26T00:05:00.000Z", entry_point: true },
+        { id: "action_next", created_at: "2026-05-26T00:10:00.000Z" },
+      ],
+      [
+        { source: "action_upstream", target: "state_start", edge_type: "flows_to" },
+        { source: "state_start", target: "action_next", edge_type: "flows_to" },
+      ],
+    );
+    expect(depths.get("state_start")).toBe(0);
+    expect(depths.get("action_next") ?? 0).toBeGreaterThan(0);
+  });
+
   it("keeps ordinary incoming edges forward when a later node loops back", () => {
     const depths = computeForwardSequenceDepths(
       [

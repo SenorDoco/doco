@@ -42,12 +42,6 @@ export {
   isWorkspaceUser,
   getWorkspaceRole,
   getWorkspaceGrant,
-  listWorkspaceOwnerUserIds,
-  // Account-level grants
-  type AccountGrantRow,
-  getAccountGrant,
-  upsertAccountGrant,
-  removeAccountGrant,
   getWorkspaceConstitutionsByIds,
   updateWorkspaceConstitution,
   type WorkspaceRow,
@@ -78,6 +72,8 @@ export {
   getDocoById,
   getDocoByHandle,
   getDocoByIdOrHandle,
+  markDocoDeleted,
+  purgeDocosDeletedBefore,
   type DocoRow,
   type HostConfigRow,
 } from "./repo.js";

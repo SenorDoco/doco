@@ -12,10 +12,8 @@ import {
   type DocoRole,
   getDocoById,
   getWorkspaceRole,
-  removeAccountGrant,
   removeDocoUser,
   removeWorkspaceUser,
-  upsertAccountGrant,
   upsertDocoUser,
   upsertWorkspaceUser,
 } from "@doco/db";
@@ -107,11 +105,10 @@ export async function action({
       if (!Array.isArray(parsed)) throw new Error("grants must be an array");
       grants = parsed.map(
         (g: { level?: unknown; targetId?: unknown; role?: unknown; writeTypes?: unknown }) => {
-          const level =
-            g.level === "account" || g.level === "workspace" || g.level === "doco" ? g.level : null;
+          const level = g.level === "workspace" || g.level === "doco" ? g.level : null;
           const targetId = typeof g.targetId === "string" ? g.targetId : "";
           const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
-          if (!level || (level !== "account" && !targetId) || !ALL_ROLES.includes(role)) {
+          if (!level || !targetId || !ALL_ROLES.includes(role)) {
             throw new Error("invalid grant entry");
           }
           const writeTypes = Array.isArray(g.writeTypes)
@@ -126,15 +123,7 @@ export async function action({
 
     for (const grant of grants) {
       const write_types = normalizeWriteTypes(resolveWriteTypes(grant.role, grant.writeTypes));
-      if (grant.level === "account") {
-        if (granteeId === me.id) return { error: "You can't grant your account to yourself." };
-        await upsertAccountGrant({
-          grantor_user_id: me.id,
-          grantee_user_id: granteeId,
-          role: grant.role,
-          write_types,
-        });
-      } else if (grant.level === "workspace") {
+      if (grant.level === "workspace") {
         const role = await getWorkspaceRole(grant.targetId, me.id);
         if (role !== "owner") return { error: "Only workspace owners can change workspace users." };
         await upsertWorkspaceUser({
@@ -158,46 +147,6 @@ export async function action({
     }
 
     return { intent: "add_grants", ok: true, user_id: granteeId, grants_count: grants.length };
-  }
-
-  // Account-level grants: the grantor is the acting user, so there is
-  // no target to own-check — you may always grant or revoke access to
-  // your OWN account. The per-type set + role mirror the doco/workspace cases.
-  if ((intent === "update" || intent === "remove") && level === "account") {
-    const granteeId = String(form.get("user_id") ?? "").trim();
-    if (!granteeId) return { error: "user_id missing." };
-    if (granteeId === me.id) return { error: "You can't grant your account to yourself." };
-    if (intent === "remove") {
-      await removeAccountGrant(me.id, granteeId);
-      return { intent: "remove", ok: true, level, target_ids: [], user_id: granteeId };
-    }
-    const role = String(form.get("role") ?? "") as DocoRole;
-    if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-    const rawWriteTypes = form.get("write_types");
-    const write_types =
-      rawWriteTypes === null
-        ? undefined
-        : normalizeWriteTypes(
-            String(rawWriteTypes)
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean),
-          );
-    await upsertAccountGrant({
-      grantor_user_id: me.id,
-      grantee_user_id: granteeId,
-      role,
-      write_types,
-    });
-    return {
-      intent: "update",
-      ok: true,
-      level,
-      target_ids: [],
-      user_id: granteeId,
-      role,
-      write_types: write_types ?? (role === "writer" ? ["*"] : []),
-    };
   }
 
   if (intent === "update" || intent === "remove") {

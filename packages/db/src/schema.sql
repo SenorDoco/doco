@@ -86,22 +86,6 @@ CREATE TABLE IF NOT EXISTS workspace_users (
 );
 CREATE INDEX IF NOT EXISTS workspace_users_user_idx ON workspace_users (user_id);
 
--- Account-level access grants. An account grant from grantor to grantee gives
--- the grantee `role` (+ optional per-type write_types) on every workspace the
--- grantor owns and, via the workspace-to-Doco cascade in the access engine, every
--- Doco under those workspaces. Live grant: workspaces the grantor creates later are
--- covered automatically.
-CREATE TABLE IF NOT EXISTS account_grants (
-  grantor_user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  grantee_user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role            text NOT NULL CHECK (role IN ('owner', 'writer', 'reader')),
-  write_types     text[] NOT NULL DEFAULT ARRAY[]::text[],
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (grantor_user_id, grantee_user_id)
-);
-CREATE INDEX IF NOT EXISTS account_grants_grantee_idx
-  ON account_grants (grantee_user_id);
-
 -- Every Doco has a single public `handle`. It lives in the same flat
 -- namespace as top-level host routes. The internal ULID `id` stays as
 -- the FK target for entity tables; `handle` is what URLs and public API
@@ -120,8 +104,19 @@ CREATE TABLE IF NOT EXISTS docos (
   goal            text NOT NULL DEFAULT '',
   data            jsonb NOT NULL,
   created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now()
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  -- Soft-delete tombstone. NULL = live; a timestamp = deleted, awaiting the
+  -- 30-day purge sweep (admin.purge-deleted-docos cron) that hard-deletes it
+  -- via ON DELETE CASCADE. Every read path filters `deleted_at IS NULL`, so a
+  -- tombstoned Doco is invisible everywhere — unreachable by URL, gone from
+  -- every listing — while its rows are retained for the grace window. The
+  -- handle stays reserved (UNIQUE above counts tombstoned rows) so a restore
+  -- never collides.
+  deleted_at      timestamptz
 );
+-- Sweeper lookup: only ever scans tombstoned rows, so a partial index keeps it
+-- tiny no matter how many live Docos exist.
+CREATE INDEX IF NOT EXISTS docos_deleted_at_idx ON docos (deleted_at) WHERE deleted_at IS NOT NULL;
 
 -- Per-Doco policies. Every policy is an authoring policy; the standalone
 -- `kind` classifies it ('suggestion' | 'deterministic' | 'probabilistic') and
@@ -924,6 +919,10 @@ END $$;
 -- explicitly here. Idempotent (ADD COLUMN IF NOT EXISTS), re-asserted on every
 -- cold start; a no-op once the column is present (incl. on a fresh DB, where
 -- the CREATE TABLE already made it). The CHECK matches the inline definition.
+-- Soft-delete tombstone for Docos created before the column shipped.
+ALTER TABLE docos
+  ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+
 ALTER TABLE oauth_authorization_codes
   ADD COLUMN IF NOT EXISTS actor_role text
   CHECK (actor_role IS NULL OR actor_role IN ('reader','writer','owner'));
@@ -933,3 +932,33 @@ ALTER TABLE oauth_refresh_tokens
 ALTER TABLE oauth_device_authorizations
   ADD COLUMN IF NOT EXISTS actor_role text
   CHECK (actor_role IS NULL OR actor_role IN ('reader','writer','owner'));
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- account_grants retirement. The live person-to-person "all my workspaces,
+-- including ones I create later" delegation is gone: that breadth now lives
+-- ONLY on tokens (the actor / mint-time snapshot paths). A grant to another
+-- PERSON must name concrete, existing targets, so the table is dropped. To
+-- avoid silently revoking access, first convert every surviving grant into the
+-- memberships it currently confers — a snapshot of the grantor's owned
+-- workspaces and personally-owned docos (the access cascade is now pure
+-- workspace_users + doco_users). Guarded + self-removing: runs once on the
+-- first boot that still has the table, then never again.
+DO $$
+BEGIN
+  IF to_regclass('public.account_grants') IS NOT NULL THEN
+    INSERT INTO workspace_users (workspace_id, user_id, role, write_types)
+    SELECT wu.workspace_id, ag.grantee_user_id, ag.role, ag.write_types
+      FROM account_grants ag
+      JOIN workspace_users wu
+        ON wu.user_id = ag.grantor_user_id AND wu.role = 'owner'
+    ON CONFLICT (workspace_id, user_id) DO NOTHING;
+
+    INSERT INTO doco_users (doco_id, user_id, role, write_types)
+    SELECT d.id, ag.grantee_user_id, ag.role, ag.write_types
+      FROM account_grants ag
+      JOIN docos d ON d.owner_id = ag.grantor_user_id
+    ON CONFLICT (doco_id, user_id) DO NOTHING;
+
+    DROP TABLE account_grants;
+  END IF;
+END $$;

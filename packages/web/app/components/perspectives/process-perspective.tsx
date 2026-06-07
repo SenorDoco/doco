@@ -2147,6 +2147,59 @@ function commonHandles() {
   );
 }
 
+// BPMN entry/exit marking, drawn inside the node below its content. The author
+// sets `entry_point` / `exit_point` explicitly (never deduced). The glyph is the
+// standard BPMN event circle: thin ring = start (entry), thick ring = end
+// (exit), with a small "Entry"/"Exit" tag.
+function ProcessFlowPointMarker({ node }: { node: ProcessNode }) {
+  const isEntry = node.entry_point === true;
+  const isExit = node.exit_point === true;
+  if (!isEntry && !isExit) return null;
+  const stroke = lifecycleColor(node.lifecycle);
+  const tag = (kind: "entry" | "exit") => (
+    <span key={kind} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-block",
+          width: 9,
+          height: 9,
+          borderRadius: "50%",
+          // Thin ring = BPMN start event; thick ring = BPMN end event.
+          border: `${kind === "exit" ? 2.5 : 1}px solid ${stroke}`,
+          boxSizing: "border-box",
+          background: "#fff",
+        }}
+      />
+      {kind === "entry" ? "Entry" : "Exit"}
+    </span>
+  );
+  return (
+    <div
+      className="pointer-events-none"
+      style={{
+        position: "absolute",
+        bottom: 2,
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "inline-flex",
+        gap: 6,
+        fontSize: 8,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+        lineHeight: 1,
+        color: stroke,
+        whiteSpace: "nowrap",
+        zIndex: 2,
+      }}
+    >
+      {isEntry ? tag("entry") : null}
+      {isExit ? tag("exit") : null}
+    </div>
+  );
+}
+
 // Subscribe each shape to a *boolean* derived from the live zoom: true
 // once the canvas is zoomed out far enough that labels/badges are
 // illegible. Selecting on the boolean (not the raw zoom) means a shape
@@ -2187,6 +2240,7 @@ export function ProcessRectangleNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
+      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -2219,6 +2273,7 @@ function ProcessRoundedNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
+      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -2316,6 +2371,7 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
+      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
       {data.isSubprocess ? (
         <ViewSubprocessButton data={data} stroke={stroke} hidden={simplified} />
@@ -2399,6 +2455,8 @@ function ProcessCircleNode({ data }: { data: ProcessNodeData }) {
         }}
       >
         {simplified ? null : <ShapeLabel node={data.node} />}
+        {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
+        {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       </div>
       {commonHandles()}
     </div>
@@ -2505,6 +2563,7 @@ function ProcessDocumentNode({ data }: { data: ProcessNodeData }) {
         />
       </svg>
       {simplified ? null : <ShapeLabel node={data.node} />}
+      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );

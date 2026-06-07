@@ -111,6 +111,16 @@ export interface ProcessNode {
    * the right of their source.
    */
   bfs_depth?: number;
+  /**
+   * BPMN sequence-flow markings, author-set in the node's `extra` (never
+   * deduced). `entry_point` (a way into the process — pinned to the first
+   * column, drawn with a start-event glyph) and `exit_point` (a way out —
+   * end-event glyph) drive the renderer; `top_level_process` marks the pool
+   * container Action.
+   */
+  entry_point?: boolean;
+  exit_point?: boolean;
+  top_level_process?: boolean;
 }
 
 export interface ProcessGraphData {
@@ -548,6 +558,11 @@ export async function loadProcessGraph(
       pool_id: poolId,
     };
     if (processIds.has(row.id)) node.is_process = true;
+    // BPMN flow markings ride in the node's `extra` (here `data`), surfaced flat.
+    const data = row.data ?? {};
+    if (data.entry_point === true) node.entry_point = true;
+    if (data.exit_point === true) node.exit_point = true;
+    if (data.top_level_process === true) node.top_level_process = true;
     nodes.push(node);
   }
 
