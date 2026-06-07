@@ -123,7 +123,7 @@ describe("operation memory", () => {
 
   it("uses the response template handle when operation memory summarizes doco creation", () => {
     const rows: ChatMessageRow[] = [
-      row(0, "user", [{ type: "text", text: "Create a glossary doco." }]),
+      row(0, "user", [{ type: "text", text: "Create a process doco." }]),
       row(1, "assistant", [
         {
           type: "tool_use",
@@ -133,9 +133,9 @@ describe("operation memory", () => {
             method: "POST",
             path: "/api/v1/docos.json",
             body: {
-              name: "glossary",
+              name: "flow",
               workspace_id: "workspace_01",
-              template: "glossaries",
+              template: "process",
             },
           },
         },
@@ -149,10 +149,10 @@ describe("operation memory", () => {
             ok: true,
             body: {
               id: "doco_01KT20KM0120ZXRVMX58K85YNF",
-              handle: "glossary",
+              handle: "flow",
               workspace_handle: "meta-doco",
-              qualified_handle: "meta-doco/glossary",
-              template_handle: "glossaries",
+              qualified_handle: "meta-doco/flow",
+              template_handle: "process",
             },
           }),
         },
@@ -161,7 +161,7 @@ describe("operation memory", () => {
 
     const memory = buildOperationMemoryFromRows(rows);
 
-    expect(memory).toContain("template_handle=glossaries");
+    expect(memory).toContain("template_handle=process");
   });
 });
 
@@ -170,8 +170,8 @@ describe("doco creation contract prompt", () => {
     const prompt = buildDocoCreationContractPrompt();
 
     expect(prompt).toContain("ask one short question");
-    expect(prompt).toContain("Glossary doco");
-    expect(prompt).toContain("glossaries");
+    expect(prompt).toContain("business process doco");
+    expect(prompt).toContain("process");
     expect(prompt).toContain("A 201 response is authoritative");
   });
 

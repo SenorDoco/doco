@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { DOCO_TEMPLATES, findDocoTemplateMeta } from "../doco-templates-meta";
 
-const DECISION_RECORD_HANDLES = [
+// The glossaries, org-chart, and four decision-record templates were removed;
+// the picker now offers only the blank `generic` start, `process`, and
+// `github-pull-requests`.
+const SURVIVING_HANDLES = ["generic", "process", "github-pull-requests"] as const;
+
+const REMOVED_HANDLES = [
+  "glossaries",
+  "org-chart",
   "architectural-decisions",
   "product-decisions",
   "design-decisions",
@@ -9,26 +16,24 @@ const DECISION_RECORD_HANDLES = [
 ] as const;
 
 describe("doco template metadata", () => {
-  it("exposes the decision-record templates in the picker metadata", () => {
-    const handles = DOCO_TEMPLATES.map((template) => template.handle);
-    for (const handle of DECISION_RECORD_HANDLES) {
-      expect(handles).toContain(handle);
+  it("exposes exactly the surviving templates in the picker metadata", () => {
+    expect(DOCO_TEMPLATES.map((template) => template.handle)).toEqual([...SURVIVING_HANDLES]);
+  });
+
+  it("resolves each surviving handle to non-empty metadata", () => {
+    for (const handle of SURVIVING_HANDLES) {
       const meta = findDocoTemplateMeta(handle);
-      expect(meta?.label).toMatch(/Decisions/);
-      expect(meta?.description).toMatch(/decision records/i);
-      expect(meta?.updatedAt).toBe("2026-06-03");
+      expect(meta?.handle).toBe(handle);
+      expect(meta?.label).toBeTruthy();
+      expect(meta?.description).toBeTruthy();
     }
   });
 
-  it("marks the Glossaries template metadata as updated when its guidance changes", () => {
-    const meta = findDocoTemplateMeta("glossaries");
-    expect(meta?.updatedAt).toBe("2026-06-05");
-  });
-
-  it("describes Glossaries with replacements separate from aliases", () => {
-    const meta = findDocoTemplateMeta("glossaries");
-    expect(meta?.description).toMatch(/aliases/i);
-    expect(meta?.description).toMatch(/replacement links/i);
-    expect(meta?.description).not.toMatch(/deprecated wording/i);
+  it("no longer exposes the removed templates", () => {
+    const handles = DOCO_TEMPLATES.map((template) => template.handle);
+    for (const handle of REMOVED_HANDLES) {
+      expect(handles).not.toContain(handle);
+      expect(findDocoTemplateMeta(handle)).toBeUndefined();
+    }
   });
 });
