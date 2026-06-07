@@ -84,6 +84,62 @@ describe("/tokens page action", () => {
     });
   });
 
+  it("mints an actor token from an 'All your workspaces' pick, carrying the role ceiling", async () => {
+    mocks.mintApiKey.mockResolvedValue({ id: "doco_client_new" });
+
+    const result = await action({
+      request: formRequest({
+        intent: "mint",
+        label: "claude-code",
+        // The picker emits a single actor grant; its role is the ceiling.
+        grants: JSON.stringify([
+          { level: "actor", target_id: "", role: "reader", write_types: [] },
+        ]),
+      }),
+    });
+
+    expect(result).toMatchObject({ intent: "mint", ok: true });
+    expect(mocks.mintApiKey).toHaveBeenCalledWith({
+      me: expect.objectContaining({ id: "user_alice" }),
+      label: "claude-code",
+      grants: [],
+      grantType: "actor",
+      actorRole: "reader",
+    });
+  });
+
+  it("treats an 'owner' actor pick as a null ceiling (full live role)", async () => {
+    mocks.mintApiKey.mockResolvedValue({ id: "doco_client_new" });
+
+    await action({
+      request: formRequest({
+        intent: "mint",
+        label: "codex",
+        grants: JSON.stringify([{ level: "actor", target_id: "", role: "owner", write_types: [] }]),
+      }),
+    });
+
+    expect(mocks.mintApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({ grantType: "actor", actorRole: null }),
+    );
+  });
+
+  it("mints a scoped token from a normal grant payload (no actor path)", async () => {
+    mocks.mintApiKey.mockResolvedValue({ id: "doco_client_new" });
+    const grants = [{ level: "workspace", target_id: "workspace_a", role: "writer" }];
+
+    await action({
+      request: formRequest({ intent: "mint", label: "ci", grants: JSON.stringify(grants) }),
+    });
+
+    // Regular mint: grants pass through, no actor grantType/actorRole.
+    expect(mocks.mintApiKey).toHaveBeenCalledWith({
+      me: expect.objectContaining({ id: "user_alice" }),
+      label: "ci",
+      grants: [{ level: "workspace", target_id: "workspace_a", role: "writer" }],
+    });
+  });
+
   it("organizes the page into Add MCP / Generate tokens / Existing tokens tabs", () => {
     const markup = renderToStaticMarkup(
       createElement(

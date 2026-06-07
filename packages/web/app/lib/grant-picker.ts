@@ -79,13 +79,13 @@ export interface ComposedGrant {
 }
 
 /**
- * The synthetic grant the actor ("act as me") scope emits. It carries no real
- * target or role — the server short-circuits on `level: "actor"` to mint a
- * user-level credential — but a placeholder role keeps it valid against the
- * shared grant payload parser, which requires one on every entry.
+ * The synthetic grant the "All your workspaces" (actor) scope emits. It has no
+ * target — the server short-circuits on `level: "actor"` to mint a user-level
+ * credential — and its `role` is the CEILING applied to every workspace at
+ * refresh (capped by your real role there). "owner" = your full live role.
  */
-export function actorGrant(): ComposedGrant {
-  return { level: "actor", targetId: "", role: "writer", writeTypes: [] };
+export function actorGrant(role: DocoRole = "owner"): ComposedGrant {
+  return { level: "actor", targetId: "", role, writeTypes: [] };
 }
 
 /**
@@ -316,9 +316,9 @@ export function availableScopes(
   if (opts.offerActor && hasWorkspace && !opts.boundWorkspaceLabel) {
     out.push({
       scope: "actor",
-      title: "Act as you, in any of your workspaces",
+      title: "All your workspaces — one at a time",
       blurb:
-        "A user-level connection at your own access level — it works in one workspace per session and can never touch two at once. Best for coding assistants like Claude Code or Codex.",
+        "A user-level connection that reaches every workspace you belong to, but each session works in just one. Pick the access level it gets — capped by your own role in each workspace. Best for coding assistants like Claude Code or Codex.",
     });
   }
   if (ownsAnWorkspace && !opts.forToken) {

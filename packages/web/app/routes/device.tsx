@@ -188,6 +188,7 @@ export async function action({ request }: { request: Request }) {
       granted_workspace_roles: grants.granted_workspace_roles,
       granted_workspace_write_types: grants.granted_workspace_write_types,
       grant_type: grants.grant_type,
+      actor_role: grants.actor_role,
     });
     return redirect(`/device?user_code=${encodeURIComponent(user_code)}`);
   }

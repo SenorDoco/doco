@@ -113,6 +113,7 @@ describe("OAuth token authorization", () => {
     granted_workspace_roles: {},
     granted_workspace_write_types: {},
     grant_type: "actor",
+    actor_role: null,
     scope: "doco",
     expires_at: new Date(Date.now() + 10_000_000),
     revoked: false,
@@ -139,10 +140,54 @@ describe("OAuth token authorization", () => {
     const params = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
     // granted_workspace_ids narrowed to the ONE requested workspace …
     expect(params[7]).toEqual(["workspace_a"]);
-    // … carrying the user's live role in it …
+    // … carrying the user's live role in it (null actor_role = full role) …
     expect(JSON.parse(params[8] as string)).toEqual({ workspace_a: "writer" });
     // … and no doco grants leak through.
     expect(params[4]).toEqual([]);
+  });
+
+  it("an actor refresh caps the access-token role at actor_role (min with live role)", async () => {
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("FROM oauth_refresh_tokens")) {
+        return { rows: [{ ...actorRefreshRow, actor_role: "reader" }], rowCount: 1 };
+      }
+      if (String(sql).includes("FROM workspace_users")) {
+        return { rows: [{ role: "owner" }], rowCount: 1 }; // live role is higher
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await refreshTokens({
+      client_id: "doco_client_x",
+      refresh_token: "doco_rt_actor",
+      resource: "https://doco.to/workspace_a/mcp",
+    });
+
+    const params = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
+    // The reader ceiling wins over the owner live role.
+    expect(JSON.parse(params[8] as string)).toEqual({ workspace_a: "reader" });
+  });
+
+  it("an actor_role ceiling never RAISES the access role above the live role", async () => {
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("FROM oauth_refresh_tokens")) {
+        return { rows: [{ ...actorRefreshRow, actor_role: "owner" }], rowCount: 1 };
+      }
+      if (String(sql).includes("FROM workspace_users")) {
+        return { rows: [{ role: "writer" }], rowCount: 1 }; // live role is lower
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await refreshTokens({
+      client_id: "doco_client_x",
+      refresh_token: "doco_rt_actor",
+      resource: "https://doco.to/workspace_a/mcp",
+    });
+
+    const params = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
+    // owner ceiling but you're only a writer here → writer, not owner.
+    expect(JSON.parse(params[8] as string)).toEqual({ workspace_a: "writer" });
   });
 
   it("rejects an actor refresh that names no workspace (no broad access token)", async () => {
@@ -299,12 +344,14 @@ describe("actor grant_type threads through the consent paths", () => {
       granted_doco_ids: [],
       granted_workspace_ids: [],
       grant_type: "actor",
+      actor_role: "reader",
       scope: "doco",
     });
     const actorInsert = callsTo("INSERT INTO oauth_authorization_codes")[0]?.[1] as unknown[];
-    // …grant_type lands right after scope, before expires_at.
+    // …grant_type + actor_role land right after scope, before expires_at.
     expect(actorInsert[12]).toBe("doco"); // scope
     expect(actorInsert[13]).toBe("actor"); // grant_type
+    expect(actorInsert[14]).toBe("reader"); // actor_role ceiling
 
     vi.clearAllMocks();
     await issueAuthorizationCode({
@@ -319,6 +366,7 @@ describe("actor grant_type threads through the consent paths", () => {
     });
     const regularInsert = callsTo("INSERT INTO oauth_authorization_codes")[0]?.[1] as unknown[];
     expect(regularInsert[13]).toBe("regular");
+    expect(regularInsert[14]).toBeNull(); // no ceiling on a regular grant
   });
 
   it("consumeAuthorizationCode returns the stored grant_type", async () => {
@@ -341,6 +389,7 @@ describe("actor grant_type threads through the consent paths", () => {
               granted_workspace_roles: {},
               granted_workspace_write_types: {},
               grant_type: "actor",
+              actor_role: "writer",
               scope: "doco",
               expires_at: new Date(Date.now() + 10_000_000),
               consumed_at: null,
@@ -359,10 +408,11 @@ describe("actor grant_type threads through the consent paths", () => {
       code_verifier: verifier,
     });
     expect(claim.grant_type).toBe("actor");
+    expect(claim.actor_role).toBe("writer"); // the stored ceiling rides back out
     expect(claim.granted_doco_ids).toEqual([]);
   });
 
-  it("approveDeviceAuthorization persists grant_type (actor)", async () => {
+  it("approveDeviceAuthorization persists grant_type + actor_role (actor)", async () => {
     mocks.query.mockImplementation(async (sql: string) =>
       sql.includes("SELECT client_id")
         ? { rows: [{ client_id: "doco_client_device" }], rowCount: 1 }
@@ -376,9 +426,11 @@ describe("actor grant_type threads through the consent paths", () => {
       granted_doco_ids: [],
       granted_workspace_ids: [],
       grant_type: "actor",
+      actor_role: "writer",
     });
     const update = callsTo("UPDATE oauth_device_authorizations")[0]?.[1] as unknown[];
-    expect(update[9]).toBe("actor"); // grant_type, last in the SET list
+    expect(update[9]).toBe("actor"); // grant_type
+    expect(update[10]).toBe("writer"); // actor_role ceiling, last in the SET list
   });
 
   it("pollDeviceAuthorization carries an actor grant_type into the minted refresh token", async () => {
@@ -401,6 +453,7 @@ describe("actor grant_type threads through the consent paths", () => {
               granted_workspace_roles: {},
               granted_workspace_write_types: {},
               grant_type: "actor",
+              actor_role: "reader",
               target_doco_handle: null,
               requested_role: null,
               expires_at: new Date(Date.now() + 10_000_000),
@@ -420,7 +473,8 @@ describe("actor grant_type threads through the consent paths", () => {
     });
     expect(result.kind).toBe("approved");
     const refreshInsert = callsTo("INSERT INTO oauth_refresh_tokens")[0]?.[1] as unknown[];
-    expect(refreshInsert[12]).toBe("actor"); // grant_type, last param
+    expect(refreshInsert[12]).toBe("actor"); // grant_type
+    expect(refreshInsert[13]).toBe("reader"); // actor_role ceiling carried onto the refresh
   });
 });
 

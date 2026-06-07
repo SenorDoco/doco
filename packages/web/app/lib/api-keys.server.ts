@@ -284,6 +284,12 @@ export interface MintApiKeyInput {
    * (default) is the existing per-workspace/doco scoped token.
    */
   grantType?: "regular" | "actor";
+  /**
+   * Role CEILING for an actor token (reader|writer|owner). At refresh the access
+   * token gets min(your live role, this) per workspace. null/undefined = owner =
+   * full live role. Ignored unless grantType is 'actor'.
+   */
+  actorRole?: DocoRole | null;
 }
 
 export interface ApiKeyGrantInput {
@@ -318,6 +324,7 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
       granted_workspace_ids: [],
       scope: null,
       grant_type: "actor",
+      actor_role: input.actorRole ?? null,
     });
     return {
       access_token: tokens.access_token,

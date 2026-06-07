@@ -192,7 +192,7 @@ export function GrantPicker({
       </fieldset>
 
       {scope === "actor" ? (
-        <ActorStep />
+        <ActorStep grants={grants} onChange={emit} />
       ) : scope === "account" ? (
         <AccountStep catalog={catalog} grants={grants} onChange={emit} />
       ) : scope === "workspace" ? (
@@ -387,19 +387,36 @@ function GrantChoiceList({
   );
 }
 
-// Actor: no target, no role to choose — selecting the scope IS the grant. This
-// step just confirms what the act-as-me token will and won't do.
-function ActorStep() {
+// All your workspaces (actor): no target — selecting the scope IS the grant.
+// One control: the access ceiling, capped per-workspace by your own role. The
+// grant's `role` carries it; "owner" = your full live role.
+function ActorStep({
+  grants,
+  onChange,
+}: {
+  grants: ComposedGrant[];
+  onChange: (grants: ComposedGrant[]) => void;
+}) {
+  const role = (grants.find((g) => g.level === "actor")?.role ?? "owner") as DocoRole;
   return (
     <div
-      className="rounded-md border border-primary bg-primary/10 px-3 py-3 text-sm"
+      className="space-y-3 rounded-md border border-primary bg-primary/10 px-3 py-3 text-sm"
       data-testid="grant-actor-step"
     >
-      <p className="font-semibold">This connection acts as you.</p>
-      <p className="mt-1 text-muted-foreground">
-        In each session it works in <strong>one workspace</strong>, at your own access level there —
-        never two at once. New workspaces you join are reachable automatically; nothing is baked in
-        now. Revoke it any time from this page.
+      <div className="flex items-center gap-2">
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">Access</span>
+        <AccessSelect
+          testid="grant-role-actor"
+          maxRole="owner"
+          value={role}
+          includeNoAccess={false}
+          onChange={(v) => onChange([actorGrant(v === "none" ? "owner" : v)])}
+        />
+      </div>
+      <p className="text-muted-foreground">
+        Works in <strong>one workspace per session</strong>, never two at once, at this level —
+        capped by your own role in each (pick owner but you're a writer somewhere and it stays a
+        writer there). New workspaces you join are reachable automatically. Revoke any time.
       </p>
     </div>
   );
