@@ -128,7 +128,7 @@ export async function loader({
   return withClient(async (c) => {
     const docoRows = (
       await c.query<{ id: string; handle: string }>(
-        "SELECT id, handle FROM docos WHERE workspace_id = $1",
+        "SELECT id, handle FROM docos WHERE workspace_id = $1 AND deleted_at IS NULL",
         [workspace.id],
       )
     ).rows;

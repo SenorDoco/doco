@@ -4,9 +4,11 @@ import { validateRequestedDocoHandle } from "@doco/shared";
 // metadata or performs high-risk actions such as renaming/deleting the doco.
 //
 // Delete: people only (ADR-040). Two-step confirmation — type the handle to
-// activate the "Delete permanently" button. Hard-delete via ON DELETE
-// CASCADE — not recoverable. Per the `settings-page-delete-doco` Intent +
-// ADR.
+// activate the delete button. Soft-delete: the action stamps
+// `docos.deleted_at`, so the doco vanishes from every surface immediately
+// while its rows are retained for a 30-day grace window; the
+// `admin.purge-deleted-docos` cron then hard-deletes it for good via ON DELETE
+// CASCADE. Per the `settings-page-delete-doco` Intent + ADR.
 import { Form, Link, redirect, useSearchParams } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -466,7 +468,8 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Delete doco</CardTitle>
             <CardDescription>
-              Deletion permanently removes this doco and every entity and edge inside it.
+              Deleting hides this doco everywhere right away. It is kept for 30 days in case you
+              need it back, then erased for good — along with every entity and edge inside it.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -487,8 +490,8 @@ export default function DocoSettings({
                 <input type="hidden" name="intent" value="delete" />
                 <p className="text-xs">
                   Type the doco handle <span className="font-mono font-semibold">{handle}</span> to
-                  confirm. This permanently deletes the doco and every entity and edge inside it. It
-                  cannot be undone.
+                  confirm. This hides the doco everywhere immediately. It is kept for 30 days, then
+                  permanently deleted along with every entity and edge inside it.
                 </p>
                 <input
                   name="confirm_handle"
@@ -502,7 +505,7 @@ export default function DocoSettings({
                     type="submit"
                     className="rounded-md bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground hover:opacity-90"
                   >
-                    Delete permanently
+                    Delete doco
                   </button>
                   <Link
                     to={`/${handle}/settings`}

@@ -31,7 +31,7 @@ async function loadWorkspaceSettingsRow(
       `SELECT id, handle,
               (
                 SELECT COUNT(*)::text FROM docos d
-                 WHERE d.workspace_id = workspaces.id
+                 WHERE d.workspace_id = workspaces.id AND d.deleted_at IS NULL
               ) AS doco_count
          FROM workspaces
         WHERE handle = $1

@@ -209,6 +209,7 @@ export async function findDocoByInstallation(
          JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.data->'github_integration'->'installations'
                 @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))
+          AND d.deleted_at IS NULL
         `,
       [installationId],
     );
@@ -231,12 +232,13 @@ export async function findDocoTargetsForGitHubRepo(
       `SELECT d.id, d.handle, o.handle AS workspace_handle
          FROM docos d
          JOIN workspaces o ON o.id = d.workspace_id
-        WHERE d.data->'github_integration'->'installations'
+        WHERE (d.data->'github_integration'->'installations'
                 @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))
            OR d.data->'github_integration'->'connections'
                 @> jsonb_build_array(
                      jsonb_build_object('installation_id', $1::int, 'repo', $2::text)
-                   )`,
+                   ))
+          AND d.deleted_at IS NULL`,
       [installationId, repoFullName],
     );
     return r.rows.map((row) => ({
