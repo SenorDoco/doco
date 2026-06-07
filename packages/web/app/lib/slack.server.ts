@@ -11,6 +11,7 @@ import {
   DOCO_NODE_TABLE_SPECS,
   getEntity,
   getUserById,
+  getWorkspaceConstitutionsByIds,
   listDocoUsers,
   listEntitiesByDoco,
   withClient,
@@ -168,6 +169,9 @@ export interface SlackLlmAnswerInput {
   personalAuthorizationCommand?: string | null;
   personalActors?: SlackLinkedUser[];
   origin?: string | null;
+  /** The Slack team's bound Doco workspace — used to load this session's
+   *  governing constitution into the system prompt. */
+  boundWorkspaceId?: string | null;
 }
 
 export interface SlackLinkedUser {
@@ -255,6 +259,9 @@ interface SlackIntegrationContext {
   personalAccess: SlackPersonalAccessSummary;
   connections: SlackChannelConnectionSummary[];
   fallbackConnections: SlackChannelConnectionSummary[];
+  /** The Slack team's bound Doco workspace — the single workspace this
+   *  channel's session operates in. Null when the team is unbound. */
+  boundWorkspaceId: string | null;
 }
 
 const SLACK_ROLE_RANK: Record<string, number> = {
@@ -886,6 +893,7 @@ async function loadSlackIntegrationContext(args: {
       personalAccess,
       connections,
       fallbackConnections: sharedConnections.length > 0 ? sharedConnections : connections,
+      boundWorkspaceId,
     };
   });
   return { context: result.value, cache: result.cache };
@@ -934,6 +942,7 @@ export async function buildSlackAppMentionResponse(args: {
       overview: answerQuery.overview,
       repair: answerQuery.repair,
       integrationContextCache: cache,
+      boundWorkspaceId: context.boundWorkspaceId,
       personalAuthorizationCommand: args.personalAuthorizationCommand ?? "/doco connect",
       personalActors: personalAccess.actors,
       origin: args.origin,
@@ -953,6 +962,7 @@ export async function buildSlackAppMentionResponse(args: {
     overview: false,
     repair: false,
     integrationContextCache: cache,
+    boundWorkspaceId: context.boundWorkspaceId,
     personalAuthorizationCommand: args.personalAuthorizationCommand ?? "/doco connect",
     personalActors: personalAccess.actors,
     origin: args.origin,
@@ -1083,6 +1093,30 @@ export function formatSlackDocoAnswerResponse(
   ].join("\n");
 }
 
+/**
+ * The bound workspace's constitution text for the Slack system prompt. The
+ * channel binding authorizes this workspace, so we read it directly by id —
+ * the same `getWorkspaceConstitutionsByIds` source the shared agent bootstrap
+ * uses. Defensive: a load failure degrades to no constitution, never throws
+ * into the answer path.
+ */
+async function loadSlackWorkspaceConstitution(
+  boundWorkspaceId: string | null,
+): Promise<string | null> {
+  if (!boundWorkspaceId) return null;
+  try {
+    const [row] = await getWorkspaceConstitutionsByIds([boundWorkspaceId]);
+    const text = row?.constitution?.trim();
+    return text ? text : null;
+  } catch (error) {
+    console.error(
+      "[slack] failed to load workspace constitution:",
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
+
 export async function generateSlackDocoLlmAnswer(
   input: SlackLlmAnswerInput,
   deps: SlackLlmAnswerDeps = {},
@@ -1093,6 +1127,10 @@ export async function generateSlackDocoLlmAnswer(
   }
   const createMessage = deps.createMessage ?? createSenorDocoMessage;
   const runTool = deps.runTool ?? runSlackDocoApiTool;
+  // This session operates in exactly one workspace (the team's bound
+  // workspace); load its governing constitution once and render it into the
+  // system prompt — the same charter every other Doco agent surface sees.
+  const constitution = await loadSlackWorkspaceConstitution(input.boundWorkspaceId ?? null);
   try {
     const messages: MessageParam[] = [
       {
@@ -1109,7 +1147,7 @@ export async function generateSlackDocoLlmAnswer(
       const message = await createMessage({
         max_tokens: SLACK_LLM_MAX_TOKENS,
         temperature: 0.2,
-        system: slackLlmSystemPrompt(),
+        system: slackLlmSystemPrompt({ constitution }),
         tools: [DOCO_API_TOOL],
         messages,
       });
@@ -1148,7 +1186,7 @@ export async function generateSlackDocoLlmAnswer(
         const finalMessage = await createMessage({
           max_tokens: SLACK_LLM_MAX_TOKENS,
           temperature: 0.2,
-          system: slackLlmSystemPrompt(),
+          system: slackLlmSystemPrompt({ constitution }),
           messages: [...messages, { role: "user", content: SLACK_LLM_TOOL_LIMIT_PROMPT }],
         });
         finalText = slackMessageText(finalMessage) || SLACK_LLM_TOOL_LIMIT_FALLBACK;
@@ -2196,8 +2234,8 @@ function formatRecentSlackContext(recentMessages: SlackRecentMessage[]): string 
   return cleaned.join(" ");
 }
 
-export function slackLlmSystemPrompt(): string {
-  return [
+export function slackLlmSystemPrompt(opts?: { constitution?: string | null }): string {
+  const parts = [
     buildSenorDocoCorePrompt({
       surfaceDescription: "the Slack assistant for group chats and direct messages",
       accessDescription:
@@ -2228,7 +2266,14 @@ export function slackLlmSystemPrompt(): string {
     "For questions like what the docos explain, synthesize the main themes and cite the doco labels naturally.",
     "If the excerpts are insufficient, say exactly what is missing.",
     "Keep the answer under 900 characters unless the user asks for detail.",
-  ].join(" ");
+  ];
+  const constitution = opts?.constitution?.trim();
+  if (constitution) {
+    parts.push(
+      `This workspace's constitution — the governing "how we work" charter for the one workspace this Slack session operates in. Treat it as binding; when a policy and the constitution seem to conflict, surface the conflict rather than silently choosing one. Constitution: ${constitution}`,
+    );
+  }
+  return parts.join(" ");
 }
 
 function formatSlackLlmRecentMessages(recentMessages: SlackRecentMessage[]): string[] {
