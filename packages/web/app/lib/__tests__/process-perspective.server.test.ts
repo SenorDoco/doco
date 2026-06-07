@@ -685,7 +685,7 @@ describe("loadProcessGraph", () => {
     );
   });
 
-  it("keeps fully-disconnected nodes in the Unassigned pool, not an arbitrary process", async () => {
+  it("heads a top-level pool for a disconnected Action, and keeps a non-Action orphan in Unassigned", async () => {
     const { client } = makeQueryClient({
       nodes: [
         processNode("action_01PROCESS", "Post a job"),
@@ -695,31 +695,70 @@ describe("loadProcessGraph", () => {
           "active",
           "2026-05-26T00:01:00.000Z",
         ),
+        // A disconnected Action: no parent, no children — a top-level Action,
+        // so it heads its OWN pool (surfaced in the home view), never homed
+        // into another process's pool.
         processNode(
           "action_01ORPHAN",
           "Spider assembles Torre opportunity payload",
           "drafting",
           "2026-05-26T00:02:00.000Z",
         ),
+        // A disconnected non-Action flow node (a gateway) has no pool of its
+        // own and falls to Unassigned.
+        {
+          id: "decision_01ORPHAN",
+          entity_type: "decision",
+          summary: "Dangling gateway",
+          lifecycle: "drafting",
+          created_at: "2026-05-26T00:03:00.000Z",
+          data: {},
+        },
       ],
       principals: [{ id: "principal_system", name: "System", lifecycle: "active" }],
       users: [],
       edges: [
         edge("edge_MEMBER", "action_01CONNECTED", "action_01PROCESS", "member_of"),
         edge("edge_ACTOR", "action_01CONNECTED", "principal_system", "performed_by"),
-        // action_01ORPHAN deliberately has no edges at all.
+        // Both orphans deliberately have no membership edges.
       ],
     });
 
     const graph = await loadProcessGraph(client, "doco_01", { handle: "jobs" });
 
-    const orphan = graph.nodes.find((n) => n.id === "action_01ORPHAN");
     const connected = graph.nodes.find((n) => n.id === "action_01CONNECTED");
-    expect(orphan?.pool_id).toBe("pool:unassigned");
-    expect(orphan?.pool_id).not.toBe("pool:action_01PROCESS");
+    const decisionOrphan = graph.nodes.find((n) => n.id === "decision_01ORPHAN");
     expect(connected?.pool_id).toBe("pool:action_01PROCESS");
+    // The disconnected Action is a top-level pool header — its own pool exists
+    // and it is NOT emitted as a member node (and never lands in Unassigned).
+    expect(graph.pools.map((p) => p.id)).toContain("pool:action_01ORPHAN");
+    expect(graph.nodes.map((n) => n.id)).not.toContain("action_01ORPHAN");
+    // The non-Action orphan stays in the real Unassigned pool, pinned last.
+    expect(decisionOrphan?.pool_id).toBe("pool:unassigned");
     expect(graph.pools.map((p) => p.id)).toContain("pool:unassigned");
     expect(graph.pools[graph.pools.length - 1]?.id).toBe("pool:unassigned");
+  });
+
+  it("lists every top-level Action as a pool, even one with no sub-steps", async () => {
+    // The default (home) view shows all Actions that do not belong to a parent
+    // process. A standalone Action with no `has_parent` and no children still
+    // heads its own pool so it appears in that list.
+    const { client } = makeQueryClient({
+      nodes: [
+        processNode("action_alpha", "Onboard a customer"),
+        processNode("action_beta", "Close the books", "active", "2026-05-26T00:01:00.000Z"),
+      ],
+      principals: [],
+      users: [],
+      edges: [], // neither Action has a parent or children
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "flat" });
+
+    expect(graph.pools.map((p) => p.id).sort()).toEqual(["pool:action_alpha", "pool:action_beta"]);
+    expect(graph.pools.every((p) => p.process_id !== null)).toBe(true);
+    // Pool headers are not emitted as member nodes.
+    expect(graph.nodes).toEqual([]);
   });
 });
 
