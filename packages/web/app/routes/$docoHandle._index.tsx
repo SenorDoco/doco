@@ -46,6 +46,7 @@ import { ProcessPerspective } from "~/components/perspectives/process-perspectiv
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SiteHeader } from "~/components/site-header";
+import { VisibilityIcon } from "~/components/visibility-icon";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
@@ -387,6 +388,7 @@ export async function loader({
       handle,
       docoId: ctx.meta.docoId,
       goal: ctx.meta.goal,
+      visibility: ctx.meta.visibility,
       ownerSlug: ctx.canonicalOwnerSlug,
       ownerIsWorkspace: ctx.meta.ownerId.startsWith("workspace_"),
       canInviteUsers: await canAdminDoco(ctx.meta, me?.id ?? null),
@@ -530,6 +532,7 @@ export default function DocoHome({
     handle,
     docoId,
     goal,
+    visibility,
     ownerSlug,
     ownerIsWorkspace,
     canInviteUsers,
@@ -1298,9 +1301,12 @@ export default function DocoHome({
             { label: handle },
           ]}
           title={
-            <Link to={allSearchHref} className="hover:text-primary">
-              {handle}
-            </Link>
+            <span className="inline-flex items-center gap-2">
+              <Link to={allSearchHref} className="hover:text-primary">
+                {handle}
+              </Link>
+              <VisibilityIcon visibility={visibility} />
+            </span>
           }
           actions={
             <>

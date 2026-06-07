@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Card, CardTitle } from "~/components/card";
 import { LifecycleCountsLabel } from "~/components/lifecycle-counts";
+import { VisibilityIcon } from "~/components/visibility-icon";
 import { cn } from "~/lib/cn";
 import type { LifecycleCounts } from "~/lib/node-colors";
 import { timeAgo } from "~/lib/time-ago";
@@ -14,6 +15,9 @@ export interface AccessListItem {
   countLabel?: string;
   counts?: LifecycleCounts;
   lastUpdatedAt: string | null;
+  /** Doco (leaf) rows carry their visibility so the list can mark it;
+   *  workspace (group) rows leave it unset. */
+  visibility?: "public" | "private";
   children?: AccessListItem[];
 }
 
@@ -126,6 +130,9 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
               `(${item.countLabel ?? item.count})`
             )}
           </span>
+          {item.visibility ? (
+            <VisibilityIcon visibility={item.visibility} className="ml-1.5 self-center" />
+          ) : null}
         </div>
         {isGroup ? null : (
           <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">

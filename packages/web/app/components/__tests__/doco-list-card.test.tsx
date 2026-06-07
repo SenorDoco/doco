@@ -11,6 +11,7 @@ const docos: DocoListEntry[] = [
     ownerHandle: "torre",
     nodeCount: 127,
     lastUpdatedAt: "2026-06-02T00:00:00.000Z",
+    visibility: "public",
   },
 ];
 
@@ -39,5 +40,11 @@ describe("DocoListCard", () => {
     const html = render(false);
     expect(html).toContain(">torr<");
     expect(html).not.toContain("torre / torr");
+  });
+
+  it("passes each Doco's visibility through to an explained icon", () => {
+    const html = render();
+    expect(html).toContain('data-visibility="public"');
+    expect(html).toContain("anyone with the URL can view");
   });
 });

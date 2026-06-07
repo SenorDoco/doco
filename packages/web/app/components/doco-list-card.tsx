@@ -10,6 +10,7 @@ export interface DocoListEntry {
   nodeCount: number;
   counts?: LifecycleCounts;
   lastUpdatedAt: string | null;
+  visibility?: "public" | "private";
 }
 
 export function DocoListCard({
@@ -33,6 +34,7 @@ export function DocoListCard({
     countLabel: `${d.nodeCount} nodes`,
     counts: d.counts,
     lastUpdatedAt: d.lastUpdatedAt,
+    visibility: d.visibility,
   }));
 
   return <AccessListCard title={title} headerAction={headerAction} items={items} empty={empty} />;

@@ -45,6 +45,7 @@ const TOP_CONTRIBUTORS_LIMIT = 10;
 interface WorkspaceDoco {
   docoId: string;
   handle: string;
+  visibility: "public" | "private";
   nodes: number;
   counts: LifecycleCounts;
   lastUpdatedAt: string | null;
@@ -89,8 +90,8 @@ export async function loader({
   return withClient(async (c) => {
     // Docos owned by this workspace.
     const docoRows = (
-      await c.query<{ id: string; handle: string }>(
-        "SELECT id, handle FROM docos WHERE workspace_id = $1 ORDER BY handle",
+      await c.query<{ id: string; handle: string; visibility: "public" | "private" }>(
+        "SELECT id, handle, visibility FROM docos WHERE workspace_id = $1 ORDER BY handle",
         [workspace.id],
       )
     ).rows;
@@ -108,6 +109,7 @@ export async function loader({
         return {
           docoId: id,
           handle: String(r.handle),
+          visibility: r.visibility,
           nodes: stats.nodes,
           counts: stats.counts,
           lastUpdatedAt: stats.lastUpdatedAt,
@@ -303,6 +305,7 @@ export default function WorkspaceHome({
     nodeCount: d.nodes,
     counts: d.counts,
     lastUpdatedAt: d.lastUpdatedAt,
+    visibility: d.visibility,
   }));
 
   return (
