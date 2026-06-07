@@ -189,9 +189,27 @@ async function readEntityFromPostgres(
   entityType: string,
   id: string,
 ): Promise<{ fm: Record<string, unknown> } | null> {
-  const row = await getEntity(entityType, id);
-  if (!row) return null;
-  return { fm: row.data };
+  const rec = await getEntity(entityType, id);
+  if (!rec) return null;
+  // Flatten the honest node row into the mutable working bag the update path
+  // patches and re-persists. (This bag is local to the update algorithm — the
+  // stored shape is columns + `extra`, and reads return the typed `NodeRow`.)
+  const fm: Record<string, unknown> = {
+    id: rec.id,
+    doco_id: rec.doco_id,
+    node_type: rec.node_type,
+    prose: rec.prose,
+    ...rec.extra,
+  };
+  if (rec.kind != null) fm.kind = rec.kind;
+  if (rec.locator != null) fm.locator = rec.locator;
+  if (rec.proposer_id != null) fm.proposer_id = rec.proposer_id;
+  if (rec.lifecycle != null) fm.lifecycle = rec.lifecycle;
+  if (rec.created_at != null) fm.created_at = rec.created_at;
+  if (rec.created_by != null) fm.created_by = rec.created_by;
+  if (rec.updated_at != null) fm.updated_at = rec.updated_at;
+  if (rec.updated_by != null) fm.updated_by = rec.updated_by;
+  return { fm };
 }
 
 /**

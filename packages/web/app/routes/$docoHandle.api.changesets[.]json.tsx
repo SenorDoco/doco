@@ -893,12 +893,12 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
   for (const id of createdIds) {
     const entity = entities.get(id);
     if (!entity) continue;
-    if (nodeTypes.size > 0 && !nodeTypes.has(entity.entity_type)) continue;
+    if (nodeTypes.size > 0 && !nodeTypes.has(entity.node_type)) continue;
     const count = counts.get(id);
     const incoming = Number(count?.incoming ?? 0);
     const outgoing = Number(count?.outgoing ?? 0);
-    const isInitial = entity.entity_type === "state" && entity.data?.kind === "initial";
-    const isTerminal = entity.entity_type === "state" && entity.data?.kind === "terminal";
+    const isInitial = entity.node_type === "state" && entity.kind === "initial";
+    const isTerminal = entity.node_type === "state" && entity.kind === "terminal";
     if (incoming === 0 && !isInitial) createdWithoutIncoming.push(id);
     if (outgoing === 0 && !isTerminal) openFrontiers.push(id);
   }

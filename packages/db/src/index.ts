@@ -16,7 +16,7 @@ export {
   getEntity,
   listEntitiesByDoco,
   listEntitiesByDocoAndIds,
-  listIdentityRows,
+  rowToNode,
   appendAuditEventRow,
   readAuditEventRows,
   type AuditEventRow,
@@ -90,6 +90,7 @@ export {
   USER_TABLES,
   CONTAINER_TABLES,
   type EntityRecord,
+  type NodeRow,
   type EntityTableSpec,
 } from "./types.js";
 

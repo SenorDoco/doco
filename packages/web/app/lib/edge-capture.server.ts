@@ -9,7 +9,7 @@
 import {
   type CommitSource,
   type EdgeRow,
-  type EntityRecord,
+  type NodeRow,
   createChangeset,
   createEdge,
   getEntity,
@@ -58,7 +58,7 @@ export type EdgeCaptureResult =
 async function resolveEndpoint(
   docoId: string,
   id: string,
-): Promise<{ ok: true; type: string; rec: EntityRecord } | { error: string }> {
+): Promise<{ ok: true; type: string; rec: NodeRow } | { error: string }> {
   if (!isEntityId(id)) return { error: "is not a valid entity id" };
   const parsed = parseEntityId(id);
   if (!parsed) return { error: "is not a valid entity id" };
@@ -73,20 +73,20 @@ async function resolveEndpoint(
  * (e.g. `action`, `intent`) so a policy spec can reference each endpoint by
  * the role it plays in the edge.
  */
-function endpointPayload(rec: EntityRecord): Record<string, unknown> {
-  const prose = typeof rec.data?.prose === "string" ? rec.data.prose : null;
+function endpointPayload(rec: NodeRow): Record<string, unknown> {
+  const prose = rec.prose || null;
   return {
     name: prose,
     text: prose,
-    ...(rec.data && typeof rec.data === "object" ? rec.data : {}),
+    ...rec.extra,
+    ...(rec.kind != null ? { kind: rec.kind } : {}),
+    ...(rec.locator != null ? { locator: rec.locator } : {}),
   };
 }
 
 /** Human-readable label for an edge endpoint: its prose, else its id. */
-function endpointLabel(rec: EntityRecord | null, fallbackId: string): string {
-  if (!rec) return fallbackId;
-  const prose = typeof rec.data?.prose === "string" ? rec.data.prose : null;
-  return prose ?? fallbackId;
+function endpointLabel(rec: NodeRow | null, fallbackId: string): string {
+  return rec ? rec.prose || fallbackId : fallbackId;
 }
 
 /**
@@ -103,8 +103,8 @@ async function edgeFooterLines(
     handle?: string | undefined;
     duration_ms?: number | undefined;
     authoringPoliciesPassed?: number | undefined;
-    fromRec?: EntityRecord | null;
-    toRec?: EntityRecord | null;
+    fromRec?: NodeRow | null;
+    toRec?: NodeRow | null;
   },
 ): Promise<string[]> {
   const fromRec = opts.fromRec ?? (await getEntity(edge.from_node_type, edge.from_id));

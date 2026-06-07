@@ -80,12 +80,17 @@ describe("principal retire API", () => {
     mocks.getEntity.mockResolvedValue({
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
-      entity_type: "principal",
-      data: { node_type: "principal", name: "visitor" },
-      summary: "Visitor",
+      node_type: "principal",
+      prose: "visitor",
+      extra: {},
+      kind: null,
+      locator: null,
+      proposer_id: null,
       lifecycle: "active",
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "user_admin",
+      updated_at: null,
+      updated_by: null,
     });
     mocks.runAuthoringPolicies.mockResolvedValue({
       evaluated: 0,
@@ -109,7 +114,7 @@ describe("principal retire API", () => {
         id: PRINCIPAL_ID,
         entity_type: "principal",
         lifecycle: "retired",
-        data: expect.objectContaining({ lifecycle: "retired", name: "visitor" }),
+        data: expect.objectContaining({ lifecycle: "retired", prose: "visitor" }),
         updated_by: "user_author",
       }),
     );
@@ -162,10 +167,17 @@ describe("principal retire API", () => {
     mocks.getEntity.mockResolvedValue({
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
-      entity_type: "principal",
-      data: { node_type: "principal", name: "visitor", lifecycle: "retired" },
-      summary: "Visitor",
+      node_type: "principal",
+      prose: "visitor",
+      extra: {},
+      kind: null,
+      locator: null,
+      proposer_id: null,
       lifecycle: "retired",
+      created_at: null,
+      created_by: null,
+      updated_at: null,
+      updated_by: null,
     });
 
     const response = await action({
@@ -203,7 +215,7 @@ describe("principal retire API", () => {
         id: PRINCIPAL_ID,
         entity_type: "principal",
         lifecycle: "active",
-        data: expect.objectContaining({ name: "renamed" }),
+        data: expect.objectContaining({ prose: "renamed" }),
         updated_by: "user_author",
       }),
     );
@@ -233,7 +245,7 @@ describe("principal retire API", () => {
     expect(response.status).toBe(200);
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ name: "Renamed Seat" }),
+        data: expect.objectContaining({ prose: "Renamed Seat" }),
       }),
     );
   });
@@ -285,10 +297,17 @@ describe("principal retire API", () => {
     mocks.getEntity.mockResolvedValue({
       id: PRINCIPAL_ID,
       doco_id: "doco_other",
-      entity_type: "principal",
-      data: { node_type: "principal", name: "visitor" },
-      summary: "Visitor",
+      node_type: "principal",
+      prose: "visitor",
+      extra: {},
+      kind: null,
+      locator: null,
+      proposer_id: null,
       lifecycle: "active",
+      created_at: null,
+      created_by: null,
+      updated_at: null,
+      updated_by: null,
     });
 
     const response = await action({
@@ -346,11 +365,17 @@ describe("principal retire API", () => {
     mocks.getEntity.mockResolvedValue({
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
-      entity_type: "principal",
-      data: { node_type: "principal", name: "visitor" },
+      node_type: "principal",
+      prose: "visitor",
+      extra: {},
+      kind: null,
+      locator: null,
+      proposer_id: null,
       lifecycle: "active",
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "user_admin",
+      updated_at: null,
+      updated_by: null,
     });
 
     const response = await action({
@@ -362,7 +387,7 @@ describe("principal retire API", () => {
     expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
       expect.objectContaining({
         candidate: expect.objectContaining({
-          name: "visitor — human walking the public site",
+          prose: "visitor — human walking the public site",
         }),
       }),
     );

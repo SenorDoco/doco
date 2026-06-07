@@ -122,12 +122,13 @@ export async function loader({
   ).filter((p) => p !== null);
   const principal_nodes = nodeRows.map((r) => ({
     id: r.id,
-    // A principal's name is its `prose` (the bag/columns carry no `name`).
-    name: typeof r.data?.prose === "string" ? r.data.prose : null,
-    lifecycle: r.lifecycle ?? null,
-    created_at: r.created_at ?? null,
-    updated_at: r.updated_at ?? null,
-    data: r.data,
+    // A principal's name is its `prose`.
+    name: r.prose || null,
+    lifecycle: r.lifecycle,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    ...(r.kind != null ? { kind: r.kind } : {}),
+    extra: r.extra,
   }));
   return Response.json({
     ok: true,
