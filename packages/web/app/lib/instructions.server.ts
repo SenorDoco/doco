@@ -18,15 +18,20 @@ export const CANONICAL_INSTRUCTIONS = `# Doco — agent protocol (slim)
 ## What is Doco?
 
 You're working on a project that uses **Doco** — institutional memory
-for software projects. Doco is a structured, searchable record of
-intent, decisions, rules, actions, and history, purpose-built for AI
-agents and humans to share context.
+for software projects. Doco is a structured, searchable, typed record
+of a project's intent, decisions, rules, actions, history, and the
+artifacts they touch, purpose-built for AI agents and humans to share
+context.
 
-Git captures *what* changed in code. PR descriptions capture some of
-the *why* at merge time. Doco captures the *why* as it forms — the
-alternatives weighed, the constraints that shaped a decision, the
-rules that emerged from a bug fix — in typed nodes you can query
-across the whole project's lifetime.
+Git records *what* changed in the code. Doco records the surrounding
+graph the code can't hold: the **intents** behind work, the
+**decisions** taken and the alternatives weighed, the **rules** that
+emerged, the **actions** designed, the **logs** of what actually
+happened (incidents, fixes, releases), the **evals** that pin
+load-bearing claims, the **references** to external artifacts (pull
+requests, issues, docs), the **states** a process moves through, and
+the **principals** who own it — as typed, linked nodes you can query
+across the project's whole lifetime.
 
 For you, the agent, this means:
 
@@ -80,12 +85,22 @@ field in clean framing (no claudeMd-style "may not be relevant"
 wrapper), so this is the channel that survives sandboxed agent
 runtimes where project-scope hooks are filtered.
 
-For the hosted remote MCP connector at \`/<workspace-id>/mcp\` (one per
-workspace; the token is bound to that workspace), authentication belongs
-to the MCP client transport. Do not hand-drive OAuth or ask the user to
-paste localhost callback URLs back into chat; if the callback listener
-fails, restart the client MCP auth flow. Use the direct OAuth recipes
-only when you are not connected through remote MCP.
+The hosted remote MCP connector comes in two shapes: a **user-level**
+endpoint at \`/me/mcp\` — one connection that reaches every workspace you
+belong to — and a **per-workspace** endpoint at \`/<workspace-id>/mcp\`,
+bound to that one workspace. Either way authentication belongs to the MCP
+client transport: do not hand-drive OAuth or ask the user to paste
+localhost callback URLs back into chat; if the callback listener fails,
+restart the client MCP auth flow. Use the direct OAuth recipes only when
+you are not connected through remote MCP.
+
+**One workspace per session.** Your credential may reach many
+workspaces (a user-level / \`actor\` token covers all of yours), but you
+operate within exactly **one** per session — the one named in
+\`.doco/connections.md\`, or the single workspace your token is scoped to.
+Multiple docos *within* that workspace are fine; never read or write a
+doco in another workspace in the same session. If the task needs a
+different workspace, tell the user to start a new session.
 
 **Direct HTTP** (any runtime, or when MCP isn't available). You
 drive OAuth directly. Two recipes, full step-by-step at:
@@ -196,8 +211,8 @@ the endpoint shapes are:
     GET   https://doco.to/<handle>/api/policies.json      # list policies
     POST  https://doco.to/<handle>/api/policies.json      # capture a policy (needs write access)
 
-Node types: decisions, ideas, rules, intents, actions, logs, evals,
-references, states, principals, invites, audit.
+Node types: intents, ideas, rules, decisions, actions, logs, evals,
+references, states, principals.
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
 evals, references, states, ideas, policies, settings, and principals.
