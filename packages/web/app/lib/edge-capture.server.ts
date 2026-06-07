@@ -76,17 +76,17 @@ async function resolveEndpoint(
 function endpointPayload(rec: EntityRecord): Record<string, unknown> {
   const prose = typeof rec.data?.prose === "string" ? rec.data.prose : null;
   return {
-    name: rec.name ?? prose,
+    name: prose,
     text: prose,
     ...(rec.data && typeof rec.data === "object" ? rec.data : {}),
   };
 }
 
-/** Human-readable label for an edge endpoint: its name, else its prose, else id. */
+/** Human-readable label for an edge endpoint: its prose, else its id. */
 function endpointLabel(rec: EntityRecord | null, fallbackId: string): string {
   if (!rec) return fallbackId;
   const prose = typeof rec.data?.prose === "string" ? rec.data.prose : null;
-  return rec.name ?? prose ?? fallbackId;
+  return prose ?? fallbackId;
 }
 
 /**

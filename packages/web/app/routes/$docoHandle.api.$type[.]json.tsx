@@ -48,7 +48,9 @@ export async function loader({
     count: rows.length,
     items: rows.map((r) => ({
       id: r.id,
-      summary: r.summary ?? null,
+      // The node's content is `prose`, surfaced in `data` below; this list
+      // never carried a separate summary (kept for response-shape stability).
+      summary: null,
       lifecycle: r.lifecycle ?? null,
       created_at: r.created_at ?? null,
       created_by: r.created_by ?? null,

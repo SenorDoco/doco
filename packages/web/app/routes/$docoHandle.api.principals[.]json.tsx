@@ -122,7 +122,8 @@ export async function loader({
   ).filter((p) => p !== null);
   const principal_nodes = nodeRows.map((r) => ({
     id: r.id,
-    name: r.name ?? null,
+    // A principal's name is its `prose` (the bag/columns carry no `name`).
+    name: typeof r.data?.prose === "string" ? r.data.prose : null,
     lifecycle: r.lifecycle ?? null,
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
