@@ -36,7 +36,12 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).toContain("Specific workspace(s)");
     expect(markup).toContain("Specific docos");
     expect(markup).toContain('name="grants"');
-    // A token is capped at one workspace: the broad grants are gone.
+    // The broad option for a token is the actor ("act as me") scope — a
+    // user-level credential, one workspace per session — NOT the old
+    // all-workspaces snapshot.
+    expect(markup).toContain('data-testid="grant-scope-actor"');
+    expect(markup).toContain("Act as you");
+    // A token is capped at one workspace: the broad snapshot grants are gone.
     expect(markup).not.toContain("Full access");
     expect(markup).not.toContain("All your workspaces and docos");
     expect(markup).not.toContain("identity");
@@ -100,6 +105,9 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).toContain("The entire torre workspace");
     expect(markup).not.toContain("Specific workspace(s)");
     expect(markup).not.toContain("All your workspaces and docos");
+    // A bound connector can't mint an all-workspaces actor token.
+    expect(markup).not.toContain('data-testid="grant-scope-actor"');
+    expect(markup).not.toContain("Act as you");
     // The two narrowing options remain (Docos / types within that workspace).
     expect(markup).toContain('data-testid="grant-scope-doco"');
     expect(markup).toContain('data-testid="grant-scope-types"');

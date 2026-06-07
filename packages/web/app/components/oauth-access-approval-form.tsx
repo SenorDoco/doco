@@ -145,6 +145,7 @@ export function OAuthAccessApprovalForm({
             if (next.length > 0) clearError("grants");
           }}
           forToken
+          offerActor
           boundWorkspace={boundWorkspace}
         />
         {errors.grants ? (

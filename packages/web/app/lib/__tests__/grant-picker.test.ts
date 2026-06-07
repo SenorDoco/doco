@@ -3,6 +3,7 @@ import {
   type ComposedGrant,
   type ExistingGrant,
   type GrantCatalog,
+  actorGrant,
   applyDocoTypeLevel,
   applyTargetRole,
   availableScopes,
@@ -26,6 +27,7 @@ import {
   targetsByWorkspace,
   typeDropdownValue,
   upsertGrant,
+  workspaceOfComposedGrant,
   writableTypeGroups,
 } from "../grant-picker";
 
@@ -235,19 +237,67 @@ describe("availableScopes", () => {
   it("offers nothing when there are no targets", () => {
     expect(availableScopes({ workspaces: [], targets: [] })).toEqual([]);
   });
-  it("withholds the account scope when minting a token (single-workspace cap)", () => {
-    // A token can never reach every workspace, so the account scope is dropped
-    // even for a workspace owner; workspace/doco/types remain.
-    expect(availableScopes(catalog, { forToken: true }).map((s) => s.scope)).toEqual([
-      "workspace",
-      "doco",
-      "types",
-    ]);
+  it("leads the token consent with the actor scope when the host opts in", () => {
+    // A token can't snapshot every workspace, but the actor ("act as me")
+    // credential is the token-world equivalent: user-level breadth, one
+    // workspace per session. It leads, then workspace/doco/types. Note the
+    // account scope is still withheld for a token.
+    expect(
+      availableScopes(catalog, { forToken: true, offerActor: true }).map((s) => s.scope),
+    ).toEqual(["actor", "workspace", "doco", "types"]);
+  });
+  it("never offers the actor scope unless the host opts in (e.g. the /tokens radio)", () => {
+    // forToken alone does NOT surface actor — the /tokens page drives it from
+    // its own toggle and leaves offerActor off.
+    expect(availableScopes(catalog, { forToken: true }).map((s) => s.scope)).not.toContain("actor");
+    expect(availableScopes(catalog).map((s) => s.scope)).not.toContain("actor");
+  });
+  it("withholds the actor scope from a bound (per-workspace) connector", () => {
+    // A connector pinned to one workspace can't mint an all-workspaces token.
+    const scopes = availableScopes(catalog, { offerActor: true, boundWorkspaceLabel: "acme" });
+    expect(scopes.map((s) => s.scope)).not.toContain("actor");
+  });
+  it("withholds the actor scope when there's no workspace to act in", () => {
+    // Only a personal Doco, no workspace membership → nothing for an actor
+    // token to reach, so it isn't offered even with offerActor.
+    const personalOnly: GrantCatalog = {
+      workspaces: [{ id: "__other__", label: "Personal / other" }],
+      targets: [
+        {
+          level: "doco",
+          id: "doco_personal",
+          workspaceId: "__other__",
+          label: "my-notes",
+          maxRole: "owner",
+        },
+      ],
+    };
+    expect(availableScopes(personalOnly, { offerActor: true }).map((s) => s.scope)).not.toContain(
+      "actor",
+    );
   });
   it("names the workspace scope after the bound workspace, dropping the plural label", () => {
     const scopes = availableScopes(catalog, { boundWorkspaceLabel: "torre" });
     expect(scopes.find((s) => s.scope === "workspace")?.title).toBe("The entire torre workspace");
     expect(scopes.map((s) => s.title)).not.toContain("Specific workspace(s)");
+  });
+});
+
+describe("actor grant (act-as-me token)", () => {
+  it("composes a target-less, role-less grant", () => {
+    expect(actorGrant()).toEqual({ level: "actor", targetId: "", role: "writer", writeTypes: [] });
+  });
+  it("counts toward no workspace, so it never trips the one-workspace cap", () => {
+    expect(workspaceOfComposedGrant(actorGrant(), catalog)).toBeNull();
+  });
+  it("survives coerceSingleWorkspace even alongside a workspace grant", () => {
+    const next: ComposedGrant[] = [
+      actorGrant(),
+      { level: "workspace", targetId: "workspace_A", role: "writer", writeTypes: ["*"] },
+    ];
+    // The actor grant has no workspace, so only the lone real workspace counts —
+    // nothing is dropped.
+    expect(coerceSingleWorkspace([], next, catalog)).toEqual(next);
   });
 });
 

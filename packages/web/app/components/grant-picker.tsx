@@ -9,6 +9,7 @@ import {
   type GrantTarget,
   type TargetRoleChoice,
   type TypeLevel,
+  actorGrant,
   applyDocoTypeLevel,
   applyTargetRole,
   availableScopes,
@@ -47,6 +48,7 @@ export function GrantPicker({
   onChange,
   existing,
   forToken = false,
+  offerActor = false,
   boundWorkspace,
 }: {
   catalog: GrantCatalog;
@@ -61,6 +63,13 @@ export function GrantPicker({
    */
   forToken?: boolean;
   /**
+   * Offer the actor ("act as me") scope — a user-level credential, one
+   * workspace per session. The consent screens set this; the /tokens page
+   * surfaces actor through its own top-level toggle instead, so it leaves this
+   * off. Suppressed for a bound (per-workspace) connector either way.
+   */
+  offerActor?: boolean;
+  /**
    * When the connector is bound to one workspace (per-workspace MCP), the
    * first scope option becomes "The entire <name> workspace" with its
    * access-level dropdown inline in the row; "Specific docos" / "types" still
@@ -70,8 +79,13 @@ export function GrantPicker({
   boundWorkspace?: { id: string; label: string; maxRole: DocoRole };
 }) {
   const scopes = useMemo(
-    () => availableScopes(catalog, { forToken, boundWorkspaceLabel: boundWorkspace?.label }),
-    [catalog, forToken, boundWorkspace],
+    () =>
+      availableScopes(catalog, {
+        forToken,
+        offerActor,
+        boundWorkspaceLabel: boundWorkspace?.label,
+      }),
+    [catalog, forToken, offerActor, boundWorkspace],
   );
   // A token selection may never span more than one workspace.
   const emit = (next: ComposedGrant[]) =>
@@ -115,10 +129,14 @@ export function GrantPicker({
             const select = () => {
               setScope(s.scope);
               // Picking the bound workspace composes a default writer grant so
-              // its inline dropdown opens on "Can write"; any other scope
-              // starts from a clean slate.
+              // its inline dropdown opens on "Can write". The actor scope IS the
+              // grant — there's no target or role to pick — so selecting it
+              // composes the act-as-me grant directly. Any other scope starts
+              // from a clean slate.
               if (boundWorkspace && s.scope === "workspace") {
                 emit(applyTargetRole([], "workspace", boundWorkspace.id, "writer"));
+              } else if (s.scope === "actor") {
+                onChange([actorGrant()]);
               } else {
                 onChange([]);
               }
@@ -173,7 +191,9 @@ export function GrantPicker({
         </div>
       </fieldset>
 
-      {scope === "account" ? (
+      {scope === "actor" ? (
+        <ActorStep />
+      ) : scope === "account" ? (
         <AccountStep catalog={catalog} grants={grants} onChange={emit} />
       ) : scope === "workspace" ? (
         // Bound mode grants the whole workspace via the inline dropdown above —
@@ -364,6 +384,24 @@ function GrantChoiceList({
         );
       })}
     </ul>
+  );
+}
+
+// Actor: no target, no role to choose — selecting the scope IS the grant. This
+// step just confirms what the act-as-me token will and won't do.
+function ActorStep() {
+  return (
+    <div
+      className="rounded-md border border-primary bg-primary/10 px-3 py-3 text-sm"
+      data-testid="grant-actor-step"
+    >
+      <p className="font-semibold">This connection acts as you.</p>
+      <p className="mt-1 text-muted-foreground">
+        In each session it works in <strong>one workspace</strong>, at your own access level there —
+        never two at once. New workspaces you join are reachable automatically; nothing is baked in
+        now. Revoke it any time from this page.
+      </p>
+    </div>
   );
 }
 
