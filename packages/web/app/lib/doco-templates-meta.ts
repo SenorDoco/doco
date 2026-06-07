@@ -92,6 +92,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-06-07",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "faq",
+    label: "FAQ",
+    description:
+      "Document frequently asked questions — a canonical question and concise answer per entry, paraphrase variants, a source of truth, and a stewarding owner — and log each result so reuse, gaps, and stale answers surface.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
