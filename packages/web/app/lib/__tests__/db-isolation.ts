@@ -1,7 +1,6 @@
 /**
  * Test-database isolation for @doco/web. Each test file gets its own
- * Postgres database, fully truncated between tests. Mirrors the
- * pattern in @doco/host's __tests__/db-isolation.ts.
+ * Postgres database, fully truncated between tests.
  *
  * Requires Postgres on 127.0.0.1:5433 (user=postgres pw=doco) by
  * default; override via DOCO_TEST_ADMIN_DATABASE_URL.

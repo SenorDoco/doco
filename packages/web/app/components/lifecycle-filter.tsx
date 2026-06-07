@@ -22,10 +22,6 @@ export const LIFECYCLE_ORDER: readonly string[] = ["drafting", "queued", "active
  */
 export const HIDDEN_LIFECYCLES_BY_DEFAULT: ReadonlySet<string> = new Set(["retired"]);
 
-export function lifecycleLabel(lifecycle: string): string {
-  return lifecycle.replaceAll("_", " ");
-}
-
 /**
  * An edge's effective lifecycle, defaulting to "active" when the edge
  * carries no explicit value (older edges, or links built without a
@@ -88,22 +84,4 @@ export function newlyVisibleLifecycles(
     if (!HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle)) newlyVisible.push(lifecycle);
   }
   return { newlyVisible, nextKnown };
-}
-
-/**
- * Order `available` lifecycles by LIFECYCLE_ORDER, appending any
- * unknown lifecycle stages at the end alphabetically.
- */
-export function orderLifecycles(available: Iterable<string>): string[] {
-  const seen = new Set(available);
-  const ordered: string[] = [];
-  for (const lifecycle of LIFECYCLE_ORDER) {
-    if (seen.has(lifecycle)) {
-      ordered.push(lifecycle);
-      seen.delete(lifecycle);
-    }
-  }
-  // Unknown stages fall in alphabetically.
-  for (const remaining of Array.from(seen).sort()) ordered.push(remaining);
-  return ordered;
 }
