@@ -3,11 +3,11 @@ import type { OverviewGraphLink } from "~/components/overview-graph";
 import { computeProcessRenderedSet } from "~/components/perspectives/process-perspective";
 import type { ProcessNode, ProcessPool } from "~/lib/process-perspective.server";
 
-// Two intents (pools), each with two sequenced Actions, joined by a single
-// cross-intent hand-off edge (a2 → b1).
+// Two processes (pools), each with two sequenced members, joined by a single
+// cross-process hand-off edge (a2 → b1).
 const pools: ProcessPool[] = [
-  { id: "pool:i1", intent_id: "i1", label: "Hire", lifecycle: "active" },
-  { id: "pool:i2", intent_id: "i2", label: "Onboard", lifecycle: "active" },
+  { id: "pool:p1", process_id: "p1", label: "Hire", lifecycle: "active" },
+  { id: "pool:p2", process_id: "p2", label: "Onboard", lifecycle: "active" },
 ];
 const node = (id: string, poolId: string): ProcessNode => ({
   id,
@@ -21,10 +21,10 @@ const node = (id: string, poolId: string): ProcessNode => ({
   pool_id: poolId,
 });
 const nodes = [
-  node("a1", "pool:i1"),
-  node("a2", "pool:i1"),
-  node("b1", "pool:i2"),
-  node("b2", "pool:i2"),
+  node("a1", "pool:p1"),
+  node("a2", "pool:p1"),
+  node("b1", "pool:p2"),
+  node("b2", "pool:p2"),
 ];
 const links: OverviewGraphLink[] = [
   { id: "e:a1-a2", source: "a1", target: "a2", edge_type: "flows_to" },
@@ -33,7 +33,7 @@ const links: OverviewGraphLink[] = [
 ];
 
 describe("computeProcessRenderedSet", () => {
-  it("renders the focal node's whole intent plus first-degree cross-intent neighbours", () => {
+  it("renders the focal node's whole process — cross-process neighbours are circles, not members", () => {
     const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
@@ -42,12 +42,27 @@ describe("computeProcessRenderedSet", () => {
       focusedEdgeId: null,
       focusedNodeIds: new Set(),
     });
-    expect([...focalPoolIds]).toEqual(["pool:i1"]);
-    // a1, a2 from the intent; b1 pulled in as a1-degree neighbour; not b2.
-    expect(renderedNodeIds).toEqual(new Set(["a1", "a2", "b1"]));
+    expect([...focalPoolIds]).toEqual(["pool:p1"]);
+    // Only the focal process's members render; b1 (another process) does not —
+    // it surfaces as an exit circle drawn by the renderer.
+    expect(renderedNodeIds).toEqual(new Set(["a1", "a2"]));
   });
 
-  it("renders only the one intent for an edge whose endpoints share an intent", () => {
+  it("an expanded subprocess frames its OWN pool, overriding the member's parent", () => {
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
+      nodes,
+      pools,
+      links,
+      centerId: "a2", // a member of pool:p1…
+      expandedProcessId: "p2", // …but p2 is expanded, so its pool frames.
+      focusedEdgeId: null,
+      focusedNodeIds: new Set(),
+    });
+    expect([...focalPoolIds]).toEqual(["pool:p2"]);
+    expect(renderedNodeIds).toEqual(new Set(["b1", "b2"]));
+  });
+
+  it("renders only the one process for an edge whose endpoints share it", () => {
     const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
@@ -56,37 +71,33 @@ describe("computeProcessRenderedSet", () => {
       focusedEdgeId: "e:a1-a2",
       focusedNodeIds: new Set(["a1", "a2"]),
     });
-    expect([...focalPoolIds]).toEqual(["pool:i1"]);
+    expect([...focalPoolIds]).toEqual(["pool:p1"]);
     expect(renderedNodeIds).toEqual(new Set(["a1", "a2"]));
   });
 
-  it("renders BOTH intents in full for an edge spanning two intents", () => {
+  it("renders BOTH processes in full for an edge spanning two of them", () => {
     const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
       links,
-      // The focal node is the edge's source (a2), but the edge crosses into i2.
       centerId: "a2",
       focusedEdgeId: "e:a2-b1",
       focusedNodeIds: new Set(["a2", "b1"]),
     });
-    expect([...focalPoolIds].sort()).toEqual(["pool:i1", "pool:i2"]);
-    // Every node of both intents — including b2, which is not a neighbour of
-    // the focal node — must render.
+    expect([...focalPoolIds].sort()).toEqual(["pool:p1", "pool:p2"]);
     expect(renderedNodeIds).toEqual(new Set(["a1", "a2", "b1", "b2"]));
   });
 
-  it("resolves an edge endpoint that is itself an Intent to its pool", () => {
-    // A `serves` edge from action a2 into intent i2 (the pool, not a node).
+  it("resolves an edge endpoint that is itself a process Action to its pool", () => {
     const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
       links,
       centerId: "a2",
-      focusedEdgeId: "e:a2-serves-i2",
-      focusedNodeIds: new Set(["a2", "i2"]),
+      focusedEdgeId: "e:a2-parent-p2",
+      focusedNodeIds: new Set(["a2", "p2"]),
     });
-    expect([...focalPoolIds].sort()).toEqual(["pool:i1", "pool:i2"]);
+    expect([...focalPoolIds].sort()).toEqual(["pool:p1", "pool:p2"]);
     expect(renderedNodeIds).toEqual(new Set(["a1", "a2", "b1", "b2"]));
   });
 

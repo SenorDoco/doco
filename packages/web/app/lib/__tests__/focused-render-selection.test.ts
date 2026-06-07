@@ -192,42 +192,42 @@ describe("processFocusCandidates", () => {
   const node = (id: string, lifecycle: string) => ({ id, lifecycle, created_at: null });
   const filteredNodes = [node("step-1", "active")];
   const pools = [
-    { intent_id: "intent-live", lifecycle: "drafting" },
-    { intent_id: "intent-dead", lifecycle: "retired" },
+    { process_id: "process-live", lifecycle: "drafting" },
+    { process_id: "process-dead", lifecycle: "retired" },
   ];
   // Out-of-the-box lifecycle filter: retired hidden; drafting, queued + active shown.
   const defaultVisible = new Set(["drafting", "queued", "active"]);
 
-  it("offers pool intents whose lifecycle is visible", () => {
+  it("offers pool processes whose lifecycle is visible", () => {
     const ids = processFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
-    expect(ids).toContain("intent-live");
+    expect(ids).toContain("process-live");
   });
 
-  it("excludes a retired pool intent while retired is hidden, like a retired node", () => {
+  it("excludes a retired pool process while retired is hidden, like a retired node", () => {
     const ids = processFocusCandidates(filteredNodes, pools, defaultVisible).map((n) => n.id);
-    expect(ids).not.toContain("intent-dead");
+    expect(ids).not.toContain("process-dead");
   });
 
-  it("offers a retired pool intent once retired is toggled visible", () => {
+  it("offers a retired pool process once retired is toggled visible", () => {
     const visible = new Set(["drafting", "queued", "active", "retired"]);
     const ids = processFocusCandidates(filteredNodes, pools, visible).map((n) => n.id);
-    expect(ids).toContain("intent-dead");
+    expect(ids).toContain("process-dead");
   });
 
-  it("offers every pool intent when no lifecycle filter is set", () => {
+  it("offers every pool process when no lifecycle filter is set", () => {
     const ids = processFocusCandidates(filteredNodes, pools, undefined).map((n) => n.id);
-    expect(ids).toEqual(expect.arrayContaining(["intent-live", "intent-dead"]));
+    expect(ids).toEqual(expect.arrayContaining(["process-live", "process-dead"]));
   });
 
   it("a hidden retired pool no longer steals the default focus from a visible node", () => {
     // The retired pool carries the top PageRank, but it's hidden — so the
     // highest-ranked *visible* candidate must win the cold-open focus.
     const ranks = new Map([
-      ["intent-dead", 0.9],
-      ["intent-live", 0.5],
+      ["process-dead", 0.9],
+      ["process-live", 0.5],
       ["step-1", 0.1],
     ]);
     const candidates = processFocusCandidates(filteredNodes, pools, defaultVisible);
-    expect(highestRankedNodeId(candidates, ranks)).toBe("intent-live");
+    expect(highestRankedNodeId(candidates, ranks)).toBe("process-live");
   });
 });

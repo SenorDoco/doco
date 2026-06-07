@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { computeIntentEntryPointIds, topEntryPointId } from "../process-entry-points";
+import { computeEntryPointIds, topEntryPointId } from "../process-entry-points";
 
-describe("computeIntentEntryPointIds", () => {
+describe("computeEntryPointIds", () => {
   it("treats genuine sources (no incoming sequence flow) as entry points", () => {
     const nodes = [
       { id: "start", pool_id: "pool:a" },
@@ -9,7 +9,7 @@ describe("computeIntentEntryPointIds", () => {
     ];
     const links = [{ source: "start", target: "next", edge_type: "flows_to" }];
 
-    const entry = computeIntentEntryPointIds(nodes, links);
+    const entry = computeEntryPointIds(nodes, links);
     expect(entry.has("start")).toBe(true);
     expect(entry.has("next")).toBe(false);
   });
@@ -27,7 +27,7 @@ describe("computeIntentEntryPointIds", () => {
       { source: "gateway", target: "internal", edge_type: "flows_to" },
     ];
 
-    const entry = computeIntentEntryPointIds(nodes, links);
+    const entry = computeEntryPointIds(nodes, links);
     expect(entry.has("gateway")).toBe(true);
     expect(entry.has("internal")).toBe(false);
   });
@@ -44,7 +44,7 @@ describe("computeIntentEntryPointIds", () => {
       { source: "a", target: "b", edge_type: "flows_to" },
     ];
 
-    const entry = computeIntentEntryPointIds(nodes, links);
+    const entry = computeEntryPointIds(nodes, links);
     expect(entry.has("b")).toBe(false);
     // `a` has no inflow at all → entry point
     expect(entry.has("a")).toBe(true);
@@ -60,7 +60,7 @@ describe("computeIntentEntryPointIds", () => {
       { source: "owner", target: "step", edge_type: "serves" },
     ];
 
-    const entry = computeIntentEntryPointIds(nodes, links);
+    const entry = computeEntryPointIds(nodes, links);
     expect(entry.has("step")).toBe(true);
   });
 
@@ -72,7 +72,7 @@ describe("computeIntentEntryPointIds", () => {
       { source: "filtered-out", target: "step", edge_type: "flows_to" },
     ];
 
-    const entry = computeIntentEntryPointIds(nodes, links);
+    const entry = computeEntryPointIds(nodes, links);
     expect(entry.has("step")).toBe(true);
   });
 });
