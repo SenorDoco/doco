@@ -573,6 +573,12 @@ export interface IssueTokensInput {
   /** Per-type write scope-down keyed by workspace_id. */
   granted_workspace_write_types?: Record<string, string[]>;
   scope: string | null;
+  /**
+   * 'actor' mints a user-level refresh whose breadth is the user's LIVE
+   * workspace membership (resolved + down-scoped to one workspace per access
+   * token at refresh time). Carries no explicit grants. Defaults to 'regular'.
+   */
+  grant_type?: "regular" | "actor";
 }
 
 export interface IssuedTokens {
@@ -625,8 +631,8 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-          scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          scope, expires_at, grant_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         refresh_token,
         input.client_id,
@@ -640,6 +646,7 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         workspaceWriteTypesJson,
         input.scope,
         refresh_expires,
+        input.grant_type ?? "regular",
       ],
     );
   });
