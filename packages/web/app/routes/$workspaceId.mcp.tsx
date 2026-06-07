@@ -16,7 +16,11 @@
 import { getWorkspaceConstitutionsByIds } from "@doco/db";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
-import { gateWorkspaceMcp, resolveDocoInWorkspace } from "~/lib/workspace-mcp.server";
+import {
+  type WorkspaceMcpGate,
+  gateWorkspaceMcp,
+  resolveDocoInWorkspace,
+} from "~/lib/workspace-mcp.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
 import { action as changesetsAction } from "./$docoHandle.api.changesets[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
@@ -286,16 +290,14 @@ function rpcError(id: Rpc["id"], code: number, message: string, status = 200): R
   return Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status });
 }
 
-function unauthorized(request: Request, workspaceId: string): Response {
-  const origin = new URL(request.url).origin;
-  const metadata = `${origin}/.well-known/oauth-protected-resource/${workspaceId}/mcp`;
+function unauthorized(metadataUrl: string): Response {
   return new Response(
     JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized" } }),
     {
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "WWW-Authenticate": `Bearer resource_metadata="${metadata}"`,
+        "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl}"`,
       },
     },
   );
@@ -657,20 +659,23 @@ export function loader() {
   return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
 }
 
-export async function action({
-  request,
-  params,
-}: {
-  request: Request;
-  params: { workspaceId?: string };
-}): Promise<Response> {
-  if (request.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
-  }
-  const workspaceId = params.workspaceId ?? "";
-  const gate = await gateWorkspaceMcp(request, workspaceId);
+/**
+ * The shared MCP request core. The gate (workspace- or user-scoped) and the
+ * protected-resource metadata URL are the ONLY per-endpoint differences; the
+ * parse + JSON-RPC dispatch + tool confinement are identical. Both
+ * `/<workspace-id>/mcp` and `/me/mcp` run through here, so the tool surface and
+ * the single-workspace confinement can never diverge between them. Kept local
+ * (not exported) — a route module may only export server code via
+ * loader/action, so the user-level path reaches it through this same module's
+ * `action` (the /me/mcp route points here), never a cross-module import.
+ */
+async function runGatedMcp(
+  request: Request,
+  gate: WorkspaceMcpGate,
+  metadataUrl: string,
+): Promise<Response> {
   if (!gate.ok) {
-    if (gate.kind === "unauthenticated") return unauthorized(request, workspaceId);
+    if (gate.kind === "unauthenticated") return unauthorized(metadataUrl);
     if (gate.kind === "not_found") return new Response(gate.message, { status: 404 });
     return rpcError(null, -32001, gate.message, 403);
   }
@@ -686,4 +691,29 @@ export async function action({
   // Notifications (no id) expect no response body.
   if (message.id === undefined) return new Response(null, { status: 202 });
   return dispatch(message, request, gate.ctx);
+}
+
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { workspaceId?: string };
+}): Promise<Response> {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
+  }
+  const origin = new URL(request.url).origin;
+  const workspaceId = params.workspaceId ?? "";
+  if (workspaceId) {
+    const gate = await gateWorkspaceMcp(request, workspaceId);
+    const metadataUrl = `${origin}/.well-known/oauth-protected-resource/${workspaceId}/mcp`;
+    return runGatedMcp(request, gate, metadataUrl);
+  }
+  // User-level endpoint (/me/mcp): no `:workspaceId` segment. The session
+  // workspace comes from the token, not the URL. Lazy-import keeps the
+  // per-workspace path — and its tests — free of the user-gate's deps.
+  const { gateUserMcp } = await import("~/lib/user-mcp.server");
+  const gate = await gateUserMcp(request);
+  return runGatedMcp(request, gate, `${origin}/.well-known/oauth-protected-resource/me/mcp`);
 }
