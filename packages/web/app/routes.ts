@@ -83,9 +83,6 @@ export default [
   // Returns the actual agent_turn_metrics / capture_timings rows
   // behind the aggregated health signals.
   route("admin/agent-debug.json", "routes/admin.agent-debug[.]json.tsx"),
-  // Owner-only: the live DB location (host/project/branch) parsed from the
-  // running process's connection string, password redacted.
-  route("admin/db-info.json", "routes/admin.db-info[.]json.tsx"),
   route("feedback", "routes/feedback.tsx"),
   // Legacy path — the page is now just /feedback; redirect old links.
   route("mentor/feedback", "routes/mentor.feedback.tsx"),
