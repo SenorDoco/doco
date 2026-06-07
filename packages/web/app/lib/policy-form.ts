@@ -25,9 +25,13 @@ export interface PolicyFormInitial {
   from_node_type: string;
   to_node_type: string;
   target_node_type: string;
-  /** requires_edge: floor on matching edges; the node type that waives it. */
+  /** requires_edge: floor on matching edges, plus the exemptions that waive it. */
   min_count: string;
   exempt_when_other_node_type: string;
+  /** requires_edge / flow-wiring: excused when the node is the target of this incoming edge. */
+  exempt_when_incoming_edge_type: string;
+  /** requires_edge: excused when the candidate carries a truthy value at this field. */
+  exempt_when_field_truthy: string;
   /** limits_edge: ceiling on matching edges. */
   max_count: string;
   /** requires_edge / limits_edge: which way the edge must point. */
@@ -55,6 +59,46 @@ export interface PolicyFormInitial {
   fires_when_node_lifecycle: string;
 }
 
+/**
+ * The empty policy form — every input at its default. Shared by the "new policy"
+ * route (which renders it as-is) and `policyFormInitialFromData` (which overlays
+ * a stored policy onto it), so there is exactly ONE list of form fields, not a
+ * separate hand-kept copy in each place to drift apart.
+ */
+export const EMPTY_POLICY_FORM_INITIAL: PolicyFormInitial = {
+  kind: "suggestion",
+  agent_instruction: "",
+  sub_kind: "requires_field",
+  edge_type: "",
+  from_node_type: "",
+  to_node_type: "",
+  target_node_type: "",
+  min_count: "",
+  exempt_when_other_node_type: "",
+  exempt_when_incoming_edge_type: "",
+  exempt_when_field_truthy: "",
+  max_count: "",
+  direction: "",
+  fields: "",
+  field: "",
+  pattern: "",
+  flags: "",
+  case_fold: false,
+  node_types: "",
+  edge_types: "",
+  entity_types: "",
+  list_field: "",
+  incoming_node_type: "",
+  incoming_field_must_match: "",
+  initial_when_field: "",
+  initial_when_equals: "",
+  terminal_when_field: "",
+  terminal_when_equals: "",
+  when_node_type: "",
+  on_violation: "block",
+  fires_when_node_lifecycle: "",
+};
+
 /** Derive prefilled form values from a stored policy `data` jsonb. */
 export function policyFormInitialFromData(data: Record<string, unknown>): PolicyFormInitial {
   const kind =
@@ -65,41 +109,69 @@ export function policyFormInitialFromData(data: Record<string, unknown>): Policy
   const joinArr = (v: unknown) =>
     Array.isArray(v) ? v.filter((x) => typeof x === "string").join(", ") : "";
   const s = (v: unknown) => (typeof v === "string" ? v : "");
-  const num = (v: unknown) => (typeof v === "number" ? String(v) : "");
-  // initial_when / terminal_when are nested `{ field, equals }` objects.
-  const condField = (v: unknown, key: "field" | "equals") =>
-    s((v && typeof v === "object" ? (v as Record<string, unknown>) : {})[key]);
-  return {
+  const init: PolicyFormInitial = {
+    ...EMPTY_POLICY_FORM_INITIAL,
     kind,
     agent_instruction: s(predicate.agent_instruction),
     sub_kind: s(predicate.sub_kind) || "requires_field",
+    // Edge scoping carried by an edge-scoped probabilistic policy.
     edge_type: s(predicate.edge_type),
     from_node_type: s(predicate.from_node_type),
     to_node_type: s(predicate.to_node_type),
-    target_node_type: s(predicate.target_node_type),
-    min_count: num(predicate.min_count),
-    exempt_when_other_node_type: s(predicate.exempt_when_other_node_type),
-    max_count: num(predicate.max_count),
-    direction: s(predicate.direction),
-    fields: joinArr(predicate.fields),
-    field: s(predicate.field),
-    pattern: s(predicate.pattern),
-    flags: s(predicate.flags),
-    case_fold: predicate.case_fold === true,
-    node_types: joinArr(predicate.node_types),
-    edge_types: joinArr(predicate.edge_types),
-    entity_types: joinArr(predicate.entity_types),
-    list_field: s(predicate.list_field),
-    incoming_node_type: s(predicate.incoming_node_type),
-    incoming_field_must_match: s(predicate.incoming_field_must_match),
-    initial_when_field: condField(predicate.initial_when, "field"),
-    initial_when_equals: condField(predicate.initial_when, "equals"),
-    terminal_when_field: condField(predicate.terminal_when, "field"),
-    terminal_when_equals: condField(predicate.terminal_when, "equals"),
     when_node_type: joinArr(predicate.when_node_type),
     on_violation: s(data.on_violation) || "block",
     fires_when_node_lifecycle: joinArr(data.fires_when_node_lifecycle),
   };
+  // Deterministic check params are flattened straight from the check's registry
+  // schema (`checkFields`) — the same schema that renders the form, builds the
+  // predicate, and validates it. Deriving the prefill from it too means a field
+  // added to a check is editable automatically. The previous hand-kept list
+  // silently dropped `exempt_when_incoming_edge_type` / `exempt_when_field_truthy`
+  // on every edit, because they were added to the registry but never copied here.
+  if (kind === "deterministic") Object.assign(init, flattenDeterministicFields(predicate));
+  return init;
+}
+
+/**
+ * Flatten a stored deterministic predicate into the flat, input-keyed shape the
+ * form reads — the inverse of `readFormField`, switching on the same `FieldSpec`
+ * controls so the read and write halves can't drift.
+ */
+function flattenDeterministicFields(
+  predicate: Record<string, unknown>,
+): Record<string, string | boolean> {
+  const sub_kind = typeof predicate.sub_kind === "string" ? predicate.sub_kind : "";
+  const out: Record<string, string | boolean> = {};
+  for (const field of checkFields(sub_kind as DeterministicSubKind)) {
+    const value = predicate[field.name];
+    switch (field.control) {
+      case "number":
+        out[field.name] = typeof value === "number" ? String(value) : "";
+        break;
+      case "checkbox":
+        out[field.name] = value === true;
+        break;
+      case "node-type-csv":
+      case "entity-type-csv":
+      case "edge-type-csv":
+      case "field-csv":
+        out[field.name] = Array.isArray(value)
+          ? value.filter((x) => typeof x === "string").join(", ")
+          : "";
+        break;
+      case "condition": {
+        // A nested `{ field, equals }` pair, split into `${name}_field` / `_equals`.
+        const c = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+        out[`${field.name}_field`] = typeof c.field === "string" ? c.field : "";
+        out[`${field.name}_equals`] = typeof c.equals === "string" ? c.equals : "";
+        break;
+      }
+      default:
+        // edge-type / node-type / direction / text — a plain string.
+        out[field.name] = typeof value === "string" ? value : "";
+    }
+  }
+  return out;
 }
 
 function csv(form: FormData, key: string): string[] {
