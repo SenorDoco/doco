@@ -3,7 +3,6 @@
 import {
   type DocoRole,
   isWorkspaceUser as dbIsWorkspaceMember,
-  getAccountGrant,
   getDocoByIdOrHandle,
   getDocoUserGrant,
   getDocoUserRole,
@@ -11,7 +10,6 @@ import {
   getWorkspaceGrant,
   getWorkspaceRole,
   listDocoIdsForUser,
-  listWorkspaceOwnerUserIds,
   maxRole,
   roleAtLeast,
   withClient,
@@ -71,8 +69,7 @@ export function capRoleForRequest(role: DocoRole | null, request: Request): Doco
 
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
- * workspace-membership role on the owning workspace, account grants, explicit
- * doco_users row).
+ * workspace-membership role on the owning workspace, explicit doco_users row).
  *
  * Returns null when the principal has no doco-level grant.
  */
@@ -82,8 +79,8 @@ export async function getDocoLevelRole(
 ): Promise<DocoRole | null> {
   // Delegate to getDocoLevelGrant so the role and per-type-write paths
   // resolve access from exactly the same sources (direct owner, workspace
-  // membership, account grants, doco membership) — there is no second
-  // copy of the source list to drift out of sync.
+  // membership, doco membership) — there is no second copy of the source
+  // list to drift out of sync.
   const grant = await getDocoLevelGrant(meta, principalId);
   return grant?.role ?? null;
 }
@@ -136,13 +133,6 @@ export async function getDocoLevelGrant(
 
   if (meta.ownerId.startsWith("workspace_")) {
     fold(await getWorkspaceGrant(meta.ownerId, principalId));
-    // Account-level grants: if any OWNER of this workspace has granted their
-    // whole account to the principal, the principal inherits that grant
-    // on every workspace/doco that owner owns — including this one.
-    const workspaceOwners = await listWorkspaceOwnerUserIds(meta.ownerId);
-    for (const grantor of workspaceOwners) {
-      fold(await getAccountGrant(grantor, principalId));
-    }
   }
 
   if (meta.docoId) {

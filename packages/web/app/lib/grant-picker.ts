@@ -44,19 +44,17 @@ export interface GrantCatalog {
  * first wizard question picks one of these; the flow then adapts:
  *   - actor:   mint a user-level "act as me" TOKEN (no explicit grants; its
  *              breadth is the user's live membership, one workspace per session).
- *   - account: grant on the grantor's whole account (every workspace they own).
  *   - workspace:     grant on one workspace (and its Docos).
  *   - doco:    grant role on one Doco.
  *   - types:   grant write on specific node/edge types within one Doco.
  *
- * `account` and `actor` are mutually exclusive opposites of the same breadth:
- * `account` is a USER delegation (account_grants) and is offered ONLY when
- * granting a person; `actor` is its TOKEN counterpart and is offered ONLY when
- * minting a credential (`forToken`). A token snapshot of every workspace would
- * break the single-workspace rule, so the actor token defers its breadth to
- * refresh time instead. There is no "identity" (full-access) scope anymore.
+ * `actor` is offered ONLY when minting a credential (`forToken`); a token can't
+ * snapshot every workspace (single-workspace rule), so it defers its breadth to
+ * refresh time instead. Granting another PERSON always names concrete targets —
+ * a specific workspace or doco — never "all your workspaces" (that breadth is a
+ * token-only authorization). There is no "identity" (full-access) scope anymore.
  */
-export type GrantScope = "actor" | "account" | "workspace" | "doco" | "types";
+export type GrantScope = "actor" | "workspace" | "doco" | "types";
 
 /**
  * A grant the user is composing or has saved. `writeTypes` is meaningful
@@ -65,14 +63,13 @@ export type GrantScope = "actor" | "account" | "workspace" | "doco" | "types";
  * "editor"; the wildcard means write-all (a classic writer).
  *
  * `level` is the persistence level: "actor" mints a user-level token (no
- * explicit grants — the server reads only the level); "account" writes
- * account_grants (a USER delegation, never a token); "workspace" writes
+ * explicit grants — the server reads only the level); "workspace" writes
  * workspace_users; "doco" writes doco_users. The wizard's "types" scope
  * persists as a doco-level grant with a non-wildcard write set. `targetId` is
- * empty for account- and actor-level grants (the grantor IS the scope).
+ * empty for actor-level grants (the grantor IS the scope).
  */
 export interface ComposedGrant {
-  level: "actor" | "account" | "workspace" | "doco";
+  level: "actor" | "workspace" | "doco";
   targetId: string;
   role: DocoRole;
   writeTypes: string[];
@@ -290,26 +287,21 @@ export interface ScopeChoice {
 
 /**
  * Which scope choices the wizard should offer, given what the granting user
- * can reach. Two opt-in breadth choices sit at the top, mutually exclusive:
- *   - granting a PERSON  → the `account` scope (all workspaces they own, a
- *     user delegation), offered when the user owns ≥1 workspace and not minting
- *     a token (`forToken`).
+ * can reach. One opt-in breadth choice sits at the top, for TOKENS only:
  *   - the consent screens → the `actor` scope (user-level "act as me", one
  *     workspace per session), offered when the host opts in (`offerActor`),
  *     the user has ≥1 workspace to act in, and the connector isn't pinned to a
  *     single workspace (`boundWorkspaceLabel`). The /tokens page surfaces actor
  *     through its own top-level toggle instead, so it leaves `offerActor` off.
- * A token can't snapshot every workspace, so `account` is never offered for a
- * token; `actor` defers its breadth to refresh time instead. workspace and
- * doco/types require at least one grantable target of that kind.
+ * Granting another PERSON is always a concrete target — a specific workspace or
+ * doco — so there is no "all your workspaces" choice here; that breadth is a
+ * token-only authorization (`actor`). workspace and doco/types require at least
+ * one grantable target of that kind.
  */
 export function availableScopes(
   catalog: GrantCatalog,
   opts: { forToken?: boolean; offerActor?: boolean; boundWorkspaceLabel?: string } = {},
 ): ScopeChoice[] {
-  const ownsAnWorkspace = catalog.targets.some(
-    (t) => t.level === "workspace" && t.maxRole === "owner",
-  );
   const hasWorkspace = catalog.targets.some((t) => t.level === "workspace");
   const hasDoco = catalog.targets.some((t) => t.level === "doco");
   const out: ScopeChoice[] = [];
@@ -319,13 +311,6 @@ export function availableScopes(
       title: "All your workspaces — one at a time",
       blurb:
         "A user-level connection that reaches every workspace you belong to, but each session works in just one. Pick the access level it gets — capped by your own role in each workspace. Best for coding assistants like Claude Code or Codex.",
-    });
-  }
-  if (ownsAnWorkspace && !opts.forToken) {
-    out.push({
-      scope: "account",
-      title: "All your workspaces and docos",
-      blurb: "Every workspace you own, and every doco under them — now and in the future.",
     });
   }
   if (hasWorkspace) {
@@ -372,7 +357,7 @@ export function scopeShowsPerTypeControls(scope: GrantScope): boolean {
 
 /** A grant the grantee/token already holds, for the "current access" panel. */
 export interface ExistingGrant {
-  level: "account" | "workspace" | "doco";
+  level: "workspace" | "doco";
   targetId: string;
   label: string;
   role: DocoRole;
@@ -381,8 +366,7 @@ export interface ExistingGrant {
 
 /** One-line summary of an existing grant for the current-access panel. */
 export function describeExistingGrant(g: ExistingGrant): string {
-  const scopeWord =
-    g.level === "account" ? "Entire account" : g.level === "workspace" ? "Workspace" : "Doco";
+  const scopeWord = g.level === "workspace" ? "Workspace" : "Doco";
   return `${scopeWord}: ${g.label} — ${describeWriteScope(g.role, g.writeTypes)}`;
 }
 
