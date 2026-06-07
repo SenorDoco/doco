@@ -57,16 +57,14 @@ function renderDashboard(): string {
 }
 
 describe("Dashboard", () => {
-  it("does not render create or join quick actions in the header", () => {
+  it("does not render create quick actions in the header", () => {
     const markup = renderDashboard();
 
     expect(markup).toContain("Good building, alice");
     expect(markup).toContain("Your workspaces and docos");
     expect(markup).not.toContain('href="/new-doco"');
     expect(markup).not.toContain('href="/new-workspace"');
-    expect(markup).not.toContain('href="/onboarding/join"');
     expect(markup).not.toContain("+ Doco");
     expect(markup).not.toContain("+ Workspace");
-    expect(markup).not.toContain(">Join</a>");
   });
 });

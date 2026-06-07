@@ -20,8 +20,8 @@ function render(node: ReactElement): string {
 }
 
 const draftingPool: ProcessPool = {
-  id: "pool:intent_1",
-  intent_id: "intent_1",
+  id: "pool:action_1",
+  process_id: "action_1",
   label: "Post a job",
   lifecycle: "drafting",
 };
@@ -31,7 +31,7 @@ describe("BPMN process list (home view)", () => {
     const html = render(<ProcessProcessList pools={[draftingPool]} onSelect={() => {}} />);
     // The process and its identity badges still read...
     expect(html).toContain("Post a job");
-    expect(html).toContain("Intent");
+    expect(html).toContain("Action");
     expect(html).toContain("drafting");
     // ...but they flow inline (vertically centered in the row), exactly how
     // ProcessPoolHeaderNode renders them — never absolutely positioned at

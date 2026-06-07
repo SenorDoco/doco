@@ -1,11 +1,11 @@
 /**
- * Entry points of an intent — the BPMN flow nodes where work *enters* an
- * intent's pool. A node is an entry point of its pool when it has no
+ * Entry points of a process — the BPMN flow nodes where work *enters* a
+ * process's pool. A node is an entry point of its pool when it has no
  * incoming sequence flow (`flows_to`) from another node in the *same*
  * pool: either it is a genuine source (no incoming sequence flow at all)
- * or every incoming flow hands off from a different intent's pool.
+ * or every incoming flow hands off from a different process's pool.
  *
- * The renderer guarantees that whenever an intent is rendered, all of its
+ * The renderer guarantees that whenever a process is rendered, all of its
  * entry points render alongside it (budget permitting) — so a process is
  * never shown starting "mid-stream" with its way-in clipped off.
  */
@@ -23,7 +23,7 @@ interface EntryPointLink {
 
 const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["flows_to"]);
 
-export function computeIntentEntryPointIds(
+export function computeEntryPointIds(
   nodes: readonly EntryPointNode[],
   links: readonly EntryPointLink[],
 ): Set<string> {
@@ -54,14 +54,14 @@ interface RankableEntryNode extends EntryPointNode {
 }
 
 /**
- * The single entry point of a pool to surface when focusing its intent:
- * the process "start" — the earliest-created entry point. When an intent
+ * The single entry point of a pool to surface when focusing its process:
+ * the process "start" — the earliest-created entry point. When a process
  * is focused, the BPMN perspective doesn't fan out the whole swim lane;
  * it homes in on this one "way in" to the process.
  *
  * Returns `null` when the pool has no entry point in the given node set
  * (e.g. every node was filtered out), so the caller can fall back to the
- * intent itself.
+ * process itself.
  *
  * Deterministic with no ranking input: earliest `created_at` wins, ties
  * broken by the lower id — so the same focus lands on the same node
@@ -72,7 +72,7 @@ export function topEntryPointId(
   nodes: readonly RankableEntryNode[],
   links: readonly EntryPointLink[],
 ): string | null {
-  const entryIds = computeIntentEntryPointIds(nodes, links);
+  const entryIds = computeEntryPointIds(nodes, links);
   let best: RankableEntryNode | null = null;
   let bestTime = Number.POSITIVE_INFINITY;
   for (const node of nodes) {

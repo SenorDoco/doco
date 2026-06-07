@@ -18,12 +18,12 @@ function compareCreationOrder(a: ProcessNode, b: ProcessNode): number {
 
 /**
  * The "#N" numbering for the BPMN canvas — a stable property of the focal
- * **Intent**, not of whatever is currently on screen.
+ * **process**, not of whatever is currently on screen.
  *
- * The numbers belong to the Intent in focus (`focalPoolIds`): its pool
+ * The numbers belong to the process in focus (`focalPoolIds`): its pool
  * header(s) first, then each principal-owned swimlane, then every node that
  * belongs to the pool — *of every lifecycle* — in creation order. The basis
- * is the Intent's **full membership** (the unfiltered node set the server
+ * is the process's **full membership** (the unfiltered node set the server
  * always delivers, retired included), never the rendered/filtered subset. So:
  *
  *   • Retiring, hiding, or lifecycle-filtering a node leaves it in the
@@ -34,14 +34,14 @@ function compareCreationOrder(a: ProcessNode, b: ProcessNode): number {
  *     `created_at`) and takes the next free number, disturbing nothing.
  *   • Panning/zooming touches neither membership nor focus, so the numbers
  *     never move — which is also why this takes no viewport and no layout.
- *   • The numbering is recomputed from scratch only when a different Intent
+ *   • The numbering is recomputed from scratch only when a different process
  *     comes into focus (`focalPoolIds` changes).
  *
- * Nodes, lanes, and pools outside the focal Intent are never numbered: a
- * cross-intent neighbour drawn for context earns its number when *its* Intent
- * is the focus, not a borrowed one here.
+ * Nodes, lanes, and pools outside the focal process are never numbered: a
+ * cross-process neighbour drawn for context earns its number when *its*
+ * process is the focus, not a borrowed one here.
  *
- * The Unassigned pool (no `intent_id`) and the synthetic bands / catch-all
+ * The Unassigned pool (no `process_id`) and the synthetic bands / catch-all
  * lanes (any non-`actor` kind) have no single owning node, so they get no
  * number. The overall cap (MAX_GRAPH_REFERENCES) is applied downstream by
  * `usePublishedReferences`, the single chokepoint every perspective
@@ -56,14 +56,14 @@ export function processReferences(
 ): GraphReferenceItem[] {
   const items: GraphReferenceItem[] = [];
   for (const pool of pools) {
-    if (!focalPoolIds.has(pool.id) || !pool.intent_id) continue;
+    if (!focalPoolIds.has(pool.id) || !pool.process_id) continue;
     items.push({
       number: items.length + 1,
-      id: pool.intent_id,
-      entity_type: "intent",
+      id: pool.process_id,
+      entity_type: "action",
       label: pool.label,
       lifecycle: pool.lifecycle ?? "active",
-      href: docoHandle ? `/${docoHandle}/intent/${pool.intent_id}` : null,
+      href: docoHandle ? `/${docoHandle}/action/${pool.process_id}` : null,
     });
   }
   for (const lane of lanes) {

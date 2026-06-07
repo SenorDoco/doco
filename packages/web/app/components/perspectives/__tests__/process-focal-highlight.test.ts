@@ -4,7 +4,7 @@ import type { ProcessLane, ProcessNode, ProcessPool } from "~/lib/process-perspe
 
 // A minimal single-pool process: Recruiter lane with two sequenced Actions.
 const pools: ProcessPool[] = [
-  { id: "pool:i1", intent_id: "i1", label: "Hire", lifecycle: "active" },
+  { id: "pool:i1", process_id: "i1", label: "Hire", lifecycle: "active" },
 ];
 const lanes: ProcessLane[] = [
   {
@@ -45,8 +45,8 @@ describe("layOutProcess focal highlight", () => {
   });
 
   it("singles out nothing when highlightFocal is false — whole pool reads uniformly", () => {
-    // Same focal node, but an Intent focus suppresses the highlight: no node
-    // is marked center and every node renders at full opacity.
+    // Same focal node, but a whole-process focus suppresses the highlight: no
+    // node is marked center and every node renders at full opacity.
     const layout = layOutProcess(pools, lanes, nodes, links, "a1", new Set(), null, false);
     expect((shape(layout, "a1").data as { isCenter?: boolean }).isCenter).toBe(false);
     expect((shape(layout, "a2").data as { isCenter?: boolean }).isCenter).toBe(false);

@@ -30,7 +30,6 @@ import {
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge, clickableEdgeClassName } from "~/components/stable-labeled-edge";
-import { summarizeExternalConnections } from "~/lib/focused-render-selection";
 import {
   computeDepthFromCenter,
   focalEdgeWidth,
@@ -41,12 +40,12 @@ import {
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
+import { type BoundaryCircle, computeBoundaryCircles } from "~/lib/process-boundary";
 import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
 import { packProcessLaneColumns, processLaneColumnKey } from "~/lib/process-lane-packing";
 import { processSimplifiedAtZoom } from "~/lib/process-lod";
-import { layoutAdjacentNodes } from "~/lib/process-outside-layout";
 import type {
   ProcessLane,
   ProcessNode,
@@ -56,8 +55,8 @@ import type {
 import { processReferences } from "~/lib/process-references";
 import { computeForwardSequenceDepths } from "~/lib/process-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/process-stable-nodes";
-import { subprocessTargetIntents } from "~/lib/process-subprocess";
-import { topLevelIntentPools } from "~/lib/process-top-level-intents";
+import { subprocessPoolId } from "~/lib/process-subprocess";
+import { topLevelProcessPools } from "~/lib/process-top-level-processes";
 import {
   ReferenceNumberStoreContext,
   createReferenceNumberStore,
@@ -75,10 +74,10 @@ const ARTIFACTS_LANE_ID = "__artifacts__";
 interface ProcessPerspectiveProps {
   docoHandle?: string | null;
   /**
-   * One pool per Intent in the Doco (plus an "Unassigned" pool for
-   * nodes that don't cite an Intent). Pools are rendered in the
-   * order given — the server emits them sorted by descending global
-   * PageRank, with the Unassigned pool pinned to the bottom.
+   * One pool per process — an Action with `has_parent` children (plus an
+   * "Unassigned" pool for flow nodes with no parent process). Pools are
+   * rendered in the order given — the server emits them oldest-process
+   * first, with the Unassigned pool pinned to the bottom.
    */
   pools: ProcessPool[];
   /**
@@ -106,11 +105,11 @@ interface ProcessPerspectiveProps {
   onCenterChange?: (id: string | null) => void;
   onPaneClick?: () => void;
   /**
-   * Picking a process from the home list focuses that Intent. The host
-   * uses this to reflect the focus in the URL (a focus-only `/intent/<id>`
-   * link), so the view is shareable and the Back button works.
+   * Picking a process from the home list focuses that process Action. The
+   * host uses this to reflect the focus in the URL (a focus-only
+   * `/action/<id>` link), so the view is shareable and the Back button works.
    */
-  onIntentOpen?: (intentId: string) => void;
+  onProcessOpen?: (processId: string) => void;
   /**
    * The Home button reset to the default (process-list) view. The host
    * uses this to clear the focused-node URL back to the bare perspective.
@@ -233,7 +232,7 @@ export function ProcessPerspective({
   onLaneClick,
   onCenterChange,
   onPaneClick,
-  onIntentOpen,
+  onProcessOpen,
   onHomeReset,
   visibleLifecycles,
   centerId,
@@ -278,6 +277,26 @@ export function ProcessPerspective({
   useEffect(() => {
     if (initialFocusId) setHomeMode(false);
   }, [initialFocusId]);
+  // A subprocess renders collapsed (a task with a "View subprocess"
+  // affordance) inside its parent's pool by default; it expands into its OWN
+  // pool only when the viewer cold-opens on it or clicks "View subprocess".
+  // `expandedProcessId` is the process Action id currently expanded — a plain
+  // node click (or a Señor Doco auto-focus) clears it, keeping the subprocess
+  // collapsed in its parent.
+  const [expandedProcessId, setExpandedProcessId] = useState<string | null>(null);
+  // Cold-open expansion: a direct URL focus on a process Action (a top-level
+  // process header or a subprocess member) renders that process as its OWN
+  // pool. Applied once per distinct `initialFocusId` so a later data refetch
+  // can't re-expand a process the viewer has since collapsed by clicking.
+  const coldOpenExpandedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialFocusId || coldOpenExpandedRef.current === initialFocusId) return;
+    coldOpenExpandedRef.current = initialFocusId;
+    const isProcess =
+      pools.some((pool) => pool.process_id === initialFocusId) ||
+      nodesRaw.some((node) => node.id === initialFocusId && node.is_process);
+    if (isProcess) setExpandedProcessId(initialFocusId);
+  }, [initialFocusId, pools, nodesRaw]);
   // Reset the one-shot camera-fit machinery so the next drill-in (after the
   // canvas remounts coming out of the list) frames its process afresh.
   const goHome = useCallback(() => {
@@ -285,16 +304,29 @@ export function ProcessPerspective({
     flowInstanceRef.current = null;
     defaultFocusAppliedRef.current = false;
     initialFocusAppliedRef.current = null;
+    setExpandedProcessId(null);
     setHomeMode(true);
     onHomeReset?.();
   }, [onHomeReset]);
-  const openIntent = useCallback(
-    (intentId: string) => {
+  const openProcess = useCallback(
+    (processId: string) => {
       setHomeMode(false);
-      onCenterChange?.(intentId);
-      onIntentOpen?.(intentId);
+      setExpandedProcessId(processId);
+      onCenterChange?.(processId);
+      onProcessOpen?.(processId);
     },
-    [onCenterChange, onIntentOpen],
+    [onCenterChange, onProcessOpen],
+  );
+  // Expand a collapsed subprocess into its own pool (the "View subprocess"
+  // affordance). Focuses the subprocess Action and marks its pool expanded.
+  const viewSubprocess = useCallback(
+    (processId: string) => {
+      setHomeMode(false);
+      setExpandedProcessId(processId);
+      onCenterChange?.(processId);
+      onProcessOpen?.(processId);
+    },
+    [onCenterChange, onProcessOpen],
   );
   // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
   // transforms itself internally; our `viewport` mirror only feeds the
@@ -396,7 +428,7 @@ export function ProcessPerspective({
   const focusCenterId = useMemo(() => {
     if (
       centerId &&
-      (nodeByFullId.has(centerId) || pools.some((pool) => pool.intent_id === centerId))
+      (nodeByFullId.has(centerId) || pools.some((pool) => pool.process_id === centerId))
     ) {
       return centerId;
     }
@@ -406,7 +438,7 @@ export function ProcessPerspective({
   // Pools arrive oldest-first from the server, so this lands on the start
   // of the oldest process — deterministic, no PageRank.
   const defaultCenterId = useMemo(
-    () => pools.find((pool) => pool.intent_id)?.intent_id ?? filteredNodes[0]?.id ?? null,
+    () => pools.find((pool) => pool.process_id)?.process_id ?? filteredNodes[0]?.id ?? null,
     [pools, filteredNodes],
   );
   const selectionCenterId = useMemo(
@@ -416,9 +448,9 @@ export function ProcessPerspective({
   // The home view's clickable directory: every top-level process. Computed
   // from the full node set (not the lifecycle-filtered one) so hiding a
   // lifecycle never reclassifies a process as a sub-process, then filtered
-  // for display so a hidden-lifecycle Intent drops out of the list too.
+  // for display so a hidden-lifecycle process drops out of the list too.
   const listPools = useMemo(() => {
-    const top = topLevelIntentPools(pools, nodes);
+    const top = topLevelProcessPools(pools, nodes);
     if (!visibleLifecycles) return top;
     return top.filter((pool) => visibleLifecycles.has(pool.lifecycle ?? "active"));
   }, [pools, nodes, visibleLifecycles]);
@@ -428,26 +460,29 @@ export function ProcessPerspective({
   }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
   const focusedNodeIdSet = useMemo(() => new Set(focusedNodeIds ?? []), [focusedNodeIds]);
 
-  // Focusing an Intent doesn't fan out its whole swim lane — it homes in on
-  // the intent's "way in", the earliest-created entry point of its pool, and
-  // focuses that node. `resolveIntentToEntry` maps any intent-center to that
-  // node; a center that is already a node (or an intent with no entry point
-  // in the visible set) passes through unchanged.
-  const resolveIntentToEntry = useCallback(
+  // Focusing a process Action homes in on the process's "way in", the
+  // earliest-created entry point of its pool, and focuses that node — UNLESS
+  // the process is being expanded (cold-open / "View subprocess"), in which
+  // case the process Action itself is the center so its whole pool frames.
+  // `resolveProcessToEntry` maps a process-center to that entry node; a center
+  // that is already a node (or a process with no entry point in the visible
+  // set) passes through unchanged.
+  const resolveProcessToEntry = useCallback(
     (id: string | null | undefined): string | null => {
       if (!id) return null;
-      const pool = pools.find((candidate) => candidate.intent_id === id);
+      if (id === expandedProcessId) return id;
+      const pool = pools.find((candidate) => candidate.process_id === id);
       if (!pool) return id;
       return topEntryPointId(pool.id, filteredNodes, links) ?? id;
     },
-    [pools, filteredNodes, links],
+    [pools, filteredNodes, links, expandedProcessId],
   );
   // The single node the view is focused on. Always defined (falls back to
   // the first pool's entry point), because the BPMN perspective always
   // frames one focal node and the one swim lane that owns it.
   const effectiveCenterId = useMemo(
-    () => resolveIntentToEntry(selectionCenterId),
-    [resolveIntentToEntry, selectionCenterId],
+    () => resolveProcessToEntry(selectionCenterId),
+    [resolveProcessToEntry, selectionCenterId],
   );
   // The pool(s) drawn as swim lanes, and the exact set of nodes rendered —
   // no budget, no PageRank windowing, no buffering. A node focus (or an
@@ -463,10 +498,19 @@ export function ProcessPerspective({
         pools,
         links,
         centerId: effectiveCenterId,
+        expandedProcessId,
         focusedEdgeId: focusedEdgeId ?? null,
         focusedNodeIds: focusedNodeIdSet,
       }),
-    [filteredNodes, pools, links, effectiveCenterId, focusedEdgeId, focusedNodeIdSet],
+    [
+      filteredNodes,
+      pools,
+      links,
+      effectiveCenterId,
+      expandedProcessId,
+      focusedEdgeId,
+      focusedNodeIdSet,
+    ],
   );
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
@@ -510,18 +554,18 @@ export function ProcessPerspective({
     [links, renderedNodeIds],
   );
   // Focusing a whole Intent (the home-list pick, a pool-header click, or an
-  // intent URL) frames the entire pool without singling out any node — so the
+  // process URL) frames the entire pool without singling out any node — so the
   // depth-fade + focal highlight are suppressed. Focusing a specific node
-  // (clicking a shape) still highlights it. `selectionCenterId` is the Intent
-  // id in the former case and a node id in the latter.
-  const isIntentFocus = useMemo(
-    () => pools.some((pool) => pool.intent_id === selectionCenterId),
+  // (clicking a shape) still highlights it. `selectionCenterId` is the process
+  // Action id in the former case and a node id in the latter.
+  const isProcessFocus = useMemo(
+    () => pools.some((pool) => pool.process_id === selectionCenterId),
     [pools, selectionCenterId],
   );
-  // A cross-intent edge frames two whole intents; singling out one focal
-  // node with a depth-fade would wash the *other* intent out, so suppress
+  // A cross-process edge frames two whole processes; singling out one focal
+  // node with a depth-fade would wash the *other* process out, so suppress
   // it. The two edge endpoints are still highlighted via `focusedNodeIds`.
-  const highlightFocal = !isIntentFocus && focalPoolIds.size <= 1;
+  const highlightFocal = !isProcessFocus && focalPoolIds.size <= 1;
   const layout = useMemo(
     () =>
       layOutProcess(
@@ -586,8 +630,9 @@ export function ProcessPerspective({
   );
   const openPoolNode = useCallback(
     (pool: ProcessPool) => {
-      if (!pool.intent_id) return;
-      if (onCenterChange) onCenterChange(pool.intent_id);
+      if (!pool.process_id) return;
+      setExpandedProcessId(pool.process_id);
+      if (onCenterChange) onCenterChange(pool.process_id);
       onPoolClick?.(pool);
     },
     [onCenterChange, onPoolClick],
@@ -623,144 +668,82 @@ export function ProcessPerspective({
     referenceNumberStore.setNumbers(referenceNumberByEntityId);
   }, [referenceNumberByEntityId, referenceNumberStore]);
 
-  const externalEdgeStubs = useMemo(() => {
-    const summaries = summarizeExternalConnections(links, renderedNodeIds, filteredNodeIds);
+  // Entry/exit boundary circles. A process pool renders not only its own
+  // members but also the nodes in OTHER processes that connect to it through
+  // sequence flow — as circles (BPMN start/end-event nomenclature): an
+  // entry circle to the left of the member a node flows INTO, an exit circle
+  // to the right of the member a node flows OUT to. Clicking a circle focuses
+  // that node, which renders its own (different) pool. These are top-level
+  // React Flow nodes at absolute canvas coordinates, each wired to its anchor
+  // by a real `flows_to` edge.
+  const boundaryCircles = useMemo(() => {
+    const circles = computeBoundaryCircles(focalPoolIds, filteredNodes, links);
     const nodes: FlowNode[] = [];
     const edges: FlowEdge[] = [];
-    let stubIndex = 0;
+    let circleIndex = 0;
 
-    const addStub = (
-      anchorNode: ProcessNode,
-      direction: "incoming" | "outgoing",
-      count: number,
-      summaryIndex: number,
-    ) => {
-      if (stubIndex >= PROCESS_PLACEHOLDER_STUB_BUDGET) return;
-      const position = layout.nodePositions.get(anchorNode.id);
-      if (!position) return;
-      const size = sizeForNode(anchorNode);
-      const id = `process-placeholder:${direction}:${anchorNode.id}`;
-      const directionSign = direction === "incoming" ? -1 : 1;
-      const distance = 132 + (summaryIndex % 3) * 12;
-      const y = position.y + size.height / 2;
-      const x = LANE_LEFT_INSET + position.x + size.width / 2 + directionSign * distance;
-      const matchingLink = links.find(
-        (link) =>
-          filteredNodeIds.has(link.source) &&
-          filteredNodeIds.has(link.target) &&
-          (direction === "incoming"
-            ? link.target === anchorNode.id && !renderedNodeIds.has(link.source)
-            : link.source === anchorNode.id && !renderedNodeIds.has(link.target)),
-      );
-      const colorNode =
-        direction === "incoming" ? nodeByFullId.get(matchingLink?.source ?? "") : anchorNode;
-      const stroke = lifecycleColor((colorNode ?? anchorNode).lifecycle);
+    const findAnchor = (circle: BoundaryCircle): ProcessNode | null => {
+      for (const link of links) {
+        if (link.edge_type !== "flows_to") continue;
+        if (circle.direction === "entry" && link.source === circle.id) {
+          const anchor = nodeById.get(link.target);
+          if (anchor) return anchor;
+        }
+        if (circle.direction === "exit" && link.target === circle.id) {
+          const anchor = nodeById.get(link.source);
+          if (anchor) return anchor;
+        }
+      }
+      return null;
+    };
+
+    for (const circle of circles) {
+      if (circleIndex >= PROCESS_PLACEHOLDER_STUB_BUDGET) break;
+      const external = nodeByFullId.get(circle.id);
+      const anchor = findAnchor(circle);
+      if (!external || !anchor) continue;
+      const anchorPos = layout.nodePositions.get(anchor.id);
+      if (!anchorPos) continue;
+      const anchorSize = sizeForNode(anchor);
+      const id = `circle:${circle.direction}:${circle.id}`;
+      const x =
+        circle.direction === "entry"
+          ? LANE_LEFT_INSET + anchorPos.x - BOUNDARY_CIRCLE_GAP - BOUNDARY_CIRCLE_DIAMETER
+          : LANE_LEFT_INSET + anchorPos.x + anchorSize.width + BOUNDARY_CIRCLE_GAP;
+      const y = anchorPos.y + anchorSize.height / 2 - BOUNDARY_CIRCLE_DIAMETER / 2;
+      const stroke = lifecycleColor(external.lifecycle);
 
       nodes.push({
         id,
-        type: "processEdgeStub",
+        type: "processCircle",
         position: { x, y },
-        data: {},
+        data: {
+          node: { ...external, shape: "circle" as ProcessShape },
+          isBoundaryCircle: true,
+        },
         draggable: false,
         selectable: false,
         connectable: false,
-        initialWidth: 1,
-        initialHeight: 1,
-        style: {
-          width: 1,
-          height: 1,
-          opacity: 0,
-          padding: 0,
-          pointerEvents: "none" as const,
-        },
+        initialWidth: BOUNDARY_CIRCLE_DIAMETER,
+        initialHeight: BOUNDARY_CIRCLE_DIAMETER,
+        style: { width: BOUNDARY_CIRCLE_DIAMETER, height: BOUNDARY_CIRCLE_DIAMETER, zIndex: 1 },
       });
       edges.push({
-        id: `process-placeholder-edge:${direction}:${anchorNode.id}`,
-        source: direction === "incoming" ? id : anchorNode.id,
-        target: direction === "incoming" ? anchorNode.id : id,
-        type: "fadingPlaceholder",
-        data: {
-          color: stroke,
-          direction,
-          fadePx: 100,
-          opacity: 0.5,
-        },
+        id: `boundary-edge:${circle.direction}:${circle.id}:${anchor.id}`,
+        source: circle.direction === "entry" ? id : anchor.id,
+        target: circle.direction === "entry" ? anchor.id : id,
+        type: "stableLabeledBezier",
         selectable: false,
         focusable: false,
         interactionWidth: 0,
-        style: {
-          pointerEvents: "none" as const,
-        },
-        markerEnd:
-          direction === "incoming"
-            ? {
-                type: MarkerType.ArrowClosed,
-                width: 14,
-                height: 14,
-                color: stroke,
-              }
-            : undefined,
+        style: { stroke, strokeWidth: 1.75, strokeDasharray: "4 3" },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: stroke },
       });
-      stubIndex++;
-    };
-
-    summaries.forEach((summary, index) => {
-      const anchor = nodeById.get(summary.id);
-      if (!anchor) return;
-      if (summary.outgoing > 0) addStub(anchor, "outgoing", summary.outgoing, index);
-      if (summary.incoming > 0) addStub(anchor, "incoming", summary.incoming, index);
-    });
+      circleIndex++;
+    }
 
     return { nodes, edges };
-  }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
-
-  // Sub-process drill-down links. The "+" marker and its reserved room
-  // are decided in layOutProcess (stable, data-level, rides on the node's
-  // `data.isSubprocess`). Here we build only the dashed links, which are
-  // render-gated: one per rendered Action → each served Intent whose
-  // pool header is actually mounted, so a link never dangles off-screen.
-  const subprocessEdges = useMemo<FlowEdge[]>(() => {
-    const renderedIntentPools = new Set<string>();
-    const headerIdByIntent = new Map<string, string>();
-    for (const pool of renderedPools) {
-      if (!pool.intent_id) continue;
-      renderedIntentPools.add(pool.intent_id);
-      headerIdByIntent.set(pool.intent_id, `pool-header:${pool.id}`);
-    }
-    const edges: FlowEdge[] = [];
-    for (const node of renderedNodes) {
-      const targets = subprocessTargetIntents(node, renderedIntentPools);
-      for (const intentId of targets) {
-        const headerId = headerIdByIntent.get(intentId);
-        if (!headerId) continue;
-        edges.push({
-          id: `subprocess:${node.id}->${intentId}`,
-          source: node.id,
-          sourceHandle: SUBPROCESS_SOURCE_HANDLE,
-          target: headerId,
-          targetHandle: SUBPROCESS_TARGET_HANDLE,
-          // "default" is xyflow's built-in bezier edge (always
-          // registered); we don't need the custom labeled-bezier type.
-          type: "default",
-          selectable: false,
-          focusable: false,
-          interactionWidth: 0,
-          style: {
-            stroke: SUBPROCESS_EDGE_COLOR,
-            strokeWidth: 1.5,
-            strokeDasharray: "6 4",
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 16,
-            height: 16,
-            color: SUBPROCESS_EDGE_COLOR,
-          },
-        });
-      }
-    }
-    return edges;
-  }, [renderedNodes, renderedPools]);
+  }, [focalPoolIds, filteredNodes, links, layout.nodePositions, nodeById, nodeByFullId]);
 
   // Cache of the previous render's flow nodes, keyed by id, so unchanged
   // nodes keep their object identity across layout re-runs (see below).
@@ -791,13 +774,19 @@ export function ProcessPerspective({
       // there is no render-window fade). The `.doco-graph-fade` class still
       // smooths any opacity change a node component sets on its own.
       const className = node.className ? `${node.className} doco-graph-fade` : "doco-graph-fade";
+      // A subprocess member carries the "View subprocess" affordance — its
+      // stable handler (so node identity survives reuseStableNodes) expands
+      // the subprocess into its own pool.
+      if ((node.data as unknown as ProcessNodeData).isSubprocess) {
+        return [{ ...node, className, data: { ...node.data, onViewSubprocess: viewSubprocess } }];
+      }
       return [{ ...node, className }];
     });
     // Reuse last render's object identity for any node whose render inputs
     // are unchanged, so the memo'd shape components skip work when a focus
     // shift re-runs the layout. (On pan this memo doesn't recompute at
     // all — none of its deps depend on the viewport anymore.)
-    const built = [...windowed, ...externalEdgeStubs.nodes];
+    const built = [...windowed, ...boundaryCircles.nodes];
     const stable = reuseStableNodes(built, prevFlowNodesRef.current);
     prevFlowNodesRef.current = indexById(stable);
     return stable;
@@ -807,7 +796,8 @@ export function ProcessPerspective({
     renderedPoolIds,
     renderedNodeIds,
     openLaneNode,
-    externalEdgeStubs.nodes,
+    viewSubprocess,
+    boundaryCircles.nodes,
   ]);
   const flowEdges = useMemo<FlowEdge[]>(
     () => [
@@ -820,10 +810,9 @@ export function ProcessPerspective({
             : "doco-graph-fade-edge";
           return { ...edge, className };
         }),
-      ...externalEdgeStubs.edges,
-      ...subprocessEdges,
+      ...boundaryCircles.edges,
     ],
-    [layout.flowEdges, renderedNodeIds, externalEdgeStubs.edges, subprocessEdges],
+    [layout.flowEdges, renderedNodeIds, boundaryCircles.edges],
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
   // selection center (highest global PageRank in the BPMN view) so opening
@@ -833,18 +822,18 @@ export function ProcessPerspective({
     const rawTarget = initialFocusId ?? selectionCenterId;
     if (!rawTarget) return null;
     const flowNodeIds = new Set(flowNodes.map((node) => node.id));
-    // An *intent* focus frames the WHOLE pool (its header, which the fit then
+    // A *process* focus frames the WHOLE pool (its header, which the fit then
     // expands to header + lanes), not just the entry step; a *node* focus
     // frames that node.
-    const poolIdByIntentId = new Map<string, string>();
+    const poolIdByProcessId = new Map<string, string>();
     for (const candidate of pools) {
-      if (candidate.intent_id) poolIdByIntentId.set(candidate.intent_id, candidate.id);
+      if (candidate.process_id) poolIdByProcessId.set(candidate.process_id, candidate.id);
     }
-    const direct = processFocusFlowNodeId(rawTarget, poolIdByIntentId, flowNodeIds);
+    const direct = processFocusFlowNodeId(rawTarget, poolIdByProcessId, flowNodeIds);
     if (direct) return direct;
-    // Degenerate fallbacks: an intent whose pool header isn't rendered drops
+    // Degenerate fallbacks: a process whose pool header isn't rendered drops
     // to its entry point; an actor-lane target frames that lane.
-    const target = resolveIntentToEntry(rawTarget);
+    const target = resolveProcessToEntry(rawTarget);
     if (target && flowNodeIds.has(target)) return target;
     const lane = renderedLanes.find((candidate) => candidate.base_id === target);
     if (lane) {
@@ -852,7 +841,7 @@ export function ProcessPerspective({
       if (flowNodeIds.has(id)) return id;
     }
     return null;
-  }, [flowNodes, initialFocusId, selectionCenterId, resolveIntentToEntry, pools, renderedLanes]);
+  }, [flowNodes, initialFocusId, selectionCenterId, resolveProcessToEntry, pools, renderedLanes]);
 
   // Apply the one-shot initial/default camera focus. A pool target fits the
   // WHOLE pool (header + its lanes) so the camera frames the entire process
@@ -908,7 +897,7 @@ export function ProcessPerspective({
   if (homeMode && listPools.length > 0) {
     return (
       <div ref={graphRef} className="relative h-full w-full">
-        <ProcessProcessList pools={listPools} onSelect={openIntent} />
+        <ProcessProcessList pools={listPools} onSelect={openProcess} />
       </div>
     );
   }
@@ -1090,11 +1079,24 @@ export function ProcessPerspective({
                 openPoolNode(pool);
                 return;
               }
+              // An entry/exit circle stands for a node in another process.
+              // Clicking it focuses that node — collapsing any expansion so
+              // its OWN pool renders (a different pool).
+              if (node.id.startsWith("circle:")) {
+                const externalId = node.id.slice(node.id.lastIndexOf(":") + 1);
+                const external = nodeByFullId.get(externalId);
+                setExpandedProcessId(null);
+                if (onCenterChange) onCenterChange(externalId);
+                if (external && onNodeClick) onNodeClick(external);
+                else if (external?.href) navigate(external.href);
+                return;
+              }
               const target = nodeById.get(node.id);
               if (!target) return;
-              // Make the clicked node the new focal node. If it belongs to
-              // another intent (an adjacent neighbour), this resets the whole
-              // render: its pool becomes the drawn swim lane.
+              // A plain click never expands a subprocess — it focuses the node
+              // but keeps it collapsed inside its parent's pool. Clear any
+              // expansion so the parent pool is what frames.
+              setExpandedProcessId(null);
               if (onCenterChange) onCenterChange(target.id);
               if (onNodeClick) {
                 onNodeClick(target);
@@ -1135,9 +1137,9 @@ export function ProcessPerspective({
       {Flow && !simplified && stickyPools.length > 0 ? (
         <div className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex flex-col">
           {stickyPools.map((pool) => {
-            const isUnassigned = pool.intent_id === null;
+            const isUnassigned = pool.process_id === null;
             const sourcePool = poolById.get(pool.id);
-            const isClickablePool = !isUnassigned && Boolean(sourcePool?.intent_id);
+            const isClickablePool = !isUnassigned && Boolean(sourcePool?.process_id);
             // Mirror the in-canvas ProcessPoolHeaderNode look: same overlay
             // color over an opaque card so the sticky band reads as a
             // pinned copy of the natural header (not a different chrome
@@ -1148,8 +1150,8 @@ export function ProcessPerspective({
             const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
             const labelFontPx = 12 * viewport.zoom;
             const padX = 14 * viewport.zoom;
-            const referenceNumber = pool.intent_id
-              ? referenceNumberByEntityId.get(pool.intent_id)
+            const referenceNumber = pool.process_id
+              ? referenceNumberByEntityId.get(pool.process_id)
               : undefined;
             const badgeFontPx = 10 * viewport.zoom;
             const badgeBox = badgeFontPx * 2;
@@ -1219,8 +1221,8 @@ export function ProcessPerspective({
 /**
  * The BPMN home view: a clickable directory of the Doco's top-level
  * processes (always at least one — the caller renders the canvas instead
- * when there are none). Picking one focuses that Intent so the canvas
- * drills into its swim-lane process. Reads as "the list of processes you
+ * when there are none). Picking one focuses that process Action so the
+ * canvas drills into its swim-lane pool. Reads as "the list of processes you
  * can dive into," the BPMN analogue of the graph's fit-to-everything
  * default.
  */
@@ -1229,7 +1231,7 @@ export function ProcessProcessList({
   onSelect,
 }: {
   pools: ProcessPool[];
-  onSelect: (intentId: string) => void;
+  onSelect: (processId: string) => void;
 }) {
   return (
     // Center the directory both ways inside the frame. `my-auto` (not
@@ -1241,20 +1243,20 @@ export function ProcessProcessList({
           accessible name via aria-label so the visible title can go. */}
       <ul className="my-auto flex w-full max-w-md flex-col gap-1.5" aria-label="Processes">
         {pools.map((pool) => {
-          const intentId = pool.intent_id;
-          if (!intentId) return null;
+          const processId = pool.process_id;
+          if (!processId) return null;
           const lifecycle = pool.lifecycle ?? "active";
           return (
             <li key={pool.id}>
               <button
                 type="button"
-                onClick={() => onSelect(intentId)}
+                onClick={() => onSelect(processId)}
                 // Mirrors ProcessPoolHeaderNode: the type + lifecycle pills sit
                 // inline before the label, vertically centered in the row —
                 // sewn into the band rather than pinned to its top corners.
                 className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <TypeBadge entityType="intent" lifecycle={lifecycle} anchor="inline" />
+                <TypeBadge entityType="action" lifecycle={lifecycle} anchor="inline" />
                 <LifecycleBadge lifecycle={lifecycle} anchor="inline" />
                 <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                   {pool.label}
@@ -1335,72 +1337,72 @@ interface ProcessLayout {
     label: string;
     y: number;
     height: number;
-    intent_id: string | null;
+    process_id: string | null;
     lifecycle: string | null;
   }>;
 }
 
 const POOL_HEADER_HEIGHT = 32;
 const POOL_GAP = 16;
-// Vertical gap between the drawn swim lane and the row of adjacent
-// cross-intent neighbours sitting above or below it (see layOutProcess).
-const ADJACENT_POOL_GAP = 80;
 
-// Sub-process drill-down link. An Action that `serves` an Intent other
-// than its own pool's is a BPMN collapsed sub-process: it stands in for
-// that Intent's whole process. We mark the Action with a "+" glyph and
-// draw a dashed link from that marker up to the sub-process Intent's
-// pool header. Slate (not lifecycle-colored) so it reads as a
-// structural drill-down rather than process flow; the handle ids keep
-// it distinct from the id-less sequence-flow handles on every shape.
-const SUBPROCESS_EDGE_COLOR = "#64748b"; // slate-500
-const SUBPROCESS_SOURCE_HANDLE = "subprocess";
-const SUBPROCESS_TARGET_HANDLE = "subprocess-in";
+// Entry/exit boundary circle geometry. A circle stands for a node in another
+// process that connects to the focal pool through sequence flow; it sits just
+// outside the anchor member (left for an entry, right for an exit).
+const BOUNDARY_CIRCLE_DIAMETER = 56;
+const BOUNDARY_CIRCLE_GAP = 40;
 // Vertical room reserved at the bottom of a sub-process Action so the
-// "+" marker sits inside the box without colliding with the label. The
-// layout grows the node by this much; the node component pads its label
-// area by the same amount so text never enters the marker strip.
-const SUBPROCESS_MARKER_ROOM = 20;
+// "View subprocess" affordance sits inside the box without colliding with the
+// label. The layout grows the node by this much; the node component pads its
+// label area by the same amount so text never enters the affordance strip.
+const SUBPROCESS_MARKER_ROOM = 22;
 
 // The exact node set the BPMN perspective draws for a given focus, and the
 // pool(s) those nodes belong to. The rule:
 //
-//   • Focusing a node (or an edge whose endpoints share one intent) frames
-//     that one intent — every node in its pool — plus the focal node's
-//     first-degree cross-intent sequence-flow neighbours (drawn adjacent to
-//     the lane).
-//   • Focusing an edge whose endpoints live in *two different intents*
-//     frames BOTH intents in full — every node of each pool — so the
-//     hand-off is shown in the context of both processes it joins.
+//   • A process expansion (`expandedProcessId`, set by a cold-open or a
+//     "View subprocess" click) frames that process's own pool.
+//   • Otherwise focusing a node frames that node's pool. A subprocess clicked
+//     as a plain node stays collapsed inside its parent's pool.
+//   • Focusing an edge whose endpoints live in *two different processes*
+//     frames BOTH pools in full, so the hand-off is shown in both contexts.
 //
-// Returns the focal pool ids (one for a single-intent focus, two for a
-// cross-intent edge) and the full set of node ids to render.
+// Nodes in other processes that connect across the boundary are NOT pulled
+// into the rendered set — the renderer draws them as entry/exit circles.
+//
+// Returns the focal pool ids (one for a node/process focus, two for a
+// cross-process edge) and the full set of member node ids to render.
 export function computeProcessRenderedSet(params: {
   nodes: ProcessNode[];
   pools: ProcessPool[];
   links: OverviewGraphLink[];
   centerId: string | null | undefined;
+  expandedProcessId?: string | null;
   focusedEdgeId: string | null;
   focusedNodeIds: ReadonlySet<string>;
 }): { focalPoolIds: Set<string>; renderedNodeIds: Set<string> } {
-  const { nodes, pools, links, centerId, focusedEdgeId, focusedNodeIds } = params;
+  const { nodes, pools, links, centerId, expandedProcessId, focusedEdgeId, focusedNodeIds } =
+    params;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const poolByProcessId = new Map(
+    pools.flatMap((pool) => (pool.process_id ? [[pool.process_id, pool.id] as const] : [])),
+  );
 
   const focalPoolIds = new Set<string>();
-  // The focal node's own pool — also handles an intent-center that never
-  // resolved to a node (its pool matched by intent_id).
-  if (centerId) {
-    const fromIntent = pools.find((pool) => pool.intent_id === centerId)?.id;
-    const centerPoolId = fromIntent ?? nodeById.get(centerId)?.pool_id ?? null;
+  // An expanded process frames its OWN pool, overriding the member's parent.
+  const expandedPoolId = expandedProcessId ? poolByProcessId.get(expandedProcessId) : undefined;
+  if (expandedPoolId) {
+    focalPoolIds.add(expandedPoolId);
+  } else if (centerId) {
+    // The focal node's own pool — also handles a process-center (a pool
+    // header) that never resolved to a member node (matched by process_id).
+    const centerPoolId = poolByProcessId.get(centerId) ?? nodeById.get(centerId)?.pool_id ?? null;
     if (centerPoolId) focalPoolIds.add(centerPoolId);
   }
   // An edge focus pulls in the pools of BOTH its endpoints, so an edge that
-  // spans two intents frames both of them — not just the source's. An
-  // endpoint that is itself an Intent (e.g. a `serves` edge into an intent)
-  // resolves to that intent's pool.
+  // spans two processes frames both of them — not just the source's.
   if (focusedEdgeId) {
     for (const id of focusedNodeIds) {
-      const poolId = nodeById.get(id)?.pool_id ?? pools.find((pool) => pool.intent_id === id)?.id;
+      const poolId = nodeById.get(id)?.pool_id ?? poolByProcessId.get(id);
       if (poolId) focalPoolIds.add(poolId);
     }
   }
@@ -1409,19 +1411,6 @@ export function computeProcessRenderedSet(params: {
   if (focalPoolIds.size === 0) return { focalPoolIds, renderedNodeIds };
   for (const node of nodes) {
     if (focalPoolIds.has(node.pool_id)) renderedNodeIds.add(node.id);
-  }
-  // First-degree cross-intent neighbours fan out only for a single-intent
-  // focus. A cross-intent edge already renders both intents in full, so
-  // there is nothing more to pull in.
-  if (centerId && focalPoolIds.size === 1) {
-    for (const link of links) {
-      if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
-      const neighborId =
-        link.source === centerId ? link.target : link.target === centerId ? link.source : null;
-      if (!neighborId) continue;
-      const neighbor = nodeById.get(neighborId);
-      if (neighbor && !focalPoolIds.has(neighbor.pool_id)) renderedNodeIds.add(neighborId);
-    }
   }
   return { focalPoolIds, renderedNodeIds };
 }
@@ -1488,27 +1477,22 @@ export function layOutProcess(
   // keeps vertical alignment of columns across lanes. Milestones use
   // their own fixed compact size and don't count toward the lane-sizing
   // max (they live in a shorter band of their own).
-  // Sub-process candidacy is a stable, data-level property: an Action
-  // that serves an Intent — beyond its own pool — which is itself a pool
-  // here. It drives both the reserved bottom room (below) and the "+"
-  // marker, so a node's size and glyph don't flicker as the render
-  // window shifts. Only the dashed link is render-gated (in the
-  // component), since it needs the target pool header actually mounted.
-  const poolIntentIds = new Set<string>();
-  for (const pool of pools) if (pool.intent_id) poolIntentIds.add(pool.intent_id);
-  const subprocessTargetsByNode = new Map<string, string[]>();
+  // Sub-process candidacy is a stable, data-level property: an Action that is
+  // itself a process (it has `has_parent` children). It drives both the
+  // reserved bottom room (below) and the "View subprocess" affordance, so a
+  // node's size and glyph don't flicker as the render window shifts.
+  const subprocessNodes = new Set<string>();
 
   const sizeByNode = new Map<string, { width: number; height: number }>();
   let maxNodeWidth = NODE_WIDTH;
   let maxNodeHeight = NODE_HEIGHT;
   for (const node of nodes) {
     const size = sizeForNode(node);
-    const subTargets = subprocessTargetIntents(node, poolIntentIds);
-    if (subTargets.length > 0) {
-      subprocessTargetsByNode.set(node.id, subTargets);
-      // Grow the box so the "+" marker has its own strip at the bottom,
-      // clear of the label. The component pads the label by the same
-      // amount; stacking/lane-height math below already keys off size.
+    if (subprocessPoolId(node)) {
+      subprocessNodes.add(node.id);
+      // Grow the box so the "View subprocess" affordance has its own strip at
+      // the bottom, clear of the label. The component pads the label by the
+      // same amount; stacking/lane-height math below already keys off size.
       size.height += SUBPROCESS_MARKER_ROOM;
     }
     sizeByNode.set(node.id, size);
@@ -1576,8 +1560,8 @@ export function layOutProcess(
         width: laneWidth,
         height: POOL_HEADER_HEIGHT,
         isCenter:
-          (highlightFocal && pool.intent_id === centerId) ||
-          Boolean(pool.intent_id && focusedNodeIds.has(pool.intent_id)),
+          (highlightFocal && pool.process_id === centerId) ||
+          Boolean(pool.process_id && focusedNodeIds.has(pool.process_id)),
       },
       draggable: false,
       selectable: false,
@@ -1629,7 +1613,7 @@ export function layOutProcess(
       label: pool.label,
       y: poolStartY,
       height: cursorY - poolStartY,
-      intent_id: pool.intent_id,
+      process_id: pool.process_id,
       lifecycle: pool.lifecycle,
     });
   }
@@ -1665,7 +1649,7 @@ export function layOutProcess(
         data: {
           node,
           isCenter: (highlightFocal && node.id === centerId) || focusedNodeIds.has(node.id),
-          isSubprocess: subprocessTargetsByNode.has(node.id),
+          isSubprocess: subprocessNodes.has(node.id),
         },
         draggable: false,
         selectable: false,
@@ -1682,72 +1666,9 @@ export function layOutProcess(
     }
   }
 
-  // Adjacent cross-intent nodes — the focal node's first-degree neighbours
-  // that belong to other intents. They don't sit in the drawn swim lane;
-  // they hug the pool above or below it, on whichever edge the focal node
-  // sits closer to, so the hand-off arrow stays short. They are top-level
-  // React Flow nodes (no lane parent) at absolute canvas coordinates.
-  const adjacentNodes = nodes.filter((node) => !poolNodeIds.has(node.id));
-  if (adjacentNodes.length > 0 && centerId) {
-    const band = poolGeometry[0];
-    const poolTopY = band ? band.y : 0;
-    const poolBottomY = band ? band.y + band.height : 0;
-    const poolMidline = (poolTopY + poolBottomY) / 2;
-    const focalPos = nodePositions.get(centerId);
-    const focalSize = sizeByNode.get(centerId) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
-    const focalCenterX = focalPos
-      ? LANE_LEFT_INSET + focalPos.x + focalSize.width / 2
-      : LANE_LEFT_INSET + laneWidth / 2;
-    const focalCenterY = focalPos ? focalPos.y + focalSize.height / 2 : poolMidline;
-    // The neighbours all attach to the focal node, so they share its side:
-    // above the pool when the focal node is in its top half, else below.
-    const side: "above" | "below" = focalCenterY < poolMidline ? "above" : "below";
-    const adjacentPositions = layoutAdjacentNodes(
-      adjacentNodes.map((node) => ({
-        id: node.id,
-        ...(sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }),
-        side,
-      })),
-      {
-        centerX: focalCenterX,
-        poolTopY,
-        poolBottomY,
-        gap: ADJACENT_POOL_GAP,
-        columnGap: NODE_GAP_X,
-      },
-    );
-    for (const node of adjacentNodes) {
-      const pos = adjacentPositions.get(node.id);
-      if (!pos) continue;
-      const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
-      // Store the canvas position in the same lane-relative-x frame the
-      // in-lane nodes use (their x omits LANE_LEFT_INSET, the lane parent's
-      // inset), so reference numbering and external-edge stubs offset both
-      // kinds of node identically.
-      nodePositions.set(node.id, { x: pos.x - LANE_LEFT_INSET, y: pos.y });
-      flowNodes.push({
-        id: node.id,
-        type: nodeTypeForShape(node.shape),
-        position: { x: pos.x, y: pos.y },
-        data: {
-          node,
-          isCenter: (highlightFocal && node.id === centerId) || focusedNodeIds.has(node.id),
-          isSubprocess: subprocessTargetsByNode.has(node.id),
-        },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-        initialWidth: size.width,
-        initialHeight: size.height,
-        style: {
-          width: size.width,
-          height: size.height,
-          zIndex: 1,
-          opacity: focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1,
-        },
-      });
-    }
-  }
+  // Cross-process neighbours are NOT laid out in the swim lane. The renderer
+  // draws them as entry/exit boundary circles (see `boundaryCircles` in the
+  // component), so layout solves geometry from the focal pool's members only.
 
   const nodeSet = new Set(nodes.map((n) => n.id));
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -1927,9 +1848,13 @@ function isActorLane(lane: ProcessLane): boolean {
 interface ProcessNodeData {
   node: ProcessNode;
   isCenter?: boolean;
-  /** Action serves an Intent beyond its own pool — render the BPMN
-   *  collapsed-subprocess "+" marker and the dashed drill-down handle. */
+  /** This Action is itself a process (it has `has_parent` children) — render
+   *  the collapsed-subprocess "View subprocess" affordance. */
   isSubprocess?: boolean;
+  /** A boundary stand-in for a node in another process (entry/exit circle). */
+  isBoundaryCircle?: boolean;
+  /** Expand this subprocess into its own pool (the "View subprocess" click). */
+  onViewSubprocess?: (processId: string) => void;
 }
 
 interface ProcessLaneData {
@@ -1970,17 +1895,17 @@ function ProcessEdgeStubNode() {
 }
 
 // Pool #N badge — same isolated store subscription as the lane and shape
-// badges, keyed on the Intent id so re-numbering on pan never re-renders
-// the whole header band. Only real Intent pools (non-null intent_id) carry
-// a number; the Unassigned pool gets none.
+// badges, keyed on the process Action id so re-numbering on pan never
+// re-renders the whole header band. Only real process pools (non-null
+// process_id) carry a number; the Unassigned pool gets none.
 const ProcessPoolReferenceBadge = memo(function ProcessPoolReferenceBadge({
-  intentId,
+  processId,
   label,
 }: {
-  intentId: string;
+  processId: string;
   label: string;
 }) {
-  const referenceNumber = useReferenceNumber(intentId);
+  const referenceNumber = useReferenceNumber(processId);
   if (!referenceNumber) return null;
   return (
     <span
@@ -1994,21 +1919,20 @@ const ProcessPoolReferenceBadge = memo(function ProcessPoolReferenceBadge({
 });
 
 /**
- * Pool header band. Renders the Intent's prose as a banner across the
- * full canvas width above the pool's lanes. The Unassigned pool gets
+ * Pool header band. Renders the process Action's prose as a banner across
+ * the full canvas width above the pool's lanes. The Unassigned pool gets
  * a quieter neutral header so it doesn't compete visually with the
- * real Intent pools above it.
+ * real process pools above it.
  */
 export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData }) {
-  const isUnassigned = data.pool.intent_id === null;
+  const isUnassigned = data.pool.process_id === null;
   const bg = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
   const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
   const topBorderWidth = data.isCenter ? 4 : 2;
   const bottomBorderWidth = data.isCenter ? 2 : 1;
   // Zoomed out far enough that the band's label and pills are illegible:
   // drop them so the pool reads as a plain tinted band, matching how the
-  // shape nodes inside it simplify. The subprocess-link Handle stays
-  // mounted at every zoom (it anchors dashed drill-down edges).
+  // shape nodes inside it simplify.
   const simplified = useProcessSimplified();
   return (
     <div
@@ -2027,32 +1951,20 @@ export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData })
         fontWeight: 700,
         letterSpacing: 0,
         color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
-        cursor: !isUnassigned && data.pool.intent_id ? "pointer" : undefined,
+        cursor: !isUnassigned && data.pool.process_id ? "pointer" : undefined,
       }}
       // No hover tooltip once simplified — a bare band carries no label,
       // visible or on hover, just like the simplified shape nodes.
       title={simplified ? undefined : data.pool.label}
     >
-      {data.pool.intent_id ? (
-        // Landing point for dashed sub-process links — pinned near the
-        // top-left of the header where the Intent label reads, so the
-        // arrow lands "on the Intent" rather than mid-band.
-        <Handle
-          type="target"
-          id={SUBPROCESS_TARGET_HANDLE}
-          position={Position.Top}
-          isConnectable={false}
-          style={{ background: "transparent", border: "none", left: 24 }}
-        />
-      ) : null}
       {simplified ? null : (
         <>
-          {data.pool.intent_id ? (
-            <ProcessPoolReferenceBadge intentId={data.pool.intent_id} label={data.pool.label} />
+          {data.pool.process_id ? (
+            <ProcessPoolReferenceBadge processId={data.pool.process_id} label={data.pool.label} />
           ) : null}
-          {!isUnassigned && data.pool.intent_id ? (
+          {!isUnassigned && data.pool.process_id ? (
             <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
-              <TypeBadge entityType="intent" lifecycle={data.pool.lifecycle} anchor="inline" />
+              <TypeBadge entityType="action" lifecycle={data.pool.lifecycle} anchor="inline" />
               <LifecycleBadge lifecycle={data.pool.lifecycle} anchor="inline" />
             </span>
           ) : null}
@@ -2320,58 +2232,63 @@ function ProcessRoundedNode({ data }: { data: ProcessNodeData }) {
 // so the marker never overlaps the label. The dashed drill-down link
 // leaves the node's bottom-center handle — just under the marker — on
 // its way down to the sub-process pool.
-function SubprocessMarker({ stroke, hideGlyph = false }: { stroke: string; hideGlyph?: boolean }) {
+// The "View subprocess" affordance on a collapsed subprocess Action. Clicking
+// it expands the subprocess into its own pool (a different swim-lane view).
+// Hidden under LOD (zoomed out, the label strip is illegible anyway).
+function ViewSubprocessButton({
+  data,
+  stroke,
+  hidden = false,
+}: {
+  data: ProcessNodeData;
+  stroke: string;
+  hidden?: boolean;
+}) {
+  if (hidden) return null;
   return (
-    <>
-      {/* The bottom Handle anchors the dashed drill-down edge and must
-          stay mounted at every zoom; only the visible "+" glyph — a tiny
-          illegible box when zoomed out — is dropped under LOD. */}
-      {hideGlyph ? null : (
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            bottom: 14,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 16,
-            height: 16,
-            boxSizing: "border-box",
-            background: "#fff",
-            border: `1.5px solid ${stroke}`,
-            borderRadius: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 13,
-            lineHeight: 1,
-            fontWeight: 700,
-            color: stroke,
-            zIndex: 2,
-            // Asymmetric bottom padding lifts the "+" glyph ~2px within the
-            // box (the box stays put); the "+" optically reads low when
-            // centered, so this nudges it toward the visual middle.
-            paddingBottom: 4,
-          }}
-        >
-          +
-        </div>
-      )}
-      <Handle
-        type="source"
-        id={SUBPROCESS_SOURCE_HANDLE}
-        position={Position.Bottom}
-        isConnectable={false}
-        style={{ background: "transparent", border: "none" }}
-      />
-    </>
+    <button
+      type="button"
+      // Stop the click from bubbling to React Flow's onNodeClick, which would
+      // treat it as a plain focus and keep the subprocess collapsed.
+      onClick={(event) => {
+        event.stopPropagation();
+        data.onViewSubprocess?.(data.node.id);
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      style={{
+        position: "absolute",
+        bottom: 3,
+        left: "50%",
+        transform: "translateX(-50%)",
+        maxWidth: "calc(100% - 12px)",
+        boxSizing: "border-box",
+        background: "#fff",
+        border: `1px solid ${stroke}`,
+        borderRadius: 4,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        padding: "1px 6px",
+        fontSize: 9,
+        lineHeight: 1.4,
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        color: stroke,
+        cursor: "pointer",
+        zIndex: 2,
+      }}
+    >
+      <span aria-hidden="true">⊞</span> View subprocess
+    </button>
   );
 }
 
 // BPMN Task — rounded rectangle. Sits between the sharp Rectangle (a
 // policy box) and the fully-pill Rounded (the State stadium); the radius
-// matches the OMG BPMN 2.0 task glyph. When the Action drills into a
-// sub-process it also wears the collapsed-subprocess "+" marker.
+// matches the OMG BPMN 2.0 task glyph. When the Action is itself a process
+// it wears the collapsed-subprocess "View subprocess" affordance.
 function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   const simplified = useProcessSimplified();
@@ -2389,7 +2306,7 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
         alignItems: "center",
         justifyContent: "center",
         boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
-        // Reserve a bottom strip for the collapsed-subprocess "+" so the
+        // Reserve a bottom strip for the "View subprocess" affordance so the
         // centered label never sits under it. The layout grew the box by
         // the same amount; border-box keeps the padding inside that box
         // instead of adding height on top of it.
@@ -2399,12 +2316,10 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {/* commonHandles first so the id-less right (source) handle is the
-          node's first source handle: xyflow binds an edge with no
-          sourceHandle to bounds[0], and sequence flow must keep exiting
-          right. The "+" marker's bottom handle is addressed by id. */}
       {commonHandles()}
-      {data.isSubprocess ? <SubprocessMarker stroke={stroke} hideGlyph={simplified} /> : null}
+      {data.isSubprocess ? (
+        <ViewSubprocessButton data={data} stroke={stroke} hidden={simplified} />
+      ) : null}
     </div>
   );
 }

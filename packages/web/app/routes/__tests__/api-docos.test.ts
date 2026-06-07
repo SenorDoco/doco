@@ -131,38 +131,38 @@ describe("/api/v1/docos.json", () => {
   it("accepts the common template alias and returns the applied template handle", async () => {
     mocks.getWorkspaceRole.mockResolvedValue("owner");
     mocks.createDocoInWorkspace.mockResolvedValue({
-      docoId: "doco_glossary",
-      handle: "glossary",
+      docoId: "doco_flow",
+      handle: "flow",
       workspaceId: "workspace_torre",
       workspaceHandle: "torre",
-      goal: "Glossary memory.",
+      goal: "Process memory.",
     });
 
     const response = await action({
       request: jsonRequest({
         workspace_id: "workspace_torre",
-        name: "Glossary",
-        template: "glossaries",
+        name: "Flow",
+        template: "process",
       }),
     } as never);
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
-      id: "doco_glossary",
-      handle: "glossary",
+      id: "doco_flow",
+      handle: "flow",
       workspace_handle: "torre",
       workspace_id: "workspace_torre",
-      qualified_handle: "torre/glossary",
-      template_handle: "glossaries",
+      qualified_handle: "torre/flow",
+      template_handle: "process",
       visibility: "private",
-      goal: "Glossary memory.",
+      goal: "Process memory.",
     });
     expect(mocks.createDocoInWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({
         workspaceId: "workspace_torre",
-        requestedHandle: "glossary",
+        requestedHandle: "flow",
         createdByUserId: "user_alice",
-        templateHandle: "glossaries",
+        templateHandle: "process",
       }),
     );
   });

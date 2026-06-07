@@ -184,6 +184,12 @@ export const DETERMINISTIC_CHECKS: CheckRegistry = {
         formLabel: "Exempt when other endpoint is node type (optional)",
         partLabel: "exempt when other",
       },
+      {
+        name: "exempt_when_incoming_edge_type",
+        control: "edge-type",
+        formLabel: "Exempt when target of incoming edge type (optional)",
+        partLabel: "exempt when incoming",
+      },
       WHEN_NODE_TYPE_FIELD,
     ],
     evaluate: (pred, ctx) => {
@@ -201,6 +207,19 @@ export const DETERMINISTIC_CHECKS: CheckRegistry = {
           return false;
         });
         if (exempt) return null;
+      }
+      // Container exemption: a candidate that is the TARGET of ≥1 incoming edge
+      // of `exempt_when_incoming_edge_type` is a parent/process container, not a
+      // per-step member — excuse it from the floor (e.g. a process Action with
+      // `has_parent` children needs no `has_parent` of its own).
+      if (
+        pred.exempt_when_incoming_edge_type &&
+        ctx.edges.some(
+          (s) =>
+            s.to_id === ctx.candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
+        )
+      ) {
+        return null;
       }
       const { matches, direction } = directedMatchingEdges(pred, ctx);
       const min = pred.min_count && pred.min_count > 0 ? pred.min_count : 1;
@@ -366,9 +385,27 @@ export const DETERMINISTIC_CHECKS: CheckRegistry = {
         formLabel: "Terminal when",
         partLabel: "terminal when",
       },
+      {
+        name: "exempt_when_incoming_edge_type",
+        control: "edge-type",
+        formLabel: "Exempt when target of incoming edge type (optional)",
+        partLabel: "exempt when incoming",
+      },
       WHEN_NODE_TYPE_FIELD,
     ],
     evaluate: (pred, ctx) => {
+      // A process container (the target of ≥1 incoming `has_parent`) is a pool,
+      // not a sequenced step, so it carries no `flows_to` and is excused from
+      // the wiring checks below.
+      if (
+        pred.exempt_when_incoming_edge_type &&
+        ctx.edges.some(
+          (s) =>
+            s.to_id === ctx.candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
+        )
+      ) {
+        return null;
+      }
       const isInitial =
         pred.initial_when !== undefined &&
         ctx.candidate[pred.initial_when.field] === pred.initial_when.equals;
@@ -545,14 +582,22 @@ export const DETERMINISTIC_CHECKS: CheckRegistry = {
  */
 export const DETERMINISTIC_SUB_KINDS = Object.keys(DETERMINISTIC_CHECKS) as DeterministicSubKind[];
 
-/** The field schema for a check. */
+// Stored policy `data` is jsonb that can predate the current registry, arrive
+// from a BPMN import, or be hand-edited — so a policy's `sub_kind` can be a
+// value the registry no longer knows. The lookups below stay TOTAL for that
+// case (like `checkFieldsValidationErrors`, which already guards): a check that
+// indexed the registry blindly threw `undefined is not an object (evaluating
+// 'w[e].fields')` and crashed the whole policies page, hiding every other
+// policy and leaving no way to even open and retire the offending one.
+
+/** The field schema for a check — `[]` for a sub_kind the registry doesn't know. */
 export function checkFields(sub_kind: DeterministicSubKind): FieldSpec[] {
-  return DETERMINISTIC_CHECKS[sub_kind].fields;
+  return DETERMINISTIC_CHECKS[sub_kind]?.fields ?? [];
 }
 
-/** The human headline for a check. */
+/** The human headline for a check — the raw sub_kind when the registry doesn't know it. */
 export function checkLabel(sub_kind: DeterministicSubKind): string {
-  return DETERMINISTIC_CHECKS[sub_kind].label;
+  return DETERMINISTIC_CHECKS[sub_kind]?.label ?? sub_kind;
 }
 
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);

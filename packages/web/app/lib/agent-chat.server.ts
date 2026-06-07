@@ -1133,13 +1133,12 @@ This section overrides the "tool first" speed rule below.
 
 - If the user asks to create a doco and their request names or implies a
   domain with a matching non-generic template, ask one short question before
-  POSTing: whether to use that template or start blank/generic. Example:
-  "Glossary doco" implies the glossaries template; "business process doco"
-  implies the process template.
+  POSTing: whether to use that template or start blank/generic. Example: a
+  "business process doco" implies the process template.
 - If the user explicitly says "blank", "from scratch", "generic", or names a
   template handle, use that choice without asking.
 - The create body field is \`template_handle\`, for example
-  \`{"name":"terms","workspace_id":"workspace_...","template_handle":"glossaries"}\`.
+  \`{"name":"hiring","workspace_id":"workspace_...","template_handle":"process"}\`.
   Do not send \`template\`; \`template_handle\` is the contract field.
 - POST /api/v1/docos.json creates a new doco. A 201 response is authoritative.
   Use the returned id, handle, qualified_handle, template_handle, goal, and
