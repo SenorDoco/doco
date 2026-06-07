@@ -35,13 +35,12 @@ describe("orphaned pre-unification templates are gone", () => {
 });
 
 describe("removed templates are gone", () => {
-  // The glossaries, org-chart, and four decision-record templates were
-  // deleted; only `process` and `github-pull-requests` ship now. Keep them
-  // out so a request for a removed handle can't resurrect a half-wired
-  // template.
+  // The glossaries and four decision-record templates were deleted. `org-chart`
+  // is NOT among them — it ships again as the abstraction for documenting org
+  // structure. Keep the genuinely-removed handles out so a request for one
+  // can't resurrect a half-wired template.
   for (const name of [
     "glossaries",
-    "org-chart",
     "architectural-decisions",
     "product-decisions",
     "design-decisions",
@@ -56,6 +55,7 @@ describe("removed templates are gone", () => {
   it("ships exactly the surviving templates", () => {
     expect(DEFAULT_DOCO_TEMPLATES.map((t) => t.name).sort()).toEqual([
       "github-pull-requests",
+      "org-chart",
       "process",
     ]);
   });
@@ -644,6 +644,166 @@ describe("github-pull-requests template", () => {
   });
 });
 
+describe("org-chart template", () => {
+  const template = findDocoTemplateByName("org-chart");
+  if (!template) throw new Error("org-chart template not registered");
+
+  it("is registered and findable by its plain handle", () => {
+    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "org-chart")).toBeDefined();
+    expect(findDocoTemplateByName("org-chart")?.name).toBe("org-chart");
+  });
+
+  it("has the expected metadata (icon, label, description)", () => {
+    expect(template.icon).toBe("🏢");
+    expect(template.label).toBe("Org chart");
+    expect(template.description).toMatch(/reports to/i);
+    expect(template.description).toMatch(/org tree/i);
+  });
+
+  it("documents an existing structure, so it does NOT default new nodes to drafting", () => {
+    // No draft → queue → activate workflow: a captured seat lands `active` and
+    // is held to the chart's shape immediately. Hence no defaultNodeLifecycle.
+    expect(template.defaultNodeLifecycle).toBeUndefined();
+  });
+
+  it("ships with the org-tree perspective attached as the default tab", () => {
+    expect(template.perspectives).toEqual([{ slug: "org-tree", isDefault: true }]);
+  });
+
+  describe("node-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_node_type",
+    )?.predicate;
+
+    it("admits only org-structure node types", () => {
+      expect(allowlist?.kind).toBe("requires_node_type");
+      if (allowlist?.kind !== "requires_node_type") return;
+      expect([...allowlist.node_types].sort()).toEqual(
+        ["decision", "intent", "principal", "reference", "rule"].sort(),
+      );
+    });
+
+    it("excludes the process/work node types (Action, State, Eval)", () => {
+      if (allowlist?.kind !== "requires_node_type") throw new Error("allowlist missing");
+      expect(allowlist.node_types).not.toContain("action");
+      expect(allowlist.node_types).not.toContain("state");
+      expect(allowlist.node_types).not.toContain("eval");
+    });
+  });
+
+  describe("edge-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_edge_type",
+    )?.predicate;
+
+    it("admits the reporting + association edge types, barring process-flow edges", () => {
+      expect(allowlist?.kind).toBe("requires_edge_type");
+      if (allowlist?.kind !== "requires_edge_type") return;
+      expect(new Set(allowlist.edge_types)).toEqual(
+        new Set([
+          "has_parent",
+          "attributed_to",
+          "relates_to",
+          "supports",
+          "replaces",
+          "derived_from",
+        ]),
+      );
+      // `relates_to` carries the dotted-line meaning; flow/guard edges do not belong.
+      expect(allowlist.edge_types).toContain("relates_to");
+      expect(allowlist.edge_types).not.toContain("flows_to");
+      expect(allowlist.edge_types).not.toContain("constrained_by");
+    });
+  });
+
+  describe("unity of command (one solid reporting line per seat)", () => {
+    const ceiling = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "limits_edge" &&
+        r.predicate.edge_type === "has_parent" &&
+        r.predicate.target_node_type === "principal",
+    );
+
+    it("caps a seat at one `has_parent` edge to a manager, as a hard block", () => {
+      expect(ceiling?.predicate?.kind).toBe("limits_edge");
+      if (ceiling?.predicate?.kind !== "limits_edge") return;
+      expect(ceiling.predicate.max_count).toBe(1);
+      expect(ceiling.predicate.when_node_type).toEqual(["principal"]);
+      expect(ceiling.on_violation ?? "block").toBe("block");
+    });
+
+    it("seeds as a deterministic policy carrying the predicate verbatim", () => {
+      if (!ceiling) throw new Error("unity-of-command ceiling missing");
+      const seeded = templatePolicyToPolicyRow(ceiling);
+      expect(seeded.kind).toBe("deterministic");
+      expect(seeded.on_violation).toBe("block");
+      expect(seeded.predicate.sub_kind).toBe("limits_edge");
+      expect(seeded.predicate.edge_type).toBe("has_parent");
+      expect(seeded.predicate.max_count).toBe(1);
+    });
+
+    it("is a structural invariant: it carries no lifecycle filter", () => {
+      // An org chart has no drafting workflow — the tree must hold at every
+      // lifecycle, so the cap is unscoped.
+      expect(ceiling?.fires_when_node_lifecycle).toBeUndefined();
+    });
+  });
+
+  describe("soft semantic gates (warnings, LLM-judged)", () => {
+    it("warns when a node does not read as org structure (membership)", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          /organizational STRUCTURE/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      if (gate?.predicate?.kind !== "probabilistic") return;
+      const types = gate.predicate.when_node_type ?? [];
+      expect(types).toEqual(
+        expect.arrayContaining(["principal", "intent", "decision", "reference"]),
+      );
+      // Rules govern the chart rather than being chart content.
+      expect(types).not.toContain("rule");
+    });
+
+    it("warns when a seat leaves its occupant (person / agent / vacant) unstated", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          r.predicate.when_node_type?.includes("principal") &&
+          /vacant/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      if (gate?.predicate?.kind !== "probabilistic") return;
+      expect(gate.predicate.spec).toMatch(/`human`/);
+      expect(gate.predicate.spec).toMatch(/`agent`/);
+    });
+  });
+
+  describe("guidance encodes the org-chart best practices", () => {
+    const summaries = template.policies.filter((r) => !r.predicate).map((r) => r.policy ?? "");
+    const haystack = summaries.join("\n");
+
+    it("positions define the structure, not the people", () => {
+      expect(haystack).toMatch(/Positions define the structure, not the people/i);
+    });
+    it("dotted-line / matrix coordination is `relates_to`, not a second solid line", () => {
+      expect(haystack).toMatch(/dotted-line \/ matrix relationships with `relates_to`/i);
+    });
+    it("a decision right has a single point of accountability", () => {
+      expect(haystack).toMatch(/single (point of )?accountab/i);
+      expect(haystack).toMatch(/RACI/);
+    });
+    it("vacant seats stay on the chart for planning", () => {
+      expect(haystack).toMatch(/unfilled seats vacant/i);
+    });
+    it("teams / departments are Intents the seats are `attributed_to`", () => {
+      expect(haystack).toMatch(/teams or departments/i);
+      expect(haystack).toMatch(/`attributed_to`/);
+    });
+  });
+});
+
 describe("edge-type allowlists (requires_edge_type)", () => {
   // The edge analogue of the node-type allowlist: each template declares which
   // relationship edge types it permits, enforced (block) on edge creation.
@@ -652,6 +812,22 @@ describe("edge-type allowlists (requires_edge_type)", () => {
     const p = t?.policies.find((r) => r.predicate?.kind === "requires_edge_type");
     return p?.predicate?.kind === "requires_edge_type" ? [...p.predicate.edge_types] : undefined;
   }
+
+  it("org-chart allows reporting/association edges incl. relates_to and bars flows_to", () => {
+    const a = allowlistOf("org-chart");
+    expect(a && new Set(a)).toEqual(
+      new Set([
+        "has_parent",
+        "attributed_to",
+        "relates_to",
+        "supports",
+        "replaces",
+        "derived_from",
+      ]),
+    );
+    expect(a).toContain("relates_to");
+    expect(a).not.toContain("flows_to");
+  });
 
   it("process allows BPMN edge types incl. has_parent (process membership) and bars relates_to", () => {
     const a = allowlistOf("process");

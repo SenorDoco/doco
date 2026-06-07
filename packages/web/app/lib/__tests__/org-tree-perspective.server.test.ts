@@ -27,6 +27,7 @@ describe("loadOrgTreeData", () => {
               {
                 from_id: "principal_research",
                 to_id: "principal_alex",
+                edge_type: "has_parent",
               },
             ] as T[],
           };
@@ -169,7 +170,9 @@ describe("loadOrgTreeData", () => {
         queries.push(sql);
         if (/FROM edges/i.test(sql)) {
           return {
-            rows: [{ from_id: "principal_b", to_id: "principal_a" }] as T[],
+            rows: [
+              { from_id: "principal_b", to_id: "principal_a", edge_type: "has_parent" },
+            ] as T[],
           };
         }
         return {
@@ -188,5 +191,89 @@ describe("loadOrgTreeData", () => {
     // The retired report still resolves its manager so the client can draw
     // the line once "Retired" is toggled on.
     expect(data.nodes.find((n) => n.id === "principal_b")?.reports_to).toBe("principal_a");
+  });
+
+  it("queries BOTH solid (has_parent) and dotted (relates_to) reporting edges", async () => {
+    // The org-chart template gives `relates_to` between two seats the
+    // dotted-line / matrix meaning, so the loader must pull it alongside the
+    // solid `has_parent` line.
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      query: async <T>(sql: string) => {
+        if (/FROM edges/i.test(sql)) {
+          expect(sql).toMatch(/has_parent/);
+          expect(sql).toMatch(/relates_to/);
+          return { rows: [] as T[] };
+        }
+        return {
+          rows: [{ id: "principal_a", name: "A — Person", lifecycle: "active", data: {} }] as T[],
+        };
+      },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme");
+    expect(data.nodes[0]?.dotted_reports_to).toEqual([]);
+  });
+
+  it("maps a `relates_to` edge between two principals to a dotted-line (matrix) manager", async () => {
+    // research reports primarily to alex (has_parent) and coordinates with ops
+    // on a dotted line (relates_to between two principals). A relate to a
+    // non-principal (a Reference) is an ordinary association, never a line.
+    const rows = [
+      { id: "principal_alex", name: "Alex — Person, CEO", lifecycle: "active", data: {} },
+      { id: "principal_ops", name: "Ops Lead — Person", lifecycle: "active", data: {} },
+      { id: "principal_research", name: "Research Agent", lifecycle: "active", data: {} },
+    ];
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      query: async <T>(sql: string) => {
+        if (/FROM edges/i.test(sql)) {
+          return {
+            rows: [
+              { from_id: "principal_research", to_id: "principal_alex", edge_type: "has_parent" },
+              { from_id: "principal_research", to_id: "principal_ops", edge_type: "relates_to" },
+              {
+                from_id: "principal_research",
+                to_id: "reference_charter",
+                edge_type: "relates_to",
+              },
+            ] as T[],
+          };
+        }
+        return { rows: rows as T[] };
+      },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme");
+    const research = data.nodes.find((n) => n.id === "principal_research");
+    expect(research?.reports_to).toBe("principal_alex");
+    expect(research?.dotted_reports_to).toEqual(["principal_ops"]);
+    // Principals with no dotted relationships expose an empty list.
+    expect(data.nodes.find((n) => n.id === "principal_alex")?.dotted_reports_to).toEqual([]);
+  });
+
+  it("drops a `relates_to` that merely duplicates the solid reporting line", async () => {
+    // If a seat both `has_parent` and `relates_to` the same manager, the
+    // dotted line is redundant with the solid one and is not drawn twice.
+    const rows = [
+      { id: "principal_alex", name: "Alex — Person, CEO", lifecycle: "active", data: {} },
+      { id: "principal_research", name: "Research Agent", lifecycle: "active", data: {} },
+    ];
+    const client: Parameters<typeof loadOrgTreeData>[0] = {
+      query: async <T>(sql: string) => {
+        if (/FROM edges/i.test(sql)) {
+          return {
+            rows: [
+              { from_id: "principal_research", to_id: "principal_alex", edge_type: "has_parent" },
+              { from_id: "principal_research", to_id: "principal_alex", edge_type: "relates_to" },
+            ] as T[],
+          };
+        }
+        return { rows: rows as T[] };
+      },
+    };
+
+    const data = await loadOrgTreeData(client, "doco_acme", "acme");
+    const research = data.nodes.find((n) => n.id === "principal_research");
+    expect(research?.reports_to).toBe("principal_alex");
+    expect(research?.dotted_reports_to).toEqual([]);
   });
 });
