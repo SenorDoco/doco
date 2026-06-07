@@ -15,14 +15,9 @@ export async function resolvePrincipalIdForUser(
   const cached = principalForUserCache.get(key);
   if (cached) return cached;
   const rows = await listPrincipals(docoId);
-  const own = rows.find((r) => {
-    const data = r.data ?? {};
-    return (
-      (typeof data.created_by === "string" && data.created_by === userId) ||
-      (typeof data.owner_id === "string" && data.owner_id === userId)
-    );
-  });
-  const role = rows.find((r) => r.name === "user") ?? rows.find((r) => r.name === "human") ?? null;
+  const own = rows.find((r) => r.created_by === userId || r.extra.owner_id === userId);
+  const role =
+    rows.find((r) => r.prose === "user") ?? rows.find((r) => r.prose === "human") ?? null;
   const pick = own ?? role;
   if (!pick) return null;
   principalForUserCache.set(key, pick.id);

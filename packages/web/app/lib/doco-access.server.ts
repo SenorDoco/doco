@@ -471,7 +471,7 @@ export async function canReadDocoForRequest(
 async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
   if (!ownerId.startsWith("principal_")) return false;
   const p = await getPrincipalById(ownerId);
-  return p?.name === "host-bootstrap";
+  return p?.prose === "host-bootstrap";
 }
 
 /** Read the owner_id field for either a user identity or Principal node. */
@@ -479,7 +479,7 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
   if (!principalId.startsWith("principal_")) return null;
   const p = await getPrincipalById(principalId);
   if (!p) return null;
-  const ownerId = p.data.owner_id;
+  const ownerId = p.extra.owner_id;
   if (typeof ownerId !== "string") return null;
   if (
     !ownerId.startsWith("principal_") &&

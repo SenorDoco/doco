@@ -256,12 +256,6 @@ function EntryView({
               [{entry.lifecycle}]
             </span>
           ) : null}{" "}
-          {entry.question ? (
-            <span className="text-[0.9rem] italic" style={{ color: INK_SOFT }}>
-              {entry.question}
-              {/[.?!]$/.test(entry.question) ? "" : "."}{" "}
-            </span>
-          ) : null}
           {renderSenses(entry.senses)}
           {entry.source ? (
             <span className="text-[0.82rem] italic" style={{ color: INK_SOFT }}>

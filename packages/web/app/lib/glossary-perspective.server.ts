@@ -1,18 +1,17 @@
 // Glossary perspective — server-side data access.
 //
-// The glossaries template models each **term entry as a Reference**: the
-// prose (`reference`) is the *word being defined* — the headword — and the
-// definition lives in the `definition` attribute, off the prose, so the
-// node's name stays the bare term. The template also allows Rules
-// (terminology usage) and Evals (consistency checks), and a glossary can
-// hold cited-source References (the `derived_from` targets). So this loader
-// reads every non-policy content node and reshapes it into a dictionary
-// entry. It still understands legacy **Decision**-based entries (term in the
-// prose's first line, definition in the body) so older glossaries keep
-// rendering, plus stray Intents (scope) — anything but a blank page.
+// A glossary's terms are **References**, the one shape the `glossary` template
+// admits as a term entry: the prose (`reference`) is the *word being defined* —
+// the headword — and the definition lives in the `definition` attribute, off
+// the prose, so the node's name stays the bare term. A cited-source Reference
+// (a `derived_from` target) instead carries its source line in `locator` and
+// has no `definition`. Synonyms / deprecated variants live in the
+// `alternatives` attribute. So this loader reads every Reference and reshapes
+// it into a dictionary entry. (Principals — the stewards the template also
+// admits — are not headwords and are not read here.)
 //
-// It reads the same nodes the List perspective shows; only the
-// presentation differs, so there is no new write surface here.
+// It reads the same nodes the List perspective shows; only the presentation
+// differs, so there is no new write surface here.
 
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
@@ -24,13 +23,13 @@ type QueryClient = {
 interface NodeRow {
   id: string;
   entity_type: string;
-  /** First line of the type-named prose column (the candidate headword). */
+  /** First line of the prose column (the headword). */
   label: string | null;
-  /** Full type-named prose column (the candidate definition). */
+  /** Full prose column (the headword; a term's prose is just the word). */
   prose: string | null;
   lifecycle: string | null;
   data: Record<string, unknown> | null;
-  // The Reference dedup key (promoted column); NULL for other node types.
+  // The Reference dedup key (promoted column) — a cited source's source line.
   locator: string | null;
   /** Scalar-subquery total glossary entries (bigint → string from pg). */
   total_count?: number | string | null;
@@ -58,13 +57,11 @@ export interface GlossaryEntry {
   letter: string;
   /** Playful syllabified respelling, e.g. "do·co" → "/ ˈdo · co /"-ish. */
   pronunciation: string;
-  /** Italic dictionary label: faux part-of-speech for terms, type tag otherwise. */
+  /** Italic dictionary label: faux part-of-speech for terms, "src." for sources. */
   tag: string;
-  /** The concept question / context the term answers, as an italic lead-in. */
-  question: string | null;
   /** Definition prose, split into numbered senses on blank lines. */
   senses: string[];
-  /** Source line for cited terms (e.g. a Reference's locator). */
+  /** Source line for a cited Reference (its `locator`). */
   source: string | null;
   alternatives: GlossaryAlternative[];
   lifecycle: string;
@@ -81,10 +78,10 @@ export interface GlossaryPerspectiveData {
   /** Every distinct letter that has at least one entry (for the index). */
   letters: string[];
   /**
-   * TRUE total of glossary-eligible nodes for this Doco (same domain as the
-   * query: the five glossary types, all lifecycles), counted before the page
-   * limit. The header reports loaded (`stats.entries`) vs this total; the
-   * sub-stats below describe the loaded slice.
+   * TRUE total of glossary terms (References) for this Doco, across all
+   * lifecycles, counted before the page limit. The header reports loaded
+   * (`stats.entries`) vs this total; the sub-stats below describe the loaded
+   * slice.
    */
   totalCount: number;
   stats: {
@@ -111,17 +108,6 @@ function firstLine(value: string | null | undefined): string {
   return String(value ?? "")
     .split(/\r?\n/, 1)[0]
     .trim();
-}
-
-/** Drop a leading "<headword>:" / "<headword> —" restatement from a definition. */
-function stripHeadwordPrefix(prose: string, headword: string): string {
-  const trimmed = prose.trim();
-  const head = headword.trim();
-  if (!head) return trimmed;
-  const escaped = head.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return trimmed
-    .replace(new RegExp(`^${escaped}\\s*[:—–-]\\s*`, "i"), "")
-    .replace(new RegExp(`^${escaped}\\s*(?:\\r?\\n\\s*)+`, "i"), "");
 }
 
 const VOWELS = /[aeiouy]/i;
@@ -161,9 +147,9 @@ function pseudoPronunciation(term: string): string {
 }
 
 /**
- * Faux part-of-speech tag for term headwords (Decisions / References).
- * Headwords are overwhelmingly nouns, so "n." is the honest default;
- * multi-word terms read as phrases and gerunds as verbs. Decorative.
+ * Faux part-of-speech tag for a term headword. Headwords are overwhelmingly
+ * nouns, so "n." is the honest default; multi-word terms read as phrases and
+ * gerunds as verbs. Decorative.
  */
 function fauxPartOfSpeech(term: string): string {
   const head = firstLine(term);
@@ -173,14 +159,6 @@ function fauxPartOfSpeech(term: string): string {
   if (/ly$/i.test(head)) return "adv.";
   return "n.";
 }
-
-// Non-term content types get an honest italic register label instead of
-// a faux part-of-speech, so a usage Rule or scope Intent reads correctly.
-const TYPE_TAG: Record<string, string> = {
-  rule: "usage",
-  eval: "check",
-  intent: "scope",
-};
 
 function splitSenses(prose: string): string[] {
   return String(prose ?? "")
@@ -221,46 +199,16 @@ function href(handle: string, entityType: string, id: string): string {
   return `/${handle}/${entityType}/${id}`;
 }
 
-/** Map one content node into a dictionary entry, per its type. */
+/** Map one Reference into a dictionary entry. */
 function toEntry(row: NodeRow, handle: string): GlossaryEntry {
   const data = row.data ?? {};
   const lifecycle = row.lifecycle ?? "active";
-  let headword: string;
-  let question: string | null = null;
-  let definitionProse: string;
-  let source: string | null = null;
-  let alternatives: GlossaryAlternative[] = [];
-  let tag: string;
-
-  if (row.entity_type === "decision") {
-    headword =
-      asString(data.name) ??
-      asString(data.title) ??
-      row.label ??
-      asString(data.chosen) ??
-      asString(data.term) ??
-      "(untitled term)";
-    question = asString(data.question);
-    definitionProse = stripHeadwordPrefix(row.prose ?? "", headword);
-    alternatives = parseAlternatives(data.alternatives);
-    tag = fauxPartOfSpeech(headword);
-  } else if (row.entity_type === "reference") {
-    // A Reference used as a glossary term entry: the prose is the word being
-    // defined (the headword), and the definition lives in the `definition`
-    // attribute — off the prose, so the node name stays the bare term. A
-    // cited-source Reference (a `derived_from` target) instead carries its
-    // source line in its `locator` and has no `definition`.
-    headword = row.label ?? "(untitled reference)";
-    definitionProse = asString(data.definition) ?? "";
-    source = row.locator ?? null;
-    tag = "ref.";
-    alternatives = parseAlternatives(data.alternatives);
-  } else {
-    // Rule / Eval / Intent: the first line is the headword, the rest the body.
-    headword = row.label ?? "(untitled)";
-    definitionProse = stripHeadwordPrefix(row.prose ?? "", headword);
-    tag = TYPE_TAG[row.entity_type] ?? row.entity_type;
-  }
+  const headword = row.label ?? "(untitled term)";
+  const definition = asString(data.definition) ?? "";
+  const source = row.locator ?? null;
+  // A cited-source Reference (a `derived_from` target) carries a source line
+  // and no definition; a real term reads as a dictionary headword.
+  const tag = source && !definition ? "src." : fauxPartOfSpeech(headword);
 
   return {
     id: row.id,
@@ -270,10 +218,9 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
     letter: letterOf(headword),
     pronunciation: pseudoPronunciation(headword),
     tag,
-    question,
-    senses: splitSenses(definitionProse),
+    senses: splitSenses(definition),
     source,
-    alternatives,
+    alternatives: parseAlternatives(data.alternatives),
     lifecycle,
   };
 }
@@ -289,17 +236,9 @@ export async function loadGlossaryPerspectiveData(
   const params: unknown[] = [docoId];
   if (windowIds.length > 0) params.push(windowIds);
   else if (limit != null) params.push(limit);
-  // Union the content tables into one shape. Policies (guidance /
-  // authoring) and structural Principals are excluded — they're not
-  // glossary headwords. Each table projects its type-named prose column
-  // into `label` (first line) + `prose` (full text); only references
-  // carry the promoted scalar columns.
-  // Post-collapse: one `nodes` query over the five glossary node types
-  // (decision, reference, rule, eval, intent). Each row's `prose` is the
-  // shared prose column and `label` is its first line — the headword, for
-  // every type including References (a term entry's prose is the word being
-  // defined). The promoted `locator` column is NULL for the other four types,
-  // exactly as the per-table legs projected.
+  // Terms are References. Each row's `prose` is the headword (and `label` its
+  // first line); the meaning lives in `extra.definition`, the cited source in
+  // the promoted `locator` column.
   //
   // Every lifecycle loads, including retired. Hiding a lifecycle is the
   // client's job: GlossaryPerspective applies the page-level lifecycle filter
@@ -318,10 +257,10 @@ export async function loadGlossaryPerspectiveData(
            locator,
            (SELECT COUNT(*) FROM nodes
              WHERE doco_id = $1
-               AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')) AS total_count
+               AND node_type = 'reference') AS total_count
       FROM nodes
      WHERE doco_id = $1
-       AND node_type IN ('decision', 'reference', 'rule', 'eval', 'intent')
+       AND node_type = 'reference'
        ${windowIds.length > 0 ? "AND id = ANY($2::text[])" : ""}
      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id ASC
      ${windowIds.length === 0 && limit != null ? "LIMIT $2" : ""}
