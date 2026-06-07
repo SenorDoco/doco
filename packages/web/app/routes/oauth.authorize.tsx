@@ -196,6 +196,7 @@ export async function action({ request }: { request: Request }) {
     granted_workspace_roles: grants.granted_workspace_roles,
     granted_workspace_write_types: grants.granted_workspace_write_types,
     grant_type: grants.grant_type,
+    actor_role: grants.actor_role,
     scope: params.scope ?? undefined,
   });
   // OAuth 2.1 §4.1.2 expects a 302 straight to redirect_uri with

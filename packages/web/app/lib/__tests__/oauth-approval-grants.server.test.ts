@@ -71,13 +71,14 @@ describe("readOAuthApprovalGrants", () => {
       granted_workspace_roles: { workspace_torre: "writer" },
       granted_workspace_write_types: { workspace_torre: ["*"] },
       grant_type: "regular",
+      actor_role: null,
     });
   });
 
   // An actor grant is the user's whole LIVE workspace membership — resolved at
   // refresh time, down-scoped to one workspace per access token. It carries NO
   // explicit grants, so it short-circuits the per-target ownership checks.
-  it("treats an actor grant as the user's live membership: empty grants + grant_type 'actor'", async () => {
+  it("treats an actor grant as the user's live membership: empty grants + grant_type 'actor' + role ceiling", async () => {
     const grants = await readOAuthApprovalGrants(
       formWithGrants([{ level: "actor", targetId: "", role: "writer" }]),
       "user_owner",
@@ -91,11 +92,22 @@ describe("readOAuthApprovalGrants", () => {
       granted_workspace_roles: {},
       granted_workspace_write_types: {},
       grant_type: "actor",
+      actor_role: "writer", // the picked role becomes the ceiling
     });
     // No per-target ownership lookups — the breadth is the user's membership,
     // verified later (per resource) at refresh time, not here.
     expect(mocks.getDocoById).not.toHaveBeenCalled();
     expect(mocks.getDocoLevelRole).not.toHaveBeenCalled();
+  });
+
+  it("stores an 'owner' actor pick as a null ceiling (full live role)", async () => {
+    const grants = await readOAuthApprovalGrants(
+      formWithGrants([{ level: "actor", targetId: "", role: "owner" }]),
+      "user_owner",
+    );
+    expect(grants.grant_type).toBe("actor");
+    // owner = no ceiling; refresh uses your full live role per workspace.
+    expect(grants.actor_role).toBeNull();
   });
 
   // An actor grant wins even when bundled with workspace/doco picks: the human

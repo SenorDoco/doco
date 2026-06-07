@@ -283,9 +283,13 @@ describe("availableScopes", () => {
   });
 });
 
-describe("actor grant (act-as-me token)", () => {
-  it("composes a target-less, role-less grant", () => {
-    expect(actorGrant()).toEqual({ level: "actor", targetId: "", role: "writer", writeTypes: [] });
+describe("actor grant (all-your-workspaces token)", () => {
+  it("composes a target-less grant defaulting to the owner (full-role) ceiling", () => {
+    expect(actorGrant()).toEqual({ level: "actor", targetId: "", role: "owner", writeTypes: [] });
+  });
+  it("carries the chosen role as the ceiling", () => {
+    expect(actorGrant("reader").role).toBe("reader");
+    expect(actorGrant("writer").role).toBe("writer");
   });
   it("counts toward no workspace, so it never trips the one-workspace cap", () => {
     expect(workspaceOfComposedGrant(actorGrant(), catalog)).toBeNull();

@@ -45,6 +45,7 @@ const AUTH_CODE_TTL_SECONDS = 60;
 const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60; // 60d
 const DOCO_ROLES = ["reader", "writer", "owner"] as const;
+type DocoRole = (typeof DOCO_ROLES)[number];
 
 // 32 random bytes → 43-char base64url. That's 256 bits of entropy —
 // over the OAuth 2.1 recommended floor of 128 bits.
@@ -385,6 +386,12 @@ export interface IssueAuthCodeInput {
    * to 'regular'. See oauth_refresh_tokens.grant_type.
    */
   grant_type?: "regular" | "actor";
+  /**
+   * Role CEILING for an actor token (reader|writer|owner), applied to every
+   * workspace at refresh as min(live role, this). null/undefined = owner = full
+   * live role. Ignored unless grant_type is 'actor'.
+   */
+  actor_role?: DocoRole | null;
 }
 
 export async function issueAuthorizationCode(
@@ -412,8 +419,8 @@ export async function issueAuthorizationCode(
           code_challenge, code_challenge_method, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-          scope, grant_type, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+          scope, grant_type, actor_role, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         code,
         input.client_id,
@@ -429,6 +436,7 @@ export async function issueAuthorizationCode(
         JSON.stringify(grants.granted_workspace_write_types),
         input.scope ?? null,
         input.grant_type ?? "regular",
+        input.actor_role ?? null,
         expires_at,
       ],
     );
@@ -446,6 +454,7 @@ export interface ConsumedAuthCode {
   granted_workspace_roles: Record<string, string>;
   granted_workspace_write_types: Record<string, string[]>;
   grant_type: "regular" | "actor";
+  actor_role: DocoRole | null;
   scope: string | null;
 }
 
@@ -474,6 +483,7 @@ export async function consumeAuthorizationCode(args: {
       granted_workspace_roles: Record<string, string>;
       granted_workspace_write_types: Record<string, string[]>;
       grant_type: "regular" | "actor";
+      actor_role: DocoRole | null;
       scope: string | null;
       expires_at: Date;
       consumed_at: Date | null;
@@ -481,7 +491,7 @@ export async function consumeAuthorizationCode(args: {
       `SELECT client_id, user_id, token_name, redirect_uri, code_challenge,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-              grant_type, scope, expires_at, consumed_at
+              grant_type, actor_role, scope, expires_at, consumed_at
          FROM oauth_authorization_codes
         WHERE code = $1
         FOR UPDATE`,
@@ -515,6 +525,7 @@ export async function consumeAuthorizationCode(args: {
       granted_workspace_roles: row.granted_workspace_roles ?? {},
       granted_workspace_write_types: row.granted_workspace_write_types ?? {},
       grant_type: row.grant_type ?? "regular",
+      actor_role: row.actor_role ?? null,
       scope: row.scope,
     };
   });
@@ -589,6 +600,11 @@ export interface IssueTokensInput {
    * token at refresh time). Carries no explicit grants. Defaults to 'regular'.
    */
   grant_type?: "regular" | "actor";
+  /**
+   * Role CEILING for an actor refresh (reader|writer|owner). At refresh the
+   * access token gets min(live role, this). null = owner = full live role.
+   */
+  actor_role?: DocoRole | null;
 }
 
 export interface IssuedTokens {
@@ -641,8 +657,8 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-          scope, expires_at, grant_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          scope, expires_at, grant_type, actor_role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         refresh_token,
         input.client_id,
@@ -657,6 +673,7 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         input.scope,
         refresh_expires,
         input.grant_type ?? "regular",
+        input.actor_role ?? null,
       ],
     );
   });
@@ -742,6 +759,7 @@ export async function refreshTokens(args: {
       granted_workspace_roles: Record<string, string>;
       granted_workspace_write_types: Record<string, string[]>;
       grant_type: string | null;
+      actor_role: string | null;
       scope: string | null;
       expires_at: Date;
       revoked: boolean;
@@ -749,7 +767,7 @@ export async function refreshTokens(args: {
       `SELECT client_id, user_id, token_name,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-              grant_type, scope, expires_at, revoked
+              grant_type, actor_role, scope, expires_at, revoked
          FROM oauth_refresh_tokens
         WHERE token = $1
         FOR UPDATE`,
@@ -793,13 +811,19 @@ export async function refreshTokens(args: {
         "SELECT role FROM workspace_users WHERE workspace_id = $1 AND user_id = $2",
         [workspaceId, row.user_id],
       );
-      const role = m.rows[0]?.role;
-      if (!role) {
+      const liveRole = m.rows[0]?.role;
+      if (!liveRole) {
         throw new OauthError(
           "invalid_grant",
           "the user is not a member of the requested workspace",
         );
       }
+      // Apply the actor's role CEILING: the access token gets the lower of the
+      // user's live role and the cap chosen at mint. A null cap means owner —
+      // i.e. no ceiling, the original "full live role" behavior. The cap can
+      // only ever narrow, never raise above the live role.
+      const cap = row.actor_role ?? "owner";
+      const role = roleRank(cap) < roleRank(liveRole) ? cap : liveRole;
       accessDocoIds = [];
       accessDocoRolesJson = "{}";
       accessDocoWriteTypesJson = "{}";
@@ -919,6 +943,7 @@ export interface DeviceAuthorizationRow {
   granted_workspace_roles: Record<string, string>;
   granted_workspace_write_types: Record<string, string[]>;
   grant_type: "regular" | "actor";
+  actor_role: DocoRole | null;
   target_doco_handle: string | null;
   requested_role: string | null;
   expires_at: Date;
@@ -1060,6 +1085,8 @@ export async function approveDeviceAuthorization(args: {
   granted_workspace_write_types?: Record<string, string[]>;
   /** 'actor' = "act as me" credential; see oauth_refresh_tokens.grant_type. Defaults to 'regular'. */
   grant_type?: "regular" | "actor";
+  /** Role ceiling for an actor token (reader|writer|owner). null = owner = full live role. */
+  actor_role?: DocoRole | null;
 }): Promise<void> {
   await assertSingleWorkspaceGrant({
     granted_doco_ids: args.granted_doco_ids,
@@ -1104,7 +1131,8 @@ export async function approveDeviceAuthorization(args: {
               granted_workspace_ids = $7,
               granted_workspace_roles = $8,
               granted_workspace_write_types = $9,
-              grant_type = $10
+              grant_type = $10,
+              actor_role = $11
         WHERE device_code = $1
           AND status = 'pending'
           AND expires_at > now()`,
@@ -1119,6 +1147,7 @@ export async function approveDeviceAuthorization(args: {
         JSON.stringify(grants.granted_workspace_roles),
         JSON.stringify(grants.granted_workspace_write_types),
         args.grant_type ?? "regular",
+        args.actor_role ?? null,
       ],
     );
   });
@@ -1161,7 +1190,7 @@ export async function pollDeviceAuthorization(args: {
               user_id, token_name, granted_doco_ids, granted_doco_roles,
               granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-              grant_type,
+              grant_type, actor_role,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE device_code = $1
@@ -1245,8 +1274,8 @@ export async function pollDeviceAuthorization(args: {
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-          scope, expires_at, grant_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          scope, expires_at, grant_type, actor_role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         refresh_token,
         row.client_id,
@@ -1261,6 +1290,7 @@ export async function pollDeviceAuthorization(args: {
         row.scope,
         refresh_expires,
         row.grant_type ?? "regular",
+        row.actor_role ?? null,
       ],
     );
     await c.query("DELETE FROM oauth_device_authorizations WHERE device_code = $1", [

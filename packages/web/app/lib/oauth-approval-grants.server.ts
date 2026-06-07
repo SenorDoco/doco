@@ -62,12 +62,17 @@ export interface OAuthApprovalGrantSets {
   granted_workspace_roles: Record<string, string>;
   granted_workspace_write_types: Record<string, string[]>;
   /**
-   * 'actor' = the human approved an "act as me" credential whose breadth is
-   * their LIVE workspace membership, down-scoped to one workspace per access
-   * token at refresh time. It carries NO explicit grants. 'regular' (default)
-   * copies the granted_* sets through to the token verbatim.
+   * 'actor' = the human approved an "all your workspaces" credential whose
+   * breadth is their LIVE workspace membership, down-scoped to one workspace
+   * per access token at refresh time. It carries NO explicit grants. 'regular'
+   * (default) copies the granted_* sets through to the token verbatim.
    */
   grant_type: "regular" | "actor";
+  /**
+   * Role CEILING for an actor grant, capped per-workspace at refresh as
+   * min(live role, this). null = owner = full live role. null for 'regular'.
+   */
+  actor_role: DocoRole | null;
 }
 
 interface ParsedApprovalGrant {
@@ -88,8 +93,15 @@ export async function readOAuthApprovalGrants(
     // carries no explicit targets and resolves per-workspace at refresh time,
     // so it short-circuits the per-target ownership checks below. If the human
     // chose it, it wins over any workspace/doco picks bundled in the same form.
-    if (parsed.some((g) => g.level === "actor")) {
-      return { ...emptyGrantSets(), grant_type: "actor" };
+    const actor = parsed.find((g) => g.level === "actor");
+    if (actor) {
+      // The actor grant's role is the ceiling, capped per-workspace at refresh.
+      // "owner" means no ceiling (full live role), stored as null.
+      return {
+        ...emptyGrantSets(),
+        grant_type: "actor",
+        actor_role: actor.role === "owner" ? null : actor.role,
+      };
     }
     // Otherwise the minted token is capped at a single workspace by
     // assertSingleWorkspaceGrant at issuance — there is no full-access
@@ -293,6 +305,7 @@ function emptyGrantSets(): OAuthApprovalGrantSets {
     granted_workspace_roles: {},
     granted_workspace_write_types: {},
     grant_type: "regular",
+    actor_role: null,
   };
 }
 

@@ -85,20 +85,27 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   if (intent === "mint") {
     const label = String(form.get("label") ?? "").trim();
 
-    // Actor token: reaches all the minter's workspaces, one per session. No
-    // explicit grants to pick — the scope is resolved (and pinned to one
-    // workspace) at refresh time.
-    if (form.get("grant_type") === "actor") {
+    const rawGrants = String(form.get("grants") ?? "").trim();
+    if (!rawGrants) return { error: "Pick at least one workspace or doco to scope this key to." };
+
+    // "All your workspaces" composes a single actor grant. Mint a user-level
+    // token with NO explicit grants — its breadth is resolved (and pinned to
+    // one workspace) at refresh time — carrying the grant's role as the ceiling.
+    const actor = readActorGrant(rawGrants);
+    if (actor) {
       try {
-        const minted = await mintApiKey({ me, label, grants: [], grantType: "actor" });
+        const minted = await mintApiKey({
+          me,
+          label,
+          grants: [],
+          grantType: "actor",
+          actorRole: actor.role,
+        });
         return { intent: "mint", ok: true, minted };
       } catch (err) {
         return { error: err instanceof Error ? err.message : "Failed to mint token." };
       }
     }
-
-    const rawGrants = String(form.get("grants") ?? "").trim();
-    if (!rawGrants) return { error: "Pick at least one workspace or doco to scope this key to." };
 
     let grants: ApiKeyGrantInput[] = [];
     try {
@@ -139,6 +146,27 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   }
 
   return { error: `Unknown intent: ${intent}` };
+}
+
+/**
+ * Detect the "All your workspaces" pick in a grants payload. The picker emits a
+ * single `{ level: "actor", role }` entry; returns its role ceiling (owner or
+ * absent → null = full live role), or null when it isn't an actor mint.
+ */
+function readActorGrant(rawGrants: string): { role: DocoRole | null } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawGrants);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const actor = parsed.find(
+    (g) => g && typeof g === "object" && (g as { level?: unknown }).level === "actor",
+  );
+  if (!actor) return null;
+  const raw = (actor as { role?: unknown }).role;
+  return { role: raw === "reader" || raw === "writer" ? raw : null };
 }
 
 function parseGrantPayload(rawGrants: string): ApiKeyGrantInput[] {
@@ -516,9 +544,6 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
     navigation.state === "submitting" && navigation.formData?.get("intent") === "mint";
 
   const [label, setLabel] = useState("");
-  // "scoped" = bind to specific workspaces/docos; "actor" = a user-level
-  // credential reaching all the minter's workspaces, one per session.
-  const [mintMode, setMintMode] = useState<"scoped" | "actor">("scoped");
 
   // Same drill-down grant picker the collaborators page uses
   // (decision_per_type_write_grants): workspace → docos → read/write + per-type.
@@ -543,9 +568,9 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     const found = validateGrantForm({
       name: { value: label, message: "Enter a label for this token." },
-      // An actor token needs no grant selection — it reaches all your
-      // workspaces, scoped to one per session at use time.
-      grantCount: mintMode === "actor" ? 1 : grants.length,
+      // "All your workspaces" composes a single actor grant, so it counts like
+      // any other pick — no special case.
+      grantCount: grants.length,
     });
     if (found.length === 0) {
       setErrors({});
@@ -617,67 +642,23 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
         </p>
       ) : (
         <>
-          <fieldset className="space-y-2">
-            <legend className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-              Scope
-            </legend>
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="radio"
-                name="grant_type"
-                value="scoped"
-                checked={mintMode === "scoped"}
-                onChange={() => setMintMode("scoped")}
-                className="mt-1"
-                data-testid="scope-mode-scoped"
-              />
-              <span>
-                <span className="font-semibold">Specific workspaces or docos</span>
-                <span className="block text-xs text-muted-foreground">
-                  Bind this token to exactly what you pick below.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="radio"
-                name="grant_type"
-                value="actor"
-                checked={mintMode === "actor"}
-                onChange={() => setMintMode("actor")}
-                className="mt-1"
-                data-testid="scope-mode-actor"
-              />
-              <span>
-                <span className="font-semibold">All your workspaces — one at a time</span>
-                <span className="block text-xs text-muted-foreground">
-                  A user-level credential that reaches every workspace you belong to, but each
-                  session works in just one — pinned by <code>.doco/connections.md</code> or the{" "}
-                  <code>doco_select_workspace</code> tool. Best for one agent that moves between
-                  your projects. It can never touch two workspaces in the same session.
-                </span>
-              </span>
-            </label>
-          </fieldset>
-
-          {mintMode === "scoped" ? (
-            <div ref={grantsRef}>
-              <GrantPicker
-                catalog={catalog}
-                grants={grants}
-                forToken
-                onChange={(next) => {
-                  setGrants(next);
-                  if (next.length > 0) clearError("grants");
-                }}
-              />
-              {errors.grants ? (
-                <p role="alert" className="mt-2 text-xs text-destructive">
-                  {errors.grants}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+          <div ref={grantsRef}>
+            <GrantPicker
+              catalog={catalog}
+              grants={grants}
+              forToken
+              offerActor
+              onChange={(next) => {
+                setGrants(next);
+                if (next.length > 0) clearError("grants");
+              }}
+            />
+            {errors.grants ? (
+              <p role="alert" className="mt-2 text-xs text-destructive">
+                {errors.grants}
+              </p>
+            ) : null}
+          </div>
 
           <div className="flex justify-end">
             <button
