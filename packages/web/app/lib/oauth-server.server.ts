@@ -379,6 +379,12 @@ export interface IssueAuthCodeInput {
   /** Per-type write scope-down keyed by workspace_id. Missing entry means all write types. */
   granted_workspace_write_types?: Record<string, string[]>;
   scope?: string;
+  /**
+   * 'actor' carries the "act as me" credential through to the minted refresh
+   * token (empty explicit grants; breadth resolved at refresh time). Defaults
+   * to 'regular'. See oauth_refresh_tokens.grant_type.
+   */
+  grant_type?: "regular" | "actor";
 }
 
 export async function issueAuthorizationCode(
@@ -406,8 +412,8 @@ export async function issueAuthorizationCode(
           code_challenge, code_challenge_method, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-          scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12, $13, $14)`,
+          scope, grant_type, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         code,
         input.client_id,
@@ -422,6 +428,7 @@ export async function issueAuthorizationCode(
         JSON.stringify(grants.granted_workspace_roles),
         JSON.stringify(grants.granted_workspace_write_types),
         input.scope ?? null,
+        input.grant_type ?? "regular",
         expires_at,
       ],
     );
@@ -438,6 +445,7 @@ export interface ConsumedAuthCode {
   granted_workspace_ids: string[];
   granted_workspace_roles: Record<string, string>;
   granted_workspace_write_types: Record<string, string[]>;
+  grant_type: "regular" | "actor";
   scope: string | null;
 }
 
@@ -465,6 +473,7 @@ export async function consumeAuthorizationCode(args: {
       granted_workspace_ids: string[];
       granted_workspace_roles: Record<string, string>;
       granted_workspace_write_types: Record<string, string[]>;
+      grant_type: "regular" | "actor";
       scope: string | null;
       expires_at: Date;
       consumed_at: Date | null;
@@ -472,7 +481,7 @@ export async function consumeAuthorizationCode(args: {
       `SELECT client_id, user_id, token_name, redirect_uri, code_challenge,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-              scope, expires_at, consumed_at
+              grant_type, scope, expires_at, consumed_at
          FROM oauth_authorization_codes
         WHERE code = $1
         FOR UPDATE`,
@@ -505,6 +514,7 @@ export async function consumeAuthorizationCode(args: {
       granted_workspace_ids: row.granted_workspace_ids ?? [],
       granted_workspace_roles: row.granted_workspace_roles ?? {},
       granted_workspace_write_types: row.granted_workspace_write_types ?? {},
+      grant_type: row.grant_type ?? "regular",
       scope: row.scope,
     };
   });
@@ -908,6 +918,7 @@ export interface DeviceAuthorizationRow {
   granted_workspace_ids: string[];
   granted_workspace_roles: Record<string, string>;
   granted_workspace_write_types: Record<string, string[]>;
+  grant_type: "regular" | "actor";
   target_doco_handle: string | null;
   requested_role: string | null;
   expires_at: Date;
@@ -1047,6 +1058,8 @@ export async function approveDeviceAuthorization(args: {
   granted_workspace_ids?: string[];
   granted_workspace_roles?: Record<string, string>;
   granted_workspace_write_types?: Record<string, string[]>;
+  /** 'actor' = "act as me" credential; see oauth_refresh_tokens.grant_type. Defaults to 'regular'. */
+  grant_type?: "regular" | "actor";
 }): Promise<void> {
   await assertSingleWorkspaceGrant({
     granted_doco_ids: args.granted_doco_ids,
@@ -1090,7 +1103,8 @@ export async function approveDeviceAuthorization(args: {
               granted_doco_write_types = $6,
               granted_workspace_ids = $7,
               granted_workspace_roles = $8,
-              granted_workspace_write_types = $9
+              granted_workspace_write_types = $9,
+              grant_type = $10
         WHERE device_code = $1
           AND status = 'pending'
           AND expires_at > now()`,
@@ -1104,6 +1118,7 @@ export async function approveDeviceAuthorization(args: {
         grants.granted_workspace_ids,
         JSON.stringify(grants.granted_workspace_roles),
         JSON.stringify(grants.granted_workspace_write_types),
+        args.grant_type ?? "regular",
       ],
     );
   });
@@ -1146,6 +1161,7 @@ export async function pollDeviceAuthorization(args: {
               user_id, token_name, granted_doco_ids, granted_doco_roles,
               granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
+              grant_type,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE device_code = $1
@@ -1229,8 +1245,8 @@ export async function pollDeviceAuthorization(args: {
          (token, client_id, user_id, token_name, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
-          scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          scope, expires_at, grant_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         refresh_token,
         row.client_id,
@@ -1244,6 +1260,7 @@ export async function pollDeviceAuthorization(args: {
         workspaceWriteTypesJson,
         row.scope,
         refresh_expires,
+        row.grant_type ?? "regular",
       ],
     );
     await c.query("DELETE FROM oauth_device_authorizations WHERE device_code = $1", [

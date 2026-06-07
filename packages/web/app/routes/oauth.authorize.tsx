@@ -163,6 +163,11 @@ export async function action({ request }: { request: Request }) {
   // so a tampered POST can't bind the token to a different workspace or a Doco
   // outside it.
   if (params.bound_workspace_id) {
+    // An actor ("act as me") credential spans every workspace; a connector
+    // bound to a single workspace must never mint one.
+    if (grants.grant_type === "actor") {
+      throw errorResponse("invalid_scope: a workspace connector can't mint an actor token", 400);
+    }
     const { docos, workspaces } = await loadApprovalGrantOptions(principal.id);
     const scoped = scopeApprovalToBoundWorkspace(docos, workspaces, params.bound_workspace_id);
     if (scoped.blocked) {
@@ -190,6 +195,7 @@ export async function action({ request }: { request: Request }) {
     granted_workspace_ids: grants.granted_workspace_ids,
     granted_workspace_roles: grants.granted_workspace_roles,
     granted_workspace_write_types: grants.granted_workspace_write_types,
+    grant_type: grants.grant_type,
     scope: params.scope ?? undefined,
   });
   // OAuth 2.1 §4.1.2 expects a 302 straight to redirect_uri with
