@@ -25,6 +25,7 @@
  * (decision_01KRRR5BQ16ASY8HQEE0V499YG).
  */
 import type { AuthoringPredicate, Lifecycle } from "@doco/shared";
+import { DECISION_RECORD_TEMPLATES } from "./decision-record-templates.js";
 
 export interface TemplatePolicy {
   /** The one-line statement of the policy. REQUIRED for a prose-only
@@ -872,6 +873,9 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
     ],
   },
+  // The four decision-record templates (ADR, product, design, data) share one
+  // core and live in their own module; see `decision-record-templates.ts`.
+  ...DECISION_RECORD_TEMPLATES,
 ];
 
 /**

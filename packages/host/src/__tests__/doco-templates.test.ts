@@ -35,18 +35,12 @@ describe("orphaned pre-unification templates are gone", () => {
 });
 
 describe("removed templates are gone", () => {
-  // The plural `glossaries` and four decision-record templates were deleted.
-  // The glossary concept returns as the singular `glossary` template (reshaped
-  // around References) and `org-chart` returns as the abstraction for
-  // documenting org structure — both tested below; the genuinely-removed
-  // handles stay gone so a request for one can't resurrect a half-wired template.
-  for (const name of [
-    "glossaries",
-    "architectural-decisions",
-    "product-decisions",
-    "design-decisions",
-    "data-decisions",
-  ]) {
+  // Only the plural `glossaries` handle stays deleted. The glossary concept
+  // returns as the singular `glossary` template (reshaped around References),
+  // the four decision-record templates return on a shared core
+  // (`decision-record-templates.ts`), and `org-chart` returns as the
+  // abstraction for documenting org structure — all tested below.
+  for (const name of ["glossaries"]) {
     it(`does not register the removed \`${name}\` template`, () => {
       expect(findDocoTemplateByName(name)).toBeUndefined();
       expect(DEFAULT_DOCO_TEMPLATES.some((t) => t.name === name)).toBe(false);
@@ -55,10 +49,14 @@ describe("removed templates are gone", () => {
 
   it("ships exactly the surviving templates", () => {
     expect(DEFAULT_DOCO_TEMPLATES.map((t) => t.name).sort()).toEqual([
+      "architectural-decisions",
+      "data-decisions",
+      "design-decisions",
       "github-pull-requests",
       "glossary",
       "org-chart",
       "process",
+      "product-decisions",
     ]);
   });
 });
