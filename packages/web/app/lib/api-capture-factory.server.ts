@@ -4,7 +4,7 @@
 import { entityAsOf, getEntity, getVersions, verifyHistory, withClient } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
-import { buildEntityGetResponse } from "~/lib/api-capture-shape";
+import { nodeToApi } from "~/lib/api-capture-shape";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import {
@@ -239,10 +239,9 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         const snapshot = await withClient((c) => entityAsOf(c, "node", id, txId));
         return Response.json({ id, as_of: txId, snapshot });
       }
-      // Nodes expose the canonical shape — `prose` + `extra` — for every
-      // type. A policy carries its structured fields in `data`. Principals don't
-      // route through here.
-      return Response.json(buildEntityGetResponse(rec));
+      // Nodes expose the one canonical shape — `prose` + `extra` + promoted
+      // columns — via the shared serializer. Principals don't route through here.
+      return Response.json(nodeToApi(rec));
     },
 
     async action({

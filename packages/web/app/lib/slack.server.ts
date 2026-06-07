@@ -5,7 +5,6 @@ import type {
   MessageParam,
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages";
-import type { NodeRow } from "@doco/db";
 import {
   DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS,
   DOCO_NODE_TABLE_SPECS,
@@ -17,6 +16,7 @@ import {
   withClient,
 } from "@doco/db";
 import { type PolicyPredicate, generateUlid, summarizePredicate } from "@doco/shared";
+import { nodeToApi } from "./api-capture-shape";
 import {
   createSenorDocoMessage,
   missingSenorDocoAnthropicMessage,
@@ -1640,7 +1640,7 @@ async function readSlackDocoApiCollection(
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
     count: rows.length,
-    items: rows.map(slackEntityRecordToApiItem),
+    items: rows.map(nodeToApi),
   };
 }
 
@@ -1666,7 +1666,7 @@ async function readSlackDocoApiDetail(
     type,
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
-    item: slackEntityRecordToApiItem(row),
+    item: nodeToApi(row),
   };
 }
 
@@ -1699,7 +1699,7 @@ async function readSlackDocoApiPrincipals(
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
     users,
-    principal_nodes: nodeRows.map(slackEntityRecordToApiItem),
+    principal_nodes: nodeRows.map(nodeToApi),
     user_count: users.length,
     principal_node_count: nodeRows.length,
   };
@@ -1971,22 +1971,6 @@ async function readSlackDocoApiAuthoringContract(
     slack_write_capability: canWrite
       ? "This Slack user appears to have writer-or-higher personal access for this Doco. POST/PATCH/DELETE doco_api calls will still be checked against that linked user's real Doco role."
       : "Slack exposes this contract for planning. POST/PATCH/DELETE doco_api calls require the Slack user to run /doco connect and have the needed Doco role.",
-  };
-}
-
-function slackEntityRecordToApiItem(row: NodeRow): Record<string, unknown> {
-  return {
-    id: row.id,
-    entity_type: row.node_type,
-    prose: row.prose,
-    extra: row.extra,
-    lifecycle: row.lifecycle,
-    created_at: row.created_at,
-    created_by: row.created_by,
-    updated_at: row.updated_at,
-    updated_by: row.updated_by,
-    ...(row.kind != null ? { kind: row.kind } : {}),
-    ...(row.locator != null ? { locator: row.locator } : {}),
   };
 }
 

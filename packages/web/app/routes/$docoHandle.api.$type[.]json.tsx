@@ -15,6 +15,7 @@
 //   { ok: true, type: "<plural>", doco_id, count, items: [...] }
 
 import { listEntitiesByDoco } from "@doco/db";
+import { nodeToApi } from "~/lib/api-capture-shape";
 import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { CAPTURE_REGISTRY } from "~/lib/node-capture-registry.server";
 
@@ -46,18 +47,7 @@ export async function loader({
     type: params.type,
     doco_id: meta.docoId,
     count: rows.length,
-    items: rows.map((r) => ({
-      id: r.id,
-      prose: r.prose,
-      extra: r.extra,
-      lifecycle: r.lifecycle,
-      created_at: r.created_at,
-      created_by: r.created_by,
-      updated_at: r.updated_at,
-      updated_by: r.updated_by,
-      ...(r.kind != null ? { kind: r.kind } : {}),
-      ...(r.locator != null ? { locator: r.locator } : {}),
-    })),
+    items: rows.map(nodeToApi),
   });
 }
 

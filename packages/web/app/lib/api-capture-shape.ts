@@ -1,13 +1,16 @@
-// The read helper that lets the node API speak the canonical row shape —
-// `{ prose, extra, kind?, … }` — for every node type. There is no `data`
-// envelope and no type-named key: a node's text is `prose`, full stop.
+// The ONE serializer that turns a stored node row into its API JSON shape —
+// `{ id, entity_type, doco_id, lifecycle, prose, extra, kind?, locator?,
+// proposer_id?, …audit }`. There is no `data` envelope and no type-named key.
+// Every node-returning surface (GET by id, list endpoints, the Slack mirror)
+// runs rows through this so the wire shape can't drift between them.
 //
 // Kept dependency-free (only a structural type) so it unit-tests without
-// dragging the route factory's server-only imports (`@vercel/functions`,
-// `@doco/db`, …). The shape below is structurally a `@doco/db` `NodeRow`.
+// dragging server-only imports (`@vercel/functions`, `@doco/db`, …). The shape
+// below is structurally a `@doco/db` `NodeRow`, so a `NodeRow` is accepted
+// directly.
 
-/** Minimal node-row shape `buildEntityGetResponse` needs (a structural NodeRow). */
-export interface EntityGetRecord {
+/** Structural `@doco/db` `NodeRow` — the input `nodeToApi` serializes. */
+export interface NodeApiRow {
   id: string;
   node_type: string;
   doco_id: string;
@@ -24,11 +27,12 @@ export interface EntityGetRecord {
 }
 
 /**
- * Build the GET response body for a node entity: the honest row — `prose`, the
- * `extra` bag, the promoted columns it carries, identity + audit. One shape;
- * no synthetic `data` envelope.
+ * Serialize a node row to its API JSON: the honest row — `prose`, the `extra`
+ * bag, whichever promoted columns it carries, identity + audit. One shape for
+ * every node-returning endpoint; no synthetic `data` envelope, no type-named
+ * key. `node_type` is surfaced as `entity_type` (the public discriminator).
  */
-export function buildEntityGetResponse(rec: EntityGetRecord): Record<string, unknown> {
+export function nodeToApi(rec: NodeApiRow): Record<string, unknown> {
   return {
     id: rec.id,
     entity_type: rec.node_type,
