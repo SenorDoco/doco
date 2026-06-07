@@ -16,6 +16,7 @@ const SURVIVING_HANDLES = [
   "data-decisions",
   "glossary",
   "org-chart",
+  "evals",
 ] as const;
 
 const REMOVED_HANDLES = ["glossaries"] as const;
