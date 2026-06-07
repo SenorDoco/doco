@@ -142,14 +142,16 @@ export async function loadUserSections(principalId: string): Promise<{
   // and explicit doco_users rows.
   const accessibleDocoIds = new Set<string>();
   const directDocos = await withClient((c) =>
-    c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1", [principalId]),
+    c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1 AND deleted_at IS NULL", [
+      principalId,
+    ]),
   );
   for (const r of directDocos.rows) accessibleDocoIds.add(String(r.id));
   const workspaceDocos = await withClient((c) =>
     c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
          SELECT workspace_id FROM workspace_users WHERE user_id = $1
-       )`,
+       ) AND deleted_at IS NULL`,
       [principalId],
     ),
   );
@@ -304,7 +306,7 @@ async function loadWorkspaceInviteTarget(workspaceId: string): Promise<{
          LEFT JOIN LATERAL (
            SELECT id
              FROM docos
-            WHERE workspace_id = o.id
+            WHERE workspace_id = o.id AND deleted_at IS NULL
             ORDER BY handle ASC
             LIMIT 1
          ) d ON true
