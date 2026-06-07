@@ -30,19 +30,19 @@ across the whole project's lifetime.
 
 For you, the agent, this means:
 
-- Before answering substantive questions, search the Doco. Prior
+- Before answering substantive questions, search the doco. Prior
   decisions and rules likely shape the right answer.
 - When you make a non-trivial choice or finish load-bearing work,
-  follow this Doco's policies to decide what, if anything, to
-  capture. **Each Doco sets its own capture rules — the universal
+  follow this doco's policies to decide what, if anything, to
+  capture. **Each doco sets its own capture rules — the universal
   protocol does not mandate captures.**
-- Avoid contradicting Decisions and Rules already in the Doco.
+- Avoid contradicting Decisions and Rules already in the doco.
 
 Use Doco naturally as a verb when you talk with the project owner:
 "Want me to doco it?", "Doco this decision", "Doco this ADR", and
 "Doco the flow" are all normal client-facing phrases. When a project
 owner says "doco it", interpret that as a request to capture per
-this Doco's policies.
+this doco's policies.
 
 This document carries the **three invariants** every reply must follow.
 
@@ -54,7 +54,7 @@ There are two access channels — pick the one your runtime supports.
 \`.mcp.json\` registering an MCP server at
 \`.agents/doco-mcp-server.mjs\`. The server exposes these tools:
 
-  - \`doco_search\` — query the project's Doco for relevant prior
+  - \`doco_search\` — query the project's doco for relevant prior
     context. Cheap; call before answering substantive questions. If
     repo-root \`.env\` has \`DOCO_REFRESH\` + \`DOCO_CLIENT_ID\`,
     it refreshes a missing or stale \`DOCO_ACCESS\` locally before
@@ -110,11 +110,11 @@ that, every API call is:
     GET https://doco.to/<handle>/<endpoint>
     Authorization: Bearer doco_at_<token>
 
-The \`<handle>\` is a **Doco** — the unit every endpoint addresses.
+The \`<handle>\` is a **doco** — the unit every endpoint addresses.
 Access is granted to you at one of two levels: a **Workspace** (covers
-every Doco in it — the common case when an owner invites an agent) or a
-**single Doco**. \`GET /api/v1/whoami.json\` returns both — the
-Workspaces you can reach and the Docos inside them, each with your role
+every doco in it — the common case when an owner invites an agent) or a
+**single doco**. \`GET /api/v1/whoami.json\` returns both — the
+Workspaces you can reach and the docos inside them, each with your role
 — so you find a project's handle without guessing instead of asking.
 
 ### Repo-local credential sharing
@@ -166,12 +166,12 @@ needs:
    re-approving, and the pinned value never goes stale. Private to the
    user; never commit. Revoke from the same page.
 
-2. **Read-only, shareable with the repo.** The Doco owner mints a
+2. **Read-only, shareable with the repo.** The doco owner mints a
    read-only token at \`/<handle>/project-tokens\` (owner-only) and
    commits it to \`.doco/project-tokens.json\` as
    \`{"<handle>": "doco_pt_<token>"}\`. The MCP server reads this file
    automatically as a fallback for \`DOCO_ACCESS\`. Only suitable when
-   the Doco's contents are OK to be readable by anyone with read access
+   the doco's contents are OK to be readable by anyone with read access
    to the repo — minting requires an explicit confirmation to that
    effect. Reader-only, indefinite TTL, revoke from the same page.
 
@@ -184,7 +184,7 @@ All optional. Surface them once, immediately after each successful
 auth, then continue with the substantive answer. Do not re-prompt on
 every turn.
 
-If the Doco is **public**, you can skip OAuth entirely. Either way,
+If the doco is **public**, you can skip OAuth entirely. Either way,
 the endpoint shapes are:
 
     GET   https://doco.to/<handle>/status.json              # counts + freshness
@@ -238,12 +238,12 @@ Action capture example:
       "outputs": { "commit": "abc123" }
     }
 
-Public Docos return 200 for unauthenticated reads; private Docos
+Public docos return 200 for unauthenticated reads; private docos
 return 403 until you finish the OAuth recipe.
 
 ## Bootstrap: read the policies
 
-Every Doco has a set of **policies** — short, project-owner-authored
+Every doco has a set of **policies** — short, project-owner-authored
 statements that govern how you, the agent, author nodes inside it.
 There is one \`policy\` entity type; each carries a standalone
 \`kind\`, all surfaced at bootstrap:
@@ -258,7 +258,7 @@ There is one \`policy\` entity type; each carries a standalone
     with an LLM when you capture a node. \`on_violation: block\` means
     the host will reject your capture.
 
-Policies apply only to their Doco. Treat them as binding on your
+Policies apply only to their doco. Treat them as binding on your
 authoring at all times.
 
 The project owner can **add, edit, or remove policies any time**,
@@ -267,7 +267,7 @@ changed mid-session.
 
 Each policy also has its own stable, linkable page at
 \`https://doco.to/<handle>/policies/<policy_id>\`. You already hold the
-\`<handle>\` (per Doco) and every policy's \`id\` from the bootstrap
+\`<handle>\` (per doco) and every policy's \`id\` from the bootstrap
 payload below, so you can always build this URL. **Whenever you refer
 to, cite, or quote a policy — in chat, a PR comment, a commit message,
 anywhere — link to it at that URL** so the reader can open the exact
@@ -278,7 +278,7 @@ Once you hold a Bearer token, hit:
     GET https://doco.to/api/v1/agent-bootstrap.json
     Authorization: Bearer doco_at_<token>
 
-The response carries the policies for every Doco you have
+The response carries the policies for every doco you have
 read-or-above access to, exposed as a single \`policies[]\` array,
 each entry carrying its \`kind\`.
 
@@ -334,7 +334,7 @@ Sniffing for hits... · Flipping through notes... · Scanning the graph... ·
 Searching the lore... · Peering into the orb... · Combing the archive... ·
 Hunting for prior art... · Pinging the memory... · Cross-referencing... ·
 Checking what's known... · Tracing the trail... · Diving in... ·
-Polling the Doco... · Skimming the index... · Asking the oracle... · Searching...
+Polling the doco... · Skimming the index... · Asking the oracle... · Searching...
 
 **Only render the verb if you have DOCO_ACCESS, or a shared \`.env\`
 with DOCO_REFRESH + DOCO_CLIENT_ID, and expect the search to succeed.**
@@ -373,7 +373,7 @@ bootstrap couldn't reach Doco):
    "Authenticated as <credential>. I've got the following levels of
    access:" block — render it verbatim at the top of your reply, then
    retry \`doco_search\` and continue with the substantive answer using
-   the now-available Doco.
+   the now-available doco.
 5. **If it returns "still pending" or any error**: end your reply
    with a short "I'll wait — send any message when you've approved"
    plus the tally line. **Do NOT continue substantive work without
@@ -406,7 +406,7 @@ Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 ## 3. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
 Render one tally line per source the agent has potential access to
-(each Doco or workspace listed in the project's connections).
+(each doco or workspace listed in the project's connections).
 
 **Connected source** (you queried or wrote — even if N == 0):
 
@@ -427,9 +427,9 @@ only before your first search of a cold session.)
 
 The tally lines are the LAST lines of the LAST text output of the turn.
 
-- \`<doco-or-workspace-name>\` is the human-readable Doco handle if access is
-  scoped to one Doco, or the workspace name if access is granted
-  workspace-wide (covering multiple Docos under that workspace).
+- \`<doco-or-workspace-name>\` is the human-readable doco handle if access is
+  scoped to one doco, or the workspace name if access is granted
+  workspace-wide (covering multiple docos under that workspace).
 - \`<N>\` counts distinct entities the project owner captured on your
   behalf this turn (patch-3-fields-of-1-Decision = 1).
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
@@ -441,10 +441,10 @@ The tally lines are the LAST lines of the LAST text output of the turn.
 
 ## Doco is the memory — your private memory isn't
 
-Project-shaped knowledge lives **in this Doco**, not in your private
+Project-shaped knowledge lives **in this doco**, not in your private
 agent memory (Claude memory files, ChatGPT system notes, scratch
-files). Other contributors on this Doco can't read your private
-memory; the next session of *you* can't either, reliably. The Doco
+files). Other contributors on this doco can't read your private
+memory; the next session of *you* can't either, reliably. The doco
 is the shared source of truth — that's the whole point.
 `;
 
@@ -484,7 +484,7 @@ entity type that governs how nodes are authored:
 ## Things only people can do
 
 - Sign in to the host (via whichever providers it offers).
-- Create / delete a Doco.
+- Create / delete a doco.
 - Approve OAuth device-flow grants at /device.
 - Mint human collaboration invites.
 `;
