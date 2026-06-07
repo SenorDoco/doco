@@ -278,6 +278,12 @@ export interface MintApiKeyInput {
   me: CurrentPrincipal;
   label: string;
   grants: ApiKeyGrantInput[];
+  /**
+   * 'actor' mints a user-level credential reaching ALL the minter's workspaces
+   * (one per session, scoped at refresh time) — no explicit grants. 'regular'
+   * (default) is the existing per-workspace/doco scoped token.
+   */
+  grantType?: "regular" | "actor";
 }
 
 export interface ApiKeyGrantInput {
@@ -294,6 +300,35 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
   if (!trimmedLabel) {
     throw new Error("Label is required.");
   }
+
+  // Actor token: a user-level credential with NO explicit grants. Its breadth
+  // is the minter's LIVE workspace membership, resolved (and down-scoped to one
+  // workspace) when refreshTokens exchanges it for an access token. So skip the
+  // per-target grant machinery entirely — there are no targets to validate.
+  if (input.grantType === "actor") {
+    const client = await registerClient({
+      client_name: trimmedLabel,
+      redirect_uris: [PERSONAL_API_KEY_REDIRECT],
+    });
+    const tokens = await issueTokens({
+      client_id: client.client_id,
+      user_id: input.me.id,
+      token_name: trimmedLabel,
+      granted_doco_ids: [],
+      granted_workspace_ids: [],
+      scope: null,
+      grant_type: "actor",
+    });
+    return {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      client_id: client.client_id,
+      expires_in: tokens.expires_in,
+      client_name: trimmedLabel,
+      scope_grants: [],
+    };
+  }
+
   if (input.grants.length === 0) {
     throw new Error("Pick at least one workspace or doco to scope this key to.");
   }

@@ -39,7 +39,7 @@ vi.mock("~/lib/oauth-server.server", () => ({
   assertSingleWorkspaceGrant: mocks.assertSingleWorkspaceGrant,
 }));
 
-import { addGrantsToApiKey, listApiKeysForUser } from "../api-keys.server";
+import { addGrantsToApiKey, listApiKeysForUser, mintApiKey } from "../api-keys.server";
 
 describe("listApiKeysForUser", () => {
   beforeEach(() => {
@@ -82,6 +82,54 @@ describe("listApiKeysForUser", () => {
         source: "oauth",
       }),
     ]);
+  });
+});
+
+describe("mintApiKey — actor token", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.registerClient.mockResolvedValue({ client_id: "doco_client_actor" });
+    mocks.issueTokens.mockResolvedValue({
+      access_token: "doco_at_x",
+      refresh_token: "doco_rt_y",
+      token_type: "Bearer",
+      expires_in: 3600,
+      scope: null,
+    });
+  });
+
+  it("mints with grant_type='actor' and NO explicit grants (breadth resolved live)", async () => {
+    const minted = await mintApiKey({
+      me: { id: "user_owner" } as never,
+      label: "my roaming agent",
+      grants: [],
+      grantType: "actor",
+    });
+
+    expect(mocks.issueTokens).toHaveBeenCalledWith(
+      expect.objectContaining({
+        grant_type: "actor",
+        granted_doco_ids: [],
+        granted_workspace_ids: [],
+        user_id: "user_owner",
+      }),
+    );
+    // No per-target grant machinery runs for an actor token.
+    expect(mocks.assertSingleWorkspaceGrant).not.toHaveBeenCalled();
+    expect(mocks.listWorkspacesForUser).not.toHaveBeenCalled();
+    expect(minted.scope_grants).toEqual([]);
+    expect(minted.refresh_token).toBe("doco_rt_y");
+  });
+
+  it("still requires a label", async () => {
+    await expect(
+      mintApiKey({
+        me: { id: "user_owner" } as never,
+        label: "  ",
+        grants: [],
+        grantType: "actor",
+      }),
+    ).rejects.toThrow(/label/i);
   });
 });
 

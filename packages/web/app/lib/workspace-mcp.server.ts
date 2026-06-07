@@ -89,7 +89,7 @@ async function tokenReachesWorkspace(
 }
 
 /** True if the principal is a workspace member or holds a Doco grant inside it. */
-async function principalReachesWorkspace(
+export async function principalReachesWorkspace(
   principalId: string,
   workspaceId: string,
 ): Promise<boolean> {
