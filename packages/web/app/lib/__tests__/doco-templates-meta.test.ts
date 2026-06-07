@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { DOCO_TEMPLATES, findDocoTemplateMeta } from "../doco-templates-meta";
 
 // The picker offers the blank `generic` start, `process`,
-// `github-pull-requests`, the four decision-record templates, `glossary`, and
-// `org-chart`. The glossary concept returned as the singular `glossary`
-// (reshaped around References) and `org-chart` returned as the abstraction for
-// documenting org structure; only the plural `glossaries` handle stays removed.
+// `github-pull-requests`, the four decision-record templates, `glossary`,
+// `org-chart`, and `product-roadmap`. The glossary concept returned as the
+// singular `glossary` (reshaped around References) and `org-chart` returned as
+// the abstraction for documenting org structure; only the plural `glossaries`
+// handle stays removed.
 const SURVIVING_HANDLES = [
   "generic",
   "process",
@@ -16,6 +17,7 @@ const SURVIVING_HANDLES = [
   "data-decisions",
   "glossary",
   "org-chart",
+  "product-roadmap",
 ] as const;
 
 const REMOVED_HANDLES = ["glossaries"] as const;
