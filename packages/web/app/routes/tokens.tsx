@@ -84,6 +84,19 @@ export async function action({ request }: { request: Request }): Promise<ActionR
 
   if (intent === "mint") {
     const label = String(form.get("label") ?? "").trim();
+
+    // Actor token: reaches all the minter's workspaces, one per session. No
+    // explicit grants to pick — the scope is resolved (and pinned to one
+    // workspace) at refresh time.
+    if (form.get("grant_type") === "actor") {
+      try {
+        const minted = await mintApiKey({ me, label, grants: [], grantType: "actor" });
+        return { intent: "mint", ok: true, minted };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : "Failed to mint token." };
+      }
+    }
+
     const rawGrants = String(form.get("grants") ?? "").trim();
     if (!rawGrants) return { error: "Pick at least one workspace or doco to scope this key to." };
 
@@ -549,6 +562,9 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
     navigation.state === "submitting" && navigation.formData?.get("intent") === "mint";
 
   const [label, setLabel] = useState("");
+  // "scoped" = bind to specific workspaces/docos; "actor" = a user-level
+  // credential reaching all the minter's workspaces, one per session.
+  const [mintMode, setMintMode] = useState<"scoped" | "actor">("scoped");
 
   // Same drill-down grant picker the collaborators page uses
   // (decision_per_type_write_grants): workspace → docos → read/write + per-type.
@@ -573,7 +589,9 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     const found = validateGrantForm({
       name: { value: label, message: "Enter a label for this token." },
-      grantCount: grants.length,
+      // An actor token needs no grant selection — it reaches all your
+      // workspaces, scoped to one per session at use time.
+      grantCount: mintMode === "actor" ? 1 : grants.length,
     });
     if (found.length === 0) {
       setErrors({});
@@ -645,22 +663,68 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
         </p>
       ) : (
         <>
-          <div ref={grantsRef}>
-            <GrantPicker
-              catalog={catalog}
-              grants={grants}
-              forToken
-              onChange={(next) => {
-                setGrants(next);
-                if (next.length > 0) clearError("grants");
-              }}
-            />
-            {errors.grants ? (
-              <p role="alert" className="mt-2 text-xs text-destructive">
-                {errors.grants}
-              </p>
-            ) : null}
-          </div>
+          <fieldset className="space-y-2">
+            <legend className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              Scope
+            </legend>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="grant_type"
+                value="scoped"
+                checked={mintMode === "scoped"}
+                onChange={() => setMintMode("scoped")}
+                className="mt-1"
+                data-testid="scope-mode-scoped"
+              />
+              <span>
+                <span className="font-semibold">Specific workspaces or docos</span>
+                <span className="block text-xs text-muted-foreground">
+                  Bind this token to exactly what you pick below.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="grant_type"
+                value="actor"
+                checked={mintMode === "actor"}
+                onChange={() => setMintMode("actor")}
+                className="mt-1"
+                data-testid="scope-mode-actor"
+              />
+              <span>
+                <span className="font-semibold">All my workspaces — one at a time</span>
+                <span className="block text-xs text-muted-foreground">
+                  A user-level credential that reaches every workspace you belong to, but each
+                  session works in just one — pinned by <code>.doco/connections.md</code> or the{" "}
+                  <code>doco_select_workspace</code> tool. Best for one agent that moves between
+                  your projects. It can never touch two workspaces in the same session.
+                </span>
+              </span>
+            </label>
+          </fieldset>
+
+          {mintMode === "scoped" ? (
+            <div ref={grantsRef}>
+              <GrantPicker
+                catalog={catalog}
+                grants={grants}
+                forToken
+                onChange={(next) => {
+                  setGrants(next);
+                  if (next.length > 0) clearError("grants");
+                }}
+              />
+              {errors.grants ? (
+                <p role="alert" className="mt-2 text-xs text-destructive">
+                  {errors.grants}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="flex justify-end">
             <button
               type="submit"
@@ -704,7 +768,9 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
     <div className="text-sm text-muted-foreground">
       Scope:{" "}
       {minted.scope_grants.length === 0 ? (
-        <em>none</em>
+        // A regular mint always carries ≥1 grant, so an empty scope is an
+        // actor token: it reaches all your workspaces, one per session.
+        <em>all your workspaces — one at a time</em>
       ) : (
         minted.scope_grants.map((g) => (
           <span key={`${g.level}:${g.target_id}`} className="mr-2">
