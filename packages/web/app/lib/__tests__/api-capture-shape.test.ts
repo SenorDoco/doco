@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type EntityGetRecord, buildEntityGetResponse } from "../api-capture-shape";
+import { type NodeApiRow, nodeToApi } from "../api-capture-shape";
 
 // The READ side exposes the honest node row — `prose` + `extra` + the promoted
 // columns + audit. There is no `data` envelope and no type-named key.
 
-function row(
-  over: Partial<EntityGetRecord> & Pick<EntityGetRecord, "id" | "node_type">,
-): EntityGetRecord {
+function row(over: Partial<NodeApiRow> & Pick<NodeApiRow, "id" | "node_type">): NodeApiRow {
   return {
     doco_id: "doco_1",
     lifecycle: "active",
@@ -23,9 +21,9 @@ function row(
   };
 }
 
-describe("buildEntityGetResponse — the honest node row on read", () => {
+describe("nodeToApi — the honest node row on read", () => {
   it("returns prose + extra + promoted columns, no `data` envelope, no type-named key", () => {
-    const res = buildEntityGetResponse(
+    const res = nodeToApi(
       row({
         id: "reference_1",
         node_type: "reference",
@@ -43,7 +41,7 @@ describe("buildEntityGetResponse — the honest node row on read", () => {
   });
 
   it("omits absent promoted columns and defaults extra to {}", () => {
-    const res = buildEntityGetResponse(row({ id: "intent_1", node_type: "intent" }));
+    const res = nodeToApi(row({ id: "intent_1", node_type: "intent" }));
     expect(res.prose).toBe("");
     expect(res.extra).toEqual({});
     expect(res).not.toHaveProperty("kind");
