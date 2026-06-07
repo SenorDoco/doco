@@ -478,6 +478,27 @@ describe("org-tree perspective — 10 realistic rendering scenarios", () => {
     expect(byId(data, gone)?.lifecycle).toBe("retired");
   });
 
+  it("P11 · a re-pointed seat follows its ACTIVE line, not the retired old one", async () => {
+    // Re-pointing a reporting line retires the old `has_parent` edge (created
+    // first) and adds a new active one (edges are immutable). Both seats stay
+    // active, so toggling "Retired" off doesn't hide either manager — the tree
+    // must place the seat under the LIVE manager. Regression for the org-tree
+    // bug where "first parent wins" followed the older, retired edge and the
+    // seat rendered under its FORMER manager.
+    await clearGraph();
+    const oldBoss = await principal("Alex — CEO", { kind: "human" });
+    const newBoss = await principal("Juanfer — Head of Growth", { kind: "human" });
+    const seat = await principal("Daniel — Head of Crawling", { kind: "human" });
+    await relEdge(seat, oldBoss, "has_parent", { lifecycle: "retired", tsOffsetSec: 1 });
+    await relEdge(seat, newBoss, "has_parent", { lifecycle: "active", tsOffsetSec: 2 });
+    const data = await loadOrgTreeData(dbm.db, docoId, "acme");
+    expect(byId(data, seat)?.reports_to).toBe(newBoss);
+    const layout = layoutOrgTree(data.nodes, null);
+    const solidIntoSeat = layout.edges.filter((x) => !x.dotted && x.target === seat);
+    expect(solidIntoSeat).toHaveLength(1);
+    expect(solidIntoSeat[0]?.source).toBe(newBoss);
+  });
+
   it("P10 · a 12-seat company with one matrix link lays out fully", async () => {
     await clearGraph();
     const ceo = await principal("CEO — Person", { kind: "human" });
