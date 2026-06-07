@@ -538,9 +538,8 @@ export async function renderOperationLines(opts: {
   id: string;
   /**
    * Readable label used as the link text on every op line. For nodes
-   * this is the first line of the type-named prose field
-   * (`firstLine(fm[entityType])`); policies/principals pass their
-   * display text directly.
+   * this is the first line of the node's `prose` (`firstLine(fm.prose)`);
+   * policies/principals pass their display text directly.
    */
   label: string;
   /**
@@ -933,11 +932,10 @@ async function finishNodeCapture(args: {
  *   - `extra`  → the free-form per-type bag (→ the `extra` jsonb).
  *   - lifecycle / deprecated / outcome → the lifecycle envelope.
  *
- * For backward compatibility a legacy type-named prose field
- * (`decision`/`intent`/…) is still accepted as an alias for `prose`, and
- * attribute keys may be sent flat at the top level (the pre-slim-down
- * shape). Required-field and enum validation is NOT enforced here — it
- * lives in the Doco's authoring policies.
+ * A node's text has exactly one name — `prose`; there is no per-type alias.
+ * Attribute keys may be sent flat at the top level or nested under `extra`.
+ * Required-field and enum validation is NOT enforced here — it lives in the
+ * Doco's authoring policies.
  */
 export interface GenericNodeDraft {
   /** Node prose; first line is the label. */
@@ -951,7 +949,7 @@ export interface GenericNodeDraft {
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
-  /** Legacy type-named prose field + flat attribute keys. */
+  /** Flat attribute keys (an alternative to nesting them under `extra`). */
   [k: string]: unknown;
 }
 
@@ -993,14 +991,8 @@ export async function captureGenericNode(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
 
-  // Resolve prose: the raw `prose` key wins; the legacy type-named field
-  // (`decision`/`intent`/…) is accepted as an alias for back-compat.
-  const proseRaw =
-    typeof draft.prose === "string"
-      ? draft.prose
-      : typeof draft[entityType] === "string"
-        ? (draft[entityType] as string)
-        : undefined;
+  // A node's text has exactly one name: `prose`.
+  const proseRaw = typeof draft.prose === "string" ? draft.prose : undefined;
   if (!proseRaw?.trim()) return { error: "prose is required." };
   const prose = proseRaw.trim();
 
@@ -1296,17 +1288,10 @@ export async function updateEntity(opts: {
   };
 
   if (typeNamedColumn) {
-    // A node's text is `prose` (the typeNamedColumn). Also accept the legacy
-    // type-named patch key (`state`/`intent`/…) as an alias, mirroring
-    // captureGenericNode.
-    const raw =
-      typeNamedColumn in normalizedPatch
-        ? normalizedPatch[typeNamedColumn]
-        : entityType in normalizedPatch
-          ? normalizedPatch[entityType]
-          : undefined;
-    if (raw !== undefined) {
-      setScalar(typeNamedColumn, typeof raw === "string" ? raw.trim() : undefined);
+    // A node's text has exactly one name: `prose`.
+    if ("prose" in normalizedPatch) {
+      const raw = normalizedPatch.prose;
+      setScalar("prose", typeof raw === "string" ? raw.trim() : undefined);
     }
   }
   // Policies carry no type-named prose column: their `kind`, `predicate`,
@@ -1340,9 +1325,8 @@ export async function updateEntity(opts: {
     // `extra` is flattened onto the data bag below, never stored as a
     // nested object (storage re-bags the flat keys into the extra jsonb).
     "extra",
-    // `prose` (the typeNamedColumn) and the legacy type-named alias are handled
-    // above as the node's text — keep both out of the generic extra loop.
-    ...(typeNamedColumn ? [typeNamedColumn, entityType] : []),
+    // `prose` is the node's text, handled above — keep it out of the loop.
+    ...(typeNamedColumn ? ["prose"] : []),
   ]);
   // Apply a flat key onto the data bag with set/clear semantics, tracking the
   // change + op. Shared by the generic top-level loop and the `extra`

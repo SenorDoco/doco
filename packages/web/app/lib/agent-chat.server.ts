@@ -1694,10 +1694,10 @@ defaults to "active" except where noted.
 \`{ prose, kind?, extra }\`. \`prose\` is the node's full markdown
 text (first line = the label shown in lists and BPMN swim lanes);
 \`kind\` is the promoted classifier a couple of types carry (eval,
-state); every other per-type field goes inside \`extra\`. There
-is no separate \`summary\` / \`body_md\` / \`title\` / \`description\`
-field. The legacy type-named prose key (\`intent\` / \`decision\` / …)
-is still accepted as an alias for \`prose\`.
+state); every other per-type field goes inside \`extra\`. A node's
+text has exactly one name — \`prose\`; there is no separate
+\`summary\` / \`body_md\` / \`title\` / \`description\` field, and no
+per-type alias.
 
 ${renderCaptureCheatsheet()}
 - Policy (Suggestion, owner-only): POST /<handle>/api/policies.json with kind*("suggestion"), agent_instruction*(one natural-language instruction), authored_by_principal_id?.

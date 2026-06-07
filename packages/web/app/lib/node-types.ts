@@ -5,12 +5,8 @@ import { NODE_CATALOG } from "@doco/shared";
 // where the low-level catalog lives.
 export interface NodeTypeMeta {
   segment: string;
-  proseField: string;
 }
 
 export const NODE_TYPE_META: Record<string, NodeTypeMeta> = Object.fromEntries(
-  Object.entries(NODE_CATALOG).map(([type, meta]) => [
-    type,
-    { segment: meta.segment, proseField: meta.proseField },
-  ]),
+  Object.entries(NODE_CATALOG).map(([type, meta]) => [type, { segment: meta.segment }]),
 );

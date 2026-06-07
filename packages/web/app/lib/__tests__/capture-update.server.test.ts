@@ -89,7 +89,7 @@ describe("updateEntity", () => {
       pluralDir: "states",
       id: STATE_ID,
       patch: {
-        state: "Renamed state name",
+        prose: "Renamed state name",
         kind: "terminal",
       },
       docoHost: "https://doco.test",
@@ -98,8 +98,7 @@ describe("updateEntity", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      // The text is `prose`; the legacy `state` patch key is accepted as an
-      // alias and normalized to it, so the change is reported as `prose`.
+      // A node's text has exactly one name: `prose`.
       changed: ["prose", "kind"],
     });
     expect(upsertEntity).toHaveBeenCalledWith(
@@ -138,7 +137,7 @@ describe("updateEntity", () => {
       pluralDir: "ideas",
       id: IDEA_ID,
       patch: {
-        idea: "Renamed idea name",
+        prose: "Renamed idea name",
       },
       docoHost: "https://doco.test",
       actorId: null,
@@ -266,7 +265,7 @@ describe("updateEntity", () => {
       pluralDir: "references",
       id: REFERENCE_ID,
       patch: {
-        reference: "New title",
+        prose: "New title",
         extra: { content_hash: "new_hash" },
       },
       docoHost: "https://doco.test",
