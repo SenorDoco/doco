@@ -101,6 +101,42 @@ function roleRank(role: string): number {
   return role === "owner" ? 2 : role === "writer" ? 1 : 0;
 }
 
+/** The transactional DB client type, taken from `withTransaction`'s callback so
+ * this module needs no direct `pg` dependency. */
+type OauthDbClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+/**
+ * Resolve the single-workspace ACCESS-token grant for an actor credential. An
+ * actor token stores no grants — its breadth is the user's LIVE membership,
+ * narrowed per session to the ONE workspace named via the RFC 8707 `resource`,
+ * at min(live role, the actor_role ceiling). Shared by the authorization-code
+ * exchange (issueTokens) and the refresh exchange (refreshTokens) so the FIRST
+ * access token is scoped identically to every later one — never minted empty.
+ */
+async function resolveActorAccessGrant(
+  c: OauthDbClient,
+  args: { userId: string; resource: string | null | undefined; actorRole: string | null },
+): Promise<{ workspaceId: string; role: string }> {
+  const workspaceId = parseWorkspaceFromResource(args.resource ?? null);
+  if (!workspaceId) {
+    throw new OauthError(
+      "invalid_scope",
+      "an actor token must request exactly one workspace via the `resource` parameter",
+    );
+  }
+  const m = await c.query<{ role: string }>(
+    "SELECT role FROM workspace_users WHERE workspace_id = $1 AND user_id = $2",
+    [workspaceId, args.userId],
+  );
+  const liveRole = m.rows[0]?.role;
+  if (!liveRole) {
+    throw new OauthError("invalid_grant", "the user is not a member of the requested workspace");
+  }
+  const cap = args.actorRole ?? "owner";
+  const role = roleRank(cap) < roleRank(liveRole) ? cap : liveRole;
+  return { workspaceId, role };
+}
+
 function mergeScope(
   baseIds: string[],
   baseRoles: Record<string, string>,
@@ -236,7 +272,7 @@ export async function assertSingleWorkspaceGrant(grants: {
   if (realDocoIds.length > 0 && touched.size <= 1) {
     await withClient(async (c) => {
       const r = await c.query<{ owner_id: string }>(
-        "SELECT owner_id FROM docos WHERE id = ANY($1::text[])",
+        "SELECT owner_id FROM docos WHERE id = ANY($1::text[]) AND deleted_at IS NULL",
         [realDocoIds],
       );
       for (const row of r.rows) {
@@ -605,6 +641,13 @@ export interface IssueTokensInput {
    * access token gets min(live role, this). null = owner = full live role.
    */
   actor_role?: DocoRole | null;
+  /**
+   * RFC 8707 `resource` from the token request — the per-workspace MCP endpoint.
+   * REQUIRED when `grant_type` is 'actor': the FIRST access token is scoped to
+   * exactly that workspace (the refresh token keeps the deferred breadth).
+   * Ignored for regular tokens, which carry their own explicit grants.
+   */
+  resource?: string | null;
 }
 
 export interface IssuedTokens {
@@ -624,12 +667,44 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
   const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
   const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
   const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
-  const rolesJson = JSON.stringify(input.granted_doco_roles ?? {});
+  const docoRolesJson = JSON.stringify(input.granted_doco_roles ?? {});
   const docoWriteTypesJson = JSON.stringify(input.granted_doco_write_types ?? {});
-  const workspaceIds = input.granted_workspace_ids ?? [];
-  const workspaceRolesJson = JSON.stringify(input.granted_workspace_roles ?? {});
   const workspaceWriteTypesJson = JSON.stringify(input.granted_workspace_write_types ?? {});
+  // The refresh token stores the grants verbatim. An actor refresh keeps its
+  // deferred breadth (empty grants + grant_type 'actor'); the access token
+  // below is what gets scoped to the requested workspace.
+  const refreshDocoIds = input.granted_doco_ids;
+  const refreshWorkspaceIds = input.granted_workspace_ids ?? [];
+  const refreshWorkspaceRolesJson = JSON.stringify(input.granted_workspace_roles ?? {});
   await withTransaction(async (c) => {
+    // Access-token grants. For actor, scope to the ONE workspace named via
+    // `resource` at the user's live role (capped) — exactly like refresh — so
+    // the FIRST access token works, not just post-refresh ones. Regular tokens
+    // copy their explicit grants through.
+    let accessDocoIds = refreshDocoIds;
+    let accessDocoRolesJson = docoRolesJson;
+    let accessDocoWriteTypesJson = docoWriteTypesJson;
+    let accessWorkspaceIds = refreshWorkspaceIds;
+    let accessWorkspaceRolesJson = refreshWorkspaceRolesJson;
+    let accessWorkspaceWriteTypesJson = workspaceWriteTypesJson;
+    if (input.grant_type === "actor") {
+      const { workspaceId, role } = await resolveActorAccessGrant(c, {
+        userId: input.user_id,
+        resource: input.resource,
+        actorRole: input.actor_role ?? null,
+      });
+      accessDocoIds = [];
+      accessDocoRolesJson = "{}";
+      accessDocoWriteTypesJson = "{}";
+      accessWorkspaceIds = [workspaceId];
+      accessWorkspaceRolesJson = JSON.stringify({ [workspaceId]: role });
+      accessWorkspaceWriteTypesJson = "{}";
+    }
+    // Defense in depth: an access token must never span more than one workspace.
+    await assertSingleWorkspaceGrant({
+      granted_doco_ids: accessDocoIds,
+      granted_workspace_ids: accessWorkspaceIds,
+    });
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, user_id, token_name, granted_doco_ids,
@@ -642,12 +717,12 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         input.client_id,
         input.user_id,
         input.token_name ?? null,
-        input.granted_doco_ids,
-        rolesJson,
-        docoWriteTypesJson,
-        workspaceIds,
-        workspaceRolesJson,
-        workspaceWriteTypesJson,
+        accessDocoIds,
+        accessDocoRolesJson,
+        accessDocoWriteTypesJson,
+        accessWorkspaceIds,
+        accessWorkspaceRolesJson,
+        accessWorkspaceWriteTypesJson,
         input.scope,
         access_expires,
       ],
@@ -664,11 +739,11 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
         input.client_id,
         input.user_id,
         input.token_name ?? null,
-        input.granted_doco_ids,
-        rolesJson,
+        refreshDocoIds,
+        docoRolesJson,
         docoWriteTypesJson,
-        workspaceIds,
-        workspaceRolesJson,
+        refreshWorkspaceIds,
+        refreshWorkspaceRolesJson,
         workspaceWriteTypesJson,
         input.scope,
         refresh_expires,
@@ -800,30 +875,14 @@ export async function refreshTokens(args: {
     let accessWorkspaceWriteTypesJson = JSON.stringify(row.granted_workspace_write_types ?? {});
 
     if (row.grant_type === "actor") {
-      const workspaceId = parseWorkspaceFromResource(args.resource ?? null);
-      if (!workspaceId) {
-        throw new OauthError(
-          "invalid_scope",
-          "an actor token must request exactly one workspace via the `resource` parameter",
-        );
-      }
-      const m = await c.query<{ role: string }>(
-        "SELECT role FROM workspace_users WHERE workspace_id = $1 AND user_id = $2",
-        [workspaceId, row.user_id],
-      );
-      const liveRole = m.rows[0]?.role;
-      if (!liveRole) {
-        throw new OauthError(
-          "invalid_grant",
-          "the user is not a member of the requested workspace",
-        );
-      }
-      // Apply the actor's role CEILING: the access token gets the lower of the
-      // user's live role and the cap chosen at mint. A null cap means owner —
-      // i.e. no ceiling, the original "full live role" behavior. The cap can
-      // only ever narrow, never raise above the live role.
-      const cap = row.actor_role ?? "owner";
-      const role = roleRank(cap) < roleRank(liveRole) ? cap : liveRole;
+      // Narrow the access token to the ONE workspace named via `resource`, at
+      // the user's live role capped by the actor ceiling. Same resolution the
+      // authorization-code exchange uses (resolveActorAccessGrant).
+      const { workspaceId, role } = await resolveActorAccessGrant(c, {
+        userId: row.user_id,
+        resource: args.resource,
+        actorRole: row.actor_role,
+      });
       accessDocoIds = [];
       accessDocoRolesJson = "{}";
       accessDocoWriteTypesJson = "{}";

@@ -199,20 +199,21 @@ describe("writableTypeGroups", () => {
 });
 
 describe("availableScopes", () => {
-  it("offers account only when the user owns an workspace", () => {
+  it("never offers an account scope when granting a person — only concrete targets", () => {
+    // "All your workspaces" is a token-only authorization now; a person is
+    // granted specific workspaces/docos, never a whole-account delegation.
     const scopes = availableScopes(catalog).map((s) => s.scope);
-    // catalog: workspace_A is owner → account offered; workspace + doco + types too.
-    expect(scopes).toEqual(["account", "workspace", "doco", "types"]);
+    expect(scopes).not.toContain("account");
+    expect(scopes).toEqual(["workspace", "doco", "types"]);
   });
   it("uses plural scope labels for broad targets", () => {
     expect(availableScopes(catalog).map((s) => s.title)).toEqual([
-      "All your workspaces and docos",
       "Specific workspace(s)",
       "Specific docos",
       "Specific node or edge types",
     ]);
   });
-  it("omits account when the user owns no workspace", () => {
+  it("offers the same concrete scopes when the user owns no workspace", () => {
     const noOwner: GrantCatalog = {
       workspaces: [{ id: "workspace_X", label: "x" }],
       targets: [
@@ -239,9 +240,8 @@ describe("availableScopes", () => {
   });
   it("leads the token consent with the actor scope when the host opts in", () => {
     // A token can't snapshot every workspace, but the actor ("act as me")
-    // credential is the token-world equivalent: user-level breadth, one
-    // workspace per session. It leads, then workspace/doco/types. Note the
-    // account scope is still withheld for a token.
+    // credential is the breadth option: user-level reach, one workspace per
+    // session. It leads, then workspace/doco/types.
     expect(
       availableScopes(catalog, { forToken: true, offerActor: true }).map((s) => s.scope),
     ).toEqual(["actor", "workspace", "doco", "types"]);
@@ -365,13 +365,6 @@ describe("coerceSingleWorkspace (token one-workspace cap)", () => {
 
 describe("describeExistingGrant", () => {
   it("summarizes each level", () => {
-    const acct: ExistingGrant = {
-      level: "account",
-      targetId: "",
-      label: "alice",
-      role: "writer",
-      writeTypes: ["*"],
-    };
     const workspace: ExistingGrant = {
       level: "workspace",
       targetId: "workspace_acme",
@@ -386,7 +379,6 @@ describe("describeExistingGrant", () => {
       role: "owner",
       writeTypes: [],
     };
-    expect(describeExistingGrant(acct)).toBe("Entire account: alice — writes everything");
     expect(describeExistingGrant(workspace)).toBe("Workspace: acme — writes 1 type");
     expect(describeExistingGrant(doco)).toBe("Doco: acme/api — owns — writes everything");
   });
@@ -457,7 +449,7 @@ describe("per-type access levels", () => {
 describe("scopeShowsPerTypeControls", () => {
   it("ONLY the types scope shows per-type controls", () => {
     expect(scopeShowsPerTypeControls("types")).toBe(true);
-    expect(scopeShowsPerTypeControls("account")).toBe(false);
+    expect(scopeShowsPerTypeControls("actor")).toBe(false);
     expect(scopeShowsPerTypeControls("workspace")).toBe(false);
     expect(scopeShowsPerTypeControls("doco")).toBe(false);
   });

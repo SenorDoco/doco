@@ -78,7 +78,7 @@ export async function loader({ request }: { request: Request }) {
         `SELECT d.owner_id, MAX(a.at)::text AS last_at
            FROM audit_events a
            JOIN docos d ON d.id = a.doco_id
-          WHERE d.owner_id = ANY($1)
+          WHERE d.owner_id = ANY($1) AND d.deleted_at IS NULL
           GROUP BY d.owner_id`,
         [workspaceIds],
       );
@@ -113,7 +113,7 @@ export async function loader({ request }: { request: Request }) {
                 MAX(t.updated_at)::text AS last_entity_at
            FROM (${nodesUnionSql}) t
            JOIN docos d ON d.id = t.doco_id
-          WHERE d.owner_id = ANY($1)
+          WHERE d.owner_id = ANY($1) AND d.deleted_at IS NULL
           GROUP BY d.owner_id`,
         [workspaceIds],
       );

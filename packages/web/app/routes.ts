@@ -79,6 +79,9 @@ export default [
   // Vercel-Cron-hit endpoint that POSTs an alert payload to
   // DOCO_HEALTH_WEBHOOK_URL whenever the snapshot is non-OK.
   route("admin/agent-health-cron", "routes/admin.agent-health-cron.tsx"),
+  // Vercel-Cron-hit endpoint that hard-deletes Docos tombstoned past the
+  // 30-day soft-delete grace window (docos.deleted_at).
+  route("admin/purge-deleted-docos", "routes/admin.purge-deleted-docos.tsx"),
   // Raw-row dump for diagnosing specific failed/stuck turns.
   // Returns the actual agent_turn_metrics / capture_timings rows
   // behind the aggregated health signals.

@@ -727,7 +727,7 @@ export async function listSlackPersonalConnections(args: {
                   o.handle AS workspace_handle
              FROM docos d
              LEFT JOIN workspaces o ON o.id = d.workspace_id
-            WHERE d.id = ANY($1::text[])
+            WHERE d.id = ANY($1::text[]) AND d.deleted_at IS NULL
             ORDER BY COALESCE(o.handle, ''), d.handle`,
           [docoIds],
         ),
@@ -825,7 +825,7 @@ export async function listSlackChannelConnections(args: {
          LEFT JOIN workspaces o
            ON gcc.target_level = 'workspace' AND o.id = gcc.target_id
          LEFT JOIN docos d
-           ON gcc.target_level = 'doco' AND d.id = gcc.target_id
+           ON gcc.target_level = 'doco' AND d.id = gcc.target_id AND d.deleted_at IS NULL
          LEFT JOIN workspaces dorg
            ON d.workspace_id = dorg.id
         WHERE gcc.provider = 'slack'
@@ -1457,7 +1457,7 @@ async function listSlackConnectionAccessibleDocos(
       `SELECT d.id, d.handle, d.workspace_id, o.handle AS workspace_handle
          FROM docos d
          JOIN workspaces o ON o.id = d.workspace_id
-        WHERE ${where}
+        WHERE ${where} AND d.deleted_at IS NULL
         ORDER BY o.handle ASC, d.handle ASC`,
       [connection.targetId],
     ),
@@ -1757,7 +1757,7 @@ async function readSlackDocoApiSettings(
     }>(
       `SELECT visibility, data->>'goal' AS goal, created_at::text AS created_at, updated_at::text AS updated_at
          FROM docos
-        WHERE id = $1`,
+        WHERE id = $1 AND deleted_at IS NULL`,
       [doco.id],
     ),
   );
@@ -2090,7 +2090,7 @@ async function readSlackConnectionSearchHits(
          SELECT d.id, COALESCE(o.handle, '') || '/' || d.handle AS doco_label
            FROM docos d
            LEFT JOIN workspaces o ON o.id = d.workspace_id
-          WHERE ${where}
+          WHERE ${where} AND d.deleted_at IS NULL
        ),
        query AS (
          SELECT websearch_to_tsquery('english', $2) AS q
@@ -2147,7 +2147,7 @@ async function readSlackConnectionOverviewHits(
          SELECT d.id, COALESCE(o.handle, '') || '/' || d.handle AS doco_label
            FROM docos d
            LEFT JOIN workspaces o ON o.id = d.workspace_id
-          WHERE ${where}
+          WHERE ${where} AND d.deleted_at IS NULL
        ),
        all_nodes AS (
          ${slackOverviewUnionSql()}

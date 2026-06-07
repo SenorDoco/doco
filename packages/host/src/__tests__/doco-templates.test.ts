@@ -58,6 +58,7 @@ describe("removed templates are gone", () => {
       "org-chart",
       "process",
       "product-decisions",
+      "product-roadmap",
     ]);
   });
 });
@@ -512,14 +513,15 @@ describe("process template", () => {
       ]);
     });
 
-    it("exempts a process container (incoming has_parent) from the membership floor", () => {
-      // The membership floor is a hard block, but a top-level process Action —
-      // the TARGET of its children's `has_parent` — is the root and is excused
-      // via exempt_when_incoming_edge_type so it is never falsely blocked.
+    it("exempts a top-level process from the membership floor via the top_level_process flag", () => {
+      // The membership floor is a hard block, but a top-level process Action has
+      // no parent of its own. The ONLY thing that excuses it is the explicit
+      // `top_level_process` flag — there is no structural incoming-edge exemption.
       const floor = requiresEdge("has_parent", "action", "action");
       expect(floor?.predicate?.kind).toBe("requires_edge");
       if (floor?.predicate?.kind !== "requires_edge") return;
-      expect(floor.predicate.exempt_when_incoming_edge_type).toBe("has_parent");
+      expect(floor.predicate.exempt_when_field_truthy).toBe("top_level_process");
+      expect(floor.predicate.exempt_when_incoming_edge_type).toBeUndefined();
       // A hard block (default), not a warn.
       expect(floor.on_violation ?? "block").toBe("block");
     });
@@ -669,10 +671,12 @@ describe("process template", () => {
     });
   });
 
-  describe("entry-point exemption on the membership floor", () => {
-    // An Action explicitly catalogued as an entry point (an `entry_point` flag
-    // in its `extra`) is excused from the `has_parent` membership floor — it
-    // stands on its own as a way into the work and needs no parent process.
+  describe("top-level-process exemption on the membership floor", () => {
+    // A top-level process Action has no parent. The ONLY thing that excuses a
+    // flow node from the `has_parent` membership floor is the explicit
+    // `top_level_process` flag — the structural incoming-`has_parent` exemption
+    // is gone, and `entry_point` no longer waives membership (it now governs
+    // sequence-flow wiring, not pool membership).
     const floor = template.policies.find(
       (r) =>
         r.predicate?.kind === "requires_edge" &&
@@ -681,25 +685,66 @@ describe("process template", () => {
         r.predicate.direction !== "incoming",
     );
 
-    it("carries exempt_when_field_truthy: entry_point alongside the root exemption", () => {
+    it("is exempted only by the top_level_process flag (no structural incoming exemption)", () => {
       expect(floor?.predicate?.kind).toBe("requires_edge");
       if (floor?.predicate?.kind !== "requires_edge") return;
-      expect(floor.predicate.exempt_when_field_truthy).toBe("entry_point");
-      expect(floor.predicate.exempt_when_incoming_edge_type).toBe("has_parent");
+      expect(floor.predicate.exempt_when_field_truthy).toBe("top_level_process");
+      expect(floor.predicate.exempt_when_incoming_edge_type).toBeUndefined();
     });
 
     it("requires the flow node's OUTGOING has_parent (direction stated, not implied)", () => {
       // The required relationship is the flow node → its parent process Action:
       // an OUTGOING `has_parent`. Stating it explicitly keeps the rendered policy
-      // unambiguous next to its incoming-edge exemption (which fires the other
-      // way, for a node that is itself a parent).
+      // unambiguous.
       expect(floor?.predicate?.kind).toBe("requires_edge");
       if (floor?.predicate?.kind !== "requires_edge") return;
       expect(floor.predicate.direction).toBe("outgoing");
     });
 
-    it("documents the entry-point exemption in its prose", () => {
-      expect(floor?.policy ?? "").toMatch(/entry point/i);
+    it("documents the top-level-process exemption in its prose", () => {
+      expect(floor?.policy ?? "").toMatch(/top.level process/i);
+    });
+  });
+
+  describe("sequence-flow wiring rules (entry points)", () => {
+    // Two role-free `requires_edge` floors keep a committed process wired up:
+    //  - reach: every flow node is reached by the flow (≥1 INCOMING `flows_to`)
+    //    unless it is an `entry_point`;
+    //  - lead:  an `entry_point` leads somewhere (≥1 OUTGOING `flows_to`).
+    // Both fire on the committed stages only — a `drafting` sketch may dangle.
+    const reach = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "requires_edge" &&
+        r.predicate.edge_type === "flows_to" &&
+        r.predicate.direction === "incoming",
+    );
+    const lead = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "requires_edge" &&
+        r.predicate.edge_type === "flows_to" &&
+        r.predicate.require_when_field_truthy === "entry_point",
+    );
+
+    it("a flow node must be reached (≥1 incoming flows_to) unless entry point or top-level process", () => {
+      expect(reach?.predicate?.kind).toBe("requires_edge");
+      if (reach?.predicate?.kind !== "requires_edge") return;
+      // Excused for the flow start (entry_point) and the pool container
+      // (top_level_process) — both are not reached-by-flow steps.
+      expect(reach.predicate.exempt_when_field_truthy).toBe("entry_point, top_level_process");
+      expect([...(reach.predicate.when_node_type ?? [])].sort()).toEqual([
+        "action",
+        "decision",
+        "state",
+      ]);
+      expect(reach.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+
+    it("an entry point must lead somewhere (≥1 outgoing flows_to)", () => {
+      expect(lead?.predicate?.kind).toBe("requires_edge");
+      if (lead?.predicate?.kind !== "requires_edge") return;
+      expect(lead.predicate.direction).toBe("outgoing");
+      expect(lead.predicate.require_when_field_truthy).toBe("entry_point");
+      expect(lead.fires_when_node_lifecycle).toEqual(["queued", "active"]);
     });
   });
 
@@ -709,6 +754,7 @@ describe("process template", () => {
         (r) =>
           r.predicate?.kind === "requires_edge" &&
           r.predicate.edge_type === "flows_to" &&
+          r.predicate.min_count === 2 &&
           (r.predicate.when_node_type?.includes("decision") ?? false),
       );
       expect(rule?.predicate?.kind).toBe("requires_edge");
@@ -1070,6 +1116,245 @@ describe("org-chart template", () => {
     it("teams / departments are Intents the seats are `attributed_to`", () => {
       expect(haystack).toMatch(/teams or departments/i);
       expect(haystack).toMatch(/`attributed_to`/);
+    });
+  });
+});
+
+describe("product-roadmap template", () => {
+  const template = findDocoTemplateByName("product-roadmap");
+  if (!template) throw new Error("product-roadmap template not registered");
+
+  it("is registered and findable by its plain handle", () => {
+    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "product-roadmap")).toBeDefined();
+    expect(findDocoTemplateByName("product-roadmap")?.name).toBe("product-roadmap");
+  });
+
+  it("has the expected metadata (icon, label, description, defaultNodeLifecycle)", () => {
+    expect(template.icon).toBe("🗺️");
+    expect(template.label).toBe("Product roadmap");
+    // A bet is parked / sketched before it is committed, so new nodes start as
+    // `drafting` and the owner/horizon gates spare a parking-lot idea.
+    expect(template.defaultNodeLifecycle).toBe("drafting");
+    expect(template.description).toMatch(/roadmap|outcome/i);
+    expect(template.description).toMatch(/now ?\/ ?next ?\/ ?later|horizon/i);
+  });
+
+  it("opens on the built-in List perspective (a roadmap is a filterable list of bets)", () => {
+    expect(template.perspectives).toEqual([{ slug: "list", isDefault: true }]);
+  });
+
+  describe("node-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_node_type",
+    )?.predicate;
+
+    it("admits only the roadmap node types (item, result, owner, evidence, decision, criteria)", () => {
+      expect(allowlist?.kind).toBe("requires_node_type");
+      if (allowlist?.kind !== "requires_node_type") return;
+      expect([...allowlist.node_types].sort()).toEqual(
+        ["decision", "eval", "intent", "principal", "reference", "rule"].sort(),
+      );
+    });
+
+    it("excludes delivery/changelog node types (Action, State, Log, Idea)", () => {
+      if (allowlist?.kind !== "requires_node_type") throw new Error("allowlist missing");
+      expect(allowlist.node_types).not.toContain("action");
+      expect(allowlist.node_types).not.toContain("state");
+      expect(allowlist.node_types).not.toContain("log");
+      expect(allowlist.node_types).not.toContain("idea");
+    });
+  });
+
+  describe("edge-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_edge_type",
+    )?.predicate;
+
+    it("admits the roadmap relationship edges and bars process sequence flow", () => {
+      expect(allowlist?.kind).toBe("requires_edge_type");
+      if (allowlist?.kind !== "requires_edge_type") return;
+      expect(new Set(allowlist.edge_types)).toEqual(
+        new Set([
+          "has_parent",
+          "attributed_to",
+          "supports",
+          "constrained_by",
+          "relates_to",
+          "derived_from",
+          "replaces",
+        ]),
+      );
+      expect(allowlist.edge_types).not.toContain("flows_to");
+    });
+  });
+
+  describe("completeness gates (committed only)", () => {
+    function requiresEdge(edgeType: string, target: string | null, on: string) {
+      return template.policies.find(
+        (r) =>
+          r.predicate?.kind === "requires_edge" &&
+          r.predicate.edge_type === edgeType &&
+          (target === null
+            ? r.predicate.target_node_type === undefined
+            : r.predicate.target_node_type === target) &&
+          (r.predicate.when_node_type?.includes(on as never) ?? false),
+      );
+    }
+
+    it("a committed roadmap item is attributed to an owner Principal (attributed_to → principal)", () => {
+      const gate = requiresEdge("attributed_to", "principal", "intent");
+      expect(gate?.predicate?.kind).toBe("requires_edge");
+      expect(gate?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+
+    it("a committed roadmap item carries a `horizon` (requires_field, committed only)", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "requires_field" && r.predicate.when_node_type?.includes("intent"),
+      );
+      expect(gate?.predicate?.kind).toBe("requires_field");
+      if (gate?.predicate?.kind !== "requires_field") return;
+      expect(gate.predicate.fields).toEqual(["horizon"]);
+      expect(gate.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+
+    it("a committed result (Eval) links the item it measures (supports, committed only)", () => {
+      const gate = requiresEdge("supports", null, "eval");
+      expect(gate?.predicate?.kind).toBe("requires_edge");
+      expect(gate?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+
+    it("seeds the horizon gate as a blocking deterministic policy carrying the predicate verbatim", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "requires_field" && r.predicate.when_node_type?.includes("intent"),
+      );
+      if (!gate) throw new Error("horizon gate missing");
+      const seeded = templatePolicyToPolicyRow(gate);
+      expect(seeded.kind).toBe("deterministic");
+      expect(seeded.on_violation).toBe("block");
+      expect(seeded.predicate.sub_kind).toBe("requires_field");
+      expect(seeded.predicate.fields).toEqual(["horizon"]);
+      expect(seeded.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+  });
+
+  describe("soft semantic gates (warnings, LLM-judged)", () => {
+    it("warns when a node does not read as roadmap content (membership), exempting owners and criteria", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          /belongs on a product roadmap/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      // Membership is an all-stages nudge, like the other templates.
+      expect(gate?.fires_when_node_lifecycle).toBeUndefined();
+      if (gate?.predicate?.kind !== "probabilistic") return;
+      const types = gate.predicate.when_node_type ?? [];
+      expect(types).toEqual(expect.arrayContaining(["intent", "eval", "decision", "reference"]));
+      // Owners (Principals) and criteria (Rules) are supporting cast, not bets.
+      expect(types).not.toContain("principal");
+      expect(types).not.toContain("rule");
+    });
+
+    it("warns (committed) when an item is framed as an output, not a measurable outcome", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          r.predicate.when_node_type?.includes("intent") &&
+          /outcome/i.test(r.predicate.spec) &&
+          /output|feature/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      expect(gate?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+
+    it("warns (committed) when a result does not close the loop (target → actual → verdict → decision)", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          r.predicate.when_node_type?.includes("eval") &&
+          /persevere|iterate|pivot|kill/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      expect(gate?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+      if (gate?.predicate?.kind !== "probabilistic") return;
+      expect(gate.predicate.spec).toMatch(/expected/i);
+      expect(gate.predicate.spec).toMatch(/last_status|pending|validated|invalidated/i);
+    });
+
+    it("warns when an owner does not read as a single accountable person/role/team", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          r.predicate.when_node_type?.includes("principal") &&
+          /accountable owner/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+    });
+  });
+
+  describe("queued and active are held to identical rules", () => {
+    // A `queued` (planned) item asserts it is on the roadmap, so it is gated by
+    // exactly the same policies as an `active` (in-progress) one: no roadmap
+    // policy may fire on one committed stage without the other.
+    it("no policy gates one committed stage without the other", () => {
+      for (const p of template.policies) {
+        const lifecycles = p.fires_when_node_lifecycle;
+        if (!lifecycles) continue;
+        expect(lifecycles.includes("queued")).toBe(lifecycles.includes("active"));
+      }
+    });
+  });
+
+  describe("guidance encodes the roadmap best practices", () => {
+    const summaries = template.policies.filter((r) => !r.predicate).map((r) => r.policy ?? "");
+    const haystack = summaries.join("\n");
+
+    it("leads with outcomes over outputs", () => {
+      expect(haystack).toMatch(/outcomes,? not outputs/i);
+    });
+    it("buckets items into Now / Next / Later horizons and keeps dates an extension", () => {
+      expect(haystack).toMatch(/now ?\/ ?next ?\/ ?later/i);
+      expect(haystack).toMatch(/date/i);
+    });
+    it("gives every item one accountable owner", () => {
+      expect(haystack).toMatch(/accountable owner/i);
+      expect(haystack).toMatch(/`attributed_to`/);
+    });
+    it("groups bets under outcomes/objectives and aligns to OKRs", () => {
+      expect(haystack).toMatch(/`has_parent`/);
+      expect(haystack).toMatch(/OKR|objective|key result/i);
+    });
+    it("prioritizes explicitly with criteria captured as Rules", () => {
+      expect(haystack).toMatch(/prioriti/i);
+      expect(haystack).toMatch(/RICE|value vs\.? effort/i);
+      expect(haystack).toMatch(/`constrained_by`/);
+    });
+    it("grounds bets in evidence via References", () => {
+      expect(haystack).toMatch(/evidence|discovery|research/i);
+      expect(haystack).toMatch(/Reference/);
+    });
+    it("wires dependencies with relates_to", () => {
+      expect(haystack).toMatch(/dependenc/i);
+      expect(haystack).toMatch(/`relates_to`/);
+    });
+    it("closes the loop — a bet is done when measured, with an Eval result", () => {
+      expect(haystack).toMatch(/close the loop/i);
+      expect(haystack).toMatch(/measured|measur/i);
+      expect(haystack).toMatch(/persevere|iterate|pivot|kill/i);
+    });
+    it("revisits the roadmap on a cadence and supersedes rather than rewrites", () => {
+      expect(haystack).toMatch(/cadence|quarterly/i);
+      expect(haystack).toMatch(/supersede|`replaces`/i);
+    });
+    it("keeps a roadmap distinct from a backlog and a release plan", () => {
+      expect(haystack).toMatch(/not a backlog/i);
+      expect(haystack).toMatch(/release plan/i);
+    });
+    it("tells agents to author via the contract + changesets", () => {
+      expect(haystack).toMatch(/authoring-contract/);
+      expect(haystack).toMatch(/changesets/);
     });
   });
 });

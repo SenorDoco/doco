@@ -29,11 +29,10 @@ export interface Invite {
   minted_by_user_id: EntityId<"principal"> | null;
   /** Every grant the redeemer receives on consume. */
   grants: Array<{
-    level: "account" | "workspace" | "doco";
+    level: "workspace" | "doco";
     target_id: string;
     role: "owner" | "writer" | "reader";
     write_types: string[];
-    account_grantor_user_id?: string;
   }>;
   /** ISO timestamp this invite expires (default 7 days from issue). */
   expires_at: string;
@@ -120,9 +119,8 @@ export class InviteStore {
     ttlDays = 7,
     role: "owner" | "writer" | "reader" = "writer",
     opts: {
-      level?: "account" | "workspace" | "doco";
+      level?: "workspace" | "doco";
       workspace_id?: EntityId<"workspace">;
-      account_grantor_user_id?: EntityId<"principal">;
       write_types?: string[];
       grants?: Invite["grants"];
     } = {},
@@ -145,17 +143,9 @@ export class InviteStore {
           : [
               {
                 level,
-                target_id:
-                  level === "account"
-                    ? (opts.account_grantor_user_id ?? "")
-                    : level === "workspace"
-                      ? (opts.workspace_id ?? "")
-                      : (docoId ?? ""),
+                target_id: level === "workspace" ? (opts.workspace_id ?? "") : (docoId ?? ""),
                 role,
                 write_types: opts.write_types ?? defaultWriteTypesForRole(role),
-                ...(level === "account" && opts.account_grantor_user_id
-                  ? { account_grantor_user_id: opts.account_grantor_user_id }
-                  : {}),
               },
             ],
       expires_at: expires.toISOString(),

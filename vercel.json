@@ -9,6 +9,10 @@
     {
       "path": "/api/github/backfill-sweep",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/admin/purge-deleted-docos",
+      "schedule": "0 3 * * *"
     }
   ]
 }

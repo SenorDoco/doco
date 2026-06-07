@@ -28,10 +28,9 @@ import {
 // Shared GRANT WIZARD (collaborators + API-tokens).
 //
 //   Step 1 — pick the scope (raised buttons; the chosen one sits pressed):
-//            all workspaces and docos / specific workspaces / specific docos /
-//            specific node or edge types.
+//            specific workspaces / specific docos / specific node or edge
+//            types (and, for tokens only, the "act as me" actor scope).
 //   Then, per scope:
-//     account — one ACCESS dropdown (read/write/own) over the whole account.
 //     workspace     — every workspace listed, each with its own ACCESS dropdown
 //               on the right; grant several at once.
 //     doco    — first choose ONE workspace (pressed/removable); then its
@@ -57,9 +56,8 @@ export function GrantPicker({
   /** Grants the grantee/token already holds (widen-existing flow). */
   existing?: ExistingGrant[];
   /**
-   * Minting a TOKEN rather than granting a person: withholds the account
-   * ("all your workspaces") scope and clamps the selection to a single
-   * workspace, mirroring the server-side one-workspace token cap.
+   * Minting a TOKEN rather than granting a person: clamps the selection to a
+   * single workspace, mirroring the server-side one-workspace token cap.
    */
   forToken?: boolean;
   /**
@@ -193,8 +191,6 @@ export function GrantPicker({
 
       {scope === "actor" ? (
         <ActorStep grants={grants} onChange={emit} />
-      ) : scope === "account" ? (
-        <AccountStep catalog={catalog} grants={grants} onChange={emit} />
       ) : scope === "workspace" ? (
         // Bound mode grants the whole workspace via the inline dropdown above —
         // no multi-workspace list step.
@@ -418,52 +414,6 @@ function ActorStep({
         capped by your own role in each (pick owner but you're a writer somewhere and it stays a
         writer there). New workspaces you join are reachable automatically. Revoke any time.
       </p>
-    </div>
-  );
-}
-
-// Account: one ACCESS dropdown over the whole account (no per-type, no target).
-function AccountStep({
-  catalog,
-  grants,
-  onChange,
-}: {
-  catalog: GrantCatalog;
-  grants: ComposedGrant[];
-  onChange: (grants: ComposedGrant[]) => void;
-}) {
-  const maxRole: DocoRole = catalog.targets.some(
-    (t) => t.level === "workspace" && t.maxRole === "owner",
-  )
-    ? "owner"
-    : "reader";
-  const current = grants.find((g) => g.level === "account");
-  const value: TargetRoleChoice = current?.role ?? "none";
-  const apply = (v: TargetRoleChoice) => {
-    if (v === "none") {
-      onChange(grants.filter((g) => g.level !== "account"));
-    } else {
-      onChange([
-        ...grants.filter((g) => g.level !== "account"),
-        { level: "account", targetId: "", role: v, writeTypes: v === "writer" ? ["*"] : [] },
-      ]);
-    }
-  };
-  return (
-    <div className="rounded-md border border-border px-3 py-3" data-testid="grant-account-step">
-      <p className="mb-2 text-sm text-muted-foreground">
-        Grants this access on <strong>every workspace you own</strong> and all their docos —
-        including ones created later.
-      </p>
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-xs uppercase tracking-wide text-muted-foreground">Access</span>
-        <AccessSelect
-          testid="grant-role-account"
-          maxRole={maxRole}
-          value={value}
-          onChange={apply}
-        />
-      </div>
     </div>
   );
 }

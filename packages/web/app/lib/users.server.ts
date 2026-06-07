@@ -142,14 +142,16 @@ export async function loadUserSections(principalId: string): Promise<{
   // and explicit doco_users rows.
   const accessibleDocoIds = new Set<string>();
   const directDocos = await withClient((c) =>
-    c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1", [principalId]),
+    c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1 AND deleted_at IS NULL", [
+      principalId,
+    ]),
   );
   for (const r of directDocos.rows) accessibleDocoIds.add(String(r.id));
   const workspaceDocos = await withClient((c) =>
     c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
          SELECT workspace_id FROM workspace_users WHERE user_id = $1
-       )`,
+       ) AND deleted_at IS NULL`,
       [principalId],
     ),
   );
@@ -304,7 +306,7 @@ async function loadWorkspaceInviteTarget(workspaceId: string): Promise<{
          LEFT JOIN LATERAL (
            SELECT id
              FROM docos
-            WHERE workspace_id = o.id
+            WHERE workspace_id = o.id AND deleted_at IS NULL
             ORDER BY handle ASC
             LIMIT 1
          ) d ON true
@@ -355,34 +357,6 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
             .map((s) => s.trim())
             .filter(Boolean),
         );
-
-  // Account-level invite: grants the redeemer access to the inviter's
-  // whole account. No target — the inviter IS the scope.
-  // Anyone may invite into their own account; the grant is capped at
-  // owner (the broadest delegation) and stored on the invite as an
-  // account grant keyed to the inviter.
-  if (level === "account") {
-    const role: DocoRole = parsedRole || "writer";
-    const store = InviteStore.forDoco(rootDir());
-    const invite = await store.issueInvite(null, me.id as EntityId<"principal">, 3, role, {
-      level: "account",
-      account_grantor_user_id: me.id as EntityId<"principal">,
-      ...(writeTypes ? { write_types: writeTypes } : {}),
-    });
-    const url = new URL(request.url);
-    const origin = `${url.protocol}//${url.host}`;
-    return {
-      intent: "invite",
-      ok: true,
-      invite_url: `${origin}/invite/${invite.code}`,
-      doco_url: "",
-      recipe_url: `${origin}/protocol/agent-oauth-recipe`,
-      device_url: `${origin}/device`,
-      invite_expires_at: invite.expires_at,
-      level,
-      role,
-    };
-  }
 
   let inviterRole: DocoRole | null = null;
   let docoId: string | null = null;
@@ -456,17 +430,9 @@ export async function handleUserInviteAction(request: Request): Promise<UserInvi
 /** The inviter's own role on a grant target, for the role-cap check. */
 async function inviterRoleOnTarget(
   meId: string,
-  level: "account" | "workspace" | "doco",
+  level: "workspace" | "doco",
   targetId: string,
 ): Promise<DocoRole | null> {
-  if (level === "account") {
-    // You can mint an account invite only if you own at least one workspace.
-    const workspaces = await listWorkspacesForUser(meId);
-    for (const o of workspaces) {
-      if ((await getWorkspaceRole(o.id, meId)) === "owner") return "owner";
-    }
-    return null;
-  }
   if (level === "workspace") return getWorkspaceRole(targetId, meId);
   const doco = await getDocoById(targetId);
   if (!doco) return null;
@@ -497,12 +463,11 @@ async function handleMultiGrantInvite(
   for (const raw of parsed) {
     if (!raw || typeof raw !== "object") return { error: "Malformed grant entry." };
     const g = raw as { level?: unknown; targetId?: unknown; role?: unknown; writeTypes?: unknown };
-    const level =
-      g.level === "account" || g.level === "workspace" || g.level === "doco" ? g.level : null;
+    const level = g.level === "workspace" || g.level === "doco" ? g.level : null;
     const role = typeof g.role === "string" ? (g.role as DocoRole) : null;
     const targetId = typeof g.targetId === "string" ? g.targetId : "";
     if (!level || !role || !ALL_ROLES.includes(role)) return { error: "Invalid grant." };
-    if (level !== "account" && !targetId) return { error: "Grant missing a target." };
+    if (!targetId) return { error: "Grant missing a target." };
 
     const myRole = await inviterRoleOnTarget(me.id, level, targetId);
     if (!myRole) return { error: `You don't have access to grant on a ${level}.` };
@@ -510,13 +475,7 @@ async function handleMultiGrantInvite(
       return { error: `Can't grant '${role}' where you only hold '${myRole}'.` };
     }
     const write_types = normalizeWriteTypes(Array.isArray(g.writeTypes) ? g.writeTypes : []);
-    specs.push({
-      level,
-      target_id: targetId,
-      role,
-      write_types,
-      ...(level === "account" ? { account_grantor_user_id: me.id } : {}),
-    });
+    specs.push({ level, target_id: targetId, role, write_types });
   }
 
   const store = InviteStore.forDoco(rootDir());

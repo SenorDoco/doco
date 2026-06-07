@@ -17,7 +17,6 @@
 import {
   getDocoById,
   getUserById,
-  upsertAccountGrant,
   upsertDocoUser,
   upsertWorkspaceUser,
   withClient,
@@ -44,7 +43,7 @@ type LoaderError =
 type LoaderOk = {
   ok: true;
   code: string;
-  target: { level: "account" | "doco" | "workspace"; label: string };
+  target: { level: "doco" | "workspace"; label: string };
   inviter: { username: string } | null;
   expires_at: string;
   signedIn: { id: string; username: string } | null;
@@ -78,9 +77,6 @@ async function inviteTargetForDisplay(invite: Invite): Promise<LoaderOk["target"
   if (invite.grants.length > 1) {
     return { level: grant.level, label: `${invite.grants.length} access grants` };
   }
-  if (grant.level === "account") {
-    return { level: "account", label: "an entire account" };
-  }
   if (grant.level === "workspace") {
     const workspace = await getWorkspaceById(grant.target_id);
     return workspace ? { level: "workspace", label: workspace.handle } : null;
@@ -92,14 +88,8 @@ async function inviteTargetForDisplay(invite: Invite): Promise<LoaderOk["target"
 async function inviteContinueTarget(invite: Invite): Promise<{ to: string; label: string } | null> {
   const grant = primaryGrant(invite);
   if (!grant) return null;
-  if (invite.grants.length > 1 || grant.level === "account") {
-    return {
-      to: "/dashboard",
-      label:
-        invite.grants.length > 1
-          ? `${invite.grants.length} access grants`
-          : "the account you were invited to",
-    };
+  if (invite.grants.length > 1) {
+    return { to: "/dashboard", label: `${invite.grants.length} access grants` };
   }
   if (grant.level === "workspace") {
     const workspace = await getWorkspaceById(grant.target_id);
@@ -180,16 +170,7 @@ export async function action({
   }
 
   for (const g of consumed.grants) {
-    if (g.level === "account") {
-      const grantor = g.account_grantor_user_id ?? g.target_id;
-      if (!grantor) continue;
-      await upsertAccountGrant({
-        grantor_user_id: grantor,
-        grantee_user_id: principal.id,
-        role: g.role,
-        write_types: writeTypesForRedeemedGrant(g),
-      });
-    } else if (g.level === "workspace") {
+    if (g.level === "workspace") {
       await upsertWorkspaceUser({
         workspace_id: g.target_id,
         user_id: principal.id,
@@ -262,12 +243,7 @@ export default function InviteLanding({
       <Card>
         <CardHeader>
           <CardTitle>
-            You've been invited to{" "}
-            {loaderData.target.level === "workspace"
-              ? "workspace"
-              : loaderData.target.level === "account"
-                ? "account"
-                : "doco"}{" "}
+            You've been invited to {loaderData.target.level === "workspace" ? "workspace" : "doco"}{" "}
             <em>{loaderData.target.label}</em>
             {loaderData.inviter ? (
               <>
