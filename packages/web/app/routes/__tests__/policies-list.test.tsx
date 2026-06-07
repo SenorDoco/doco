@@ -304,6 +304,36 @@ describe("PolicyRow (policies list)", () => {
     expect(html).not.toContain("on violation");
   });
 
+  it("renders a deterministic policy with an unknown sub_kind without crashing the page", () => {
+    // Regression: a stored policy whose `sub_kind` is no longer in the check
+    // registry (legacy / BPMN-imported / hand-edited jsonb) crashed the whole
+    // policies page — `undefined is not an object (evaluating 'w[e].fields')` —
+    // because the renderer indexed the registry blindly. One bad row took down
+    // the list and left no way to even open and retire it. It must render
+    // gracefully: the raw sub_kind stands in as the headline, with no parts.
+    const html = renderRow({
+      handle: "runbook",
+      canEdit: true,
+      item: {
+        id: "policy_01HZORPHAN",
+        kind: "deterministic",
+        predicate: {
+          sub_kind: "obsolete_check",
+          edge_type: "supports",
+        } as never,
+        lifecycle: "active",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    });
+
+    expect(html).toContain("Deterministic");
+    expect(html).toContain("obsolete_check");
+    // The row still links to the policy's own page and keeps Modify, so the
+    // owner can fix or retire the offending policy.
+    expect(html).toContain('href="/runbook/policies/policy_01HZORPHAN"');
+    expect(html).toContain('href="/runbook/policies/policy_01HZORPHAN/edit"');
+  });
+
   it("renders the kind label and, for deterministic, the structured parts", () => {
     const html = renderRow({
       handle: "runbook",
