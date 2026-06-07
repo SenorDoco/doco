@@ -346,8 +346,8 @@ export async function loadProcessGraph(
   const processIds = new Set<string>();
   for (const row of allRows) {
     if (!FLOW_TYPES.has(row.entity_type)) continue;
-    const parent = edgeTargets(outgoingByType, row.id, "has_parent").find(
-      (id) => actionsById.has(id),
+    const parent = edgeTargets(outgoingByType, row.id, "has_parent").find((id) =>
+      actionsById.has(id),
     );
     if (!parent) continue;
     parentProcessByNode.set(row.id, parent);
@@ -361,7 +361,9 @@ export async function loadProcessGraph(
   // last. Ties fall through to id order downstream.
   const processPrecedence = new Map<string, number>();
   for (const id of processIds) {
-    const ms = actionsById.get(id)?.created_at ? Date.parse(actionsById.get(id)?.created_at ?? "") : Number.NaN;
+    const ms = actionsById.get(id)?.created_at
+      ? Date.parse(actionsById.get(id)?.created_at ?? "")
+      : Number.NaN;
     processPrecedence.set(id, Number.isFinite(ms) ? -ms : Number.NEGATIVE_INFINITY);
   }
 

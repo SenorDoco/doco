@@ -40,11 +40,7 @@ describe("computeBoundaryCircles", () => {
   });
 
   it("de-duplicates and sorts by direction then id across two focal pools", () => {
-    const nodes = [
-      node("m1", "pool:p"),
-      node("m2", "pool:p2"),
-      node("ext", "pool:q"),
-    ];
+    const nodes = [node("m1", "pool:p"), node("m2", "pool:p2"), node("ext", "pool:q")];
     // `ext` both feeds m1 (entry) and twice receives from m2 (exit, deduped).
     const links = [flow("ext", "m1"), flow("m2", "ext"), flow("m2", "ext")];
     expect(computeBoundaryCircles(new Set(["pool:p", "pool:p2"]), nodes, links)).toEqual([

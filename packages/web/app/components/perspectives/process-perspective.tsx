@@ -30,7 +30,6 @@ import {
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { StableLabeledBezierEdge, clickableEdgeClassName } from "~/components/stable-labeled-edge";
-import { type BoundaryCircle, computeBoundaryCircles } from "~/lib/process-boundary";
 import {
   computeDepthFromCenter,
   focalEdgeWidth,
@@ -41,6 +40,7 @@ import {
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
+import { type BoundaryCircle, computeBoundaryCircles } from "~/lib/process-boundary";
 import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
@@ -502,7 +502,15 @@ export function ProcessPerspective({
         focusedEdgeId: focusedEdgeId ?? null,
         focusedNodeIds: focusedNodeIdSet,
       }),
-    [filteredNodes, pools, links, effectiveCenterId, expandedProcessId, focusedEdgeId, focusedNodeIdSet],
+    [
+      filteredNodes,
+      pools,
+      links,
+      effectiveCenterId,
+      expandedProcessId,
+      focusedEdgeId,
+      focusedNodeIdSet,
+    ],
   );
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),

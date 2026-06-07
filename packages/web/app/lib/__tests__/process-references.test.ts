@@ -96,7 +96,12 @@ describe("processReferences", () => {
   it("numbers only the focal process — never another process's pool, lanes, or nodes", () => {
     const pools: ProcessPool[] = [
       pool({ id: "pool:action_p", process_id: "action_p", label: "Focal", lifecycle: "active" }),
-      pool({ id: "pool:action_q", process_id: "action_q", label: "Neighbour", lifecycle: "active" }),
+      pool({
+        id: "pool:action_q",
+        process_id: "action_q",
+        label: "Neighbour",
+        lifecycle: "active",
+      }),
     ];
     const lanes: ProcessLane[] = [
       lane({ id: "pool:action_p::p1", pool_id: "pool:action_p", kind: "actor", label: "P1" }),
@@ -215,7 +220,14 @@ describe("processReferences", () => {
 
   it("omits the href when no doco handle is known", () => {
     const refs = processReferences(
-      [pool({ id: "pool:action_p", process_id: "action_p", label: "Process", lifecycle: "active" })],
+      [
+        pool({
+          id: "pool:action_p",
+          process_id: "action_p",
+          label: "Process",
+          lifecycle: "active",
+        }),
+      ],
       [],
       [],
       focal("pool:action_p"),

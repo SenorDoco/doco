@@ -271,7 +271,9 @@ describe("process template", () => {
 
   describe("no Intent / subprocess-naming policies remain", () => {
     it("seeds no edge-probabilistic subprocess-naming policy (a process is an Action now)", () => {
-      expect(template.policies.find((r) => r.predicate?.kind === "edge-probabilistic")).toBeUndefined();
+      expect(
+        template.policies.find((r) => r.predicate?.kind === "edge-probabilistic"),
+      ).toBeUndefined();
     });
 
     it("scopes no policy to the Intent node type", () => {
@@ -484,9 +486,7 @@ describe("process template", () => {
     it("tells agents a subprocess is a member Action with its own has_parent children", () => {
       // A subprocess is no longer a calling-Action ↔ purpose-Intent pairing: it
       // is simply a member Action that itself has `has_parent` children.
-      expect(
-        summaries.some((s) => /sub-?process/i.test(s) && /has_parent/i.test(s)),
-      ).toBe(true);
+      expect(summaries.some((s) => /sub-?process/i.test(s) && /has_parent/i.test(s))).toBe(true);
     });
     it("documents the four-stage lifecycle (drafting → queued → active → retired) and its changeset ops", () => {
       expect(
@@ -546,9 +546,7 @@ describe("process template", () => {
       expect(gate?.predicate?.kind).toBe("probabilistic");
       if (gate?.predicate?.kind !== "probabilistic") return;
       const types = gate.predicate.when_node_type ?? [];
-      expect(types).toEqual(
-        expect.arrayContaining(["action", "decision", "eval", "reference"]),
-      );
+      expect(types).toEqual(expect.arrayContaining(["action", "decision", "eval", "reference"]));
       expect(types).not.toContain("rule");
       expect(types).not.toContain("intent");
     });

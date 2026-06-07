@@ -38,11 +38,18 @@ async function seedDoco(id: string, templateHandle: string | null): Promise<void
   );
 }
 
-async function insertNode(id: string, docoId: string, nodeType: string, prose: string): Promise<void> {
-  await db.query(
-    "INSERT INTO nodes (id, doco_id, node_type, prose) VALUES ($1,$2,$3,$4)",
-    [id, docoId, nodeType, prose],
-  );
+async function insertNode(
+  id: string,
+  docoId: string,
+  nodeType: string,
+  prose: string,
+): Promise<void> {
+  await db.query("INSERT INTO nodes (id, doco_id, node_type, prose) VALUES ($1,$2,$3,$4)", [
+    id,
+    docoId,
+    nodeType,
+    prose,
+  ]);
 }
 
 async function insertEdge(
@@ -79,11 +86,35 @@ describe("process_intent_to_action migration", () => {
     await insertNode("action_01STEP", "doco_proc", "action", "review the application");
     await insertNode("principal_01OWN", "doco_proc", "principal", "Loan Officer");
     // Membership: the member supports the pool Intent.
-    await insertEdge("edge_mem", "doco_proc", "supports", "action_01STEP", "action", "intent_01POOL", "intent");
+    await insertEdge(
+      "edge_mem",
+      "doco_proc",
+      "supports",
+      "action_01STEP",
+      "action",
+      "intent_01POOL",
+      "intent",
+    );
     // The Intent's owner edge (attributed_to → principal).
-    await insertEdge("edge_own", "doco_proc", "attributed_to", "intent_01POOL", "intent", "principal_01OWN", "principal");
+    await insertEdge(
+      "edge_own",
+      "doco_proc",
+      "attributed_to",
+      "intent_01POOL",
+      "intent",
+      "principal_01OWN",
+      "principal",
+    );
     // A control edge that must be left alone (member's performer).
-    await insertEdge("edge_perf", "doco_proc", "attributed_to", "action_01STEP", "action", "principal_01OWN", "principal");
+    await insertEdge(
+      "edge_perf",
+      "doco_proc",
+      "attributed_to",
+      "action_01STEP",
+      "action",
+      "principal_01OWN",
+      "principal",
+    );
     // Auxiliary node-id references that must cascade with the rename.
     await db.query(
       "INSERT INTO embeddings (entity_id, doco_id, model_id, content_hash, embedding) VALUES ('intent_01POOL','doco_proc','m','h','\\x00'::bytea)",
@@ -170,7 +201,15 @@ describe("process_intent_to_action migration", () => {
     await seedDoco("doco_proc", "process");
     await insertNode("intent_01POOL", "doco_proc", "intent", "Approve a consumer loan");
     await insertNode("action_01STEP", "doco_proc", "action", "review the application");
-    await insertEdge("edge_mem", "doco_proc", "supports", "action_01STEP", "action", "intent_01POOL", "intent");
+    await insertEdge(
+      "edge_mem",
+      "doco_proc",
+      "supports",
+      "action_01STEP",
+      "action",
+      "intent_01POOL",
+      "intent",
+    );
 
     await clearMarkerAndReapply();
     // Re-applying WITHOUT clearing the marker is a guarded no-op.

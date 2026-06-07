@@ -82,7 +82,12 @@ function edge(
 
 // A process Action (pool header) plus a member node belonging to it. Most
 // tests below set up one process with a handful of members.
-function processNode(id: string, summary: string, lifecycle = "active", at = "2026-05-26T00:00:00.000Z") {
+function processNode(
+  id: string,
+  summary: string,
+  lifecycle = "active",
+  at = "2026-05-26T00:00:00.000Z",
+) {
   return { id, entity_type: "action", summary, lifecycle, created_at: at, data: {} };
 }
 
@@ -105,9 +110,16 @@ describe("loadProcessGraph", () => {
   });
 
   it("does not fetch Intent nodes — they are no longer part of the process model", async () => {
-    const { client, captured } = makeQueryClient({ nodes: [], principals: [], users: [], edges: [] });
+    const { client, captured } = makeQueryClient({
+      nodes: [],
+      principals: [],
+      users: [],
+      edges: [],
+    });
     await loadProcessGraph(client, "doco_01", { handle: "refunds" });
-    const nodeQuery = captured.find((q) => /FROM nodes t/i.test(q.sql) && /node_type IN/i.test(q.sql));
+    const nodeQuery = captured.find(
+      (q) => /FROM nodes t/i.test(q.sql) && /node_type IN/i.test(q.sql),
+    );
     expect(nodeQuery?.sql).not.toMatch(/'intent'/);
   });
 
@@ -115,7 +127,12 @@ describe("loadProcessGraph", () => {
     const { client, captured } = makeQueryClient({
       nodes: [
         processNode("action_01PROCESS", "Handle the refund request", "drafting"),
-        processNode("action_01CHECK", "Review refund request", "drafting", "2026-05-26T00:01:00.000Z"),
+        processNode(
+          "action_01CHECK",
+          "Review refund request",
+          "drafting",
+          "2026-05-26T00:01:00.000Z",
+        ),
       ],
       principals: [{ id: "principal_support", name: "Support", lifecycle: "drafting" }],
       users: [],
@@ -224,7 +241,12 @@ describe("loadProcessGraph", () => {
         return {
           rows: [
             processNode(processId, "Post a job"),
-            processNode(memberId, "Talent seeker posts a job", "active", "2026-06-03T00:01:00.000Z"),
+            processNode(
+              memberId,
+              "Talent seeker posts a job",
+              "active",
+              "2026-06-03T00:01:00.000Z",
+            ),
           ] as T[],
         };
       },
@@ -348,7 +370,12 @@ describe("loadProcessGraph", () => {
           created_at: "2026-05-26T00:02:00.000Z",
           data: { kind: "initial" },
         },
-        processNode(requestId, "Requests to activate Torre Reach", "active", "2026-05-26T00:03:00.000Z"),
+        processNode(
+          requestId,
+          "Requests to activate Torre Reach",
+          "active",
+          "2026-05-26T00:03:00.000Z",
+        ),
         processNode(presentId, "Presents payment options", "active", "2026-05-26T00:04:00.000Z"),
       ],
       principals: [
@@ -418,8 +445,18 @@ describe("loadProcessGraph", () => {
     expect(edgeQuery?.sql).toMatch(/label, condition/);
     expect(graph.links).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ source: decisionId, target: yesId, edge_type: "flows_to", label: "Yes" }),
-        expect.objectContaining({ source: decisionId, target: noId, edge_type: "flows_to", label: "No" }),
+        expect.objectContaining({
+          source: decisionId,
+          target: yesId,
+          edge_type: "flows_to",
+          label: "Yes",
+        }),
+        expect.objectContaining({
+          source: decisionId,
+          target: noId,
+          edge_type: "flows_to",
+          label: "No",
+        }),
       ]),
     );
   });
@@ -487,8 +524,12 @@ describe("loadProcessGraph", () => {
 
     const edgeQuery = captured.find((q) => /FROM edges/i.test(q.sql));
     expect(edgeQuery?.sql).toMatch(/lifecycle/i);
-    expect(graph.links).toContainEqual(expect.objectContaining({ id: "edge_live", lifecycle: "active" }));
-    expect(graph.links).toContainEqual(expect.objectContaining({ id: "edge_dead", lifecycle: "retired" }));
+    expect(graph.links).toContainEqual(
+      expect.objectContaining({ id: "edge_live", lifecycle: "active" }),
+    );
+    expect(graph.links).toContainEqual(
+      expect.objectContaining({ id: "edge_dead", lifecycle: "retired" }),
+    );
   });
 
   it("does not render sequence links from node JSON", async () => {
@@ -544,7 +585,12 @@ describe("loadProcessGraph", () => {
           created_at: "2026-05-26T00:07:00.000Z",
           data: {},
         },
-        processNode(checkoutId, "Talent seeker completes Stripe checkout for credits", "active", "2026-05-26T00:15:00.000Z"),
+        processNode(
+          checkoutId,
+          "Talent seeker completes Stripe checkout for credits",
+          "active",
+          "2026-05-26T00:15:00.000Z",
+        ),
       ],
       principals: [
         { id: "principal_system", name: "System", lifecycle: "active" },
@@ -574,7 +620,12 @@ describe("loadProcessGraph", () => {
         processNode("action_proc_active", "Active process"),
         processNode("action_proc_drafting", "Drafting process", "drafting"),
         processNode("action_step_active", "Active work", "active", "2026-05-26T00:10:00.000Z"),
-        processNode("action_step_drafting", "Drafting work", "drafting", "2026-05-26T00:20:00.000Z"),
+        processNode(
+          "action_step_drafting",
+          "Drafting work",
+          "drafting",
+          "2026-05-26T00:20:00.000Z",
+        ),
       ],
       principals: [{ id: "principal_owner", name: "Owner", lifecycle: "active" }],
       users: [],
@@ -629,15 +680,27 @@ describe("loadProcessGraph", () => {
     expect(graph.nodes.map((n) => n.id)).toContain(memberId);
     expect(graph.nodes.map((n) => n.entity_type)).not.toContain("reference");
     expect(graph.nodes.map((n) => n.id)).not.toContain(referenceId);
-    expect(graph.links.some((l) => l.source === referenceId || l.target === referenceId)).toBe(false);
+    expect(graph.links.some((l) => l.source === referenceId || l.target === referenceId)).toBe(
+      false,
+    );
   });
 
   it("keeps fully-disconnected nodes in the Unassigned pool, not an arbitrary process", async () => {
     const { client } = makeQueryClient({
       nodes: [
         processNode("action_01PROCESS", "Post a job"),
-        processNode("action_01CONNECTED", "Serves the process", "active", "2026-05-26T00:01:00.000Z"),
-        processNode("action_01ORPHAN", "Spider assembles Torre opportunity payload", "drafting", "2026-05-26T00:02:00.000Z"),
+        processNode(
+          "action_01CONNECTED",
+          "Serves the process",
+          "active",
+          "2026-05-26T00:01:00.000Z",
+        ),
+        processNode(
+          "action_01ORPHAN",
+          "Spider assembles Torre opportunity payload",
+          "drafting",
+          "2026-05-26T00:02:00.000Z",
+        ),
       ],
       principals: [{ id: "principal_system", name: "System", lifecycle: "active" }],
       users: [],
