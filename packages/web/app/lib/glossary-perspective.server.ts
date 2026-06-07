@@ -3,12 +3,12 @@
 // A glossary's terms are **References**, the one shape the `glossary` template
 // admits as a term entry: the prose (`reference`) is the *word being defined* —
 // the headword — and the definition lives in the `definition` attribute, off
-// the prose, so the node's name stays the bare term. A cited-source Reference
-// (a `derived_from` target) instead carries its source line in `locator` and
-// has no `definition`. Synonyms / deprecated variants live in the
-// `alternatives` attribute. So this loader reads every Reference and reshapes
-// it into a dictionary entry. (Principals — the stewards the template also
-// admits — are not headwords and are not read here.)
+// the prose, so the node's name stays the bare term. A term cites its source
+// inline in `locator` (provenance is a property of the entry, not a separate
+// node), and synonyms / deprecated variants live in the `alternatives`
+// attribute. So this loader reads every Reference and reshapes it into a
+// dictionary entry. (Principals — the stewards the template also admits — are
+// not headwords and are not read here.)
 //
 // It reads the same nodes the List perspective shows; only the presentation
 // differs, so there is no new write surface here.
@@ -57,7 +57,7 @@ export interface GlossaryEntry {
   letter: string;
   /** Playful syllabified respelling, e.g. "do·co" → "/ ˈdo · co /"-ish. */
   pronunciation: string;
-  /** Italic dictionary label: faux part-of-speech for terms, "src." for sources. */
+  /** Italic dictionary label: a faux part-of-speech for the headword. */
   tag: string;
   /** Definition prose, split into numbered senses on blank lines. */
   senses: string[];
@@ -205,10 +205,10 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
   const lifecycle = row.lifecycle ?? "active";
   const headword = row.label ?? "(untitled term)";
   const definition = asString(data.definition) ?? "";
+  // A term cites its source inline in `locator`; shown as the entry's source
+  // line when present.
   const source = row.locator ?? null;
-  // A cited-source Reference (a `derived_from` target) carries a source line
-  // and no definition; a real term reads as a dictionary headword.
-  const tag = source && !definition ? "src." : fauxPartOfSpeech(headword);
+  const tag = fauxPartOfSpeech(headword);
 
   return {
     id: row.id,
