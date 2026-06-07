@@ -1,43 +1,47 @@
 // The read helper that lets the node API speak the canonical row shape —
-// `{prose, kind?, extra}` — for every node type. There is no type-named
-// key: a node's text is `prose`, full stop.
+// `{ prose, extra, kind?, … }` — for every node type. There is no `data`
+// envelope and no type-named key: a node's text is `prose`, full stop.
 //
-// Kept dependency-free (only types) so it unit-tests without dragging the
-// route factory's server-only imports (`@vercel/functions`, `@doco/db`, …).
+// Kept dependency-free (only a structural type) so it unit-tests without
+// dragging the route factory's server-only imports (`@vercel/functions`,
+// `@doco/db`, …). The shape below is structurally a `@doco/db` `NodeRow`.
 
-/** Minimal read-record shape `buildEntityGetResponse` needs. Structurally a
- *  subset of `@doco/db`'s `EntityRecord`, inlined to avoid the import. */
+/** Minimal node-row shape `buildEntityGetResponse` needs (a structural NodeRow). */
 export interface EntityGetRecord {
   id: string;
-  entity_type: string;
+  node_type: string;
   doco_id: string;
-  lifecycle?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  data: Record<string, unknown>;
-  extra?: Record<string, unknown> | null;
+  lifecycle: string | null;
+  prose: string;
+  extra: Record<string, unknown>;
+  kind: string | null;
+  locator: string | null;
+  proposer_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
 }
 
 /**
- * Build the GET response body for a node/policy entity. Node rows expose the
- * canonical shape (`prose` + `extra`); a policy carries its structured
- * fields in `data`.
+ * Build the GET response body for a node entity: the honest row — `prose`, the
+ * `extra` bag, the promoted columns it carries, identity + audit. One shape;
+ * no synthetic `data` envelope.
  */
 export function buildEntityGetResponse(rec: EntityGetRecord): Record<string, unknown> {
-  const response: Record<string, unknown> = {
+  return {
     id: rec.id,
-    entity_type: rec.entity_type,
+    entity_type: rec.node_type,
     doco_id: rec.doco_id,
-    lifecycle: rec.lifecycle ?? null,
-    created_at: rec.created_at ?? null,
-    updated_at: rec.updated_at ?? null,
-    data: rec.data,
+    lifecycle: rec.lifecycle,
+    prose: rec.prose,
+    extra: rec.extra,
+    ...(rec.kind != null ? { kind: rec.kind } : {}),
+    ...(rec.locator != null ? { locator: rec.locator } : {}),
+    ...(rec.proposer_id != null ? { proposer_id: rec.proposer_id } : {}),
+    created_at: rec.created_at,
+    updated_at: rec.updated_at,
+    created_by: rec.created_by,
+    updated_by: rec.updated_by,
   };
-
-  if (rec.entity_type !== "policy") {
-    response.prose = typeof rec.data.prose === "string" ? rec.data.prose : "";
-    response.extra = rec.extra ?? {};
-  }
-
-  return response;
 }

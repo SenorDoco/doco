@@ -5,7 +5,7 @@ import type {
   MessageParam,
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages";
-import type { EntityRecord } from "@doco/db";
+import type { NodeRow } from "@doco/db";
 import {
   DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS,
   DOCO_NODE_TABLE_SPECS,
@@ -1936,16 +1936,19 @@ async function readSlackDocoApiAuthoringContract(
   };
 }
 
-function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> {
+function slackEntityRecordToApiItem(row: NodeRow): Record<string, unknown> {
   return {
     id: row.id,
-    summary: typeof row.data?.prose === "string" ? row.data.prose : null,
-    lifecycle: row.lifecycle ?? null,
-    created_at: row.created_at ?? null,
-    created_by: row.created_by ?? null,
-    updated_at: row.updated_at ?? null,
-    updated_by: row.updated_by ?? null,
-    data: row.data,
+    entity_type: row.node_type,
+    prose: row.prose,
+    extra: row.extra,
+    lifecycle: row.lifecycle,
+    created_at: row.created_at,
+    created_by: row.created_by,
+    updated_at: row.updated_at,
+    updated_by: row.updated_by,
+    ...(row.kind != null ? { kind: row.kind } : {}),
+    ...(row.locator != null ? { locator: row.locator } : {}),
   };
 }
 

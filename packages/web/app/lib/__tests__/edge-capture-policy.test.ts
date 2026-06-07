@@ -14,14 +14,21 @@ const dbStub = vi.hoisted(() => ({ createEdge: vi.fn() }));
 vi.mock("../authoring-runner.server", () => ({ runEdgeAuthoringPolicies: runEdge.fn }));
 
 vi.mock("@doco/db", () => ({
-  // Endpoint resolution: return a node record keyed off the id prefix.
+  // Endpoint resolution: return a NodeRow keyed off the id prefix.
   getEntity: vi.fn(async (type: string, id: string) => ({
     id,
     doco_id: DOCO_ID,
-    entity_type: type,
-    data: type === "action" ? { prose: "Posts a job", verb: "posts" } : { prose: "Posts a job" },
-    name: null,
+    node_type: type,
+    prose: "Posts a job",
+    extra: type === "action" ? { verb: "posts" } : {},
+    kind: null,
+    locator: null,
+    proposer_id: null,
     lifecycle: "active",
+    created_at: null,
+    created_by: null,
+    updated_at: null,
+    updated_by: null,
   })),
   createChangeset: vi.fn(async () => "tx_test"),
   createEdge: dbStub.createEdge,

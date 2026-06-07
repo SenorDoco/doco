@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadGlossaryPerspectiveData } from "../glossary-perspective.server";
 
-// The loader issues a single UNION-ALL query across the content tables,
-// so the mock returns rows already in the unioned NodeRow shape.
+// A glossary's terms are References: the prose is the word being defined (the
+// headword), the `definition` attribute is the meaning, the `locator` carries a
+// cited source, and `alternatives` hold synonyms / deprecated variants. The
+// loader reads only References now — terms are one shape, not five.
 function makeClient(rows: unknown[]) {
   return {
     async query<T>(_sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
@@ -14,7 +16,7 @@ function makeClient(rows: unknown[]) {
 function row(over: Record<string, unknown>) {
   return {
     id: "x",
-    entity_type: "decision",
+    entity_type: "reference",
     label: null,
     prose: null,
     lifecycle: "active",
@@ -26,14 +28,9 @@ function row(over: Record<string, unknown>) {
 
 describe("loadGlossaryPerspectiveData", () => {
   it("renders a Reference term entry: the prose is the word, the `definition` attribute is the meaning", async () => {
-    // The model: prose = the word being defined (the headword, the first line
-    // of prose), and the definition lives in the `definition` attribute — off
-    // the prose, so the node name stays the bare term and the definition
-    // never leaks into the headword.
     const client = makeClient([
       row({
         id: "reference_01",
-        entity_type: "reference",
         label: "Torre", // first line of prose = the word being defined
         prose: "Torre",
         data: { definition: "The company building this product." },
@@ -49,15 +46,35 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(entry.href).toBe("/acme/glossary/reference/reference_01");
     // The definition comes from the attribute, never the prose/headword.
     expect(entry.senses).toEqual(["The company building this product."]);
-    expect(entry.tag).toBe("ref."); // references share one register label now
+    // A defined term reads as a dictionary headword — a faux part of speech,
+    // not a flat type label.
+    expect(entry.tag).toBe("n.");
   });
 
-  it("renders a cited-source Reference's source line from its locator", async () => {
+  it("splits a multi-paragraph definition into numbered senses", async () => {
+    const client = makeClient([
+      row({
+        id: "reference_alignment",
+        label: "alignment",
+        prose: "alignment",
+        data: {
+          definition: "Coherence between intent, decision, and action.\n\nDoco's central concept.",
+        },
+      }),
+    ]);
+
+    const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+    expect(groups[0].entries[0].senses).toEqual([
+      "Coherence between intent, decision, and action.",
+      "Doco's central concept.",
+    ]);
+  });
+
+  it("renders a cited-source Reference's source line from its locator and tags it `src.`", async () => {
     // A `derived_from` target: no `definition`, but a source line to show.
     const client = makeClient([
       row({
         id: "reference_src",
-        entity_type: "reference",
         label: "RFC 7231",
         prose: "RFC 7231",
         locator: "https://www.rfc-editor.org/rfc/rfc7231",
@@ -68,72 +85,38 @@ describe("loadGlossaryPerspectiveData", () => {
     const entry = groups[0].entries[0];
     expect(entry.headword).toBe("RFC 7231");
     expect(entry.source).toBe("https://www.rfc-editor.org/rfc/rfc7231");
+    expect(entry.senses).toEqual([]);
+    expect(entry.tag).toBe("src.");
   });
 
-  it("maps Decisions to chosen=headword, question lead-in, and alternatives", async () => {
+  it("reads synonyms and deprecated variants from the `alternatives` attribute", async () => {
     const client = makeClient([
       row({
-        id: "decision_01",
-        entity_type: "decision",
-        label: "Node",
-        prose: "A single typed node in a Doco.",
+        id: "reference_rule",
+        label: "rule",
+        prose: "rule",
         data: {
-          chosen: "Node",
-          question: "What is one unit of captured knowledge?",
-          alternatives: [{ name: "node", rejected_because: "too generic" }],
+          definition: "A statement of correctness.",
+          alternatives: [
+            { name: "constraint" },
+            { name: "guardrail", rejected_because: "informal" },
+          ],
         },
       }),
     ]);
 
     const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
-    const entry = groups[0].entries[0];
-    expect(entry.headword).toBe("Node");
-    expect(entry.question).toBe("What is one unit of captured knowledge?");
-    expect(entry.tag).toBe("n.");
-    expect(entry.alternatives).toEqual([{ name: "node", note: "too generic", deprecated: true }]);
-  });
-
-  it("uses the stored node name as the glossary headword before decision metadata fallback", async () => {
-    const client = makeClient([
-      row({
-        id: "decision_01",
-        entity_type: "decision",
-        label: "Changeset",
-        prose: "Changeset\n\nA batch graph-authoring request.",
-        data: {
-          chosen: "A batch graph-authoring request.",
-          question: "What is a changeset in Doco?",
-        },
-      }),
+    expect(groups[0].entries[0].alternatives).toEqual([
+      { name: "constraint", note: null, deprecated: false },
+      { name: "guardrail", note: "informal", deprecated: true },
     ]);
-
-    const { groups } = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
-    const entry = groups[0].entries[0];
-    expect(entry.headword).toBe("Changeset");
-    expect(entry.senses).toEqual(["A batch graph-authoring request."]);
   });
 
-  it("alphabetizes mixed types into letter groups and tags non-term types honestly", async () => {
+  it("alphabetizes terms into letter groups, case-insensitively", async () => {
     const client = makeClient([
-      row({
-        id: "intent_01",
-        entity_type: "intent",
-        label: "Scope of this glossary",
-        prose: "Scope of this glossary covers Torre product terms.",
-      }),
-      row({
-        id: "decision_01",
-        entity_type: "decision",
-        label: "Doco",
-        prose: "Doco — institutional memory.",
-        data: { chosen: "Doco" },
-      }),
-      row({
-        id: "rule_01",
-        entity_type: "rule",
-        label: "Always capitalize Doco",
-        prose: "Always capitalize Doco in UI copy.",
-      }),
+      row({ id: "r3", label: "alignment", prose: "alignment", data: { definition: "x" } }),
+      row({ id: "r1", label: "Doco", prose: "Doco", data: { definition: "y" } }),
+      row({ id: "r2", label: "agent", prose: "agent", data: { definition: "z" } }),
     ]);
 
     const { groups, letters } = await loadGlossaryPerspectiveData(
@@ -141,16 +124,25 @@ describe("loadGlossaryPerspectiveData", () => {
       "doco_01",
       "acme/glossary",
     );
-    expect(letters).toEqual(["A", "D", "S"]);
-    const byType = Object.fromEntries(
-      groups.flatMap((g) => g.entries).map((e) => [e.entityType, e.tag]),
-    );
-    expect(byType.rule).toBe("usage");
-    expect(byType.intent).toBe("scope");
-    expect(byType.decision).toBe("n.");
+    expect(letters).toEqual(["A", "D"]);
+    expect(groups[0].entries.map((e) => e.headword)).toEqual(["agent", "alignment"]);
   });
 
-  it("returns empty groups when the Doco has no content nodes", async () => {
+  it("queries only References, not the legacy five-type union", async () => {
+    const querySpy = vi.fn();
+    const client = {
+      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+        querySpy(sql, params);
+        expect(sql).toMatch(/node_type = 'reference'/);
+        expect(sql).not.toMatch(/'decision'/);
+        return { rows: [] };
+      },
+    };
+    await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
+    expect(querySpy).toHaveBeenCalledOnce();
+  });
+
+  it("returns empty groups when the Doco has no terms", async () => {
     const data = await loadGlossaryPerspectiveData(makeClient([]), "doco_01", "acme/glossary");
     expect(data.groups).toEqual([]);
     expect(data.stats.entries).toBe(0);
@@ -186,10 +178,10 @@ describe("loadGlossaryPerspectiveData", () => {
         return {
           rows: [
             row({
-              id: "decision_01",
-              entity_type: "decision",
+              id: "reference_01",
               label: "Doco",
-              prose: "Doco — institutional memory.",
+              prose: "Doco",
+              data: { definition: "institutional memory." },
               // pg returns the windowed bigint as a string.
               total_count: "1800",
             }),
@@ -207,12 +199,9 @@ describe("loadGlossaryPerspectiveData", () => {
   });
 
   it("loads every lifecycle so the client filter can reveal retired entries", async () => {
-    // Regression (sibling of BPMN PR #819): the glossary loader hardcoded
-    // `<> 'retired'`, so retired terms never reached the client. The
-    // lifecycle filter (Drafting/Asserted/Retired) lives client-side
-    // (`visibleLifecycles`) and is the only thing that should hide a
-    // lifecycle — pre-filtering retired on the server makes toggling
-    // "Retired" on a no-op, leaving a fully-retired glossary blank.
+    // Regression (sibling of BPMN PR #819): hiding a lifecycle is the client's
+    // job (`visibleLifecycles`). Pre-filtering retired on the server makes
+    // toggling "Retired" on a no-op, leaving a fully-retired glossary blank.
     const querySpy = vi.fn();
     const client = {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
@@ -220,10 +209,10 @@ describe("loadGlossaryPerspectiveData", () => {
         return {
           rows: [
             row({
-              id: "decision_retired",
-              entity_type: "decision",
+              id: "reference_retired",
               label: "Sunset term",
-              prose: "A term we no longer use.",
+              prose: "Sunset term",
+              data: { definition: "A term we no longer use." },
               lifecycle: "retired",
             }),
           ] as T[],
@@ -235,8 +224,6 @@ describe("loadGlossaryPerspectiveData", () => {
 
     const [sql] = querySpy.mock.calls[0] as [string, unknown[]];
     expect(sql).not.toMatch(/<> 'retired'/);
-    // The retired row survives to an entry — the client filter, not the
-    // server, owns hiding it.
-    expect(data.groups.flatMap((g) => g.entries).map((e) => e.id)).toContain("decision_retired");
+    expect(data.groups.flatMap((g) => g.entries).map((e) => e.id)).toContain("reference_retired");
   });
 });

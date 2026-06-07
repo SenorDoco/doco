@@ -100,7 +100,15 @@ export async function loader({
       id: existing.id,
       doco_id: existing.doco_id,
       lifecycle: existing.lifecycle,
-      ...existing.data,
+      // A principal's name is its `prose`; its seat kind and domain fields
+      // (owner_id, …) ride in `extra`.
+      name: existing.prose,
+      ...(existing.kind != null ? { kind: existing.kind } : {}),
+      ...existing.extra,
+      created_at: existing.created_at,
+      created_by: existing.created_by,
+      updated_at: existing.updated_at,
+      updated_by: existing.updated_by,
     },
   });
 }
@@ -186,8 +194,7 @@ export async function action({
   if (!existing || existing.doco_id !== meta.docoId) {
     return Response.json({ error: `principal not found: ${params.id}` }, { status: 404 });
   }
-  const name =
-    patch.name !== undefined ? patch.name.trim() : String(existing.data?.name ?? existing.id);
+  const name = patch.name !== undefined ? patch.name.trim() : existing.prose || existing.id;
 
   // Retirement path: lifecycle="retired" goes through the active-refs
   // guard. Field edits in the same patch are applied alongside the
@@ -224,14 +231,22 @@ export async function action({
     }
   }
 
-  // Build the merged data object. Relation changes are represented by edge
-  // creates/updates/retirements, not by patching Principal JSON.
-  const oldData = (existing.data ?? {}) as Record<string, unknown>;
+  // Build the merged write bag from the honest node row. Relation changes are
+  // represented by edge creates/updates/retirements, not by patching Principal
+  // JSON. A principal's name is its `prose`.
+  const oldData: Record<string, unknown> = {
+    id: existing.id,
+    doco_id: existing.doco_id,
+    node_type: existing.node_type,
+    prose: existing.prose,
+    ...existing.extra,
+  };
+  if (existing.kind != null) oldData.kind = existing.kind;
   const merged: Record<string, unknown> = { ...oldData };
-  const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "active";
+  const nextLifecycle = patch.lifecycle ?? existing.lifecycle ?? "active";
   merged.lifecycle = nextLifecycle;
   if (patch.name !== undefined) {
-    merged.name = patch.name.trim();
+    merged.prose = patch.name.trim();
   }
 
   // Run authoring policies against the merged candidate so org-chart
@@ -274,8 +289,8 @@ export async function action({
     after.lifecycle = nextLifecycle;
   }
   if (patch.name !== undefined) {
-    before.name = oldData.name ?? null;
-    after.name = merged.name;
+    before.name = existing.prose || null;
+    after.name = merged.prose;
   }
   appendAuditEvent({
     docoDir: docoPath(params.docoHandle),
