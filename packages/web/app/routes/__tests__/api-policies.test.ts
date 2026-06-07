@@ -56,8 +56,18 @@ describe("/<doco>/api/policies.json", () => {
     mocks.listPrincipals.mockResolvedValue([
       {
         id: "principal_alice",
-        name: "alice",
-        data: { created_by: "user_alice" },
+        doco_id: "doco_test",
+        node_type: "principal",
+        prose: "alice",
+        extra: {},
+        kind: null,
+        locator: null,
+        proposer_id: null,
+        lifecycle: "active",
+        created_at: null,
+        created_by: "user_alice",
+        updated_at: null,
+        updated_by: null,
       },
     ]);
     mocks.withIdempotency.mockImplementation(

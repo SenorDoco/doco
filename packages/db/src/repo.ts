@@ -518,52 +518,24 @@ export async function listUsers(): Promise<UserRow[]> {
 // Each Doco owns its own role-personas; the same name in two different Docos
 // is two different rows.
 
-export interface PrincipalRow {
-  id: string;
-  name: string;
-  doco_id: string;
-  data: Record<string, unknown>;
+// A Principal is an ordinary node (`node_type = 'principal'`): its name is its
+// `prose`, its seat kind is `kind`, and its domain fields (`owner_id`, …) live
+// in `extra`. So its readers consume the plain `NodeRow` — no adapter.
+
+export async function getPrincipalById(id: string): Promise<NodeRow | null> {
+  return getEntity("principal", id);
 }
 
 /**
- * Adapt a Principal `NodeRow` to the `PrincipalRow` shape its readers expect. A
- * Principal is an ordinary node (`node_type = 'principal'`): its name is `prose`
- * and its domain fields (`owner_id`, …) live in `extra`; `data` reassembles the
- * extra + audit columns its few readers still index by name.
+ * List Principals (role-personas) in a Doco, ordered by name (`prose`) then
+ * creation, so `find`-by-name lookups in callers are deterministic.
  */
-function principalRowFromRecord(rec: NodeRow): PrincipalRow {
-  return {
-    id: rec.id,
-    name: rec.prose,
-    doco_id: rec.doco_id,
-    data: {
-      ...rec.extra,
-      ...(rec.kind != null ? { kind: rec.kind } : {}),
-      ...(rec.created_by != null ? { created_by: rec.created_by } : {}),
-      ...(rec.created_at != null ? { created_at: rec.created_at } : {}),
-      ...(rec.updated_by != null ? { updated_by: rec.updated_by } : {}),
-      ...(rec.updated_at != null ? { updated_at: rec.updated_at } : {}),
-    },
-  };
-}
-
-export async function getPrincipalById(id: string): Promise<PrincipalRow | null> {
-  const rec = await getEntity("principal", id);
-  return rec ? principalRowFromRecord(rec) : null;
-}
-
-/**
- * List Principals (role-personas) in a Doco. Ordered by name, then creation, so
- * `find`-by-name lookups in callers are deterministic (preserving the old
- * `ORDER BY prose, created_at, id`).
- */
-export async function listPrincipals(docoId: string): Promise<PrincipalRow[]> {
+export async function listPrincipals(docoId: string): Promise<NodeRow[]> {
   const recs = await listEntitiesByDoco("principal", docoId);
-  return recs.map(principalRowFromRecord).sort((a, b) => {
-    const byName = a.name.localeCompare(b.name);
+  return recs.sort((a, b) => {
+    const byName = a.prose.localeCompare(b.prose);
     if (byName !== 0) return byName;
-    const at = (r: PrincipalRow) => String(r.data.created_at ?? "");
-    const byTime = at(a).localeCompare(at(b));
+    const byTime = (a.created_at ?? "").localeCompare(b.created_at ?? "");
     return byTime !== 0 ? byTime : a.id.localeCompare(b.id);
   });
 }

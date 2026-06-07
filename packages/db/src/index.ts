@@ -31,7 +31,6 @@ export {
   // Principals (role-personas — node type)
   getPrincipalById,
   listPrincipals,
-  type PrincipalRow,
   // Workspaces
   listWorkspaces,
   getWorkspaceById,

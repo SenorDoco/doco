@@ -3,13 +3,11 @@
 // Returns the `LoadedDoco` shape expected by the index pipeline.
 //
 // Two modes:
-//   - Full load (no `opts.entityIds`): every entity in the Doco (all 10
-//     node types), plus the host's workspaces. Used for first-build
-//     and bulk rebuilds.
-//   - Scoped load (`opts.entityIds` set): only the named ids are read from
-//     their own tables, and host-wide workspace rows are skipped
-//     entirely. The incremental reindex path only consumes the entities
-//     whose ids it passed in; loading the rest was pure waste.
+//   - Full load (no `opts.entityIds`): every node in the Doco (all 10 node
+//     types). Used for first-build and bulk rebuilds.
+//   - Scoped load (`opts.entityIds` set): only the named ids are read. The
+//     incremental reindex path only consumes the entities whose ids it passed
+//     in; loading the rest was pure waste.
 
 import { type NodeRow, listEntitiesByDoco, listEntitiesByDocoAndIds, withClient } from "@doco/db";
 import type {
@@ -29,9 +27,8 @@ const DOCO_SCOPED_NODE_TYPES: EntityType[] = [...NODE_TYPES] as EntityType[];
 
 export interface LoadDocoOptions {
   /**
-   * When set, load only these specific entity ids (and skip host-wide
-   * principal/workspace rows). Grouped by id prefix so each entity
-   * type only does one targeted SQL. Used by the incremental reindex
+   * When set, load only these specific entity ids. Grouped by id prefix so each
+   * entity type only does one targeted SQL. Used by the incremental reindex
    * path — every other consumer wants the full load.
    */
   entityIds?: string[];
@@ -112,7 +109,7 @@ export async function loadDocoFromPostgres(
         continue;
       }
       // The honest node row, flattened for the index's search-text needs:
-      // `prose` rides in `typeNamedValue`; the domain fields (`extra` + the
+      // `prose` rides in `prose`; the domain fields (`extra` + the
       // promoted scalars) are the fallback index text.
       const data: Record<string, unknown> = {
         ...rec.extra,
@@ -132,7 +129,7 @@ export async function loadDocoFromPostgres(
         parsed: {
           data,
           format: "postgres",
-          typeNamedValue: rec.prose || null,
+          prose: rec.prose || null,
         },
       };
       entities.set(rec.id as EntityId, loaded);
