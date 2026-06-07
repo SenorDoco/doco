@@ -54,6 +54,43 @@ const DECISION_ID = "decision_01TEST000000000000000001";
 const STATE_ID = "state_01TEST0000000000000000001";
 const IDEA_ID = "idea_01TEST00000000000000000001";
 
+// Build a `NodeRow` (the honest read shape `getEntity` returns) from a flat
+// field bag; anything that isn't a real column lands in `extra`.
+function nodeRow(bag: Record<string, unknown>): Awaited<ReturnType<typeof getEntity>> {
+  const cols = new Set([
+    "id",
+    "doco_id",
+    "node_type",
+    "lifecycle",
+    "prose",
+    "kind",
+    "locator",
+    "proposer_id",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "updated_by",
+  ]);
+  const extra: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(bag)) if (!cols.has(k)) extra[k] = v;
+  const s = (v: unknown) => (typeof v === "string" ? v : null);
+  return {
+    id: String(bag.id),
+    doco_id: String(bag.doco_id),
+    node_type: String(bag.node_type),
+    lifecycle: s(bag.lifecycle),
+    prose: typeof bag.prose === "string" ? bag.prose : "",
+    extra,
+    kind: s(bag.kind),
+    locator: s(bag.locator),
+    proposer_id: s(bag.proposer_id),
+    created_at: s(bag.created_at),
+    created_by: s(bag.created_by),
+    updated_at: s(bag.updated_at),
+    updated_by: s(bag.updated_by),
+  } as Awaited<ReturnType<typeof getEntity>>;
+}
+
 describe("updateEntity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,21 +101,16 @@ describe("updateEntity", () => {
   });
 
   it("does not change the node name when the route does not allow renaming", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: STATE_ID,
-      entity_type: "state",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: STATE_ID,
         doco_id: DOCO_ID,
         node_type: "state",
         prose: "Original state name",
         kind: "intermediate",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateEntity({
       docoDir: "/tmp/doco",
@@ -89,7 +121,7 @@ describe("updateEntity", () => {
       pluralDir: "states",
       id: STATE_ID,
       patch: {
-        state: "Renamed state name",
+        prose: "Renamed state name",
         kind: "terminal",
       },
       docoHost: "https://doco.test",
@@ -98,8 +130,7 @@ describe("updateEntity", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      // The text is `prose`; the legacy `state` patch key is accepted as an
-      // alias and normalized to it, so the change is reported as `prose`.
+      // A node's text has exactly one name: `prose`.
       changed: ["prose", "kind"],
     });
     expect(upsertEntity).toHaveBeenCalledWith(
@@ -114,20 +145,15 @@ describe("updateEntity", () => {
   });
 
   it("updates the node name when the route explicitly allows renaming", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: IDEA_ID,
-      entity_type: "idea",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: IDEA_ID,
         doco_id: DOCO_ID,
         node_type: "idea",
         prose: "Original idea name",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateEntity({
       docoDir: "/tmp/doco",
@@ -138,7 +164,7 @@ describe("updateEntity", () => {
       pluralDir: "ideas",
       id: IDEA_ID,
       patch: {
-        idea: "Renamed idea name",
+        prose: "Renamed idea name",
       },
       docoHost: "https://doco.test",
       actorId: null,
@@ -159,13 +185,8 @@ describe("updateEntity", () => {
   });
 
   it("rejects patching Decision sequence_to because BPMN flow is edge-only", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: DECISION_ID,
-      entity_type: "decision",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: DECISION_ID,
         doco_id: DOCO_ID,
         node_type: "decision",
@@ -173,8 +194,8 @@ describe("updateEntity", () => {
         question: "Which payment path?",
         chosen: "Route to the selected path.",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateDecision(
       "/tmp/doco",
@@ -196,13 +217,8 @@ describe("updateEntity", () => {
   });
 
   it("rejects patching a Decision's implemented_by relation", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: DECISION_ID,
-      entity_type: "decision",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: DECISION_ID,
         doco_id: DOCO_ID,
         node_type: "decision",
@@ -210,8 +226,8 @@ describe("updateEntity", () => {
         question: "Which payment path?",
         chosen: "Route to the selected path.",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateDecision(
       "/tmp/doco",
@@ -239,13 +255,8 @@ describe("updateEntity", () => {
     // locator / content_hash) in `extra`. updateEntity must merge those
     // keys onto the data bag as FLAT keys (so storage re-bags them into the
     // extra jsonb), not store a nested `extra` object.
-    vi.mocked(getEntity).mockResolvedValue({
-      id: REFERENCE_ID,
-      entity_type: "reference",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
         node_type: "reference",
@@ -254,8 +265,8 @@ describe("updateEntity", () => {
         locator: "https://github.com/acme/store/pull/482",
         content_hash: "old_hash",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateEntity({
       docoDir: "/tmp/doco",
@@ -266,7 +277,7 @@ describe("updateEntity", () => {
       pluralDir: "references",
       id: REFERENCE_ID,
       patch: {
-        reference: "New title",
+        prose: "New title",
         extra: { content_hash: "new_hash" },
       },
       docoHost: "https://doco.test",
@@ -283,13 +294,8 @@ describe("updateEntity", () => {
   });
 
   it("clears a flat attribute when the extra patch sets it to null", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: REFERENCE_ID,
-      entity_type: "reference",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
         node_type: "reference",
@@ -298,8 +304,8 @@ describe("updateEntity", () => {
         locator: "https://github.com/acme/store/pull/482",
         content_hash: "hash_to_remove",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateEntity({
       docoDir: "/tmp/doco",
@@ -324,13 +330,8 @@ describe("updateEntity", () => {
   });
 
   it("is a no-op when title + extra are unchanged (idempotent re-sync)", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: REFERENCE_ID,
-      entity_type: "reference",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: REFERENCE_ID,
         doco_id: DOCO_ID,
         node_type: "reference",
@@ -339,8 +340,8 @@ describe("updateEntity", () => {
         locator: "https://github.com/acme/store/pull/482",
         content_hash: "stable_hash",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateEntity({
       docoDir: "/tmp/doco",
@@ -409,21 +410,16 @@ describe("updateEntity", () => {
   });
 
   it("rejects created_by_principal_id patches", async () => {
-    vi.mocked(getEntity).mockResolvedValue({
-      id: IDEA_ID,
-      entity_type: "idea",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "drafting",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: IDEA_ID,
         doco_id: DOCO_ID,
         node_type: "idea",
         prose: "Original idea",
         lifecycle: "drafting",
         created_by: "user_alice",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateEntity({
       docoDir: "/tmp/doco",
@@ -448,21 +444,16 @@ describe("updateEntity", () => {
 
   it("rejects patching an Action's implemented_by relation", async () => {
     const ACTION_ID = "action_01TEST00000000000000000001";
-    vi.mocked(getEntity).mockResolvedValue({
-      id: ACTION_ID,
-      entity_type: "action",
-      doco_id: DOCO_ID,
-      summary: null,
-      lifecycle: "active",
-      data: {
+    vi.mocked(getEntity).mockResolvedValue(
+      nodeRow({
         id: ACTION_ID,
         doco_id: DOCO_ID,
         node_type: "action",
         prose: "Selects type of job",
         verb: "select",
         lifecycle: "active",
-      },
-    } as Awaited<ReturnType<typeof getEntity>>);
+      }),
+    );
 
     const result = await updateEntity({
       docoDir: "/tmp/doco",

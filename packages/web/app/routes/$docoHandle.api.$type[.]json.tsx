@@ -48,15 +48,15 @@ export async function loader({
     count: rows.length,
     items: rows.map((r) => ({
       id: r.id,
-      // The node's content is `prose`, surfaced in `data` below; this list
-      // never carried a separate summary (kept for response-shape stability).
-      summary: null,
-      lifecycle: r.lifecycle ?? null,
-      created_at: r.created_at ?? null,
-      created_by: r.created_by ?? null,
-      updated_at: r.updated_at ?? null,
-      updated_by: r.updated_by ?? null,
-      data: r.data,
+      prose: r.prose,
+      extra: r.extra,
+      lifecycle: r.lifecycle,
+      created_at: r.created_at,
+      created_by: r.created_by,
+      updated_at: r.updated_at,
+      updated_by: r.updated_by,
+      ...(r.kind != null ? { kind: r.kind } : {}),
+      ...(r.locator != null ? { locator: r.locator } : {}),
     })),
   });
 }
