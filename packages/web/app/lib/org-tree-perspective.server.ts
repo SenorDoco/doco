@@ -103,8 +103,14 @@ function inferKindFromProse(prose: string | null): "person" | "agent" | "vacant"
   const vacantSignals = [
     /\bvacant\b/,
     /\bunfilled\b/,
+    /\bunstaffed\b/,
+    /\bno incumbent\b/,
     /\bopen (?:seat|role|req|requisition|position|headcount)\b/,
-    /\bto be (?:hired|filled)\b/,
+    // Reversed phrasing of an open requisition: "req open", "requisition is open".
+    /\b(?:req|requisition) (?:is )?open\b/,
+    /\bto be (?:hired|filled|staffed|backfilled)\b/,
+    // A backfill is an open seat awaiting a replacement.
+    /\bback-?fill(?:ing|ed)?\b/,
   ];
   if (vacantSignals.some((rx) => rx.test(text))) return "vacant";
   const agentSignals = [
