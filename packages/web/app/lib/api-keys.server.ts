@@ -54,6 +54,10 @@ export interface ApiKeyRow {
   last_used_at: string | null;
   expires_at: string;
   scope_grants: ApiKeyScopeGrant[];
+  /** 'actor' = an "All your workspaces" token (breadth is live membership, no explicit grants). */
+  grant_type: "regular" | "actor";
+  /** Role ceiling for an actor token (reader|writer); null = owner = full live role. */
+  actor_role: DocoRole | null;
 }
 
 export interface ApiKeysPageData {
@@ -88,6 +92,8 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
       granted_workspace_ids: string[] | null;
       granted_workspace_roles: Record<string, string> | null;
       granted_workspace_write_types: Record<string, string[]> | null;
+      grant_type: string | null;
+      actor_role: string | null;
       created_at: Date | string;
       expires_at: Date | string;
       last_seen_at: Date | string | null;
@@ -104,6 +110,8 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
               rt.granted_workspace_ids,
               rt.granted_workspace_roles,
               rt.granted_workspace_write_types,
+              rt.grant_type,
+              rt.actor_role,
               rt.created_at,
               rt.expires_at,
               (SELECT MAX(at.created_at)
@@ -181,6 +189,8 @@ export async function listApiKeysForUser(principalId: string): Promise<ApiKeyRow
       last_used_at: lastSeenAt,
       expires_at: expiresAt,
       scope_grants: grants,
+      grant_type: row.grant_type === "actor" ? "actor" : "regular",
+      actor_role: (row.actor_role as DocoRole | null) ?? null,
     };
   });
 
@@ -626,6 +636,64 @@ export async function addGrantsToApiKey(input: {
     );
 
     return incoming.scopeGrants;
+  });
+}
+
+/**
+ * Convert an existing scoped token into an "All your workspaces" (actor) token
+ * at `actorRole` (null = owner = full live role). Unlike addGrantsToApiKey this
+ * is a REPLACEMENT, not a widening: the refresh token's explicit grants are
+ * dropped and grant_type flips to 'actor', so its breadth becomes the user's
+ * live membership (one workspace per session, capped at the ceiling) resolved at
+ * refresh time. The refresh token itself stays (non-rotating — DOCO_REFRESH is
+ * unchanged); the live scoped access tokens are revoked so the next refresh
+ * re-mints an actor-scoped one.
+ */
+export async function convertApiKeyToActor(input: {
+  me: CurrentPrincipal;
+  client_id: string;
+  actorRole: DocoRole | null;
+}): Promise<void> {
+  if (!input.client_id.trim()) throw new Error("Missing client_id.");
+  await withClient(async (c) => {
+    const existing = await c.query<{ client_id: string }>(
+      `SELECT client_id
+         FROM oauth_refresh_tokens
+        WHERE client_id = $1
+          AND user_id = $2
+          AND revoked = false
+          AND expires_at > now()
+        LIMIT 1`,
+      [input.client_id, input.me.id],
+    );
+    if (!existing.rows[0]) throw new Error("Token not found or already revoked.");
+
+    await c.query(
+      `UPDATE oauth_refresh_tokens
+          SET grant_type = 'actor',
+              actor_role = $3,
+              granted_doco_ids = ARRAY[]::text[],
+              granted_doco_roles = '{}'::jsonb,
+              granted_doco_write_types = '{}'::jsonb,
+              granted_workspace_ids = ARRAY[]::text[],
+              granted_workspace_roles = '{}'::jsonb,
+              granted_workspace_write_types = '{}'::jsonb
+        WHERE client_id = $1
+          AND user_id = $2
+          AND revoked = false
+          AND expires_at > now()`,
+      [input.client_id, input.me.id, input.actorRole],
+    );
+    // Cut off the old single-workspace access tokens immediately; the client's
+    // next refresh (with a `resource`) re-mints under the actor breadth.
+    await c.query(
+      `UPDATE oauth_access_tokens
+          SET revoked = true
+        WHERE client_id = $1
+          AND user_id = $2
+          AND revoked = false`,
+      [input.client_id, input.me.id],
+    );
   });
 }
 
