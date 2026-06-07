@@ -39,7 +39,71 @@ vi.mock("~/lib/oauth-server.server", () => ({
   assertSingleWorkspaceGrant: mocks.assertSingleWorkspaceGrant,
 }));
 
-import { addGrantsToApiKey, listApiKeysForUser, mintApiKey } from "../api-keys.server";
+import {
+  addGrantsToApiKey,
+  convertApiKeyToActor,
+  listApiKeysForUser,
+  mintApiKey,
+} from "../api-keys.server";
+
+describe("convertApiKeyToActor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("flips a scoped token to actor at the chosen ceiling and revokes its access tokens", async () => {
+    const query = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (String(sql).includes("SELECT") && String(sql).includes("oauth_refresh_tokens")) {
+        return { rows: [{ client_id: "doco_client_x" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    mocks.withClient.mockImplementation(async (cb: (c: { query: typeof query }) => unknown) =>
+      cb({ query }),
+    );
+
+    await convertApiKeyToActor({
+      me: { id: "user_alice" } as never,
+      client_id: "doco_client_x",
+      actorRole: "reader",
+    });
+
+    const refreshUpdate = query.mock.calls.find(
+      (c) =>
+        String(c[0]).includes("UPDATE oauth_refresh_tokens") &&
+        String(c[0]).includes("grant_type = 'actor'"),
+    );
+    expect(refreshUpdate).toBeTruthy();
+    // The ceiling + ownership keys ride the convert; explicit grants are cleared.
+    expect(refreshUpdate?.[1]).toEqual(
+      expect.arrayContaining(["doco_client_x", "user_alice", "reader"]),
+    );
+    // Live (scoped) access tokens are revoked so the next refresh re-mints actor.
+    const revoked = query.mock.calls.some(
+      (c) =>
+        String(c[0]).includes("UPDATE oauth_access_tokens") &&
+        String(c[0]).includes("revoked = true"),
+    );
+    expect(revoked).toBe(true);
+  });
+
+  it("rejects converting a token the user doesn't own", async () => {
+    const query = vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [], rowCount: 0 })); // no owned row
+    mocks.withClient.mockImplementation(async (cb: (c: { query: typeof query }) => unknown) =>
+      cb({ query }),
+    );
+
+    await expect(
+      convertApiKeyToActor({
+        me: { id: "user_alice" } as never,
+        client_id: "doco_client_other",
+        actorRole: null,
+      }),
+    ).rejects.toThrow(/not found/i);
+    // Nothing converted.
+    expect(query.mock.calls.some((c) => String(c[0]).includes("grant_type = 'actor'"))).toBe(false);
+  });
+});
 
 describe("listApiKeysForUser", () => {
   beforeEach(() => {

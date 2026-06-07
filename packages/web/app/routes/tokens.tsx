@@ -25,6 +25,7 @@ import {
   type MintedApiKey,
   type ScopeOption,
   addGrantsToApiKey,
+  convertApiKeyToActor,
   listApiKeysForUser,
   loadScopeOptions,
   mintApiKey,
@@ -129,6 +130,17 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     const rawGrants = String(form.get("grants") ?? "").trim();
     if (!clientId) return { error: "Missing client_id." };
     if (!rawGrants) return { error: "Pick at least one thing to grant access to." };
+    // "All your workspaces" CONVERTS the token to actor (replace, not widen):
+    // drops its explicit grants and switches breadth to your live membership.
+    const actor = readActorGrant(rawGrants);
+    if (actor) {
+      try {
+        await convertApiKeyToActor({ me, client_id: clientId, actorRole: actor.role });
+        return { intent: "add_grants", ok: true, client_id: clientId };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : "Failed to modify access." };
+      }
+    }
     let grants: ApiKeyGrantInput[] = [];
     try {
       grants = parseGrantPayload(rawGrants);
@@ -787,7 +799,11 @@ function KeyRow({ apiKey, catalog }: { apiKey: ApiKeyRow; catalog: GrantCatalog 
             <span>{formatLastUsedLabel(apiKey.last_used_at)}</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {apiKey.scope_grants.length === 0 ? (
+            {apiKey.grant_type === "actor" ? (
+              // An actor token has no explicit grants — its breadth is your live
+              // membership, one workspace per session, capped at actor_role.
+              <span className="text-muted-foreground">{actorScopeLabel(apiKey.actor_role)}</span>
+            ) : apiKey.scope_grants.length === 0 ? (
               <span className="text-muted-foreground">No active scopes</span>
             ) : (
               apiKey.scope_grants.map((g) => (
@@ -895,6 +911,7 @@ function TokenAddAccessForm({
           catalog={catalog}
           grants={grants}
           forToken
+          offerActor
           onChange={(next) => {
             setGrants(next);
             if (next.length > 0) setGrantError(null);
@@ -921,17 +938,24 @@ function TokenAddAccessForm({
   );
 }
 
-function grantsToPayload(grants: ComposedGrant[]): ApiKeyGrantInput[] {
-  // The add-grants picker never offers the actor scope (no `offerActor`), so an
-  // actor grant can't appear here — narrow it out to keep the payload honest.
-  return grants
-    .filter((g): g is ComposedGrant & { level: ApiKeyGrantInput["level"] } => g.level !== "actor")
-    .map((g) => ({
-      level: g.level,
-      target_id: g.targetId,
-      role: g.role,
-      write_types: resolveWriteTypes(g.role, g.writeTypes),
-    }));
+// Serialize the picker's grants for the hidden form field. An actor grant
+// (the "All your workspaces" pick) rides through verbatim so the action can
+// detect it and CONVERT the token; the other levels are scoped grants the
+// action merges via addGrantsToApiKey.
+function grantsToPayload(
+  grants: ComposedGrant[],
+): { level: ComposedGrant["level"]; target_id: string; role: DocoRole; write_types: string[] }[] {
+  return grants.map((g) => ({
+    level: g.level,
+    target_id: g.targetId,
+    role: g.role,
+    write_types: resolveWriteTypes(g.role, g.writeTypes),
+  }));
+}
+
+/** Scope summary for an actor ("All your workspaces") token, with its ceiling. */
+export function actorScopeLabel(actorRole: DocoRole | null): string {
+  return `All your workspaces — one at a time${actorRole ? ` · ${actorRole}` : ""}`;
 }
 
 function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {

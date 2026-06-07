@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   addGrantsToApiKey: vi.fn(),
+  convertApiKeyToActor: vi.fn(),
   getCurrentPrincipal: vi.fn(),
   listApiKeysForUser: vi.fn(),
   loadScopeOptions: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("~/lib/session.server", () => ({
 
 vi.mock("~/lib/api-keys.server", () => ({
   addGrantsToApiKey: mocks.addGrantsToApiKey,
+  convertApiKeyToActor: mocks.convertApiKeyToActor,
   listApiKeysForUser: mocks.listApiKeysForUser,
   loadScopeOptions: mocks.loadScopeOptions,
   mintApiKey: mocks.mintApiKey,
@@ -34,6 +36,7 @@ import ApiKeysPage, {
   ManualMcpPanel,
   ProviderInstructions,
   action,
+  actorScopeLabel,
   formatLastUsedLabel,
   mcpUrlForWorkspace,
   meta,
@@ -82,6 +85,33 @@ describe("/tokens page action", () => {
       client_id: "doco_client_existing",
       grants,
     });
+  });
+
+  it("converts an existing token to actor when Modify-access picks 'All your workspaces'", async () => {
+    mocks.convertApiKeyToActor.mockResolvedValue(undefined);
+
+    const result = await action({
+      request: formRequest({
+        intent: "add_grants",
+        client_id: "doco_client_existing",
+        grants: JSON.stringify([
+          { level: "actor", target_id: "", role: "writer", write_types: [] },
+        ]),
+      }),
+    });
+
+    expect(result).toMatchObject({
+      intent: "add_grants",
+      ok: true,
+      client_id: "doco_client_existing",
+    });
+    // Convert (replace) — NOT a widening add.
+    expect(mocks.convertApiKeyToActor).toHaveBeenCalledWith({
+      me: expect.objectContaining({ id: "user_alice" }),
+      client_id: "doco_client_existing",
+      actorRole: "writer",
+    });
+    expect(mocks.addGrantsToApiKey).not.toHaveBeenCalled();
   });
 
   it("mints an actor token from an 'All your workspaces' pick, carrying the role ceiling", async () => {
@@ -176,6 +206,15 @@ describe("/tokens page action", () => {
     expect(markup).not.toContain("All access tokens");
     // …but the empty state still reads.
     expect(markup).toContain("No active tokens yet.");
+  });
+
+  it("labels an actor token by its breadth + ceiling (so it never reads as scopeless)", () => {
+    // The existing-tokens row shows this for grant_type === 'actor' instead of
+    // the empty-grants "No active scopes" — the broadest token must read broad.
+    expect(actorScopeLabel("reader")).toBe("All your workspaces — one at a time · reader");
+    expect(actorScopeLabel("writer")).toBe("All your workspaces — one at a time · writer");
+    // owner ceiling = full live role = no suffix.
+    expect(actorScopeLabel(null)).toBe("All your workspaces — one at a time");
   });
 
   it("builds the per-workspace MCP URL, trimming a trailing slash on the host", () => {
