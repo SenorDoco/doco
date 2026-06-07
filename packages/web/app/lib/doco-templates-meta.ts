@@ -92,6 +92,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-06-07",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "product-roadmap",
+    label: "Product roadmap",
+    description:
+      "Document outcome-oriented product bets over Now / Next / Later horizons — each with an owner, a measurable target, and a result that closes the loop on whether it worked.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
