@@ -3063,25 +3063,6 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
 }
 
 /**
- * Type-named prose field per node type. The server stores the prose
- * under this field name; the agent's POST bodies use the same key.
- * Lets the chip label show the actual intent of a capture instead
- * of just the URL.
- */
-const NODE_PROSE_FIELD: Record<string, string> = {
-  decisions: "decision",
-  intents: "intent",
-  ideas: "idea",
-  actions: "action",
-  references: "reference",
-  rules: "rule",
-  logs: "log",
-  evals: "eval",
-  states: "state",
-  principals: "principal",
-};
-
-/**
  * First-line preview of a possibly-multiline prose field. The first
  * line of every node's prose is the headline (the Decision summary,
  * the Intent statement, etc.) — perfect for a one-line chip.
@@ -3108,8 +3089,8 @@ function toolLabel(name: string, input: unknown): string {
       const type = m[1] ?? "";
       const id = m[2] ?? "";
       const body = i.body as Record<string, unknown> | undefined;
-      const proseField = NODE_PROSE_FIELD[type];
-      const label = proseField && body ? firstLine(body[proseField], 60) : "";
+      // Every node capture carries its text under the one canonical `prose` key.
+      const label = body ? firstLine(body.prose, 60) : "";
       const typeLabel = type.replace(/_/g, " ");
       if (method === "POST" && label) return `Adding ${typeLabel.replace(/s$/, "")}: ${label}`;
       if (method === "POST") return `Adding ${typeLabel.replace(/s$/, "")}`;

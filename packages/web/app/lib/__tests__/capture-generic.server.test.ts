@@ -91,11 +91,12 @@ describe("captureGenericNode", () => {
     expect(rec.data).toMatchObject({ node_type: "eval", kind: "unit" });
   });
 
-  it("accepts the legacy type-named field as an alias for prose", async () => {
-    await capture("action", { action: "Deploy the build", extra: { verb: "deploy" } });
-    const rec = vi.mocked(upsertEntity).mock.calls[0][0];
-    expect(rec.data.prose).toBe("Deploy the build");
-    expect(rec.data).toMatchObject({ verb: "deploy" });
+  it("requires `prose` — the type-named field is no longer an alias", async () => {
+    // A node's text has exactly one name. Sending the old type-named key
+    // (`action`) without `prose` is rejected, not silently accepted.
+    const res = await capture("action", { action: "Deploy the build", extra: { verb: "deploy" } });
+    expect(res).toMatchObject({ error: expect.stringContaining("prose is required") });
+    expect(upsertEntity).not.toHaveBeenCalled();
   });
 
   it("does NOT enforce per-type required fields (left to authoring policies)", async () => {

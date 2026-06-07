@@ -254,7 +254,7 @@ const CAPTURE_TOOL = {
       body: {
         type: "object",
         description:
-          "Raw node row: { prose, kind?, extra:{…} } — prose is the node text, per-type fields live in extra (the legacy type-named field like { decision } is still accepted). See /<handle>/api/<type>.txt.",
+          "Raw node row: { prose, kind?, extra:{…} } — prose is the node text, per-type fields live in extra. See /<handle>/api/<type>.txt.",
         additionalProperties: true,
       },
     },
