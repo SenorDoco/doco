@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// /me/mcp is the SAME route module as /<workspace-id>/mcp, selected by the
+// /mcp is the SAME route module as /<workspace-id>/mcp, selected by the
 // ABSENCE of a :workspaceId param (params: {}), which routes to the user-level
 // gate (lazy-imported gateUserMcp). We stub the shared dispatch deps the same
 // way the workspace test does, plus gateUserMcp.
@@ -40,7 +40,7 @@ const BEARER = { authorization: "Bearer doco_at_test" };
 // The user-level route carries NO :workspaceId — that's what selects gateUserMcp.
 function call(body: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return action({
-    request: new Request("https://doco.to/me/mcp", {
+    request: new Request("https://doco.to/mcp", {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
@@ -52,7 +52,7 @@ function call(body: unknown, headers: Record<string, string> = {}): Promise<Resp
 // biome-ignore lint/suspicious/noExplicitAny: test reads loosely-typed JSON-RPC bodies.
 type Json = any;
 
-describe("POST /me/mcp (user-level remote MCP)", () => {
+describe("POST /mcp (user-level remote MCP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.gateUserMcp.mockResolvedValue({
@@ -71,7 +71,7 @@ describe("POST /me/mcp (user-level remote MCP)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("401 + WWW-Authenticate at the /me/mcp protected-resource metadata when unauthenticated", async () => {
+  it("401 + WWW-Authenticate at the /mcp protected-resource metadata when unauthenticated", async () => {
     mocks.gateUserMcp.mockResolvedValue({
       ok: false,
       kind: "unauthenticated",
@@ -80,7 +80,7 @@ describe("POST /me/mcp (user-level remote MCP)", () => {
     const res = await call({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect(res.status).toBe(401);
     expect(res.headers.get("WWW-Authenticate")).toBe(
-      'Bearer resource_metadata="https://doco.to/.well-known/oauth-protected-resource/me/mcp"',
+      'Bearer resource_metadata="https://doco.to/.well-known/oauth-protected-resource/mcp"',
     );
     // The user gate ran — not the workspace gate.
     expect(mocks.gateUserMcp).toHaveBeenCalledTimes(1);
@@ -118,7 +118,7 @@ describe("POST /me/mcp (user-level remote MCP)", () => {
 
   it("405s a non-POST", async () => {
     const res = await action({
-      request: new Request("https://doco.to/me/mcp", { method: "GET" }),
+      request: new Request("https://doco.to/mcp", { method: "GET" }),
       params: {},
     });
     expect(res.status).toBe(405);

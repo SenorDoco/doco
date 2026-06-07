@@ -1,14 +1,14 @@
-// GET /.well-known/oauth-protected-resource/me/mcp — RFC 9728 metadata for the
-// user-level MCP endpoint. The user variant of the per-workspace metadata: the
-// protected resource is `/me/mcp` (the workspace is carried by the token, not
-// the URL), pointing connectors at this same host as the OAuth 2.1 server.
+// GET /.well-known/oauth-protected-resource/mcp — RFC 9728 metadata for the
+// hosted MCP endpoint at `/mcp`. The protected resource is `/mcp`; the session
+// workspace is carried by the token, not the URL — so one resource serves every
+// workspace. Points connectors at this same host as the OAuth 2.1 server.
 
 export function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const issuer = `${url.protocol}//${url.host}`;
   return Response.json(
     {
-      resource: `${issuer}/me/mcp`,
+      resource: `${issuer}/mcp`,
       authorization_servers: [issuer],
       scopes_supported: ["doco"],
       bearer_methods_supported: ["header"],

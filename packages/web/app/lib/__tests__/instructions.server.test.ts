@@ -43,8 +43,10 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).not.toContain("captures the *why* as it forms");
   });
 
-  it("teaches the user-level endpoint and the one-workspace-per-session rule", () => {
-    expect(CANONICAL_INSTRUCTIONS).toContain("/me/mcp");
+  it("teaches the /mcp endpoint and the one-workspace-per-session rule", () => {
+    expect(CANONICAL_INSTRUCTIONS).toContain("MCP connector lives at");
+    // The endpoint is /mcp now, not the interim /me/mcp.
+    expect(CANONICAL_INSTRUCTIONS).not.toContain("/me/mcp");
     expect(CANONICAL_INSTRUCTIONS).toMatch(/one workspace per session/i);
   });
 
