@@ -1,4 +1,4 @@
-import { upsertEntity, withClient } from "@doco/db";
+import { nodeRowFromFields, upsertNode, withClient } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAuthoringPolicies } from "../authoring-runner.server";
 import { type PolicyDraft, capturePolicy } from "../capture.server";
@@ -390,11 +390,8 @@ describe("authoring runner — integration", () => {
   it("blocks a unique_field duplicate by loading the active population", async () => {
     await seed({ withUniqueFieldRule: true });
     const existingId = "decision_01TESTTERMEXISTING000000001";
-    await upsertEntity({
-      id: existingId,
-      doco_id: DOCO_ID,
-      entity_type: "decision",
-      data: {
+    await upsertNode(
+      nodeRowFromFields("decision", {
         id: existingId,
         node_type: "decision",
         doco_id: DOCO_ID,
@@ -404,8 +401,8 @@ describe("authoring runner — integration", () => {
         decided_by: PRINCIPAL_ALICE,
         decided_at: new Date().toISOString(),
         lifecycle: "active",
-      },
-    });
+      }),
+    );
 
     const result = await runAuthoringPolicies({
       docoId: DOCO_ID,
@@ -559,11 +556,8 @@ describe("authoring runner — integration", () => {
     // edge row directly.
     const coveringActionId = "action_01TESTCOVER000000000000001";
     const intentId = "intent_01TESTINTENTCOVERED00000001";
-    await upsertEntity({
-      id: coveringActionId,
-      doco_id: DOCO_ID,
-      entity_type: "action",
-      data: {
+    await upsertNode(
+      nodeRowFromFields("action", {
         id: coveringActionId,
         node_type: "action",
         doco_id: DOCO_ID,
@@ -571,8 +565,8 @@ describe("authoring runner — integration", () => {
         verb: "do",
         actor_id: PRINCIPAL_ALICE,
         lifecycle: "retired",
-      },
-    });
+      }),
+    );
     await withClient(async (c) => {
       await c.query(
         `INSERT INTO edges (doco_id, from_id, to_id, from_node_type, to_node_type, edge_type, props)
@@ -772,56 +766,10 @@ describe("capturePolicy — edge_type validation", () => {
   });
 });
 
-describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
-  it("derives the lifecycle column from data.lifecycle (ignoring the rec.lifecycle param)", async () => {
-    // Defends fix #3: the lifecycle column is a denormalized mirror of
-    // data.lifecycle. The runner's loader filters on the column, so any
-    // drift silently disables enforcement. The upsert now derives the
-    // column from data; a disagreeing rec.lifecycle is logged and the
-    // data value wins.
-    await withClient(async (c) => {
-      await c.query(
-        `INSERT INTO workspaces (id, handle, name, created_at, updated_at) VALUES ($1, 'drift-workspace', 'Drift Workspace', now(), now())`,
-        [WORKSPACE_ID],
-      );
-      await c.query(
-        `INSERT INTO docos (id, handle, owner_id, workspace_id, data, created_at, updated_at)
-           VALUES ($1, 'drift-test', $2, $2, '{}'::jsonb, now(), now())`,
-        [DOCO_ID, WORKSPACE_ID],
-      );
-    });
-
-    const id = "rule_01TESTDRIFT00000000000000001";
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      // Disagreeing rec.lifecycle vs data.lifecycle. data wins; the
-      // column reflects "retired" even though the caller asked for
-      // "active".
-      await upsertEntity({
-        id,
-        doco_id: DOCO_ID,
-        entity_type: "rule",
-        lifecycle: "active",
-        data: {
-          id,
-          node_type: "rule",
-          doco_id: DOCO_ID,
-          rule: "drift example",
-          lifecycle: "retired",
-        },
-      });
-
-      const row = await withClient((c) =>
-        c.query<{ lifecycle: string | null; data: { lifecycle?: string } }>(
-          "SELECT lifecycle, data FROM rules WHERE id = $1",
-          [id],
-        ),
-      );
-      expect(row.rows[0]?.lifecycle).toBe("retired");
-      expect(row.rows[0]?.data.lifecycle).toBe("retired");
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("lifecycle mismatch"));
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-});
+// (Removed: the "lifecycle column / data.lifecycle drift" test guarded
+// `deriveLifecycleColumn`, the reconciliation between a write record's top-level
+// `lifecycle` and its `data.lifecycle`. That dual source only existed for the
+// retired `EntityRecord` envelope; nodes now write from a single field bag with
+// one `lifecycle`, so the drift it warned about cannot occur. The "the lifecycle
+// column mirrors the written value" invariant is pinned in
+// packages/db/src/__tests__/category-writers.test.ts.)

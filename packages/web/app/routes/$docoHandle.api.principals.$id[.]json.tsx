@@ -1,4 +1,4 @@
-import { getEntity, upsertEntity, withClient } from "@doco/db";
+import { getEntity, nodeRowFromFields, upsertNode, withClient } from "@doco/db";
 import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
@@ -269,17 +269,17 @@ export async function action({
   }
 
   const now = nowIso();
-  await upsertEntity({
-    id: existing.id,
-    doco_id: existing.doco_id,
-    entity_type: "principal",
-    data: merged,
-    lifecycle: nextLifecycle,
-    created_at: existing.created_at ?? undefined,
-    created_by: existing.created_by ?? undefined,
-    updated_at: now,
-    updated_by: me.id,
-  });
+  // A principal is an ordinary node: write the merged bag straight through the
+  // one node boundary. `merged` already carries id/doco_id/lifecycle.
+  await upsertNode(
+    nodeRowFromFields("principal", {
+      ...merged,
+      created_at: existing.created_at ?? undefined,
+      created_by: existing.created_by ?? undefined,
+      updated_at: now,
+      updated_by: me.id,
+    }),
+  );
 
   await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, existing.id);
   const before: Record<string, unknown> = {};

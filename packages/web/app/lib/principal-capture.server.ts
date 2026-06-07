@@ -7,7 +7,7 @@
 // CaptureResult | CaptureError contract as every other captureFn, so changeset,
 // the route, and the contract all treat principal as just another node type.
 
-import { getDocoById, upsertEntity } from "@doco/db";
+import { getDocoById, nodeRowFromFields, upsertNode } from "@doco/db";
 import { BLOCKED_NODE_JSON_EDGE_FIELD_SET, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
@@ -130,17 +130,12 @@ export async function capturePrincipal(
     };
   }
 
-  await upsertEntity({
-    id,
-    doco_id: docoId,
-    entity_type: "principal",
-    data: raw,
-    lifecycle,
-    created_at: now,
-    created_by: createdBy,
-    updated_at: now,
-    updated_by: createdBy,
-  });
+  // A principal is an ordinary node: write it straight through the one node
+  // boundary. `raw` already carries id/doco_id/lifecycle/created_*; add the
+  // update audit pair (the create and update timestamps match on first write).
+  await upsertNode(
+    nodeRowFromFields("principal", { ...raw, updated_at: now, updated_by: createdBy }),
+  );
 
   await reindexAndScheduleAttach(docoDir, docoId, id);
   appendAuditEvent({

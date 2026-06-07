@@ -4,8 +4,10 @@ import {
   type PoolClient,
   getDocoById,
   getEntity,
+  nodeRowFromFields,
   recordEntityVersion,
-  upsertEntity,
+  upsertNode,
+  upsertPolicy,
   withClient,
   withTransaction,
 } from "@doco/db";
@@ -233,20 +235,29 @@ async function persistEntity(args: {
   const { fm } = args;
   const start = performance.now();
   try {
-    await upsertEntity(
-      {
-        id: args.id,
-        doco_id: args.docoId,
-        entity_type: args.entityType,
-        data: fm,
-        lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
-        created_at: typeof fm.created_at === "string" ? fm.created_at : null,
-        created_by: typeof fm.created_by === "string" ? fm.created_by : null,
-        updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
-        updated_by: typeof fm.updated_by === "string" ? fm.updated_by : null,
-      },
-      args.client,
-    );
+    // Two honest writers, one per category — no generic `EntityRecord` envelope.
+    // A policy keeps its real `policies.data` jsonb; every node type splits its
+    // captured field bag into the typed `NodeRow` at the one write boundary.
+    if (args.entityType === "policy") {
+      await upsertPolicy(
+        {
+          id: args.id,
+          doco_id: args.docoId,
+          lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
+          data: fm,
+          created_at: typeof fm.created_at === "string" ? fm.created_at : null,
+          created_by: typeof fm.created_by === "string" ? fm.created_by : null,
+          updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
+          updated_by: typeof fm.updated_by === "string" ? fm.updated_by : null,
+        },
+        args.client,
+      );
+    } else {
+      await upsertNode(
+        nodeRowFromFields(args.entityType, { ...fm, id: args.id, doco_id: args.docoId }),
+        args.client,
+      );
+    }
     // Append-only history: record an immutable version snapshot +
     // changeset for this write — atomic with the projection when a tx client is
     // provided. op (create/update/retire) is derived inside recordEntityVersion.

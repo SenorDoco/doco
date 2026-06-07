@@ -1,4 +1,4 @@
-import { upsertEntity } from "@doco/db";
+import { upsertPolicy } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { capturePolicy } from "../capture.server";
 
@@ -12,7 +12,9 @@ vi.mock("@doco/db", () => ({
   },
   getDocoById: vi.fn(async () => ({ id: "doco_x", handle: "torre-bpm" })),
   getEntity: vi.fn(),
-  upsertEntity: vi.fn(async () => undefined),
+  upsertPolicy: vi.fn(async () => undefined),
+  upsertNode: vi.fn(async () => undefined),
+  nodeRowFromFields: vi.fn(),
   recordEntityVersion: vi.fn(async () => undefined),
   withClient: vi.fn(async (fn) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
   withTransaction: vi.fn(async (fn) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
@@ -40,8 +42,8 @@ vi.mock("../redeem.server", () => ({
 const DOCO_ID = "doco_01TEST00000000000000000001";
 
 function persistedData(): Record<string, unknown> {
-  const call = vi.mocked(upsertEntity).mock.calls.at(0);
-  if (!call) throw new Error("upsertEntity was not called");
+  const call = vi.mocked(upsertPolicy).mock.calls.at(0);
+  if (!call) throw new Error("upsertPolicy was not called");
   return (call[0] as { data: Record<string, unknown> }).data;
 }
 
@@ -74,7 +76,7 @@ describe("capturePolicy author resolution", () => {
     );
 
     expect(result).toMatchObject({ ok: true, id: expect.stringMatching(/^policy_/) });
-    expect(upsertEntity).toHaveBeenCalledTimes(1);
+    expect(upsertPolicy).toHaveBeenCalledTimes(1);
     expect(persistedData()).not.toHaveProperty("authored_by");
   });
 
@@ -171,7 +173,7 @@ describe("capturePolicy author resolution", () => {
       "https://doco.test",
     );
     expect(result).toMatchObject({ error: expect.stringContaining("not a first-class edge type") });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertPolicy).not.toHaveBeenCalled();
   });
 
   it("still rejects a user id supplied as the author", async () => {
@@ -189,6 +191,6 @@ describe("capturePolicy author resolution", () => {
     );
 
     expect(result).toMatchObject({ error: expect.stringContaining("must be a Principal NODE id") });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertPolicy).not.toHaveBeenCalled();
   });
 });
