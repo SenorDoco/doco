@@ -93,6 +93,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
+    handle: "evals",
+    label: "AI evals",
+    description:
+      "Document and track AI test evals — what each eval measures, how it's graded, and the target — plus an append-only log of every run's score and verdict, pinned to the model and prompt versions it tested.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
     handle: "product-roadmap",
     label: "Product roadmap",
     description:

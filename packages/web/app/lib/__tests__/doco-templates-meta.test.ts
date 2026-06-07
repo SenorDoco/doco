@@ -17,6 +17,7 @@ const SURVIVING_HANDLES = [
   "data-decisions",
   "glossary",
   "org-chart",
+  "evals",
   "product-roadmap",
 ] as const;
 
