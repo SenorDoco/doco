@@ -300,10 +300,6 @@ export default function DocoSettings({
                     <span>Public — anyone with the URL can view</span>
                   </label>
                 </div>
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Private docos return 404 to non-members on both the web and the API. Existence
-                  isn't leaked.
-                </span>
               </fieldset>
               <button
                 type="submit"
@@ -492,7 +488,7 @@ export default function DocoSettings({
                 <p className="text-xs">
                   Type the doco handle <span className="font-mono font-semibold">{handle}</span> to
                   confirm. This permanently deletes the doco and every entity and edge inside it. It
-                  cannot be undone. Per ADR-040, only people can delete docos.
+                  cannot be undone.
                 </p>
                 <input
                   name="confirm_handle"
