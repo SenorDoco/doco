@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   reindex: vi.fn(),
   reindexEmbeddingsOnly: vi.fn(),
   runAuthoringPolicies: vi.fn(),
-  upsertEntity: vi.fn(),
+  upsertNode: vi.fn(),
   withClient: vi.fn(),
   withTransaction: vi.fn(),
 }));
@@ -26,7 +26,9 @@ vi.mock("@doco/db", () => {
     listPrincipals: mocks.listPrincipals,
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
-    upsertEntity: mocks.upsertEntity,
+    nodeRowFromFields: (_type: string, fields: Record<string, unknown>) => fields,
+    upsertNode: mocks.upsertNode,
+    upsertPolicy: vi.fn(),
     withClient: mocks.withClient,
     withTransaction: mocks.withTransaction,
   };
@@ -80,7 +82,7 @@ describe("generic eval capture API", () => {
     mocks.reindex.mockResolvedValue(undefined);
     mocks.reindexEmbeddingsOnly.mockResolvedValue(undefined);
     mocks.runAuthoringPolicies.mockResolvedValue({ blocking: null, warnings: [] });
-    mocks.upsertEntity.mockResolvedValue(undefined);
+    mocks.upsertNode.mockResolvedValue(undefined);
     mocks.withClient.mockImplementation((fn) => fn({ query: vi.fn().mockResolvedValue({}) }));
     mocks.withTransaction.mockImplementation((fn) => fn({}));
   });
@@ -100,7 +102,7 @@ describe("generic eval capture API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("created_by_principal_id is not a node JSON field"),
     });

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   loadDocoRouteForRead: vi.fn(),
   requireDocoTypeWriteForRequest: vi.fn(),
   getEntity: vi.fn(),
-  upsertEntity: vi.fn(),
+  upsertNode: vi.fn(),
   query: vi.fn(),
   withClient: vi.fn(),
   withTransaction: vi.fn(),
@@ -17,7 +17,11 @@ vi.mock("@doco/db", () => {
   const rank = { reader: 1, writer: 2, owner: 3 } as const;
   return {
     getEntity: mocks.getEntity,
-    upsertEntity: (rec: unknown) => mocks.upsertEntity(rec),
+    // The write boundary is mocked as a passthrough so `upsertNode` receives the
+    // exact field bag the route built — what these tests assert on.
+    nodeRowFromFields: (_type: string, fields: Record<string, unknown>) => fields,
+    upsertNode: (node: unknown) => mocks.upsertNode(node),
+    upsertPolicy: vi.fn(),
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
     withClient: mocks.withClient,
@@ -109,12 +113,14 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+    // A principal is an ordinary node: the route writes a flat field bag through
+    // the one node boundary — no `entity_type`/`data` envelope.
+    expect(mocks.upsertNode).toHaveBeenCalledWith(
       expect.objectContaining({
         id: PRINCIPAL_ID,
-        entity_type: "principal",
+        node_type: "principal",
         lifecycle: "retired",
-        data: expect.objectContaining({ lifecycle: "retired", prose: "visitor" }),
+        prose: "visitor",
         updated_by: "user_author",
       }),
     );
@@ -156,7 +162,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(409);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("active nodes still reference it"),
       active_references: [expect.objectContaining({ id: "action_01ABC", node_type: "action" })],
@@ -186,7 +192,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       already_retired: true,
@@ -200,7 +206,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
   });
 
   it("renames a Principal — name is editable", async () => {
@@ -210,12 +216,12 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+    expect(mocks.upsertNode).toHaveBeenCalledWith(
       expect.objectContaining({
         id: PRINCIPAL_ID,
-        entity_type: "principal",
+        node_type: "principal",
         lifecycle: "active",
-        data: expect.objectContaining({ prose: "renamed" }),
+        prose: "renamed",
         updated_by: "user_author",
       }),
     );
@@ -243,10 +249,8 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ prose: "Renamed Seat" }),
-      }),
+    expect(mocks.upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ prose: "Renamed Seat" }),
     );
   });
 
@@ -257,7 +261,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("name must be a non-empty string"),
     });
@@ -270,7 +274,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("Empty patch"),
     });
@@ -290,7 +294,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(403);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
   });
 
   it("404s when the principal isn't in this Doco", async () => {
@@ -316,7 +320,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
   });
 
   it("rejects reports_to because reporting lines are edge-only", async () => {
@@ -326,7 +330,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("reports_to is not a node JSON field"),
     });
@@ -339,7 +343,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("reports_to is not a node JSON field"),
     });
@@ -352,7 +356,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("reports_to is not a node JSON field"),
     });
@@ -412,7 +416,7 @@ describe("principal retire API", () => {
     });
 
     expect(response.status).toBe(422);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("Authoring policy violation"),
     });

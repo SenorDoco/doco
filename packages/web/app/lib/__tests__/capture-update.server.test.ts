@@ -1,4 +1,4 @@
-import { getDocoById, getEntity, upsertEntity } from "@doco/db";
+import { getDocoById, getEntity, nodeRowFromFields, upsertNode } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureGenericNode,
@@ -17,7 +17,10 @@ vi.mock("@doco/db", () => ({
   },
   getDocoById: vi.fn(),
   getEntity: vi.fn(),
-  upsertEntity: vi.fn(),
+  upsertNode: vi.fn(),
+  upsertPolicy: vi.fn(),
+  // Capture the flat field bag handed to the write boundary, unchanged.
+  nodeRowFromFields: vi.fn((_type: string, fields: Record<string, unknown>) => fields),
   recordEntityVersion: vi.fn(async () => undefined),
   withClient: vi.fn(),
   withTransaction: vi.fn(async (fn) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
@@ -133,13 +136,8 @@ describe("updateEntity", () => {
       // A node's text has exactly one name: `prose`.
       changed: ["prose", "kind"],
     });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          prose: "Renamed state name",
-          kind: "terminal",
-        }),
-      }),
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ prose: "Renamed state name", kind: "terminal" }),
       expect.anything(),
     );
   });
@@ -174,12 +172,8 @@ describe("updateEntity", () => {
       ok: true,
       changed: ["prose"],
     });
-    expect(upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          prose: "Renamed idea name",
-        }),
-      }),
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ prose: "Renamed idea name" }),
       expect.anything(),
     );
   });
@@ -213,7 +207,7 @@ describe("updateEntity", () => {
     expect(result).toMatchObject({
       error: expect.stringContaining("sequence_to is not a node JSON field"),
     });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 
   it("rejects patching a Decision's implemented_by relation", async () => {
@@ -245,7 +239,7 @@ describe("updateEntity", () => {
     expect(result).toMatchObject({
       error: expect.stringContaining("implemented_by is not a node JSON field"),
     });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 
   const REFERENCE_ID = "reference_01TEST000000000000000001";
@@ -285,12 +279,12 @@ describe("updateEntity", () => {
     });
 
     expect(result).toMatchObject({ ok: true });
-    const rec = vi.mocked(upsertEntity).mock.calls[0][0];
+    const fields = vi.mocked(nodeRowFromFields).mock.calls[0][1];
     // The title (`prose`) and the new attribute both land as flat keys.
-    expect(rec.data.prose).toBe("New title");
-    expect(rec.data).toMatchObject({ prose: "New title", content_hash: "new_hash" });
-    // No nested `extra` object leaks into the data bag.
-    expect(rec.data).not.toHaveProperty("extra");
+    expect(fields.prose).toBe("New title");
+    expect(fields).toMatchObject({ prose: "New title", content_hash: "new_hash" });
+    // No nested `extra` object leaks into the field bag.
+    expect(fields).not.toHaveProperty("extra");
   });
 
   it("clears a flat attribute when the extra patch sets it to null", async () => {
@@ -324,9 +318,9 @@ describe("updateEntity", () => {
     });
 
     expect(result).toMatchObject({ ok: true, changed: ["content_hash"] });
-    const rec = vi.mocked(upsertEntity).mock.calls[0][0];
-    // content_hash is gone from the data bag (storage drops null/absent keys).
-    expect(rec.data).not.toHaveProperty("content_hash");
+    const fields = vi.mocked(nodeRowFromFields).mock.calls[0][1];
+    // content_hash is gone from the field bag (the boundary drops null/absent keys).
+    expect(fields).not.toHaveProperty("content_hash");
   });
 
   it("is a no-op when title + extra are unchanged (idempotent re-sync)", async () => {
@@ -361,7 +355,7 @@ describe("updateEntity", () => {
     });
 
     expect(result).toMatchObject({ error: "No fields changed." });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 
   it("rejects created_by_principal_id on Decision capture because authorship is edge-only", async () => {
@@ -386,7 +380,7 @@ describe("updateEntity", () => {
     expect(result).toMatchObject({
       error: expect.stringContaining("created_by_principal_id is not a node JSON field"),
     });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 
   it('rejects the retired lifecycle vocabulary ("asserted"/"proposed") on capture', async () => {
@@ -406,7 +400,7 @@ describe("updateEntity", () => {
     );
 
     expect(result).toMatchObject({ error: expect.stringContaining("Unknown lifecycle: asserted") });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 
   it("rejects created_by_principal_id patches", async () => {
@@ -439,7 +433,7 @@ describe("updateEntity", () => {
     expect(result).toMatchObject({
       error: expect.stringContaining("created_by_principal_id is not a node JSON field"),
     });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 
   it("rejects patching an Action's implemented_by relation", async () => {
@@ -476,7 +470,7 @@ describe("updateEntity", () => {
     expect(result).toMatchObject({
       error: expect.stringContaining("implemented_by is not a node JSON field"),
     });
-    expect(upsertEntity).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 });
 

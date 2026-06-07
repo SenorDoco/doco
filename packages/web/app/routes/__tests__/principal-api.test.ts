@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   loadDocoRouteForRead: vi.fn(),
   requireDocoTypeWriteForRequest: vi.fn(),
   query: vi.fn(),
-  upsertEntity: vi.fn(),
+  upsertNode: vi.fn(),
   withTransaction: vi.fn(),
   withClient: vi.fn(),
   getEntity: vi.fn(),
@@ -22,7 +22,11 @@ vi.mock("@doco/db", () => {
     listDocoUsers: vi.fn(),
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
-    upsertEntity: (rec: unknown) => mocks.upsertEntity(rec),
+    // The write boundary is mocked as a passthrough so `upsertNode` receives the
+    // exact field bag the route built — what these tests assert on.
+    nodeRowFromFields: (_type: string, fields: Record<string, unknown>) => fields,
+    upsertNode: (node: unknown) => mocks.upsertNode(node),
+    upsertPolicy: vi.fn(),
     withTransaction: mocks.withTransaction,
     withClient: mocks.withClient,
   };
@@ -110,35 +114,29 @@ describe("principal API", () => {
       "principal",
       "create a principal",
     );
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+    // A principal is an ordinary node: the route writes a flat field bag through
+    // the one node boundary — no `entity_type`/`data` envelope.
+    expect(mocks.upsertNode).toHaveBeenCalledWith(
       expect.objectContaining({
         doco_id: "doco_acme",
-        entity_type: "principal",
+        node_type: "principal",
+        prose: "Visitor — human site visitor, no Doco account required",
         created_by: "user_author",
         updated_by: "user_author",
-        data: expect.objectContaining({
-          doco_id: "doco_acme",
-          node_type: "principal",
-          prose: "Visitor — human site visitor, no Doco account required",
-          created_by: "user_author",
-          lifecycle: "active",
-        }),
+        lifecycle: "active",
       }),
     );
     // A principal has no separate body — `body_md` never reaches storage.
-    expect(mocks.upsertEntity.mock.calls[0]?.[0]).not.toHaveProperty("body_md");
+    const persistedData = mocks.upsertNode.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(persistedData).not.toHaveProperty("body_md");
     // The slim-down dropped display_name / description / type /
-    // summary — confirm they no longer leak into data even when the
+    // summary — confirm they no longer leak into the bag even when the
     // caller sends them.
-    const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
     expect(persistedData).not.toHaveProperty("role_principal");
     expect(persistedData).not.toHaveProperty("display_name");
     expect(persistedData).not.toHaveProperty("description");
     expect(persistedData).not.toHaveProperty("type");
     expect(persistedData).not.toHaveProperty("summary");
-    // upsertEntity is called WITHOUT a `summary` parameter.
-    const upsertCall = mocks.upsertEntity.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(upsertCall).not.toHaveProperty("summary");
     expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         docoDir: "/tmp/docos/acme",
@@ -172,12 +170,8 @@ describe("principal API", () => {
       expect.stringContaining("FROM principals WHERE name"),
       expect.anything(),
     );
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          prose: "Alex Smith / Finance",
-        }),
-      }),
+    expect(mocks.upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ prose: "Alex Smith / Finance" }),
     );
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
@@ -227,10 +221,8 @@ describe("principal API", () => {
         candidate: expect.objectContaining({ prose: "reviewer-bot", kind: "agent" }),
       }),
     );
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ prose: "reviewer-bot", kind: "agent" }),
-      }),
+    expect(mocks.upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ prose: "reviewer-bot", kind: "agent" }),
     );
   });
 
@@ -241,7 +233,7 @@ describe("principal API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringMatching(/kind must be "human" or "agent"/i),
     });
@@ -256,7 +248,7 @@ describe("principal API", () => {
     });
 
     expect(response.status).toBe(201);
-    const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
+    const persistedData = mocks.upsertNode.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(persistedData).not.toHaveProperty("kind");
   });
 
@@ -267,16 +259,10 @@ describe("principal API", () => {
     });
 
     expect(response.status).toBe(201);
-    expect(mocks.upsertEntity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          prose: "human",
-        }),
-      }),
-    );
+    expect(mocks.upsertNode).toHaveBeenCalledWith(expect.objectContaining({ prose: "human" }));
     // Slim-down: no `type` / `body_md` field anymore, and former reserved names
     // do not set role_principal.
-    const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
+    const persistedData = mocks.upsertNode.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(persistedData).not.toHaveProperty("role_principal");
     expect(persistedData).not.toHaveProperty("type");
     expect(persistedData).not.toHaveProperty("summary");
@@ -297,7 +283,7 @@ describe("principal API", () => {
     });
 
     expect(response.status).toBe(403);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: "Forbidden: write access on 'principal' required to create a principal.",
     });
@@ -314,7 +300,7 @@ describe("principal API", () => {
 
     expect(response.status).toBe(400);
     expect(mocks.getEntity).not.toHaveBeenCalled();
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("reports_to is not a node JSON field"),
     });
@@ -330,7 +316,7 @@ describe("principal API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("reports_to is not a node JSON field"),
     });
@@ -347,7 +333,7 @@ describe("principal API", () => {
 
     expect(response.status).toBe(400);
     expect(mocks.getEntity).not.toHaveBeenCalled();
-    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    expect(mocks.upsertNode).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("reports_to is not a node JSON field"),
     });

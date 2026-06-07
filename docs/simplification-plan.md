@@ -153,11 +153,25 @@ on `doco.to` (dev-signin recipe in `AGENTS.md`) with a screenshot.
      drop).
    - **D. Rename the node bag `attributes` → `extra` — DONE (#1088).** The
      guarded in-place column rename, once the bag held no system fields.
-   - **E. Collapse `EntityRecord` + the bespoke mappers to one `rowToEntity` —
-     OPTIONAL, not yet done** (the `PrincipalRow` fold, #1071, is the template).
-     Quality-only cleanup with no shape change; the identity-table mappers
-     (`users`/`workspaces`/`docos`) are genuinely distinct, so this needs care,
-     not a mechanical sweep.
+   - **E. Retire the `EntityRecord` god-type — DONE.** Reads already go through
+     one honest mapper per node (`rowToNode` → `NodeRow`). The write side is now
+     symmetric: one honest writer **per category**, no generic envelope.
+     - One node→JSON serializer (`nodeToApi`) replaced the drifting parallel
+       node-shape shapers (#1120).
+     - One node write boundary: `nodeRowFromFields(type, fields) → NodeRow`,
+       fed to `upsertNode(node)` — the symmetric counterpart of `rowToNode`
+       (write path #2A).
+     - The generic `EntityRecord` + `upsertEntity` dispatcher are **deleted**
+       (write path #2B). Nodes write a `NodeRow` (no `data` bag); policies write
+       a `PolicyWrite` (keeping their real `policies.data` jsonb); identity rows
+       (user/doco/workspace) already have their own typed writers in
+       `packages/host/src/host.ts`. There is no cross-category god-type.
+     - **The identity-table READ mappers (`mapUserRow`/`mapWorkspaceRow`/
+       `mapDocoRow`) stay** — they are genuinely distinct per-table column
+       readers (e.g. `mapDocoRow` JOINs for the owner handle), not a renaming
+       shim. Folding them into one mapper would inline the same logic at call
+       sites, not remove it; per the principle above (typed columns + one honest
+       type per entity) they are already honest. This closes slice 6.E.
 
 
 ## Verification regime (run after each UI-touching slice; exhaustively at the end)

@@ -85,23 +85,17 @@ describe("rename the node bag attributes -> extra (slice D)", () => {
       "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ($1,$2,$3,$4,'{}'::jsonb)",
       [DOCO, "doco-extra", ORG, ORG],
     );
-    const { upsertEntity, rowToNode } = await import("../repo.js");
+    const { upsertNode, nodeRowFromFields, rowToNode } = await import("../repo.js");
     const id = "action_extra00000000000000000000";
-    await upsertEntity(
-      {
+    await upsertNode(
+      nodeRowFromFields("action", {
         id,
         doco_id: DOCO,
-        entity_type: "action",
-        data: {
-          id,
-          doco_id: DOCO,
-          node_type: "action",
-          action: "Did it",
-          verb: "do",
-          lifecycle: "active",
-        },
+        node_type: "action",
+        action: "Did it",
+        verb: "do",
         lifecycle: "active",
-      } as never,
+      }),
       db as never,
     );
     const { rows } = await db.query<Record<string, unknown>>("SELECT * FROM nodes WHERE id = $1", [
