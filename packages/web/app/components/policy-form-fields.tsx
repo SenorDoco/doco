@@ -1,9 +1,18 @@
 // Shared field set for the new + edit policy forms. Renders the standalone
 // `kind` selector and, for deterministic policies, a menu of every check we
-// offer with the inputs that apply to the chosen `sub_kind`. The parent route
-// wraps this in a <Form> and supplies the submit buttons.
+// offer with the inputs that apply to the chosen `sub_kind`. The deterministic
+// inputs are generated from the check registry's field schema (`checkFields`),
+// so adding a check needs no edit here. The parent route wraps this in a <Form>
+// and supplies the submit buttons.
 
-import { EDGE_TYPES, NODE_TYPES } from "@doco/shared";
+import {
+  type DeterministicSubKind,
+  EDGE_TYPES,
+  type FieldSpec,
+  NODE_TYPES,
+  checkFields,
+  checkLabel,
+} from "@doco/shared";
 import { useState } from "react";
 import { POLICY_KIND_HELP } from "~/lib/policy-copy";
 import { DETERMINISTIC_SUB_KINDS, type PolicyFormInitial } from "~/lib/policy-form";
@@ -36,9 +45,15 @@ function NodeTypeSelect({ name, defaultValue }: { name: string; defaultValue?: s
   );
 }
 
-function EdgeTypeSelect({ defaultValue }: { defaultValue?: string }) {
+function EdgeTypeSelect({
+  name = "edge_type",
+  defaultValue,
+}: {
+  name?: string;
+  defaultValue?: string;
+}) {
   return (
-    <select name="edge_type" defaultValue={defaultValue ?? ""} className={INPUT}>
+    <select name={name} defaultValue={defaultValue ?? ""} className={INPUT}>
       <option value="">(choose edge type)</option>
       {EDGE_TYPES.map((t) => (
         <option key={t} value={t}>
@@ -49,9 +64,15 @@ function EdgeTypeSelect({ defaultValue }: { defaultValue?: string }) {
   );
 }
 
-function DirectionSelect({ defaultValue }: { defaultValue?: string }) {
+function DirectionSelect({
+  name = "direction",
+  defaultValue,
+}: {
+  name?: string;
+  defaultValue?: string;
+}) {
   return (
-    <select name="direction" defaultValue={defaultValue ?? ""} className={INPUT}>
+    <select name={name} defaultValue={defaultValue ?? ""} className={INPUT}>
       <option value="">(either direction)</option>
       <option value="outgoing">outgoing</option>
       <option value="incoming">incoming</option>
@@ -59,217 +80,91 @@ function DirectionSelect({ defaultValue }: { defaultValue?: string }) {
   );
 }
 
-/** The inputs that apply to a given deterministic check. */
-function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyFormInitial }) {
-  const whenField = (
-    <Field label="When node type (comma-separated, optional)">
-      <input name="when_node_type" defaultValue={init.when_node_type} className={INPUT} />
-    </Field>
-  );
-  switch (subKind) {
-    case "requires_edge":
+/** One deterministic field, rendered from its schema entry. */
+function DeterministicField({ field, init }: { field: FieldSpec; init: PolicyFormInitial }) {
+  const rec = init as unknown as Record<string, string | boolean | undefined>;
+  const str = (key: string) => {
+    const v = rec[key];
+    return typeof v === "string" ? v : "";
+  };
+  switch (field.control) {
+    case "edge-type":
       return (
-        <>
-          <Field label="Edge type">
-            <EdgeTypeSelect defaultValue={init.edge_type} />
-          </Field>
-          <Field label="Target node type (optional)">
-            <NodeTypeSelect name="target_node_type" defaultValue={init.target_node_type} />
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Minimum count (optional)">
-              <input
-                name="min_count"
-                type="number"
-                min={1}
-                defaultValue={init.min_count}
-                placeholder="1"
-                className={INPUT}
-              />
-            </Field>
-            <Field label="Direction (optional)">
-              <DirectionSelect defaultValue={init.direction} />
-            </Field>
-          </div>
-          <Field label="Exempt when other endpoint is node type (optional)">
-            <NodeTypeSelect
-              name="exempt_when_other_node_type"
-              defaultValue={init.exempt_when_other_node_type}
-            />
-          </Field>
-          {whenField}
-        </>
-      );
-    case "limits_edge":
-      return (
-        <>
-          <Field label="Edge type">
-            <EdgeTypeSelect defaultValue={init.edge_type} />
-          </Field>
-          <Field label="Target node type (optional)">
-            <NodeTypeSelect name="target_node_type" defaultValue={init.target_node_type} />
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Maximum count (default 1)">
-              <input
-                name="max_count"
-                type="number"
-                min={0}
-                defaultValue={init.max_count}
-                placeholder="1"
-                className={INPUT}
-              />
-            </Field>
-            <Field label="Direction (optional)">
-              <DirectionSelect defaultValue={init.direction} />
-            </Field>
-          </div>
-          {whenField}
-        </>
-      );
-    case "forbids_edge":
-      return (
-        <>
-          <Field label="Edge type">
-            <EdgeTypeSelect defaultValue={init.edge_type} />
-          </Field>
-          <Field label="Target node type (optional)">
-            <NodeTypeSelect name="target_node_type" defaultValue={init.target_node_type} />
-          </Field>
-          {whenField}
-        </>
-      );
-    case "requires_edge_type":
-      return (
-        <Field label="Allowed edge types (comma-separated)">
-          <input name="edge_types" defaultValue={init.edge_types} className={INPUT} />
+        <Field label={field.formLabel}>
+          <EdgeTypeSelect name={field.name} defaultValue={str(field.name)} />
         </Field>
       );
-    case "requires_field":
-    case "forbids_field":
+    case "node-type":
       return (
-        <>
-          <Field label="Fields (comma-separated)">
-            <input name="fields" defaultValue={init.fields} className={INPUT} />
-          </Field>
-          {whenField}
-        </>
-      );
-    case "forbids_field_pattern":
-      return (
-        <>
-          <Field label="Fields (comma-separated)">
-            <input name="fields" defaultValue={init.fields} className={INPUT} />
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Pattern (regular expression)">
-              <input name="pattern" defaultValue={init.pattern} className={INPUT} />
-            </Field>
-            <Field label="Flags (optional, e.g. i)">
-              <input name="flags" defaultValue={init.flags} className={INPUT} />
-            </Field>
-          </div>
-          {whenField}
-        </>
-      );
-    case "flow-wiring":
-      return (
-        <>
-          <Field label="Edge type">
-            <EdgeTypeSelect defaultValue={init.edge_type} />
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Initial when — field (optional)">
-              <input
-                name="initial_when_field"
-                defaultValue={init.initial_when_field}
-                className={INPUT}
-              />
-            </Field>
-            <Field label="Initial when — equals">
-              <input
-                name="initial_when_equals"
-                defaultValue={init.initial_when_equals}
-                className={INPUT}
-              />
-            </Field>
-            <Field label="Terminal when — field (optional)">
-              <input
-                name="terminal_when_field"
-                defaultValue={init.terminal_when_field}
-                className={INPUT}
-              />
-            </Field>
-            <Field label="Terminal when — equals">
-              <input
-                name="terminal_when_equals"
-                defaultValue={init.terminal_when_equals}
-                className={INPUT}
-              />
-            </Field>
-          </div>
-          {whenField}
-        </>
-      );
-    case "unique_field":
-      return (
-        <>
-          <Field label="Field">
-            <input name="field" defaultValue={init.field} className={INPUT} />
-          </Field>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="case_fold" defaultChecked={init.case_fold} />
-            Case-insensitive
-          </label>
-          {whenField}
-        </>
-      );
-    case "requires_node_type":
-      return (
-        <Field label="Allowed node types (comma-separated)">
-          <input name="node_types" defaultValue={init.node_types} className={INPUT} />
+        <Field label={field.formLabel}>
+          <NodeTypeSelect name={field.name} defaultValue={str(field.name)} />
         </Field>
       );
-    case "requires_entity_type":
+    case "direction":
       return (
-        <Field label="Allowed entity types (comma-separated)">
-          <input name="entity_types" defaultValue={init.entity_types} className={INPUT} />
+        <Field label={field.formLabel}>
+          <DirectionSelect name={field.name} defaultValue={str(field.name)} />
         </Field>
       );
-    case "requires_field_resolves_to_principal":
+    case "number":
       return (
-        <>
-          <Field label="Field">
-            <input name="field" defaultValue={init.field} className={INPUT} />
-          </Field>
-          {whenField}
-        </>
+        <Field label={field.formLabel}>
+          <input
+            name={field.name}
+            type="number"
+            min={0}
+            defaultValue={str(field.name)}
+            placeholder="1"
+            className={INPUT}
+          />
+        </Field>
       );
-    case "graph-completeness":
+    case "checkbox":
       return (
-        <>
-          <Field label="List field">
-            <input name="list_field" defaultValue={init.list_field} className={INPUT} />
-          </Field>
-          <Field label="Edge type">
-            <EdgeTypeSelect defaultValue={init.edge_type} />
-          </Field>
-          <Field label="Incoming node type">
-            <NodeTypeSelect name="incoming_node_type" defaultValue={init.incoming_node_type} />
-          </Field>
-          <Field label="Incoming field must match">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name={field.name} defaultChecked={rec[field.name] === true} />
+          {field.formLabel}
+        </label>
+      );
+    case "condition":
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={`${field.formLabel} — field (optional)`}>
             <input
-              name="incoming_field_must_match"
-              defaultValue={init.incoming_field_must_match}
+              name={`${field.name}_field`}
+              defaultValue={str(`${field.name}_field`)}
               className={INPUT}
             />
           </Field>
-          {whenField}
-        </>
+          <Field label={`${field.formLabel} — equals`}>
+            <input
+              name={`${field.name}_equals`}
+              defaultValue={str(`${field.name}_equals`)}
+              className={INPUT}
+            />
+          </Field>
+        </div>
       );
     default:
-      return null;
+      // text + the comma-separated controls — a plain text input.
+      return (
+        <Field label={field.formLabel}>
+          <input name={field.name} defaultValue={str(field.name)} className={INPUT} />
+        </Field>
+      );
   }
+}
+
+/** The inputs that apply to a given deterministic check, generated from its schema. */
+function DeterministicFields({ subKind, init }: { subKind: string; init: PolicyFormInitial }) {
+  if (!(DETERMINISTIC_SUB_KINDS as readonly string[]).includes(subKind)) return null;
+  return (
+    <>
+      {checkFields(subKind as DeterministicSubKind).map((field) => (
+        <DeterministicField key={field.name} field={field} init={init} />
+      ))}
+    </>
+  );
 }
 
 export function PolicyFormFields({
@@ -349,7 +244,7 @@ export function PolicyFormFields({
             >
               {DETERMINISTIC_SUB_KINDS.map((sk) => (
                 <option key={sk} value={sk}>
-                  {sk}
+                  {checkLabel(sk)}
                 </option>
               ))}
             </select>

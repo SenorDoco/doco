@@ -17,6 +17,7 @@ import {
   NODE_TYPES,
   type NodeType,
   type PolicyPredicate,
+  checkFieldsValidationErrors,
   generateUlid,
   summarizePredicate,
 } from "@doco/shared";
@@ -1513,36 +1514,11 @@ function normalizeDeterministicPredicate(
   if (typeof predicate.sub_kind !== "string" || predicate.sub_kind.length === 0) {
     return { error: "predicate.sub_kind is required for deterministic policies." };
   }
-  const edgeTypeError = validateEdgeTypeReference(predicate);
-  if (edgeTypeError) return edgeTypeError;
+  // One validator, derived from the check's field schema — required fields and
+  // edge-type references (including `flow-wiring`'s, once missed here).
+  const errors = checkFieldsValidationErrors(predicate);
+  if (errors.length > 0) return { error: errors[0] };
   return predicate;
-}
-
-function validateEdgeTypeReference(predicate: DeterministicPredicate): CaptureError | null {
-  const edgeType = predicateEdgeType(predicate);
-  if (edgeType === null) return null;
-  if (typeof edgeType !== "string" || edgeType.length === 0) {
-    return { error: `predicate.edge_type is required for \`${predicate.sub_kind}\`.` };
-  }
-  if (!EDGE_TYPE_SET.has(edgeType)) {
-    return {
-      error: `predicate.edge_type \`${edgeType}\` is not a first-class edge type. Valid edge types: ${EDGE_TYPES.join(", ")}.`,
-    };
-  }
-  return null;
-}
-
-function predicateEdgeType(predicate: DeterministicPredicate): string | null {
-  if (
-    predicate.sub_kind !== "requires_edge" &&
-    predicate.sub_kind !== "limits_edge" &&
-    predicate.sub_kind !== "forbids_edge" &&
-    predicate.sub_kind !== "graph-completeness"
-  ) {
-    return null;
-  }
-  const edgeType = predicate.edge_type;
-  return typeof edgeType === "string" ? edgeType : "";
 }
 
 /**

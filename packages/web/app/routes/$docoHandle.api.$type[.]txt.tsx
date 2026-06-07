@@ -1,4 +1,9 @@
-import { getPublicBaseUrl, renderCaptureBodyFields, renderCapturePatchFields } from "@doco/shared";
+import {
+  DETERMINISTIC_SUB_KINDS,
+  getPublicBaseUrl,
+  renderCaptureBodyFields,
+  renderCapturePatchFields,
+} from "@doco/shared";
 import { normalizeDocoParams } from "~/lib/doco-access.server";
 
 /**
@@ -680,12 +685,7 @@ BODY — kind = "probabilistic"
 BODY — kind = "deterministic"
   predicate             required   predicate object (or JSON string) shaped
                                   { "sub_kind": <check>, ...params }.
-                                  sub_kind is one of: requires_edge,
-                                  limits_edge, forbids_edge,
-                                  requires_field, forbids_field,
-                                  unique_field, requires_node_type,
-                                  requires_entity_type, graph-completeness,
-                                  requires_field_resolves_to_principal.
+                                  sub_kind is one of: ${DETERMINISTIC_SUB_KINDS.join(", ")}.
                                   The params are unchanged; only the
                                   discriminator field was renamed from
                                   \`kind\` to \`sub_kind\`.
