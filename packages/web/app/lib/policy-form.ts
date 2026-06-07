@@ -2,27 +2,18 @@
 // edit policy routes so the two stay in lock-step. Pure (FormData in, draft
 // out); no IO.
 
+import {
+  DETERMINISTIC_SUB_KINDS,
+  type DeterministicSubKind,
+  type FieldSpec,
+  checkFields,
+} from "@doco/shared";
 import type { PolicyDraft } from "~/lib/capture.server";
 
-// Every deterministic check the engine understands must appear here, or the
-// edit form's check-type menu can't display it — and saving such a policy
-// would silently rewrite it to a different predicate. Keep this in lock-step
-// with `DeterministicPredicate` in @doco/shared.
-export const DETERMINISTIC_SUB_KINDS = [
-  "requires_edge",
-  "limits_edge",
-  "forbids_edge",
-  "requires_edge_type",
-  "requires_field",
-  "forbids_field",
-  "forbids_field_pattern",
-  "flow-wiring",
-  "unique_field",
-  "requires_node_type",
-  "requires_entity_type",
-  "graph-completeness",
-  "requires_field_resolves_to_principal",
-] as const;
+// The deterministic check menu IS the registry's key list — there is no
+// hand-kept copy to drift. Re-exported so the form and its tests keep importing
+// it from one place.
+export { DETERMINISTIC_SUB_KINDS };
 
 /** Flattened form field values used to prefill the policy form on edit. */
 export interface PolicyFormInitial {
@@ -130,22 +121,6 @@ function intField(form: FormData, key: string): number | undefined {
   return Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
-/** Edge direction, constrained to the two the engine accepts. */
-function directionField(form: FormData): "incoming" | "outgoing" | undefined {
-  const v = str(form, "direction");
-  return v === "incoming" || v === "outgoing" ? v : undefined;
-}
-
-/** A flow-wiring `{ field, equals }` condition — included only when both halves are present. */
-function conditionField(
-  form: FormData,
-  prefix: "initial_when" | "terminal_when",
-): { field: string; equals: string } | undefined {
-  const field = str(form, `${prefix}_field`);
-  const equals = str(form, `${prefix}_equals`);
-  return field && equals ? { field, equals } : undefined;
-}
-
 export function policyDraftFromForm(form: FormData): PolicyDraft | { error: string } {
   const kind = str(form, "kind");
   if (kind !== "suggestion" && kind !== "deterministic" && kind !== "probabilistic") {
@@ -199,123 +174,69 @@ export function policyDraftFromForm(form: FormData): PolicyDraft | { error: stri
   };
 }
 
+// Build the structured predicate generically from the check's field schema —
+// the same `FieldSpec[]` that renders the form and validates the result. Adding
+// a check needs no edit here; its fields drive the parse.
 function buildDeterministicPredicate(
   form: FormData,
   sub_kind: string,
 ): { predicate: Record<string, unknown> } | { error: string } {
-  const when = csv(form, "when_node_type");
-  const withWhen = (p: Record<string, unknown>) => ({
-    predicate: when.length > 0 ? { ...p, when_node_type: when } : p,
-  });
-  switch (sub_kind) {
-    case "requires_edge": {
-      const edge_type = str(form, "edge_type");
-      if (!edge_type) return { error: "edge_type is required." };
-      const target = str(form, "target_node_type");
-      const min_count = intField(form, "min_count");
-      const direction = directionField(form);
-      const exempt = str(form, "exempt_when_other_node_type");
-      return withWhen({
-        sub_kind,
-        edge_type,
-        ...(target ? { target_node_type: target } : {}),
-        ...(min_count !== undefined ? { min_count } : {}),
-        ...(direction ? { direction } : {}),
-        ...(exempt ? { exempt_when_other_node_type: exempt } : {}),
-      });
+  const predicate: Record<string, unknown> = { sub_kind };
+  for (const field of checkFields(sub_kind as DeterministicSubKind)) {
+    const value = readFormField(form, field);
+    if (value === undefined) {
+      if (field.required) return { error: requiredError(field) };
+      continue;
     }
-    case "limits_edge": {
-      const edge_type = str(form, "edge_type");
-      if (!edge_type) return { error: "edge_type is required." };
-      const target = str(form, "target_node_type");
-      const direction = directionField(form);
-      const max_count = intField(form, "max_count");
-      return withWhen({
-        sub_kind,
-        edge_type,
-        ...(target ? { target_node_type: target } : {}),
-        ...(direction ? { direction } : {}),
-        ...(max_count !== undefined ? { max_count } : {}),
-      });
+    predicate[field.name] = value;
+  }
+  return { predicate };
+}
+
+/** Read one schema field from the form, or undefined when it is blank/omitted. */
+function readFormField(form: FormData, field: FieldSpec): unknown {
+  switch (field.control) {
+    case "number":
+      return intField(form, field.name);
+    case "checkbox":
+      return form.get(field.name) != null ? true : undefined;
+    case "node-type-csv":
+    case "entity-type-csv":
+    case "edge-type-csv":
+    case "field-csv": {
+      const arr = csv(form, field.name);
+      return arr.length > 0 ? arr : undefined;
     }
-    case "forbids_edge": {
-      const edge_type = str(form, "edge_type");
-      if (!edge_type) return { error: "edge_type is required." };
-      const target = str(form, "target_node_type");
-      return withWhen({ sub_kind, edge_type, ...(target ? { target_node_type: target } : {}) });
+    case "condition": {
+      const cField = str(form, `${field.name}_field`);
+      const cEquals = str(form, `${field.name}_equals`);
+      return cField && cEquals ? { field: cField, equals: cEquals } : undefined;
     }
-    case "requires_edge_type": {
-      const edge_types = csv(form, "edge_types");
-      if (edge_types.length === 0) return { error: "At least one edge type is required." };
-      return { predicate: { sub_kind, edge_types } };
+    case "direction": {
+      const v = str(form, field.name);
+      return v === "incoming" || v === "outgoing" ? v : undefined;
     }
-    case "requires_field":
-    case "forbids_field": {
-      const fields = csv(form, "fields");
-      if (fields.length === 0) return { error: "At least one field is required." };
-      return withWhen({ sub_kind, fields });
+    default: {
+      // edge-type / node-type / text — a trimmed non-empty string.
+      const v = str(form, field.name);
+      return v ? v : undefined;
     }
-    case "forbids_field_pattern": {
-      const fields = csv(form, "fields");
-      if (fields.length === 0) return { error: "At least one field is required." };
-      const pattern = str(form, "pattern");
-      if (!pattern) return { error: "pattern is required." };
-      const flags = str(form, "flags");
-      return withWhen({ sub_kind, fields, pattern, ...(flags ? { flags } : {}) });
-    }
-    case "flow-wiring": {
-      const edge_type = str(form, "edge_type");
-      if (!edge_type) return { error: "edge_type is required." };
-      const initial_when = conditionField(form, "initial_when");
-      const terminal_when = conditionField(form, "terminal_when");
-      return withWhen({
-        sub_kind,
-        edge_type,
-        ...(initial_when ? { initial_when } : {}),
-        ...(terminal_when ? { terminal_when } : {}),
-      });
-    }
-    case "unique_field": {
-      const field = str(form, "field");
-      if (!field) return { error: "field is required." };
-      const case_fold = form.get("case_fold") != null;
-      return withWhen({ sub_kind, field, ...(case_fold ? { case_fold: true } : {}) });
-    }
-    case "requires_node_type": {
-      const node_types = csv(form, "node_types");
-      if (node_types.length === 0) return { error: "At least one node type is required." };
-      return { predicate: { sub_kind, node_types } };
-    }
-    case "requires_entity_type": {
-      const entity_types = csv(form, "entity_types");
-      if (entity_types.length === 0) return { error: "At least one entity type is required." };
-      return { predicate: { sub_kind, entity_types } };
-    }
-    case "requires_field_resolves_to_principal": {
-      const field = str(form, "field");
-      if (!field) return { error: "field is required." };
-      return withWhen({ sub_kind, field });
-    }
-    case "graph-completeness": {
-      const list_field = str(form, "list_field");
-      const edge_type = str(form, "edge_type");
-      const incoming_node_type = str(form, "incoming_node_type");
-      const incoming_field_must_match = str(form, "incoming_field_must_match");
-      if (!list_field || !edge_type || !incoming_node_type || !incoming_field_must_match) {
-        return {
-          error:
-            "graph-completeness needs list_field, edge_type, incoming_node_type, and incoming_field_must_match.",
-        };
-      }
-      return withWhen({
-        sub_kind,
-        list_field,
-        edge_type,
-        incoming_node_type,
-        incoming_field_must_match,
-      });
-    }
+  }
+}
+
+function requiredError(field: FieldSpec): string {
+  switch (field.control) {
+    case "edge-type":
+      return "edge_type is required.";
+    case "field-csv":
+      return "At least one field is required.";
+    case "node-type-csv":
+      return "At least one node type is required.";
+    case "entity-type-csv":
+      return "At least one entity type is required.";
+    case "edge-type-csv":
+      return "At least one edge type is required.";
     default:
-      return { error: "Unknown deterministic check type." };
+      return `${field.name} is required.`;
   }
 }
