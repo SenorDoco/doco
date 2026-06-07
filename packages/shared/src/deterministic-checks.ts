@@ -215,7 +215,8 @@ export const DETERMINISTIC_CHECKS: CheckRegistry = {
       if (
         pred.exempt_when_incoming_edge_type &&
         ctx.edges.some(
-          (s) => s.to_id === ctx.candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
+          (s) =>
+            s.to_id === ctx.candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
         )
       ) {
         return null;
@@ -399,7 +400,8 @@ export const DETERMINISTIC_CHECKS: CheckRegistry = {
       if (
         pred.exempt_when_incoming_edge_type &&
         ctx.edges.some(
-          (s) => s.to_id === ctx.candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
+          (s) =>
+            s.to_id === ctx.candidate.id && s.edge_type === pred.exempt_when_incoming_edge_type,
         )
       ) {
         return null;
