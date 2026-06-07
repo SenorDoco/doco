@@ -40,7 +40,7 @@ import {
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
-import { type BoundaryCircle, computeBoundaryCircles } from "~/lib/process-boundary";
+import { computeExternalNeighbours } from "~/lib/process-boundary";
 import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
@@ -668,82 +668,99 @@ export function ProcessPerspective({
     referenceNumberStore.setNumbers(referenceNumberByEntityId);
   }, [referenceNumberByEntityId, referenceNumberStore]);
 
-  // Entry/exit boundary circles. A process pool renders not only its own
-  // members but also the nodes in OTHER processes that connect to it through
-  // sequence flow — as circles (BPMN start/end-event nomenclature): an
-  // entry circle to the left of the member a node flows INTO, an exit circle
-  // to the right of the member a node flows OUT to. Clicking a circle focuses
-  // that node, which renders its own (different) pool. These are top-level
-  // React Flow nodes at absolute canvas coordinates, each wired to its anchor
-  // by a real `flows_to` edge.
-  const boundaryCircles = useMemo(() => {
-    const circles = computeBoundaryCircles(focalPoolIds, filteredNodes, links);
+  // Cross-pool sequence-flow neighbours. A process pool renders not only its own
+  // members but also the nodes in OTHER pools that connect to it through
+  // `flows_to` — drawn as NORMAL boxes OUTSIDE this pool: to the LEFT when they
+  // flow INTO the pool (entry), to the RIGHT when the pool flows OUT to them
+  // (exit). An arrow that touches the pool's own process Action attaches to the
+  // title band (the header's left/right handle); one that touches an inner
+  // member draws node-to-node. Same-side neighbours stack down from the pool top
+  // so they never overlap. Clicking a box focuses that node, rendering its own
+  // (different) pool.
+  const externalNeighbours = useMemo(() => {
+    const neighbours = computeExternalNeighbours(focalPoolIds, filteredNodes, links);
     const nodes: FlowNode[] = [];
     const edges: FlowEdge[] = [];
-    let circleIndex = 0;
+    const poolById = new Map(layout.poolGeometry.map((p) => [p.id, p]));
+    const stackOffset = new Map<string, number>(); // `${poolId}:${direction}` → next y
+    let count = 0;
 
-    const findAnchor = (circle: BoundaryCircle): ProcessNode | null => {
-      for (const link of links) {
-        if (link.edge_type !== "flows_to") continue;
-        if (circle.direction === "entry" && link.source === circle.id) {
-          const anchor = nodeById.get(link.target);
-          if (anchor) return anchor;
-        }
-        if (circle.direction === "exit" && link.target === circle.id) {
-          const anchor = nodeById.get(link.source);
-          if (anchor) return anchor;
-        }
-      }
-      return null;
-    };
-
-    for (const circle of circles) {
-      if (circleIndex >= PROCESS_PLACEHOLDER_STUB_BUDGET) break;
-      const external = nodeByFullId.get(circle.id);
-      const anchor = findAnchor(circle);
-      if (!external || !anchor) continue;
-      const anchorPos = layout.nodePositions.get(anchor.id);
-      if (!anchorPos) continue;
-      const anchorSize = sizeForNode(anchor);
-      const id = `circle:${circle.direction}:${circle.id}`;
+    for (const n of neighbours) {
+      if (count >= PROCESS_PLACEHOLDER_STUB_BUDGET) break;
+      const external = nodeByFullId.get(n.id);
+      if (!external) continue;
+      const poolId =
+        n.attach.kind === "title" ? n.attach.poolId : nodeById.get(n.attach.nodeId)?.pool_id;
+      if (!poolId) continue;
+      const pool = poolById.get(poolId);
+      if (!pool) continue;
+      const size = sizeForNode(external);
+      const key = `${poolId}:${n.direction}`;
+      const offset = stackOffset.get(key) ?? 0;
+      stackOffset.set(key, offset + size.height + NODE_GAP_Y);
       const x =
-        circle.direction === "entry"
-          ? LANE_LEFT_INSET + anchorPos.x - BOUNDARY_CIRCLE_GAP - BOUNDARY_CIRCLE_DIAMETER
-          : LANE_LEFT_INSET + anchorPos.x + anchorSize.width + BOUNDARY_CIRCLE_GAP;
-      const y = anchorPos.y + anchorSize.height / 2 - BOUNDARY_CIRCLE_DIAMETER / 2;
+        n.direction === "entry"
+          ? LANE_LEFT_INSET - BOUNDARY_CIRCLE_GAP - size.width
+          : LANE_LEFT_INSET + layout.laneWidth + BOUNDARY_CIRCLE_GAP;
+      const y = pool.y + offset;
+      const attachKey = n.attach.kind === "title" ? n.attach.poolId : n.attach.nodeId;
+      const id = `external:${n.direction}:${n.id}:${attachKey}`;
       const stroke = lifecycleColor(external.lifecycle);
 
       nodes.push({
         id,
-        type: "processCircle",
+        type: nodeTypeForShape(external.shape),
         position: { x, y },
-        data: {
-          node: { ...external, shape: "circle" as ProcessShape },
-          isBoundaryCircle: true,
-        },
+        // `isBoundaryCircle` keeps the existing focus-on-click behaviour: the box
+        // stands in for a node in another pool, so clicking it focuses that pool.
+        data: { node: external, isBoundaryCircle: true },
         draggable: false,
         selectable: false,
         connectable: false,
-        initialWidth: BOUNDARY_CIRCLE_DIAMETER,
-        initialHeight: BOUNDARY_CIRCLE_DIAMETER,
-        style: { width: BOUNDARY_CIRCLE_DIAMETER, height: BOUNDARY_CIRCLE_DIAMETER, zIndex: 1 },
+        initialWidth: size.width,
+        initialHeight: size.height,
+        style: { width: size.width, height: size.height, zIndex: 1 },
       });
+
+      // The in-pool end of the arrow: the title band (process Action) via a named
+      // header handle, or an inner member node-to-node (default handles).
+      const poolEndId =
+        n.attach.kind === "title" ? `pool-header:${n.attach.poolId}` : n.attach.nodeId;
+      const headerHandle =
+        n.attach.kind === "title"
+          ? n.direction === "entry"
+            ? "pool-left"
+            : "pool-right"
+          : undefined;
       edges.push({
-        id: `boundary-edge:${circle.direction}:${circle.id}:${anchor.id}`,
-        source: circle.direction === "entry" ? id : anchor.id,
-        target: circle.direction === "entry" ? anchor.id : id,
+        id: `external-edge:${id}`,
+        source: n.direction === "entry" ? id : poolEndId,
+        target: n.direction === "entry" ? poolEndId : id,
+        ...(headerHandle
+          ? n.direction === "entry"
+            ? { targetHandle: headerHandle }
+            : { sourceHandle: headerHandle }
+          : {}),
         type: "stableLabeledBezier",
         selectable: false,
         focusable: false,
         interactionWidth: 0,
-        style: { stroke, strokeWidth: 1.75, strokeDasharray: "4 3" },
+        style: { stroke, strokeWidth: 1.75 },
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: stroke },
       });
-      circleIndex++;
+      count++;
     }
 
     return { nodes, edges };
-  }, [focalPoolIds, filteredNodes, links, layout.nodePositions, nodeById, nodeByFullId]);
+  }, [
+    focalPoolIds,
+    filteredNodes,
+    links,
+    layout.poolGeometry,
+    layout.laneWidth,
+    nodeById,
+    nodeByFullId,
+  ]);
 
   // Cache of the previous render's flow nodes, keyed by id, so unchanged
   // nodes keep their object identity across layout re-runs (see below).
@@ -786,7 +803,7 @@ export function ProcessPerspective({
     // are unchanged, so the memo'd shape components skip work when a focus
     // shift re-runs the layout. (On pan this memo doesn't recompute at
     // all — none of its deps depend on the viewport anymore.)
-    const built = [...windowed, ...boundaryCircles.nodes];
+    const built = [...windowed, ...externalNeighbours.nodes];
     const stable = reuseStableNodes(built, prevFlowNodesRef.current);
     prevFlowNodesRef.current = indexById(stable);
     return stable;
@@ -797,7 +814,7 @@ export function ProcessPerspective({
     renderedNodeIds,
     openLaneNode,
     viewSubprocess,
-    boundaryCircles.nodes,
+    externalNeighbours.nodes,
   ]);
   const flowEdges = useMemo<FlowEdge[]>(
     () => [
@@ -810,9 +827,9 @@ export function ProcessPerspective({
             : "doco-graph-fade-edge";
           return { ...edge, className };
         }),
-      ...boundaryCircles.edges,
+      ...externalNeighbours.edges,
     ],
-    [layout.flowEdges, renderedNodeIds, boundaryCircles.edges],
+    [layout.flowEdges, renderedNodeIds, externalNeighbours.edges],
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
   // selection center (highest global PageRank in the BPMN view) so opening
@@ -1340,6 +1357,9 @@ interface ProcessLayout {
     process_id: string | null;
     lifecycle: string | null;
   }>;
+  /** Full pool width (all pools span the same width). External neighbour boxes
+   *  sit just outside `[LANE_LEFT_INSET, LANE_LEFT_INSET + laneWidth]`. */
+  laneWidth: number;
 }
 
 const POOL_HEADER_HEIGHT = 32;
@@ -1792,7 +1812,7 @@ export function layOutProcess(
     return { id: lane.id, pool_id: lane.pool_id, label: lane.label, y, height, kind: lane.kind };
   });
 
-  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry, poolGeometry };
+  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry, poolGeometry, laneWidth };
 }
 
 /**
@@ -1976,6 +1996,20 @@ export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData })
           </span>
         </>
       )}
+      {/* Anchors for external-neighbour arrows that touch the process Action:
+          they attach to the title band's left edge (entry) / right edge (exit). */}
+      <Handle
+        id="pool-left"
+        type="target"
+        position={Position.Left}
+        style={{ background: "transparent", border: "none" }}
+      />
+      <Handle
+        id="pool-right"
+        type="source"
+        position={Position.Right}
+        style={{ background: "transparent", border: "none" }}
+      />
     </div>
   );
 }
