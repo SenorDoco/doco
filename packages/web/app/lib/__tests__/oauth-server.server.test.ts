@@ -99,6 +99,83 @@ describe("OAuth token authorization", () => {
     expect(callsTo("UPDATE oauth_refresh_tokens SET expires_at")).toHaveLength(1);
   });
 
+  const actorRefreshRow = {
+    client_id: "doco_client_x",
+    user_id: "user_a",
+    token_name: "actor key",
+    granted_doco_ids: [],
+    granted_doco_roles: {},
+    granted_doco_write_types: {},
+    granted_workspace_ids: [],
+    granted_workspace_roles: {},
+    granted_workspace_write_types: {},
+    grant_type: "actor",
+    scope: "doco",
+    expires_at: new Date(Date.now() + 10_000_000),
+    revoked: false,
+  };
+
+  it("an actor refresh mints an access token scoped to the resource workspace at the user's live role", async () => {
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("FROM oauth_refresh_tokens")) {
+        return { rows: [actorRefreshRow], rowCount: 1 };
+      }
+      if (String(sql).includes("FROM workspace_users")) {
+        return { rows: [{ role: "writer" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await refreshTokens({
+      client_id: "doco_client_x",
+      refresh_token: "doco_rt_actor",
+      resource: "https://doco.to/workspace_a/mcp",
+    });
+
+    expect(result.access_token).toMatch(/^doco_at_/);
+    const params = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
+    // granted_workspace_ids narrowed to the ONE requested workspace …
+    expect(params[7]).toEqual(["workspace_a"]);
+    // … carrying the user's live role in it …
+    expect(JSON.parse(params[8] as string)).toEqual({ workspace_a: "writer" });
+    // … and no doco grants leak through.
+    expect(params[4]).toEqual([]);
+  });
+
+  it("rejects an actor refresh that names no workspace (no broad access token)", async () => {
+    mocks.query.mockImplementation(async (sql: string) =>
+      String(sql).includes("FROM oauth_refresh_tokens")
+        ? { rows: [actorRefreshRow], rowCount: 1 }
+        : { rows: [], rowCount: 1 },
+    );
+
+    await expect(
+      refreshTokens({ client_id: "doco_client_x", refresh_token: "doco_rt_actor" }),
+    ).rejects.toThrow(/resource/i);
+    expect(callsTo("INSERT INTO oauth_access_tokens")).toHaveLength(0);
+  });
+
+  it("rejects an actor refresh for a workspace the user is not a member of", async () => {
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("FROM oauth_refresh_tokens")) {
+        return { rows: [actorRefreshRow], rowCount: 1 };
+      }
+      if (String(sql).includes("FROM workspace_users")) {
+        return { rows: [], rowCount: 0 }; // not a member
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await expect(
+      refreshTokens({
+        client_id: "doco_client_x",
+        refresh_token: "doco_rt_actor",
+        resource: "https://doco.to/workspace_x/mcp",
+      }),
+    ).rejects.toThrow(/not a member/i);
+    expect(callsTo("INSERT INTO oauth_access_tokens")).toHaveLength(0);
+  });
+
   it("issues browser OAuth codes for the approving user and stores the token name", async () => {
     await issueAuthorizationCode({
       client_id: "doco_client_browser",
