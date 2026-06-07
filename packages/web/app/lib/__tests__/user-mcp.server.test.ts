@@ -18,7 +18,7 @@ vi.mock("../workspace-mcp.server", () => ({
 
 import { gateUserMcp } from "../user-mcp.server";
 
-const req = new Request("https://doco.to/me/mcp", { method: "POST" });
+const req = new Request("https://doco.to/mcp", { method: "POST" });
 
 describe("gateUserMcp", () => {
   beforeEach(() => {

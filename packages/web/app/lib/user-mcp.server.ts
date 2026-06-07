@@ -1,11 +1,11 @@
-// Gate for the user-level MCP endpoint (`/me/mcp`).
+// Gate for the hosted MCP endpoint at `/mcp`.
 //
 // One durable credential reaches all of a user's workspaces, but each access
 // token is single-workspace — minted per session via the actor→access exchange
 // with an RFC 8707 `resource` (see oauth-server.server.ts). So the token's lone
 // `granted_workspace_ids[0]` IS this session's workspace, and we confine every
-// tool to it exactly as the per-workspace endpoint does — just resolved from
-// the token instead of the URL path.
+// tool to it exactly as the legacy per-workspace endpoint does — just resolved
+// from the token instead of the URL path.
 
 import { getWorkspaceById } from "@doco/db";
 import { getOauthTokenForRequest } from "./doco-access.server";

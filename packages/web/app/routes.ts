@@ -103,28 +103,28 @@ export default [
   // by every MCP client that lands on a workspace MCP endpoint without a valid bearer.
   route(".well-known/oauth-authorization-server", "routes/oauth-metadata-authorization-server.tsx"),
   route(".well-known/oauth-protected-resource", "routes/oauth-metadata-protected-resource.tsx"),
-  // User-level MCP endpoint + its RFC 9728 metadata. One connection per user,
-  // reaching every workspace they belong to; each session is pinned to ONE
-  // workspace by the (single-workspace) access token. Registered BEFORE the
-  // :workspaceId variants so the literal `me` segment matches first — otherwise
-  // :workspaceId would capture it.
+  // THE hosted MCP endpoint, at `/mcp` + its RFC 9728 metadata. One connection
+  // per user, reaching every workspace they belong to; each session is pinned to
+  // ONE workspace by the (single-workspace) access token. Registered BEFORE the
+  // :workspaceId and :docoHandle variants so the literal `mcp` segment matches
+  // first — otherwise a param route would capture it.
   route(
-    ".well-known/oauth-protected-resource/me/mcp",
-    "routes/oauth-metadata-protected-resource.me.tsx",
+    ".well-known/oauth-protected-resource/mcp",
+    "routes/oauth-metadata-protected-resource.mcp.tsx",
   ),
-  // Same handler as the per-workspace endpoint; the absence of a :workspaceId
-  // segment is what selects the user-level gate (see the action).
-  route("me/mcp", "routes/$workspaceId.mcp.tsx", { id: "user-mcp" }),
-  // Per-workspace RFC 9728 protected-resource metadata. The per-workspace MCP
-  // 401 points connectors here (path-specific, one resource per workspace).
+  // Reuses the same handler as the legacy per-workspace endpoint; the absence of
+  // a :workspaceId segment is what selects the user-level gate (see the action).
+  route("mcp", "routes/$workspaceId.mcp.tsx", { id: "user-mcp" }),
+  // LEGACY per-workspace metadata + endpoint. Superseded by `/mcp` above (the
+  // app-wide /mcp the old "no app-wide MCP, for security" decision forbade is
+  // safe now: a session can't cross workspaces — the access token is
+  // single-workspace). Kept so existing per-workspace connectors keep working;
+  // no longer surfaced in the UI. A 401 points clients at the per-workspace
+  // protected-resource metadata.
   route(
     ".well-known/oauth-protected-resource/:workspaceId/mcp",
     "routes/oauth-metadata-protected-resource.$workspaceId.tsx",
   ),
-  // Per-workspace hosted remote MCP endpoint (Streamable HTTP, JSON-RPC).
-  // There is NO app-wide /mcp (removed for security): a connector binds to one
-  // workspace at /<workspace-id>/mcp and its token reaches no other workspace.
-  // A 401 points clients at this workspace's protected-resource metadata above.
   route(":workspaceId/mcp", "routes/$workspaceId.mcp.tsx"),
   // OAuth 2.1 authorization server endpoints. The runtime hits these
   // via the metadata document above; the user sees /oauth/authorize

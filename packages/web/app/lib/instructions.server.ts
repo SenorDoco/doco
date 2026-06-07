@@ -85,14 +85,13 @@ field in clean framing (no claudeMd-style "may not be relevant"
 wrapper), so this is the channel that survives sandboxed agent
 runtimes where project-scope hooks are filtered.
 
-The hosted remote MCP connector comes in two shapes: a **user-level**
-endpoint at \`/me/mcp\` — one connection that reaches every workspace you
-belong to — and a **per-workspace** endpoint at \`/<workspace-id>/mcp\`,
-bound to that one workspace. Either way authentication belongs to the MCP
-client transport: do not hand-drive OAuth or ask the user to paste
-localhost callback URLs back into chat; if the callback listener fails,
-restart the client MCP auth flow. Use the direct OAuth recipes only when
-you are not connected through remote MCP.
+The hosted remote MCP connector lives at \`/mcp\` — one connection that
+reaches every workspace you belong to (each session pins exactly one; see
+below). Authentication belongs to the MCP client transport: do not
+hand-drive OAuth or ask the user to paste localhost callback URLs back
+into chat; if the callback listener fails, restart the client MCP auth
+flow. Use the direct OAuth recipes only when you are not connected
+through remote MCP.
 
 **One workspace per session.** Your credential may reach many
 workspaces (a user-level / \`actor\` token covers all of yours), but you
