@@ -44,6 +44,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-05-31",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "glossary",
+    label: "Glossary",
+    description:
+      "Define a shared vocabulary — one canonical term per entry, with a concise definition, synonyms, related terms, and a stewarding owner.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
