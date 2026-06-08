@@ -59,6 +59,7 @@ async function listDocoIntegrationsForWorkspaces(
          JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.workspace_id = ANY($1::text[])
           AND d.data ? 'github_integration'
+          AND d.deleted_at IS NULL
         ORDER BY o.handle, d.handle`,
       [workspaceIds],
     );

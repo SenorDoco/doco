@@ -81,7 +81,7 @@ async function tokenReachesWorkspace(
   if (docoIds.length === 0) return false;
   return withClient(async (c) => {
     const r = await c.query(
-      "SELECT 1 FROM docos WHERE owner_id = $1 AND id = ANY($2::text[]) LIMIT 1",
+      "SELECT 1 FROM docos WHERE owner_id = $1 AND id = ANY($2::text[]) AND deleted_at IS NULL LIMIT 1",
       [workspaceId, docoIds],
     );
     return (r.rowCount ?? 0) > 0;
@@ -98,7 +98,7 @@ export async function principalReachesWorkspace(
     const r = await c.query(
       `SELECT 1 FROM doco_users du
          JOIN docos d ON d.id = du.doco_id
-        WHERE d.owner_id = $1 AND du.user_id = $2
+        WHERE d.owner_id = $1 AND du.user_id = $2 AND d.deleted_at IS NULL
         LIMIT 1`,
       [workspaceId, principalId],
     );

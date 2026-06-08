@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { computeExternalNeighbours } from "../process-boundary";
 import {
   computeNearestProcessByNode,
   loadProcessGraph,
@@ -90,6 +91,64 @@ function processNode(
 ) {
   return { id, entity_type: "action", summary, lifecycle, created_at: at, data: {} };
 }
+
+describe("cross-pool neighbours feed computeExternalNeighbours (real loader output)", () => {
+  // Regression for the bug behind the #1144 revert: a pool-heading Action is the
+  // pool header, NOT a member node, so it never appears in `graph.nodes`. A valid
+  // external neighbour is therefore a MEMBER of another pool (it has a
+  // `has_parent`), reached/left by a cross-pool `flows_to`. This proves the
+  // classifier the renderer drives picks those up against the real loader output
+  // — both when the edge touches a focal-pool member (node-to-node) and when it
+  // touches the focal pool's own process Action (the title band).
+  it("classifies a member of another pool as an external box (node + title attach)", async () => {
+    const { client } = makeQueryClient({
+      nodes: [
+        processNode("action_FOCALPOOL", "Focal process"),
+        processNode("action_FMEMBER", "Focal member", "active", "2026-05-26T00:01:00.000Z"),
+        processNode("action_OTHERPOOL", "Other process", "active", "2026-05-26T00:02:00.000Z"),
+        processNode("action_EXTNODE", "External to a member", "active", "2026-05-26T00:03:00.000Z"),
+        processNode(
+          "action_EXTTITLE",
+          "External to the Action",
+          "active",
+          "2026-05-26T00:04:00.000Z",
+        ),
+      ],
+      principals: [],
+      users: [],
+      edges: [
+        edge("e_fm", "action_FMEMBER", "action_FOCALPOOL", "member_of"),
+        edge("e_en", "action_EXTNODE", "action_OTHERPOOL", "member_of"),
+        edge("e_et", "action_EXTTITLE", "action_OTHERPOOL", "member_of"),
+        // External member flows INTO a focal member → node-to-node entry box.
+        edge("e_flow_node", "action_EXTNODE", "action_FMEMBER", "flows_to"),
+        // External member flows INTO the focal pool's process Action → title entry box.
+        edge("e_flow_title", "action_EXTTITLE", "action_FOCALPOOL", "flows_to"),
+      ],
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "refunds" });
+
+    // The pool-heading Actions are headers, not member nodes; the members are.
+    const nodeIds = graph.nodes.map((n) => n.id);
+    expect(nodeIds).not.toContain("action_FOCALPOOL");
+    expect(nodeIds).toContain("action_EXTNODE");
+    expect(nodeIds).toContain("action_EXTTITLE");
+
+    const focalPoolIds = new Set(["pool:action_FOCALPOOL"]);
+    const neighbours = computeExternalNeighbours(focalPoolIds, graph.nodes, graph.links);
+    expect(neighbours).toContainEqual({
+      id: "action_EXTNODE",
+      direction: "entry",
+      attach: { kind: "node", nodeId: "action_FMEMBER" },
+    });
+    expect(neighbours).toContainEqual({
+      id: "action_EXTTITLE",
+      direction: "entry",
+      attach: { kind: "title", poolId: "pool:action_FOCALPOOL" },
+    });
+  });
+});
 
 describe("loadProcessGraph", () => {
   it("selects the full prose as the node summary, not just the first line", async () => {

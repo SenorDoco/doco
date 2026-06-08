@@ -423,6 +423,7 @@ export async function findStaleRunningBackfills(
                 (data->'github_integration'->'backfill'->>'cursor_at')::timestamptz,
                 'epoch'::timestamptz
               ) < $1::timestamptz
+          AND deleted_at IS NULL
         ORDER BY updated_at ASC
         LIMIT $2`,
       [staleBeforeIso, limit],
@@ -580,6 +581,7 @@ async function listKnownGitHubInstallationsForDocos(
          FROM docos
         WHERE id = ANY($1::text[])
           AND data ? 'github_integration'
+          AND deleted_at IS NULL
         ORDER BY handle`,
       [docoIds],
     );

@@ -93,6 +93,30 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
+    handle: "evals",
+    label: "AI evals",
+    description:
+      "Document and track AI test evals — what each eval measures, how it's graded, and the target — plus an append-only log of every run's score and verdict, pinned to the model and prompt versions it tested.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
+    handle: "product-roadmap",
+    label: "Product roadmap",
+    description:
+      "Document outcome-oriented product bets over Now / Next / Later horizons — each with an owner, a measurable target, and a result that closes the loop on whether it worked.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
+    handle: "test-scenarios",
+    label: "Test scenarios",
+    description:
+      "Document test scenarios for websites and apps and log every run — each scenario captures preconditions, steps, and the expected result; each run records the environment, outcome, and evidence.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
+  {
     handle: "faq",
     label: "FAQ",
     description:

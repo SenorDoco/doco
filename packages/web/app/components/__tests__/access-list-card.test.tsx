@@ -76,4 +76,12 @@ describe("AccessListCard", () => {
     // Group (workspace) rows have no visibility, so no marker leaks onto them.
     expect(html).not.toContain('data-visibility="public"');
   });
+
+  it("places the visibility marker to the left of the Doco name", () => {
+    const html = render();
+    const marker = html.indexOf('data-visibility="private"');
+    const name = html.indexOf("meta-pull-requests");
+    expect(marker).toBeGreaterThan(-1);
+    expect(marker).toBeLessThan(name);
+  });
 });

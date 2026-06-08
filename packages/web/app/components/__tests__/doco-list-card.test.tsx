@@ -47,4 +47,12 @@ describe("DocoListCard", () => {
     expect(html).toContain('data-visibility="public"');
     expect(html).toContain("anyone with the URL can view");
   });
+
+  it("places the visibility marker to the left of the Doco name", () => {
+    const html = render(false);
+    const marker = html.indexOf('data-visibility="public"');
+    const name = html.indexOf(">torr<");
+    expect(marker).toBeGreaterThan(-1);
+    expect(marker).toBeLessThan(name);
+  });
 });

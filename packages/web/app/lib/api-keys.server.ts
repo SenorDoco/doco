@@ -217,7 +217,7 @@ async function loadDocoLabels(
          FROM docos d
          LEFT JOIN workspaces o ON o.id = d.owner_id
          LEFT JOIN users c ON c.id = d.owner_id
-        WHERE d.id = ANY($1)`,
+        WHERE d.id = ANY($1) AND d.deleted_at IS NULL`,
       [ids],
     ),
   );
@@ -737,7 +737,10 @@ async function getDocoLevelRoleForGrant(
   principalId: string,
 ): Promise<DocoRole | null> {
   const row = await withClient((c) =>
-    c.query<{ owner_id: string }>("SELECT owner_id FROM docos WHERE id = $1", [docoId]),
+    c.query<{ owner_id: string }>(
+      "SELECT owner_id FROM docos WHERE id = $1 AND deleted_at IS NULL",
+      [docoId],
+    ),
   );
   const ownerId = row.rows[0]?.owner_id;
   if (!ownerId) return null;

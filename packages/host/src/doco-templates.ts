@@ -156,6 +156,41 @@ const GLOSSARY_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
  */
 const FAQ_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
 
+/**
+ * The AI-eval template, like process and glossary, defaults new nodes to
+ * `drafting` so an eval can be sketched and a run captured before either is
+ * finalized, and fires its completeness + quality gates on the two committed
+ * stages — `queued` (ready for review) and `active` (the in-force eval / a
+ * recorded run). A `drafting` Eval may name an intent before its grader is
+ * chosen, and a `drafting` Log may be jotted before it is linked to its eval;
+ * once committed, an Eval must declare how it grades and a run must link to the
+ * Eval it ran.
+ */
+const EVALS_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
+
+/**
+ * The product-roadmap template, like the decision-record and glossary
+ * templates, fires its completeness gates on the two *committed* stages —
+ * `queued` (planned / Next) and `active` (in progress / Now) — and exempts
+ * `drafting`, a parked / Later idea still being shaped. A committed item asserts
+ * it is on the roadmap, so it must already name the Principal accountable for
+ * its outcome and the Now/Next/Later `horizon` it sits in; only a `drafting`
+ * parking-lot idea may defer both. The result Eval is held to the same bar: a
+ * committed result links the item it measures.
+ */
+const ROADMAP_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
+
+/**
+ * Test scenarios, like process and glossary, default new scenarios to
+ * `drafting` so a test can be sketched before its steps and expected result are
+ * written, and fire their completeness + quality gates on the two committed
+ * stages — `queued` (ready to run or review) and `active` (approved, in the
+ * suite). A `drafting` sketch may be a bare idea with no steps yet; once a
+ * scenario is committed it must say how to run it and judge against one
+ * observable expected result. (Runs — Logs — are facts recorded as `active`.)
+ */
+const TEST_SCENARIO_COMMITTED_LIFECYCLES: Lifecycle[] = ["queued", "active"];
+
 export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   {
     // Repeatable business processes modeled on BPMN swimlanes and
@@ -315,32 +350,27 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         // Process membership — one rule for all three flow-node types. A flow
-        // node belongs to a process through a `has_parent` edge to the process
-        // Action; that edge IS its BPMN pool membership. A hard block once
-        // committed: an unattached step has no pool. Two structural exemptions
-        // excuse a node that legitimately has no parent: a top-level process
-        // Action (`exempt_when_incoming_edge_type: has_parent` — the root, the
-        // TARGET of its children's `has_parent`), and an Action explicitly
-        // catalogued as an entry point (`exempt_when_field_truthy: entry_point`,
-        // a flag in the node's `extra`), which stands on its own as a way into
-        // the work and so needs no parent process.
+        // node belongs to a process through an OUTGOING `has_parent` edge to the
+        // process Action; that edge IS its BPMN pool membership. A hard block
+        // once committed: an unattached step has no pool. The ONLY exemption is
+        // an explicit `top_level_process` flag (a boolean in the node's `extra`):
+        // a top-level process Action is the root pool and has no parent of its
+        // own. (There is no structural incoming-edge exemption — being pointed at
+        // by children does not, by itself, excuse a node from declaring its own
+        // parent; the author marks the root explicitly instead.)
         policy:
-          "Every committed (`queued` or `active`) flow node in process — Action, gateway Decision, or milestone/event State — links to the process it belongs to with a `has_parent` edge to that process Action. Without it the BPMN renderer can't place the node in a pool. A top-level process Action (the target of its members' `has_parent`) is the root and is exempt, as is an Action explicitly catalogued as an entry point (an `entry_point` flag in its `extra`); a `drafting` sketch may defer the link.",
+          "Every committed (`queued` or `active`) flow node in process — Action, gateway Decision, or milestone/event State — links to the process it belongs to with a `has_parent` edge to that process Action. Without it the BPMN renderer can't place the node in a pool. The only exception is a top-level process Action, which the author marks with a `top_level_process` flag (a boolean in its `extra`); a `drafting` sketch may defer the link.",
         predicate: {
           kind: "requires_edge",
           edge_type: "has_parent",
           target_node_type: "action",
           // The required relationship is the flow node's OUTGOING `has_parent` to
           // its parent process Action. Stated explicitly so the rendered policy
-          // is unambiguous next to the incoming-edge exemption just below, which
-          // fires the other way (for a node that is itself a parent).
+          // is unambiguous.
           direction: "outgoing",
-          // A process Action (the target of incoming `has_parent` children) is a
-          // pool, not a member — it needs no parent of its own.
-          exempt_when_incoming_edge_type: "has_parent",
-          // An Action explicitly catalogued as an entry point (an `entry_point`
-          // flag in its `extra`) stands on its own and needs no parent process.
-          exempt_when_field_truthy: "entry_point",
+          // A top-level process Action is the root pool and has no parent of its
+          // own, so it is excused — but only when the author marks it explicitly.
+          exempt_when_field_truthy: "top_level_process",
           when_node_type: ["action", "decision", "state"],
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
@@ -359,6 +389,43 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
           edge_type: "has_parent",
           target_node_type: "action",
           max_count: 1,
+          when_node_type: ["action", "decision", "state"],
+        },
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
+      },
+      {
+        // Sequence-flow REACHABILITY floor: a committed flow node is reached by
+        // the flow — it has ≥1 INCOMING `flows_to` — unless the author has flagged
+        // it an `entry_point` (a way into the process, which by definition has no
+        // predecessor). Keeps a committed process free of orphaned, unreachable
+        // steps. A `drafting` sketch may dangle.
+        policy:
+          "Every committed (`queued` or `active`) flow node in process is reached by the flow: it has at least one incoming `flows_to` edge — unless it is marked as an entry point (an `entry_point` flag in its `extra`), which is a way into the process and so needs no predecessor. A `drafting` sketch may be unreachable while you wire it up.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "flows_to",
+          direction: "incoming",
+          // An entry point is the start of the flow (no predecessor), and a
+          // top-level process is the pool container (not a sequenced step) — both
+          // are excused from needing an incoming `flows_to`.
+          exempt_when_field_truthy: "entry_point, top_level_process",
+          when_node_type: ["action", "decision", "state"],
+        },
+        fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
+      },
+      {
+        // The dual, scoped to entry points only: an `entry_point` LEADS SOMEWHERE
+        // — it has ≥1 OUTGOING `flows_to`. The `require_when_field_truthy` gate
+        // fires this floor only for nodes flagged `entry_point`; an entry that
+        // goes nowhere is a dead start.
+        policy:
+          "A node marked as an entry point (an `entry_point` flag in its `extra`) must lead somewhere: once committed (`queued` or `active`) it has at least one outgoing `flows_to` edge to the first step of the process. A `drafting` sketch may be incomplete.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "flows_to",
+          direction: "outgoing",
+          // Only flow nodes the author flagged `entry_point` are held to this.
+          require_when_field_truthy: "entry_point",
           when_node_type: ["action", "decision", "state"],
         },
         fires_when_node_lifecycle: BUSINESS_PROCESS_COMMITTED_LIFECYCLES,
@@ -971,6 +1038,628 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         policy:
           "Keep the chart current: update it after every reorganization, hire, departure, and role change. When a seat's occupant changes, update its `prose`; when reporting lines move, retire the old `has_parent` edge and add the new one. An org chart is only useful while it is accurate.",
+      },
+    ],
+  },
+  {
+    // AI test-eval log — document and track evaluations of AI systems. It
+    // distills the durable two-layer shape every modern eval stack converges on
+    // (OpenAI Evals, Anthropic's agent-eval and success-criteria guidance,
+    // Inspect, Braintrust, Langfuse, Evidently) onto Doco's existing primitives,
+    // adding NO new node type:
+    //
+    //   Layer 1 — the eval DEFINITION (the stable spine): WHAT behaviour is
+    //   measured, on WHAT data, HOW the output is graded, and WHAT counts as
+    //   success. This is the existing `eval` node — `prose` is what's checked +
+    //   why, `criterion` is the grading method ({kind: exact | shape | llm-judge,
+    //   spec}), with `how_to_run` / `expected` for reproduction. An eval changes
+    //   rarely; when its methodology changes it is superseded, not edited.
+    //
+    //   Layer 2 — the run RESULT (append-only): ONE record per execution carrying
+    //   the score(s), the pass/fail verdict, and the versions it ran against
+    //   (model + prompt/agent, dataset, commit). This is the existing `log` node
+    //   (`happened_at`, `inputs`, `outputs`, `outcome`), linked to the Eval it is
+    //   a run of by a `supports` edge — the spine that makes a number comparable.
+    //
+    // Supporting cast (the expansion points that fit specific scenarios —
+    // classification, RAG, agent/trajectory, safety/red-team — without bloating
+    // the core): References hold the versioned dataset / golden set, the system
+    // under test (a model + prompt version), the harness/code, and external
+    // benchmarks or reports; Rules capture the SMART success criteria and release
+    // gates (a threshold like "F1 ≥ 0.85" or "0 critical safety failures") linked
+    // by `constrained_by`; Principals are the owners — human OR agent — who keep
+    // an eval healthy. Suites group related evals under a parent Eval with
+    // `has_parent`; a superseded eval is `replaces`-linked to the one it retires.
+    //
+    // What sets this template apart from `process` (which pushes recorded runs to
+    // a sibling Doco): here the RESULTS are the point, so Logs live in the Doco
+    // alongside the evals that produced them, building the longitudinal record
+    // that catches regressions.
+    //
+    // Lifecycle: nodes default to `drafting`; completeness + quality gates fire on
+    // the committed stages only (EVALS_COMMITTED_LIFECYCLES).
+    name: "evals",
+    label: "AI evals",
+    icon: "🧪",
+    description:
+      "Document and track test evals for AI systems — each eval's task, dataset, grading method, and success criteria, plus an append-only log of every run's scores and pass/fail verdict, pinned to the model and prompt versions it tested. Grounded in current LLM-eval practice (dataset + grader + metrics; capability vs regression; pass@k).",
+    defaultNodeLifecycle: "drafting",
+    // An eval log is fundamentally a filterable list of evals and their runs, so
+    // open the overview on the built-in List perspective. (Graph stays behind it.)
+    perspectives: [{ slug: "list", isDefault: true }],
+    policies: [
+      // ── Membership ──────────────────────────────────────────────
+      {
+        // Soft semantic gate — a `warn`, not a block. The author opted into the
+        // eval log; this only surfaces "this isn't an eval, a run, or a
+        // dataset/system" so they can reconsider. Owners (Principal) and
+        // criteria/gates (Rule) are supporting cast, exempt by omission from
+        // when_node_type.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "A node belongs in an AI-eval log when it is one of: an Eval (a test that measures some behaviour of an AI system — its task, the data it runs on, how the output is graded, and what counts as success); a Log (one recorded run of an eval, carrying its score and pass/fail verdict and the versions it ran against); or a Reference (the dataset / golden set being tested, the system under test such as a model + prompt version, the eval harness/code, or an external benchmark or report). PASS when the candidate is one of these. FAIL when it is a free-form note, a product or process artifact, or anything with no role in defining or recording an evaluation.",
+          when_node_type: ["eval", "log", "reference"],
+        },
+      },
+      {
+        // Deterministic node-type allowlist. Flow/work nodes (Action, State) and
+        // free-form Ideas, plus ship/rollback Decisions (which belong in a
+        // decision-record Doco), are out; an eval log is evals + runs + the
+        // data/systems they concern + their owners and gates.
+        policy:
+          "Only Eval, Log, Reference, Rule, and Principal belong in an AI-eval log. An Eval is the test definition (what is measured, on what data, how it is graded, the target); a Log is one recorded run of an eval (its score and verdict, and the versions it ran against); a Reference is the versioned dataset / golden set, the system under test (model + prompt version), the harness/code, or an external benchmark or report; a Rule captures a success criterion or release gate; a Principal is the owner — person or agent — accountable for the eval. Process steps, free-form notes, and ship decisions belong in their own Docos.",
+        predicate: {
+          kind: "requires_node_type",
+          node_types: ["eval", "log", "reference", "rule", "principal"],
+        },
+      },
+      {
+        // Edge-type allowlist (the edge analogue of the node-type allowlist). An
+        // eval log wires runs to their evals, evals to their data/criteria/owners,
+        // and evals into suites and supersession chains. Process sequence flow
+        // (`flows_to`) has no meaning here, so it is barred.
+        policy:
+          "Only these relationship edge types may be used in an AI-eval log: `supports` (a Log → the Eval it is a run of; a dataset/report Reference → the Eval it informs; an Eval → a claim it validates), `derived_from` (a Log → the system-under-test or dataset version it ran against; an Eval → a benchmark it adapts), `attributed_to` (an Eval or suite → the Principal who owns it), `constrained_by` (an Eval → a Rule stating its success criterion or release gate), `has_parent` (an Eval → the suite it belongs to), `replaces` (a new Eval version → the one it supersedes), and `relates_to` (a see-also link between related evals).",
+        predicate: {
+          kind: "requires_edge_type",
+          edge_types: [
+            "supports",
+            "derived_from",
+            "attributed_to",
+            "constrained_by",
+            "has_parent",
+            "replaces",
+            "relates_to",
+          ],
+        },
+      },
+
+      // ── Eval (definition) completeness & quality ────────────────
+      {
+        // Completeness floor — a committed eval declares HOW it decides pass/fail.
+        // `criterion` is the grading method ({kind: exact | shape | llm-judge,
+        // spec}); an eval with no grader can't be run, so it isn't yet an eval.
+        // (`criterion` lives in the node's `extra` bag, which the evaluator reads
+        // as a field; an empty object reads as missing.) A `drafting` sketch may
+        // capture the intent first and choose the grader later.
+        policy:
+          "Every committed (`queued` or `active`) Eval declares its grading method in `criterion` — how a run's output is turned into a pass/fail or score: an exact/programmatic check, a shape/structural check, or an LLM-as-judge rubric. An eval with no grader can't be run; a `drafting` sketch may add it later.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["criterion"],
+          when_node_type: ["eval"],
+        },
+        fires_when_node_lifecycle: EVALS_COMMITTED_LIFECYCLES,
+      },
+      {
+        // Eval-definition quality — LLM-judged, so a `warn`, not a block (a retry
+        // could differ; warn nudges without trapping). Encodes the SMART
+        // success-criteria rule: specific, measurable target tied to a dataset
+        // and a grader.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the Eval's `prose` and `criterion`. PASS when the eval is well-formed: it states WHAT behaviour is measured, on WHAT input or dataset, HOW the output is graded, and WHAT counts as success — a specific, measurable target (e.g. `exact-match accuracy ≥ 0.9 on the 200-case golden set`, `0 responses leak PII over 10k red-team prompts`, `LLM-judge rates tone ≥ 4/5 on 100 inquiries`). FAIL with a reason when it is vague about what success means (`works well`, `good quality`), names no way to grade the output, or bundles several unrelated checks into one eval.",
+          when_node_type: ["eval"],
+        },
+        fires_when_node_lifecycle: EVALS_COMMITTED_LIFECYCLES,
+      },
+
+      // ── Run (result) completeness & quality ─────────────────────
+      {
+        // The SPINE: every committed run links to the eval it is a run of, via a
+        // `supports` edge to that Eval. A result with no eval is an orphan number
+        // — there is nothing to compare it against or attribute it to. A hard
+        // block once committed; a `drafting` jot may defer the link.
+        policy:
+          "Every committed (`queued` or `active`) Log is one run of an eval: it links to that Eval with a `supports` edge. A run with no eval it belongs to is an orphaned number — there is nothing to compare it against, trend it over time, or attribute it to. A `drafting` run may defer the link.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "supports",
+          target_node_type: "eval",
+          when_node_type: ["log"],
+        },
+        fires_when_node_lifecycle: EVALS_COMMITTED_LIFECYCLES,
+      },
+      {
+        // Run quality — LLM-judged `warn`. A run is only useful later if it
+        // records BOTH its result AND the versions it ran against, because an eval
+        // measures the harness AND the model together; without the pins a later
+        // reader can't tell whether a change moved the number.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the Log's `prose`, `outputs`, `inputs`, and `happened_at`. PASS when the run records BOTH (a) its result — the score(s) and/or the pass/fail verdict for this execution — AND (b) the versions it ran against, enough to reproduce and compare it: the system under test (model + prompt/agent version, or commit) and, where relevant, the dataset version. FAIL with a reason when it records a bare verdict with no score, or no pinned versions, so a later reader can't tell what was tested or whether a change moved the number.",
+          when_node_type: ["log"],
+        },
+        fires_when_node_lifecycle: EVALS_COMMITTED_LIFECYCLES,
+      },
+
+      // ── Guidance (prose-only) ───────────────────────────────────
+      {
+        policy:
+          "Keep the two layers distinct: the Eval is the durable DEFINITION (what is measured, on what data, how it is graded, the target) and changes rarely; each run is a separate, append-only Log RESULT linked to it by `supports`. Never overwrite a past run to record a new one — add a new Log — so the trend over time stays visible and regressions are catchable.",
+      },
+      {
+        policy:
+          "Choose the grading method deliberately and record it in the Eval's `criterion`: prefer a code-based / programmatic check (exact match, string/shape assertion, tool-call or final-state verification) when the answer is checkable — it is fast, cheap, and deterministic; use an LLM-as-judge with a clear, empirical rubric for open-ended or subjective output, and calibrate it against human labels before trusting it at scale; reserve human grading for the gold-standard spot checks that keep the automated graders honest. Many evals combine more than one.",
+      },
+      {
+        policy:
+          "Make success criteria SMART — specific, measurable, achievable, relevant. Capture the threshold or release gate as a Rule linked to the Eval with `constrained_by` (e.g. `F1 ≥ 0.85 on the held-out set`, `< 0.1% of 10k trials flagged toxic`, `p95 latency < 200ms`), so pass/fail is judged against an explicit bar rather than a vibe. Most real evals are multidimensional — quality plus safety plus latency plus cost — so attach more than one Rule when they apply.",
+      },
+      {
+        policy:
+          "Keep the test cases as a versioned dataset: model the golden set / eval data as a Reference whose `locator` points at where it lives, and cite it from the Eval with `supports` (or `derived_from`). Version it with immutable snapshots, keep it small but ruthlessly curated, and grow it by turning real production failures and user-reported bugs into new cases.",
+      },
+      {
+        policy:
+          "Pin what was evaluated on every run: an eval measures the harness AND the model together, so record the system under test — model + version, prompt/agent version, config, and code commit — on the Log (in its `inputs`, and/or as a `derived_from` edge to a Reference for that version). Two runs are only comparable when you can see exactly what changed between them.",
+      },
+      {
+        policy:
+          "Record the metric and the aggregate score, not just a verdict: accuracy, F1, precision/recall, an LLM-judge score, or operational numbers like latency, cost, and tokens. For non-deterministic systems, run multiple trials and report the right aggregate — `pass@k` (succeeds at least once in k tries) for capability, `pass^k` (succeeds on every one of k tries) for reliability — since the two diverge sharply as k grows.",
+      },
+      {
+        policy:
+          "Distinguish capability evals from regression evals. A capability eval targets behaviour the system struggles with and starts at a low pass rate; once it passes reliably, graduate it to a regression eval kept near 100% to guard against backsliding. Say which an eval is in its `prose`, and watch for saturation — when a capability eval nears 100% it has stopped discriminating and needs harder cases.",
+      },
+      {
+        policy:
+          "Give every eval an owner — a person OR an agent — by attributing it (or its suite) to a Principal with `attributed_to`, and set that Principal's `kind` to `human` or `agent`. Eval suites rot without maintenance: someone has to read the transcripts, confirm the graders still grade correctly, retire saturated cases, and add new ones from fresh failures.",
+      },
+      {
+        policy:
+          "Group related evals into a suite: make the suite a parent Eval and link each member to it with `has_parent`, so a capability or product area reads as one set with a shared pass rate. When an eval's methodology changes, do NOT edit it in place — create the new version and link it to the old one with `replaces` (retiring the old), so past results stay interpretable against the definition that produced them.",
+      },
+      {
+        policy:
+          "Agents: read `GET /<handle>/api/authoring-contract.json` and write with `POST /<handle>/api/changesets.json`. Create each run as a Log together with its `supports` edge to the Eval (and a `derived_from` edge to the system-under-test Reference) in the same changeset, recording the score, the verdict, and the pinned model / prompt / dataset versions — rather than leaving disconnected nodes.",
+      },
+    ],
+  },
+  {
+    // Product roadmap — document a team's outcome-oriented bets over time and,
+    // crucially, CLOSE THE LOOP on whether each one worked. The shape distills
+    // the durable consensus of modern product practice (Cagan / SVPG, Teresa
+    // Torres' continuous discovery, Roman Pichler's GO roadmap, Melissa Perri,
+    // and ProdPad's Now/Next/Later) onto Doco's primitives:
+    //   - OUTCOMES OVER OUTPUTS. A roadmap item is an Intent — a desired outcome
+    //     (a change in user behavior or a business result) with the metric that
+    //     tells you it happened — not a feature to ship. The widely-cited claim
+    //     is that ~95% of roadmaps are output, not outcome; the membership and
+    //     outcome gates here steer authors the other way.
+    //   - NOW / NEXT / LATER. Each item carries a `horizon` bucket — the
+    //     lowest-commitment, most widely-applicable roadmap shape, where
+    //     commitment and detail fall off the further out you look. Precise
+    //     far-future dates are an EXTENSION, not the core: a dated roadmap reads
+    //     as a promise it can't keep and assumes the first solution works.
+    //   - ONE ACCOUNTABLE OWNER. Every committed item is `attributed_to` a
+    //     Principal — the person, role, or team answerable for the outcome.
+    //   - CLOSE THE LOOP (the differentiator the literature plans richly but
+    //     rarely ships). Shipping is not success: a bet is done when it is
+    //     MEASURED. Each item's result is an Eval that `supports` it, carrying
+    //     the target (`expected`) and the actual measured result, its
+    //     `last_status` running pending (measuring) → pass (validated) / fail
+    //     (invalidated). The decision that follows — persevere, iterate, pivot,
+    //     or kill — and the learning are recorded so the next bet compounds.
+    //
+    // Lifecycle maps onto the roadmap's own progression: `drafting` = a parked
+    // idea / Later candidate still being shaped (it may lack an owner or a
+    // horizon); `queued` = planned and committed (Next); `active` = in progress
+    // (Now); `retired` = shipped and closed. Completeness gates fire on the
+    // committed stages (`queued`/`active`) only (ROADMAP_COMMITTED_LIFECYCLES),
+    // so a parking-lot idea can be sketched freely and is held to the full bar
+    // only once it is committed to the roadmap.
+    //
+    // Out of scope, kept in sibling Docos and referenced from here: the
+    // delivery PROCESS (Action/State flow → a `process` Doco) and the dated
+    // shipped CHANGELOG (Logs). A roadmap documents intent and outcomes — not
+    // the backlog of tasks nor the release plan.
+    name: "product-roadmap",
+    label: "Product roadmap",
+    icon: "🗺️",
+    description:
+      "Document outcome-oriented product bets over Now / Next / Later horizons — each with an accountable owner, a measurable target, and a result that closes the loop on whether it worked. Grounded in outcome-over-output roadmap practice.",
+    defaultNodeLifecycle: "drafting",
+    // A roadmap is fundamentally a filterable list of bets, so open the overview
+    // on the built-in List perspective. (Graph stays attached behind it.)
+    perspectives: [{ slug: "list", isDefault: true }],
+    policies: [
+      // ── Membership (soft semantic gate) ──────────────────────────────
+      {
+        // Warn, not block: the author opted into the roadmap by picking the
+        // template, so this only surfaces "this looks like delivery/backlog
+        // content, not a roadmap bet" for reconsideration. Principals (owners)
+        // and Rules (criteria/guardrails) are supporting cast, not bets, so they
+        // are exempt — omitted from `when_node_type`.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "A node belongs on a product roadmap when it documents an outcome-oriented bet or its result: an Intent (a desired outcome — a user-behavior change or business result — the team is betting on), an Eval (the measurement that says whether an outcome was met), a Decision (a prioritization call about what to bet on and why), or a Reference (the discovery, research, or data informing a bet). PASS when the candidate is one of these. FAIL when it instead describes HOW work gets built or delivered — a process step or implementation task, a release / changelog event, a UI spec, or a one-off incident — which belongs in a process Doco or the backlog, not on the roadmap.",
+          when_node_type: ["intent", "eval", "decision", "reference"],
+        },
+      },
+      // ── Node-type allowlist (hard block) ─────────────────────────────
+      {
+        policy:
+          "Only Intent, Eval, Principal, Reference, Decision, and Rule belong on a product roadmap. An Intent is a roadmap item — a desired outcome the team is betting on; an Eval is that bet's result — the measurement of whether the outcome was met; a Principal is the accountable owner; a Reference links the discovery, research, or data behind a bet; a Decision records a prioritization call; a Rule captures success criteria or guardrails. Delivery steps (Action), milestones (State), and shipped-event logs (Log) describe how and when work is built — they belong in a process Doco or a changelog, not on the roadmap.",
+        predicate: {
+          kind: "requires_node_type",
+          node_types: ["intent", "eval", "principal", "reference", "decision", "rule"],
+        },
+      },
+      // ── Edge-type allowlist (hard block) ─────────────────────────────
+      {
+        policy:
+          "Only these relationship edge types belong on a product roadmap: `has_parent` (group an initiative under the outcome, theme, or objective it serves), `attributed_to` (a roadmap item → its accountable owner Principal), `supports` (an Eval result, or a Reference's evidence, → the item it measures or informs), `constrained_by` (an item → a Rule that sets its success criteria or guardrails), `relates_to` (a dependency or see-also between items), `derived_from` (a bet's provenance from discovery or a prior item), and `replaces` (a re-scoped item supersedes the one it replaces). Process sequence flow (`flows_to`) describes delivery, not strategy, and has no place on a roadmap.",
+        predicate: {
+          kind: "requires_edge_type",
+          edge_types: [
+            "has_parent",
+            "attributed_to",
+            "supports",
+            "constrained_by",
+            "relates_to",
+            "derived_from",
+            "replaces",
+          ],
+        },
+      },
+      // ── Owner accountability (deterministic, committed only) ──────────
+      {
+        // Every committed bet names who is answerable for its outcome, via an
+        // `attributed_to` edge to a Principal — the roadmap analogue of the
+        // decision-record decider gate. A `drafting` (Later / parked) idea may
+        // defer naming an owner.
+        policy:
+          "Every committed (`queued` or `active`) roadmap item is attributed to the Principal accountable for its outcome — an `attributed_to` edge from the Intent to that owner. A `drafting` (parked / Later) idea may defer naming an owner.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "attributed_to",
+          target_node_type: "principal",
+          when_node_type: ["intent"],
+        },
+        fires_when_node_lifecycle: ROADMAP_COMMITTED_LIFECYCLES,
+      },
+      // ── Horizon placement (deterministic, committed only) ─────────────
+      {
+        // The `horizon` field (Now / Next / Later) is what places an item ON the
+        // roadmap; a committed item without one isn't really on it yet.
+        // Engine-checked for presence via `requires_field`; the Now/Next/Later
+        // vocabulary itself is guidance (the engine checks shape, the prose
+        // carries meaning). A `drafting` parking-lot idea may defer its horizon.
+        policy:
+          "Every committed (`queued` or `active`) roadmap item carries a `horizon` — its Now / Next / Later bucket — so the roadmap stays ordered by time-confidence rather than by precise dates. A `drafting` idea in the parking lot may defer its horizon until it is committed.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["horizon"],
+          when_node_type: ["intent"],
+        },
+        fires_when_node_lifecycle: ROADMAP_COMMITTED_LIFECYCLES,
+      },
+      // ── Result links its target (deterministic, committed only) ───────
+      {
+        // A result must measure something. A committed Eval links the item it
+        // measures with an outgoing `supports` edge — the same gate the process
+        // template puts on its Evals. Without it the result is a dangling metric
+        // the roadmap can't attach to a bet.
+        policy:
+          "Every committed (`queued` or `active`) result links to the item it measures with a `supports` edge to that Intent. A result that measures nothing is a dangling metric; the `supports` edge is what lets the roadmap show whether a bet paid off.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "supports",
+          when_node_type: ["eval"],
+        },
+        fires_when_node_lifecycle: ROADMAP_COMMITTED_LIFECYCLES,
+      },
+      // ── Outcome over output (probabilistic, warn, committed) ──────────
+      {
+        // The spine of modern roadmapping, encoded as an LLM-judged warn (a
+        // block would be non-deterministic and could trap a legitimate item).
+        // Fires on the committed stages only — a drafting sketch isn't nagged.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the roadmap item's `prose`. PASS when it frames a desired OUTCOME — a change in user behavior or a business result, for a stated audience — together with how success will be measured (a metric and a target). A good item reads like `cut new-team setup time so 40% reach first value in week one`, not `build an onboarding checklist`. FAIL with a reason when it names only a feature or output to ship with no outcome behind it, states a vague theme with no measurable target, or reads as an implementation task. The point of a roadmap is the outcome, not the output.",
+          when_node_type: ["intent"],
+        },
+        fires_when_node_lifecycle: ROADMAP_COMMITTED_LIFECYCLES,
+      },
+      // ── Result closes the loop (probabilistic, warn, committed) ───────
+      {
+        // The differentiator: most roadmaps never check whether a shipped bet
+        // moved its metric. This judges that a result actually closes the loop.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the Eval result. PASS when it closes the loop on its bet: it states the target that was set (the `expected` metric value), the actual measured result, whether the target was met (its `last_status`: pending while still measuring, pass = validated, fail = invalidated), and the decision that follows — persevere, iterate, pivot, or kill — with the learning to carry forward. FAIL with a reason when it records a target with no result, a result with no target to judge it against, or a verdict with no decision or learning. A result that does not close the loop teaches the next bet nothing.",
+          when_node_type: ["eval"],
+        },
+        fires_when_node_lifecycle: ROADMAP_COMMITTED_LIFECYCLES,
+      },
+      // ── Owner shape (probabilistic, warn) ────────────────────────────
+      {
+        // Nudge toward a single, clearly accountable owner. Warn, since the
+        // Principal endpoint permits a quick name-only create.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the Principal's `prose`. PASS when it names a single accountable owner for outcomes — a person, role, or team answerable for whether a bet pays off. FAIL when it is a vague label (`the team`, `product`) with no clear accountability, or an empty shell with only a bare name.",
+          when_node_type: ["principal"],
+        },
+      },
+      // ── Guidance (prose-only suggestions) ────────────────────────────
+      {
+        policy:
+          "Lead with outcomes, not outputs. Frame each item as the change you want to see — a shift in user behavior or a business result — not the feature you will ship. `Build dark mode` is an output; `raise long-session retention by giving night readers a comfortable view` is the outcome behind it. The feature is just one bet on that outcome; name the outcome so a better bet can replace the feature without rewriting the roadmap.",
+      },
+      {
+        policy:
+          "Bucket every item into a Now / Next / Later `horizon`, and let commitment and detail fall off with distance: Now is in progress and fully specified, Next is coming up with less detail, Later is a direction — a problem worth solving with no committed solution yet. Resist putting precise far-future dates on the roadmap; they get read as promises and assume the estimate holds and the first solution works. Reserve real dates for high-integrity commitments made AFTER discovery (an extension: add a target date to a Now item, or coordinate the launch in a delivery Doco).",
+      },
+      {
+        policy:
+          "Give every committed item one accountable owner — an `attributed_to` edge to the Principal answerable for the outcome, not merely whoever builds it. Shared ownership is no ownership.",
+      },
+      {
+        policy:
+          "Group bets under the outcome, theme, or objective they serve with `has_parent`, so the roadmap reads as a few goals with bets beneath them rather than a flat feature list. To align with OKRs, model the Objective as the parent Intent and each bet's Key Result as its target Eval — map outcomes to Key Results, never features to Key Results.",
+      },
+      {
+        policy:
+          "Prioritize explicitly and show your work. Record a prioritization call as a Decision (what you are betting on over what, and why), and capture the criteria or scoring behind it — value vs. effort, or RICE (Reach × Impact × Confidence ÷ Effort), or whatever your team trusts — as a Rule linked with `constrained_by`. Keep the score together with its inputs so the ranking stays auditable; the framework itself is your team's choice, not the roadmap's.",
+      },
+      {
+        policy:
+          "Ground bets in evidence. Link the discovery that informs an item — user interviews, an experiment, analytics, a brief, or an opportunity from a discovery tree — as a Reference via `supports` (or `derived_from` when the bet grew directly out of that finding), so a reader can tell whether a bet rests on insight or on a hunch.",
+      },
+      {
+        policy:
+          "Wire dependencies between items with `relates_to`, so a bet that is blocked by or must coordinate with another shows the link rather than failing silently when its prerequisite slips.",
+      },
+      {
+        policy:
+          "Close the loop — this is the half most roadmaps skip. Shipping is not success; a bet is done when it is MEASURED. When an item ships, give it a result Eval linked by `supports` that carries the target you set (`expected`) and, over the measurement window, the actual result; move its `last_status` from pending (measuring) to pass (validated) or fail (invalidated); and record the decision that follows — persevere, iterate, pivot, or kill — with the learning, before you `retire` the item. A failed bet that taught you something is worth more than a shipped feature nobody measured.",
+      },
+      {
+        policy:
+          "Revisit the roadmap on a cadence — quarterly to re-prioritize bets and score outcomes, more often (every week or two) when uncertainty is high — rather than setting it once and treating it as a contract. Re-bucket horizons as you learn. When a bet's direction changes, supersede it instead of rewriting it: create the re-scoped item, link it to the old one with `replaces`, and `retire` the original, so the roadmap keeps a history of what you bet on and why it changed.",
+      },
+      {
+        policy:
+          "A roadmap is not a backlog and not a release plan. Keep stories, tasks, and bug lists in the backlog, the delivery flow in a `process` Doco, and the dated shipped history in a changelog of Logs. Reference those siblings from a roadmap item rather than absorbing them — the roadmap stays at the altitude of outcomes and bets, linking down to execution rather than becoming it.",
+      },
+      {
+        policy:
+          "Agents: read `GET /<handle>/api/authoring-contract.json` and write with `POST /<handle>/api/changesets.json`. Create each roadmap item as an Intent with its `horizon`, its `attributed_to` owner, and (once it ships) its result Eval and the `supports` edge in the same changeset, rather than as disconnected nodes.",
+      },
+    ],
+  },
+  {
+    // Test scenarios for websites and apps — and the log of what happened
+    // every time they ran. The shape distills the durable test-documentation
+    // best practices (ISTQB / IEEE 829 test case + test log, BDD's
+    // Given/When/Then, and session-based exploratory testing) onto Doco's
+    // primitives, around one core split:
+    //
+    //   - A SCENARIO is an Eval — the durable spec: what behavior should hold,
+    //     the preconditions and steps to exercise it (`how_to_run`), and the
+    //     single observable expected result (`expected` / `expected_status`).
+    //     The Eval also caches the latest verdict (`last_status`, `last_run_at`,
+    //     `last_reason`) so the card answers "is it green right now?".
+    //   - A RUN is a Log — one execution at a point in time: the environment it
+    //     ran against (browser, OS, device, build, URL), the outcome
+    //     (`outcome` succeeded/failed, plus blocked/skipped in prose), and the
+    //     evidence. Runs are append-only, so the history of passes and failures
+    //     — and the environments they happened in — is never overwritten.
+    //
+    // Everything else hangs off that split: an Intent is the objective, charter,
+    // or suite a scenario covers; a Reference is a requirement, environment,
+    // evidence artifact (screenshot / recording / log), or a defect ticket; a
+    // Principal is the tester, CI pipeline, or agent that owns or runs a test.
+    // `supports` is the evidence/validation spine — an evidence Reference
+    // supports a Log, a Log supports the Eval it ran, and the Eval supports the
+    // objective or requirement it verifies — so traceability reads end to end.
+    //
+    // Lifecycle: scenarios default to `drafting` so a test can be sketched
+    // before its steps and expected result are written; the completeness and
+    // quality gates fire on the committed stages (`queued`, `active`) only
+    // (TEST_SCENARIO_COMMITTED_LIFECYCLES). A run is a fact that already
+    // happened, so it is recorded as `active`.
+    name: "test-scenarios",
+    label: "Test scenarios",
+    icon: "🧪",
+    description:
+      "Document test scenarios for websites and apps and log every run — each scenario captures preconditions, steps, and the expected result; each run records the environment, outcome, and evidence. Grounded in ISTQB / IEEE 829 test documentation and session-based exploratory testing.",
+    defaultNodeLifecycle: "drafting",
+    // Open a new test Doco on the list reading — a test Doco is naturally a
+    // list of scenarios and their runs. Graph + list defaults sit behind it.
+    perspectives: [{ slug: "list", isDefault: true }],
+    policies: [
+      // ── Membership (soft semantic gate) ──────────────────────────────
+      {
+        // Warn, not block: the author opted into the test template, so this only
+        // surfaces "this looks like it belongs in another Doco kind" for
+        // reconsideration. Principals (testers / systems) are exempt — they are
+        // actors, not test content — by omitting them from `when_node_type`.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "A node belongs in a test Doco when it documents what to verify or what happened when it was verified: a test scenario (Eval — preconditions, steps, and an expected result), a recorded run or result (Log — what happened in a given environment), the objective / charter / suite a scenario covers (Intent), or external context — a requirement, environment, evidence artifact, or defect (Reference). PASS when the candidate is one of these. FAIL when it instead belongs in another Doco kind — a business-process step, a glossary term, a generic decision record, or a free-form note that is not a test, a run, an objective, or a referenced artifact.",
+          when_node_type: ["eval", "log", "intent", "reference"],
+        },
+      },
+
+      // ── Node-type allowlist (hard block) ─────────────────────────────
+      {
+        policy:
+          "Only Eval (test scenarios), Log (recorded runs and their results), Intent (the objective, charter, or suite a scenario covers), Reference (a requirement, environment, evidence artifact, or defect), and Principal (the tester, automation system, or agent that owns or runs a test) belong in a test Doco. Process steps, glossary terms, and decision records live in their own Docos and are cited here via Reference.",
+        predicate: {
+          kind: "requires_node_type",
+          node_types: ["eval", "intent", "log", "principal", "reference"],
+        },
+      },
+
+      // ── Edge-type allowlist (hard block) ─────────────────────────────
+      {
+        // The edge analogue of the node-type allowlist. `supports` is the
+        // evidence/validation spine; process-flow (`flows_to`) and Rule-guard
+        // (`constrained_by`) edges describe how work runs and don't belong here.
+        policy:
+          "Only these relationship edge types belong in a test Doco: `supports` (the evidence/validation spine — an Eval supports the objective or requirement it verifies, a Log supports the Eval it ran, and an evidence Reference supports a Log), `attributed_to` (the Principal who owns a scenario or ran a test), `has_parent` (nest an objective or suite under a broader test plan), `relates_to` (a see-also between scenarios, or a link from a failing run or scenario to a defect), `replaces` (a new scenario supersedes a retired one), and `derived_from` (provenance — a scenario derived from an imported spec or forked from another). Process-flow (`flows_to`) and Rule-guard (`constrained_by`) edges do not belong here.",
+        predicate: {
+          kind: "requires_edge_type",
+          edge_types: [
+            "supports",
+            "attributed_to",
+            "has_parent",
+            "relates_to",
+            "replaces",
+            "derived_from",
+          ],
+        },
+      },
+
+      // ── Scenario completeness floor (hard block, committed only) ──────
+      {
+        // A scenario you can't execute is an objective (an Intent), not a test.
+        // `how_to_run` carries the preconditions + ordered steps; it is the
+        // checkable floor that separates a runnable scenario from a wish. Fires
+        // on the committed stages only (TEST_SCENARIO_COMMITTED_LIFECYCLES) so a
+        // `drafting` sketch may capture the idea before the steps are written.
+        policy:
+          "Every committed (`queued` or `active`) test scenario says how to run it: its `how_to_run` carries the preconditions and the ordered steps a tester or agent follows. A scenario with no way to run it is an objective (an Intent), not a test. A `drafting` sketch may capture the idea before the steps are written.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["how_to_run"],
+          when_node_type: ["eval"],
+        },
+        fires_when_node_lifecycle: TEST_SCENARIO_COMMITTED_LIFECYCLES,
+      },
+
+      // ── Traceability (warn, committed only) ──────────────────────────
+      {
+        // One gate covering both halves of the split: a committed scenario
+        // (Eval) `supports` the objective or requirement it verifies, and a
+        // committed run (Log) `supports` the scenario it executed. Warn, not
+        // block — an ad-hoc smoke check or a quick capture is allowed, but an
+        // orphan run (which scenario did it test?) or an untraced scenario
+        // (which requirement does it cover?) is surfaced for wiring up.
+        on_violation: "warn",
+        policy:
+          "Every committed scenario and run links to what it covers with a `supports` edge: a scenario `supports` the objective (Intent) or requirement (Reference) it verifies, and a run (Log) `supports` the scenario (Eval) it executed. A run with no scenario is an orphan result; a committed scenario with no objective or requirement is an untraced test.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "supports",
+          when_node_type: ["eval", "log"],
+        },
+        fires_when_node_lifecycle: TEST_SCENARIO_COMMITTED_LIFECYCLES,
+      },
+
+      // ── Scenario quality (warn, committed only) ──────────────────────
+      {
+        // LLM-judged, so a warn (an identical retry could differ; a warn nudges
+        // without trapping the author). Encodes the test-case-quality rule:
+        // atomic, reproducible, and judged against one observable expected
+        // result so any runner reaches the same pass/fail verdict.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the scenario's prose, its `how_to_run` (preconditions + steps), and its expected result (`expected` / `expected_status`). PASS when it verifies ONE behavior or condition, states the preconditions and the steps to reproduce it, and names a single observable, checkable expected result — so any tester or agent who runs it reaches the same pass/fail verdict. FAIL with a reason when it is vague (e.g. `test login`), bundles several unrelated checks into one scenario, depends on hidden state a reader cannot set up, or has no observable expected outcome to judge against.",
+          when_node_type: ["eval"],
+        },
+        fires_when_node_lifecycle: TEST_SCENARIO_COMMITTED_LIFECYCLES,
+      },
+
+      // ── Result quality (warn, committed only) ────────────────────────
+      {
+        // A run is only useful if a reader can tell what ran where, how it
+        // turned out, and — on failure — what actually happened and where the
+        // evidence is. LLM-judged warn. The environment matters because the same
+        // scenario can pass in one browser/build and fail in another.
+        on_violation: "warn",
+        predicate: {
+          kind: "probabilistic",
+          spec: "Check the run's prose and fields. PASS when it records the environment it ran against — for a website or app that means the browser and version, the operating system, the device or viewport, the build / release or commit, and the URL or environment (e.g. staging vs production) — names a clear outcome (passed, failed, blocked, or skipped), and, when it failed or was blocked, says what actually happened versus what was expected and links the evidence (screenshot, recording, console or network log) or the defect. FAIL with a reason when the outcome or the environment is missing, or a failure is recorded with no actual result and no evidence.",
+          when_node_type: ["log"],
+        },
+        fires_when_node_lifecycle: TEST_SCENARIO_COMMITTED_LIFECYCLES,
+      },
+
+      // ── Guidance (prose-only suggestions) ────────────────────────────
+      {
+        policy:
+          "A test Doco has two halves. A scenario (an Eval) is the durable spec — what should be true and how to check it — and each run (a Log) is one execution of it. Don't overwrite a scenario with its latest result: record every run as a new Log so the history of passes, failures, and the environments they happened in is preserved.",
+      },
+      {
+        policy:
+          "Give each scenario a clear objective in its prose (the one behavior or condition under test), the preconditions and ordered steps in `how_to_run`, the test data it needs, and a single observable expected result in `expected` (with a coarse `expected_status` of pass or fail). Keep it atomic — one behavior per scenario — independent of other scenarios, and deterministic, so it passes or fails for exactly one reason.",
+      },
+      {
+        policy:
+          "Keep the scenario's at-a-glance verdict on the Eval itself — `last_status` (pass / fail / pending), `last_run_at`, and `last_reason` as a cache of the most recent run — and keep the full, append-only history as Log nodes. The Eval answers “is it green right now?”; the Logs answer “how has it behaved over time and across environments?”.",
+      },
+      {
+        policy:
+          "Trace every scenario to what it verifies: `supports` the objective (Intent) it serves or the requirement / acceptance criterion (Reference) it checks, and group related scenarios under an objective or suite, nesting suites with `has_parent`. Traceability is what lets you answer “which tests cover this requirement, and are they green?”.",
+      },
+      {
+        policy:
+          "For websites and apps the same scenario can pass in one environment and fail in another, so record the environment on every run, not on the scenario: the browser and version, the operating system, the device or viewport, the build / release or commit under test, and the URL or environment (local, staging, production). Drive your browser / device matrix from real user analytics — cover the combinations your users actually use first.",
+      },
+      {
+        policy:
+          "Record a clear outcome on every run: passed, failed, blocked, or skipped. Use the node's `outcome` (succeeded / failed) for the pass/fail axis and state blocked or skipped in the run's prose. Distinguish failed from blocked: failed means a step did not meet its expected result but execution could continue; blocked means an earlier failure or an environment problem stopped the run before the scenario could be judged at all.",
+      },
+      {
+        policy:
+          "On a failure, capture what actually happened and attach the evidence — screenshots, a screen recording, console and network logs, or a stack trace — as Reference nodes linked with `supports`, and link the defect you filed (a GitHub issue, a Jira ticket) as a Reference with `relates_to`. This Doco is the test record, not the bug tracker: reference the external defect rather than re-litigating it here. When triaging, separate severity (how bad the failure is) from priority (how urgently it must be fixed).",
+      },
+      {
+        policy:
+          "For behavior specs, write the scenario as Given / When / Then — the preconditions as Given, the action as When, the single observable expected result as Then — across the scenario's prose and `how_to_run`. Keep it focused: one user-observable behavior per scenario and a single-digit step count. Split a vague “works on mobile” into concrete per-device scenarios that each pass or fail on their own.",
+      },
+      {
+        policy:
+          "Exploratory testing fits the same shape. Model a charter as an Intent — “Explore [area] using [approach] to discover [risks]” — run each time-boxed session as a Log that records what you did, what you found, what got in the way, and what is left (the PROOF debrief: Past, Results, Obstacles, Outlook, Feelings), and capture each bug as a Reference. Promote a recurring or important finding into an explicit Eval so it becomes a repeatable scenario.",
+      },
+      {
+        policy:
+          "Say how a scenario is run in `how_to_run` — the manual steps, or the command / suite id / spec path for an automated test — and attribute it to the Principal who owns it. A run is attributed to whoever (or whatever) executed it: a person, a CI pipeline, or an agent. Agents running a suite record each result as a Log here, so automated and manual runs share one history.",
+      },
+      {
+        policy:
+          "Walk a scenario through the lifecycle as it matures: `drafting` while you are still writing it, `queued` once it is ready to run or review, `active` when it is approved and part of the suite, and `retired` when the behavior is gone or the scenario is superseded — link the replacement with `replaces`. Completeness and quality gates apply once a scenario is committed (`queued` or `active`); a `drafting` sketch is spared. A run is a fact that already happened — record it as `active`.",
+      },
+      {
+        policy:
+          "The same Eval-plus-Log shape stretches to specialized tests without new node types — choose the Eval's `criterion` (an exact match, a response / shape match, or an llm-judge for fuzzy output) and put the specifics in the expected result and `how_to_run`: a performance test states a latency or throughput threshold as the expected result and logs the measured number; an accessibility test names the WCAG criterion and attaches the audit (e.g. an axe report) as evidence; a security test references the advisory or CVE; an API or contract test pins the expected response shape; a visual-regression test attaches the baseline and the diff. Reach for a different Doco only when what you are documenting stops being “a scenario and its runs”.",
+      },
+      {
+        policy:
+          "Agents: read `GET /<handle>/api/authoring-contract.json` and write with `POST /<handle>/api/changesets.json` — create each scenario as an Eval with its `how_to_run`, `expected`, and `criterion`, wire its `supports` edge to the objective or requirement it covers, and record each run as a Log with the environment and outcome, its `supports` edge to the scenario, and any evidence References — all in one changeset, never as disconnected nodes.",
       },
     ],
   },

@@ -110,6 +110,9 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
       />
       <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3">
         <div className="flex min-w-0 items-baseline">
+          {item.visibility ? (
+            <VisibilityIcon visibility={item.visibility} className="mr-1.5 self-center" />
+          ) : null}
           <Link
             to={item.href}
             className={cn(
@@ -130,9 +133,6 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
               `(${item.countLabel ?? item.count})`
             )}
           </span>
-          {item.visibility ? (
-            <VisibilityIcon visibility={item.visibility} className="ml-1.5 self-center" />
-          ) : null}
         </div>
         {isGroup ? null : (
           <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">

@@ -2,6 +2,12 @@ interface SequenceDepthNode {
   id: string;
   created_at?: string | null;
   bfs_depth?: number;
+  /**
+   * A BPMN entry point (a way into the process) is pinned to the first column
+   * (depth 0) regardless of any incoming sequence edges — it is the start, so it
+   * never gets pulled right by a predecessor.
+   */
+  entry_point?: boolean;
 }
 
 interface SequenceDepthLink {
@@ -28,6 +34,10 @@ export function computeForwardSequenceDepths(
 ): Map<string, number> {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  // Entry points are pinned to column 0 — the start of the flow, never pulled
+  // right by a predecessor (a node may carry incoming `flows_to` and still be a
+  // marked entry point).
+  const entryPoints = new Set(nodes.filter((node) => node.entry_point).map((node) => node.id));
   const depthFloor = new Map<string, number>();
   const sequenceLinks: SequenceDepthLink[] = [];
 
@@ -74,6 +84,11 @@ export function computeForwardSequenceDepths(
   const depthOf = (id: string): number => {
     const cached = depthByNode.get(id);
     if (cached !== undefined) return cached;
+    // Pin entry points to the first column, ignoring any predecessors.
+    if (entryPoints.has(id)) {
+      depthByNode.set(id, 0);
+      return 0;
+    }
     if (visiting.has(id)) return depthFloor.get(id) ?? 0;
     visiting.add(id);
     let depth = depthFloor.get(id) ?? 0;
@@ -95,7 +110,9 @@ export function computeForwardSequenceDepths(
   // renders beside the loop it belongs to. A genuine source (no inbound
   // edge at all) is not in `hadIncomingSequenceEdge`, so it stays at 0.
   const isFeedbackOrphan = (id: string): boolean =>
-    hadIncomingSequenceEdge.has(id) && (predecessorByNode.get(id)?.length ?? 0) === 0;
+    !entryPoints.has(id) &&
+    hadIncomingSequenceEdge.has(id) &&
+    (predecessorByNode.get(id)?.length ?? 0) === 0;
 
   const anchorVisiting = new Set<string>();
   const anchoredDepthOf = (id: string): number => {
