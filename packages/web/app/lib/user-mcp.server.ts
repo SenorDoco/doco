@@ -16,11 +16,21 @@ export async function gateUserMcp(request: Request): Promise<WorkspaceMcpGate> {
   const principal = await getCurrentPrincipalAsync(request);
   if (!principal) return { ok: false, kind: "unauthenticated", message: "Unauthorized" };
 
-  // The user-level endpoint is bearer-only: identity + session workspace both
-  // come from the access token. (A cookie session has no single-workspace
-  // scope, so it can't pin a session here.)
+  // The user-level endpoint is bearer-only: identity comes from the access
+  // token. (A cookie session can't pin a session here.)
   const token = await getOauthTokenForRequest(request);
   if (!token) return { ok: false, kind: "unauthenticated", message: "Unauthorized" };
+
+  // An "act as me" (actor) token reaches EVERY workspace the human belongs to,
+  // not one: it carries no stored workspace. Enter all-workspaces mode; tools
+  // resolve Docos globally and the access gate enforces the live, capped role
+  // per call. `list_workspaces` lets the agent discover what it can reach.
+  if (token.grant_type === "actor") {
+    return {
+      ok: true,
+      ctx: { workspaceId: "", workspaceHandle: "", principalId: principal.id, allWorkspaces: true },
+    };
+  }
 
   const workspaceId = (token.granted_workspace_ids ?? [])[0];
   if (!workspaceId) {

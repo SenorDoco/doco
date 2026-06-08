@@ -67,6 +67,38 @@ export function capRoleForRequest(role: DocoRole | null, request: Request): Doco
   return roleAtLeast(role, "owner") ? SENOR_DOCO_ROLE_CEILING : role;
 }
 
+/** The lower-power of two roles (the combined ceiling when both apply). */
+function lowerRole(a: DocoRole, b: DocoRole): DocoRole {
+  return roleAtLeast(a, b) ? b : a;
+}
+
+/** Cap a role at a ceiling (the lower of the two). null role/ceiling pass through. */
+function capRole(role: DocoRole | null, ceiling: DocoRole | null): DocoRole | null {
+  if (!role || !ceiling) return role;
+  return lowerRole(role, ceiling);
+}
+
+/**
+ * The role ceiling this REQUEST imposes on the underlying human's live role —
+ * or null for "no ceiling" (full owner). Two independent caps combine to the
+ * lower: the Señor Doco agent cap (writer), and an actor token's `actor_role`.
+ * An actor access token carries no stored grants — it acts as its user, and
+ * THIS is what holds it to the role the human approved when minting it.
+ */
+export async function requestRoleCeiling(request: Request): Promise<DocoRole | null> {
+  let ceiling: DocoRole | null = isSenorDocoRequest(request) ? SENOR_DOCO_ROLE_CEILING : null;
+  const token = await getOauthTokenForRequest(request);
+  if (token?.grant_type === "actor" && token.actor_role) {
+    ceiling = ceiling ? lowerRole(ceiling, token.actor_role) : token.actor_role;
+  }
+  return ceiling;
+}
+
+/** True when the request's bearer is an "act as me" actor token. */
+async function isActorTokenRequest(request: Request): Promise<boolean> {
+  return (await getOauthTokenForRequest(request))?.grant_type === "actor";
+}
+
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
  * workspace-membership role on the owning workspace, explicit doco_users row).
@@ -96,7 +128,9 @@ export async function getDocoLevelRoleForRequest(
   meta: { ownerId: string; docoId?: string },
   principalId: string | null,
 ): Promise<DocoRole | null> {
-  return capRoleForRequest(await getDocoLevelRole(meta, principalId), request);
+  // Cap at the request ceiling — the Señor Doco agent cap AND, for an actor
+  // token, the approved actor_role (resolved live against the human's role).
+  return capRole(await getDocoLevelRole(meta, principalId), await requestRoleCeiling(request));
 }
 
 /**
@@ -233,16 +267,23 @@ export async function canWriteDocoTypeForRequest(
   type: string,
 ): Promise<boolean> {
   if (!(await canWriteDocoType(meta, principalId, type))) return false;
+  const ceiling = await requestRoleCeiling(request);
   // Policy types are owner-only and not token-scopeable per type; the
-  // membership check above already required owner. Señor Doco is capped
-  // below owner, so deny those types for the agent even when the underlying
-  // human is an owner.
-  if (!isWritableType(type)) return !isSenorDocoRequest(request);
+  // membership check above already required owner. Any request ceiling below
+  // owner (Señor Doco's writer cap, or an actor reader/writer ceiling) denies
+  // those types even when the underlying human is an owner.
+  if (!isWritableType(type)) return ceiling === null;
+  // A reader ceiling forbids writes outright (an actor token approved at reader).
+  if (ceiling === "reader") return false;
 
   const token = await getOauthTokenForRequest(request);
-  const cap = tokenWriteTypeCap(token, meta);
-  if (cap === null) return true; // cookie session: no token scope-down
-  return canWriteType("reader", cap, type as WritableType);
+  // An actor token carries no per-type caps — the ceiling above governs it.
+  // A regular token narrows per type to exactly what it was granted.
+  if (token && token.grant_type !== "actor") {
+    const cap = tokenWriteTypeCap(token, meta);
+    if (cap !== null && !canWriteType("reader", cap, type as WritableType)) return false;
+  }
+  return true;
 }
 
 export async function requireDocoTypeWriteForRequest(
@@ -316,6 +357,11 @@ export function oauthTokenGrantsDoco(
   token: ValidAccessToken,
   meta: { ownerId: string; docoId: string },
 ): boolean {
+  // An actor token carries no stored grants — it acts as the human, so it
+  // "grants" every Doco the human can reach. Callers pass the human's own
+  // accessible set here, so this widens to that set; real per-Doco access is
+  // still enforced live by enforceOauthGrant / canAccessDoco.
+  if (token.grant_type === "actor") return true;
   if (token.granted_doco_ids.includes(meta.docoId)) return true;
   if (
     meta.ownerId.startsWith("workspace_") &&
@@ -409,7 +455,10 @@ export async function listVisibleDocoIdsForRequest(
 ): Promise<string[]> {
   const accessible = await listAccessibleDocoIdsForPrincipal(principalId);
   const token = await getOauthTokenForRequest(request);
-  if (!token || accessible.length === 0) return accessible;
+  // An actor token acts as the human: it enumerates everything they can reach,
+  // across all their workspaces (no single-workspace narrowing). A regular
+  // token is narrowed to its granted workspace boundary below.
+  if (!token || token.grant_type === "actor" || accessible.length === 0) return accessible;
   const ownerByDocoId = await loadDocoOwnerIds([...accessible, ...(token.granted_doco_ids ?? [])]);
   return filterDocosToWorkspaceBoundary(accessible, ownerByDocoId, token);
 }
@@ -425,7 +474,9 @@ export async function tokenReachableWorkspaceIdsForRequest(
   request: Request,
 ): Promise<Set<string> | null> {
   const token = await getOauthTokenForRequest(request);
-  if (!token) return null;
+  // No bearer, or an actor token (acts as the human → full membership listing):
+  // no workspace narrowing to apply.
+  if (!token || token.grant_type === "actor") return null;
   const ownerByDocoId = await loadDocoOwnerIds(token.granted_doco_ids ?? []);
   return tokenReachableWorkspaceIdsFromGrant(token, ownerByDocoId);
 }
@@ -612,7 +663,9 @@ export async function canAdminDocoForRequest(
   meta: { ownerId: string; docoId?: string },
   principalId: string | null,
 ): Promise<boolean> {
-  if (isSenorDocoRequest(request)) return false;
+  // Admin is owner-tier: any request ceiling below owner (Señor Doco, or an
+  // actor token approved below owner) can never administer the Doco.
+  if ((await requestRoleCeiling(request)) !== null) return false;
   return canAdminDoco(meta, principalId);
 }
 
@@ -981,6 +1034,37 @@ async function enforceOauthGrant(
           headers: {
             "Content-Type": "application/json",
             "WWW-Authenticate": `Bearer error="invalid_token", error_description="The access token is invalid, revoked, or expired"`,
+          },
+        },
+      );
+    }
+    return;
+  }
+
+  // Actor token: no stored grants — it acts as its user. Authorize against the
+  // human's LIVE role on this Doco, capped at actor_role. This is what lets one
+  // app-wide `/mcp` connection reach every workspace the human belongs to,
+  // while never exceeding the role they approved.
+  if (token.grant_type === "actor") {
+    const liveRole = capRole(
+      await getDocoLevelRole({ ownerId: doco.ownerId, docoId: doco.docoId }, token.user_id),
+      token.actor_role,
+    );
+    if (!liveRole || !roleAtLeast(liveRole, minRole)) {
+      throw new Response(
+        JSON.stringify({
+          kind: liveRole ? "insufficient_scope" : "access_denied",
+          error: liveRole
+            ? `This 'act as me' token is capped at '${token.actor_role}', and this operation requires '${minRole}'.`
+            : "You don't have access to this Doco.",
+        }),
+        {
+          status: liveRole ? 403 : 403,
+          headers: {
+            "Content-Type": "application/json",
+            ...(liveRole
+              ? { "WWW-Authenticate": `Bearer error="insufficient_scope", scope="doco"` }
+              : {}),
           },
         },
       );

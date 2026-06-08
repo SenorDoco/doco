@@ -102,6 +102,11 @@ describe("OAuth token authorization", () => {
     expect(callsTo("UPDATE oauth_refresh_tokens SET expires_at")).toHaveLength(1);
   });
 
+  // An actor token carries NO stored grants — it acts as its user, capped at
+  // actor_role, resolved LIVE by the access gate on every request. So both the
+  // refresh exchange and the authorization-code exchange mint an UNSCOPED access
+  // token that simply carries the grant_type/actor_role marker (no `resource`,
+  // no per-workspace pinning at mint).
   const actorRefreshRow = {
     client_id: "doco_client_x",
     user_id: "user_a",
@@ -119,114 +124,55 @@ describe("OAuth token authorization", () => {
     revoked: false,
   };
 
-  it("an actor refresh mints an access token scoped to the resource workspace at the user's live role", async () => {
-    mocks.query.mockImplementation(async (sql: string) => {
-      if (String(sql).includes("FROM oauth_refresh_tokens")) {
-        return { rows: [actorRefreshRow], rowCount: 1 };
-      }
-      if (String(sql).includes("FROM workspace_users")) {
-        return { rows: [{ role: "writer" }], rowCount: 1 };
-      }
-      return { rows: [], rowCount: 1 };
-    });
+  it("an actor refresh reissues an unscoped access token carrying the actor marker", async () => {
+    mocks.query.mockImplementation(async (sql: string) =>
+      String(sql).includes("FROM oauth_refresh_tokens")
+        ? { rows: [{ ...actorRefreshRow, actor_role: "writer" }], rowCount: 1 }
+        : { rows: [], rowCount: 1 },
+    );
 
     const result = await refreshTokens({
       client_id: "doco_client_x",
       refresh_token: "doco_rt_actor",
-      resource: "https://doco.to/workspace_a/mcp",
     });
 
     expect(result.access_token).toMatch(/^doco_at_/);
-    const params = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
-    // granted_workspace_ids narrowed to the ONE requested workspace …
-    expect(params[7]).toEqual(["workspace_a"]);
-    // … carrying the user's live role in it (null actor_role = full role) …
-    expect(JSON.parse(params[8] as string)).toEqual({ workspace_a: "writer" });
-    // … and no doco grants leak through.
-    expect(params[4]).toEqual([]);
+    const access = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
+    // No stored grants — the gate resolves access live from the user's membership.
+    expect(access[4]).toEqual([]); // granted_doco_ids
+    expect(access[7]).toEqual([]); // granted_workspace_ids
+    // The actor authority rides on the access token: grant_type + role ceiling.
+    expect(access[12]).toBe("actor");
+    expect(access[13]).toBe("writer");
+    // No per-workspace membership lookup happens at mint anymore.
+    expect(callsTo("FROM workspace_users")).toHaveLength(0);
   });
 
-  it("an actor refresh caps the access-token role at actor_role (min with live role)", async () => {
-    mocks.query.mockImplementation(async (sql: string) => {
-      if (String(sql).includes("FROM oauth_refresh_tokens")) {
-        return { rows: [{ ...actorRefreshRow, actor_role: "reader" }], rowCount: 1 };
-      }
-      if (String(sql).includes("FROM workspace_users")) {
-        return { rows: [{ role: "owner" }], rowCount: 1 }; // live role is higher
-      }
-      return { rows: [], rowCount: 1 };
-    });
-
-    await refreshTokens({
-      client_id: "doco_client_x",
-      refresh_token: "doco_rt_actor",
-      resource: "https://doco.to/workspace_a/mcp",
-    });
-
-    const params = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
-    // The reader ceiling wins over the owner live role.
-    expect(JSON.parse(params[8] as string)).toEqual({ workspace_a: "reader" });
-  });
-
-  it("an actor_role ceiling never RAISES the access role above the live role", async () => {
-    mocks.query.mockImplementation(async (sql: string) => {
-      if (String(sql).includes("FROM oauth_refresh_tokens")) {
-        return { rows: [{ ...actorRefreshRow, actor_role: "owner" }], rowCount: 1 };
-      }
-      if (String(sql).includes("FROM workspace_users")) {
-        return { rows: [{ role: "writer" }], rowCount: 1 }; // live role is lower
-      }
-      return { rows: [], rowCount: 1 };
-    });
-
-    await refreshTokens({
-      client_id: "doco_client_x",
-      refresh_token: "doco_rt_actor",
-      resource: "https://doco.to/workspace_a/mcp",
-    });
-
-    const params = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
-    // owner ceiling but you're only a writer here → writer, not owner.
-    expect(JSON.parse(params[8] as string)).toEqual({ workspace_a: "writer" });
-  });
-
-  it("rejects an actor refresh that names no workspace (no broad access token)", async () => {
+  it("a regular refresh copies its single-workspace grant through and stays 'regular'", async () => {
     mocks.query.mockImplementation(async (sql: string) =>
       String(sql).includes("FROM oauth_refresh_tokens")
-        ? { rows: [actorRefreshRow], rowCount: 1 }
+        ? {
+            rows: [
+              {
+                ...actorRefreshRow,
+                grant_type: "regular",
+                actor_role: null,
+                granted_workspace_ids: ["workspace_a"],
+                granted_workspace_roles: { workspace_a: "writer" },
+              },
+            ],
+            rowCount: 1,
+          }
         : { rows: [], rowCount: 1 },
     );
-
-    await expect(
-      refreshTokens({ client_id: "doco_client_x", refresh_token: "doco_rt_actor" }),
-    ).rejects.toThrow(/resource/i);
-    expect(callsTo("INSERT INTO oauth_access_tokens")).toHaveLength(0);
+    await refreshTokens({ client_id: "doco_client_x", refresh_token: "doco_rt_reg" });
+    const access = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
+    expect(access[7]).toEqual(["workspace_a"]);
+    expect(JSON.parse(access[8] as string)).toEqual({ workspace_a: "writer" });
+    expect(access[12]).toBe("regular");
+    expect(access[13]).toBeNull();
   });
 
-  it("rejects an actor refresh for a workspace the user is not a member of", async () => {
-    mocks.query.mockImplementation(async (sql: string) => {
-      if (String(sql).includes("FROM oauth_refresh_tokens")) {
-        return { rows: [actorRefreshRow], rowCount: 1 };
-      }
-      if (String(sql).includes("FROM workspace_users")) {
-        return { rows: [], rowCount: 0 }; // not a member
-      }
-      return { rows: [], rowCount: 1 };
-    });
-
-    await expect(
-      refreshTokens({
-        client_id: "doco_client_x",
-        refresh_token: "doco_rt_actor",
-        resource: "https://doco.to/workspace_x/mcp",
-      }),
-    ).rejects.toThrow(/not a member/i);
-    expect(callsTo("INSERT INTO oauth_access_tokens")).toHaveLength(0);
-  });
-
-  // The authorization-code exchange (issueTokens) must scope an actor token the
-  // SAME way refresh does — otherwise the FIRST access token an MCP receives is
-  // minted with the code's empty grants and reaches nothing.
   const actorIssueInput = {
     client_id: "doco_client_x",
     user_id: "user_a",
@@ -238,63 +184,20 @@ describe("OAuth token authorization", () => {
     actor_role: null as null | "reader" | "writer" | "owner",
   };
 
-  it("an actor authorization-code exchange scopes the FIRST access token to the resource workspace at the live role", async () => {
-    mocks.query.mockImplementation(async (sql: string) =>
-      String(sql).includes("FROM workspace_users")
-        ? { rows: [{ role: "writer" }], rowCount: 1 }
-        : { rows: [], rowCount: 1 },
-    );
-
-    const result = await issueTokens({
-      ...actorIssueInput,
-      resource: "https://doco.to/workspace_a/mcp",
-    });
+  it("an actor authorization-code exchange mints an unscoped access token + marker", async () => {
+    mocks.query.mockResolvedValue({ rows: [], rowCount: 1 });
+    const result = await issueTokens({ ...actorIssueInput, actor_role: "writer" });
 
     expect(result.access_token).toMatch(/^doco_at_/);
     const access = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
-    // Scoped to the ONE requested workspace at the user's live role, no docos.
-    expect(access[7]).toEqual(["workspace_a"]);
-    expect(JSON.parse(access[8] as string)).toEqual({ workspace_a: "writer" });
-    expect(access[4]).toEqual([]);
-    // The refresh token keeps the deferred actor breadth (no stored grants).
+    expect(access[4]).toEqual([]); // no doco grants
+    expect(access[7]).toEqual([]); // no workspace grants
+    expect(access[12]).toBe("actor");
+    expect(access[13]).toBe("writer");
+    // The refresh token carries the same marker.
     const refresh = callsTo("INSERT INTO oauth_refresh_tokens")[0]?.[1] as unknown[];
-    expect(refresh[7]).toEqual([]);
     expect(refresh[12]).toBe("actor");
-  });
-
-  it("an actor authorization-code exchange caps the access role at actor_role", async () => {
-    mocks.query.mockImplementation(async (sql: string) =>
-      String(sql).includes("FROM workspace_users")
-        ? { rows: [{ role: "owner" }], rowCount: 1 } // live role higher than the cap
-        : { rows: [], rowCount: 1 },
-    );
-
-    await issueTokens({
-      ...actorIssueInput,
-      actor_role: "reader",
-      resource: "https://doco.to/workspace_a/mcp",
-    });
-
-    const access = callsTo("INSERT INTO oauth_access_tokens")[0]?.[1] as unknown[];
-    expect(JSON.parse(access[8] as string)).toEqual({ workspace_a: "reader" });
-  });
-
-  it("rejects an actor authorization-code exchange that names no workspace", async () => {
-    mocks.query.mockResolvedValue({ rows: [], rowCount: 1 });
-    await expect(issueTokens({ ...actorIssueInput })).rejects.toThrow(/resource/i);
-    expect(callsTo("INSERT INTO oauth_access_tokens")).toHaveLength(0);
-  });
-
-  it("rejects an actor authorization-code exchange for a workspace the user isn't in", async () => {
-    mocks.query.mockImplementation(async (sql: string) =>
-      String(sql).includes("FROM workspace_users")
-        ? { rows: [], rowCount: 0 }
-        : { rows: [], rowCount: 1 },
-    );
-    await expect(
-      issueTokens({ ...actorIssueInput, resource: "https://doco.to/workspace_x/mcp" }),
-    ).rejects.toThrow(/not a member/i);
-    expect(callsTo("INSERT INTO oauth_access_tokens")).toHaveLength(0);
+    expect(refresh[13]).toBe("writer");
   });
 
   it("issues browser OAuth codes for the approving user and stores the token name", async () => {

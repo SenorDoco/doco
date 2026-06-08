@@ -82,6 +82,8 @@ function token(overrides: Partial<ValidAccessToken>): ValidAccessToken {
     granted_workspace_write_types: {},
     scope: null,
     expires_at: new Date(Date.now() + 60_000),
+    grant_type: "regular",
+    actor_role: null,
     ...overrides,
   };
 }
@@ -223,6 +225,64 @@ describe("getDocoLevelRoleForRequest", () => {
     await expect(getDocoLevelRoleForRequest(humanRequest(), meta, "user_owner")).resolves.toBe(
       "owner",
     );
+  });
+});
+
+describe("actor token acts as the human, capped at actor_role", () => {
+  const meta = { ownerId: "workspace_A", docoId: "doco_1" };
+  function actorReq(): Request {
+    return new Request("https://doco.test/acme/api/x.json", {
+      headers: { Authorization: "Bearer doco_at_x" },
+    });
+  }
+
+  it("oauthTokenGrantsDoco is true for any Doco (it acts as the human)", () => {
+    const t = token({ grant_type: "actor", actor_role: null });
+    expect(oauthTokenGrantsDoco(t, { ownerId: "workspace_other", docoId: "doco_zzz" })).toBe(true);
+  });
+
+  it("caps the human's live role at actor_role", async () => {
+    mocks.getDocoUserGrant.mockResolvedValue({ role: "owner", writeTypes: [] });
+    mocks.validateAccessToken.mockResolvedValue(
+      token({ grant_type: "actor", actor_role: "reader", user_id: "user_owner" }),
+    );
+    await expect(getDocoLevelRoleForRequest(actorReq(), meta, "user_owner")).resolves.toBe(
+      "reader",
+    );
+  });
+
+  it("a null actor_role is full owner (no cap)", async () => {
+    mocks.getDocoUserGrant.mockResolvedValue({ role: "owner", writeTypes: [] });
+    mocks.validateAccessToken.mockResolvedValue(
+      token({ grant_type: "actor", actor_role: null, user_id: "user_owner" }),
+    );
+    await expect(getDocoLevelRoleForRequest(actorReq(), meta, "user_owner")).resolves.toBe("owner");
+  });
+
+  it("never RAISES above the human's live role", async () => {
+    mocks.getDocoUserGrant.mockResolvedValue({ role: "reader", writeTypes: [] });
+    mocks.validateAccessToken.mockResolvedValue(
+      token({ grant_type: "actor", actor_role: "owner", user_id: "user_reader" }),
+    );
+    // owner ceiling, but the human is only a reader here → reader.
+    await expect(getDocoLevelRoleForRequest(actorReq(), meta, "user_reader")).resolves.toBe(
+      "reader",
+    );
+  });
+
+  it("enumerates the full live set, not a token boundary", async () => {
+    // No stored grants on the actor token, yet listing returns everything the
+    // human can reach (the cross-workspace narrowing is skipped for actor).
+    mocks.query.mockImplementation(async (sql: string) =>
+      sql.includes("workspace_users")
+        ? { rows: [{ id: "doco_torre1" }, { id: "doco_meta1" }] }
+        : { rows: [] },
+    );
+    mocks.validateAccessToken.mockResolvedValue(token({ grant_type: "actor", actor_role: null }));
+    await expect(listVisibleDocoIdsForRequest(actorReq(), "user_alice")).resolves.toEqual([
+      "doco_torre1",
+      "doco_meta1",
+    ]);
   });
 });
 
