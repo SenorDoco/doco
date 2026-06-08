@@ -141,11 +141,15 @@ describe("cross-pool neighbours feed computeExternalNeighbours (real loader outp
       id: "action_EXTNODE",
       direction: "entry",
       attach: { kind: "node", nodeId: "action_FMEMBER" },
+      edgeType: "flows_to",
+      label: null,
     });
     expect(neighbours).toContainEqual({
       id: "action_EXTTITLE",
       direction: "entry",
       attach: { kind: "title", poolId: "pool:action_FOCALPOOL" },
+      edgeType: "flows_to",
+      label: null,
     });
   });
 });
