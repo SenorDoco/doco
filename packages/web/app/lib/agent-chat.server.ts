@@ -970,7 +970,7 @@ function findCleanReplayStart(rows: ChatMessageRow[], start: number): number {
   return candidate;
 }
 
-function approximateReplayTokens(rows: ChatMessageRow[]): number {
+export function approximateReplayTokens(rows: ChatMessageRow[]): number {
   let chars = 0;
   for (const row of rows) {
     chars += row.role.length + JSON.stringify(row.content).length;
