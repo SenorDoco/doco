@@ -143,6 +143,25 @@ export function lifecycleLabel(lifecycle: string | null | undefined): string {
   return (lifecycle ?? "active").replaceAll("_", " ");
 }
 
+/**
+ * Verb that moves an entity INTO each lifecycle stage — the label a lifecycle
+ * button shows when it is NOT the current stage ("Draft", "Queue", "Activate",
+ * "Retire"). The current stage shows its state name via {@link lifecycleLabel}
+ * instead. Shared by the node and edge dialogs so both read "you ARE here /
+ * click to GO there."
+ */
+const LIFECYCLE_VERB: Record<string, string> = {
+  drafting: "draft",
+  queued: "queue",
+  active: "activate",
+  retired: "retire",
+};
+
+/** Label for a lifecycle button: the state name when current, else the verb. */
+export function lifecycleStageLabel(stage: string, isCurrent: boolean): string {
+  return isCurrent ? lifecycleLabel(stage) : (LIFECYCLE_VERB[stage] ?? lifecycleLabel(stage));
+}
+
 const NODE_TYPE_PLURAL: Record<string, string> = {
   doco: "docos",
   principal: "principals",

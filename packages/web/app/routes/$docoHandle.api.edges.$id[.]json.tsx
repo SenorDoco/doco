@@ -3,7 +3,7 @@
 // DELETE /<doco>/api/edges/<id>.json            — retire the edge.
 // POST   /<doco>/api/edges/<id>.json {op:"retire"} — retire (DELETE-less clients).
 // PATCH  /<doco>/api/edges/<id>.json {lifecycle} — move the edge's lifecycle
-//        (drafting / active / retired). Drives the edge dialog's buttons.
+//        (drafting / queued / active / retired). Drives the edge dialog's buttons.
 //
 // Time-travel reads are O(1) snapshot lookups: "how it was"
 // never replays a log.
@@ -89,7 +89,7 @@ export async function action({ request, params }: { request: Request; params: Pa
 
   const authoring = await authoringContextForRequest(request);
 
-  // PATCH moves the edge along its lifecycle (drafting / active / retired).
+  // PATCH moves the edge along its lifecycle (drafting / queued / active / retired).
   if (request.method === "PATCH") {
     let body: Record<string, unknown>;
     try {

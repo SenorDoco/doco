@@ -7,15 +7,14 @@ import {
 } from "~/lib/authoring-provenance";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { getGitHubRepoSlug } from "~/lib/github-connection.server";
+import { LIFECYCLE_ORDER, lifecycleStageLabel } from "~/lib/node-colors";
 import { NODE_TYPE_META } from "~/lib/node-types";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-const LIFECYCLE_STAGES = ["drafting", "queued", "active", "retired"] as const;
-
-export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
+export type LifecycleStage = (typeof LIFECYCLE_ORDER)[number];
 
 export interface NodeDialogEdge {
   // The edge itself — a first-class entity. Carried so each row can open the
@@ -165,37 +164,19 @@ function toIso(value: Date | string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-// Stage labels read as state names when the option is the current
-// lifecycle ("Drafting", "Queued", "Active", "Retired") and as the action
-// verb that would move into that stage when the option is one of the other
-// (clickable) choices ("Draft", "Queue", "Activate", "Retire"). Combined
-// with the press-down state in the UI, this makes the row read like
-// "you ARE here / click to GO there."
-const LIFECYCLE_VERB: Record<string, string> = {
-  drafting: "draft",
-  queued: "queue",
-  active: "activate",
-  retired: "retire",
-};
-
-function lifecycleLabel(value: string, isCurrent: boolean): string {
-  if (isCurrent) return value.replaceAll("_", " ");
-  return LIFECYCLE_VERB[value] ?? value.replaceAll("_", " ");
-}
-
 function lifecycleOptions(input: {
   current: string;
   canChange: boolean;
   role: DocoRole | null;
   updateUrl: string | null;
 }): NodeLifecycleOption[] {
-  const current = LIFECYCLE_STAGES.includes(input.current as LifecycleStage)
+  const current = LIFECYCLE_ORDER.includes(input.current as LifecycleStage)
     ? (input.current as LifecycleStage)
     : "active";
   const roleReason = input.role
     ? `Write access required to change lifecycle; your role is ${input.role}.`
     : "Sign in with write access to change lifecycle.";
-  return LIFECYCLE_STAGES.map((stage) => {
+  return LIFECYCLE_ORDER.map((stage) => {
     const isCurrent = stage === current;
     let reason: string | null = null;
     if (isCurrent) reason = "Current stage.";
@@ -203,7 +184,7 @@ function lifecycleOptions(input: {
     else if (!input.canChange) reason = roleReason;
     return {
       value: stage,
-      label: lifecycleLabel(stage, isCurrent),
+      label: lifecycleStageLabel(stage, isCurrent),
       current: isCurrent,
       disabled: Boolean(reason),
       reason,
