@@ -2135,10 +2135,26 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   onUploadFiles={uploadFiles}
                   onRemoveStaged={removeStaged}
                 />
-                {dragActive ? (
-                  <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-md border-2 border-dashed border-primary/60 bg-card/80 backdrop-blur-sm">
-                    <div className="neu-surface rounded-md bg-card px-3 py-2 text-xs font-semibold text-primary">
-                      Drop files to attach
+                {/* Same in-place overlay does double duty: the drop target
+                while a file drag is over the area, then an "Uploading…"
+                spinner the moment it's dropped — so the feedback never leaves
+                the spot the user is looking at. Drag wins the label when both
+                are briefly true (a drag started over an in-flight upload). */}
+                {dragActive || uploading ? (
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-card/80 backdrop-blur-sm",
+                      dragActive && "rounded-md border-2 border-dashed border-primary/60",
+                    )}
+                  >
+                    <div className="neu-surface flex items-center gap-2 rounded-md bg-card px-3 py-2 text-xs font-semibold text-primary">
+                      {uploading && !dragActive ? (
+                        <span
+                          aria-hidden="true"
+                          className="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+                        />
+                      ) : null}
+                      {dragActive ? "Drop files to attach" : "Uploading…"}
                     </div>
                   </div>
                 ) : null}
