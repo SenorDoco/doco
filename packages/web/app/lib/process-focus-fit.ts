@@ -56,3 +56,36 @@ export function processFocusFlowNodeId(
   if (renderedFlowNodeIds.has(target)) return target;
   return null;
 }
+
+/**
+ * The pool header the camera should re-frame when a process is *freshly
+ * expanded* — drilling into a process from the overview, or the "View
+ * subprocess" affordance opening a subprocess into its OWN pool.
+ *
+ * This is distinct from the one-shot initial/URL focus. That fit fires once
+ * (per target, or once for the default browse) so a plain node click can't
+ * yank the camera; but a deliberate drill-in is a "frame this pool" gesture
+ * that must move the camera EVERY time, even after the default fit is spent.
+ * The caller pairs this with the pool header → `processPoolFitNodeIds` so the
+ * whole pool (header + lanes) is framed.
+ *
+ * Returns null when:
+ *   • nothing is expanded (`expandedProcessId` is null) — camera stays put;
+ *   • the expansion merely mirrors the current URL focus
+ *     (`expandedProcessId === initialFocusId`) — the cold-open path already
+ *     frames that pool, so re-fitting here would just double up;
+ *   • the process heads no pool, or that pool's header isn't rendered yet —
+ *     the caller retries once the layout catches up.
+ */
+export function processExpansionFitNodeId(
+  expandedProcessId: string | null,
+  initialFocusId: string | null,
+  poolIdByProcessId: ReadonlyMap<string, string>,
+  renderedFlowNodeIds: ReadonlySet<string>,
+): string | null {
+  if (!expandedProcessId || expandedProcessId === initialFocusId) return null;
+  const poolId = poolIdByProcessId.get(expandedProcessId);
+  if (!poolId) return null;
+  const headerId = `${POOL_HEADER_PREFIX}${poolId}`;
+  return renderedFlowNodeIds.has(headerId) ? headerId : null;
+}
