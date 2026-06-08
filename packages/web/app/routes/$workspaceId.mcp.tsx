@@ -117,7 +117,10 @@ const RELATE_TOOL = {
   description: [
     "Create a first-class edge between two nodes in a Doco (e.g. supports,",
     "constrained_by, attributed_to, derived_from, flows_to, relates_to).",
-    "Needs write access to the edge type.",
+    "Needs write access to the edge type. Edges share the node lifecycle",
+    "(drafting → queued → active → retired): an ACTIVE edge can only connect",
+    "ACTIVE nodes. Omit `lifecycle` and the edge defaults to active when both",
+    "endpoints are active, else drafting.",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -140,6 +143,11 @@ const RELATE_TOOL = {
       kind: {
         type: "string",
         description: 'Optional flows_to kind, e.g. "exception" or "timer".',
+      },
+      lifecycle: {
+        type: "string",
+        description:
+          "Optional starting stage: drafting | queued | active. Omit to default (active iff both endpoints are active, else drafting). An explicit `active` to a non-active node is rejected.",
       },
     },
     required: ["doco", "edge_type", "from_id", "to_id"],
@@ -228,7 +236,7 @@ const CHANGESET_TOOL = {
       operations: {
         type: "array",
         description:
-          "Ordered ops: {op:'create',entity_type,alias?,body} | {op:'relate',relation_kind,from,to} | {op:'relate_many',relations:[…]} | {op:'append',entity_type,after,relation_kind,body} | {op:'assert',target} | {op:'retire',target} | {op:'supersede',target,entity_type,body}. assert/retire/supersede `target` is a node id or a $alias from this batch.",
+          "Ordered ops: {op:'create',entity_type,alias?,body} | {op:'relate',relation_kind,from,to,lifecycle?} | {op:'relate_many',relations:[…]} | {op:'append',entity_type,after,relation_kind,body} | {op:'activate',target} | {op:'queue',target,retire_active_edges?} | {op:'retire',target,retire_active_edges?} | {op:'supersede',target,entity_type,body}. activate/queue/retire/supersede `target` is a node id or a $alias from this batch. Edges share the node lifecycle: an ACTIVE edge can only connect ACTIVE nodes — relate `lifecycle` (drafting|queued|active) defaults to active iff both endpoints are active, else drafting. When demoting a node off active, pass `retire_active_edges:true` to also retire its active edges.",
         items: { type: "object", additionalProperties: true },
       },
       validate_against: {
@@ -467,7 +475,7 @@ async function runDocoRelate(
     return toolError("doco_relate requires `doco`, `edge_type`, `from_id`, and `to_id`.");
   }
   const payload: Record<string, unknown> = { edge_type: edgeType, from_id: fromId, to_id: toId };
-  for (const k of ["label", "condition", "kind"] as const) {
+  for (const k of ["label", "condition", "kind", "lifecycle"] as const) {
     if (typeof args[k] === "string") payload[k] = args[k];
   }
   const origin = new URL(request.url).origin;
