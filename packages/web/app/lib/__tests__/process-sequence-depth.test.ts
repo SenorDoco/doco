@@ -55,11 +55,13 @@ describe("computeForwardSequenceDepths", () => {
     expect(depths.get("action_checkout")).toBeGreaterThan(depths.get("decision_route") ?? 0);
   });
 
-  it("anchors a loop member beside its deep gateway instead of column 0", () => {
-    // start -> mid -> gateway is the main chain (gateway is deep). The
-    // loading step only connects to the gateway, both ways (a loop), and
-    // was authored before the gateway — so the gateway->loading edge is
-    // the demoted loopback, leaving loading with no surviving predecessor.
+  it("roots a loop at the gateway flow enters through, not its oldest member", () => {
+    // start -> mid -> gateway is the main chain (gateway is deep). The loading
+    // step only connects to the gateway, both ways (a loop). Flow enters the
+    // loop at the gateway (via mid), so the gateway is the loop head: the
+    // gateway->loading edge is the kept forward edge and loading->gateway is
+    // the demoted loopback — the loading step it routes to sits to its RIGHT,
+    // regardless of which of the two was authored first.
     const depths = computeForwardSequenceDepths(
       [
         { id: "action_start", created_at: "2026-05-26T00:00:00.000Z" },
@@ -79,8 +81,40 @@ describe("computeForwardSequenceDepths", () => {
     const gateway = depths.get("decision_gateway") ?? 0;
     const loading = depths.get("action_loading") ?? 0;
     expect(gateway).toBeGreaterThanOrEqual(2); // deep via the main chain
-    // The loading step sits one column left of the gateway, not at 0.
-    expect(loading).toBe(gateway - 1);
+    // The loading step the gateway routes to sits one column to its right.
+    expect(loading).toBe(gateway + 1);
+  });
+
+  it("places a loop's mid step right of its entry even when authored first", () => {
+    // A job-posting review loop: the user inputs the role name, an AI step
+    // checks it for scam content, a gateway routes a flagged result to a
+    // warning, and the warning loops back to the input. The AI step was
+    // authored BEFORE the human input, so it is the cycle's earliest-created
+    // member — but flow enters the loop at the input, so the input is the loop
+    // head and the AI step must sit to its right, never parked in column 0.
+    const depths = computeForwardSequenceDepths(
+      [
+        { id: "action_open", created_at: "2026-06-08T00:00:00.000Z" },
+        { id: "action_detect", created_at: "2026-06-08T00:01:00.000Z" },
+        { id: "action_warn", created_at: "2026-06-08T00:02:00.000Z" },
+        { id: "action_inputs", created_at: "2026-06-08T00:05:00.000Z" },
+        { id: "decision_gate", created_at: "2026-06-08T00:06:00.000Z" },
+      ],
+      [
+        { source: "action_open", target: "action_inputs", edge_type: "flows_to" },
+        { source: "action_inputs", target: "action_detect", edge_type: "flows_to" },
+        { source: "action_detect", target: "decision_gate", edge_type: "flows_to" },
+        { source: "decision_gate", target: "action_warn", edge_type: "flows_to" },
+        // loopback: the warning routes back to re-enter the input step
+        { source: "action_warn", target: "action_inputs", edge_type: "flows_to" },
+      ],
+    );
+
+    const inputs = depths.get("action_inputs") ?? 0;
+    const detect = depths.get("action_detect") ?? 0;
+    // The AI step follows the input it reads — to the right, never at column 0.
+    expect(detect).toBeGreaterThan(0);
+    expect(detect).toBe(inputs + 1);
   });
 
   it("leaves a genuine flow source (no inbound edge) at column 0", () => {
