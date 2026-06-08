@@ -68,4 +68,28 @@ describe("layOutProcess vertical alignment", () => {
     const laneMiddle = (center(layout, "a1") + center(layout, "a2")) / 2;
     expect(center(layout, "m")).toBe(laneMiddle);
   });
+
+  it("orders a branching column by the flow so parallel chains don't cross", () => {
+    // top→y and bottom→x, but x is created before y. Creation order alone
+    // would stack x above y (against the flow) and the overlap solver would
+    // pool both to the lane center, undoing the alignment. The flow-aware
+    // ordering instead keeps y on top's line and x on bottom's.
+    const nodes = [
+      node("top", "2026-05-26T00:00:00.000Z"),
+      node("bottom", "2026-05-26T00:01:00.000Z"),
+      node("x", "2026-05-26T00:02:00.000Z"),
+      node("y", "2026-05-26T00:03:00.000Z"),
+    ];
+    const links = [
+      { source: "top", target: "y", edge_type: "flows_to" },
+      { source: "bottom", target: "x", edge_type: "flows_to" },
+    ];
+    const layout = layOutProcess(pools, lanes, nodes, links, "top", new Set(), null, false);
+
+    expect(center(layout, "top")).toBeLessThan(center(layout, "bottom"));
+    expect(center(layout, "y")).toBe(center(layout, "top"));
+    expect(center(layout, "x")).toBe(center(layout, "bottom"));
+    // y rides the top line, x the bottom — the chains stay parallel, uncrossed.
+    expect(center(layout, "y")).toBeLessThan(center(layout, "x"));
+  });
 });
