@@ -67,3 +67,39 @@ export function processEdgeLabelStyles(stroke: string): {
     },
   };
 }
+
+/**
+ * The complete tag payload for a process (BPMN) arrow's React Flow `data`:
+ * the tag text, its opacity and z-order, and the pill styling. THIS is the one
+ * place every process arrow is labeled — sequence flow, cross-pool boundary,
+ * and parent hierarchy alike — so the rule "every rendered arrow shows its type
+ * or condition" can't be quietly broken by a construction site that forgets to
+ * attach a label. Building an edge's `data` without spreading this in is the
+ * bug it exists to prevent.
+ *
+ * `stroke` is the arrow's lifecycle color (the pill border inherits it);
+ * `opacity` is the arrow's render opacity, so the tag fades in lockstep with
+ * the line it rides on.
+ */
+export function processEdgeLabelData(
+  label: string | null | undefined,
+  edgeType: string,
+  stroke: string,
+  opacity: number,
+): {
+  label: string;
+  labelOpacity: number;
+  labelZIndex: number;
+  labelBoxStyle: CSSProperties;
+  labelStyle: CSSProperties;
+} {
+  const { labelBoxStyle, labelStyle } = processEdgeLabelStyles(stroke);
+  return {
+    label: processEdgeLabelText(label, edgeType),
+    labelOpacity: opacity,
+    // The tag rides above its arrow so it isn't occluded by a crossing line.
+    labelZIndex: 1,
+    labelBoxStyle,
+    labelStyle,
+  };
+}

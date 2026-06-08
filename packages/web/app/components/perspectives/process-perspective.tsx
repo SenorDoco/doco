@@ -41,7 +41,7 @@ import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
 import { computeExternalNeighbours, computeParentProcesses } from "~/lib/process-boundary";
-import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
+import { processEdgeLabelData } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
 import { packProcessLaneColumns, processLaneColumnKey } from "~/lib/process-lane-packing";
@@ -804,6 +804,7 @@ export function ProcessPerspective({
             : { sourceHandle: headerHandle }
           : {}),
         type: "stableLabeledBezier",
+        data: processEdgeLabelData(n.label, n.edgeType, stroke, 1),
         selectable: false,
         focusable: false,
         interactionWidth: 0,
@@ -889,6 +890,9 @@ export function ProcessPerspective({
         sourceHandle: "pool-top",
         target: id,
         type: "stableLabeledBezier",
+        // has_parent is containment, never conditional, so it carries no branch
+        // label — the tag is the edge type itself.
+        data: processEdgeLabelData(null, parent.edgeType, stroke, 1),
         selectable: false,
         focusable: false,
         interactionWidth: 0,
@@ -1877,15 +1881,9 @@ export function layOutProcess(
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
-      const edgeData: Record<string, unknown> = {};
-      {
-        const { labelBoxStyle, labelStyle } = processEdgeLabelStyles(stroke);
-        edgeData.label = processEdgeLabelText(link.label, link.edge_type);
-        edgeData.labelOpacity = edgeOpacity;
-        edgeData.labelZIndex = 1;
-        edgeData.labelBoxStyle = labelBoxStyle;
-        edgeData.labelStyle = labelStyle;
-      }
+      const edgeData: Record<string, unknown> = {
+        ...processEdgeLabelData(link.label, link.edge_type, stroke, edgeOpacity),
+      };
       const bow = computeEdgeBow(source, target);
       if (bow) {
         edgeData.bowDir = bow.dir;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   EDGE_LABEL_MAX_CH,
+  processEdgeLabelData,
   processEdgeLabelStyles,
   processEdgeLabelText,
 } from "../process-edge-label-style";
@@ -53,5 +54,33 @@ describe("processEdgeLabelText", () => {
   it("trims whitespace from the condition before deciding", () => {
     expect(processEdgeLabelText("  ", "flows_to")).toBe("flows_to");
     expect(processEdgeLabelText("  Yes  ", "flows_to")).toBe("Yes");
+  });
+});
+
+describe("processEdgeLabelData", () => {
+  // This is the single payload every process arrow's `data` is built from —
+  // sequence flow, cross-pool boundary, and parent hierarchy alike — so that a
+  // tag is never accidentally omitted from one kind of arrow. Each assertion
+  // here is what guarantees "every rendered arrow shows its type or condition".
+  it("always produces a non-empty tag, falling back to the edge type", () => {
+    // A plain flows_to with no condition still shows its type — never blank.
+    expect(processEdgeLabelData(null, "flows_to", "#000000", 1).label).toBe("flows_to");
+    expect(processEdgeLabelData(undefined, "has_parent", "#000000", 1).label).toBe("has_parent");
+  });
+
+  it("shows the condition when one is set, so a cross-pool flow reads like an in-pool one", () => {
+    expect(processEdgeLabelData("Yes", "flows_to", "#000000", 1).label).toBe("Yes");
+  });
+
+  it("carries the pill styling tinted with the arrow's stroke color", () => {
+    const { labelBoxStyle, labelStyle } = processEdgeLabelData("Yes", "flows_to", "#123456", 1);
+    expect(labelBoxStyle.border).toBe("1px solid #123456");
+    expect(labelStyle.maxWidth).toBe(`${EDGE_LABEL_MAX_CH}ch`);
+  });
+
+  it("threads the arrow's opacity through and rides above the edge", () => {
+    const data = processEdgeLabelData("Yes", "flows_to", "#000000", 0.4);
+    expect(data.labelOpacity).toBe(0.4);
+    expect(data.labelZIndex).toBe(1);
   });
 });

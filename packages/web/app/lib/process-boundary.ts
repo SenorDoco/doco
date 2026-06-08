@@ -21,6 +21,9 @@ interface BoundaryLink {
   source: string;
   target: string;
   edge_type: string;
+  /** The arrow's branch condition, if any (e.g. "Yes"). Carried so a
+   *  cross-pool boundary arrow can show the same tag it would in-pool. */
+  label?: string | null;
 }
 
 const SEQUENCE_FLOW_EDGES: ReadonlySet<string> = new Set(["flows_to"]);
@@ -49,6 +52,11 @@ export interface ExternalNeighbour {
   id: string;
   direction: "entry" | "exit";
   attach: ExternalAttach;
+  /** The connecting sequence-flow edge's type and condition, so the boundary
+   *  arrow renders the same tag an in-pool arrow would (its type, or the
+   *  branch condition when one is set). */
+  edgeType: string;
+  label: string | null;
 }
 
 /**
@@ -76,11 +84,16 @@ export function computeExternalNeighbours(
 
   const seen = new Set<string>();
   const out: ExternalNeighbour[] = [];
-  const add = (id: string, direction: "entry" | "exit", attach: ExternalAttach) => {
+  const add = (
+    id: string,
+    direction: "entry" | "exit",
+    attach: ExternalAttach,
+    link: BoundaryLink,
+  ) => {
     const key = `${direction} ${id} ${attach.kind === "title" ? attach.poolId : attach.nodeId}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ id, direction, attach });
+    out.push({ id, direction, attach, edgeType: link.edge_type, label: link.label ?? null });
   };
 
   for (const link of links) {
@@ -92,8 +105,8 @@ export function computeExternalNeighbours(
     // The in-pool endpoint anchors the arrow; the other is the external box.
     const external = sourceIn ? link.target : link.source;
     if (!poolByNode.has(external)) continue; // can't render an unknown external
-    if (sourceIn) add(external, "exit", attachFor(link.source));
-    else add(external, "entry", attachFor(link.target));
+    if (sourceIn) add(external, "exit", attachFor(link.source), link);
+    else add(external, "entry", attachFor(link.target), link);
   }
 
   return out.sort((a, b) => {
@@ -115,6 +128,9 @@ export interface ParentProcess {
   poolId: string;
   /** The parent process Action's id; its own pool is `pool:<id>`. */
   id: string;
+  /** The hierarchy edge's type (`has_parent`), carried so the rising arrow
+   *  shows its tag like every other process arrow. */
+  edgeType: string;
 }
 
 /**
@@ -137,7 +153,7 @@ export function computeParentProcesses(
     const key = `${poolId} ${link.target}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ poolId, id: link.target });
+    out.push({ poolId, id: link.target, edgeType: HAS_PARENT_EDGE });
   }
   return out.sort((a, b) => {
     if (a.poolId !== b.poolId) return a.poolId.localeCompare(b.poolId);
