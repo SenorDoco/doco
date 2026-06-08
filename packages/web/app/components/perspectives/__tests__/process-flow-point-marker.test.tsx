@@ -2,11 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { ProcessNode } from "~/lib/process-perspective.server";
-import { FLOW_POINT_MARKER_COLOR, ProcessRectangleNode } from "../process-perspective";
+import { ProcessRectangleNode } from "../process-perspective";
 
-// Render at reading zoom (1) so the shape draws its full chrome — badges
-// and the label (which now carries the entry/exit indicator). `useProcessSimplified`
-// reads zoom via `useStore`; feed it a non-simplified transform.
+// Render at reading zoom (1) so the shape draws its full chrome — including
+// the badge row, which now carries the entry/exit flow-point tag.
+// `useProcessSimplified` reads zoom via `useStore`; feed a non-simplified one.
 vi.mock("@xyflow/react", () => ({
   Handle: () => null,
   Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
@@ -15,7 +15,7 @@ vi.mock("@xyflow/react", () => ({
     selector({ transform: [0, 0, 1] }),
 }));
 
-function entryNode(lifecycle: string): ProcessNode {
+function node(lifecycle: string, flags: Partial<ProcessNode>): ProcessNode {
   return {
     id: "node_1",
     entity_type: "action",
@@ -26,36 +26,49 @@ function entryNode(lifecycle: string): ProcessNode {
     shape: "rectangle",
     laneId: "lane_1",
     pool_id: "pool_1",
-    entry_point: true,
+    ...flags,
   };
 }
 
-function render(lifecycle: string): string {
+function render(lifecycle: string, flags: Partial<ProcessNode>): string {
   return renderToStaticMarkup(
-    createElement(ProcessRectangleNode, { data: { node: entryNode(lifecycle), isCenter: false } }),
+    createElement(ProcessRectangleNode, {
+      data: { node: node(lifecycle, flags), isCenter: false },
+    }),
   );
 }
 
-describe("process entry/exit flow-point indicator", () => {
-  it("renders the Entry indicator in the node label", () => {
-    expect(render("drafting")).toContain("Entry");
+describe("process entry/exit flow-point tag", () => {
+  it("renders the Entry tag vertically on the left, reading bottom-to-top", () => {
+    const html = render("drafting", { entry_point: true });
+    expect(html).toContain("Entry");
+    expect(html).toContain("rotate(-90deg)"); // stood up, reading bottom-to-top
+    expect(html).toContain("left:0");
   });
 
-  it("rides in the label's text flow, not a floating ring marker", () => {
-    // The old design floated a ringed badge over the card's bottom edge,
-    // where the type/lifecycle pills overlapped it. The indicator now sits on
-    // its own line inside the label — so no ring glyph (a bordered circle in
-    // the indicator's color) is drawn.
-    expect(render("drafting")).not.toContain(`solid ${FLOW_POINT_MARKER_COLOR}`);
+  it("renders the Exit tag vertically on the right, reading top-to-bottom", () => {
+    const html = render("active", { exit_point: true });
+    expect(html).toContain("Exit");
+    expect(html).toContain("rotate(90deg)"); // stood up, reading top-to-bottom
+    expect(html).toContain("right:0");
   });
 
-  it("paints the indicator a fixed neutral color, never the lifecycle stroke", () => {
-    // A drafting node's stroke is yellow (#eab308); inheriting it washed the
-    // text out. The indicator uses a neutral slate so it stays legible.
-    expect(render("drafting")).toContain(`color:${FLOW_POINT_MARKER_COLOR}`);
+  it("keeps the BPMN event ring on the tag", () => {
+    expect(render("drafting", { entry_point: true })).toContain("border-radius:50%");
   });
 
-  it("uses the same neutral color regardless of lifecycle", () => {
-    expect(render("queued")).toContain(`color:${FLOW_POINT_MARKER_COLOR}`);
+  it("styles the tag like the lifecycle/type badges — a lifecycle-colored pill", () => {
+    // Same pill treatment as NodeBadgeRow: the lifecycle color is the
+    // background (not low-contrast text). A queued node's tag is blue, like
+    // its other badges.
+    const html = render("queued", { entry_point: true });
+    expect(html).toContain("rotate(-90deg)");
+    expect(html).toContain("background:#2563eb");
+  });
+
+  it("renders no flow-point tag when the node is neither entry nor exit", () => {
+    const html = render("active", {});
+    expect(html).not.toContain("rotate(-90deg)");
+    expect(html).not.toContain("rotate(90deg)");
   });
 });
