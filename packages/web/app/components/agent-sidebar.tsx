@@ -78,6 +78,9 @@ interface StagedAttachment {
 }
 
 interface QueuedSend {
+  // Stable client-side id so each pending bubble keeps its React identity as
+  // the queue drains from the front (index keys would reshuffle on every send).
+  id: string;
   text: string;
   staged: StagedAttachment[];
 }
@@ -1410,7 +1413,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         // once the current turn settles. We deliberately don't abort the
         // in-flight turn to slip a second one in — that would break the API's
         // user→assistant→user alternation.
-        setQueuedSends((prev) => [...prev, { text, staged: sentAttachments }]);
+        setQueuedSends((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), text, staged: sentAttachments },
+        ]);
         setInputText("");
         setStaged([]);
         return;
@@ -2112,6 +2118,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                         compactAfter={index === statusAnchorIndex}
                       />
                     ))}
+                    {queuedSends.map((q) => (
+                      <QueuedMessage key={q.id} send={q} />
+                    ))}
                     <ConversationStatusIcon status={conversationStatus} />
                   </div>
                   {thinkingActive ? (
@@ -2129,7 +2138,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   onSend={send}
                   username={me.username}
                   staged={staged}
-                  queuedCount={queuedSends.length}
                   uploading={uploading}
                   uploadError={uploadError}
                   onUploadFiles={uploadFiles}
@@ -2743,6 +2751,40 @@ function InFlightMessageView({
   );
 }
 
+/**
+ * A message the user has sent while Señor Doco is mid-reply: it can't go to the
+ * API yet (that would break user→assistant→user alternation), so it waits in
+ * the local queue. We render it as a grayed-out, left-aligned bubble at the
+ * bottom of the thread — same side and shape as the "You" bubble it becomes the
+ * instant the drain fires it — labeled "Queued" instead of "You". Stacking the
+ * full queue in order shows the user exactly what's pending without hiding any
+ * real messages.
+ */
+export function QueuedMessage({ send }: { send: QueuedSend }) {
+  const text = send.text.trim();
+  if (text.length === 0 && send.staged.length === 0) return null;
+  return (
+    <div className="mb-3 flex flex-col items-start opacity-60">
+      <div className="flex w-full items-end justify-start gap-2">
+        <div className="neu-bubble neu-surface max-w-[82%] space-y-1.5 rounded-lg bg-card px-2.5 py-1.5">
+          {text.length > 0 ? <BlockView block={{ type: "text", text }} /> : null}
+          {send.staged.map((a) => (
+            <div
+              key={a.id}
+              className="neu-surface flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[10px]"
+            >
+              <span className="font-mono text-muted-foreground">📎</span>
+              <span className="truncate">{a.filename}</span>
+              <span className="ml-auto text-muted-foreground">{formatBytes(a.size_bytes)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">Queued</div>
+    </div>
+  );
+}
+
 function ThinkingPanel({
   events,
   active,
@@ -3205,7 +3247,6 @@ function Composer({
   onSend,
   username,
   staged,
-  queuedCount,
   uploading,
   uploadError,
   onUploadFiles,
@@ -3216,7 +3257,6 @@ function Composer({
   onSend: () => void;
   username: string;
   staged: StagedAttachment[];
-  queuedCount: number;
   uploading: boolean;
   uploadError: string | null;
   onUploadFiles: (files: File[]) => void;
@@ -3232,7 +3272,6 @@ function Composer({
     el.style.height = `${Math.min(160, el.scrollHeight)}px`;
   });
   const canSend = value.trim().length > 0 || staged.length > 0;
-  const queuedLabel = queuedCount === 0 ? null : `${queuedCount} queued`;
   const helperLabel = "⏎ to send · ⇧⏎ for newline";
   // Arm the echo guard with the text we're about to clear, then send. The
   // trailing autocorrect/IME change that some setups fire right after is then
@@ -3314,7 +3353,7 @@ function Composer({
           >
             {uploading ? "Uploading…" : "📎 Attach"}
           </button>
-          <div className="text-[10px] text-muted-foreground">{queuedLabel ?? helperLabel}</div>
+          <div className="text-[10px] text-muted-foreground">{helperLabel}</div>
         </div>
         <button
           type="button"
