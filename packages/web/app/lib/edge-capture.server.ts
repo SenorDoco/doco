@@ -21,12 +21,14 @@ import {
 import {
   EDGE_ENDPOINT_TYPES,
   EDGE_TYPES,
+  type Lifecycle,
   NODE_TYPES,
   isEntityId,
   parseEntityId,
 } from "@doco/shared";
 import { runEdgeAuthoringPolicies } from "./authoring-runner.server";
 import { type EdgeFooterOp, renderEdgeOperationLine } from "./capture.server";
+import { LIFECYCLE_ORDER } from "./node-colors";
 
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
 const NODE_TYPE_SET: ReadonlySet<string> = new Set(NODE_TYPES);
@@ -41,7 +43,8 @@ export interface CaptureEdgeInput {
   label?: string | null;
   condition?: string | null;
   kind?: string | null;
-  lifecycle?: "drafting" | "active";
+  /** Stage a new edge starts in. `retired` is reached via retireEdgeRequest. */
+  lifecycle?: Exclude<Lifecycle, "retired">;
   reason?: string | null;
   source?: CommitSource;
   metadata?: Record<string, unknown> | null;
@@ -341,16 +344,18 @@ export async function retireEdgeRequest(input: {
   };
 }
 
-export const EDGE_LIFECYCLES = ["drafting", "active", "retired"] as const;
-export type EdgeLifecycle = (typeof EDGE_LIFECYCLES)[number];
+// Edges move through the same canonical lifecycle as nodes:
+// drafting → queued → active → retired.
+export const EDGE_LIFECYCLES = LIFECYCLE_ORDER;
+export type EdgeLifecycle = Lifecycle;
 
 export type EdgeLifecycleResult =
   | { ok: true; id: string; edge: EdgeRow; footer_lines: string[] }
   | { error: string; status: number };
 
 /**
- * Move an edge through its lifecycle (drafting / active / retired) via the
- * commit() boundary. Retiring routes through `retireEdgeRequest`; reviving a
+ * Move an edge through its lifecycle (drafting / queued / active / retired) via
+ * the commit() boundary. Retiring routes through `retireEdgeRequest`; reviving a
  * retired edge clears its retirement stamp (see `updateEdge`) and can collide
  * with the live-unique slot, which we surface as a 409.
  */
@@ -378,7 +383,7 @@ export async function setEdgeLifecycleRequest(input: {
   }
   // Narrowed past the `retired` early return; pin it in a local so the
   // transaction closure below keeps the non-retired type.
-  const lifecycle: "drafting" | "active" = input.lifecycle;
+  const lifecycle: Exclude<Lifecycle, "retired"> = input.lifecycle;
   const footerOpts = { docoHost: input.docoHost, handle: input.handle };
 
   const existing = await getEdgeById(input.docoId, input.id);

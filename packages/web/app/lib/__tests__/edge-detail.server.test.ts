@@ -200,7 +200,9 @@ describe("loadEdgeDialogDetail", () => {
     expect(detail?.update_url).toBe("/test-doco/api/edges/edge_01TEST.json");
     expect(detail?.can_change_lifecycle).toBe(true);
     const options = detail?.lifecycle_options ?? [];
-    expect(options.map((o) => o.value)).toEqual(["drafting", "active", "retired"]);
+    // Edges carry the same four-stage lifecycle as nodes:
+    // drafting → queued → active → retired.
+    expect(options.map((o) => o.value)).toEqual(["drafting", "queued", "active", "retired"]);
     // The current stage reads as its state name; the others read as verbs.
     expect(options.find((o) => o.value === "active")).toMatchObject({
       current: true,
@@ -208,6 +210,7 @@ describe("loadEdgeDialogDetail", () => {
     });
     expect(options.find((o) => o.value === "retired")?.label).toBe("retire");
     expect(options.find((o) => o.value === "drafting")?.label).toBe("draft");
+    expect(options.find((o) => o.value === "queued")?.label).toBe("queue");
     // Writers can act on the non-current stages.
     expect(options.find((o) => o.value === "retired")?.disabled).toBe(false);
   });

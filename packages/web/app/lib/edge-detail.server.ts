@@ -2,21 +2,13 @@ import { type DocoRole, roleAtLeast } from "@doco/db";
 import { type AuthoringPair, authoringEntry } from "./authoring-provenance";
 import { getDocoLevelRole } from "./doco-access.server";
 import { getGitHubRepoSlug } from "./github-connection.server";
+import { LIFECYCLE_ORDER, lifecycleStageLabel } from "./node-colors";
 
-// Edges carry a slimmer lifecycle than nodes: a sketch (`drafting`), a live
-// edge (`active`), or a removed one (`retired`). There is no `queued` stage —
-// an edge is either proposed, live, or gone.
-const EDGE_LIFECYCLE_STAGES = ["drafting", "active", "retired"] as const;
-export type EdgeLifecycleStage = (typeof EDGE_LIFECYCLE_STAGES)[number];
-
-// The clickable transitions read as verbs ("draft" / "activate" / "retire");
-// the current stage reads as its state name. Mirrors the node dialog so the
-// row says "you ARE here / click to GO there."
-const EDGE_LIFECYCLE_VERB: Record<EdgeLifecycleStage, string> = {
-  drafting: "draft",
-  active: "activate",
-  retired: "retire",
-};
+// Edges carry the SAME four-stage lifecycle as nodes — drafting → queued →
+// active → retired. The dialog buttons (verbs for the clickable stages, the
+// state name for the current one) and the canonical order come from the shared
+// lifecycle vocabulary so a node and an edge always read identically.
+export type EdgeLifecycleStage = (typeof LIFECYCLE_ORDER)[number];
 
 export interface EdgeLifecycleOption {
   value: EdgeLifecycleStage;
@@ -31,20 +23,20 @@ function edgeLifecycleOptions(input: {
   canChange: boolean;
   role: DocoRole | null;
 }): EdgeLifecycleOption[] {
-  const current = EDGE_LIFECYCLE_STAGES.includes(input.current as EdgeLifecycleStage)
+  const current = LIFECYCLE_ORDER.includes(input.current as EdgeLifecycleStage)
     ? (input.current as EdgeLifecycleStage)
     : "active";
   const roleReason = input.role
     ? `Write access required to change lifecycle; your role is ${input.role}.`
     : "Sign in with write access to change lifecycle.";
-  return EDGE_LIFECYCLE_STAGES.map((stage) => {
+  return LIFECYCLE_ORDER.map((stage) => {
     const isCurrent = stage === current;
     let reason: string | null = null;
     if (isCurrent) reason = "Current stage.";
     else if (!input.canChange) reason = roleReason;
     return {
       value: stage,
-      label: isCurrent ? stage : EDGE_LIFECYCLE_VERB[stage],
+      label: lifecycleStageLabel(stage, isCurrent),
       current: isCurrent,
       disabled: Boolean(reason),
       reason,
