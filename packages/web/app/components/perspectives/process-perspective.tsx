@@ -2181,6 +2181,13 @@ function commonHandles() {
   );
 }
 
+// The entry/exit tag is wayfinding, not a lifecycle signal, so it uses a
+// fixed neutral slate instead of the node's lifecycle stroke. Tying it to the
+// stroke painted a drafting node's tag yellow-on-white — barely legible; the
+// thin/thick ring already encodes start vs end, so color is free to be the
+// most readable one at every lifecycle.
+export const FLOW_POINT_MARKER_COLOR = "#475569"; // slate-600
+
 // BPMN entry/exit marking, drawn inside the node below its content. The author
 // sets `entry_point` / `exit_point` explicitly (never deduced). The glyph is the
 // standard BPMN event circle: thin ring = start (entry), thick ring = end
@@ -2189,7 +2196,6 @@ function ProcessFlowPointMarker({ node }: { node: ProcessNode }) {
   const isEntry = node.entry_point === true;
   const isExit = node.exit_point === true;
   if (!isEntry && !isExit) return null;
-  const stroke = lifecycleColor(node.lifecycle);
   const tag = (kind: "entry" | "exit") => (
     <span key={kind} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
       <span
@@ -2200,7 +2206,7 @@ function ProcessFlowPointMarker({ node }: { node: ProcessNode }) {
           height: 9,
           borderRadius: "50%",
           // Thin ring = BPMN start event; thick ring = BPMN end event.
-          border: `${kind === "exit" ? 2.5 : 1}px solid ${stroke}`,
+          border: `${kind === "exit" ? 2.5 : 1}px solid ${FLOW_POINT_MARKER_COLOR}`,
           boxSizing: "border-box",
           background: "#fff",
         }}
@@ -2213,7 +2219,10 @@ function ProcessFlowPointMarker({ node }: { node: ProcessNode }) {
       className="pointer-events-none"
       style={{
         position: "absolute",
-        bottom: 2,
+        // The type/lifecycle badge row straddles the card's bottom edge and
+        // pokes ~8px back up into it (see `NodeBadgeRow`). Clear that band so
+        // the tag sits in the gap above the badges instead of behind them.
+        bottom: 12,
         left: "50%",
         transform: "translateX(-50%)",
         display: "inline-flex",
@@ -2223,7 +2232,7 @@ function ProcessFlowPointMarker({ node }: { node: ProcessNode }) {
         textTransform: "uppercase",
         letterSpacing: "0.04em",
         lineHeight: 1,
-        color: stroke,
+        color: FLOW_POINT_MARKER_COLOR,
         whiteSpace: "nowrap",
         zIndex: 2,
       }}
