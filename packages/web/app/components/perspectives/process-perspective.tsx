@@ -79,7 +79,7 @@ const ARTIFACTS_LANE_ID = "__artifacts__";
 // `~/lib/process-perspective.server` (a `.server` value can't be imported into
 // the client bundle). The overview (home) state frames this one pool, which
 // holds every top-level process as a task node in its principal's lane.
-const TOP_LEVEL_POOL_ID = "pool:top-level";
+export const TOP_LEVEL_POOL_ID = "pool:top-level";
 
 interface ProcessPerspectiveProps {
   docoHandle?: string | null;
@@ -274,6 +274,49 @@ export function clickedExternalNeighbour(flowNode: {
   if (!flowNode.id.startsWith("external:")) return null;
   const node = (flowNode.data as { node?: ProcessNode } | undefined)?.node;
   return node ?? null;
+}
+
+/** What clicking a flow node on the BPMN canvas should do. */
+export type CanvasNodeClick =
+  | { kind: "pool"; pool: ProcessPool }
+  | { kind: "parentProcess"; processId: string }
+  | { kind: "node"; node: ProcessNode };
+
+/**
+ * Route a BPMN canvas click by what was hit. The canvas draws a few synthetic
+ * boxes alongside the real flow nodes, so a click means different things:
+ *
+ *   • a pool header → focus that whole pool;
+ *   • a `parent:` box (a process THIS pool hangs under) → drill UP into it;
+ *   • an `external:` box (a node in another pool) → open that real node;
+ *   • any real node — INCLUDING the synthetic overview pool's directory entries
+ *     — → open it through the shared node-open, which alone decides whether to
+ *     drill into a pool: only a sub-process Action does (`subprocessPoolId`),
+ *     and only via that one path. So a default-view entry renders and behaves
+ *     identically to a node anywhere else — a non-process Action never opens a
+ *     pool view just because it sits in the overview.
+ *
+ * Routing is pure so the "overview entries are just nodes" rule is unit-tested,
+ * not duplicated inside a JSX handler.
+ */
+export function resolveCanvasNodeClick(
+  flowNode: { id: string; data?: unknown },
+  ctx: {
+    poolByHeaderId: Map<string, ProcessPool>;
+    nodeById: Map<string, ProcessNode>;
+  },
+): CanvasNodeClick | null {
+  const pool = ctx.poolByHeaderId.get(flowNode.id);
+  if (pool) return { kind: "pool", pool };
+  if (flowNode.id.startsWith("parent:")) {
+    const processId = flowNode.id.slice("parent:".length).split("::")[0];
+    return { kind: "parentProcess", processId };
+  }
+  const external = clickedExternalNeighbour(flowNode);
+  if (external) return { kind: "node", node: external };
+  const target = ctx.nodeById.get(flowNode.id);
+  if (!target) return null;
+  return { kind: "node", node: target };
 }
 
 export function ProcessPerspective({
@@ -1281,39 +1324,18 @@ export function ProcessPerspective({
             onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
             onPaneClick={onPaneClick}
             onNodeClick={(_e: unknown, node: { id: string; data?: unknown }) => {
-              const pool = poolByHeaderId.get(node.id);
-              if (pool) {
-                openPoolNode(pool);
-                return;
-              }
-              // A parent-process box (drawn above the pool) stands for a process
-              // this pool's Action hangs under. Clicking it drills UP into that
-              // parent's own pool.
-              if (node.id.startsWith("parent:")) {
-                const parentId = node.id.slice("parent:".length).split("::")[0];
-                openProcess(parentId);
-                return;
-              }
-              // A box drawn outside the pool stands in for a node in another
-              // process. Clicking it focuses that node — collapsing any
-              // expansion so its OWN pool renders (a different pool).
-              const external = clickedExternalNeighbour(node);
-              if (external) {
-                openNode(external);
-                return;
-              }
-              const target = nodeById.get(node.id);
-              if (!target) return;
-              // A node in the synthetic overview pool is the directory entry for
-              // a top-level process: clicking it drills into that process's own
-              // pool (the way the old home list did), instead of opening detail.
-              if (target.pool_id === TOP_LEVEL_POOL_ID) {
-                openProcess(target.id);
-                return;
-              }
-              // Clicking a sub-process Action opens into its own pool and its
-              // dialog; any other node focuses, collapsed in its parent's pool.
-              openNode(target);
+              // One routing rule for every canvas click (see resolveCanvasNodeClick):
+              //   • pool header → focus that whole pool;
+              //   • `parent:` box → drill UP into the parent process's pool;
+              //   • any real node — overview directory entries included — →
+              //     openNode, which alone drills into a pool, and only for a
+              //     sub-process Action. A non-process Action thus focuses where
+              //     it sits and opens its dialog, never a pool view.
+              const click = resolveCanvasNodeClick(node, { poolByHeaderId, nodeById });
+              if (!click) return;
+              if (click.kind === "pool") openPoolNode(click.pool);
+              else if (click.kind === "parentProcess") openProcess(click.processId);
+              else openNode(click.node);
             }}
             onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
               const link = (edge.data as { graphLink?: OverviewGraphLink } | undefined)?.graphLink;
