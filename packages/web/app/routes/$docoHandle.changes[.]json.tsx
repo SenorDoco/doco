@@ -6,12 +6,12 @@ import { readDocoMetadata } from "~/lib/doco-metadata.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 /**
- * /<doco-handle>/changes.json — the live-feed change cursor.
+ * /<doco-handle>/changes.json — the change cursor.
  *
  * Returns the Doco's latest audit-event id (or null). The perspective view
- * polls this once a second and only re-runs its heavy loader when the cursor
- * advances, so node alterations land near-real-time without re-rendering the
- * graph on every idle tick. Read-gated exactly like status.json.
+ * polls this on a relaxed cadence; when the cursor advances past what's
+ * rendered it raises a "new version — Refresh" banner instead of reloading the
+ * graph. Read-gated exactly like status.json.
  */
 export async function loader({
   request,

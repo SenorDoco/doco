@@ -1,6 +1,6 @@
 import { withClient } from "@doco/db";
 import { normalizeNodeType } from "@doco/shared";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, RefreshCw } from "lucide-react";
 // Per-Doco home — bare title up top, then the search input, activity heatmap,
 // node overview, and latest activity feed in a single content column.
 //
@@ -9,13 +9,14 @@ import { ArrowRight } from "lucide-react";
 // transitions include their old → new value so state changes show up in
 // the feed instead of disappearing behind the entity's original created_at.
 //
-// Live feed (ADR-089): keep the perspective near-real-time without a manual
-// refresh. The client polls a cheap per-Doco change cursor (/changes.json, one
-// indexed audit_events lookup) about once a second and only re-runs the heavy
-// loader via React Router's useRevalidator when that cursor advances — so an
-// idle perspective never re-renders (the graph stays smooth to pan/navigate)
-// and a real change lands within a poll interval. We only poll when the tab is
-// visible to avoid burning cycles on idle tabs.
+// No live stream. The perspective renders the node set once and recomputes only
+// on deliberate triggers — cold start, a lifecycle-filter change, a focus
+// change, "view subprocess" / Home in the process perspective, and the viewer's
+// own edits (the user's or Señor Doco's, which revalidate immediately). To stay
+// honest about changes made elsewhere, a relaxed background poll watches the
+// cheap per-Doco change cursor (/changes.json) and, when it advances, raises a
+// "new version — Refresh" banner; clicking it pulls the new version in. We only
+// poll while the tab is visible.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRevalidator, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
@@ -50,7 +51,7 @@ import { PullRequestsPerspective } from "~/components/perspectives/pull-requests
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SiteHeader } from "~/components/site-header";
 import { VisibilityIcon } from "~/components/visibility-icon";
-import { CHANGE_POLL_INTERVAL_MS, shouldRevalidateForCursor } from "~/lib/change-cursor";
+import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/lib/change-cursor";
 import { readChangeCursor } from "~/lib/change-cursor.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -877,64 +878,77 @@ export default function DocoHome({
     return () => observer.disconnect();
   }, []);
 
-  // Live feed polling (ADR-089, real-time via change cursor). Instead of
-  // re-running the heavy perspective loader on a timer, poll a cheap per-Doco
-  // change cursor (one indexed audit_events lookup) and only revalidate when
-  // it advances. An idle perspective never reloads, so panning/navigating the
-  // graph stays smooth; a real change lands within one poll interval.
+  // Change detection without a live stream (see the file header). The graph
+  // never reloads on a timer; a relaxed poll only raises the Refresh banner,
+  // and the viewer's own edits revalidate directly.
   const revalidator = useRevalidator();
-  // The cursor the rendered data reflects. Re-seeded from the loader after each
-  // completed revalidation so a fresh load marks its own cursor as seen and
-  // doesn't immediately re-trigger.
+  // The cursor the rendered data reflects. Any authoritative load — cold start,
+  // the viewer's own edit, or clicking "Refresh" — re-seeds it from the fresh
+  // loader value and drops the banner, so the page never nags about a version
+  // it is already showing.
   const lastSeenCursorRef = useRef<string | null>(changeCursor);
+  const [newVersionAvailable, setNewVersionAvailable] = useState(false);
   useEffect(() => {
     lastSeenCursorRef.current = changeCursor;
+    setNewVersionAvailable(false);
   }, [changeCursor]);
+
+  // Cheap change-cursor read (one indexed audit_events lookup). The Doco's
+  // latest event id, or null on an empty Doco / transient error.
+  const fetchChangeCursor = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch(`/${handle}/changes.json`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) return null;
+      const { cursor } = (await res.json()) as { cursor: string | null };
+      return cursor;
+    } catch {
+      return null;
+    }
+  }, [handle]);
+
+  // No live stream. A relaxed background poll watches the cheap cursor and,
+  // when it advances, raises the "new version — Refresh" banner; the graph
+  // never reloads on its own. The tick no-ops while the tab is hidden.
   useEffect(() => {
-    let tick: ReturnType<typeof setInterval> | null = null;
+    if (typeof document === "undefined") return;
     let cancelled = false;
-    const poll = async () => {
-      if (document.visibilityState !== "visible" || revalidator.state !== "idle") return;
-      try {
-        const res = await fetch(`/${handle}/changes.json`, {
-          headers: { Accept: "application/json" },
-        });
-        if (!res.ok || cancelled) return;
-        const { cursor } = (await res.json()) as { cursor: string | null };
-        if (cancelled) return;
-        if (
-          shouldRevalidateForCursor(lastSeenCursorRef.current, cursor) &&
-          document.visibilityState === "visible" &&
-          revalidator.state === "idle"
-        ) {
-          revalidator.revalidate();
-        }
-      } catch {
-        // Transient network/poll error — the next tick retries.
-      }
+    const tick = async () => {
+      if (document.visibilityState !== "visible") return;
+      const cursor = await fetchChangeCursor();
+      if (cancelled) return;
+      if (hasNewVersion(lastSeenCursorRef.current, cursor)) setNewVersionAvailable(true);
     };
-    const start = () => {
-      if (tick !== null) return;
-      tick = setInterval(() => void poll(), CHANGE_POLL_INTERVAL_MS);
-    };
-    const stop = () => {
-      if (tick !== null) {
-        clearInterval(tick);
-        tick = null;
-      }
-    };
-    start();
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") start();
-      else stop();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
+    const id = setInterval(() => void tick(), CHANGE_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(id);
     };
-  }, [revalidator, handle]);
+  }, [fetchChangeCursor]);
+
+  // The viewer's own edits refresh the perspective immediately, banner-free
+  // (point f). Señor Doco runs in the root sidebar and fires DOCO_CHANGED_EVENT
+  // same-tab when a turn settles; we revalidate only if THIS Doco's cursor
+  // actually advanced, so a pure-chat turn — or a turn on another Doco — is a
+  // no-op. Direct user writes call revalidate() themselves (see
+  // handleLifecycleChange); they already know they changed something.
+  useEffect(() => {
+    const onChanged = async () => {
+      const cursor = await fetchChangeCursor();
+      if (hasNewVersion(lastSeenCursorRef.current, cursor) && revalidator.state === "idle") {
+        revalidator.revalidate();
+      }
+    };
+    window.addEventListener(DOCO_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DOCO_CHANGED_EVENT, onChanged);
+  }, [fetchChangeCursor, revalidator]);
+
+  // Manual refresh: pull the new version in and drop the banner.
+  const refreshNow = useCallback(() => {
+    setNewVersionAvailable(false);
+    revalidator.revalidate();
+  }, [revalidator]);
 
   // Refs that capture the current dialog state without being reactive deps,
   // so the revalidation effect (defined after the callbacks below) can read
@@ -1283,13 +1297,18 @@ export default function DocoHome({
           pushUrl: false,
           keepDetail: true,
         });
+        // The viewer's own edit — refresh the rendered node set immediately
+        // (point f), no banner. The cursor advanced, so this revalidation also
+        // re-seeds lastSeenCursor and keeps the banner from firing for our own
+        // write.
+        revalidator.revalidate();
       } catch (err) {
         setLifecycleError(err instanceof Error ? err.message : String(err));
       } finally {
         setLifecycleUpdating(null);
       }
     },
-    [loadNodeDialog, nodeDialog],
+    [loadNodeDialog, nodeDialog, revalidator],
   );
 
   const handleEdgeLifecycleChange = useCallback(
@@ -1328,13 +1347,16 @@ export default function DocoHome({
           { id: detail.id, href: detail.href, source: detail.from.id, target: detail.to.id },
           { pushUrl: false, keepDetail: true },
         );
+        // The viewer's own edit — refresh the rendered set immediately (point
+        // f), no banner, matching the node-lifecycle path above.
+        revalidator.revalidate();
       } catch (err) {
         setEdgeLifecycleError(err instanceof Error ? err.message : String(err));
       } finally {
         setEdgeLifecycleUpdating(null);
       }
     },
-    [edgeDialog, loadEdgeDialog],
+    [edgeDialog, loadEdgeDialog, revalidator],
   );
 
   const focusedGraphNodeIds = useMemo(
@@ -1479,6 +1501,20 @@ export default function DocoHome({
                   active — see PerspectiveSearchOverlay for the z-index it
                   must hold to stay above the canvas. */}
               <PerspectiveSearchOverlay handle={handle} totalNodes={visibleNodeCount} />
+              {/* Floats over the top-left of the active perspective when a
+                  newer version exists elsewhere. The graph never reloads on
+                  its own — clicking pulls the new version in. */}
+              {newVersionAvailable ? (
+                <button
+                  type="button"
+                  onClick={refreshNow}
+                  className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-1 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-accent"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                  <span className="text-muted-foreground">There is a new version:</span>
+                  <span className="font-semibold text-foreground">Refresh</span>
+                </button>
+              ) : null}
               <PerspectiveFrame
                 fillHeight
                 lifecycleFilter={

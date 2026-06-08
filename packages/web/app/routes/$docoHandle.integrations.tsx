@@ -93,10 +93,12 @@ export default function DocoIntegrations() {
     useLoaderData<typeof loader>();
 
   // While a PR backfill is running, poll the loader so the "importing X of Y"
-  // count climbs on its own — mirrors the live-feed polling on the Doco home
-  // (ADR-089). The ref keeps a fresh revalidator without re-arming the interval
-  // every render; the interval exists only while importing and tears down once
-  // the import finishes (importing flips false → effect cleanup).
+  // count climbs on its own — this is import progress the user is actively
+  // watching, so auto-revalidating is the right call (unlike the Doco home,
+  // which surfaces a manual "Refresh" rather than streaming). The ref keeps a
+  // fresh revalidator without re-arming the interval every render; the interval
+  // exists only while importing and tears down once the import finishes
+  // (importing flips false → effect cleanup).
   const revalidator = useRevalidator();
   const revalidatorRef = useRef(revalidator);
   revalidatorRef.current = revalidator;
