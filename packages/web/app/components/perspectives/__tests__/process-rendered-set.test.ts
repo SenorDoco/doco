@@ -101,7 +101,7 @@ describe("computeProcessRenderedSet", () => {
     expect(renderedNodeIds).toEqual(new Set(["a1", "a2", "b1", "b2"]));
   });
 
-  it("renders nothing focal when there is no center", () => {
+  it("renders nothing focal when there is no center and no default pool", () => {
     const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
@@ -112,5 +112,33 @@ describe("computeProcessRenderedSet", () => {
     });
     expect(focalPoolIds.size).toBe(0);
     expect(renderedNodeIds.size).toBe(0);
+  });
+
+  it("frames the default pool (the overview's synthetic pool) when nothing else is focal", () => {
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
+      nodes,
+      pools,
+      links,
+      centerId: null,
+      focusedEdgeId: null,
+      focusedNodeIds: new Set(),
+      defaultPoolId: "pool:p1",
+    });
+    expect([...focalPoolIds]).toEqual(["pool:p1"]);
+    expect(renderedNodeIds).toEqual(new Set(["a1", "a2"]));
+  });
+
+  it("an explicit focus wins over the default pool", () => {
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
+      nodes,
+      pools,
+      links,
+      centerId: "b1",
+      focusedEdgeId: null,
+      focusedNodeIds: new Set(),
+      defaultPoolId: "pool:p1",
+    });
+    expect([...focalPoolIds]).toEqual(["pool:p2"]);
+    expect(renderedNodeIds).toEqual(new Set(["b1", "b2"]));
   });
 });

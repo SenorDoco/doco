@@ -70,16 +70,6 @@ export interface ProcessPool {
    *  Null for the Unassigned pool. Drives the lifecycle badge on the pool
    *  header. */
   lifecycle: string | null;
-  /**
-   * True when the pool's Action is an author-declared top-level process — it
-   * carries the `top_level_process` flag in its `extra`. This is the single
-   * authoritative "considered top-level" signal (the same flag that exempts a
-   * root Action from the membership floor), and it — not a structural
-   * no-parent heuristic — drives the BPMN home directory
-   * (`topLevelProcessPools`). Absent on the Unassigned pool and on parentless
-   * Actions the author never marked.
-   */
-  top_level_process?: boolean;
 }
 
 export interface ProcessLane {
@@ -169,6 +159,12 @@ const BAND_ARTIFACTS_BASE = "__artifacts__";
 const BAND_UNASSIGNED_BASE = "__unassigned__";
 
 export const POOL_UNASSIGNED_ID = "pool:unassigned";
+
+// The synthetic overview pool — one pool that is NOT an Action, holding every
+// author-declared top-level process (an Action flagged `top_level_process`) as
+// a task node in its principal's lane. It is the BPMN home: the same swim-lane
+// rendering used everywhere else, in place of a bespoke flat directory list.
+export const POOL_TOP_LEVEL_ID = "pool:top-level";
 
 // Non-actor node types: their pool placement comes from a different
 // signal (the host they re-home onto, or the Unassigned pool).
@@ -576,6 +572,51 @@ export async function loadProcessGraph(
     nodes.push(node);
   }
 
+  // ── Synthetic top-level pool ──────────────────────────────────────
+  // Every author-declared top-level process (an Action flagged
+  // `top_level_process`) renders as a task node inside ONE synthetic pool that
+  // is not itself an Action, each placed in its principal's actor lane
+  // (resolved from its performed_by edge, falling back to an Unassigned lane).
+  // This is the overview (home) view — the same swim-lane rendering used
+  // everywhere else. A flagged Action still heads its own pool (built below),
+  // so opening it drills into that pool's members.
+  let topLevelPoolUsed = false;
+  for (const row of allRows) {
+    if (row.entity_type !== "action") continue;
+    if (row.data?.top_level_process !== true) continue;
+    const ref = laneReferenceFor("action", row.id, outgoingByType, userById);
+    const resolved = resolveLane(ref, principalById, principalByName);
+    const baseId = resolved.id;
+    const kind: ProcessLaneKind = baseId.startsWith("principal_")
+      ? "actor"
+      : baseId === BAND_UNASSIGNED_BASE
+        ? "unassigned"
+        : "unresolved";
+    const laneId = `${POOL_TOP_LEVEL_ID}::${baseId}`;
+    if (!lanesById.has(laneId)) {
+      lanesById.set(laneId, {
+        id: laneId,
+        pool_id: POOL_TOP_LEVEL_ID,
+        base_id: baseId,
+        label: resolved.label,
+        kind,
+        lifecycle: kind === "actor" ? (principalById.get(baseId)?.lifecycle ?? null) : null,
+      });
+    }
+    nodes.push({
+      id: row.id,
+      entity_type: row.entity_type,
+      name: row.summary,
+      lifecycle: row.lifecycle,
+      created_at: row.created_at,
+      href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
+      shape: shapeForEntityType(row.entity_type),
+      laneId,
+      pool_id: POOL_TOP_LEVEL_ID,
+    });
+    topLevelPoolUsed = true;
+  }
+
   // ── Forward sequence depth ────────────────────────────────────────
   // BPMN ordering is based on explicit forward sequence flow only.
   // Association edges such as `supports` and `constrained_by`
@@ -614,13 +655,20 @@ export async function loadProcessGraph(
       process_id: processId,
       label,
       lifecycle: processRow?.lifecycle ?? null,
-      top_level_process: processRow?.data?.top_level_process === true,
     });
   }
 
-  // Pool order: process pools oldest-first (deterministic, no PageRank),
-  // ties broken by process id; Unassigned pinned to the bottom.
+  // The synthetic overview pool, when it has any top-level processes to hold.
+  if (topLevelPoolUsed) {
+    pools.push({ id: POOL_TOP_LEVEL_ID, process_id: null, label: "Processes", lifecycle: null });
+  }
+
+  // Pool order: the synthetic overview pool pinned to the top, then process
+  // pools oldest-first (deterministic, no PageRank), ties broken by process id;
+  // Unassigned pinned to the bottom.
   pools.sort((a, b) => {
+    if (a.id === POOL_TOP_LEVEL_ID) return -1;
+    if (b.id === POOL_TOP_LEVEL_ID) return 1;
     if (a.id === POOL_UNASSIGNED_ID) return 1;
     if (b.id === POOL_UNASSIGNED_ID) return -1;
     const pa = a.process_id ? (processPrecedence.get(a.process_id) ?? Number.NEGATIVE_INFINITY) : 0;
