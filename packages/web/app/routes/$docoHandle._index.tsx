@@ -70,14 +70,13 @@ import {
   isGraphNodeType,
   loadNodeDialogDetail,
 } from "~/lib/node-detail.server";
-import {
-  type DialogHistoryAction,
-  edgeDialogHistoryState,
-  entityTypeFromPathname,
-  nodeDialogHistoryState,
-  readDialogHistoryState,
-} from "~/lib/perspective-dialog-history";
 import { effectivePerspectiveFocusId, perspectiveCenterId } from "~/lib/perspective-focus";
+import {
+  type PerspectiveView,
+  perspectiveViewHistoryState,
+  perspectiveViewUrl,
+  readPerspectiveView,
+} from "~/lib/perspective-view";
 import {
   ensureDefaultsAttached,
   listAvailablePerspectives,
@@ -615,6 +614,74 @@ export default function DocoHome({
   const [clientFocusId, setClientFocusId] = useState<string | null>(null);
   const perspectiveFocusId = effectivePerspectiveFocusId(clientFocusId, routeFocusId);
 
+  // Does this id own its own process pool? The process canvas needs this to
+  // decide whether a focused Action is a drilled pool; lifting it here lets the
+  // host seed and restore the drill stage (below) instead of the canvas keeping
+  // private state the Back button can't reach.
+  const isProcess = useCallback(
+    (id: string): boolean =>
+      Boolean(
+        processGraph?.pools.some((pool) => pool.process_id === id) ||
+          processGraph?.nodes.some((node) => node.id === id && node.is_process),
+      ),
+    [processGraph],
+  );
+
+  // The single source of truth for the process-canvas drill stage — the
+  // overview (home) vs a drilled pool — lifted out of ProcessPerspective so a
+  // popped history entry can restore it. Refs mirror the state so a synchronous
+  // click gesture (set the drill, then open an overlay) reads the just-set value
+  // when it builds the history entry to push.
+  const seedExpandedProcessId = routeFocusId && isProcess(routeFocusId) ? routeFocusId : null;
+  const [expandedProcessId, setExpandedProcessIdState] = useState<string | null>(
+    () => seedExpandedProcessId,
+  );
+  const [processHome, setProcessHome] = useState<boolean>(() => !routeFocusId);
+  // Only the drilled-pool id needs a ref mirror: a click gesture sets it and
+  // then, in the same tick, an overlay-open reads it to stamp the history entry.
+  // `home` is re-derived when an entry is restored, so it needs no mirror.
+  const expandedProcessIdRef = useRef(expandedProcessId);
+  const setExpandedProcessId = useCallback((id: string | null) => {
+    expandedProcessIdRef.current = id;
+    setExpandedProcessIdState(id);
+  }, []);
+
+  // Push (or replace) one history entry describing the whole current stage, and
+  // keep the address bar in sync. EVERY in-perspective navigation — opening a
+  // node/edge overlay, drilling a process, closing back to the pool or the
+  // overview — goes through here, so Back/Forward always land on one fully
+  // restorable entry (the popstate handler below rebuilds the stage from it).
+  const pushView = useCallback(
+    (view: PerspectiveView, opts: { replace?: boolean } = {}) => {
+      if (typeof window === "undefined") return;
+      clientDialogOverrideRef.current = true;
+      const url = perspectiveViewUrl(handle, view);
+      const state = perspectiveViewHistoryState(view);
+      if (opts.replace) window.history.replaceState(state, "", url);
+      else window.history.pushState(state, "", url);
+    },
+    [handle],
+  );
+
+  // Re-seed the drill stage from the loader on a real navigation (cold load, a
+  // perspective tab, a shared link), and hand control back to the loader by
+  // clearing the client override. Client pushes don't change these loader
+  // fields, so this never fights the live client stage; a revalidation re-runs
+  // the loader with the same URL, so the signature is unchanged and it doesn't
+  // re-seed. Declared before the focus-sync effects below so they observe the
+  // cleared override on the same navigation.
+  const navSignature = `${activeSlug}|${routeFocusId ?? ""}|${selectedNode?.id ?? ""}|${
+    selectedEdge?.id ?? ""
+  }`;
+  const lastNavSignatureRef = useRef(navSignature);
+  useEffect(() => {
+    if (lastNavSignatureRef.current === navSignature) return;
+    lastNavSignatureRef.current = navSignature;
+    setExpandedProcessId(routeFocusId && isProcess(routeFocusId) ? routeFocusId : null);
+    setProcessHome(!routeFocusId);
+    clientDialogOverrideRef.current = false;
+  }, [navSignature, routeFocusId, isProcess, setExpandedProcessId]);
+
   // While a detail dialog is open it overlays the right column on
   // wide screens and the whole content area on narrow screens. The
   // audit panel underneath shouldn't scroll out of position when the
@@ -892,11 +959,15 @@ export default function DocoHome({
     ) => {
       const pushUrl = options.pushUrl ?? true;
       if (!options.silent) {
-        if (pushUrl && typeof window !== "undefined") {
-          clientDialogOverrideRef.current = true;
-          // Tag the entry so a Back/Forward popstate can re-open this exact
-          // overlay (it's client-only — React Router's location never moves).
-          window.history.pushState(nodeDialogHistoryState(id, entityType, href), "", href);
+        if (pushUrl) {
+          // One history entry for this stage — the open node overlay, plus
+          // whatever pool is drilled underneath it (a pool-header open is
+          // both). Back/Forward rebuild it from this entry.
+          pushView({
+            perspective: activeSlug,
+            expandedProcessId: expandedProcessIdRef.current,
+            overlay: { kind: "node", entityType, id, href },
+          });
         }
         setEdgeDialog(null);
         setEdgeFocus(null);
@@ -939,7 +1010,7 @@ export default function DocoHome({
         }
       }
     },
-    [handle],
+    [handle, pushView, activeSlug],
   );
 
   const loadEdgeDialog = useCallback(
@@ -951,13 +1022,18 @@ export default function DocoHome({
       const href = edge.href ?? `/${handle}/edges/${edge.id}`;
       const pushUrl = options.pushUrl ?? true;
       if (!options.silent) {
-        if (pushUrl && typeof window !== "undefined") {
-          clientDialogOverrideRef.current = true;
-          window.history.pushState(
-            edgeDialogHistoryState(edge.id, edge.source ?? null, edge.target ?? null, href),
-            "",
-            href,
-          );
+        if (pushUrl) {
+          pushView({
+            perspective: activeSlug,
+            expandedProcessId: expandedProcessIdRef.current,
+            overlay: {
+              kind: "edge",
+              id: edge.id,
+              source: edge.source ?? null,
+              target: edge.target ?? null,
+              href,
+            },
+          });
         }
         if (edge.source && edge.target) {
           setEdgeFocus({ id: edge.id, source: edge.source, target: edge.target });
@@ -1003,7 +1079,7 @@ export default function DocoHome({
         }
       }
     },
-    [handle],
+    [handle, pushView, activeSlug],
   );
 
   // Silently refresh the open dialog whenever the live feed poll completes,
@@ -1049,122 +1125,126 @@ export default function DocoHome({
     [loadEdgeDialog],
   );
 
-  const closeNodeDialog = useCallback(() => {
-    clientDialogOverrideRef.current = true;
-    setNodeDialog(null);
-    setLifecycleError(null);
-    if (typeof window !== "undefined") {
-      const href =
-        activeSlug === "graph"
-          ? `/${handle}`
-          : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
-      // Drop any node/edge dialog marker: this entry is now the bare
-      // perspective, so a later Back/Forward into it must not re-open an
-      // overlay the user already dismissed.
-      window.history.replaceState(null, "", href);
-    }
-  }, [activeSlug, handle]);
-
-  const closeEdgeDialog = useCallback(() => {
-    clientDialogOverrideRef.current = true;
-    setEdgeDialog(null);
-    setEdgeFocus(null);
-    setEdgeLifecycleError(null);
-    setGraphState((prev) => graphWithCenter(prev, null));
-    if (typeof window !== "undefined") {
-      const href =
-        activeSlug === "graph"
-          ? `/${handle}`
-          : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
-      // Drop any node/edge dialog marker: this entry is now the bare
-      // perspective, so a later Back/Forward into it must not re-open an
-      // overlay the user already dismissed.
-      window.history.replaceState(null, "", href);
-    }
-  }, [activeSlug, handle]);
-
-  const clearPerspectiveFocus = useCallback(() => {
-    clientDialogOverrideRef.current = true;
-    setNodeDialog(null);
-    setEdgeDialog(null);
-    setEdgeFocus(null);
-    setLifecycleError(null);
-    setEdgeLifecycleError(null);
-    setGraphState((prev) => graphWithCenter(prev, null));
-    if (typeof window !== "undefined") {
-      const href =
-        activeSlug === "graph"
-          ? `/${handle}`
-          : `/${handle}?perspective=${encodeURIComponent(activeSlug)}`;
-      // Drop any node/edge dialog marker: this entry is now the bare
-      // perspective, so a later Back/Forward into it must not re-open an
-      // overlay the user already dismissed.
-      window.history.replaceState(null, "", href);
-    }
-  }, [activeSlug, handle]);
-
-  // Back/Forward reconciliation. Opening a node/edge overlay pushes a
-  // client-only history entry (loadNodeDialog / loadEdgeDialog) without a
-  // React Router navigation, so RR's location never moves and Back would
-  // otherwise change the URL while leaving the overlay on screen. Read the
-  // marker we stored on each entry and re-open (Back/Forward into an
-  // overlay) or dismiss (Back to the bare perspective) to match the URL.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onPopState = (event: PopStateEvent) => {
-      const action: DialogHistoryAction = readDialogHistoryState(event.state);
-      clientDialogOverrideRef.current = true;
-      if (action.kind === "node") {
-        const entityType = action.entityType || entityTypeFromPathname(window.location.pathname);
-        const href = action.href ?? `${window.location.pathname}${window.location.search}`;
-        if (!entityType) {
-          setNodeDialog(null);
-          return;
-        }
-        void loadNodeDialog(entityType, action.id, href, {
+  // Apply a whole stage to the page: the drill (overview vs a pool) and the
+  // overlay on top. Used to RESTORE a popped history entry — the inverse of the
+  // push that opening a stage performs. It re-fetches the overlay's detail
+  // (pushUrl:false, since the entry already carries the address bar) and feeds
+  // the drill straight back to the controlled process canvas.
+  const applyView = useCallback(
+    (view: PerspectiveView) => {
+      setExpandedProcessId(view.expandedProcessId);
+      // The overview is the only stage with neither an overlay nor a drilled
+      // pool; every other restored stage is a focused one.
+      setProcessHome(view.overlay.kind === "none" && view.expandedProcessId === null);
+      if (view.overlay.kind === "node") {
+        void loadNodeDialog(view.overlay.entityType, view.overlay.id, view.overlay.href, {
           pushUrl: false,
           focusPerspective: true,
         });
-        return;
-      }
-      if (action.kind === "edge") {
-        const href = action.href ?? `${window.location.pathname}${window.location.search}`;
-        // loadEdgeDialog only re-centers when both endpoints are present
-        // (`edge.source && edge.target`), so empty-string fallbacks here
-        // simply skip the re-center for an older marker that lacks them.
+      } else if (view.overlay.kind === "edge") {
         void loadEdgeDialog(
-          { id: action.id, href, source: action.source ?? "", target: action.target ?? "" },
+          {
+            id: view.overlay.id,
+            href: view.overlay.href,
+            source: view.overlay.source ?? "",
+            target: view.overlay.target ?? "",
+          },
           { pushUrl: false },
         );
-        return;
+      } else {
+        setNodeDialog(null);
+        setEdgeDialog(null);
+        setEdgeFocus(null);
+        setLifecycleError(null);
       }
-      // No dialog marker on this entry — the user navigated back to the
-      // bare perspective. Dismiss whatever overlay is open.
+    },
+    [loadNodeDialog, loadEdgeDialog, setExpandedProcessId],
+  );
+
+  // Close the overlay back to the stage UNDERNEATH it — the drilled pool if one
+  // is open, otherwise the overview — and record that as one more step. Pushing
+  // (not replacing) keeps every navigation symmetric: Back re-opens what was
+  // just closed, exactly as it re-opens any other previous stage.
+  const closeOverlay = useCallback(() => {
+    setNodeDialog(null);
+    setEdgeDialog(null);
+    setEdgeFocus(null);
+    setLifecycleError(null);
+    setEdgeLifecycleError(null);
+    setGraphState((prev) => graphWithCenter(prev, null));
+    pushView({
+      perspective: activeSlug,
+      expandedProcessId: expandedProcessIdRef.current,
+      overlay: { kind: "none" },
+    });
+  }, [activeSlug, pushView]);
+
+  // The Home button / pane reset: collapse all the way to the overview — clear
+  // the overlay AND the drilled pool — and record the bare stage.
+  const resetToHome = useCallback(() => {
+    setNodeDialog(null);
+    setEdgeDialog(null);
+    setEdgeFocus(null);
+    setLifecycleError(null);
+    setEdgeLifecycleError(null);
+    setGraphState((prev) => graphWithCenter(prev, null));
+    setExpandedProcessId(null);
+    setProcessHome(true);
+    pushView({ perspective: activeSlug, expandedProcessId: null, overlay: { kind: "none" } });
+  }, [activeSlug, pushView, setExpandedProcessId]);
+
+  // Drill the canvas into a process pool (the overview pick, a parent-process
+  // box, the host side of the canvas's `onProcessOpen`). The canvas has already
+  // set the drill state through `onSetHome`/`onExpandProcess`; here we shut any
+  // overlay (a drill is focus-only) and record the drilled stage as one entry.
+  const openProcessDrill = useCallback(
+    (processId: string) => {
       setNodeDialog(null);
       setEdgeDialog(null);
       setEdgeFocus(null);
-      setLifecycleError(null);
+      pushView({
+        perspective: activeSlug,
+        expandedProcessId: processId,
+        overlay: { kind: "none" },
+      });
+    },
+    [activeSlug, pushView],
+  );
+
+  // Reconcile to the stage the LOADER represents — the cold-load entry RR
+  // created before we started stamping our own. RR's location never moves while
+  // we push client entries, so this entry's loader data is still live: restore
+  // its drill and overlay straight from the loader fields (no refetch). This is
+  // where Back from the very first drill/overlay (pushed on top of the cold
+  // entry) lands, so it must rebuild that opening stage, not sit inert.
+  const applyLoaderSeed = useCallback(() => {
+    setExpandedProcessId(routeFocusId && isProcess(routeFocusId) ? routeFocusId : null);
+    setProcessHome(!routeFocusId);
+    setLifecycleError(null);
+    setEdgeLifecycleError(null);
+    setNodeDialog(selectedNode ? { detail: selectedNode, loading: false, error: null } : null);
+    setEdgeDialog(selectedEdge ? { detail: selectedEdge, loading: false, error: null } : null);
+    setEdgeFocus(focusedEdge ? edgeFocusFromDetail(focusedEdge) : null);
+    setGraphState((prev) => graphWithCenter(prev, routeFocusId));
+  }, [routeFocusId, isProcess, selectedNode, selectedEdge, focusedEdge, setExpandedProcessId]);
+
+  // Back/Forward reconciliation. Opening any stage pushes a client-only history
+  // entry (pushView) without a React Router navigation, so RR's location never
+  // moves and Back would otherwise change the URL while leaving the stage on
+  // screen. Read the view we stored on each entry and rebuild the whole stage —
+  // drill and overlay — to match the URL. An entry that isn't ours (the
+  // cold-load entry RR created) reconciles to the loader's stage instead.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = (event: PopStateEvent) => {
+      clientDialogOverrideRef.current = true;
+      const view = readPerspectiveView(event.state);
+      if (view) applyView(view);
+      else applyLoaderSeed();
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [loadNodeDialog, loadEdgeDialog]);
-
-  // Picking a process from the BPMN home list focuses that process Action.
-  // Reflect it in the URL as a focus-only action link (`?dialog=skip`
-  // centers/drills without popping the detail overlay) so the view is
-  // shareable and Back returns to the list. The canvas itself drills in via
-  // onCenterChange; this only syncs the address bar (no loader refetch).
-  const focusProcessUrl = useCallback(
-    (processId: string) => {
-      if (typeof window === "undefined") return;
-      clientDialogOverrideRef.current = true;
-      const params = new URLSearchParams();
-      if (activeSlug && activeSlug !== "graph") params.set("perspective", activeSlug);
-      params.set("dialog", "skip");
-      window.history.pushState({}, "", `/${handle}/action/${processId}?${params.toString()}`);
-    },
-    [activeSlug, handle],
-  );
+  }, [applyView, applyLoaderSeed]);
 
   const handleLifecycleChange = useCallback(
     async (stage: LifecycleStage) => {
@@ -1307,7 +1387,7 @@ export default function DocoHome({
         error={nodeDialog.error}
         lifecycleUpdating={lifecycleUpdating}
         lifecycleError={lifecycleError}
-        onClose={closeNodeDialog}
+        onClose={closeOverlay}
         onLifecycleChange={handleLifecycleChange}
         onOpenNode={(entityType, id, href) => {
           void loadNodeDialog(entityType, id, href, { focusPerspective: true });
@@ -1323,7 +1403,7 @@ export default function DocoHome({
         error={edgeDialog.error}
         lifecycleUpdating={edgeLifecycleUpdating}
         lifecycleError={edgeLifecycleError}
-        onClose={closeEdgeDialog}
+        onClose={closeOverlay}
         onLifecycleChange={handleEdgeLifecycleChange}
         onOpenNode={(entityType, id, href) => {
           void loadNodeDialog(entityType, id, href, { focusPerspective: true });
@@ -1483,9 +1563,13 @@ export default function DocoHome({
                     initialFocusId={perspectiveFocusId}
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
+                    home={processHome}
+                    expandedProcessId={expandedProcessId}
+                    onSetHome={setProcessHome}
+                    onExpandProcess={setExpandedProcessId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    onProcessOpen={focusProcessUrl}
-                    onHomeReset={clearPerspectiveFocus}
+                    onProcessOpen={openProcessDrill}
+                    onHomeReset={resetToHome}
                     onEdgeClick={handleGraphEdgeClick}
                     onNodeClick={(node) => {
                       void loadNodeDialog(
@@ -1525,7 +1609,7 @@ export default function DocoHome({
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    onHomeReset={clearPerspectiveFocus}
+                    onHomeReset={resetToHome}
                     onNodeClick={handleGraphNodeClick}
                     onEdgeClick={handleGraphEdgeClick}
                   />
@@ -1543,7 +1627,7 @@ export default function DocoHome({
                       error={nodeDialog.error}
                       lifecycleUpdating={lifecycleUpdating}
                       lifecycleError={lifecycleError}
-                      onClose={closeNodeDialog}
+                      onClose={closeOverlay}
                       onLifecycleChange={handleLifecycleChange}
                       onOpenNode={(entityType, id, href) => {
                         void loadNodeDialog(entityType, id, href, { focusPerspective: true });
@@ -1559,7 +1643,7 @@ export default function DocoHome({
                       error={edgeDialog.error}
                       lifecycleUpdating={edgeLifecycleUpdating}
                       lifecycleError={edgeLifecycleError}
-                      onClose={closeEdgeDialog}
+                      onClose={closeOverlay}
                       onLifecycleChange={handleEdgeLifecycleChange}
                       onOpenNode={(entityType, id, href) => {
                         void loadNodeDialog(entityType, id, href, { focusPerspective: true });

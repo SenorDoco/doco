@@ -143,6 +143,22 @@ interface ProcessPerspectiveProps {
    */
   onHomeReset?: () => void;
   /**
+   * The drill stage is owned by the host, not this canvas, so the browser's
+   * Back/Forward stack can restore it: the host pushes one history entry per
+   * drill-in/out, and a popped entry feeds these props straight back.
+   *
+   *   • `home` — the overview (synthetic top-level pool) vs a focused stage.
+   *   • `expandedProcessId` — the process whose own pool is drilled open, or
+   *     null. Independent of any open overlay (a pool-header click is both).
+   *
+   * `onSetHome` / `onExpandProcess` are how a canvas gesture asks the host to
+   * move that stage; the host updates the props and pushes the matching entry.
+   */
+  home: boolean;
+  expandedProcessId: string | null;
+  onSetHome?: (home: boolean) => void;
+  onExpandProcess?: (id: string | null) => void;
+  /**
    * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
    * this set are excluded; lanes that end up empty after filtering
    * are dropped from the lane list. When omitted, every node is
@@ -362,6 +378,10 @@ export function ProcessPerspective({
   onPaneClick,
   onProcessOpen,
   onHomeReset,
+  home,
+  expandedProcessId,
+  onSetHome,
+  onExpandProcess,
   visibleLifecycles,
   centerId,
   initialFocusId,
@@ -404,40 +424,29 @@ export function ProcessPerspective({
   // and drills in. Clicking a process in the overview, or arriving via such a
   // focus, switches to that process's swim-lane pool; the Home button returns
   // to the overview.
-  const [homeMode, setHomeMode] = useState<boolean>(() => !initialFocusId);
-  useEffect(() => {
-    if (initialFocusId) setHomeMode(false);
-  }, [initialFocusId]);
-  // A subprocess renders collapsed (a task with a "View subprocess"
-  // affordance) inside its parent's pool by default; it expands into its OWN
-  // pool only when the viewer cold-opens on it or clicks "View subprocess".
-  // `expandedProcessId` is the process Action id currently expanded — a plain
-  // node click (or a Señor Doco auto-focus) clears it, keeping the subprocess
-  // collapsed in its parent.
-  const [expandedProcessId, setExpandedProcessId] = useState<string | null>(null);
-  // Cold-open expansion: a direct URL focus on a process Action (a top-level
-  // process header or a subprocess member) renders that process as its OWN
-  // pool. Applied once per distinct `initialFocusId` so a later data refetch
-  // can't re-expand a process the viewer has since collapsed by clicking.
-  const coldOpenExpandedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!initialFocusId || coldOpenExpandedRef.current === initialFocusId) return;
-    coldOpenExpandedRef.current = initialFocusId;
-    const isProcess =
-      pools.some((pool) => pool.process_id === initialFocusId) ||
-      nodesRaw.some((node) => node.id === initialFocusId && node.is_process);
-    if (isProcess) setExpandedProcessId(initialFocusId);
-  }, [initialFocusId, pools, nodesRaw]);
+  // The drill stage — the overview (home) vs a drilled process pool — is owned
+  // by the host, not this canvas, so the browser Back/Forward stack can restore
+  // it (see the `home` / `expandedProcessId` props). The canvas renders straight
+  // from those props and asks the host to move the stage through these setters,
+  // which preserve `openCanvasNode`'s injected-handler contract: a gesture sets
+  // home/expansion first, then the host pushes the matching history entry. The
+  // cold-open "is this focus a process?" expansion now happens host-side, in the
+  // view it seeds for this canvas, so there's no client-only state to drift.
+  const homeMode = home;
+  const setHomeMode = useCallback((value: boolean) => onSetHome?.(value), [onSetHome]);
+  const setExpandedProcessId = useCallback(
+    (id: string | null) => onExpandProcess?.(id),
+    [onExpandProcess],
+  );
   // Reset the one-shot camera-fit machinery so returning to the overview (and
   // the next drill-in out of it) frames the synthetic pool / next process
-  // afresh.
+  // afresh. The host owns the stage itself — `onHomeReset` clears it and records
+  // the history entry; here we only reset the canvas-local camera bookkeeping.
   const goHome = useCallback(() => {
     hasFitRef.current = false;
     flowInstanceRef.current = null;
     defaultFocusAppliedRef.current = false;
     initialFocusAppliedRef.current = null;
-    setExpandedProcessId(null);
-    setHomeMode(true);
     onHomeReset?.();
   }, [onHomeReset]);
   // Drill from the overview into a process's own swim-lane pool: leave home,
@@ -449,7 +458,7 @@ export function ProcessPerspective({
       onCenterChange?.(processId);
       onProcessOpen?.(processId);
     },
-    [onCenterChange, onProcessOpen],
+    [onCenterChange, onProcessOpen, setHomeMode, setExpandedProcessId],
   );
   // The shared canvas node-open: focus the node, open its dialog as usual, and
   // frame its parent pool — a plain click keeps any sub-process collapsed where
@@ -462,7 +471,7 @@ export function ProcessPerspective({
         { expandSubprocess: false },
         { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
       ),
-    [onCenterChange, onNodeClick, navigate],
+    [onCenterChange, onNodeClick, navigate, setHomeMode, setExpandedProcessId],
   );
   // The "View subprocess" affordance on a collapsed sub-process Action: this is
   // the ONLY click that opens the sub-process into its own pool — AND opens its
@@ -474,7 +483,7 @@ export function ProcessPerspective({
         { expandSubprocess: true },
         { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
       ),
-    [onCenterChange, onNodeClick, navigate],
+    [onCenterChange, onNodeClick, navigate, setHomeMode, setExpandedProcessId],
   );
   // Drop nodes whose lifecycle is filtered out. The lane list itself isn't
   // lifecycle-filtered here — a lane carries no lifecycle of its own to test
@@ -726,11 +735,12 @@ export function ProcessPerspective({
   const openPoolNode = useCallback(
     (pool: ProcessPool) => {
       if (!pool.process_id) return;
+      setHomeMode(false);
       setExpandedProcessId(pool.process_id);
       if (onCenterChange) onCenterChange(pool.process_id);
       onPoolClick?.(pool);
     },
-    [onCenterChange, onPoolClick],
+    [onCenterChange, onPoolClick, setHomeMode, setExpandedProcessId],
   );
   const openLaneNode = useCallback(
     (lane: ProcessLane) => {
