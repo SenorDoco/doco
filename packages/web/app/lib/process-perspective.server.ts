@@ -42,7 +42,8 @@
 // a process step).
 
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import { lifecycleRenderRank } from "./node-colors";
+import { loadNodeLifecycleTotals } from "./lifecycle-totals.server";
+import { type LifecycleCounts, lifecycleRenderRank } from "./node-colors";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 import { computeForwardSequenceDepths } from "./process-sequence-depth";
@@ -129,12 +130,13 @@ export interface ProcessGraphData {
   nodes: ProcessNode[];
   links: OverviewGraphLink[];
   /**
-   * TRUE total of BPMN flow nodes ("steps") for this Doco, counted before the
-   * server node cap. `nodes.length` is the delivered slice; the header reports
-   * delivered vs this total. Optional so fixtures/mocks stay valid — the loader
-   * always sets it.
+   * TRUE total of BPMN flow nodes ("steps") for this Doco, broken out per
+   * lifecycle and counted before the server node cap. `nodes.length` is the
+   * delivered slice; the header sums the stages the lifecycle filter shows and
+   * reports delivered vs that visible total. Optional so fixtures/mocks stay
+   * valid — the loader always sets it.
    */
-  totalCount?: number;
+  totalByLifecycle?: LifecycleCounts;
 }
 
 const PROCESS_TABLES: { table: string; entityType: string }[] = [
@@ -193,9 +195,6 @@ interface NodeRow {
   lifecycle: string | null;
   created_at: string | null;
   data: Record<string, unknown> | null;
-  /** Scalar-subquery count of flow nodes ("steps") — the true total, immune to
-   *  the result-row cap that truncates the returned rows (bigint → string). */
-  total_count?: number | string | null;
 }
 
 interface PrincipalRow {
@@ -243,11 +242,6 @@ export async function loadProcessGraph(
   // loader (full-graph.server), which also returns every lifecycle.
   const allowedNodeTypes = new Set(PROCESS_TABLES.map((entry) => entry.entityType));
   const processTypeList = PROCESS_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
-  // Every BPMN node type is a "step" now (Intent is no longer part of the
-  // process model). The true total is a scalar subquery (immune to the
-  // result-row cap that truncates the node query's returned rows), matching the
-  // same all-lifecycle domain the node query loads.
-  const processStepTypeList = processTypeList;
   const windowIds = windowNodeIds(opts.window);
   const nodeParams: unknown[] = [docoId];
   if (windowIds.length > 0) nodeParams.push(windowIds);
@@ -256,15 +250,17 @@ export async function loadProcessGraph(
               t.prose AS summary,
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
-              t.extra AS data,
-              (SELECT COUNT(*) FROM nodes
-                WHERE doco_id = $1 AND node_type IN (${processStepTypeList})) AS total_count
+              t.extra AS data
          FROM nodes t
         WHERE t.doco_id = $1
           AND t.node_type IN (${processTypeList})
           ${windowIds.length > 0 ? "AND t.id = ANY($2::text[])" : ""}`;
 
-  const [nodeRows, principalRows, userRows] = await Promise.all([
+  // The header counts only the lifecycles it shows, so the true total is a
+  // per-lifecycle breakdown — counted via its own grouped query (immune to the
+  // result-row cap that truncates the node query above), over the same
+  // every-step domain the node query loads.
+  const [nodeRows, principalRows, userRows, totalByLifecycle] = await Promise.all([
     c.query<NodeRow>(nodeSql, nodeParams),
     c.query<PrincipalRow>(
       // Load Principals of every lifecycle (including retired). In BPMN a
@@ -298,6 +294,7 @@ export async function loadProcessGraph(
           AND c.github_login IS NOT NULL`,
       [docoId],
     ),
+    loadNodeLifecycleTotals(c, docoId, Array.from(allowedNodeTypes)),
   ]);
 
   const principalByName = new Map<string, PrincipalRow>();
@@ -716,21 +713,25 @@ export async function loadProcessGraph(
     return a.label.localeCompare(b.label);
   });
 
-  const stepTotal = Number(nodeRows.rows[0]?.total_count ?? nodes.length);
-  return limitProcessGraph({ pools, lanes, nodes, links }, opts.nodeLimit, opts.focusId, stepTotal);
+  return limitProcessGraph(
+    { pools, lanes, nodes, links },
+    opts.nodeLimit,
+    opts.focusId,
+    totalByLifecycle,
+  );
 }
 
 function limitProcessGraph(
   graph: ProcessGraphData,
   nodeLimit: number | undefined,
   focusId: string | undefined,
-  totalCountOverride?: number,
+  totalByLifecycle: LifecycleCounts,
 ): ProcessGraphData {
-  // The true total of flow nodes ("steps"), counted via a scalar subquery in
-  // the loader. The node query's returned rows hit a result-row cap, so
-  // graph.nodes.length can undercount the real total — prefer the override.
-  const totalCount = totalCountOverride ?? graph.nodes.length;
-  if (!nodeLimit || graph.nodes.length <= nodeLimit) return { ...graph, totalCount };
+  // The true per-lifecycle total of flow nodes ("steps"), counted via a grouped
+  // query in the loader. The node query's returned rows hit a result-row cap,
+  // so graph.nodes.length can undercount — the header sums the visible stages of
+  // this breakdown instead.
+  if (!nodeLimit || graph.nodes.length <= nodeLimit) return { ...graph, totalByLifecycle };
 
   const limit = Math.max(1, Math.floor(nodeLimit));
   const selected = selectProcessNodeIds(graph.nodes, graph.links, limit, focusId);
@@ -741,7 +742,7 @@ function limitProcessGraph(
   const poolIds = new Set(nodes.map((node) => node.pool_id));
   const lanes = graph.lanes.filter((lane) => laneIds.has(lane.id));
   const pools = graph.pools.filter((pool) => poolIds.has(pool.id));
-  return { pools, lanes, nodes, links, totalCount };
+  return { pools, lanes, nodes, links, totalByLifecycle };
 }
 
 function selectProcessNodeIds(

@@ -14,7 +14,8 @@
 // regardless of whether it reports to anyone — orphan seats (no manager and no
 // reports) still render as standalone nodes so the author can wire them up.
 
-import { lifecycleRenderRank } from "./node-colors";
+import { loadNodeLifecycleTotals } from "./lifecycle-totals.server";
+import { type LifecycleCounts, lifecycleRenderRank } from "./node-colors";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 
@@ -50,11 +51,12 @@ export interface OrgTreeNode {
 export interface OrgTreeData {
   nodes: OrgTreeNode[];
   /**
-   * TRUE total of Principal nodes for this Doco (all lifecycles, matching the
-   * query), counted before the page limit. `nodes.length` is the loaded slice;
-   * the header reports loaded vs this total.
+   * TRUE total of Principal nodes for this Doco, broken out per lifecycle and
+   * counted before the page limit. `nodes.length` is the loaded slice; the
+   * header sums the stages the lifecycle filter shows and reports loaded vs that
+   * visible total.
    */
-  totalCount: number;
+  totalByLifecycle: LifecycleCounts;
 }
 
 interface OrgTreeRow {
@@ -64,8 +66,6 @@ interface OrgTreeRow {
   /** Promoted seat kind — "human" | "agent" (null for vacant/undeclared). */
   kind: string | null;
   data: Record<string, unknown>;
-  /** Scalar-subquery total principals (bigint → string from pg). */
-  total_count?: number | string | null;
 }
 
 interface OrgTreeEdgeRow {
@@ -155,15 +155,13 @@ export async function loadOrgTreeData(
   const params: unknown[] = [docoId];
   if (windowIds.length > 0) params.push(windowIds);
   else if (limit != null) params.push(limit);
-  const rows = (
-    await c.query<OrgTreeRow>(
+  const [rowsResult, totalByLifecycle] = await Promise.all([
+    c.query<OrgTreeRow>(
       // A principal's text is its `prose` (its name). The seat kind comes from
       // the promoted `kind` column, falling back to a vacancy/person/agent read
       // of the prose when unset.
       `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle, kind,
-              extra AS data,
-              (SELECT COUNT(*) FROM nodes
-                WHERE node_type = 'principal' AND doco_id = $1) AS total_count
+              extra AS data
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
@@ -171,8 +169,12 @@ export async function loadOrgTreeData(
         ORDER BY created_at
         ${windowIds.length === 0 && limit != null ? "LIMIT $2" : ""}`,
       params,
-    )
-  ).rows;
+    ),
+    // Per-lifecycle principal totals — the header counts only the stages it
+    // shows, immune to the page LIMIT above.
+    loadNodeLifecycleTotals(c, docoId, ["principal"]),
+  ]);
+  const rows = rowsResult.rows;
 
   const principalIds = rows.map((row) => row.id);
   // Load reporting edges at every lifecycle, including retired. Principals
@@ -249,7 +251,5 @@ export async function loadOrgTreeData(
     };
   });
 
-  const totalCount = Number(rows[0]?.total_count ?? 0);
-
-  return { nodes, totalCount };
+  return { nodes, totalByLifecycle };
 }

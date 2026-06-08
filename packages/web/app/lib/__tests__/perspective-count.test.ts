@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { perspectiveCountLabel } from "../perspective-count";
+import { perspectiveCountLabel, visibleLifecycleTotal } from "../perspective-count";
 
 describe("perspectiveCountLabel", () => {
   it("shows a plain total when nothing is truncated", () => {
@@ -52,5 +52,31 @@ describe("perspectiveCountLabel", () => {
       "Showing the latest 750 of 1,800 entries",
     );
     expect(perspectiveCountLabel({ loaded: 1, total: 1 }, "entry", "entries")).toBe("1 entry");
+  });
+});
+
+describe("visibleLifecycleTotal", () => {
+  const counts = { drafting: 4, queued: 8, active: 120, retired: 13 };
+
+  it("sums every stage when no filter is supplied", () => {
+    expect(visibleLifecycleTotal(counts)).toBe(145);
+    expect(visibleLifecycleTotal(counts, null)).toBe(145);
+  });
+
+  it("sums only the lifecycles the filter shows", () => {
+    // The default filter (retired hidden) — what produces the bug's headline.
+    expect(visibleLifecycleTotal(counts, new Set(["drafting", "queued", "active"]))).toBe(132);
+  });
+
+  it("counts a single visible stage", () => {
+    expect(visibleLifecycleTotal(counts, new Set(["active"]))).toBe(120);
+  });
+
+  it("is zero when every stage is hidden", () => {
+    expect(visibleLifecycleTotal(counts, new Set())).toBe(0);
+  });
+
+  it("ignores filter entries that aren't canonical stages", () => {
+    expect(visibleLifecycleTotal(counts, new Set(["active", "made-up"]))).toBe(120);
   });
 });

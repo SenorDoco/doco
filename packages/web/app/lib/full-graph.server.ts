@@ -6,6 +6,8 @@ import type {
   OverviewGraphNode,
   OverviewNodeDetail,
 } from "~/components/overview-graph";
+import { tallyLifecycleRows } from "./lifecycle-totals.server";
+import type { LifecycleCounts } from "./node-colors";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 
@@ -29,10 +31,6 @@ interface OverviewGraphRow {
   label?: string | null;
   lifecycle: string | null;
   created_at: string | null;
-  /** Scalar-subquery total of graph-eligible nodes — the full filtered total,
-   *  repeated on every row (computed independently of the page LIMIT). pg
-   *  returns the bigint as a string. Absent on the node-details query. */
-  total_node_count?: number | string | null;
 }
 
 // Note tables only — policies are not
@@ -115,7 +113,7 @@ async function loadOverviewRows(
   if (windowIds.length > 0) {
     return (
       await c.query<OverviewGraphRow>(
-        `SELECT *, (SELECT COUNT(*) FROM (${overviewRowsSql(false)}) c) AS total_node_count
+        `SELECT *
            FROM (${overviewRowsSql(true)}) nodes
           WHERE id = ANY($2::text[])
           ORDER BY array_position($2::text[], id) NULLS LAST, id`,
@@ -133,7 +131,7 @@ async function loadOverviewRows(
   }
   return (
     await c.query<OverviewGraphRow>(
-      `SELECT *, (SELECT COUNT(*) FROM (${overviewRowsSql(false)}) c) AS total_node_count
+      `SELECT *
          FROM (${overviewRowsSql(true)}) nodes
         ORDER BY
           ${limit !== null ? "id = $3 DESC," : ""}
@@ -150,6 +148,26 @@ async function loadOverviewRows(
       params,
     )
   ).rows;
+}
+
+// TRUE per-lifecycle totals of graph-eligible nodes — counted over the same
+// `overviewRowsSql` domain (so it honors the "principals only when active" rule)
+// and before the page slice. The List header sums the stages the lifecycle
+// filter shows; `hasMore` and the (lifecycle-independent) total derive from the
+// sum of these stages.
+async function loadOverviewLifecycleTotals(
+  c: QueryClient,
+  docoId: string,
+): Promise<LifecycleCounts> {
+  const rows = (
+    await c.query<{ lifecycle: string; n: string }>(
+      `SELECT COALESCE(lifecycle, 'active') AS lifecycle, COUNT(*)::text AS n
+         FROM (${overviewRowsSql(false)}) c
+        GROUP BY 1`,
+      [docoId],
+    )
+  ).rows;
+  return tallyLifecycleRows(rows);
 }
 
 async function loadOverviewLinks(
@@ -190,11 +208,14 @@ export async function loadOverviewGraph(
     window?: PerspectiveWindowSelection;
   } = {},
 ): Promise<OverviewGraphData> {
-  const rows = await loadOverviewRows(c, docoId, {
-    centerId: options.centerId,
-    limit: options.limit,
-    window: options.window,
-  });
+  const [rows, totalNodeByLifecycle] = await Promise.all([
+    loadOverviewRows(c, docoId, {
+      centerId: options.centerId,
+      limit: options.limit,
+      window: options.window,
+    }),
+    loadOverviewLifecycleTotals(c, docoId),
+  ]);
   const nodeIds = rows.map((row) => row.id);
   const links = await loadOverviewLinks(c, docoId, nodeIds);
   const linksWithHrefs = links.map((link) => ({
@@ -219,10 +240,14 @@ export async function loadOverviewGraph(
     requestedCenterId ??
     docoId;
 
-  // True total of graph-eligible nodes (the windowed count, computed before the
-  // slice limit). `hasMore` drives the List header's "Showing the latest N of M"
-  // line; the focus-window path counts only its own rows, so it's never "more".
-  const totalNodeCount = Number(rows[0]?.total_node_count ?? 0);
+  // True total of graph-eligible nodes, counted before the slice limit. The
+  // per-lifecycle breakdown drives the List header (it sums the visible stages);
+  // the scalar total (Σ stages, lifecycle-independent) drives `hasMore`.
+  const totalNodeCount =
+    totalNodeByLifecycle.drafting +
+    totalNodeByLifecycle.queued +
+    totalNodeByLifecycle.active +
+    totalNodeByLifecycle.retired;
 
   return {
     centerId,
@@ -230,6 +255,7 @@ export async function loadOverviewGraph(
     links: linksWithHrefs,
     detailUrl: options.handle ? `/${options.handle}/graph-node-details.json` : null,
     totalNodeCount,
+    totalNodeByLifecycle,
     hasMore: totalNodeCount > nodes.length,
   };
 }

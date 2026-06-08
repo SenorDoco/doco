@@ -249,7 +249,6 @@ export async function loader({
     });
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
-    const totalNodes = facets.entityType.reduce((sum, t) => sum + t.count, 0);
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -382,7 +381,6 @@ export async function loader({
     return {
       items,
       facets,
-      totalNodes,
       byDay,
       topContributors,
       handle,
@@ -526,7 +524,6 @@ export default function DocoHome({
   const {
     items,
     facets,
-    totalNodes,
     byDay,
     topContributors,
     handle,
@@ -714,6 +711,19 @@ export default function DocoHome({
       else next.add(lifecycle);
       return next;
     });
+
+  // The search overlay's "Search N nodes" count tracks the lifecycle filter:
+  // it sums only the per-lifecycle facet counts the filter currently shows
+  // (retired hidden by default), so the searchable-node total matches what the
+  // perspectives render rather than counting hidden lifecycles.
+  const visibleNodeCount = useMemo(
+    () =>
+      facets.lifecycle.reduce(
+        (sum, facet) => (visibleLifecycles.has(facet.value) ? sum + facet.count : sum),
+        0,
+      ),
+    [facets.lifecycle, visibleLifecycles],
+  );
 
   // Pull-requests perspective lifecycle filter — its own state, held in the URL
   // (`?pr_lifecycle=`) rather than the page-level `visibleLifecycles`. The PR
@@ -1347,7 +1357,7 @@ export default function DocoHome({
               {/* Floats over the top-right of whichever perspective is
                   active — see PerspectiveSearchOverlay for the z-index it
                   must hold to stay above the canvas. */}
-              <PerspectiveSearchOverlay handle={handle} totalNodes={totalNodes} />
+              <PerspectiveSearchOverlay handle={handle} totalNodes={visibleNodeCount} />
               <PerspectiveFrame
                 fillHeight
                 lifecycleFilter={
@@ -1378,8 +1388,7 @@ export default function DocoHome({
                     pageRanks={pageRanksMap}
                     visibleLifecycles={visibleLifecycles}
                     focusId={perspectiveFocusId}
-                    loadedCount={graphState.nodes.length}
-                    totalCount={graphState.totalNodeCount ?? graphState.nodes.length}
+                    totalByLifecycle={graphState.totalNodeByLifecycle}
                   />
                 ) : effectivePerspectiveKind === "glossary" && glossaryData ? (
                   <GlossaryPerspective
@@ -1407,7 +1416,7 @@ export default function DocoHome({
                 ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
                   <OrgTreePerspective
                     nodes={orgTreeData.nodes}
-                    totalCount={orgTreeData.totalCount}
+                    totalByLifecycle={orgTreeData.totalByLifecycle}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
                     initialFocusId={perspectiveFocusId}
@@ -1426,7 +1435,7 @@ export default function DocoHome({
                     pools={processGraph.pools}
                     lanes={processGraph.lanes}
                     nodes={processGraph.nodes}
-                    totalCount={processGraph.totalCount}
+                    totalByLifecycle={processGraph.totalByLifecycle}
                     links={processGraph.links}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
