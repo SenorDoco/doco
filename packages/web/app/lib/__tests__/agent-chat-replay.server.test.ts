@@ -5,6 +5,7 @@ import {
   buildDocoCreationContractPrompt,
   buildOperationMemoryFromRows,
   coalesceAdjacentUserMessagesForAnthropic,
+  evictedAttachmentNote,
   trimHistoryToWindow,
 } from "../agent-chat.server";
 
@@ -71,6 +72,47 @@ describe("conversation replay window", () => {
     expect(messages[0]).toMatchObject({ role: "user" });
     expect(JSON.stringify(messages[0]?.content)).toContain("First ask");
     expect(JSON.stringify(messages[0]?.content)).toContain("Actually, include this too");
+  });
+});
+
+describe("evictedAttachmentNote", () => {
+  function attachment(id: string, filename: string): ChatMessageRow["content"][number] {
+    return {
+      type: "attachment_ref",
+      attachment_id: id,
+      filename,
+      mime_type: "application/xml",
+      size_bytes: 2048,
+    } as ChatMessageRow["content"][number];
+  }
+
+  it("returns null when the attached file is still inside the window", () => {
+    const full: ChatMessageRow[] = [
+      row(0, "user", [attachment("att_1", "process.bpmn"), { type: "text", text: "here" }]),
+    ];
+    expect(evictedAttachmentNote(full, full)).toBeNull();
+  });
+
+  it("names a file whose message has been trimmed out of the window", () => {
+    const full: ChatMessageRow[] = [
+      row(0, "user", [attachment("att_1", "process.bpmn"), { type: "text", text: "the BPMN" }]),
+      row(1, "user", [{ type: "text", text: "later turn" }]),
+      row(2, "assistant", [{ type: "text", text: "ok" }]),
+    ];
+    const window = full.slice(1); // attachment's message evicted
+    const note = evictedAttachmentNote(full, window);
+    expect(note).toContain("process.bpmn");
+    expect(note).toContain("re-attach");
+  });
+
+  it("does not flag a file that also appears within the window", () => {
+    const full: ChatMessageRow[] = [
+      row(0, "user", [attachment("att_1", "process.bpmn")]),
+      row(1, "user", [{ type: "text", text: "filler" }]),
+      row(2, "user", [attachment("att_1", "process.bpmn"), { type: "text", text: "re-sent" }]),
+    ];
+    const window = full.slice(2); // the re-sent copy is in-window
+    expect(evictedAttachmentNote(full, window)).toBeNull();
   });
 });
 

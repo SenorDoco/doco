@@ -11,6 +11,7 @@ function principal(
   id: string,
   reportsTo: string | null = null,
   dottedReportsTo: string[] = [],
+  reportsToLifecycle: string | null = reportsTo ? "active" : null,
 ): OrgTreeNode {
   return {
     id,
@@ -19,7 +20,8 @@ function principal(
     type: "person",
     lifecycle: "active",
     reports_to: reportsTo,
-    dotted_reports_to: dottedReportsTo,
+    reports_to_lifecycle: reportsToLifecycle,
+    dotted_reports_to: dottedReportsTo.map((mgr) => ({ id: mgr, lifecycle: "active" })),
     href: `/acme/principal/${id}`,
   };
 }
@@ -73,6 +75,24 @@ describe("layoutOrgTree", () => {
     ]);
     // one dashed matrix edge a→b
     expect(dotted).toEqual([["principal_a", "principal_b"]]);
+  });
+
+  it("carries each reporting edge's own lifecycle (for color + filter)", () => {
+    // A re-pointed reporting line that only survives as a retired edge keeps
+    // its own `retired` lifecycle on the layout edge — independent of the two
+    // (active) principals it connects.
+    const layout = layoutOrgTree(
+      [
+        principal("principal_root"),
+        principal("principal_child", "principal_root", ["principal_mgr"], "retired"),
+        principal("principal_mgr"),
+      ],
+      null,
+    );
+    const solid = layout.edges.find((e) => e.id === "principal_child->principal_root");
+    expect(solid?.lifecycle).toBe("retired");
+    const dotted = layout.edges.find((e) => e.dotted);
+    expect(dotted?.lifecycle).toBe("active");
   });
 
   it("drops dotted edges that point outside the active node set", () => {
