@@ -44,8 +44,9 @@ export async function loader({
           from: "source_or_$alias",
           to: "target_or_$alias",
           label: "optional edge label",
+          lifecycle: "optional: drafting | queued | active",
         },
-        note: "Adds a typed relation as a first-class edge row.",
+        note: "Adds a typed relation as a first-class edge row. Edges share the node lifecycle (drafting → queued → active → retired): an ACTIVE edge can only connect ACTIVE nodes. Omit `lifecycle` to default to active when both endpoints are active, else drafting; an explicit `active` to a non-active node is rejected.",
       },
       relate_many: {
         shape: {
@@ -56,10 +57,11 @@ export async function loader({
               from: "source_or_$alias",
               to: "target_or_$alias",
               label: "optional edge label",
+              lifecycle: "optional: drafting | queued | active",
             },
           ],
         },
-        note: "Adds multiple typed relations as first-class edge rows. Use this when sibling edges must be valid together.",
+        note: "Adds multiple typed relations as first-class edge rows. Use this when sibling edges must be valid together. Same lifecycle rule as `relate`.",
       },
       append: {
         shape: {
@@ -78,12 +80,12 @@ export async function loader({
         note: "Transition a node to 'active' (in force; publish a draft). Renamed from 'assert'. target is an id or a $alias from this changeset.",
       },
       queue: {
-        shape: { op: "queue", target: "node_id_or_$alias" },
-        note: "Transition a node to 'queued' (ready, awaiting activation). target is an id or a $alias from this changeset.",
+        shape: { op: "queue", target: "node_id_or_$alias", retire_active_edges: false },
+        note: "Transition a node to 'queued' (ready, awaiting activation). target is an id or a $alias from this changeset. Demoting a node off 'active' leaves its edges untouched by default; pass retire_active_edges:true to also retire its active edges (a non-active node should carry no active edges).",
       },
       retire: {
-        shape: { op: "retire", target: "node_id_or_$alias" },
-        note: "Soft-retire a node — a tombstone; history is kept and it's reversible by re-activating. Use to clean up mistakes.",
+        shape: { op: "retire", target: "node_id_or_$alias", retire_active_edges: false },
+        note: "Soft-retire a node — a tombstone; history is kept and it's reversible by re-activating. Use to clean up mistakes. Pass retire_active_edges:true to also retire the node's active edges (a non-active node should carry no active edges).",
       },
       supersede: {
         shape: {

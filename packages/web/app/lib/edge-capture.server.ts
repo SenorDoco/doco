@@ -8,11 +8,13 @@
 
 import {
   type CommitSource,
+  EDGE_ENDPOINTS_NOT_ACTIVE,
   type EdgeRow,
   type NodeRow,
   createChangeset,
   createEdge,
   getEntity,
+  retireActiveEdgesForNode,
   retireEdge,
   updateEdge,
   withClient,
@@ -32,6 +34,12 @@ import { LIFECYCLE_ORDER } from "./node-colors";
 
 const EDGE_TYPE_SET: ReadonlySet<string> = new Set(EDGE_TYPES);
 const NODE_TYPE_SET: ReadonlySet<string> = new Set(NODE_TYPES);
+
+/** A node's lifecycle is `active` (the column defaults to it, so treat a
+ *  missing value as active). Drives the "active edge ⟹ active endpoints" rule. */
+function isActiveLifecycle(lifecycle: string | null | undefined): boolean {
+  return (lifecycle ?? "active") === "active";
+}
 
 export interface CaptureEdgeInput {
   docoId: string;
@@ -182,13 +190,25 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
     };
   }
 
+  // Global lifecycle invariant (active edge ⟹ active endpoints). An EXPLICIT
+  // `active` against a non-active endpoint is rejected (the createEdge boundary
+  // throws the sentinel, mapped to a 422 below). An UNSPECIFIED lifecycle
+  // defaults to `active` only when both endpoints are active, else to
+  // `drafting` — so relate/import "just works" without ever minting an invalid
+  // active edge (and a `supersede`'s replaces-edge to the just-retired node
+  // lands as `drafting`).
+  const endpointsActive =
+    isActiveLifecycle(from.rec.lifecycle) && isActiveLifecycle(to.rec.lifecycle);
+  const lifecycle: Exclude<Lifecycle, "retired"> =
+    input.lifecycle ?? (endpointsActive ? "active" : "drafting");
+
   // Edge-scoped authoring policies. The deterministic `requires_edge_type`
   // allowlist is a structural membership gate, so it fires on EVERY edge —
   // including a `drafting` sketch (a disallowed edge type is never created). The
   // LLM-judged quality checks (e.g. a sub-process child Intent's name must be
   // the base form of the calling Action that `supports` it) are exempt while
   // `drafting`, mirroring the node lifecycle exemption.
-  const includeProbabilistic = (input.lifecycle ?? "active") !== "drafting";
+  const includeProbabilistic = lifecycle !== "drafting";
   const pred = await runEdgeAuthoringPolicies({
     docoId: input.docoId,
     edge: {
@@ -227,7 +247,7 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
         label: input.label ?? null,
         condition: input.condition ?? null,
         kind: input.kind ?? null,
-        lifecycle: input.lifecycle ?? "active",
+        lifecycle,
         actor: input.actorId,
       });
     });
@@ -251,6 +271,9 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes(EDGE_ENDPOINTS_NOT_ACTIVE)) {
+      return { error: activeEndpointError(msg), status: 422 };
+    }
     if (/edges_live_uniq|duplicate key/.test(msg)) {
       return {
         error: `A live '${input.edgeType}' edge already exists between these nodes.`,
@@ -259,6 +282,13 @@ export async function captureEdge(input: CaptureEdgeInput): Promise<EdgeCaptureR
     }
     return { error: msg, status: 500 };
   }
+}
+
+/** Friendly rendering of the endpoint-invariant violation thrown at the
+ *  edge-write boundary (strips the internal sentinel prefix). */
+function activeEndpointError(msg: string): string {
+  const detail = msg.split(`${EDGE_ENDPOINTS_NOT_ACTIVE}: `)[1] ?? msg;
+  return `Cannot make this edge active: ${detail}.`;
 }
 
 /** Read one edge in a Doco (current-state projection). */
@@ -342,6 +372,44 @@ export async function retireEdgeRequest(input: {
       { ...footerOpts, duration_ms: performance.now() - started },
     ),
   };
+}
+
+/**
+ * Retire every active edge touching a node, through the commit() boundary —
+ * the opt-in `retire_active_edges` cascade behind a node demotion, restoring
+ * the "active edge ⟹ active endpoints" invariant. A no-op (retired: 0) when the
+ * node has no active edges.
+ */
+export async function retireActiveEdgesRequest(input: {
+  docoId: string;
+  actorId: string | null;
+  nodeId: string;
+  reason?: string | null;
+  source?: CommitSource;
+  metadata?: Record<string, unknown> | null;
+  docoHost?: string;
+  handle?: string;
+}): Promise<{ retired: number; footer_lines: string[] }> {
+  const retired = await withTransaction(async (c) => {
+    const txId = await createChangeset(c, {
+      docoId: input.docoId,
+      actor: input.actorId,
+      source: input.source ?? "api",
+      metadata: input.metadata ?? null,
+      reason: input.reason ?? "retire active edges of demoted node",
+    });
+    return retireActiveEdgesForNode(c, txId, {
+      docoId: input.docoId,
+      nodeId: input.nodeId,
+      actor: input.actorId,
+    });
+  });
+  const footerOpts = { docoHost: input.docoHost, handle: input.handle };
+  const footer_lines: string[] = [];
+  for (const edge of retired) {
+    footer_lines.push(...(await edgeFooterLines(edge, { kind: "retired" }, footerOpts)));
+  }
+  return { retired: retired.length, footer_lines };
 }
 
 // Edges move through the same canonical lifecycle as nodes:
@@ -428,6 +496,9 @@ export async function setEdgeLifecycleRequest(input: {
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes(EDGE_ENDPOINTS_NOT_ACTIVE)) {
+      return { error: activeEndpointError(msg), status: 422 };
+    }
     if (/edges_live_uniq|duplicate key/.test(msg)) {
       return {
         error: `A live '${existing.edge_type}' edge already exists between these nodes.`,

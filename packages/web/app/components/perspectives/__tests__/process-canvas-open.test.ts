@@ -31,32 +31,41 @@ function handlers() {
 }
 
 describe("openCanvasNode", () => {
-  it("clicking a sub-process Action opens INTO its own pool AND opens its dialog", () => {
+  it("a plain click on a sub-process Action keeps it collapsed in its parent pool — only its dialog opens", () => {
     const subprocess = node("sub_1", { is_process: true });
     const h = handlers();
-    openCanvasNode(subprocess, h);
-    // "open the sub-process" — its own pool frames the canvas…
-    expect(h.setExpandedProcessId).toHaveBeenCalledWith("sub_1");
+    openCanvasNode(subprocess, { expandSubprocess: false }, h);
+    // A plain click does NOT open the sub-process's own pool…
+    expect(h.setExpandedProcessId).toHaveBeenCalledWith(null);
     expect(h.onCenterChange).toHaveBeenCalledWith("sub_1");
-    // …and "open the node dialog as usual" — exactly like any node click.
+    // …it just focuses and opens the node dialog, like any other node click.
     expect(h.onNodeClick).toHaveBeenCalledWith(subprocess);
     expect(h.navigate).not.toHaveBeenCalled();
     expect(h.setHomeMode).toHaveBeenCalledWith(false);
   });
 
+  it("the View subprocess affordance opens a sub-process INTO its own pool AND opens its dialog", () => {
+    const subprocess = node("sub_1", { is_process: true });
+    const h = handlers();
+    openCanvasNode(subprocess, { expandSubprocess: true }, h);
+    expect(h.setExpandedProcessId).toHaveBeenCalledWith("sub_1");
+    expect(h.onCenterChange).toHaveBeenCalledWith("sub_1");
+    expect(h.onNodeClick).toHaveBeenCalledWith(subprocess);
+  });
+
   it("clicking an ordinary node collapses to its parent pool but still opens the dialog", () => {
     const member = node("member_1");
     const h = handlers();
-    openCanvasNode(member, h);
+    openCanvasNode(member, { expandSubprocess: false }, h);
     expect(h.setExpandedProcessId).toHaveBeenCalledWith(null);
     expect(h.onCenterChange).toHaveBeenCalledWith("member_1");
     expect(h.onNodeClick).toHaveBeenCalledWith(member);
   });
 
-  it("only Actions are sub-processes — a process-flagged Decision does not expand", () => {
+  it("only Action sub-processes expand — a process-flagged Decision never opens a pool, even via the affordance", () => {
     const decision = node("dec_1", { entity_type: "decision", is_process: true });
     const h = handlers();
-    openCanvasNode(decision, h);
+    openCanvasNode(decision, { expandSubprocess: true }, h);
     expect(h.setExpandedProcessId).toHaveBeenCalledWith(null);
     expect(h.onNodeClick).toHaveBeenCalledWith(decision);
   });
@@ -64,7 +73,7 @@ describe("openCanvasNode", () => {
   it("falls back to navigation when no dialog handler is wired", () => {
     const member = node("member_2");
     const h = { ...handlers(), onNodeClick: undefined };
-    openCanvasNode(member, h);
+    openCanvasNode(member, { expandSubprocess: false }, h);
     expect(h.navigate).toHaveBeenCalledWith("/doco/action/member_2");
   });
 });
@@ -103,11 +112,10 @@ describe("resolveCanvasNodeClick", () => {
     ).toEqual({ kind: "node", node: external });
   });
 
-  // The default-view (synthetic overview) entries must render IDENTICALLY to
-  // nodes anywhere else: a click is a plain node-open, never a bespoke pool
-  // drill-in. A `top_level` Action with no children is NOT a process,
-  // so opening it must not expand any pool — `openCanvasNode` (below) gates
-  // that on `is_process`, exactly as it does everywhere else.
+  // The default-view (synthetic overview) entries must render and behave
+  // IDENTICALLY to nodes anywhere else: a click is a plain node-open, never a
+  // bespoke pool drill-in. Clicking the body focuses the node; only the "View
+  // subprocess" affordance opens a pool — and only for an Action sub-process.
   it("routes an overview entry that is not a process to a plain node-open (no pool view)", () => {
     const entry = node("not_a_process", { pool_id: TOP_LEVEL_POOL_ID });
     const resolved = resolveCanvasNodeClick({ id: "not_a_process" }, ctx([entry]));
@@ -115,18 +123,26 @@ describe("resolveCanvasNodeClick", () => {
 
     // …and feeding that node through the shared open keeps the pool collapsed.
     const h = handlers();
-    if (resolved?.kind === "node") openCanvasNode(resolved.node, h);
+    if (resolved?.kind === "node") openCanvasNode(resolved.node, { expandSubprocess: false }, h);
     expect(h.setExpandedProcessId).toHaveBeenCalledWith(null);
   });
 
-  it("routes an overview entry that IS a process to the shared node-open, which drills in", () => {
+  it("clicking the body of an overview entry that IS a process keeps its pool collapsed", () => {
     const proc = node("real_process", { pool_id: TOP_LEVEL_POOL_ID, is_process: true });
     const resolved = resolveCanvasNodeClick({ id: "real_process" }, ctx([proc]));
     expect(resolved).toEqual({ kind: "node", node: proc });
 
-    const h = handlers();
-    if (resolved?.kind === "node") openCanvasNode(resolved.node, h);
-    expect(h.setExpandedProcessId).toHaveBeenCalledWith("real_process");
+    // A plain click — even on a real process — does NOT open its pool; only the
+    // "View subprocess" affordance (expandSubprocess) does.
+    const collapsed = handlers();
+    if (resolved?.kind === "node")
+      openCanvasNode(resolved.node, { expandSubprocess: false }, collapsed);
+    expect(collapsed.setExpandedProcessId).toHaveBeenCalledWith(null);
+
+    const expanded = handlers();
+    if (resolved?.kind === "node")
+      openCanvasNode(resolved.node, { expandSubprocess: true }, expanded);
+    expect(expanded.setExpandedProcessId).toHaveBeenCalledWith("real_process");
   });
 
   it("returns null when the clicked flow node is not a known node", () => {

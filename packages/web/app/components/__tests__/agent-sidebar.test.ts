@@ -7,6 +7,7 @@ import {
   COMPOSER_ECHO_GUARD_MS,
   Composer,
   DocoChatRef,
+  QueuedMessage,
   SenorDocoExplainer,
   applyComposerEchoGuard,
   chatBubbleBlocks,
@@ -314,6 +315,8 @@ describe("Composer", () => {
     const out = markup({ busy: true });
     expect(out).toContain('aria-label="Stop Señor Doco"');
     expect(out).toContain(">Stop<");
+    // Stop is the red/destructive action — interrupting Señor Doco.
+    expect(out).toContain("bg-destructive");
     // Send stays — a message typed mid-reply still queues behind the turn.
     expect(out).toContain(">Send<");
   });
@@ -355,6 +358,58 @@ describe("planSend", () => {
     // The drain replays a queued message with an override; it must send even
     // if something still reads as busy mid-transition.
     expect(planSend(true, ctx({ busy: true, isOverride: true }))).toBe("send");
+  });
+});
+
+describe("QueuedMessage", () => {
+  function html(send: {
+    text: string;
+    staged: { id: string; filename: string; mime_type: string; size_bytes: number }[];
+  }) {
+    return renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(QueuedMessage, { send: { id: "q1", ...send } }),
+      ),
+    );
+  }
+
+  it("shows the queued text in a grayed-out bubble labeled Queued", () => {
+    // While Señor Doco is mid-reply the message can't send yet, so it shows as
+    // a pending bubble at the bottom of the thread instead of a terse counter.
+    const out = html({ text: "Ship the redesign", staged: [] });
+    expect(out).toContain("Ship the redesign");
+    expect(out).toContain("Queued");
+    // Grayed out so it reads as not-yet-sent next to the real bubbles.
+    expect(out).toContain("opacity-");
+  });
+
+  it("aligns to the user (left) side, matching where the sent bubble will land", () => {
+    // It becomes a regular "You" bubble once it drains, so it must sit on the
+    // same side — otherwise the message visibly jumps when it sends.
+    expect(html({ text: "hi", staged: [] })).toContain("items-start");
+  });
+
+  it("renders nothing for an empty queued send", () => {
+    expect(html({ text: "   ", staged: [] })).toBe("");
+  });
+
+  it("lists staged attachment filenames so the queued bubble isn't lossy", () => {
+    const out = html({
+      text: "see attached",
+      staged: [{ id: "a1", filename: "spec.pdf", mime_type: "application/pdf", size_bytes: 2048 }],
+    });
+    expect(out).toContain("spec.pdf");
+  });
+
+  it("shows attachment-only queued sends (no text)", () => {
+    const out = html({
+      text: "",
+      staged: [{ id: "a1", filename: "diagram.png", mime_type: "image/png", size_bytes: 4096 }],
+    });
+    expect(out).toContain("diagram.png");
+    expect(out).toContain("Queued");
   });
 });
 
