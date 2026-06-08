@@ -70,6 +70,16 @@ export interface ProcessPool {
    *  Null for the Unassigned pool. Drives the lifecycle badge on the pool
    *  header. */
   lifecycle: string | null;
+  /**
+   * True when the pool's Action is an author-declared top-level process — it
+   * carries the `top_level_process` flag in its `extra`. This is the single
+   * authoritative "considered top-level" signal (the same flag that exempts a
+   * root Action from the membership floor), and it — not a structural
+   * no-parent heuristic — drives the BPMN home directory
+   * (`topLevelProcessPools`). Absent on the Unassigned pool and on parentless
+   * Actions the author never marked.
+   */
+  top_level_process?: boolean;
 }
 
 export interface ProcessLane {
@@ -604,6 +614,7 @@ export async function loadProcessGraph(
       process_id: processId,
       label,
       lifecycle: processRow?.lifecycle ?? null,
+      top_level_process: processRow?.data?.top_level_process === true,
     });
   }
 
