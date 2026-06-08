@@ -121,8 +121,11 @@ export async function action({ request, params }: { request: Request; params: Pa
     label: typeof body.label === "string" ? body.label : null,
     condition: typeof body.condition === "string" ? body.condition : null,
     kind: typeof body.kind === "string" ? body.kind : null,
-    lifecycle:
-      body.lifecycle === "drafting" || body.lifecycle === "queued" ? body.lifecycle : "active",
+    // Pass an explicit stage straight through; omit otherwise so captureEdge
+    // applies the default (active iff both endpoints are active, else drafting).
+    ...(body.lifecycle === "drafting" || body.lifecycle === "queued" || body.lifecycle === "active"
+      ? { lifecycle: body.lifecycle }
+      : {}),
     reason: typeof body.reason === "string" ? body.reason : null,
     docoHost: new URL(request.url).origin,
     handle: params.docoHandle,

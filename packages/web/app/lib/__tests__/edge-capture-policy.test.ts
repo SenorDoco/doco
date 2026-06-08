@@ -10,10 +10,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const runEdge = vi.hoisted(() => ({ fn: vi.fn() }));
 const dbStub = vi.hoisted(() => ({ createEdge: vi.fn() }));
+// Per-endpoint lifecycle the mocked getEntity reports, keyed by node id.
+// Defaults to "active" so existing tests see active endpoints.
+const endpoints = vi.hoisted(() => ({ lifecycleById: {} as Record<string, string> }));
 
 vi.mock("../authoring-runner.server", () => ({ runEdgeAuthoringPolicies: runEdge.fn }));
 
 vi.mock("@doco/db", () => ({
+  EDGE_ENDPOINTS_NOT_ACTIVE: "edge_endpoints_not_active",
   // Endpoint resolution: return a NodeRow keyed off the id prefix.
   getEntity: vi.fn(async (type: string, id: string) => ({
     id,
@@ -24,7 +28,7 @@ vi.mock("@doco/db", () => ({
     kind: null,
     locator: null,
     proposer_id: null,
-    lifecycle: "active",
+    lifecycle: endpoints.lifecycleById[id] ?? "active",
     created_at: null,
     created_by: null,
     updated_at: null,
@@ -33,6 +37,7 @@ vi.mock("@doco/db", () => ({
   createChangeset: vi.fn(async () => "tx_test"),
   createEdge: dbStub.createEdge,
   retireEdge: vi.fn(),
+  retireActiveEdgesForNode: vi.fn(),
   getDocoById: vi.fn(async () => ({ handle: "owner-doco" })),
   withClient: vi.fn(async (fn: (c: unknown) => unknown) => fn({})),
   withTransaction: vi.fn(async (fn: (c: unknown) => unknown) => fn({})),
@@ -61,6 +66,7 @@ function makeInput(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   runEdge.fn.mockReset();
   dbStub.createEdge.mockReset();
+  endpoints.lifecycleById = {};
   // Mirror the real createEdge return — the footer renderer reads the edge's
   // endpoints and type off this row.
   dbStub.createEdge.mockResolvedValue({
@@ -157,6 +163,26 @@ describe("captureEdge — edge-scoped policy wiring", () => {
     expect(line).toMatch(/5 authoring policies passed in \d+(\.\d+)?s/);
     // The old raw shape is gone.
     expect(line).not.toContain("created (supports:");
+  });
+
+  it("defaults a new edge to active when both endpoints are active", async () => {
+    runEdge.fn.mockResolvedValue({ violations: [], blocking: null, warnings: [] });
+    const res = await captureEdge(makeInput());
+    expect("ok" in res && res.ok).toBe(true);
+    expect(dbStub.createEdge.mock.calls[0][2].lifecycle).toBe("active");
+  });
+
+  it("defaults a new edge to drafting when an endpoint is not active (active edge ⟹ active endpoints)", async () => {
+    // The global rule: an active edge can only belong to active nodes. With no
+    // explicit lifecycle, relate/import must NOT mint an active edge to a
+    // non-active node — it lands as `drafting`, and the probabilistic judges
+    // defer as for any drafting sketch.
+    endpoints.lifecycleById[INTENT_ID] = "drafting";
+    runEdge.fn.mockResolvedValue({ violations: [], blocking: null, warnings: [] });
+    const res = await captureEdge(makeInput());
+    expect("ok" in res && res.ok).toBe(true);
+    expect(dbStub.createEdge.mock.calls[0][2].lifecycle).toBe("drafting");
+    expect(runEdge.fn.mock.calls[0][0].includeProbabilistic).toBe(false);
   });
 
   it("blocks a drafting edge whose type the allowlist bars (structural gate fires in draft)", async () => {

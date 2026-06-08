@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   captureFn: vi.fn(),
   captureEdge: vi.fn(),
   edgeExists: vi.fn(),
+  retireActiveEdgesRequest: vi.fn(),
   getEntity: vi.fn(),
   withClient: vi.fn(),
   updateEntity: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("~/lib/doco-access.server", () => ({
 vi.mock("~/lib/edge-capture.server", () => ({
   captureEdge: mocks.captureEdge,
   edgeExists: mocks.edgeExists,
+  retireActiveEdgesRequest: mocks.retireActiveEdgesRequest,
 }));
 
 vi.mock("~/lib/node-capture-registry.server", () => ({
@@ -71,6 +73,7 @@ describe("changesets write gate", () => {
       id: "edge_01NEW",
       footer_lines: [],
     });
+    mocks.retireActiveEdgesRequest.mockResolvedValue({ retired: 0, footer_lines: [] });
     mocks.updateEntity.mockResolvedValue({
       ok: true,
       id: "decision_0123456789ABCDEFGHJKMNPQRS",
@@ -121,6 +124,67 @@ describe("changesets write gate", () => {
         id: "decision_0123456789ABCDEFGHJKMNPQRS",
         patch: { lifecycle: "queued" },
       }),
+    );
+  });
+
+  it("retire with retire_active_edges cascades the node's active edges before demoting it", async () => {
+    mocks.retireActiveEdgesRequest.mockResolvedValue({
+      retired: 2,
+      footer_lines: ["retired 2 edges"],
+    });
+    const response = await action({
+      request: changesetRequest({
+        operations: [
+          {
+            op: "retire",
+            target: "decision_0123456789ABCDEFGHJKMNPQRS",
+            retire_active_edges: true,
+          },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.retireActiveEdgesRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        docoId: "doco_acme",
+        nodeId: "decision_0123456789ABCDEFGHJKMNPQRS",
+      }),
+    );
+    expect(mocks.updateEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ patch: { lifecycle: "retired" } }),
+    );
+  });
+
+  it("retire WITHOUT the flag leaves edges untouched (cascade is opt-in, default off)", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [{ op: "retire", target: "decision_0123456789ABCDEFGHJKMNPQRS" }],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.retireActiveEdgesRequest).not.toHaveBeenCalled();
+  });
+
+  it("relate forwards an explicit edge lifecycle to captureEdge", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [
+          {
+            op: "relate",
+            relation_kind: "supports",
+            from: "decision_0123456789ABCDEFGHJKMNPQRS",
+            to: "intent_0123456789ABCDEFGHJKMNPQRS",
+            lifecycle: "queued",
+          },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.captureEdge).toHaveBeenCalledWith(
+      expect.objectContaining({ lifecycle: "queued" }),
     );
   });
 

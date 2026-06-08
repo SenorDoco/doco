@@ -15,7 +15,7 @@ import {
   updateEntity,
 } from "~/lib/capture.server";
 import { loadDocoRouteForRead, requireDocoTypeWritesForRequest } from "~/lib/doco-access.server";
-import { captureEdge, edgeExists } from "~/lib/edge-capture.server";
+import { captureEdge, edgeExists, retireActiveEdgesRequest } from "~/lib/edge-capture.server";
 import {
   PERSPECTIVE_CONTRACTS,
   type RelationKindSpec,
@@ -49,6 +49,11 @@ interface RelationInput {
   label?: string;
   condition?: string;
   relation_props?: Record<string, unknown>;
+  // Stage the new edge starts in (drafting | queued | active). Omit to let the
+  // edge default to `active` when both endpoints are active, else `drafting`
+  // (the "active edge ⟹ active endpoints" rule). An explicit `active` against a
+  // non-active endpoint is rejected.
+  lifecycle?: string;
 }
 
 interface RelateOperation extends RelationInput {
@@ -85,11 +90,17 @@ interface ActivateOperation {
 interface QueueOperation {
   op: "queue";
   target: string;
+  // Opt-in cascade: also retire the node's active edges so the demoted node
+  // carries no active edges (the "active edge ⟹ active endpoints" rule).
+  // Defaults to false — edges are left untouched.
+  retire_active_edges?: boolean;
 }
 
 interface RetireOperation {
   op: "retire";
   target: string;
+  // Opt-in cascade — see QueueOperation. Defaults to false.
+  retire_active_edges?: boolean;
 }
 
 // Replace a node: create the replacement, retire the old one, and link them
@@ -389,13 +400,29 @@ async function applyOperation(
     };
   }
   if (op.op === "activate") {
-    return transitionNode(op.target, "active", "activate", index, ctx, aliases);
+    return transitionNode(op.target, "active", "activate", index, ctx, aliases, false);
   }
   if (op.op === "queue") {
-    return transitionNode(op.target, "queued", "queue", index, ctx, aliases);
+    return transitionNode(
+      op.target,
+      "queued",
+      "queue",
+      index,
+      ctx,
+      aliases,
+      op.retire_active_edges === true,
+    );
   }
   if (op.op === "retire") {
-    return transitionNode(op.target, "retired", "retire", index, ctx, aliases);
+    return transitionNode(
+      op.target,
+      "retired",
+      "retire",
+      index,
+      ctx,
+      aliases,
+      op.retire_active_edges === true,
+    );
   }
   if (op.op === "supersede") {
     return supersedeNode(op, index, ctx, aliases);
@@ -419,6 +446,7 @@ async function transitionNode(
   index: number,
   ctx: ChangesetContext,
   aliases: Map<string, string>,
+  retireActiveEdges: boolean,
 ): Promise<OperationResult> {
   const id = resolveRef(target, aliases);
   if (!id) {
@@ -429,7 +457,25 @@ async function transitionNode(
       error: `Could not resolve ${opName} target "${target}".`,
     };
   }
-  return applyLifecyclePatch(id, { lifecycle }, opName, index, ctx);
+  // Opt-in cascade: when demoting a node out of `active`, retire its active
+  // edges first so the node carries no active edges. A no-op if it has none.
+  const cascadeLines: string[] = [];
+  if (retireActiveEdges && lifecycle !== "active") {
+    const cascade = await retireActiveEdgesRequest({
+      docoId: ctx.docoId,
+      actorId: ctx.actorId,
+      nodeId: id,
+      reason: `retire active edges of ${opName}d node`,
+      docoHost: ctx.docoHost,
+      handle: ctx.handle,
+      ...(ctx.authoring.source ? { source: ctx.authoring.source } : {}),
+      ...(ctx.authoring.metadata ? { metadata: ctx.authoring.metadata } : {}),
+    });
+    cascadeLines.push(...cascade.footer_lines);
+  }
+  const result = await applyLifecyclePatch(id, { lifecycle }, opName, index, ctx);
+  if (!result.ok) return result;
+  return { ...result, footer_lines: [...cascadeLines, ...(result.footer_lines ?? [])] };
 }
 
 async function applyLifecyclePatch(
@@ -648,7 +694,14 @@ async function relateMany(
     }
 
     const meta = relationMetadata(spec, relation);
-    const captured = await captureRelationEdge(ctx, spec, from, to, meta);
+    const captured = await captureRelationEdge(
+      ctx,
+      spec,
+      from,
+      to,
+      meta,
+      parseEdgeLifecycle(relation.lifecycle),
+    );
     if ("error" in captured) {
       return {
         op_index: index,
@@ -706,7 +759,14 @@ async function relateNodes(
     };
   }
   const meta = relationMetadata(spec, op);
-  const captured = await captureRelationEdge(ctx, spec, from, to, meta);
+  const captured = await captureRelationEdge(
+    ctx,
+    spec,
+    from,
+    to,
+    meta,
+    parseEdgeLifecycle(op.lifecycle),
+  );
   if ("error" in captured) {
     return {
       op_index: index,
@@ -730,12 +790,19 @@ async function relateNodes(
   };
 }
 
+/** A creatable edge stage (drafting | queued | active) from request input, or
+ *  undefined to let captureEdge pick the default. `retired` is not creatable. */
+function parseEdgeLifecycle(value: unknown): "drafting" | "queued" | "active" | undefined {
+  return value === "drafting" || value === "queued" || value === "active" ? value : undefined;
+}
+
 async function captureRelationEdge(
   ctx: ChangesetContext,
   spec: RelationKindSpec,
   from: string,
   to: string,
   meta: { label: string | null; condition: string | null; kind: string | null },
+  lifecycle: "drafting" | "queued" | "active" | undefined,
 ): Promise<
   { ok: true; id?: string; skipped?: boolean; footer_lines: string[] } | { error: string }
 > {
@@ -753,6 +820,7 @@ async function captureRelationEdge(
     label: meta.label,
     condition: meta.condition,
     kind: meta.kind,
+    ...(lifecycle ? { lifecycle } : {}),
     reason: `create ${spec.kind} relation`,
     docoHost: ctx.docoHost,
     handle: ctx.handle,
