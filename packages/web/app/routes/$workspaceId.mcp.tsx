@@ -13,7 +13,7 @@
 // workspace's RFC 9728 protected-resource metadata, which a connector follows
 // to discover the OAuth server (RFC 8414) and run the flow.
 
-import { getWorkspaceConstitutionsByIds } from "@doco/db";
+import { getDocoByIdOrHandle, getWorkspaceConstitutionsByIds } from "@doco/db";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
 import {
@@ -253,8 +253,20 @@ const WHOAMI_TOOL = {
   inputSchema: { type: "object", properties: {} },
 };
 
+const LIST_WORKSPACES_TOOL = {
+  name: "list_workspaces",
+  description: [
+    "List every Doco Workspace you belong to, with your role in each. On an",
+    '"act as me" connection (all your workspaces, one Doco at a time) this is how',
+    "you discover what you can reach; a Doco's <handle> works with the other",
+    "tools regardless of which workspace it lives in. No arguments.",
+  ].join("\n"),
+  inputSchema: { type: "object", properties: {} },
+};
+
 const TOOLS = [
   WHOAMI_TOOL,
+  LIST_WORKSPACES_TOOL,
   SEARCH_TOOL,
   GET_TOOL,
   CAPTURE_TOOL,
@@ -280,6 +292,12 @@ interface Ctx {
   workspaceId: string;
   workspaceHandle: string;
   principalId: string;
+  // Actor "act as me" mode (the app-wide `/mcp` with an actor token): the
+  // connection reaches EVERY workspace the human belongs to instead of one.
+  // `workspaceId`/`workspaceHandle` are empty; tools resolve Docos globally and
+  // per-Doco access is enforced live (capped at actor_role) when each tool
+  // replays the bearer. `list_workspaces` is how the agent discovers targets.
+  allWorkspaces?: boolean;
 }
 
 function rpcResult(id: Rpc["id"], result: unknown): Response {
@@ -369,6 +387,15 @@ async function inWorkspace(
 ): Promise<{ handle: string } | { error: ToolResult }> {
   const doco = String(rawDoco ?? "").trim();
   if (!doco) return { error: toolError("a `doco` handle is required.") };
+  if (ctx.allWorkspaces) {
+    // Actor mode: no single-workspace boundary. Resolve the handle globally;
+    // whether THIS user may touch it (and at what role) is enforced when the
+    // tool replays the bearer — enforceOauthGrant resolves an actor token live
+    // against the human's membership, capped at actor_role.
+    const row = await getDocoByIdOrHandle(doco); // already excludes soft-deleted
+    if (!row) return { error: toolError(`Doco "${doco}" not found.`) };
+    return { handle: row.handle };
+  }
   const resolved = await resolveDocoInWorkspace(doco, ctx.workspaceId);
   if (!resolved.ok) return { error: toolError(resolved.message) };
   return { handle: resolved.handle };
@@ -520,10 +547,57 @@ async function runDocoGet(
 // bound to a single workspace, so its grants already live here; we surface the
 // workspace and its Docos, filtering out anything outside it (belt-and-braces
 // for cookie sessions, whose membership listing is broader).
+// list_workspaces: every workspace the human belongs to, with their role. The
+// primary discovery tool on an "act as me" connection; harmless (and still
+// correct) on a single-workspace one.
+async function runListWorkspaces(request: Request): Promise<ToolResult> {
+  const identity = await loadAgentIdentity(request);
+  if (!identity) return toolError("Not authenticated.");
+  const workspaces = (identity.grants ?? []).filter((g) => g.scope === "workspace");
+  if (workspaces.length === 0) {
+    return {
+      content: [{ type: "text", text: "You don't belong to any workspaces yet." }],
+      structuredContent: { workspaces: [] },
+    };
+  }
+  const lines = [
+    "Your workspaces (a Doco's <handle> works with the tools regardless of which one it's in):",
+  ];
+  for (const w of workspaces) lines.push(`  • ${w.label} (${w.id}): ${w.role}`);
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: {
+      workspaces: workspaces.map((w) => ({ id: w.id, handle: w.label, role: w.role })),
+    },
+  };
+}
+
 async function runDocoWhoami(request: Request, ctx: Ctx): Promise<ToolResult> {
   const identity = await loadAgentIdentity(request);
   if (!identity) return toolError("Not authenticated.");
   const grants = identity.grants ?? [];
+  if (ctx.allWorkspaces) {
+    // Actor mode: reach every workspace the human belongs to. Surface them all,
+    // and every Doco — pass any Doco's <handle> to the tools.
+    const workspaces = grants.filter((g) => g.scope === "workspace");
+    const docos = grants.filter((g) => g.scope === "doco");
+    const lines: string[] = [
+      `Authenticated as ${identity.indicator_prefix}.`,
+      'This is an "act as me" connection: it reaches every workspace you belong to, one Doco at a time. Call list_workspaces to see them, then pass any Doco\'s <handle> to the tools.',
+    ];
+    if (workspaces.length > 0) {
+      lines.push("", "Your workspaces:");
+      for (const w of workspaces) lines.push(`  • ${w.label} (${w.id}): ${w.role}`);
+    }
+    if (docos.length > 0) {
+      lines.push("", "Docos you can reach (the <handle> in /<handle>):");
+      for (const d of docos) lines.push(`  • ${d.label}: ${d.role}`);
+    }
+    return {
+      content: [{ type: "text", text: lines.join("\n") }],
+      structuredContent: { ...identity, all_workspaces: true, grants },
+    };
+  }
   const workspace = grants.find((g) => g.scope === "workspace" && g.id === ctx.workspaceId);
   const docos = grants.filter(
     (g) => g.scope === "doco" && g.label.startsWith(`${ctx.workspaceHandle}/`),
@@ -628,6 +702,8 @@ async function dispatch(message: Rpc, request: Request, ctx: Ctx): Promise<Respo
       switch (name) {
         case "doco_whoami":
           return rpcResult(message.id, await runDocoWhoami(request, ctx));
+        case "list_workspaces":
+          return rpcResult(message.id, await runListWorkspaces(request));
         case "doco_search":
           return rpcResult(message.id, await runDocoSearch(request, ctx, args));
         case "doco_get":

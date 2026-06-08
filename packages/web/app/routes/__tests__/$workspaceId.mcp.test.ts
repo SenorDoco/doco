@@ -126,6 +126,7 @@ describe("POST /<workspace-id>/mcp (per-workspace remote MCP)", () => {
     const body: Json = await res.json();
     expect(body.result.tools.map((t: Json) => t.name)).toEqual([
       "doco_whoami",
+      "list_workspaces",
       "doco_search",
       "doco_get",
       "doco_capture",

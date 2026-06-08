@@ -74,9 +74,6 @@ async function handleAuthorizationCode(form: URLSearchParams): Promise<Response>
     grant_type: claim.grant_type,
     actor_role: claim.actor_role,
     scope: claim.scope,
-    // RFC 8707 resource — names the one workspace an actor token's FIRST access
-    // token is scoped to (compliant MCP clients send it on the token request).
-    resource: form.get("resource"),
   });
   return Response.json(tokens);
 }
