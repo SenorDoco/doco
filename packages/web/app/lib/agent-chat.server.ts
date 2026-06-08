@@ -970,6 +970,46 @@ function findCleanReplayStart(rows: ChatMessageRow[], start: number): number {
   return candidate;
 }
 
+/**
+ * Files attached earlier in a thread silently disappear once their message is
+ * trimmed out of the replay window: the bytes are never hydrated, and with no
+ * trace that the file ever existed the model may confabulate its contents
+ * instead of admitting it can't see them. (This is exactly the failure that
+ * produced "I've been reconstructing the wiring from inference rather than the
+ * source BPMN".) Build a compact note naming the evicted files so the current
+ * turn can carry that awareness — the model is told the file dropped out of
+ * context and to ask for a re-attach rather than guess.
+ *
+ * Returns null when every attached file is still inside `window` (the trimmed
+ * history actually sent to the model), so there's nothing to warn about.
+ */
+export function evictedAttachmentNote(
+  full: ChatMessageRow[],
+  window: ChatMessageRow[],
+): string | null {
+  const inWindow = new Set<string>();
+  for (const r of window) {
+    for (const block of r.content) {
+      if ((block as { type?: string }).type === "attachment_ref") {
+        inWindow.add((block as AttachmentRefBlock).attachment_id);
+      }
+    }
+  }
+  // Dedup by id (most-recent filename wins); skip ids still visible in-window.
+  const evicted = new Map<string, string>();
+  for (const r of full) {
+    for (const block of r.content) {
+      if ((block as { type?: string }).type !== "attachment_ref") continue;
+      const ref = block as AttachmentRefBlock;
+      if (inWindow.has(ref.attachment_id)) continue;
+      evicted.set(ref.attachment_id, ref.filename);
+    }
+  }
+  if (evicted.size === 0) return null;
+  const names = [...evicted.values()].join(", ");
+  return `[Context note: ${evicted.size} file(s) attached earlier in this conversation are no longer in your context because the history was trimmed to fit the window: ${names}. You cannot see their contents now. If you need any of them, tell the user the file has dropped out of context and ask them to re-attach it — do NOT guess or reconstruct its contents from memory.]`;
+}
+
 export function approximateReplayTokens(rows: ChatMessageRow[]): number {
   let chars = 0;
   for (const row of rows) {
@@ -2492,6 +2532,15 @@ async function* streamAssistantTurn(args: {
     userContent[0] = { type: "text", text: `${turnHeader}${operationMemory}\n\n${args.userText}` };
   }
   const history = trimHistoryToWindow(allHistory);
+  // A file attached earlier can fall out of this window; if so, warn the model
+  // it's gone (in-context attachments — including this turn's, still in
+  // `history` here — are excluded) so it asks for a re-attach instead of
+  // confabulating. Carried on the current user turn (cache-safe: the cache
+  // breakpoint sits on the prior window message, not on userContent).
+  const droppedAttachmentNote = evictedAttachmentNote(allHistory, history);
+  if (droppedAttachmentNote) {
+    userContent.push({ type: "text", text: droppedAttachmentNote });
+  }
   // History now includes the user message we just persisted; drop
   // the trailing user row so we don't double-add the same content
   // when we push the `userContent` (with dynamic header) below.
