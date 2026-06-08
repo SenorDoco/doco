@@ -196,7 +196,11 @@ function sizeForNode(node: ProcessNode): { width: number; height: number } {
   const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
   const LINE_H = 13;
   const PAD = 24; // total horizontal padding inside the shape
-  const PAD_Y = 16;
+  // Vertical padding. Bigger than the horizontal pad because the #N badge (top)
+  // and the type/lifecycle badge row (bottom) both straddle the node's edges:
+  // the extra room keeps a long, centered label from running under either of
+  // them. The label is flex-centered, so the room splits evenly top and bottom.
+  const PAD_Y = 24;
   // Target a roughly square text block so wrapping looks balanced.
   const sqrtPx = Math.sqrt(N * CHAR_W * LINE_H);
   const w = Math.max(NODE_WIDTH, Math.ceil(sqrtPx) + PAD);
@@ -517,21 +521,9 @@ export function ProcessPerspective({
   }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
   const focusedNodeIdSet = useMemo(() => new Set(focusedNodeIds ?? []), [focusedNodeIds]);
 
-  // Focusing a process Action homes in on the process's "way in", the
-  // earliest-created entry point of its pool, and focuses that node — UNLESS
-  // the process is being expanded (cold-open / "View subprocess"), in which
-  // case the process Action itself is the center so its whole pool frames.
-  // `resolveProcessToEntry` maps a process-center to that entry node; a center
-  // that is already a node (or a process with no entry point in the visible
-  // set) passes through unchanged.
   const resolveProcessToEntry = useCallback(
-    (id: string | null | undefined): string | null => {
-      if (!id) return null;
-      if (id === expandedProcessId) return id;
-      const pool = pools.find((candidate) => candidate.process_id === id);
-      if (!pool) return id;
-      return topEntryPointId(pool.id, filteredNodes, links) ?? id;
-    },
+    (id: string | null | undefined): string | null =>
+      resolveProcessCenter(id, { expandedProcessId, pools, nodes: filteredNodes, links }),
     [pools, filteredNodes, links, expandedProcessId],
   );
   // The single node the view is focused on. Always defined (falls back to
@@ -1470,11 +1462,51 @@ const BOUNDARY_CIRCLE_GAP = 40;
 // drawn above it. Mirrors BOUNDARY_CIRCLE_GAP, which spaces the left/right
 // sequence-flow neighbours off the pool's sides.
 const PARENT_PROCESS_GAP = 40;
-// Vertical room reserved at the bottom of a sub-process Action so the
-// "View subprocess" affordance sits inside the box without colliding with the
-// label. The layout grows the node by this much; the node component pads its
-// label area by the same amount so text never enters the affordance strip.
-const SUBPROCESS_MARKER_ROOM = 22;
+// Vertical room a sub-process Action reserves on EACH of its top and bottom
+// edges. The bottom strip holds the "View subprocess" affordance clear of both
+// the label and the type/lifecycle badge row straddling the edge; the top strip
+// mirrors it so the label (the node's core) stays vertically centered rather
+// than shoved up. The layout grows the box by 2× this; the node component pads
+// its label area by this much top and bottom so text never enters either strip.
+const SUBPROCESS_MARKER_ROOM = 30;
+// Where the "View subprocess" pill sits within the bottom strip — lifted off
+// the bottom edge so it clears the type/lifecycle badge row half-overlapping it.
+const SUBPROCESS_BUTTON_BOTTOM = 11;
+
+/**
+ * The focal node a process *center* resolves to. Focusing a whole process —
+ * a directory pick, a pool-header click, a process URL, or "View subprocess" —
+ * homes in on that process's "way in" (the earliest entry point of its pool) so
+ * the camera lands inside the pool. Two cases keep the center as-is instead:
+ *
+ *   • the process is being expanded (`id === expandedProcessId`) — its own pool
+ *     already frames, so the process Action itself is the center; and
+ *   • the id is a subprocess Action sitting as a STEP inside another pool — a
+ *     plain click focuses it where it sits, so it must NOT drill into its own
+ *     pool. Only the "View subprocess" affordance (which expands it) does that.
+ *
+ * A center that is already a plain node, or a process with no entry point in the
+ * visible set, passes through unchanged.
+ */
+export function resolveProcessCenter(
+  id: string | null | undefined,
+  ctx: {
+    expandedProcessId: string | null | undefined;
+    pools: ProcessPool[];
+    nodes: ProcessNode[];
+    links: OverviewGraphLink[];
+  },
+): string | null {
+  if (!id) return null;
+  if (id === ctx.expandedProcessId) return id;
+  const ownPool = ctx.pools.find((pool) => pool.process_id === id);
+  if (!ownPool) return id;
+  // A subprocess Action rendered as a step inside its parent's pool keeps its
+  // focus on the step; only expansion (handled above) drills into its own pool.
+  const asStep = ctx.nodes.find((node) => node.id === id);
+  if (asStep && asStep.pool_id !== ownPool.id) return id;
+  return topEntryPointId(ownPool.id, ctx.nodes, ctx.links) ?? id;
+}
 
 // The exact node set the BPMN perspective draws for a given focus, and the
 // pool(s) those nodes belong to. The rule:
@@ -1528,9 +1560,13 @@ export function computeProcessRenderedSet(params: {
   if (expandedPoolId) {
     focalPoolIds.add(expandedPoolId);
   } else if (centerId) {
-    // The focal node's own pool — also handles a process-center (a pool
-    // header) that never resolved to a member node (matched by process_id).
-    const centerPoolId = poolByProcessId.get(centerId) ?? nodeById.get(centerId)?.pool_id ?? null;
+    // Frame the pool the center actually sits in. A subprocess Action is both a
+    // member (step) of its parent's pool AND the head of its own pool; a plain
+    // focus on it must frame the parent it sits in, so the member pool wins.
+    // Only a process-center with no member node (a pool header focused by
+    // process_id) falls back to that process's own pool — and an *expanded*
+    // process is handled above, where its own pool overrides the member parent.
+    const centerPoolId = nodeById.get(centerId)?.pool_id ?? poolByProcessId.get(centerId) ?? null;
     if (centerPoolId) focalPoolIds.add(centerPoolId);
   }
   // An edge focus pulls in the pools of BOTH its endpoints, so an edge that
@@ -1660,10 +1696,11 @@ export function layOutProcess(
     const size = sizeForNode(node);
     if (subprocessPoolId(node)) {
       subprocessNodes.add(node.id);
-      // Grow the box so the "View subprocess" affordance has its own strip at
-      // the bottom, clear of the label. The component pads the label by the
-      // same amount; stacking/lane-height math below already keys off size.
-      size.height += SUBPROCESS_MARKER_ROOM;
+      // Grow the box by a strip on the top AND the bottom: the bottom holds the
+      // "View subprocess" affordance clear of the label, and the matching top
+      // strip keeps the label centered. The component pads the label by the
+      // same amount on each side; stacking/lane-height math below keys off size.
+      size.height += 2 * SUBPROCESS_MARKER_ROOM;
     }
     sizeByNode.set(node.id, size);
     // Only pool nodes drive the column step / lane height, so the swim
@@ -2422,16 +2459,12 @@ function ProcessRoundedNode({ data }: { data: ProcessNodeData }) {
   );
 }
 
-// BPMN collapsed sub-process marker — a small bordered square with a
-// centered "+" (OMG BPMN 2.0 §10.2.4: a collapsed sub-process is a task
-// glyph with a "+" marker). It sits *inside* the box, centered on the
-// bottom edge. The Action reserves SUBPROCESS_MARKER_ROOM of bottom
-// padding (ProcessTaskNode) over a box the layout grew by the same amount,
-// so the marker never overlaps the label. The dashed drill-down link
-// leaves the node's bottom-center handle — just under the marker — on
-// its way down to the sub-process pool.
-// The "View subprocess" affordance on a collapsed subprocess Action. Clicking
-// it expands the subprocess into its own pool (a different swim-lane view).
+// The "View subprocess" affordance on a collapsed subprocess Action (OMG BPMN
+// 2.0 §10.2.4: a collapsed sub-process is a task glyph with a drill-in marker).
+// It sits inside the box's reserved bottom strip, centered, lifted clear of the
+// type/lifecycle badge row that straddles the edge below it. Clicking it expands
+// the subprocess into its own pool (a different swim-lane view) — and ONLY this
+// button does: a plain click on the Action body focuses it where it sits.
 // Hidden under LOD (zoomed out, the label strip is illegible anyway).
 function ViewSubprocessButton({
   data,
@@ -2453,29 +2486,34 @@ function ViewSubprocessButton({
         data.onViewSubprocess?.(data.node);
       }}
       onPointerDown={(event) => event.stopPropagation()}
+      // `.neu-pill-button` paints the raised → pressed neumorphic shadow so the
+      // pill reads as a real button; `nodrag nopan` keeps a click on it from
+      // panning the canvas. It sits in the bottom strip the node reserves,
+      // lifted clear of the type/lifecycle badge row straddling the edge below.
+      className="nodrag nopan neu-pill-button"
       style={{
         position: "absolute",
-        bottom: 3,
+        bottom: SUBPROCESS_BUTTON_BOTTOM,
         left: "50%",
         transform: "translateX(-50%)",
         maxWidth: "calc(100% - 12px)",
         boxSizing: "border-box",
         background: "#fff",
-        border: `1px solid ${stroke}`,
-        borderRadius: 4,
+        border: "1px solid var(--neu-border)",
+        borderRadius: 5,
         display: "inline-flex",
         alignItems: "center",
         gap: 3,
-        padding: "1px 6px",
+        padding: "2px 7px",
         fontSize: 9,
-        lineHeight: 1.4,
+        lineHeight: 1.35,
         fontWeight: 600,
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
         color: stroke,
         cursor: "pointer",
-        zIndex: 2,
+        zIndex: 3,
       }}
     >
       <span aria-hidden="true">⊞</span> View subprocess
@@ -2504,10 +2542,11 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
         alignItems: "center",
         justifyContent: "center",
         boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
-        // Reserve a bottom strip for the "View subprocess" affordance so the
-        // centered label never sits under it. The layout grew the box by
-        // the same amount; border-box keeps the padding inside that box
-        // instead of adding height on top of it.
+        // Reserve a matching strip top and bottom: the bottom keeps the centered
+        // label clear of the "View subprocess" affordance, the top mirrors it so
+        // the label stays centered rather than pushed up. The layout grew the
+        // box by 2× this; border-box keeps the padding inside that box.
+        paddingTop: data.isSubprocess ? SUBPROCESS_MARKER_ROOM : undefined,
         paddingBottom: data.isSubprocess ? SUBPROCESS_MARKER_ROOM : undefined,
         boxSizing: data.isSubprocess ? "border-box" : undefined,
       }}
