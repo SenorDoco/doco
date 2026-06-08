@@ -1475,10 +1475,12 @@ const PARENT_PROCESS_GAP = 40;
 // mirrors it so the label (the node's core) stays vertically centered rather
 // than shoved up. The layout grows the box by 2× this; the node component pads
 // its label area by this much top and bottom so text never enters either strip.
-const SUBPROCESS_MARKER_ROOM = 30;
-// Where the "View subprocess" pill sits within the bottom strip — lifted off
-// the bottom edge so it clears the type/lifecycle badge row half-overlapping it.
-const SUBPROCESS_BUTTON_BOTTOM = 11;
+const SUBPROCESS_MARKER_ROOM = 38;
+// Where the "View subprocess" pill sits within the bottom strip — lifted well
+// off the bottom edge so it doesn't crowd the type/lifecycle badge row that
+// straddles the edge below it. The strip above is sized to keep the pill (~18px
+// tall) clear of the centered label even when the label fills the box.
+const SUBPROCESS_BUTTON_BOTTOM = 18;
 
 /**
  * The focal node a process *center* resolves to. Focusing a whole process —
