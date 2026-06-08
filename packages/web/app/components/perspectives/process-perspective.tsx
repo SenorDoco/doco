@@ -1778,27 +1778,23 @@ export function layOutProcess(
   // being allowed to pull earlier nodes backward.
   const depthByNode = computeForwardSequenceDepths(poolNodes, poolLinks);
 
-  // A node whose only rightward (forward) sequence predecessor sits in its
-  // own lane is later drawn on that predecessor's line, so a linear `flows_to`
-  // chain stays horizontal instead of re-centering column by column. A
-  // predecessor always lives in an earlier column (lower depth); an edge that
-  // points the same column or left is a loopback and never anchors. Two
-  // forward predecessors (a merge) leaves the node un-anchored — it centers.
+  // Each node's same-lane forward (rightward) sequence predecessors drive its
+  // vertical placement below: a node rides the average line of its in-lane
+  // predecessors, and a column is ordered by that line so the flow doesn't
+  // cross itself. A predecessor always lives in an earlier column (lower
+  // depth); an edge that points the same column or left is a loopback and is
+  // ignored here.
   const poolNodeById = new Map(poolNodes.map((node) => [node.id, node]));
   const forwardPredsByNode = new Map<string, string[]>();
   for (const link of poolLinks) {
     if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
     if ((depthByNode.get(link.source) ?? 0) >= (depthByNode.get(link.target) ?? 0)) continue;
+    const source = poolNodeById.get(link.source);
+    const target = poolNodeById.get(link.target);
+    if (!source || !target || source.laneId !== target.laneId) continue;
     const preds = forwardPredsByNode.get(link.target);
     if (preds) preds.push(link.source);
     else forwardPredsByNode.set(link.target, [link.source]);
-  }
-  const alignToByNode = new Map<string, string>();
-  for (const [nodeId, preds] of forwardPredsByNode) {
-    if (preds.length !== 1) continue;
-    const node = poolNodeById.get(nodeId);
-    const pred = poolNodeById.get(preds[0]);
-    if (node && pred && node.laneId === pred.laneId) alignToByNode.set(nodeId, pred.id);
   }
 
   // Within each lane, sequence depth remains the x column. Nodes that
@@ -1958,17 +1954,19 @@ export function layOutProcess(
     });
   }
 
-  // Vertical center per node within its lane. A column's nodes still center
-  // as a stack by default; a node with a lone same-lane forward predecessor
-  // instead rides that predecessor's line, so straight chains stay horizontal.
+  // Vertical center per node within its lane. A node rides the average line of
+  // its in-lane predecessors (one predecessor ⇒ exactly on its line), and each
+  // column is ordered by that line so the flow stays untangled; roots and
+  // un-fed nodes fall back to a centered stack.
   const rowCenterByNode = new Map<string, number>();
   for (const lane of lanes) {
     const laneHeight = laneHeightById.get(lane.id) ?? baseLaneHeight;
-    const rowNodes: LaneRowNode[] = (orderedByLane.get(lane.id) ?? []).map((node) => ({
+    const rowNodes: LaneRowNode[] = (orderedByLane.get(lane.id) ?? []).map((node, order) => ({
       id: node.id,
       column: columnByNode.get(node.id) ?? 0,
       height: (sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }).height,
-      alignTo: alignToByNode.get(node.id),
+      predecessors: forwardPredsByNode.get(node.id) ?? [],
+      order,
     }));
     for (const [id, center] of computeLaneRowCenters(rowNodes, laneHeight, NODE_GAP_Y)) {
       rowCenterByNode.set(id, center);

@@ -1,14 +1,23 @@
 // Vertical placement of one swim lane's nodes.
 //
 // Columns are solved upstream (longest-path sequence depth); this decides
-// each node's vertical CENTER within the lane. The default is the old
-// behavior — a column's nodes stack and the stack centers in the lane. The
-// one addition: a node whose only forward sequence predecessor sits in the
-// same lane is drawn on that predecessor's line, so a straight `flows_to`
-// chain stays on one horizontal row instead of re-centering column by column
-// (which sent arrows diagonally across neighbouring shapes). When two nodes
-// want the same line they split around it — alignment is honored only when
-// there is room, never at the cost of an overlap.
+// each node's vertical CENTER within the lane, and the top-to-bottom ORDER of
+// the nodes that share a column. Both follow the flow:
+//
+//   • A node's preferred line is the average vertical center of its in-lane
+//     predecessors (its barycenter). One predecessor ⇒ the node sits exactly
+//     on that predecessor's line, so a straight `flows_to` chain stays
+//     horizontal; a merge sits between the lines it joins. A node with no
+//     placed predecessor (a root) falls back to the lane center.
+//   • A column is ordered top-to-bottom by that preferred line. This is what
+//     keeps edges from the previous column from crossing — and what lets the
+//     alignment actually take hold: if a column kept creation order instead,
+//     a later-created node wanting a high line could be pinned below an
+//     earlier one wanting a low line, and the overlap solver would pool both
+//     back to the middle, undoing the alignment.
+//
+// Preferred lines collide (a fork, or two chains converging on one row); when
+// they do the nodes split evenly around the shared line and never overlap.
 
 export interface LaneRowNode {
   id: string;
@@ -16,18 +25,15 @@ export interface LaneRowNode {
   column: number;
   height: number;
   /**
-   * The id of this node's lone same-lane forward predecessor, when it has
-   * exactly one. The node is drawn at that predecessor's vertical center if
-   * the column has room for it there.
+   * Same-lane forward predecessors (always in earlier columns). The node is
+   * drawn at their average vertical center.
    */
-  alignTo?: string;
+  predecessors: readonly string[];
+  /** Stable tiebreak (creation order) when two nodes prefer the same line. */
+  order: number;
 }
 
-/**
- * Center y (within the lane) for every node. Input order is the stack order
- * within each column (top to bottom); the result preserves it and never
- * overlaps consecutive nodes.
- */
+/** Center y (within the lane) for every node. Consecutive nodes never overlap. */
 export function computeLaneRowCenters(
   nodes: readonly LaneRowNode[],
   laneHeight: number,
@@ -42,20 +48,30 @@ export function computeLaneRowCenters(
   }
 
   const centerById = new Map<string, number>();
-  // Left to right: a forward predecessor always sits in an earlier column,
-  // so its center is already placed when its follower is positioned.
+  // Left to right: a predecessor always sits in an earlier column, so its
+  // center is already placed when its follower is positioned.
   for (const column of [...byColumn.keys()].sort((a, b) => a - b)) {
     const stack = byColumn.get(column) as LaneRowNode[];
-    const desired = stack.map((node) => {
-      const anchor = node.alignTo !== undefined ? centerById.get(node.alignTo) : undefined;
-      return anchor ?? laneCenter;
+    const preferred = new Map<string, number>();
+    for (const node of stack) {
+      const placed = node.predecessors
+        .map((id) => centerById.get(id))
+        .filter((center): center is number => center !== undefined);
+      const sum = placed.reduce((total, center) => total + center, 0);
+      preferred.set(node.id, placed.length > 0 ? sum / placed.length : laneCenter);
+    }
+    // Order the column by the flow (preferred line); creation order breaks
+    // ties and orders an all-roots column.
+    const ordered = [...stack].sort((a, b) => {
+      const delta = (preferred.get(a.id) as number) - (preferred.get(b.id) as number);
+      return delta !== 0 ? delta : a.order - b.order;
     });
-    const placed = placeOrdered(
-      desired,
-      stack.map((node) => node.height),
+    const centers = placeOrdered(
+      ordered.map((node) => preferred.get(node.id) as number),
+      ordered.map((node) => node.height),
       gap,
     );
-    stack.forEach((node, index) => centerById.set(node.id, placed[index]));
+    ordered.forEach((node, index) => centerById.set(node.id, centers[index]));
   }
   return centerById;
 }
@@ -73,7 +89,7 @@ function placeOrdered(
 ): number[] {
   const n = desired.length;
   if (n === 0) return [];
-  // Minimum center-to-center separation between consecutive nodes.
+  // Minimum center-to-center separation accumulated from the first node.
   const cum: number[] = new Array(n);
   cum[0] = 0;
   for (let i = 1; i < n; i++) {
