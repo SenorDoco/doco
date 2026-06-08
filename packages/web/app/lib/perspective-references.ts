@@ -1,30 +1,30 @@
 // Shared numbering / reference-badge logic used by every perspective
-// that renders #N badges on its canvas (Graph, BPMN, and any future
-// React-Flow-based perspective).
+// that renders #N badges on its canvas (Graph, BPMN, org-tree, and any
+// future React-Flow-based perspective).
 //
-// Two layers, so a perspective can take only what it needs:
+// Numbers are assigned ONCE per rendered node set — never on pan/zoom.
+// There is a single path, two ways to build the ordered list:
 //
-//   • `usePerspectiveReferences` — viewport-driven numbering. Culls
-//     candidates to what's on-screen, sorts them in reading order (via
-//     `compareReadingOrder`), and renumbers on every pan/zoom so #N
-//     tracks on-screen reading order. Used by the Graph and org-tree.
-//     Numbers below REFERENCE_ZOOM_THRESHOLD vanish — one knob, not one
-//     per perspective.
-//   • `usePublishedReferences` — the plumbing under that: given an
-//     already-ordered, numbered list it applies the cap
-//     (MAX_GRAPH_REFERENCES), derives the id→number map the badges
-//     subscribe to, and keeps the sidebar registry in sync (publish +
-//     per-unmount clear). The BPMN perspective builds its list from the
-//     focal Intent's membership (`processReferences`, in creation order —
-//     no viewport, no layout) and calls this directly, so its numbers are
-//     fixed to the Intent: they shift only when a different Intent comes
-//     into focus, never on a pan and never when a node is retired, hidden,
-//     or lifecycle-filtered.
+//   • `referencesFromCandidates` — reading order (rows top-to-bottom,
+//     left-to-right) over the rendered candidates' canvas positions. Used
+//     by the Graph and org-tree. Because it reads canvas coordinates (not
+//     screen coordinates), the numbering is fixed to the node set: panning
+//     and zooming never renumber, and a node keeps its #N until the
+//     rendered set itself changes (a focus change, a lifecycle-filter
+//     toggle, or an edit).
+//   • `processReferences` (process-perspective.server-side sibling) — the
+//     BPMN perspective builds its list from the focal Intent's membership
+//     in creation order instead, so its numbers shift only when a
+//     different Intent comes into focus.
 //
-// Perspectives still own the shape-specific work — what their
-// candidates are, their canvas-space positions, their rendered
-// width/height in canvas units. The sort rule, the cap, and the registry
-// plumbing live here.
+// Either list flows through `usePublishedReferences`, the single chokepoint
+// that applies the cap (MAX_GRAPH_REFERENCES), derives the id→number map the
+// badges subscribe to, and keeps the sidebar registry in sync (publish +
+// per-unmount clear).
+//
+// Perspectives still own the shape-specific work — what their candidates
+// are, their canvas-space positions, their rendered width/height in canvas
+// units. The sort rule, the cap, and the registry plumbing live here.
 
 import { useEffect, useMemo, useRef } from "react";
 import {
@@ -34,41 +34,32 @@ import {
 } from "./graph-references";
 
 /**
- * Zoom level below which #N badges disappear across every
- * perspective. Single source of truth — each perspective imports
- * this rather than declaring its own.
+ * Zoom level below which #N badges are hidden on the Graph. Kept as a single
+ * source of truth so the one perspective that hides badges when zoomed far out
+ * imports this rather than declaring its own. Hiding is a pure visibility gate
+ * — it does NOT renumber, so the numbers reappear unchanged when you zoom back
+ * in.
  *
- * 0.1 chosen so the auto-fit zoom on a many-node Doco still
- * surfaces the badges on first paint (0.35 was the previous value
- * and caused medium+ Dococs to load blank).
+ * 0.1 chosen so the auto-fit zoom on a many-node Doco still surfaces the badges
+ * on first paint (0.35 was the previous value and caused medium+ Docos to load
+ * blank).
  */
 export const REFERENCE_ZOOM_THRESHOLD = 0.1;
 
 /**
  * Hard cap on numbered references per perspective so the sidebar
- * "References" list never grows unbounded on dense Dococs.
+ * "References" list never grows unbounded on dense Docos.
  */
 export const MAX_GRAPH_REFERENCES = 120;
-
-export interface PerspectiveViewport {
-  x: number;
-  y: number;
-  zoom: number;
-}
-
-export interface PerspectiveSize {
-  width: number;
-  height: number;
-}
 
 /**
  * Shape every numberable entity is collapsed to before the shared
  * sort/cap/number pass runs. Perspectives translate their own node
- * representation into this; the hook handles the rest.
+ * representation into this; the rest is handled here.
  *
- * `position`, `width`, `height` are in canvas (pre-viewport-
- * transform) coordinates — the hook multiplies by `viewport.zoom` to
- * decide on-screen visibility and ordering.
+ * `position`, `width`, `height` are in canvas (pre-viewport-transform)
+ * coordinates — the reading-order sort uses them directly, which is exactly
+ * why the numbering is stable under pan/zoom.
  */
 export interface ReferenceCandidate {
   id: string;
@@ -87,10 +78,7 @@ export type GraphReferenceSource = "overview" | "process" | "org-tree";
  * The reading order every perspective numbers by: top-to-bottom by row,
  * then left-to-right within a row, then by id for a deterministic tie
  * break. Two items share a row when their vertical gap is within the
- * taller one's height. The coordinates are screen-space for the
- * viewport-driven perspectives (Graph, org-tree — re-sorted each pan) and
- * canvas-space for the BPMN perspective (fixed to the layout); the rule
- * itself is identical, so it lives here once.
+ * taller one's height.
  */
 export function compareReadingOrder(
   a: { x: number; y: number; height: number; id: string },
@@ -104,24 +92,28 @@ export function compareReadingOrder(
   return a.id.localeCompare(b.id);
 }
 
-interface UsePerspectiveReferencesArgs {
-  /** Identifies which perspective is publishing — feeds the sidebar. */
-  source: GraphReferenceSource;
-  /** Current React Flow viewport (pan + zoom). */
-  viewport: PerspectiveViewport;
-  /** Canvas's rendered size in screen pixels. */
-  size: PerspectiveSize;
-  /** Candidates to sort, cap, and number. */
-  candidates: ReferenceCandidate[];
-  /**
-   * Items that always come first in the numbering, before any
-   * candidates. BPMN uses this for principal-owned swimlanes so the
-   * actor's #N lands ahead of every shape in their lane.
-   *
-   * MUST already carry the desired `number: 1..N` values; the hook
-   * does not re-number them.
-   */
-  priorityItems?: GraphReferenceItem[];
+/**
+ * Build the ordered, numbered reference list from the rendered candidates, in
+ * canvas reading order. Pure and viewport-free: the same candidate set always
+ * yields the same numbering, so #N never shifts on a pan or zoom — it changes
+ * only when the rendered set does. The caller's array is not mutated.
+ */
+export function referencesFromCandidates(candidates: ReferenceCandidate[]): GraphReferenceItem[] {
+  return [...candidates]
+    .sort((a, b) =>
+      compareReadingOrder(
+        { x: a.position.x, y: a.position.y, height: a.height, id: a.id },
+        { x: b.position.x, y: b.position.y, height: b.height, id: b.id },
+      ),
+    )
+    .map((candidate, index) => ({
+      number: index + 1,
+      id: candidate.id,
+      entity_type: candidate.entity_type,
+      label: candidate.label,
+      lifecycle: candidate.lifecycle,
+      href: candidate.href,
+    }));
 }
 
 interface PerspectiveReferences {
@@ -135,12 +127,10 @@ interface PerspectiveReferences {
  * subscribe to, mirror the list into the sidebar registry under a stable
  * id, and clear that id on unmount.
  *
- * `references` must already be in the intended order, numbered 1..N.
- * `usePerspectiveReferences` produces that list from a viewport-culled
- * sort; the BPMN perspective produces it from the focal Intent's
- * membership in creation order (`processReferences`). Either way, this is
- * the single place the cap is enforced and the only place the registry is
- * touched.
+ * `references` must already be in the intended order, numbered 1..N —
+ * `referencesFromCandidates` (reading order) or `processReferences`
+ * (creation order) produces it. Either way, this is the single place the
+ * cap is enforced and the only place the registry is touched.
  */
 export function usePublishedReferences(
   source: GraphReferenceSource,
@@ -165,53 +155,4 @@ export function usePublishedReferences(
   }, []);
 
   return { references: capped, numberById };
-}
-
-export function usePerspectiveReferences({
-  source,
-  viewport,
-  size,
-  candidates,
-  priorityItems,
-}: UsePerspectiveReferencesArgs): PerspectiveReferences {
-  const priority = priorityItems ?? [];
-
-  const references = useMemo<GraphReferenceItem[]>(() => {
-    if (viewport.zoom < REFERENCE_ZOOM_THRESHOLD) return [];
-
-    const visible = candidates
-      .flatMap((c) => {
-        const screenX = c.position.x * viewport.zoom + viewport.x;
-        const screenY = c.position.y * viewport.zoom + viewport.y;
-        const scaledW = c.width * viewport.zoom;
-        const scaledH = c.height * viewport.zoom;
-        if (
-          screenX < -scaledW ||
-          screenY < -scaledH ||
-          screenX > size.width + scaledW ||
-          screenY > size.height + scaledH
-        ) {
-          return [];
-        }
-        return [{ candidate: c, screenX, screenY, scaledH }];
-      })
-      .sort((a, b) =>
-        compareReadingOrder(
-          { x: a.screenX, y: a.screenY, height: a.scaledH, id: a.candidate.id },
-          { x: b.screenX, y: b.screenY, height: b.scaledH, id: b.candidate.id },
-        ),
-      )
-      .map<GraphReferenceItem>((entry, index) => ({
-        number: priority.length + index + 1,
-        id: entry.candidate.id,
-        entity_type: entry.candidate.entity_type,
-        label: entry.candidate.label,
-        lifecycle: entry.candidate.lifecycle,
-        href: entry.candidate.href,
-      }));
-
-    return [...priority, ...visible];
-  }, [viewport, size, candidates, priority]);
-
-  return usePublishedReferences(source, references);
 }

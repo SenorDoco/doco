@@ -24,21 +24,19 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { focalEdgeWidth } from "~/lib/graph-depth";
 import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { ORG_TREE_NODE_H, ORG_TREE_NODE_W, layoutOrgTree } from "~/lib/org-tree-layout";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import { perspectiveCountLabel, visibleLifecycleTotal } from "~/lib/perspective-count";
-import { type ReferenceCandidate, usePerspectiveReferences } from "~/lib/perspective-references";
+import {
+  type ReferenceCandidate,
+  referencesFromCandidates,
+  usePublishedReferences,
+} from "~/lib/perspective-references";
 import "@xyflow/react/dist/style.css";
-
-interface FlowViewport {
-  x: number;
-  y: number;
-  zoom: number;
-}
 
 interface OrgTreePerspectiveProps {
   nodes: OrgTreeNode[];
@@ -190,36 +188,14 @@ function OrgTreeInner({
     return { nodes, edges };
   }, [filtered, centerId]);
 
-  const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();
   const initialFocusAppliedRef = useRef<string | null>(null);
 
-  // Viewport + size tracked the same way Graph/BPMN do it: ResizeObserver
-  // on the container for size, React Flow's `onMove` for the viewport.
-  // Both feed `usePerspectiveReferences`, which mirrors the Graph's
-  // viewport-driven numbering (re-rank when the user pans/zooms, hide
-  // when zoom < REFERENCE_ZOOM_THRESHOLD, cap at MAX_GRAPH_REFERENCES).
-  const [size, setSize] = useState({ width: 1, height: 1 });
-  const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
-  const updateViewport = useCallback((next: FlowViewport) => {
-    setViewport((prev) =>
-      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
-    );
-  }, []);
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const update = () =>
-      setSize({ width: Math.max(1, el.clientWidth), height: Math.max(1, el.clientHeight) });
-    update();
-    const obs = new ResizeObserver(update);
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
-  // Candidates for the shared numbering hook. Canvas-space positions
-  // (already computed by `layoutOrgTree`) + node dimensions in canvas
-  // units; the hook handles screen projection + sort + cap.
+  // Candidates for the shared numbering. Canvas-space positions (already
+  // computed by `layoutOrgTree`) + node dimensions in canvas units; the
+  // numbering is assigned in reading order over those positions, once per
+  // rendered set — never on pan/zoom. The org chart shows no #N badges on
+  // its cards, so this only feeds the sidebar References list.
   const referenceCandidates = useMemo<ReferenceCandidate[]>(
     () =>
       rawRfNodes.map((n) => ({
@@ -234,21 +210,19 @@ function OrgTreeInner({
       })),
     [rawRfNodes],
   );
-  usePerspectiveReferences({
-    source: "org-tree",
-    viewport,
-    size,
-    candidates: referenceCandidates,
-  });
+  const references = useMemo(
+    () => referencesFromCandidates(referenceCandidates),
+    [referenceCandidates],
+  );
+  usePublishedReferences("org-tree", references);
 
   // Stable signature of the layout's *shape* — node ids + reports_to
-  // edges, in deterministic order. The dashboard re-fetches Principals
-  // every 5s for the live feed (ADR-089), so `nodes`/`filtered` get
-  // fresh array identity on every poll even when no Principal actually
-  // changed. Gating fitView on identity made the canvas zoom-reset on
-  // every poll; gating on this signature only fires when topology
-  // actually changes (added/removed/rewired Principal, lifecycle filter
-  // toggle).
+  // edges, in deterministic order. A revalidation (the viewer's own edit,
+  // or clicking "Refresh") hands `nodes`/`filtered` fresh array identity
+  // even when no Principal actually changed. Gating fitView on identity
+  // would zoom-reset the canvas on any such reload; gating on this
+  // signature only fires when topology actually changes (added/removed/
+  // rewired Principal, lifecycle filter toggle).
   const layoutSignature = useMemo(
     () =>
       filtered
@@ -314,7 +288,7 @@ function OrgTreeInner({
   }
 
   return (
-    <div ref={containerRef} className="relative h-full w-full">
+    <div className="relative h-full w-full">
       {/* Dataset count overlay — honest about truncation AND the lifecycle
           filter. Sums only the principals whose lifecycle the filter shows
           against the rendered slice, so the count tracks the tree. */}
@@ -335,7 +309,6 @@ function OrgTreeInner({
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
         onPaneClick={onPaneClick}
-        onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
         onlyRenderVisibleElements
         fitView={!initialFocusFlowNodeId}
         fitViewOptions={{ padding: 0.2 }}

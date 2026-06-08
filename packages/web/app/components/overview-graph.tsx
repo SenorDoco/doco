@@ -23,7 +23,12 @@ import {
 import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { type Point, layoutOverviewGraphNodes } from "~/lib/overview-graph-layout";
-import { usePerspectiveReferences } from "~/lib/perspective-references";
+import {
+  REFERENCE_ZOOM_THRESHOLD,
+  type ReferenceCandidate,
+  referencesFromCandidates,
+  usePublishedReferences,
+} from "~/lib/perspective-references";
 import {
   ReferenceNumberStoreContext,
   createReferenceNumberStore,
@@ -157,6 +162,9 @@ const OVERVIEW_NODE_WIDTH = 224;
 const OVERVIEW_NODE_HEIGHT = 91;
 const DETAIL_ZOOM = 0.95;
 const MAX_DETAIL_FETCH = 80;
+// Stable empty map pushed to the badge store when zoomed below the badge
+// threshold — a shared reference so the effect that hides badges never churns.
+const EMPTY_REFERENCE_NUMBERS: Map<string, number> = new Map();
 // Dense overview graphs can sprawl well past the viewport. ReactFlow clamps
 // the reachable zoom at `minZoom`, so keep the floor low enough for `fitView`
 // (and manual scroll/pinch) to pull the whole graph on screen.
@@ -616,7 +624,7 @@ export function OverviewGraph({
   // wouldn't appear until the user manually zoomed past 0.95.
   // `overviewNodeDisplayLabel` falls back to `node.name ?? node.id`
   // when detail is absent, and the href falls back to `node.href`.
-  const referenceCandidates = useMemo(
+  const referenceCandidates = useMemo<ReferenceCandidate[]>(
     () =>
       renderedNodes.flatMap((node) => {
         const position = positions.get(node.id);
@@ -637,22 +645,27 @@ export function OverviewGraph({
       }),
     [renderedNodes, details, positions],
   );
-  const { numberById: referenceNumberByNodeId } = usePerspectiveReferences({
-    source: "overview",
-    viewport,
-    size,
-    candidates: referenceCandidates,
-  });
+  const references = useMemo(
+    () => referencesFromCandidates(referenceCandidates),
+    [referenceCandidates],
+  );
+  const { numberById: referenceNumberByNodeId } = usePublishedReferences("overview", references);
   // Route the per-node #N through an external store the node badges
   // subscribe to individually (see `OverviewReferenceBadge`). The numbers
-  // shuffle on every pan frame, but because they no longer live in the
-  // React Flow node `data`, the `nodes` array handed to React Flow stays
-  // referentially stable across pans — only the handful of badges whose
-  // number changed re-render, not all 100 cards.
+  // are fixed to the rendered set in canvas reading order, so they don't
+  // shift on a pan — and because they live outside the React Flow node
+  // `data`, the `nodes` array handed to React Flow stays referentially
+  // stable across pans. Below REFERENCE_ZOOM_THRESHOLD we hide the badges by
+  // pushing an empty map; that's a pure visibility gate (it flips only when
+  // crossing the threshold), so the stable numbers reappear unchanged on
+  // zoom-in.
   const referenceNumberStore = useRef(createReferenceNumberStore()).current;
+  const badgesVisible = viewport.zoom >= REFERENCE_ZOOM_THRESHOLD;
   useEffect(() => {
-    referenceNumberStore.setNumbers(referenceNumberByNodeId);
-  }, [referenceNumberByNodeId, referenceNumberStore]);
+    referenceNumberStore.setNumbers(
+      badgesVisible ? referenceNumberByNodeId : EMPTY_REFERENCE_NUMBERS,
+    );
+  }, [badgesVisible, referenceNumberByNodeId, referenceNumberStore]);
 
   const externalEdgeStubs = useMemo(() => {
     const summaries = summarizeExternalConnections(visibleLinks, renderedNodeIds, visibleIds);

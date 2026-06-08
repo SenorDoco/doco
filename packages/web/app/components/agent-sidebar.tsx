@@ -31,6 +31,7 @@ import {
   perspectiveParam,
   requestRetiresResource,
 } from "~/lib/agent-follow-target";
+import { DOCO_CHANGED_EVENT } from "~/lib/change-cursor";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
 import { readCreatedDocoChatIdSearchParams } from "~/lib/post-create-doco-route";
@@ -1748,6 +1749,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           // no longer mid-reply.
           broadcastSync({ kind: "remote-inflight", busy: false });
           broadcastSync({ kind: "changed" });
+          // Same-tab signal: Señor Doco lives in this root-level sidebar, a
+          // sibling of the routed Doco page (and BroadcastChannel never
+          // delivers a tab its own messages). The page listens for this and
+          // revalidates its graph if its own cursor advanced — so the
+          // viewer's own turn refreshes the perspective without the
+          // "new version" banner (point f).
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent(DOCO_CHANGED_EVENT));
+          }
           // Refresh the thread list so the active thread's preview /
           // updated_at reflect the assistant's reply when the user
           // navigates back to the list.

@@ -1,11 +1,12 @@
 /**
- * Live-feed change cursor — server read (ADR-089, real-time refinement).
+ * Change cursor — server read.
  *
  * Every node alteration — create, update, lifecycle transition, edge add —
  * writes an audit_events row, so the latest event for a Doco is a complete
  * "has anything changed?" signal. The (doco_id, at DESC) index makes the
- * latest-event lookup a single-row read, cheap enough to poll once a second
- * per open tab. The heavy perspective loader only re-runs when this advances.
+ * latest-event lookup a single-row read, cheap enough for the Doco page to
+ * poll on a relaxed cadence. When it advances past what the page is showing,
+ * the page raises a "new version — Refresh" banner rather than reloading.
  */
 
 type QueryClient = {
