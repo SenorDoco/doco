@@ -432,6 +432,24 @@ button[class*="bg-primary"]:active {
     transform: translateY(0);
   }
 
+  /* Small raised affordance that floats *inside* a node box — e.g. the BPMN
+   * "View subprocess" pill. The same top-left-lit neumorphism as `.neu-button`,
+   * but with the shadow scaled down to a pill sitting on a node, not a
+   * full-size button in a form row. Press swaps to the inset so the pill reads
+   * as a real button. No `transform` (the host centers it with its own
+   * `translateX(-50%)`); the box-shadow alone carries the raised → pressed feel. */
+  .neu-pill-button {
+    box-shadow: 2px 2px 4px var(--neu-shadow-soft), -2px -2px 3px var(--neu-highlight);
+  }
+
+  .neu-pill-button:hover {
+    box-shadow: 3px 3px 6px var(--neu-shadow-soft), -3px -3px 5px var(--neu-highlight);
+  }
+
+  .neu-pill-button:active {
+    box-shadow: var(--neu-pressed);
+  }
+
   .neu-header {
     background-color: color-mix(in oklch, var(--color-card) 92%, white);
     border-color: color-mix(in oklch, var(--color-border) 55%, transparent);
