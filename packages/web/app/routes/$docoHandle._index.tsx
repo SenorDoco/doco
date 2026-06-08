@@ -1556,7 +1556,6 @@ export default function DocoHome({
                     pools={processGraph.pools}
                     lanes={processGraph.lanes}
                     nodes={processGraph.nodes}
-                    totalByLifecycle={processGraph.totalByLifecycle}
                     links={processGraph.links}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
