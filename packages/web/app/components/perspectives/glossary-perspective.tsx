@@ -12,7 +12,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router";
 import type { GlossaryEntry, GlossaryPerspectiveData } from "~/lib/glossary-perspective.server";
 import { handleNodeDialogLinkClick } from "~/lib/node-dialog-link";
-import { perspectiveCountLabel } from "~/lib/perspective-count";
+import { perspectiveCountLabel, visibleLifecycleTotal } from "~/lib/perspective-count";
 import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
 
 interface GlossaryPerspectiveProps {
@@ -62,6 +62,23 @@ export function GlossaryPerspective({
   const firstWord = flat[0]?.headword ?? null;
   const lastWord = flat[flat.length - 1]?.headword ?? null;
 
+  // The masthead size and footer stats describe the lifecycle-filtered view, so
+  // the headline, the lexicon size, and the sub-counts all move together with
+  // the filter (retired hidden by default) — never "5 defined" under a 3-term
+  // masthead. `visibleTotal` is the true term total summed over the visible
+  // stages (immune to the page slice); the sub-stats derive from the rendered
+  // entries.
+  const visibleTotal = visibleLifecycleTotal(data.totalByLifecycle, visibleLifecycles);
+  const shownDefined = useMemo(() => flat.filter((e) => e.senses.length > 0).length, [flat]);
+  const shownWithAliases = useMemo(
+    () => flat.filter((e) => e.alternatives.length > 0).length,
+    [flat],
+  );
+  const shownDrafting = useMemo(
+    () => flat.filter((e) => e.lifecycle === "drafting").length,
+    [flat],
+  );
+
   const jumpTo = useCallback((letter: string) => {
     const el = sectionRefs.current.get(letter);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -100,15 +117,11 @@ export function GlossaryPerspective({
         }}
       >
         <div className="mx-auto max-w-5xl">
-          {/* The masthead states the true lexicon size (all entries), not the
-              loaded slice; the footer below clarifies when only the latest are
+          {/* The masthead states the true lexicon size of the lifecycle-
+              filtered view (every visible-stage term, not just the loaded
+              slice); the footer below clarifies when only the latest are
               rendered. */}
-          <Masthead
-            title={title}
-            count={data.totalCount}
-            firstWord={firstWord}
-            lastWord={lastWord}
-          />
+          <Masthead title={title} count={visibleTotal} firstWord={firstWord} lastWord={lastWord} />
 
           <div
             className="mt-6 columns-1 gap-10 lg:columns-2"
@@ -134,14 +147,11 @@ export function GlossaryPerspective({
             className="mt-10 border-t pt-3 text-center text-[11px] italic"
             style={{ borderColor: RULE, color: INK_SOFT }}
           >
-            {data.totalCount > data.stats.entries
-              ? perspectiveCountLabel(
-                  { loaded: data.stats.entries, total: data.totalCount },
-                  "term",
-                )
-              : `fin · ${data.stats.entries} entries`}{" "}
-            · {data.stats.defined} defined · {data.stats.withAliases} with aliases
-            {data.stats.drafting > 0 ? ` · ${data.stats.drafting} in draft` : ""}
+            {visibleTotal > flat.length
+              ? perspectiveCountLabel({ loaded: flat.length, total: visibleTotal }, "term")
+              : `fin · ${flat.length} entries`}{" "}
+            · {shownDefined} defined · {shownWithAliases} with aliases
+            {shownDrafting > 0 ? ` · ${shownDrafting} in draft` : ""}
           </p>
         </div>
       </div>

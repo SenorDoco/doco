@@ -6,16 +6,34 @@ import { loadGlossaryPerspectiveData } from "../glossary-perspective.server";
 // corpus stresses the *presentation* end to end — A–Z grouping, case-insensitive
 // dictionary order, multi-word and non-alphabetic headwords, multi-sense
 // definitions, synonyms/deprecations, inline source citations, and the
-// loaded-slice stats — so a rendering defect on realistic data is caught.
+// per-lifecycle term totals — so a rendering defect on realistic data is caught.
 
 type QueryClient = Parameters<typeof loadGlossaryPerspectiveData>[0];
 
 function makeClient(rows: unknown[]): QueryClient {
   return {
-    async query<T>(_sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+    async query<T>(sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+      // The per-lifecycle totals query (GROUP BY) aggregates the seeded terms by
+      // lifecycle, mirroring real Postgres, so totalByLifecycle is exercised.
+      if (/GROUP BY/i.test(sql)) {
+        const counts = new Map<string, number>();
+        for (const r of rows as { lifecycle?: string }[]) {
+          const lifecycle = r.lifecycle ?? "active";
+          counts.set(lifecycle, (counts.get(lifecycle) ?? 0) + 1);
+        }
+        return {
+          rows: [...counts].map(([lifecycle, n]) => ({ lifecycle, n: String(n) })) as T[],
+        };
+      }
       return { rows: rows as T[] };
     },
   };
+}
+
+// The loaded entries, flattened across letter groups — the loader no longer
+// returns a `stats` block; the footer derives its counts client-side.
+function entriesOf(data: Awaited<ReturnType<typeof loadGlossaryPerspectiveData>>) {
+  return data.groups.flatMap((g) => g.entries);
 }
 
 interface TermRow {
@@ -43,9 +61,7 @@ function termRow(t: TermRow, i: number) {
 }
 
 async function render(terms: TermRow[]) {
-  // The loader reads the true total from a scalar COUNT(*) subquery projected
-  // onto every row; mirror that in the mock so totalCount is realistic.
-  const rows = terms.map((t, i) => ({ ...termRow(t, i), total_count: terms.length }));
+  const rows = terms.map((t, i) => termRow(t, i));
   return loadGlossaryPerspectiveData(makeClient(rows), "doco_01", "acme/lexicon");
 }
 
@@ -67,8 +83,8 @@ describe("glossary perspective — ten real-world glossaries render correctly", 
       "chargeback",
       "settlement",
     ]);
-    expect(data.stats.defined).toBe(3);
-    expect(data.totalCount).toBe(3);
+    expect(entriesOf(data).filter((e) => e.senses.length > 0)).toHaveLength(3);
+    expect(data.totalByLifecycle).toEqual({ drafting: 0, queued: 0, active: 3, retired: 0 });
   });
 
   it("clinical: an inline source citation surfaces as the entry's source line", async () => {
@@ -105,7 +121,7 @@ describe("glossary perspective — ten real-world glossaries render correctly", 
       { name: "hold harmless", note: null, deprecated: false },
       { name: "save harmless", note: "archaic", deprecated: true },
     ]);
-    expect(data.stats.withAliases).toBe(1);
+    expect(entriesOf(data).filter((e) => e.alternatives.length > 0)).toHaveLength(1);
   });
 
   it("api: a multi-paragraph definition splits into numbered senses", async () => {
@@ -162,9 +178,9 @@ describe("glossary perspective — ten real-world glossaries render correctly", 
       { word: "SLO", definition: "A target reliability level for a service over a window." },
       { word: "toil", lifecycle: "drafting" }, // captured headword, definition pending
     ]);
-    expect(data.stats.entries).toBe(2);
-    expect(data.stats.defined).toBe(1);
-    expect(data.stats.drafting).toBe(1);
+    expect(entriesOf(data)).toHaveLength(2);
+    expect(entriesOf(data).filter((e) => e.senses.length > 0)).toHaveLength(1);
+    expect(entriesOf(data).filter((e) => e.lifecycle === "drafting")).toHaveLength(1);
     const toil = data.groups.flatMap((g) => g.entries).find((e) => e.headword === "toil");
     expect(toil?.senses).toEqual([]);
   });
@@ -176,7 +192,10 @@ describe("glossary perspective — ten real-world glossaries render correctly", 
     ]);
     const ids = data.groups.flatMap((g) => g.entries).map((e) => e.lifecycle);
     expect(ids).toContain("retired");
-    expect(data.stats.entries).toBe(2);
+    expect(entriesOf(data)).toHaveLength(2);
+    // Counted before any filter — both stages present, so the masthead reads
+    // the full size once "Retired" is toggled on.
+    expect(data.totalByLifecycle).toEqual({ drafting: 0, queued: 0, active: 1, retired: 1 });
   });
 
   it("data-governance: a non-alphabetic headword sorts into the '#' group, last", async () => {
@@ -193,6 +212,6 @@ describe("glossary perspective — ten real-world glossaries render correctly", 
     const data = await render([]);
     expect(data.groups).toEqual([]);
     expect(data.letters).toEqual([]);
-    expect(data.stats.entries).toBe(0);
+    expect(entriesOf(data)).toHaveLength(0);
   });
 });

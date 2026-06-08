@@ -13,6 +13,8 @@
 // It reads the same nodes the List perspective shows; only the presentation
 // differs, so there is no new write surface here.
 
+import { loadNodeLifecycleTotals } from "./lifecycle-totals.server";
+import type { LifecycleCounts } from "./node-colors";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 
@@ -31,8 +33,6 @@ interface NodeRow {
   data: Record<string, unknown> | null;
   // The Reference dedup key (promoted column) — a cited source's source line.
   locator: string | null;
-  /** Scalar-subquery total glossary entries (bigint → string from pg). */
-  total_count?: number | string | null;
 }
 
 interface GlossaryLoadOptions {
@@ -78,18 +78,13 @@ export interface GlossaryPerspectiveData {
   /** Every distinct letter that has at least one entry (for the index). */
   letters: string[];
   /**
-   * TRUE total of glossary terms (References) for this Doco, across all
-   * lifecycles, counted before the page limit. The header reports loaded
-   * (`stats.entries`) vs this total; the sub-stats below describe the loaded
-   * slice.
+   * TRUE total of glossary terms (References) for this Doco, broken out per
+   * lifecycle and counted before the page limit. The header sums the stages the
+   * lifecycle filter shows and reports loaded vs that visible total. The footer
+   * sub-stats (defined / with-aliases / in-draft) are derived client-side from
+   * the lifecycle-filtered entries, so they track the filter too.
    */
-  totalCount: number;
-  stats: {
-    entries: number;
-    defined: number;
-    withAliases: number;
-    drafting: number;
-  };
+  totalByLifecycle: LifecycleCounts;
 }
 
 function asString(value: unknown): string | null {
@@ -246,18 +241,16 @@ export async function loadGlossaryPerspectiveData(
   // here would make toggling "Retired" on a no-op, leaving a fully-retired
   // glossary blank. Mirrors the Graph/List loader (full-graph.server) and the
   // BPMN loader (PR #819), which both return every lifecycle.
-  const { rows } = await c.query<NodeRow>(
-    `
+  const [{ rows }, totalByLifecycle] = await Promise.all([
+    c.query<NodeRow>(
+      `
     SELECT id,
            node_type AS entity_type,
            split_part(prose, E'\n', 1) AS label,
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,
            extra AS data,
-           locator,
-           (SELECT COUNT(*) FROM nodes
-             WHERE doco_id = $1
-               AND node_type = 'reference') AS total_count
+           locator
       FROM nodes
      WHERE doco_id = $1
        AND node_type = 'reference'
@@ -265,8 +258,12 @@ export async function loadGlossaryPerspectiveData(
      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id ASC
      ${windowIds.length === 0 && limit != null ? "LIMIT $2" : ""}
     `,
-    params,
-  );
+      params,
+    ),
+    // Per-lifecycle term totals — the header counts only the stages it shows,
+    // immune to the page LIMIT above.
+    loadNodeLifecycleTotals(c, docoId, ["reference"]),
+  ]);
 
   const entries: GlossaryEntry[] = rows.map((row) => toEntry(row, handle));
 
@@ -291,13 +288,5 @@ export async function loadGlossaryPerspectiveData(
     entries: groupMap.get(letter) ?? [],
   }));
 
-  const stats = {
-    entries: entries.length,
-    defined: entries.filter((e) => e.senses.length > 0).length,
-    withAliases: entries.filter((e) => e.alternatives.length > 0).length,
-    drafting: entries.filter((e) => e.lifecycle === "drafting").length,
-  };
-  const totalCount = Number(rows[0]?.total_count ?? 0);
-
-  return { groups, letters, totalCount, stats };
+  return { groups, letters, totalByLifecycle };
 }
