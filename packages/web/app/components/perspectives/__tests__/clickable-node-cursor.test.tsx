@@ -38,6 +38,7 @@ const orgNode: OrgTreeNode = {
   type: "person",
   lifecycle: "active",
   reports_to: null,
+  reports_to_lifecycle: null,
   dotted_reports_to: [],
   href: "/doco/principal/principal_1",
 };

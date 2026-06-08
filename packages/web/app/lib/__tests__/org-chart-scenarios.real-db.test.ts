@@ -427,7 +427,7 @@ describe("org-tree perspective — 10 realistic rendering scenarios", () => {
     await relEdge(mm, globalMkt, "relates_to");
     const data = await loadOrgTreeData(dbm.db, docoId, "acme");
     expect(byId(data, mm)?.reports_to).toBe(country);
-    expect(byId(data, mm)?.dotted_reports_to).toEqual([globalMkt]);
+    expect(byId(data, mm)?.dotted_reports_to).toEqual([{ id: globalMkt, lifecycle: "active" }]);
     const layout = layoutOrgTree(data.nodes, null);
     const dashed = layout.edges.filter((x) => x.dotted);
     expect(dashed).toHaveLength(1);
@@ -536,7 +536,7 @@ describe("org-tree perspective — 10 realistic rendering scenarios", () => {
     expect(data.nodes).toHaveLength(12);
     expect(byId(data, cro)?.type).toBe("vacant");
     expect(byId(data, eng3)?.type).toBe("agent");
-    expect(byId(data, data1)?.dotted_reports_to).toEqual([cfo]);
+    expect(byId(data, data1)?.dotted_reports_to).toEqual([{ id: cfo, lifecycle: "active" }]);
     const layout = layoutOrgTree(data.nodes, null);
     expect(layout.nodes).toHaveLength(12); // everyone placed
     expect(layout.edges.filter((x) => !x.dotted)).toHaveLength(11); // 12 seats, 1 root

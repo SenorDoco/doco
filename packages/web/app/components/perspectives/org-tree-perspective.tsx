@@ -25,6 +25,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { edgeStrokeColor, isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
 import { focalEdgeWidth } from "~/lib/graph-depth";
 import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
@@ -169,26 +170,31 @@ function OrgTreeInner({
       selectable: false,
       style: { width: ORG_TREE_NODE_W, height: ORG_TREE_NODE_H },
     }));
-    // Muted, low-contrast connector — matches the visual weight of
-    // the other perspectives and stays out of the way of the cards.
-    const edgeStroke = "var(--color-muted-foreground)";
-    const edges: Edge[] = layout.edges.map((e) => ({
-      ...e,
-      type: "smoothstep",
-      pathOptions: { borderRadius: 0, offset: 20 },
-      animated: false,
-      style: {
-        stroke: edgeStroke,
-        strokeWidth: focalEdgeWidth(e.source, e.target, centerId, 1.5),
-        // Dotted-line (matrix) reporting renders dashed and fainter so
-        // it reads as secondary to the solid primary `reports_to` tree.
-        opacity: e.dotted ? 0.4 : 0.6,
-        ...(e.dotted ? { strokeDasharray: "5 4" } : {}),
-      },
-      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
-    }));
+    // A reporting edge is hidden when its OWN lifecycle is filtered out (a
+    // retired re-pointed line hides by default, like a retired node) and is
+    // stroked in its own lifecycle color, never an endpoint principal's.
+    const edges: Edge[] = layout.edges
+      .filter((e) => !visibleLifecycles || isEdgeLifecycleVisible(e, visibleLifecycles))
+      .map((e) => {
+        const stroke = edgeStrokeColor(e);
+        return {
+          ...e,
+          type: "smoothstep",
+          pathOptions: { borderRadius: 0, offset: 20 },
+          animated: false,
+          style: {
+            stroke,
+            strokeWidth: focalEdgeWidth(e.source, e.target, centerId, 1.5),
+            // Dotted-line (matrix) reporting renders dashed and fainter so
+            // it reads as secondary to the solid primary `reports_to` tree.
+            opacity: e.dotted ? 0.4 : 0.6,
+            ...(e.dotted ? { strokeDasharray: "5 4" } : {}),
+          },
+          markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+        };
+      });
     return { nodes, edges };
-  }, [filtered, centerId]);
+  }, [filtered, centerId, visibleLifecycles]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();

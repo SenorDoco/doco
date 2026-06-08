@@ -20,7 +20,7 @@ import { Handle, MarkerType, Position, type Edge as ReactFlowEdge, useStore } fr
 import { type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
-import { isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
+import { edgeStrokeColor, isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
 import {
   LifecycleBadge,
   NodeBadgeRow,
@@ -2095,10 +2095,11 @@ export function layOutProcess(
       const edgeOpacity = focalActive
         ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
         : 1;
-      // Edge inherits the origin node's lifecycle color so an
-      // arrow visually "carries" the state of its source — drafted
-      // work flows in yellow, active work in black, retired in red.
-      const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
+      // An edge reads in its OWN lifecycle color, never an endpoint node's: a
+      // drafting flow between two active steps is yellow because the link
+      // itself is drafted — drafting yellow, queued blue, active black,
+      // retired red.
+      const stroke = edgeStrokeColor(link);
       const edgeData: Record<string, unknown> = {
         ...processEdgeLabelData(link.label, link.edge_type, stroke, edgeOpacity),
       };

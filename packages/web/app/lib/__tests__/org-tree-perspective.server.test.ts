@@ -292,7 +292,9 @@ describe("loadOrgTreeData", () => {
     const data = await loadOrgTreeData(client, "doco_acme", "acme");
     const research = data.nodes.find((n) => n.id === "principal_research");
     expect(research?.reports_to).toBe("principal_alex");
-    expect(research?.dotted_reports_to).toEqual(["principal_ops"]);
+    // The solid line carries its own lifecycle so the client can color/filter it.
+    expect(research?.reports_to_lifecycle).toBe("active");
+    expect(research?.dotted_reports_to).toEqual([{ id: "principal_ops", lifecycle: "active" }]);
     // Principals with no dotted relationships expose an empty list.
     expect(data.nodes.find((n) => n.id === "principal_alex")?.dotted_reports_to).toEqual([]);
   });
