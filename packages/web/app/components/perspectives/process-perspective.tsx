@@ -246,15 +246,23 @@ export interface CanvasOpenHandlers {
 }
 
 /**
- * Open a node from the BPMN canvas. Clicking an Action that is itself a
- * sub-process opens INTO it — its own pool frames the canvas — while every
- * other node collapses to its parent's pool. Either way the node dialog opens,
- * exactly as a normal node click does: opening a sub-process both expands its
- * pool AND opens its Action's dialog, rather than just swapping the pool.
+ * Open a node from the BPMN canvas. A plain click (`expandSubprocess: false`)
+ * focuses the node but keeps any sub-process collapsed inside its parent's
+ * pool, so the parent pool frames — IDENTICAL to opening any other node. The
+ * "View subprocess" affordance (`expandSubprocess: true`) is the ONLY thing
+ * that opens a sub-process's OWN pool, and only for an Action that is actually
+ * a sub-process. Either way the node dialog opens, exactly as a normal click
+ * does.
  */
-export function openCanvasNode(node: ProcessNode, handlers: CanvasOpenHandlers): void {
+export function openCanvasNode(
+  node: ProcessNode,
+  options: { expandSubprocess: boolean },
+  handlers: CanvasOpenHandlers,
+): void {
   handlers.setHomeMode(false);
-  handlers.setExpandedProcessId(subprocessPoolId(node) ? node.id : null);
+  handlers.setExpandedProcessId(
+    options.expandSubprocess && subprocessPoolId(node) ? node.id : null,
+  );
   handlers.onCenterChange?.(node.id);
   if (handlers.onNodeClick) handlers.onNodeClick(node);
   else if (node.href) handlers.navigate(node.href);
@@ -426,18 +434,28 @@ export function ProcessPerspective({
     [onCenterChange, onProcessOpen],
   );
   // The shared canvas node-open: focus the node, open its dialog as usual, and
-  // frame the right pool — a sub-process Action opens INTO its own pool, every
-  // other node collapses to its parent's. Clicking the node, its "View
-  // subprocess" button, or an external-neighbour box all route through here.
+  // frame its parent pool — a plain click keeps any sub-process collapsed where
+  // it sits. Clicking the node body or an external-neighbour box routes through
+  // here; the "View subprocess" affordance routes through `viewSubprocess`.
   const openNode = useCallback(
     (node: ProcessNode) =>
-      openCanvasNode(node, {
-        setHomeMode,
-        setExpandedProcessId,
-        onCenterChange,
-        onNodeClick,
-        navigate,
-      }),
+      openCanvasNode(
+        node,
+        { expandSubprocess: false },
+        { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
+      ),
+    [onCenterChange, onNodeClick, navigate],
+  );
+  // The "View subprocess" affordance on a collapsed sub-process Action: this is
+  // the ONLY click that opens the sub-process into its own pool — AND opens its
+  // dialog, like any other node click.
+  const viewSubprocess = useCallback(
+    (node: ProcessNode) =>
+      openCanvasNode(
+        node,
+        { expandSubprocess: true },
+        { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
+      ),
     [onCenterChange, onNodeClick, navigate],
   );
   // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
@@ -983,9 +1001,10 @@ export function ProcessPerspective({
       const className = node.className ? `${node.className} doco-graph-fade` : "doco-graph-fade";
       // A subprocess member carries the "View subprocess" affordance — its
       // stable handler (so node identity survives reuseStableNodes) opens the
-      // subprocess into its own pool and its dialog, same as clicking the node.
+      // subprocess into its own pool and its dialog. Only this button drills in;
+      // a plain click on the Action body (openNode) keeps it collapsed.
       if ((node.data as unknown as ProcessNodeData).isSubprocess) {
-        return [{ ...node, className, data: { ...node.data, onViewSubprocess: openNode } }];
+        return [{ ...node, className, data: { ...node.data, onViewSubprocess: viewSubprocess } }];
       }
       return [{ ...node, className }];
     });
@@ -1003,7 +1022,7 @@ export function ProcessPerspective({
     renderedPoolIds,
     renderedNodeIds,
     openLaneNode,
-    openNode,
+    viewSubprocess,
     externalNeighbours.nodes,
     parentProcesses.nodes,
   ]);
