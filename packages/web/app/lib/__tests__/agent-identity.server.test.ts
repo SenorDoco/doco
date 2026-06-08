@@ -172,4 +172,31 @@ describe("loadAgentIdentity", () => {
       { scope: "doco", id: "doco_1", label: "acme/proj1", role: "writer" },
     ]);
   });
+
+  it("an actor token shows the human's FULL membership, capped at actor_role", async () => {
+    mocks.getCurrentPrincipalAsync.mockResolvedValue({
+      id: "user_alice",
+      username: "alice",
+      type: "person",
+      isHuman: true,
+    });
+    mocks.loadScopeOptions.mockResolvedValue([
+      { level: "workspace", id: "workspace_a", label: "a", myRole: "owner" },
+      { level: "workspace", id: "workspace_b", label: "b", myRole: "reader" },
+    ]);
+    // Actor token: NO stored grants, role ceiling = writer.
+    mocks.getOauthTokenForRequest.mockResolvedValue(
+      accessToken({ grant_type: "actor", actor_role: "writer" }),
+    );
+
+    const identity = await loadAgentIdentity(new Request("https://doco.test/api/v1/whoami.json"));
+
+    // Every workspace the human belongs to appears (so list_workspaces/whoami
+    // can surface them), owner capped to the writer ceiling, reader left as-is
+    // (the ceiling never raises a role).
+    expect(identity?.grants).toEqual([
+      { scope: "workspace", id: "workspace_a", label: "a", role: "writer" },
+      { scope: "workspace", id: "workspace_b", label: "b", role: "reader" },
+    ]);
+  });
 });
