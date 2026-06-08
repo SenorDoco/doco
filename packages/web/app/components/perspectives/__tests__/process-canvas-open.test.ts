@@ -105,7 +105,7 @@ describe("resolveCanvasNodeClick", () => {
 
   // The default-view (synthetic overview) entries must render IDENTICALLY to
   // nodes anywhere else: a click is a plain node-open, never a bespoke pool
-  // drill-in. A `top_level_process` Action with no children is NOT a process,
+  // drill-in. A `top_level` Action with no children is NOT a process,
   // so opening it must not expand any pool — `openCanvasNode` (below) gates
   // that on `is_process`, exactly as it does everywhere else.
   it("routes an overview entry that is not a process to a plain node-open (no pool view)", () => {

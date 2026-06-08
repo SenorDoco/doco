@@ -247,13 +247,13 @@ interface BuiltProcess extends Graph {
 function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
   // The process IS an Action — the container/pool that its members point at
   // with `has_parent`. It carries no `flows_to` (it is not a sequenced step), so
-  // it is flagged `top_level_process`: the root pool has no parent and is not
+  // it is flagged `top_level`: the root pool has no parent and is not
   // reached by the flow, which exempts it from the membership and reachability
   // floors.
   const process = node(
     "action",
     s.key,
-    { action: s.process, verb: "run", top_level_process: true },
+    { action: s.process, verb: "run", top_level: true },
     lifecycle,
   );
   const principals = s.principals.map((p) => node("principal", s.key, { name: p.name }, lifecycle));
@@ -1045,18 +1045,18 @@ describe("process template — gateway branch count", () => {
   });
 });
 
-describe("process template — top-level-process and entry-point flags", () => {
+describe("process template — top-level and entry-point flags", () => {
   // The `has_parent` membership floor is excused ONLY by the explicit
-  // `top_level_process` flag (the structural incoming-`has_parent` exemption is
+  // `top_level` flag (the structural incoming-`has_parent` exemption is
   // gone). The `entry_point` flag is a separate, sequence-flow concept: it
   // excuses a node from the reachability floor (no incoming `flows_to` needed)
   // but obliges it to LEAD somewhere (≥1 outgoing `flows_to`).
-  it("a top_level_process Action with no parent is NOT blocked by the membership floor (committed)", () => {
+  it("a top_level Action with no parent is NOT blocked by the membership floor (committed)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
     const root = node(
       "action",
       "loan-approval",
-      { action: "run a sub-process", verb: "run", top_level_process: true, entry_point: true },
+      { action: "run a sub-process", verb: "run", top_level: true, entry_point: true },
       "active",
     );
     // Attribute it so per-step attribution can't fire; it leads somewhere so the
@@ -1067,7 +1067,7 @@ describe("process template — top-level-process and entry-point flags", () => {
     const blocks = deterministicBlocks(evaluate(root, g));
     expect(
       blocks,
-      `top_level_process Action wrongly blocked: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
+      `top_level Action wrongly blocked: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
     ).toEqual([]);
   });
 
@@ -1081,7 +1081,7 @@ describe("process template — top-level-process and entry-point flags", () => {
     );
     g.edges.push(edge(orphan.id, g.principals[0].id, "attributed_to", "performed_by"));
     g.edges.push(edge(g.actions[0].id, orphan.id, "flows_to", "")); // reachable, so only membership can fire
-    g.nodes.push(orphan); // no has_parent, no top_level_process flag
+    g.nodes.push(orphan); // no has_parent, no top_level flag
     const blocks = deterministicBlocks(evaluate(orphan, g));
     expect(
       blocks.some((b) => b.sub_kind === "requires_edge" && /has_parent.*action/.test(b.reason)),
