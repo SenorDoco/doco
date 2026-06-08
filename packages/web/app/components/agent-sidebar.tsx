@@ -3337,7 +3337,7 @@ export function Composer({
               type="button"
               onClick={onStop}
               aria-label="Stop Señor Doco"
-              className="neu-button rounded-md border border-border px-3 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-input/60 hover:text-foreground"
+              className="neu-button rounded-md bg-destructive px-3 py-1 text-[11px] font-semibold text-destructive-foreground hover:opacity-90"
             >
               Stop
             </button>

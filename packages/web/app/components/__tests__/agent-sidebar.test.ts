@@ -314,6 +314,8 @@ describe("Composer", () => {
     const out = markup({ busy: true });
     expect(out).toContain('aria-label="Stop Señor Doco"');
     expect(out).toContain(">Stop<");
+    // Stop is the red/destructive action — interrupting Señor Doco.
+    expect(out).toContain("bg-destructive");
     // Send stays — a message typed mid-reply still queues behind the turn.
     expect(out).toContain(">Send<");
   });
