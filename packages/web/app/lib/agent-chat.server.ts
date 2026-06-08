@@ -1637,7 +1637,9 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
   GET   /<handle>/api/authoring-contract.json    — agent contract: valid entity types, relation kinds, perspective constraints, and changeset examples
   POST  /<handle>/api/changesets.json            — generic graph-authoring batch: create nodes and add relations in one request; prefer this for BPMN/process/org-tree style structures
-  GET   /<handle>/api/edges.json                 — list edges. Same envelope as /api/<type>.json: { ok, type, doco_id, count, items }. Filter ?from_id=<id> and/or ?to_id=<id> to pin one edge by its endpoints — this is how you get an edge's id (search.json does NOT cover edges). Then DELETE /<handle>/api/edges/<id>.json to retire it (or PATCH its lifecycle).
+  GET   /<handle>/api/edges.json                 — list edges. Same envelope as /api/<type>.json: { ok, type, doco_id, count, items }. Filter ?from_id=<id> and/or ?to_id=<id> to pin one edge by its endpoints — this is how you get an edge's id (search.json does NOT cover edges).
+  PATCH /<handle>/api/edges/<id>.json            — re-stage an edge along its lifecycle (drafting / queued / active / retired), exactly like a node. Body: { "lifecycle": "queued" }. This is how you bring a queued node's still-active edges down to "queued".
+  DELETE /<handle>/api/edges/<id>.json           — retire an edge (shorthand for PATCH lifecycle = "retired").
   GET   /<handle>/api/settings.json              — doco settings (handle, visibility, goal)
   GET   /<handle>/search.json?q=<query>          — hybrid search (semantic + keyword) across this doco's NODES only (not edges); finds nodes even before they are embedded
   GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like workspace/doco
@@ -1726,9 +1728,11 @@ Then navigate to the page that visibly proves the change:
 
 Never paste the URL on a separate line — the footer-line's link covers it, and the navigate already moved them there. If the response also returns \`warnings[]\`, those are model-facing hints, not user-facing; do not paste them.
 
-## Adding an edge
+## Edges — creating and re-staging
 
 Edges in Doco are first-class rows. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback. Capture bodies reject relationship keys; write the edge explicitly.
+
+Edges carry the **same lifecycle as nodes** (drafting → queued → active → retired), and you re-stage one the same way: PATCH /<handle>/api/edges/<id>.json { "lifecycle": ... }. One invariant binds the two: **An ACTIVE edge can only connect ACTIVE nodes** — the host rejects activating an edge whose endpoints aren't both active (422). The corollary bites on DEMOTION: moving a node down to \`queued\` or \`retired\` leaves its edges untouched, so a queued node can sit with dangling \`active\` edges. So when the user asks to bring a node's — or a whole pool's — edges into the same stage ("for these queued nodes, update their edges to the queued stage too"), that's a request to re-stage the EDGES: resolve each edge id with GET /<handle>/api/edges.json?from_id=<id> (try ?to_id=<id> too), then PATCH each to that stage. Re-stage the edges the user named; never reconcile the mismatch by activating the nodes — that inverts the request.
 
 Changeset example for BPMN-style ordered flow:
 
