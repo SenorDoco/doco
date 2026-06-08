@@ -16,7 +16,14 @@
 // sit on left/right edges so edges connect cleanly regardless of
 // lane vertical offset.
 
-import { Handle, MarkerType, Position, type Edge as ReactFlowEdge, useStore } from "@xyflow/react";
+import {
+  Handle,
+  MarkerType,
+  Position,
+  type Edge as ReactFlowEdge,
+  useStore,
+  useViewport,
+} from "@xyflow/react";
 import { type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
@@ -65,6 +72,11 @@ import type {
 import { processReferences } from "~/lib/process-references";
 import { computeForwardSequenceDepths } from "~/lib/process-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/process-stable-nodes";
+import {
+  laneRailGeometry,
+  railLabelsVisible,
+  stickyPoolPinned,
+} from "~/lib/process-sticky-overlays";
 import { subprocessPoolId } from "~/lib/process-subprocess";
 import {
   ReferenceNumberStoreContext,
@@ -192,6 +204,12 @@ const PROCESS_PLACEHOLDER_STUB_BUDGET = 120;
 // for `fitView` (and manual scroll/pinch) to pull the whole flow on screen.
 export const PROCESS_MIN_ZOOM = 0.02;
 export const PROCESS_MAX_ZOOM = 2.0;
+// Sticky-overlay chrome dimensions — the swim-lane rails pinned to the left
+// edge and the pool-header band pinned to the top. Module-level so the overlay
+// component and its geometry share one source.
+const SWIM_RAIL_WIDTH = 32;
+const RAIL_LABEL_BASE_FONT = 11;
+const RAIL_BADGE_BASE_FONT = 10;
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -230,13 +248,9 @@ interface FlowViewport {
   zoom: number;
 }
 
-interface GraphSize {
-  width: number;
-  height: number;
-}
-
 interface FlowModule {
   ReactFlow: typeof import("@xyflow/react").ReactFlow;
+  ReactFlowProvider: typeof import("@xyflow/react").ReactFlowProvider;
   Background: typeof import("@xyflow/react").Background;
   Controls: typeof import("@xyflow/react").Controls;
   ControlButton: typeof import("@xyflow/react").ControlButton;
@@ -358,10 +372,7 @@ export function ProcessPerspective({
   const lanes = lanesRaw;
   const nodes = nodesRaw;
   const navigate = useNavigate();
-  const graphRef = useRef<HTMLDivElement>(null);
   const [Flow, setFlow] = useState<FlowModule | null>(null);
-  const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
-  const [graphSize, setGraphSize] = useState<GraphSize>({ width: 1, height: 1 });
   const hasFitRef = useRef(false);
   type FlowFitView = (options?: {
     nodes?: { id: string }[];
@@ -465,43 +476,6 @@ export function ProcessPerspective({
       ),
     [onCenterChange, onNodeClick, navigate],
   );
-  // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
-  // transforms itself internally; our `viewport` mirror only feeds the
-  // sticky rails and the reference-number store, so coalescing it to one
-  // update per animation frame keeps those overlays in sync without
-  // re-running their work on every intermediate event.
-  const pendingViewportRef = useRef<FlowViewport | null>(null);
-  const viewportRafRef = useRef<number | null>(null);
-  const commitViewport = useCallback((next: FlowViewport) => {
-    setViewport((prev) =>
-      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
-    );
-  }, []);
-  const updateViewport = useCallback(
-    (next: FlowViewport) => {
-      pendingViewportRef.current = next;
-      if (typeof window === "undefined" || !window.requestAnimationFrame) {
-        commitViewport(next);
-        return;
-      }
-      if (viewportRafRef.current != null) return;
-      viewportRafRef.current = window.requestAnimationFrame(() => {
-        viewportRafRef.current = null;
-        const latest = pendingViewportRef.current;
-        if (latest) commitViewport(latest);
-      });
-    },
-    [commitViewport],
-  );
-  useEffect(
-    () => () => {
-      if (viewportRafRef.current != null && typeof window !== "undefined") {
-        window.cancelAnimationFrame(viewportRafRef.current);
-      }
-    },
-    [],
-  );
-
   // Drop nodes whose lifecycle is filtered out. The lane list itself isn't
   // lifecycle-filtered here — a lane carries no lifecycle of its own to test
   // against — but a lane left with no visible nodes is dropped downstream by
@@ -532,6 +506,7 @@ export function ProcessPerspective({
       if (!alive) return;
       setFlow({
         ReactFlow: mod.ReactFlow,
+        ReactFlowProvider: mod.ReactFlowProvider,
         Background: mod.Background,
         Controls: mod.Controls,
         ControlButton: mod.ControlButton,
@@ -540,20 +515,6 @@ export function ProcessPerspective({
     return () => {
       alive = false;
     };
-  }, []);
-
-  useEffect(() => {
-    const el = graphRef.current;
-    if (!el) return;
-    const update = () =>
-      setGraphSize({
-        width: Math.max(1, el.clientWidth),
-        height: Math.max(1, el.clientHeight),
-      });
-    update();
-    const obs = new ResizeObserver(update);
-    obs.observe(el);
-    return () => obs.disconnect();
   }, []);
 
   const nodeByFullId = useMemo(
@@ -1119,10 +1080,8 @@ export function ProcessPerspective({
           ? { nodes: poolFit.map((id) => ({ id })), padding: 0.15, maxZoom: 1, duration: 0 }
           : { nodes: [{ id: targetId }], padding: 0, minZoom: 1, maxZoom: 1, duration: 0 },
       );
-      const current = instance.getViewport?.();
-      if (current) updateViewport(current);
     },
-    [flowNodeIdSet, renderedLanes, updateViewport],
+    [flowNodeIdSet, renderedLanes],
   );
 
   // Re-center on a freshly opened pool. Drilling into a process — picking one
@@ -1183,50 +1142,176 @@ export function ProcessPerspective({
     );
   }
 
-  // Sticky lane label rails — overlays anchored to the left edge of the
-  // canvas so the principal label + lane outline stay visible even when
-  // the user pans horizontally past the lane's natural x=0 origin.
-  // Mirrors the EntityGraph rail pattern (entity-graph.tsx ~1045).
-  //
-  // Text + reference badge sizes scale with viewport.zoom so the sticky
-  // label visually matches the in-canvas ProcessLaneNode label (which lives
-  // inside React Flow's zoom transform). Font family/weight/case mirror
-  // the in-canvas styling so the two reads as the same label.
-  //
-  // Suppress the rail when the in-canvas label is clearly visible past
-  // the rail's right edge — otherwise the label reads twice. The
-  // in-canvas label spans canvas x=LANE_LEFT_INSET..(LANE_LEFT_INSET +
-  // LANE_LABEL_WIDTH); in screen coords that's viewport.x + lo*zoom
-  // through viewport.x + hi*zoom. When the right edge is past the
-  // rail's right edge the user can already read the lane name.
-  // Below the LOD threshold the in-canvas pool header and lanes drop their
-  // labels (see ProcessPoolHeaderNode / ProcessLaneNode). The sticky rail and
-  // sticky pool-header overlays exist only to keep those labels readable
-  // while panning, so suppress them too — otherwise they'd reintroduce the
-  // very text the canvas just hid.
-  const simplified = processSimplifiedAtZoom(viewport.zoom);
-  const SWIM_RAIL_WIDTH = 32;
-  const RAIL_LABEL_BASE_FONT = 11;
-  const RAIL_BADGE_BASE_FONT = 10;
-  const inCanvasLabelRightEdge = viewport.x + (LANE_LEFT_INSET + LANE_LABEL_WIDTH) * viewport.zoom;
-  const showRailLabels = !simplified && inCanvasLabelRightEdge <= SWIM_RAIL_WIDTH;
+  return (
+    <div className="relative h-full w-full">
+      {/* Dataset count overlay — honest about the server cap AND the lifecycle
+          filter. Sums only the steps whose lifecycle the filter shows (retired
+          hides by default) against the loaded slice, so the count tracks the
+          canvas instead of reading "137 steps" over a near-empty board. */}
+      <div className="pointer-events-none absolute left-3 top-3 z-20 rounded bg-card/90 px-2 py-1 text-xs tabular-nums text-muted-foreground">
+        {perspectiveCountLabel(
+          {
+            loaded: filteredNodes.length,
+            total: totalByLifecycle
+              ? visibleLifecycleTotal(totalByLifecycle, visibleLifecycles)
+              : filteredNodes.length,
+          },
+          "step",
+        )}
+      </div>
+      {Flow ? (
+        <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>
+          {/* The provider shares the React Flow store with the sibling overlay
+              below, so the overlay reads the live viewport via the store and
+              re-renders on pan/zoom WITHOUT re-rendering this whole perspective
+              (which holds <ReactFlow> and the heavy layout memos). */}
+          <Flow.ReactFlowProvider>
+            <Flow.ReactFlow
+              nodes={flowNodes}
+              edges={flowEdges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              zIndexMode="manual"
+              nodesDraggable={false}
+              nodesConnectable={false}
+              onlyRenderVisibleElements
+              minZoom={PROCESS_MIN_ZOOM}
+              maxZoom={PROCESS_MAX_ZOOM}
+              panOnDrag
+              zoomOnScroll
+              zoomOnPinch
+              preventScrolling
+              onInit={(instance: FlowInstance) => {
+                flowInstanceRef.current = instance;
+                if (!hasFitRef.current) {
+                  if (initialFocusFlowNodeId) {
+                    fitInitialFocus(instance, initialFocusFlowNodeId);
+                    if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
+                    else defaultFocusAppliedRef.current = true;
+                  } else {
+                    instance.fitView?.({ padding: 0.18 });
+                  }
+                  hasFitRef.current = true;
+                }
+              }}
+              onPaneClick={onPaneClick}
+              onNodeClick={(_e: unknown, node: { id: string; data?: unknown }) => {
+                // One routing rule for every canvas click (see resolveCanvasNodeClick):
+                //   • pool header → focus that whole pool;
+                //   • `parent:` box → drill UP into the parent process's pool;
+                //   • any real node — overview directory entries included — →
+                //     openNode, which alone drills into a pool, and only for a
+                //     sub-process Action. A non-process Action thus focuses where
+                //     it sits and opens its dialog, never a pool view.
+                const click = resolveCanvasNodeClick(node, { poolByHeaderId, nodeById });
+                if (!click) return;
+                if (click.kind === "pool") openPoolNode(click.pool);
+                else if (click.kind === "parentProcess") openProcess(click.processId);
+                else openNode(click.node);
+              }}
+              onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
+                const link = (edge.data as { graphLink?: OverviewGraphLink } | undefined)
+                  ?.graphLink;
+                if (!link?.id) return;
+                (event as { stopPropagation?: () => void } | null)?.stopPropagation?.();
+                if (onCenterChange) onCenterChange(link.source);
+                if (onEdgeClick) {
+                  onEdgeClick(link);
+                  return;
+                }
+                if (link.href) navigate(link.href);
+              }}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Flow.Background gap={24} size={1} />
+              <StandardControls onHome={goHome} />
+            </Flow.ReactFlow>
+            {/* Sticky lane rails + pinned pool headers — a separate child so the
+              per-frame pan re-render is scoped to it (it subscribes to the RF
+              viewport) instead of re-rendering the whole perspective. */}
+            <ProcessCanvasOverlays
+              lanes={layout.lanes}
+              poolGeometry={layout.poolGeometry}
+              renderedLaneIds={renderedLaneIds}
+              renderedPoolIds={renderedPoolIds}
+              laneById={laneById}
+              poolById={poolById}
+              referenceNumberByEntityId={referenceNumberByEntityId}
+              onLaneClick={openLaneNode}
+              onPoolClick={openPoolNode}
+            />
+          </Flow.ReactFlowProvider>
+        </ReferenceNumberStoreContext.Provider>
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+          Loading process view…
+        </div>
+      )}
+      {/* Lifecycle filter + Reorder-automatically + Fullscreen toggle
+          all live on PerspectiveFrame at fixed positions. BPMN just
+          receives `visibleLifecycles` and filters its data. */}
+    </div>
+  );
+}
+
+interface ProcessCanvasOverlaysProps {
+  lanes: ProcessLayout["lanes"];
+  poolGeometry: ProcessLayout["poolGeometry"];
+  renderedLaneIds: ReadonlySet<string>;
+  renderedPoolIds: ReadonlySet<string>;
+  laneById: Map<string, ProcessLane>;
+  poolById: Map<string, ProcessPool>;
+  referenceNumberByEntityId: Map<string, number>;
+  onLaneClick: (lane: ProcessLane) => void;
+  onPoolClick: (pool: ProcessPool) => void;
+}
+
+/**
+ * Sticky overlays for the BPMN canvas — the swim-lane label rails pinned to the
+ * left edge and the pool-header band pinned to the top. Rendered as a sibling
+ * of <ReactFlow> inside its provider so it reads the live viewport from the
+ * React Flow store and re-renders on pan/zoom on its OWN. Keeping it out of the
+ * perspective body is the point: panning no longer re-renders the perspective
+ * (which holds <ReactFlow> and the heavy layout memos) — only this small
+ * overlay updates each frame. Geometry decisions live in pure, unit-tested
+ * helpers (`~/lib/process-sticky-overlays`).
+ */
+function ProcessCanvasOverlays({
+  lanes,
+  poolGeometry,
+  renderedLaneIds,
+  renderedPoolIds,
+  laneById,
+  poolById,
+  referenceNumberByEntityId,
+  onLaneClick,
+  onPoolClick,
+}: ProcessCanvasOverlaysProps) {
+  const viewport = useViewport();
+  const { zoom } = viewport;
+  // The React Flow store carries the measured canvas height; fall back to a
+  // sane default before the first measurement (mirrors the old `|| 480`).
+  const canvasHeight = useStore((s) => s.height) || 480;
+  const simplified = processSimplifiedAtZoom(zoom);
+
+  const showRailLabels = railLabelsVisible(
+    viewport,
+    LANE_LEFT_INSET + LANE_LABEL_WIDTH,
+    SWIM_RAIL_WIDTH,
+    simplified,
+  );
   const laneRails = showRailLabels
-    ? layout.lanes.map((lane) => {
+    ? lanes.map((lane) => {
         if (!renderedLaneIds.has(lane.id)) return null;
-        const laneTop = lane.y * viewport.zoom + viewport.y;
-        const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
-        const canvasHeight = graphSize.height || 480;
-        if (laneBottom <= 0 || laneTop >= canvasHeight) return null;
-        const visibleTop = Math.max(0, laneTop);
-        const visibleBottom = Math.min(canvasHeight, laneBottom);
-        const railHeight = Math.max(44, visibleBottom - visibleTop);
-        const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
+        const geom = laneRailGeometry(lane.y, lane.height, viewport, canvasHeight);
+        if (!geom) return null;
+        const { top, height: railHeight } = geom;
         const isBand = lane.kind !== "actor";
         const sourceLane = laneById.get(lane.id);
         const isClickableLane = Boolean(sourceLane && isActorLane(sourceLane));
         const referenceNumber = referenceNumberByEntityId.get(lane.id);
-        const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
-        const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
+        const labelFontPx = RAIL_LABEL_BASE_FONT * zoom;
+        const badgeFontPx = RAIL_BADGE_BASE_FONT * zoom;
         const badgeBox = badgeFontPx * 2;
         return (
           <div
@@ -1242,13 +1327,13 @@ export function ProcessPerspective({
               pointerEvents: isClickableLane ? "auto" : undefined,
             }}
             data-process-lane-rail={lane.id}
-            onClick={isClickableLane && sourceLane ? () => openLaneNode(sourceLane) : undefined}
+            onClick={isClickableLane && sourceLane ? () => onLaneClick(sourceLane) : undefined}
             onKeyDown={
               isClickableLane && sourceLane
                 ? (event) => {
                     if (event.key !== "Enter" && event.key !== " ") return;
                     event.preventDefault();
-                    openLaneNode(sourceLane);
+                    onLaneClick(sourceLane);
                   }
                 : undefined
             }
@@ -1290,150 +1375,49 @@ export function ProcessPerspective({
       })
     : null;
 
-  // Sticky pool header band — top-edge analogue of the lane rails.
-  // When a pool's in-canvas header has scrolled past the top of the
-  // canvas but the pool's body is still showing, pin the header to
-  // top=0 so the Intent label stays readable. Hidden once the
-  // in-canvas header is visible again (no double-label).
-  const POOL_RAIL_HEIGHT = Math.max(28, POOL_HEADER_HEIGHT * viewport.zoom);
-  const stickyPools = layout.poolGeometry
-    .map((pool) => {
-      if (!renderedPoolIds.has(pool.id)) return null;
-      const poolTopScreen = pool.y * viewport.zoom + viewport.y;
-      const poolBottomScreen = (pool.y + pool.height) * viewport.zoom + viewport.y;
-      const canvasHeight = graphSize.height || 480;
-      const headerVisible = poolTopScreen >= 0;
-      const poolOnScreen = poolBottomScreen > POOL_RAIL_HEIGHT && poolTopScreen < canvasHeight;
-      if (headerVisible || !poolOnScreen) return null;
-      return pool;
-    })
-    .filter((p): p is NonNullable<typeof p> => p !== null);
+  const poolRailHeight = Math.max(28, POOL_HEADER_HEIGHT * zoom);
+  const stickyPools = poolGeometry.filter(
+    (pool) =>
+      renderedPoolIds.has(pool.id) &&
+      stickyPoolPinned(pool.y, pool.height, viewport, canvasHeight, poolRailHeight),
+  );
 
   return (
-    <div ref={graphRef} className="relative h-full w-full">
-      {/* Dataset count overlay — honest about the server cap AND the lifecycle
-          filter. Sums only the steps whose lifecycle the filter shows (retired
-          hides by default) against the loaded slice, so the count tracks the
-          canvas instead of reading "137 steps" over a near-empty board. */}
-      <div className="pointer-events-none absolute left-3 top-3 z-20 rounded bg-card/80 px-2 py-1 text-xs tabular-nums text-muted-foreground backdrop-blur-sm">
-        {perspectiveCountLabel(
-          {
-            loaded: filteredNodes.length,
-            total: totalByLifecycle
-              ? visibleLifecycleTotal(totalByLifecycle, visibleLifecycles)
-              : filteredNodes.length,
-          },
-          "step",
-        )}
+    <>
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 z-10 overflow-hidden"
+        style={{ width: SWIM_RAIL_WIDTH }}
+      >
+        {laneRails}
       </div>
-      {Flow ? (
-        <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>
-          <Flow.ReactFlow
-            nodes={flowNodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            zIndexMode="manual"
-            nodesDraggable={false}
-            nodesConnectable={false}
-            onlyRenderVisibleElements
-            minZoom={PROCESS_MIN_ZOOM}
-            maxZoom={PROCESS_MAX_ZOOM}
-            panOnDrag
-            zoomOnScroll
-            zoomOnPinch
-            preventScrolling
-            onInit={(instance: FlowInstance) => {
-              flowInstanceRef.current = instance;
-              if (!hasFitRef.current) {
-                if (initialFocusFlowNodeId) {
-                  fitInitialFocus(instance, initialFocusFlowNodeId);
-                  if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
-                  else defaultFocusAppliedRef.current = true;
-                } else {
-                  instance.fitView?.({ padding: 0.18 });
-                }
-                hasFitRef.current = true;
-              }
-              const current = instance.getViewport?.();
-              if (current) updateViewport(current);
-            }}
-            onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
-            onPaneClick={onPaneClick}
-            onNodeClick={(_e: unknown, node: { id: string; data?: unknown }) => {
-              // One routing rule for every canvas click (see resolveCanvasNodeClick):
-              //   • pool header → focus that whole pool;
-              //   • `parent:` box → drill UP into the parent process's pool;
-              //   • any real node — overview directory entries included — →
-              //     openNode, which alone drills into a pool, and only for a
-              //     sub-process Action. A non-process Action thus focuses where
-              //     it sits and opens its dialog, never a pool view.
-              const click = resolveCanvasNodeClick(node, { poolByHeaderId, nodeById });
-              if (!click) return;
-              if (click.kind === "pool") openPoolNode(click.pool);
-              else if (click.kind === "parentProcess") openProcess(click.processId);
-              else openNode(click.node);
-            }}
-            onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
-              const link = (edge.data as { graphLink?: OverviewGraphLink } | undefined)?.graphLink;
-              if (!link?.id) return;
-              (event as { stopPropagation?: () => void } | null)?.stopPropagation?.();
-              if (onCenterChange) onCenterChange(link.source);
-              if (onEdgeClick) {
-                onEdgeClick(link);
-                return;
-              }
-              if (link.href) navigate(link.href);
-            }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Flow.Background gap={24} size={1} />
-            <StandardControls onHome={goHome} />
-          </Flow.ReactFlow>
-        </ReferenceNumberStoreContext.Provider>
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-          Loading process view…
-        </div>
-      )}
-      {Flow ? (
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 z-10 overflow-hidden"
-          style={{ width: SWIM_RAIL_WIDTH }}
-        >
-          {laneRails}
-        </div>
-      ) : null}
-      {Flow && !simplified && stickyPools.length > 0 ? (
+      {!simplified && stickyPools.length > 0 ? (
         <div className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex flex-col">
           {stickyPools.map((pool) => {
             const isUnassigned = pool.process_id === null;
             const sourcePool = poolById.get(pool.id);
             const isClickablePool = !isUnassigned && Boolean(sourcePool?.process_id);
             // Mirror the in-canvas ProcessPoolHeaderNode look: same overlay
-            // color over an opaque card so the sticky band reads as a
-            // pinned copy of the natural header (not a different chrome
-            // element). Font and padding scale with viewport.zoom —
-            // like the swim-lane rails — so the sticky doesn't grow
-            // visually huge when zoomed out.
+            // color over an opaque card so the sticky band reads as a pinned
+            // copy of the natural header. Font and padding scale with zoom so
+            // it doesn't grow visually huge when zoomed out.
             const overlay = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
             const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
-            const labelFontPx = 12 * viewport.zoom;
-            const padX = 14 * viewport.zoom;
+            const labelFontPx = 12 * zoom;
+            const padX = 14 * zoom;
             const referenceNumber = pool.process_id
               ? referenceNumberByEntityId.get(pool.process_id)
               : undefined;
-            const badgeFontPx = 10 * viewport.zoom;
+            const badgeFontPx = 10 * zoom;
             const badgeBox = badgeFontPx * 2;
             return (
               <div
                 key={pool.id}
                 className="flex items-center border-b shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 style={{
-                  height: POOL_RAIL_HEIGHT,
+                  height: poolRailHeight,
                   backgroundColor: "var(--color-card)",
                   backgroundImage: `linear-gradient(${overlay}, ${overlay})`,
-                  borderTop: `${2 * viewport.zoom}px solid ${borderColor}`,
+                  borderTop: `${2 * zoom}px solid ${borderColor}`,
                   borderBottomColor: borderColor,
                   padding: `0 ${padX}px`,
                   fontSize: labelFontPx,
@@ -1443,13 +1427,13 @@ export function ProcessPerspective({
                   cursor: isClickablePool ? "pointer" : undefined,
                   pointerEvents: isClickablePool ? "auto" : undefined,
                 }}
-                onClick={isClickablePool && sourcePool ? () => openPoolNode(sourcePool) : undefined}
+                onClick={isClickablePool && sourcePool ? () => onPoolClick(sourcePool) : undefined}
                 onKeyDown={
                   isClickablePool && sourcePool
                     ? (event) => {
                         if (event.key !== "Enter" && event.key !== " ") return;
                         event.preventDefault();
-                        openPoolNode(sourcePool);
+                        onPoolClick(sourcePool);
                       }
                     : undefined
                 }
@@ -1464,7 +1448,7 @@ export function ProcessPerspective({
                     style={{
                       minWidth: badgeBox,
                       height: badgeBox,
-                      marginRight: 6 * viewport.zoom,
+                      marginRight: 6 * zoom,
                       padding: `0 ${Math.max(2, badgeFontPx * 0.4)}px`,
                       fontSize: badgeFontPx,
                     }}
@@ -1481,10 +1465,7 @@ export function ProcessPerspective({
           })}
         </div>
       ) : null}
-      {/* Lifecycle filter + Reorder-automatically + Fullscreen toggle
-          all live on PerspectiveFrame at fixed positions. BPMN just
-          receives `visibleLifecycles` and filters its data. */}
-    </div>
+    </>
   );
 }
 
