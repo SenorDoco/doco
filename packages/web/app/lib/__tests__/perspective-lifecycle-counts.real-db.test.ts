@@ -3,9 +3,10 @@
 // retired Doco read "137 steps" over a near-empty board. The fix makes each
 // loader return a per-lifecycle breakdown of its true total (counted before any
 // slice cap), and the header sums only the visible stages. This suite drives the
-// three non-trivial grouped-count queries against REAL Postgres (PGlite + the
-// real schema): the BPMN step domain, the overview-graph domain (with its
-// "principals only when active" rule), and the glossary term domain.
+// non-trivial grouped-count queries against REAL Postgres (PGlite + the real
+// schema): the overview-graph domain (with its "principals only when active"
+// rule) and the glossary term domain. The BPMN/process perspective renders no
+// such headline (it pans over every step uncapped), so it has no count query.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,7 +17,6 @@ import { initialVisibleLifecycles } from "../../components/lifecycle-filter";
 import { loadOverviewGraph } from "../full-graph.server";
 import { loadGlossaryPerspectiveData } from "../glossary-perspective.server";
 import { visibleLifecycleTotal } from "../perspective-count";
-import { loadProcessGraph } from "../process-perspective.server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
@@ -58,27 +58,6 @@ beforeAll(async () => {
 });
 
 beforeEach(clearGraph);
-
-describe("loadProcessGraph — per-lifecycle step totals track the lifecycle filter", () => {
-  it("breaks the step total out per stage and excludes retired from the default-visible count", async () => {
-    // 3 active + 1 drafting + 5 retired steps — the mostly-retired shape behind
-    // the "137 steps over an empty canvas" bug.
-    for (let i = 0; i < 3; i++) await insertNode("action", "active");
-    await insertNode("decision", "drafting");
-    for (let i = 0; i < 5; i++) await insertNode("action", "retired");
-
-    const graph = await loadProcessGraph(dbm.db, DOCO_ID, { handle: "lc" });
-
-    const total = graph.totalByLifecycle;
-    expect(total).toEqual({ drafting: 1, queued: 0, active: 3, retired: 5 });
-    if (!total) throw new Error("loader must set totalByLifecycle");
-    // The whole domain is 9 steps, but with retired hidden by default the header
-    // counts only the 4 visible ones — matching the (retired-free) canvas.
-    expect(visibleLifecycleTotal(total, DEFAULT_VISIBLE)).toBe(4);
-    // Toggle "Retired" on → the full total returns.
-    expect(visibleLifecycleTotal(total)).toBe(9);
-  });
-});
 
 describe("loadOverviewGraph — per-lifecycle node totals honor the principals-only-when-active rule", () => {
   it("counts retired flow nodes but never retired principals (they aren't graph-eligible)", async () => {

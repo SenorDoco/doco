@@ -45,8 +45,7 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import { type LifecycleCounts, lifecycleColor, textOnLifecycle } from "~/lib/node-colors";
-import { perspectiveCountLabel, visibleLifecycleTotal } from "~/lib/perspective-count";
+import { lifecycleColor, textOnLifecycle } from "~/lib/node-colors";
 import { usePublishedReferences } from "~/lib/perspective-references";
 import {
   type ParentProcess,
@@ -114,10 +113,6 @@ interface ProcessPerspectiveProps {
    */
   lanes: ProcessLane[];
   nodes: ProcessNode[];
-  /** TRUE per-lifecycle totals of BPMN flow nodes (steps) before the server cap.
-   *  The overlay sums the stages the lifecycle filter shows, so the count tracks
-   *  the canvas. Defaults to the loaded slice when absent (fixtures/mocks). */
-  totalByLifecycle?: LifecycleCounts;
   links: OverviewGraphLink[];
   onNodeClick?: (node: ProcessNode) => void;
   onPoolClick?: (pool: ProcessPool) => void;
@@ -369,7 +364,6 @@ export function ProcessPerspective({
   pools,
   lanes: lanesRaw,
   nodes: nodesRaw,
-  totalByLifecycle,
   links: linksRaw,
   onNodeClick,
   onPoolClick,
@@ -1154,21 +1148,6 @@ export function ProcessPerspective({
 
   return (
     <div className="relative h-full w-full">
-      {/* Dataset count overlay — honest about the server cap AND the lifecycle
-          filter. Sums only the steps whose lifecycle the filter shows (retired
-          hides by default) against the loaded slice, so the count tracks the
-          canvas instead of reading "137 steps" over a near-empty board. */}
-      <div className="pointer-events-none absolute left-3 top-3 z-20 rounded bg-card/90 px-2 py-1 text-xs tabular-nums text-muted-foreground">
-        {perspectiveCountLabel(
-          {
-            loaded: filteredNodes.length,
-            total: totalByLifecycle
-              ? visibleLifecycleTotal(totalByLifecycle, visibleLifecycles)
-              : filteredNodes.length,
-          },
-          "step",
-        )}
-      </div>
       {Flow ? (
         <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>
           {/* The provider shares the React Flow store with the sibling overlay
