@@ -269,6 +269,9 @@ export default [
   route(":docoHandle", "routes/$docoHandle._index.tsx"),
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
+  // Live-feed change cursor — the perspective view polls this once a second
+  // and only re-runs its heavy loader when the latest audit-event id advances.
+  route(":docoHandle/changes.json", "routes/$docoHandle.changes[.]json.tsx"),
   route(":docoHandle/settings", "routes/$docoHandle.settings.tsx"),
   route(":docoHandle/integrations", "routes/$docoHandle.integrations.tsx"),
   // Standalone per-integration detail (GitHub: repos, import status, actions).
