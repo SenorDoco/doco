@@ -280,8 +280,11 @@ function buildProcess(s: ScenarioSpec, lifecycle: Lifecycle): BuiltProcess {
     { state: s.initialState, kind: "initial", entry_point: true },
     lifecycle,
   );
+  // A terminal State is an exit point: the flow ends there, so it is flagged
+  // `exit_point` (exempt from the "leads somewhere" floor — it has no successor)
+  // while still being reached by the flow.
   const terminals = s.terminalStates.map((t) =>
-    node("state", s.key, { state: t, kind: "terminal" }, lifecycle),
+    node("state", s.key, { state: t, kind: "terminal", exit_point: true }, lifecycle),
   );
   const states = [initial, ...terminals];
   const evalNode = node(
@@ -1106,22 +1109,41 @@ describe("process template — top-level-process and entry-point flags", () => {
     ).toBe(true);
   });
 
-  it("an entry_point flow node with no OUTGOING flows_to is blocked (must lead somewhere)", () => {
+  it("a committed flow node with no OUTGOING flows_to is blocked (must lead somewhere)", () => {
     const g = buildProcess(SCENARIOS[0], "active");
-    const deadStart = node(
+    const deadEnd = node(
       "action",
       "loan-approval",
-      { action: "kick things off", verb: "start", entry_point: true },
+      { action: "file the paperwork", verb: "file" },
       "active",
     );
-    g.edges.push(edge(deadStart.id, g.process.id, "has_parent", "member_of"));
-    g.edges.push(edge(deadStart.id, g.principals[0].id, "attributed_to", "performed_by"));
-    g.nodes.push(deadStart); // entry point, but flows nowhere
-    const blocks = deterministicBlocks(evaluate(deadStart, g));
+    g.edges.push(edge(deadEnd.id, g.process.id, "has_parent", "member_of"));
+    g.edges.push(edge(deadEnd.id, g.principals[0].id, "attributed_to", "performed_by"));
+    g.edges.push(edge(g.actions[0].id, deadEnd.id, "flows_to", "")); // reachable, so only "leads somewhere" can fire
+    g.nodes.push(deadEnd); // flows nowhere, and it is NOT an exit point
+    const blocks = deterministicBlocks(evaluate(deadEnd, g));
     expect(
       blocks.some((b) => b.sub_kind === "requires_edge" && /flows_to/.test(b.reason)),
       `expected a "leads somewhere" block; got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
     ).toBe(true);
+  });
+
+  it("an exit_point flow node with no OUTGOING flows_to is NOT blocked (it is an end)", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    const ending = node(
+      "state",
+      "loan-approval",
+      { state: "Closed", kind: "terminal", exit_point: true },
+      "active",
+    );
+    g.edges.push(edge(ending.id, g.process.id, "has_parent", "member_of"));
+    g.edges.push(edge(g.actions[0].id, ending.id, "flows_to", "")); // reached by the flow
+    g.nodes.push(ending); // exit point, flows nowhere — and that is allowed
+    const blocks = deterministicBlocks(evaluate(ending, g));
+    expect(
+      blocks,
+      `exit point wrongly blocked: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
+    ).toEqual([]);
   });
 });
 
