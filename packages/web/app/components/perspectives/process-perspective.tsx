@@ -56,7 +56,6 @@ import {
 import { packProcessLaneColumns } from "~/lib/process-lane-packing";
 import { type LaneRowNode, computeLaneRowCenters } from "~/lib/process-lane-rows";
 import { processSimplifiedAtZoom } from "~/lib/process-lod";
-import { layoutAdjacentNodes } from "~/lib/process-outside-layout";
 import type {
   ProcessLane,
   ProcessNode,
@@ -899,10 +898,10 @@ export function ProcessPerspective({
   ]);
 
   // Parent processes — the process(es) this pool's Action hangs under
-  // (`has_parent`). Each renders as a task box ON TOP of the focal pool —
-  // centered above it, with no fixed horizontal anchor — tied to the pool by a
-  // dashed containment line that leaves the parent box's bottom and drops to
-  // the pool header. An Action can belong to multiple processes, so EVERY
+  // (`has_parent`). Each renders as a task box ON TOP of the focal pool,
+  // left-aligned in a row (one beside the next), tied to the pool by a dashed
+  // arrow that leaves the parent box's bottom and lands on the pool title,
+  // inset from its left. An Action can belong to multiple processes, so EVERY
   // parent is drawn. Clicking a box drills into that parent's own pool.
   const parentProcesses = useMemo(() => {
     const parents = computeParentProcesses(focalPoolIds, links);
@@ -910,11 +909,6 @@ export function ProcessPerspective({
     const edges: FlowEdge[] = [];
     const poolGeometryById = new Map(layout.poolGeometry.map((p) => [p.id, p]));
     const poolByPoolId = new Map(pools.map((p) => [p.id, p]));
-    // Every pool spans the same width, so the row of parent boxes centers on
-    // the pool's horizontal midpoint — the same x as the header's top handle,
-    // so the dashed line drops straight down.
-    const centerX = LANE_LEFT_INSET + layout.laneWidth / 2;
-
     const byPool = new Map<string, ParentProcess[]>();
     for (const parent of parents) {
       const list = byPool.get(parent.poolId);
@@ -925,11 +919,14 @@ export function ProcessPerspective({
     for (const [poolId, group] of byPool) {
       const geometry = poolGeometryById.get(poolId);
       if (!geometry) continue;
-      // A parent must itself head a pool for us to label its box; that pool
-      // carries the parent Action's prose and lifecycle.
-      const boxes = group.flatMap((parent) => {
+      // Left-aligned row: the first box starts at the pool's left edge and each
+      // further parent sits beside the previous one.
+      let x = LANE_LEFT_INSET;
+      for (const parent of group) {
+        // A parent must itself head a pool for us to label its box; that pool
+        // carries the parent Action's prose and lifecycle.
         const parentPool = poolByPoolId.get(`pool:${parent.id}`);
-        if (!parentPool) return [];
+        if (!parentPool) continue;
         const node: ProcessNode = {
           id: parent.id,
           entity_type: "action",
@@ -942,48 +939,27 @@ export function ProcessPerspective({
           pool_id: parentPool.id,
           is_process: true,
         };
-        return [{ id: parent.id, node, size: sizeForNode(node), edgeType: parent.edgeType }];
-      });
-      if (boxes.length === 0) continue;
-      // Centered above the pool — no left anchor; layoutAdjacentNodes spreads
-      // the row around centerX.
-      const positions = layoutAdjacentNodes(
-        boxes.map((b) => ({
-          id: b.id,
-          width: b.size.width,
-          height: b.size.height,
-          side: "above" as const,
-        })),
-        {
-          centerX,
-          poolTopY: geometry.y,
-          poolBottomY: geometry.y + geometry.height,
-          gap: PARENT_PROCESS_GAP,
-          columnGap: NODE_GAP_X,
-        },
-      );
-
-      for (const b of boxes) {
-        const position = positions.get(b.id);
-        if (!position) continue;
-        const id = `parent:${b.id}::${poolId}`;
-        const stroke = lifecycleColor(b.node.lifecycle);
+        const size = sizeForNode(node);
+        const position = { x, y: geometry.y - PARENT_PROCESS_GAP - size.height };
+        x += size.width + NODE_GAP_X;
+        const id = `parent:${parent.id}::${poolId}`;
+        const stroke = lifecycleColor(node.lifecycle);
         nodes.push({
           id,
-          type: nodeTypeForShape(b.node.shape),
+          type: nodeTypeForShape(node.shape),
           position,
           // `isParentProcess` routes the click to drill UP into the parent's pool.
-          data: { node: b.node, isParentProcess: true },
+          data: { node, isParentProcess: true },
           draggable: false,
           selectable: false,
           connectable: false,
-          initialWidth: b.size.width,
-          initialHeight: b.size.height,
-          style: { width: b.size.width, height: b.size.height, zIndex: 1 },
+          initialWidth: size.width,
+          initialHeight: size.height,
+          style: { width: size.width, height: size.height, zIndex: 1 },
         });
 
-        // A dashed containment line (no arrowhead) leaving the parent box's
-        // bottom and dropping to the pool header's top: the parent sits over
+        // A dashed arrow leaving the parent box's bottom and landing on the
+        // pool title (inset from its left, not centered): the parent sits over
         // the pool it parents. has_parent is containment, never conditional, so
         // it carries no branch label — its tag is the edge type itself (every
         // process arrow shows a tag, per processEdgeLabelData).
@@ -994,17 +970,18 @@ export function ProcessPerspective({
           target: `pool-header:${poolId}`,
           targetHandle: "pool-top",
           type: "stableLabeledBezier",
-          data: processEdgeLabelData(null, b.edgeType, stroke, 1),
+          data: processEdgeLabelData(null, parent.edgeType, stroke, 1),
           selectable: false,
           focusable: false,
           interactionWidth: 0,
-          style: { stroke, strokeWidth: 1.5, strokeDasharray: "6 4" },
+          style: { stroke, strokeWidth: 1.75, strokeDasharray: "6 4" },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: stroke },
         });
       }
     }
 
     return { nodes, edges };
-  }, [focalPoolIds, links, layout.poolGeometry, layout.laneWidth, pools, docoHandle]);
+  }, [focalPoolIds, links, layout.poolGeometry, pools, docoHandle]);
 
   // Cache of the previous render's flow nodes, keyed by id, so unchanged
   // nodes keep their object identity across layout re-runs (see below).
@@ -1590,9 +1567,12 @@ const POOL_GAP = 16;
 const BOUNDARY_CIRCLE_DIAMETER = 56;
 const BOUNDARY_CIRCLE_GAP = 40;
 // Vertical gap between a focal pool's top edge and the parent-process boxes
-// drawn above it. Mirrors BOUNDARY_CIRCLE_GAP, which spaces the left/right
-// sequence-flow neighbours off the pool's sides.
-const PARENT_PROCESS_GAP = 40;
+// drawn above it — roomy enough that the dashed parent arrows read clearly
+// above the pool (twice the side spacing the boundary neighbours use).
+const PARENT_PROCESS_GAP = 80;
+// How far in from the pool title's left edge the parent arrows land — the
+// dashed parent links attach here instead of the title's center.
+const PARENT_LINK_TITLE_INSET = 200;
 // Vertical room a sub-process Action reserves on EACH of its top and bottom
 // edges. The bottom strip holds the "View subprocess" affordance clear of both
 // the label and the type/lifecycle badge row straddling the edge; the top strip
@@ -2340,7 +2320,14 @@ export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData })
         id="pool-top"
         type="target"
         position={Position.Top}
-        style={{ background: "transparent", border: "none" }}
+        // Inset from the title's left edge rather than centered, so the dashed
+        // parent arrows land near the left-aligned parent boxes above.
+        style={{
+          left: PARENT_LINK_TITLE_INSET,
+          transform: "none",
+          background: "transparent",
+          border: "none",
+        }}
       />
     </div>
   );
