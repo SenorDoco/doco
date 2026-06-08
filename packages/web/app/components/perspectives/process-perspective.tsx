@@ -44,7 +44,8 @@ import { computeExternalNeighbours } from "~/lib/process-boundary";
 import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
-import { packProcessLaneColumns, processLaneColumnKey } from "~/lib/process-lane-packing";
+import { packProcessLaneColumns } from "~/lib/process-lane-packing";
+import { type LaneRowNode, computeLaneRowCenters } from "~/lib/process-lane-rows";
 import { processSimplifiedAtZoom } from "~/lib/process-lod";
 import type {
   ProcessLane,
@@ -1521,16 +1522,38 @@ export function layOutProcess(
   // being allowed to pull earlier nodes backward.
   const depthByNode = computeForwardSequenceDepths(poolNodes, poolLinks);
 
+  // A node whose only rightward (forward) sequence predecessor sits in its
+  // own lane is later drawn on that predecessor's line, so a linear `flows_to`
+  // chain stays horizontal instead of re-centering column by column. A
+  // predecessor always lives in an earlier column (lower depth); an edge that
+  // points the same column or left is a loopback and never anchors. Two
+  // forward predecessors (a merge) leaves the node un-anchored — it centers.
+  const poolNodeById = new Map(poolNodes.map((node) => [node.id, node]));
+  const forwardPredsByNode = new Map<string, string[]>();
+  for (const link of poolLinks) {
+    if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
+    if ((depthByNode.get(link.source) ?? 0) >= (depthByNode.get(link.target) ?? 0)) continue;
+    const preds = forwardPredsByNode.get(link.target);
+    if (preds) preds.push(link.source);
+    else forwardPredsByNode.set(link.target, [link.source]);
+  }
+  const alignToByNode = new Map<string, string>();
+  for (const [nodeId, preds] of forwardPredsByNode) {
+    if (preds.length !== 1) continue;
+    const node = poolNodeById.get(nodeId);
+    const pred = poolNodeById.get(preds[0]);
+    if (node && pred && node.laneId === pred.laneId) alignToByNode.set(nodeId, pred.id);
+  }
+
   // Within each lane, sequence depth remains the x column. Nodes that
   // share a lane and a depth stack top-to-bottom instead of stealing
   // extra horizontal columns; linear sequence chains still advance
   // rightward because their depths differ.
-  const { orderedByLane, columnByNode, stackIndexByNode, laneColumnStacks, maxColumn } =
-    packProcessLaneColumns(
-      lanes.map((lane) => lane.id),
-      poolNodes,
-      depthByNode,
-    );
+  const { orderedByLane, columnByNode, laneColumnStacks, maxColumn } = packProcessLaneColumns(
+    lanes.map((lane) => lane.id),
+    poolNodes,
+    depthByNode,
+  );
 
   // Per-node sizes. Compute first so column step and lane height can
   // accommodate the widest / tallest node anywhere in the graph —
@@ -1568,7 +1591,8 @@ export function layOutProcess(
   const baseLaneHeight = Math.max(LANE_HEIGHT, maxNodeHeight + NODE_GAP_Y * 2);
   const laneWidth =
     LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + (maxColumn + 1) * columnStep + NODE_GAP_X;
-  const stackHeightByLaneColumn = new Map<string, number>();
+  // Lane height still reserves room for the tallest column's full stack, so a
+  // lane never clips even when alignment fans nodes out within it.
   const maxStackHeightByLane = new Map<string, number>();
   for (const [key, stack] of laneColumnStacks.entries()) {
     const stackHeight = stack.reduce((sum, node, index) => {
@@ -1576,7 +1600,6 @@ export function layOutProcess(
       return sum + size.height + (index > 0 ? NODE_GAP_Y : 0);
     }, 0);
     const laneId = key.split("\u0000")[0] ?? "";
-    stackHeightByLaneColumn.set(key, stackHeight);
     maxStackHeightByLane.set(laneId, Math.max(maxStackHeightByLane.get(laneId) ?? 0, stackHeight));
   }
   const laneHeightById = new Map<string, number>();
@@ -1678,6 +1701,23 @@ export function layOutProcess(
     });
   }
 
+  // Vertical center per node within its lane. A column's nodes still center
+  // as a stack by default; a node with a lone same-lane forward predecessor
+  // instead rides that predecessor's line, so straight chains stay horizontal.
+  const rowCenterByNode = new Map<string, number>();
+  for (const lane of lanes) {
+    const laneHeight = laneHeightById.get(lane.id) ?? baseLaneHeight;
+    const rowNodes: LaneRowNode[] = (orderedByLane.get(lane.id) ?? []).map((node) => ({
+      id: node.id,
+      column: columnByNode.get(node.id) ?? 0,
+      height: (sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }).height,
+      alignTo: alignToByNode.get(node.id),
+    }));
+    for (const [id, center] of computeLaneRowCenters(rowNodes, laneHeight, NODE_GAP_Y)) {
+      rowCenterByNode.set(id, center);
+    }
+  }
+
   // Emit node nodes nested in their lane.
   for (const lane of lanes) {
     const list = orderedByLane.get(lane.id) ?? [];
@@ -1685,19 +1725,12 @@ export function layOutProcess(
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
-      const stackKey = processLaneColumnKey(lane.id, column);
-      const stack = laneColumnStacks.get(stackKey) ?? [node];
-      const stackHeight = stackHeightByLaneColumn.get(stackKey) ?? size.height;
-      const stackIndex = stackIndexByNode.get(node.id) ?? 0;
       // Center the node within its column slot so wider/narrower
       // nodes still line up by their middle on the same x axis.
       const slotX = LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + column * columnStep;
       const x = slotX + (maxNodeWidth - size.width) / 2;
-      let y = (containerHeight - stackHeight) / 2;
-      for (let i = 0; i < Math.max(0, stackIndex); i++) {
-        const prev = sizeByNode.get(stack[i].id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
-        y += prev.height + NODE_GAP_Y;
-      }
+      const center = rowCenterByNode.get(node.id) ?? containerHeight / 2;
+      const y = center - size.height / 2;
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
       flowNodes.push({
