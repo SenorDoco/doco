@@ -26,6 +26,7 @@ import {
   NodeBadgeRow,
   ReferenceNumberBadge,
   TypeBadge,
+  badgeStyle,
 } from "~/components/node-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
@@ -37,7 +38,7 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import { lifecycleColor } from "~/lib/node-colors";
+import { lifecycleColor, textOnLifecycle } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
 import { computeExternalNeighbours, computeParentProcesses } from "~/lib/process-boundary";
@@ -2305,35 +2306,14 @@ function LaneBadgeRow({ lane }: { lane: ProcessLane }) {
   );
 }
 
-// The entry/exit indicator is wayfinding, not a lifecycle signal, so it uses a
-// fixed neutral slate instead of the node's lifecycle stroke — tying it to the
-// stroke painted a drafting node's text yellow-on-white, barely legible.
-export const FLOW_POINT_MARKER_COLOR = "#475569"; // slate-600
-
-// BPMN entry/exit marking. The author sets `entry_point` / `exit_point`
-// explicitly (never deduced); a node can carry both. Returns the label text to
-// hang under the node name (uppercased in `ShapeLabel`), or null when neither
-// flag is set.
-function flowPointLabel(node: ProcessNode): string | null {
-  const parts: string[] = [];
-  if (node.entry_point === true) parts.push("Entry");
-  if (node.exit_point === true) parts.push("Exit");
-  return parts.length ? parts.join(" · ") : null;
-}
-
 function ShapeLabel({ node }: { node: ProcessNode }) {
   // `position: relative` + zIndex puts this in the same paint tier as
   // sibling absolutely-positioned shape outlines (the SVG in the
   // Document shape, the rotated div in the Diamond), so DOM order
   // wins and the label paints OVER the fill instead of under it.
-  //
-  // The entry/exit indicator rides here as a second line under the name
-  // rather than as a separate floating badge — in the text flow it can't
-  // collide with the type/lifecycle pills that straddle the card's bottom.
-  const flowPoint = flowPointLabel(node);
   return (
     <div
-      className="pointer-events-none flex flex-col items-center justify-center gap-0.5 px-2 text-center text-[10px] font-medium leading-tight"
+      className="pointer-events-none flex items-center justify-center px-2 text-center text-[10px] font-medium leading-tight"
       style={{
         width: "100%",
         height: "100%",
@@ -2344,14 +2324,6 @@ function ShapeLabel({ node }: { node: ProcessNode }) {
       title={node.name ?? ""}
     >
       <span className="break-words">{node.name ?? <em>(unnamed)</em>}</span>
-      {flowPoint ? (
-        <span
-          className="font-semibold uppercase"
-          style={{ fontSize: 8, letterSpacing: "0.06em", color: FLOW_POINT_MARKER_COLOR }}
-        >
-          {flowPoint}
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -2787,6 +2759,66 @@ const ProcessReferenceBadge = memo(function ProcessReferenceBadge({
  * doesn't break.
  */
 
+// The entry/exit flow point, drawn as a vertical tag clipped to the node's
+// side. It gets the same pill treatment as the type/lifecycle badges
+// (lifecycle color via `badgeStyle`), just stood on its side: Entry rides the
+// LEFT edge reading bottom-to-top (rotate -90°), the way flow enters; Exit
+// rides the RIGHT edge reading top-to-bottom (rotate 90°), the way it leaves.
+// Each carries the BPMN event ring — thin = start, thick = end.
+function FlowPointPill({
+  kind,
+  lifecycle,
+}: {
+  kind: "entry" | "exit";
+  lifecycle: string | null | undefined;
+}) {
+  const onLeft = kind === "entry";
+  const fg = textOnLifecycle(lifecycle);
+  return (
+    <span
+      className="pointer-events-none"
+      style={{
+        ...badgeStyle(lifecycle, "inline"),
+        position: "absolute",
+        top: "50%",
+        left: onLeft ? 0 : undefined,
+        right: onLeft ? undefined : 0,
+        // Center the horizontal pill on the edge, then stand it up. Entry
+        // reads bottom-to-top, Exit top-to-bottom.
+        transform: `translate(${onLeft ? "-50%" : "50%"}, -50%) rotate(${onLeft ? "-90deg" : "90deg"})`,
+        transformOrigin: "center",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        zIndex: 2,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 8,
+          height: 8,
+          flexShrink: 0,
+          borderRadius: "50%",
+          // Thin ring = BPMN start event; thick ring = BPMN end event.
+          border: `${kind === "exit" ? 2 : 1}px solid ${fg}`,
+          boxSizing: "border-box",
+        }}
+      />
+      {onLeft ? "Entry" : "Exit"}
+    </span>
+  );
+}
+
+function ProcessFlowPointTag({ node }: { node: ProcessNode }) {
+  return (
+    <>
+      {node.entry_point === true ? <FlowPointPill kind="entry" lifecycle={node.lifecycle} /> : null}
+      {node.exit_point === true ? <FlowPointPill kind="exit" lifecycle={node.lifecycle} /> : null}
+    </>
+  );
+}
+
 function ProcessBadgeRow({ data }: { data: ProcessNodeData; circular?: boolean }) {
   return (
     <>
@@ -2797,6 +2829,7 @@ function ProcessBadgeRow({ data }: { data: ProcessNodeData; circular?: boolean }
         interactive
       />
       <ProcessReferenceBadge nodeId={data.node.id} label={data.node.name ?? data.node.id} />
+      <ProcessFlowPointTag node={data.node} />
     </>
   );
 }
