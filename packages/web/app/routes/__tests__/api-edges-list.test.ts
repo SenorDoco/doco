@@ -62,6 +62,32 @@ describe("GET /<doco>/api/edges.json", () => {
     expect(captured.args).toContain("state_visits_torre");
   });
 
+  it("filters by to_id when the query param is supplied", async () => {
+    const captured = captureQuery();
+
+    await loader({
+      request: new Request("https://doco.test/torre-bpm/api/edges.json?to_id=state_visits_torre"),
+      params: { docoHandle: "torre-bpm" },
+    } as never);
+
+    expect(captured.sql).toMatch(/to_id = \$\d/);
+    expect(captured.args).toContain("state_visits_torre");
+  });
+
+  it("filters by both endpoints when from_id and to_id are supplied together", async () => {
+    const captured = captureQuery();
+
+    await loader({
+      request: new Request("https://doco.test/torre-bpm/api/edges.json?from_id=a&to_id=b"),
+      params: { docoHandle: "torre-bpm" },
+    } as never);
+
+    expect(captured.sql).toMatch(/from_id = \$\d/);
+    expect(captured.sql).toMatch(/to_id = \$\d/);
+    expect(captured.args).toContain("a");
+    expect(captured.args).toContain("b");
+  });
+
   it("excludes retired edges by default", async () => {
     const captured = captureQuery();
 

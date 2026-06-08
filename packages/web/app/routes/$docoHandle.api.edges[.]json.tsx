@@ -1,7 +1,10 @@
 // POST /<doco>/api/edges.json  — create a first-class edge.
 // GET  /<doco>/api/edges.json  — list live edges.
 //   ?from_id=<node_id>        scope to edges originating at one node
+//   ?to_id=<node_id>          scope to edges targeting one node
 //   ?include_retired=true     include retired edges (default: live only)
+// from_id and to_id are independent filters; supplying both narrows to the
+// edges between those two nodes.
 //
 // Edge authoring. Writes go through the append-only commit()
 // boundary; per-edge-type write grants gate creation, exactly like nodes.
@@ -19,10 +22,13 @@ export async function loader({ request, params }: { request: Request; params: Pa
   const { meta } = await loadDocoRouteForRead(request, params);
 
   // Honor the documented query params so the JSON API agrees with the node
-  // panel: `from_id` scopes to one node's edges; `include_retired=true` widens
-  // the default live-only view to include retired edges.
+  // panel, which scopes a node's edges by both endpoints: `from_id` keeps the
+  // edges leaving a node, `to_id` the edges entering it, and supplying both
+  // narrows to the edges between the two. `include_retired=true` widens the
+  // default live-only view to include retired edges.
   const url = new URL(request.url);
   const fromId = url.searchParams.get("from_id");
+  const toId = url.searchParams.get("to_id");
   const includeRetired = url.searchParams.get("include_retired") === "true";
 
   const conditions = ["doco_id = $1"];
@@ -33,6 +39,10 @@ export async function loader({ request, params }: { request: Request; params: Pa
   if (fromId) {
     args.push(fromId);
     conditions.push(`from_id = $${args.length}`);
+  }
+  if (toId) {
+    args.push(toId);
+    conditions.push(`to_id = $${args.length}`);
   }
 
   const rows = await withClient((c) =>
