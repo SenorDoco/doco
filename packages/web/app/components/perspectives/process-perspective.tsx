@@ -445,15 +445,15 @@ export function ProcessPerspective({
     () => focusCenterId ?? defaultCenterId ?? centerId ?? null,
     [focusCenterId, defaultCenterId, centerId],
   );
-  // The home view's clickable directory: every top-level process. Computed
-  // from the full node set (not the lifecycle-filtered one) so hiding a
-  // lifecycle never reclassifies a process as a sub-process, then filtered
-  // for display so a hidden-lifecycle process drops out of the list too.
+  // The home view's clickable directory: every Action the author declared a
+  // top-level process (the `top_level_process` flag, surfaced onto the pool by
+  // the loader), then filtered for display so a hidden-lifecycle process drops
+  // out of the list too.
   const listPools = useMemo(() => {
-    const top = topLevelProcessPools(pools, nodes);
+    const top = topLevelProcessPools(pools);
     if (!visibleLifecycles) return top;
     return top.filter((pool) => visibleLifecycles.has(pool.lifecycle ?? "active"));
-  }, [pools, nodes, visibleLifecycles]);
+  }, [pools, visibleLifecycles]);
   useEffect(() => {
     if (!centerId || focusCenterId || !selectionCenterId || selectionCenterId === centerId) return;
     onCenterChange?.(selectionCenterId);
