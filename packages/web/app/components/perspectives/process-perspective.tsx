@@ -26,6 +26,7 @@ import {
   NodeBadgeRow,
   ReferenceNumberBadge,
   TypeBadge,
+  badgeStyle,
 } from "~/components/node-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
@@ -37,14 +38,15 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
+import { type LifecycleCounts, lifecycleColor, textOnLifecycle } from "~/lib/node-colors";
 import { perspectiveCountLabel, visibleLifecycleTotal } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
 import { computeExternalNeighbours, computeParentProcesses } from "~/lib/process-boundary";
-import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
+import { processEdgeLabelData } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
-import { packProcessLaneColumns, processLaneColumnKey } from "~/lib/process-lane-packing";
+import { packProcessLaneColumns } from "~/lib/process-lane-packing";
+import { type LaneRowNode, computeLaneRowCenters } from "~/lib/process-lane-rows";
 import { processSimplifiedAtZoom } from "~/lib/process-lod";
 import type {
   ProcessLane,
@@ -195,7 +197,11 @@ function sizeForNode(node: ProcessNode): { width: number; height: number } {
   const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
   const LINE_H = 13;
   const PAD = 24; // total horizontal padding inside the shape
-  const PAD_Y = 16;
+  // Vertical padding. Bigger than the horizontal pad because the #N badge (top)
+  // and the type/lifecycle badge row (bottom) both straddle the node's edges:
+  // the extra room keeps a long, centered label from running under either of
+  // them. The label is flex-centered, so the room splits evenly top and bottom.
+  const PAD_Y = 24;
   // Target a roughly square text block so wrapping looks balanced.
   const sqrtPx = Math.sqrt(N * CHAR_W * LINE_H);
   const w = Math.max(NODE_WIDTH, Math.ceil(sqrtPx) + PAD);
@@ -236,21 +242,15 @@ export interface CanvasOpenHandlers {
 }
 
 /**
- * Open a node from the BPMN canvas. A plain click focuses the node but keeps
- * any subprocess collapsed inside its parent's pool (`expandSubprocess:
- * false`), so the parent pool frames; the "View subprocess" affordance instead
- * expands the subprocess's OWN pool (`expandSubprocess: true`). Either way the
- * node dialog opens — that is the shared "as usual" behavior: viewing a
- * subprocess no longer swaps the pool silently, it opens the Action's dialog
- * like any other click.
+ * Open a node from the BPMN canvas. Clicking an Action that is itself a
+ * sub-process opens INTO it — its own pool frames the canvas — while every
+ * other node collapses to its parent's pool. Either way the node dialog opens,
+ * exactly as a normal node click does: opening a sub-process both expands its
+ * pool AND opens its Action's dialog, rather than just swapping the pool.
  */
-export function openCanvasNode(
-  node: ProcessNode,
-  options: { expandSubprocess: boolean },
-  handlers: CanvasOpenHandlers,
-): void {
+export function openCanvasNode(node: ProcessNode, handlers: CanvasOpenHandlers): void {
   handlers.setHomeMode(false);
-  handlers.setExpandedProcessId(options.expandSubprocess ? node.id : null);
+  handlers.setExpandedProcessId(subprocessPoolId(node) ? node.id : null);
   handlers.onCenterChange?.(node.id);
   if (handlers.onNodeClick) handlers.onNodeClick(node);
   else if (node.href) handlers.navigate(node.href);
@@ -374,22 +374,19 @@ export function ProcessPerspective({
     [onCenterChange, onProcessOpen],
   );
   // The shared canvas node-open: focus the node, open its dialog as usual, and
-  // frame either its parent pool (a plain click keeps a subprocess collapsed)
-  // or — via the "View subprocess" affordance — the subprocess's own pool.
+  // frame the right pool — a sub-process Action opens INTO its own pool, every
+  // other node collapses to its parent's. Clicking the node, its "View
+  // subprocess" button, or an external-neighbour box all route through here.
   const openNode = useCallback(
-    (node: ProcessNode, options?: { expandSubprocess?: boolean }) =>
-      openCanvasNode(
-        node,
-        { expandSubprocess: options?.expandSubprocess ?? false },
-        { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
-      ),
+    (node: ProcessNode) =>
+      openCanvasNode(node, {
+        setHomeMode,
+        setExpandedProcessId,
+        onCenterChange,
+        onNodeClick,
+        navigate,
+      }),
     [onCenterChange, onNodeClick, navigate],
-  );
-  // The "View subprocess" affordance on a collapsed subprocess Action: expand
-  // it into its own pool AND open its dialog, just like clicking any node.
-  const viewSubprocess = useCallback(
-    (node: ProcessNode) => openNode(node, { expandSubprocess: true }),
-    [openNode],
   );
   // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
   // transforms itself internally; our `viewport` mirror only feeds the
@@ -525,21 +522,9 @@ export function ProcessPerspective({
   }, [centerId, focusCenterId, selectionCenterId, onCenterChange]);
   const focusedNodeIdSet = useMemo(() => new Set(focusedNodeIds ?? []), [focusedNodeIds]);
 
-  // Focusing a process Action homes in on the process's "way in", the
-  // earliest-created entry point of its pool, and focuses that node — UNLESS
-  // the process is being expanded (cold-open / "View subprocess"), in which
-  // case the process Action itself is the center so its whole pool frames.
-  // `resolveProcessToEntry` maps a process-center to that entry node; a center
-  // that is already a node (or a process with no entry point in the visible
-  // set) passes through unchanged.
   const resolveProcessToEntry = useCallback(
-    (id: string | null | undefined): string | null => {
-      if (!id) return null;
-      if (id === expandedProcessId) return id;
-      const pool = pools.find((candidate) => candidate.process_id === id);
-      if (!pool) return id;
-      return topEntryPointId(pool.id, filteredNodes, links) ?? id;
-    },
+    (id: string | null | undefined): string | null =>
+      resolveProcessCenter(id, { expandedProcessId, pools, nodes: filteredNodes, links }),
     [pools, filteredNodes, links, expandedProcessId],
   );
   // The single node the view is focused on. Always defined (falls back to
@@ -814,6 +799,7 @@ export function ProcessPerspective({
             : { sourceHandle: headerHandle }
           : {}),
         type: "stableLabeledBezier",
+        data: processEdgeLabelData(n.label, n.edgeType, stroke, 1),
         selectable: false,
         focusable: false,
         interactionWidth: 0,
@@ -899,6 +885,9 @@ export function ProcessPerspective({
         sourceHandle: "pool-top",
         target: id,
         type: "stableLabeledBezier",
+        // has_parent is containment, never conditional, so it carries no branch
+        // label — the tag is the edge type itself.
+        data: processEdgeLabelData(null, parent.edgeType, stroke, 1),
         selectable: false,
         focusable: false,
         interactionWidth: 0,
@@ -941,10 +930,10 @@ export function ProcessPerspective({
       // smooths any opacity change a node component sets on its own.
       const className = node.className ? `${node.className} doco-graph-fade` : "doco-graph-fade";
       // A subprocess member carries the "View subprocess" affordance — its
-      // stable handler (so node identity survives reuseStableNodes) expands
-      // the subprocess into its own pool.
+      // stable handler (so node identity survives reuseStableNodes) opens the
+      // subprocess into its own pool and its dialog, same as clicking the node.
       if ((node.data as unknown as ProcessNodeData).isSubprocess) {
-        return [{ ...node, className, data: { ...node.data, onViewSubprocess: viewSubprocess } }];
+        return [{ ...node, className, data: { ...node.data, onViewSubprocess: openNode } }];
       }
       return [{ ...node, className }];
     });
@@ -962,7 +951,7 @@ export function ProcessPerspective({
     renderedPoolIds,
     renderedNodeIds,
     openLaneNode,
-    viewSubprocess,
+    openNode,
     externalNeighbours.nodes,
     parentProcesses.nodes,
   ]);
@@ -1275,8 +1264,8 @@ export function ProcessPerspective({
                 openProcess(target.id);
                 return;
               }
-              // A plain click never expands a subprocess — it focuses the node
-              // but keeps it collapsed inside its parent's pool.
+              // Clicking a sub-process Action opens into its own pool and its
+              // dialog; any other node focuses, collapsed in its parent's pool.
               openNode(target);
             }}
             onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
@@ -1480,11 +1469,51 @@ const BOUNDARY_CIRCLE_GAP = 40;
 // drawn above it. Mirrors BOUNDARY_CIRCLE_GAP, which spaces the left/right
 // sequence-flow neighbours off the pool's sides.
 const PARENT_PROCESS_GAP = 40;
-// Vertical room reserved at the bottom of a sub-process Action so the
-// "View subprocess" affordance sits inside the box without colliding with the
-// label. The layout grows the node by this much; the node component pads its
-// label area by the same amount so text never enters the affordance strip.
-const SUBPROCESS_MARKER_ROOM = 22;
+// Vertical room a sub-process Action reserves on EACH of its top and bottom
+// edges. The bottom strip holds the "View subprocess" affordance clear of both
+// the label and the type/lifecycle badge row straddling the edge; the top strip
+// mirrors it so the label (the node's core) stays vertically centered rather
+// than shoved up. The layout grows the box by 2× this; the node component pads
+// its label area by this much top and bottom so text never enters either strip.
+const SUBPROCESS_MARKER_ROOM = 30;
+// Where the "View subprocess" pill sits within the bottom strip — lifted off
+// the bottom edge so it clears the type/lifecycle badge row half-overlapping it.
+const SUBPROCESS_BUTTON_BOTTOM = 11;
+
+/**
+ * The focal node a process *center* resolves to. Focusing a whole process —
+ * a directory pick, a pool-header click, a process URL, or "View subprocess" —
+ * homes in on that process's "way in" (the earliest entry point of its pool) so
+ * the camera lands inside the pool. Two cases keep the center as-is instead:
+ *
+ *   • the process is being expanded (`id === expandedProcessId`) — its own pool
+ *     already frames, so the process Action itself is the center; and
+ *   • the id is a subprocess Action sitting as a STEP inside another pool — a
+ *     plain click focuses it where it sits, so it must NOT drill into its own
+ *     pool. Only the "View subprocess" affordance (which expands it) does that.
+ *
+ * A center that is already a plain node, or a process with no entry point in the
+ * visible set, passes through unchanged.
+ */
+export function resolveProcessCenter(
+  id: string | null | undefined,
+  ctx: {
+    expandedProcessId: string | null | undefined;
+    pools: ProcessPool[];
+    nodes: ProcessNode[];
+    links: OverviewGraphLink[];
+  },
+): string | null {
+  if (!id) return null;
+  if (id === ctx.expandedProcessId) return id;
+  const ownPool = ctx.pools.find((pool) => pool.process_id === id);
+  if (!ownPool) return id;
+  // A subprocess Action rendered as a step inside its parent's pool keeps its
+  // focus on the step; only expansion (handled above) drills into its own pool.
+  const asStep = ctx.nodes.find((node) => node.id === id);
+  if (asStep && asStep.pool_id !== ownPool.id) return id;
+  return topEntryPointId(ownPool.id, ctx.nodes, ctx.links) ?? id;
+}
 
 // The exact node set the BPMN perspective draws for a given focus, and the
 // pool(s) those nodes belong to. The rule:
@@ -1538,9 +1567,13 @@ export function computeProcessRenderedSet(params: {
   if (expandedPoolId) {
     focalPoolIds.add(expandedPoolId);
   } else if (centerId) {
-    // The focal node's own pool — also handles a process-center (a pool
-    // header) that never resolved to a member node (matched by process_id).
-    const centerPoolId = poolByProcessId.get(centerId) ?? nodeById.get(centerId)?.pool_id ?? null;
+    // Frame the pool the center actually sits in. A subprocess Action is both a
+    // member (step) of its parent's pool AND the head of its own pool; a plain
+    // focus on it must frame the parent it sits in, so the member pool wins.
+    // Only a process-center with no member node (a pool header focused by
+    // process_id) falls back to that process's own pool — and an *expanded*
+    // process is handled above, where its own pool overrides the member parent.
+    const centerPoolId = nodeById.get(centerId)?.pool_id ?? poolByProcessId.get(centerId) ?? null;
     if (centerPoolId) focalPoolIds.add(centerPoolId);
   }
   // An edge focus pulls in the pools of BOTH its endpoints, so an edge that
@@ -1619,16 +1652,38 @@ export function layOutProcess(
   // being allowed to pull earlier nodes backward.
   const depthByNode = computeForwardSequenceDepths(poolNodes, poolLinks);
 
+  // A node whose only rightward (forward) sequence predecessor sits in its
+  // own lane is later drawn on that predecessor's line, so a linear `flows_to`
+  // chain stays horizontal instead of re-centering column by column. A
+  // predecessor always lives in an earlier column (lower depth); an edge that
+  // points the same column or left is a loopback and never anchors. Two
+  // forward predecessors (a merge) leaves the node un-anchored — it centers.
+  const poolNodeById = new Map(poolNodes.map((node) => [node.id, node]));
+  const forwardPredsByNode = new Map<string, string[]>();
+  for (const link of poolLinks) {
+    if (!SEQUENCE_FLOW_EDGES.has(link.edge_type)) continue;
+    if ((depthByNode.get(link.source) ?? 0) >= (depthByNode.get(link.target) ?? 0)) continue;
+    const preds = forwardPredsByNode.get(link.target);
+    if (preds) preds.push(link.source);
+    else forwardPredsByNode.set(link.target, [link.source]);
+  }
+  const alignToByNode = new Map<string, string>();
+  for (const [nodeId, preds] of forwardPredsByNode) {
+    if (preds.length !== 1) continue;
+    const node = poolNodeById.get(nodeId);
+    const pred = poolNodeById.get(preds[0]);
+    if (node && pred && node.laneId === pred.laneId) alignToByNode.set(nodeId, pred.id);
+  }
+
   // Within each lane, sequence depth remains the x column. Nodes that
   // share a lane and a depth stack top-to-bottom instead of stealing
   // extra horizontal columns; linear sequence chains still advance
   // rightward because their depths differ.
-  const { orderedByLane, columnByNode, stackIndexByNode, laneColumnStacks, maxColumn } =
-    packProcessLaneColumns(
-      lanes.map((lane) => lane.id),
-      poolNodes,
-      depthByNode,
-    );
+  const { orderedByLane, columnByNode, laneColumnStacks, maxColumn } = packProcessLaneColumns(
+    lanes.map((lane) => lane.id),
+    poolNodes,
+    depthByNode,
+  );
 
   // Per-node sizes. Compute first so column step and lane height can
   // accommodate the widest / tallest node anywhere in the graph —
@@ -1648,10 +1703,11 @@ export function layOutProcess(
     const size = sizeForNode(node);
     if (subprocessPoolId(node)) {
       subprocessNodes.add(node.id);
-      // Grow the box so the "View subprocess" affordance has its own strip at
-      // the bottom, clear of the label. The component pads the label by the
-      // same amount; stacking/lane-height math below already keys off size.
-      size.height += SUBPROCESS_MARKER_ROOM;
+      // Grow the box by a strip on the top AND the bottom: the bottom holds the
+      // "View subprocess" affordance clear of the label, and the matching top
+      // strip keeps the label centered. The component pads the label by the
+      // same amount on each side; stacking/lane-height math below keys off size.
+      size.height += 2 * SUBPROCESS_MARKER_ROOM;
     }
     sizeByNode.set(node.id, size);
     // Only pool nodes drive the column step / lane height, so the swim
@@ -1666,7 +1722,8 @@ export function layOutProcess(
   const baseLaneHeight = Math.max(LANE_HEIGHT, maxNodeHeight + NODE_GAP_Y * 2);
   const laneWidth =
     LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + (maxColumn + 1) * columnStep + NODE_GAP_X;
-  const stackHeightByLaneColumn = new Map<string, number>();
+  // Lane height still reserves room for the tallest column's full stack, so a
+  // lane never clips even when alignment fans nodes out within it.
   const maxStackHeightByLane = new Map<string, number>();
   for (const [key, stack] of laneColumnStacks.entries()) {
     const stackHeight = stack.reduce((sum, node, index) => {
@@ -1674,7 +1731,6 @@ export function layOutProcess(
       return sum + size.height + (index > 0 ? NODE_GAP_Y : 0);
     }, 0);
     const laneId = key.split("\u0000")[0] ?? "";
-    stackHeightByLaneColumn.set(key, stackHeight);
     maxStackHeightByLane.set(laneId, Math.max(maxStackHeightByLane.get(laneId) ?? 0, stackHeight));
   }
   const laneHeightById = new Map<string, number>();
@@ -1776,6 +1832,23 @@ export function layOutProcess(
     });
   }
 
+  // Vertical center per node within its lane. A column's nodes still center
+  // as a stack by default; a node with a lone same-lane forward predecessor
+  // instead rides that predecessor's line, so straight chains stay horizontal.
+  const rowCenterByNode = new Map<string, number>();
+  for (const lane of lanes) {
+    const laneHeight = laneHeightById.get(lane.id) ?? baseLaneHeight;
+    const rowNodes: LaneRowNode[] = (orderedByLane.get(lane.id) ?? []).map((node) => ({
+      id: node.id,
+      column: columnByNode.get(node.id) ?? 0,
+      height: (sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT }).height,
+      alignTo: alignToByNode.get(node.id),
+    }));
+    for (const [id, center] of computeLaneRowCenters(rowNodes, laneHeight, NODE_GAP_Y)) {
+      rowCenterByNode.set(id, center);
+    }
+  }
+
   // Emit node nodes nested in their lane.
   for (const lane of lanes) {
     const list = orderedByLane.get(lane.id) ?? [];
@@ -1783,19 +1856,12 @@ export function layOutProcess(
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
-      const stackKey = processLaneColumnKey(lane.id, column);
-      const stack = laneColumnStacks.get(stackKey) ?? [node];
-      const stackHeight = stackHeightByLaneColumn.get(stackKey) ?? size.height;
-      const stackIndex = stackIndexByNode.get(node.id) ?? 0;
       // Center the node within its column slot so wider/narrower
       // nodes still line up by their middle on the same x axis.
       const slotX = LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + column * columnStep;
       const x = slotX + (maxNodeWidth - size.width) / 2;
-      let y = (containerHeight - stackHeight) / 2;
-      for (let i = 0; i < Math.max(0, stackIndex); i++) {
-        const prev = sizeByNode.get(stack[i].id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
-        y += prev.height + NODE_GAP_Y;
-      }
+      const center = rowCenterByNode.get(node.id) ?? containerHeight / 2;
+      const y = center - size.height / 2;
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
       flowNodes.push({
@@ -1893,15 +1959,9 @@ export function layOutProcess(
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
-      const edgeData: Record<string, unknown> = {};
-      {
-        const { labelBoxStyle, labelStyle } = processEdgeLabelStyles(stroke);
-        edgeData.label = processEdgeLabelText(link.label, link.edge_type);
-        edgeData.labelOpacity = edgeOpacity;
-        edgeData.labelZIndex = 1;
-        edgeData.labelBoxStyle = labelBoxStyle;
-        edgeData.labelStyle = labelStyle;
-      }
+      const edgeData: Record<string, unknown> = {
+        ...processEdgeLabelData(link.label, link.edge_type, stroke, edgeOpacity),
+      };
       const bow = computeEdgeBow(source, target);
       if (bow) {
         edgeData.bowDir = bow.dir;
@@ -2329,68 +2389,6 @@ function commonHandles() {
   );
 }
 
-// The entry/exit tag is wayfinding, not a lifecycle signal, so it uses a
-// fixed neutral slate instead of the node's lifecycle stroke. Tying it to the
-// stroke painted a drafting node's tag yellow-on-white — barely legible; the
-// thin/thick ring already encodes start vs end, so color is free to be the
-// most readable one at every lifecycle.
-export const FLOW_POINT_MARKER_COLOR = "#475569"; // slate-600
-
-// BPMN entry/exit marking, drawn inside the node below its content. The author
-// sets `entry_point` / `exit_point` explicitly (never deduced). The glyph is the
-// standard BPMN event circle: thin ring = start (entry), thick ring = end
-// (exit), with a small "Entry"/"Exit" tag.
-function ProcessFlowPointMarker({ node }: { node: ProcessNode }) {
-  const isEntry = node.entry_point === true;
-  const isExit = node.exit_point === true;
-  if (!isEntry && !isExit) return null;
-  const tag = (kind: "entry" | "exit") => (
-    <span key={kind} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-      <span
-        aria-hidden="true"
-        style={{
-          display: "inline-block",
-          width: 9,
-          height: 9,
-          borderRadius: "50%",
-          // Thin ring = BPMN start event; thick ring = BPMN end event.
-          border: `${kind === "exit" ? 2.5 : 1}px solid ${FLOW_POINT_MARKER_COLOR}`,
-          boxSizing: "border-box",
-          background: "#fff",
-        }}
-      />
-      {kind === "entry" ? "Entry" : "Exit"}
-    </span>
-  );
-  return (
-    <div
-      className="pointer-events-none"
-      style={{
-        position: "absolute",
-        // The type/lifecycle badge row straddles the card's bottom edge and
-        // pokes ~8px back up into it (see `NodeBadgeRow`). Clear that band so
-        // the tag sits in the gap above the badges instead of behind them.
-        bottom: 12,
-        left: "50%",
-        transform: "translateX(-50%)",
-        display: "inline-flex",
-        gap: 6,
-        fontSize: 8,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-        lineHeight: 1,
-        color: FLOW_POINT_MARKER_COLOR,
-        whiteSpace: "nowrap",
-        zIndex: 2,
-      }}
-    >
-      {isEntry ? tag("entry") : null}
-      {isExit ? tag("exit") : null}
-    </div>
-  );
-}
-
 // Subscribe each shape to a *boolean* derived from the live zoom: true
 // once the canvas is zoomed out far enough that labels/badges are
 // illegible. Selecting on the boolean (not the raw zoom) means a shape
@@ -2431,7 +2429,6 @@ export function ProcessRectangleNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -2464,22 +2461,17 @@ function ProcessRoundedNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
 }
 
-// BPMN collapsed sub-process marker — a small bordered square with a
-// centered "+" (OMG BPMN 2.0 §10.2.4: a collapsed sub-process is a task
-// glyph with a "+" marker). It sits *inside* the box, centered on the
-// bottom edge. The Action reserves SUBPROCESS_MARKER_ROOM of bottom
-// padding (ProcessTaskNode) over a box the layout grew by the same amount,
-// so the marker never overlaps the label. The dashed drill-down link
-// leaves the node's bottom-center handle — just under the marker — on
-// its way down to the sub-process pool.
-// The "View subprocess" affordance on a collapsed subprocess Action. Clicking
-// it expands the subprocess into its own pool (a different swim-lane view).
+// The "View subprocess" affordance on a collapsed subprocess Action (OMG BPMN
+// 2.0 §10.2.4: a collapsed sub-process is a task glyph with a drill-in marker).
+// It sits inside the box's reserved bottom strip, centered, lifted clear of the
+// type/lifecycle badge row that straddles the edge below it. Clicking it expands
+// the subprocess into its own pool (a different swim-lane view) — and ONLY this
+// button does: a plain click on the Action body focuses it where it sits.
 // Hidden under LOD (zoomed out, the label strip is illegible anyway).
 function ViewSubprocessButton({
   data,
@@ -2494,36 +2486,41 @@ function ViewSubprocessButton({
   return (
     <button
       type="button"
-      // Stop the click from bubbling to React Flow's onNodeClick, which would
-      // treat it as a plain focus and keep the subprocess collapsed.
+      // Stop the click from also bubbling to React Flow's onNodeClick — both
+      // open the subprocess, so without this the node would open twice.
       onClick={(event) => {
         event.stopPropagation();
         data.onViewSubprocess?.(data.node);
       }}
       onPointerDown={(event) => event.stopPropagation()}
+      // `.neu-pill-button` paints the raised → pressed neumorphic shadow so the
+      // pill reads as a real button; `nodrag nopan` keeps a click on it from
+      // panning the canvas. It sits in the bottom strip the node reserves,
+      // lifted clear of the type/lifecycle badge row straddling the edge below.
+      className="nodrag nopan neu-pill-button"
       style={{
         position: "absolute",
-        bottom: 3,
+        bottom: SUBPROCESS_BUTTON_BOTTOM,
         left: "50%",
         transform: "translateX(-50%)",
         maxWidth: "calc(100% - 12px)",
         boxSizing: "border-box",
         background: "#fff",
-        border: `1px solid ${stroke}`,
-        borderRadius: 4,
+        border: "1px solid var(--neu-border)",
+        borderRadius: 5,
         display: "inline-flex",
         alignItems: "center",
         gap: 3,
-        padding: "1px 6px",
+        padding: "2px 7px",
         fontSize: 9,
-        lineHeight: 1.4,
+        lineHeight: 1.35,
         fontWeight: 600,
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
         color: stroke,
         cursor: "pointer",
-        zIndex: 2,
+        zIndex: 3,
       }}
     >
       <span aria-hidden="true">⊞</span> View subprocess
@@ -2552,17 +2549,17 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
         alignItems: "center",
         justifyContent: "center",
         boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
-        // Reserve a bottom strip for the "View subprocess" affordance so the
-        // centered label never sits under it. The layout grew the box by
-        // the same amount; border-box keeps the padding inside that box
-        // instead of adding height on top of it.
+        // Reserve a matching strip top and bottom: the bottom keeps the centered
+        // label clear of the "View subprocess" affordance, the top mirrors it so
+        // the label stays centered rather than pushed up. The layout grew the
+        // box by 2× this; border-box keeps the padding inside that box.
+        paddingTop: data.isSubprocess ? SUBPROCESS_MARKER_ROOM : undefined,
         paddingBottom: data.isSubprocess ? SUBPROCESS_MARKER_ROOM : undefined,
         boxSizing: data.isSubprocess ? "border-box" : undefined,
       }}
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
       {data.isSubprocess ? (
         <ViewSubprocessButton data={data} stroke={stroke} hidden={simplified} />
@@ -2646,8 +2643,6 @@ function ProcessCircleNode({ data }: { data: ProcessNodeData }) {
         }}
       >
         {simplified ? null : <ShapeLabel node={data.node} />}
-        {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
-        {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       </div>
       {commonHandles()}
     </div>
@@ -2754,7 +2749,6 @@ function ProcessDocumentNode({ data }: { data: ProcessNodeData }) {
         />
       </svg>
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -2811,6 +2805,66 @@ const ProcessReferenceBadge = memo(function ProcessReferenceBadge({
  * doesn't break.
  */
 
+// The entry/exit flow point, drawn as a vertical tag clipped to the node's
+// side. It gets the same pill treatment as the type/lifecycle badges
+// (lifecycle color via `badgeStyle`), just stood on its side: Entry rides the
+// LEFT edge reading bottom-to-top (rotate -90°), the way flow enters; Exit
+// rides the RIGHT edge reading top-to-bottom (rotate 90°), the way it leaves.
+// Each carries the BPMN event ring — thin = start, thick = end.
+function FlowPointPill({
+  kind,
+  lifecycle,
+}: {
+  kind: "entry" | "exit";
+  lifecycle: string | null | undefined;
+}) {
+  const onLeft = kind === "entry";
+  const fg = textOnLifecycle(lifecycle);
+  return (
+    <span
+      className="pointer-events-none"
+      style={{
+        ...badgeStyle(lifecycle, "inline"),
+        position: "absolute",
+        top: "50%",
+        left: onLeft ? 0 : undefined,
+        right: onLeft ? undefined : 0,
+        // Center the horizontal pill on the edge, then stand it up. Entry
+        // reads bottom-to-top, Exit top-to-bottom.
+        transform: `translate(${onLeft ? "-50%" : "50%"}, -50%) rotate(${onLeft ? "-90deg" : "90deg"})`,
+        transformOrigin: "center",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        zIndex: 2,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 8,
+          height: 8,
+          flexShrink: 0,
+          borderRadius: "50%",
+          // Thin ring = BPMN start event; thick ring = BPMN end event.
+          border: `${kind === "exit" ? 2 : 1}px solid ${fg}`,
+          boxSizing: "border-box",
+        }}
+      />
+      {onLeft ? "Entry" : "Exit"}
+    </span>
+  );
+}
+
+function ProcessFlowPointTag({ node }: { node: ProcessNode }) {
+  return (
+    <>
+      {node.entry_point === true ? <FlowPointPill kind="entry" lifecycle={node.lifecycle} /> : null}
+      {node.exit_point === true ? <FlowPointPill kind="exit" lifecycle={node.lifecycle} /> : null}
+    </>
+  );
+}
+
 function ProcessBadgeRow({ data }: { data: ProcessNodeData; circular?: boolean }) {
   return (
     <>
@@ -2821,6 +2875,7 @@ function ProcessBadgeRow({ data }: { data: ProcessNodeData; circular?: boolean }
         interactive
       />
       <ProcessReferenceBadge nodeId={data.node.id} label={data.node.name ?? data.node.id} />
+      <ProcessFlowPointTag node={data.node} />
     </>
   );
 }

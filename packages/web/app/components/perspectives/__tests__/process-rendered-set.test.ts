@@ -142,3 +142,53 @@ describe("computeProcessRenderedSet", () => {
     expect(renderedNodeIds).toEqual(new Set(["b1", "b2"]));
   });
 });
+
+// A subprocess Action shows up twice: as a STEP inside its parent's pool, and
+// as the head of its OWN pool. A plain click focuses it where it sits (the
+// parent pool); only the "View subprocess" affordance — which *expands* it —
+// drills into its own pool. Centering on it must therefore frame the parent,
+// not the subprocess, unless it is the expanded process.
+describe("computeProcessRenderedSet — a subprocess step stays in its parent pool", () => {
+  // a2 is a step in pool:p1 AND itself heads a subprocess pool:a2.
+  const subPools: ProcessPool[] = [
+    { id: "pool:p1", process_id: "p1", label: "Hire", lifecycle: "active" },
+    { id: "pool:a2", process_id: "a2", label: "Interview", lifecycle: "active" },
+  ];
+  const subNodes: ProcessNode[] = [
+    node("a1", "pool:p1"),
+    node("a2", "pool:p1"),
+    node("s1", "pool:a2"),
+    node("s2", "pool:a2"),
+  ];
+  const subLinks: OverviewGraphLink[] = [
+    { id: "e:a1-a2", source: "a1", target: "a2", edge_type: "flows_to" },
+    { id: "e:s1-s2", source: "s1", target: "s2", edge_type: "flows_to" },
+  ];
+
+  it("a plain center frames the parent pool, not the subprocess's own pool", () => {
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
+      nodes: subNodes,
+      pools: subPools,
+      links: subLinks,
+      centerId: "a2",
+      focusedEdgeId: null,
+      focusedNodeIds: new Set(),
+    });
+    expect([...focalPoolIds]).toEqual(["pool:p1"]);
+    expect(renderedNodeIds).toEqual(new Set(["a1", "a2"]));
+  });
+
+  it("expanding it (View subprocess) frames its own pool", () => {
+    const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
+      nodes: subNodes,
+      pools: subPools,
+      links: subLinks,
+      centerId: "a2",
+      expandedProcessId: "a2",
+      focusedEdgeId: null,
+      focusedNodeIds: new Set(),
+    });
+    expect([...focalPoolIds]).toEqual(["pool:a2"]);
+    expect(renderedNodeIds).toEqual(new Set(["s1", "s2"]));
+  });
+});

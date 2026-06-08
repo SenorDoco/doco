@@ -484,6 +484,32 @@ export async function loadProcessGraph(
   const lanesById = new Map<string, ProcessLane>();
   const nodes: ProcessNode[] = [];
 
+  // One construction path for a member node: both the regular pools and the
+  // synthetic top-level pool build their nodes here, so the `is_process` flag
+  // and the BPMN flow markings (`entry_point`, `exit_point`,
+  // `top_level_process`) always travel with the node — a top-level process
+  // that is also a flow entry point keeps its `entry_point` in the overview.
+  const makeNode = (row: NodeRow, laneId: string, poolId: string): ProcessNode => {
+    const node: ProcessNode = {
+      id: row.id,
+      entity_type: row.entity_type,
+      name: row.summary,
+      lifecycle: row.lifecycle,
+      created_at: row.created_at,
+      href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
+      shape: shapeForEntityType(row.entity_type),
+      laneId,
+      pool_id: poolId,
+    };
+    if (processIds.has(row.id)) node.is_process = true;
+    // BPMN flow markings ride in the node's `extra` (here `data`), surfaced flat.
+    const data = row.data ?? {};
+    if (data.entry_point === true) node.entry_point = true;
+    if (data.exit_point === true) node.exit_point = true;
+    if (data.top_level_process === true) node.top_level_process = true;
+    return node;
+  };
+
   for (const row of allRows) {
     // A top-level Action (a pool head with no parent of its own) is a pool
     // header, never a member node. A subprocess (a pool-heading Action that
@@ -549,24 +575,7 @@ export async function loadProcessGraph(
       });
     }
 
-    const node: ProcessNode = {
-      id: row.id,
-      entity_type: row.entity_type,
-      name: row.summary,
-      lifecycle: row.lifecycle,
-      created_at: row.created_at,
-      href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
-      shape: shapeForEntityType(row.entity_type),
-      laneId,
-      pool_id: poolId,
-    };
-    if (processIds.has(row.id)) node.is_process = true;
-    // BPMN flow markings ride in the node's `extra` (here `data`), surfaced flat.
-    const data = row.data ?? {};
-    if (data.entry_point === true) node.entry_point = true;
-    if (data.exit_point === true) node.exit_point = true;
-    if (data.top_level_process === true) node.top_level_process = true;
-    nodes.push(node);
+    nodes.push(makeNode(row, laneId, poolId));
   }
 
   // ── Synthetic top-level pool ──────────────────────────────────────
@@ -600,17 +609,7 @@ export async function loadProcessGraph(
         lifecycle: kind === "actor" ? (principalById.get(baseId)?.lifecycle ?? null) : null,
       });
     }
-    nodes.push({
-      id: row.id,
-      entity_type: row.entity_type,
-      name: row.summary,
-      lifecycle: row.lifecycle,
-      created_at: row.created_at,
-      href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
-      shape: shapeForEntityType(row.entity_type),
-      laneId,
-      pool_id: POOL_TOP_LEVEL_ID,
-    });
+    nodes.push(makeNode(row, laneId, POOL_TOP_LEVEL_ID));
     topLevelPoolUsed = true;
   }
 

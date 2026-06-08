@@ -88,6 +88,30 @@ describe("GET /<doco>/api/edges.json", () => {
     expect(captured.args).toContain("b");
   });
 
+  it("returns the standard list envelope so the agent tool can trim it", async () => {
+    // Edge listings reach Señor Doco through doco_api, whose result truncator
+    // only knows how to gracefully trim `body.items`. A bespoke `{ edges }`
+    // shape gets byte-sliced into invalid JSON when large, so the agent can't
+    // read an edge id back out. Match every other list endpoint: { ok, type,
+    // doco_id, count, items }.
+    captureQuery();
+
+    const res = await loader({
+      request: new Request("https://doco.test/torre-bpm/api/edges.json"),
+      params: { docoHandle: "torre-bpm" },
+    } as never);
+    const body = await (res as Response).json();
+
+    expect(body).toMatchObject({
+      ok: true,
+      type: "edges",
+      doco_id: "doco_bpms",
+      count: 1,
+      items: [{ id: "edge_1" }],
+    });
+    expect(body).not.toHaveProperty("edges");
+  });
+
   it("excludes retired edges by default", async () => {
     const captured = captureQuery();
 

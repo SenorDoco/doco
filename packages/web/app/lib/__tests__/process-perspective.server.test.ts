@@ -156,11 +156,15 @@ describe("cross-pool neighbours feed computeExternalNeighbours (real loader outp
       id: "action_EXTNODE",
       direction: "entry",
       attach: { kind: "node", nodeId: "action_FMEMBER" },
+      edgeType: "flows_to",
+      label: null,
     });
     expect(neighbours).toContainEqual({
       id: "action_EXTTITLE",
       direction: "entry",
       attach: { kind: "title", poolId: "pool:action_FOCALPOOL" },
+      edgeType: "flows_to",
+      label: null,
     });
   });
 });
@@ -889,6 +893,32 @@ describe("loadProcessGraph", () => {
     expect(graph.nodes.filter((n) => n.pool_id === "pool:top-level").map((n) => n.id)).toEqual([
       "action_top",
     ]);
+  });
+
+  it("carries the entry_point flag onto a top-level Action's synthetic-pool node", async () => {
+    // A top-level process can also be the entry point of its flow — the two
+    // BPMN markings are not mutually exclusive. The synthetic-pool node (the
+    // overview/home view) must surface the same `entry_point` the regular pool
+    // node does, so the start-event glyph / "Entry" tag renders there too.
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          ...processNode("action_top", "Run the hiring process"),
+          data: { top_level_process: true, entry_point: true },
+        },
+      ],
+      principals: [{ id: "principal_recruiter", name: "Recruiter", lifecycle: "active" }],
+      users: [],
+      edges: [edge("edge_top_actor", "action_top", "principal_recruiter", "performed_by")],
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "hiring" });
+
+    const topLevelNode = graph.nodes.find(
+      (n) => n.id === "action_top" && n.pool_id === "pool:top-level",
+    );
+    expect(topLevelNode?.entry_point).toBe(true);
+    expect(topLevelNode?.top_level_process).toBe(true);
   });
 
   it("omits the synthetic top-level pool when no Action is flagged top-level", async () => {

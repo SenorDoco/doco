@@ -2,11 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { ProcessNode } from "~/lib/process-perspective.server";
-import { FLOW_POINT_MARKER_COLOR, ProcessRectangleNode } from "../process-perspective";
+import { ProcessRectangleNode } from "../process-perspective";
 
-// Render at reading zoom (1) so the shape draws its full chrome — badges,
-// label, and the entry/exit flow-point marker. `useProcessSimplified`
-// reads zoom via `useStore`; feed it a non-simplified transform.
+// Render at reading zoom (1) so the shape draws its full chrome — including
+// the badge row, which now carries the entry/exit flow-point tag.
+// `useProcessSimplified` reads zoom via `useStore`; feed a non-simplified one.
 vi.mock("@xyflow/react", () => ({
   Handle: () => null,
   Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
@@ -15,7 +15,7 @@ vi.mock("@xyflow/react", () => ({
     selector({ transform: [0, 0, 1] }),
 }));
 
-function entryNode(lifecycle: string): ProcessNode {
+function node(lifecycle: string, flags: Partial<ProcessNode>): ProcessNode {
   return {
     id: "node_1",
     entity_type: "action",
@@ -26,32 +26,49 @@ function entryNode(lifecycle: string): ProcessNode {
     shape: "rectangle",
     laneId: "lane_1",
     pool_id: "pool_1",
-    entry_point: true,
+    ...flags,
   };
 }
 
-function render(lifecycle: string): string {
+function render(lifecycle: string, flags: Partial<ProcessNode>): string {
   return renderToStaticMarkup(
-    createElement(ProcessRectangleNode, { data: { node: entryNode(lifecycle), isCenter: false } }),
+    createElement(ProcessRectangleNode, {
+      data: { node: node(lifecycle, flags), isCenter: false },
+    }),
   );
 }
 
-describe("process entry/exit flow-point marker", () => {
-  it("renders the Entry tag for an entry-point node", () => {
-    expect(render("drafting")).toContain("Entry");
+describe("process entry/exit flow-point tag", () => {
+  it("renders the Entry tag vertically on the left, reading bottom-to-top", () => {
+    const html = render("drafting", { entry_point: true });
+    expect(html).toContain("Entry");
+    expect(html).toContain("rotate(-90deg)"); // stood up, reading bottom-to-top
+    expect(html).toContain("left:0");
   });
 
-  it("paints the marker a fixed neutral color, never the lifecycle stroke", () => {
-    // A drafting node's stroke is yellow (#eab308); inheriting it washed the
-    // tag out on the white card. The marker now uses a neutral slate so it
-    // stays legible — and that slate is what shows up in the rendered style.
-    expect(render("drafting")).toContain(FLOW_POINT_MARKER_COLOR);
+  it("renders the Exit tag vertically on the right, reading top-to-bottom", () => {
+    const html = render("active", { exit_point: true });
+    expect(html).toContain("Exit");
+    expect(html).toContain("rotate(90deg)"); // stood up, reading top-to-bottom
+    expect(html).toContain("right:0");
   });
 
-  it("uses the same neutral marker color regardless of lifecycle", () => {
-    // Lifecycle independence: a queued (blue) node's marker is the same
-    // neutral slate as a drafting (yellow) node's — color no longer leaks
-    // the lifecycle stroke into the tag.
-    expect(render("queued")).toContain(FLOW_POINT_MARKER_COLOR);
+  it("keeps the BPMN event ring on the tag", () => {
+    expect(render("drafting", { entry_point: true })).toContain("border-radius:50%");
+  });
+
+  it("styles the tag like the lifecycle/type badges — a lifecycle-colored pill", () => {
+    // Same pill treatment as NodeBadgeRow: the lifecycle color is the
+    // background (not low-contrast text). A queued node's tag is blue, like
+    // its other badges.
+    const html = render("queued", { entry_point: true });
+    expect(html).toContain("rotate(-90deg)");
+    expect(html).toContain("background:#2563eb");
+  });
+
+  it("renders no flow-point tag when the node is neither entry nor exit", () => {
+    const html = render("active", {});
+    expect(html).not.toContain("rotate(-90deg)");
+    expect(html).not.toContain("rotate(90deg)");
   });
 });
