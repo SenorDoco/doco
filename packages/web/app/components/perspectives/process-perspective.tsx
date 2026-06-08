@@ -255,6 +255,22 @@ export function openCanvasNode(
   else if (node.href) handlers.navigate(node.href);
 }
 
+/**
+ * A box drawn OUTSIDE the focal pool stands in for a cross-pool sequence-flow
+ * neighbour — a node in another process that flows into or out of this one. Its
+ * React Flow id is `external:…` and its `data.node` is the real node in the
+ * other pool. Clicking it focuses that node (which renders its OWN pool).
+ * Returns that node, or null for any other flow node.
+ */
+export function clickedExternalNeighbour(flowNode: {
+  id: string;
+  data?: unknown;
+}): ProcessNode | null {
+  if (!flowNode.id.startsWith("external:")) return null;
+  const node = (flowNode.data as { node?: ProcessNode } | undefined)?.node;
+  return node ?? null;
+}
+
 export function ProcessPerspective({
   docoHandle,
   pools,
@@ -707,8 +723,8 @@ export function ProcessPerspective({
   // different Intent comes into focus (`focalPoolIds` changes), or extend by
   // one when a node is genuinely added (it sorts last → the next free number).
   const references = useMemo(
-    () => processReferences(pools, lanes, nodes, focalPoolIds, docoHandle),
-    [pools, lanes, nodes, focalPoolIds, docoHandle],
+    () => processReferences(pools, lanes, nodes, linksRaw, focalPoolIds, docoHandle),
+    [pools, lanes, nodes, linksRaw, focalPoolIds, docoHandle],
   );
   const { numberById: referenceNumberByEntityId } = usePublishedReferences("process", references);
   // Publish the numbering into an external store so each #N badge can
@@ -764,9 +780,9 @@ export function ProcessPerspective({
         id,
         type: nodeTypeForShape(external.shape),
         position: { x, y },
-        // `isBoundaryCircle` keeps the existing focus-on-click behaviour: the box
-        // stands in for a node in another pool, so clicking it focuses that pool.
-        data: { node: external, isBoundaryCircle: true },
+        // The box stands in for a node in another pool; its `external:` id is
+        // what routes the click to focus that node (clickedExternalNeighbour).
+        data: { node: external },
         draggable: false,
         selectable: false,
         connectable: false,
@@ -1219,7 +1235,7 @@ export function ProcessPerspective({
             }}
             onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
             onPaneClick={onPaneClick}
-            onNodeClick={(_e: unknown, node: { id: string }) => {
+            onNodeClick={(_e: unknown, node: { id: string; data?: unknown }) => {
               const pool = poolByHeaderId.get(node.id);
               if (pool) {
                 openPoolNode(pool);
@@ -1233,13 +1249,12 @@ export function ProcessPerspective({
                 openProcess(parentId);
                 return;
               }
-              // An entry/exit circle stands for a node in another process.
-              // Clicking it focuses that node — collapsing any expansion so
-              // its OWN pool renders (a different pool).
-              if (node.id.startsWith("circle:")) {
-                const externalId = node.id.slice(node.id.lastIndexOf(":") + 1);
-                const external = nodeByFullId.get(externalId);
-                if (external) openNode(external);
+              // A box drawn outside the pool stands in for a node in another
+              // process. Clicking it focuses that node — collapsing any
+              // expansion so its OWN pool renders (a different pool).
+              const external = clickedExternalNeighbour(node);
+              if (external) {
+                openNode(external);
                 return;
               }
               const target = nodeById.get(node.id);
@@ -1473,7 +1488,7 @@ const SUBPROCESS_MARKER_ROOM = 22;
 //     frames BOTH pools in full, so the hand-off is shown in both contexts.
 //
 // Nodes in other processes that connect across the boundary are NOT pulled
-// into the rendered set — the renderer draws them as entry/exit circles.
+// into the rendered set — the renderer draws them as boxes outside the pool.
 //
 // Returns the focal pool ids (one for a node/process focus, two for a
 // cross-process edge) and the full set of member node ids to render.
@@ -1791,7 +1806,7 @@ export function layOutProcess(
   }
 
   // Cross-process neighbours are NOT laid out in the swim lane. The renderer
-  // draws them as entry/exit boundary circles (see `boundaryCircles` in the
+  // draws them as boxes outside the pool (see `externalNeighbours` in the
   // component), so layout solves geometry from the focal pool's members only.
 
   const nodeSet = new Set(nodes.map((n) => n.id));
@@ -1975,8 +1990,6 @@ interface ProcessNodeData {
   /** This Action is itself a process (it has `has_parent` children) — render
    *  the collapsed-subprocess "View subprocess" affordance. */
   isSubprocess?: boolean;
-  /** A boundary stand-in for a node in another process (entry/exit circle). */
-  isBoundaryCircle?: boolean;
   /** A stand-in for a parent process this pool's Action hangs under, drawn
    *  above the pool. Clicking it drills into that parent's own pool. */
   isParentProcess?: boolean;

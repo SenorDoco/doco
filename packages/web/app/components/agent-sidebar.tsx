@@ -1767,6 +1767,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     ],
   );
 
+  // Interrupt the in-flight turn. Aborting the fetch unwinds send()'s
+  // try/finally: the AbortError is swallowed (not shown as an error) and
+  // the finally commits whatever Señor Doco streamed so far, then clears
+  // `busy`. This is the same teardown path navigation/unmount already use,
+  // now reachable from the composer's Stop button.
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   // Pending-send recovery. send() writes the user's text to
   // localStorage synchronously before its fetch; if the tab died
   // before the SSE confirmed persistence, this effect finds the
@@ -2127,6 +2136,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   value={inputText}
                   onChange={setInputText}
                   onSend={send}
+                  onStop={stop}
+                  busy={busy}
                   username={me.username}
                   staged={staged}
                   queuedCount={queuedSends.length}
@@ -3199,10 +3210,12 @@ export function applyComposerEchoGuard(
   return { value: incoming, guard: null };
 }
 
-function Composer({
+export function Composer({
   value,
   onChange,
   onSend,
+  onStop,
+  busy,
   username,
   staged,
   queuedCount,
@@ -3214,6 +3227,8 @@ function Composer({
   value: string;
   onChange: (s: string) => void;
   onSend: () => void;
+  onStop: () => void;
+  busy: boolean;
   username: string;
   staged: StagedAttachment[];
   queuedCount: number;
@@ -3316,18 +3331,30 @@ function Composer({
           </button>
           <div className="text-[10px] text-muted-foreground">{queuedLabel ?? helperLabel}</div>
         </div>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!canSend}
-          aria-label="Send message"
-          className={cn(
-            "neu-button rounded-md px-3 py-1 text-[11px] font-semibold hover:opacity-90 disabled:opacity-50",
-            "bg-primary text-primary-foreground",
-          )}
-        >
-          Send
-        </button>
+        <div className="flex items-center gap-2">
+          {busy ? (
+            <button
+              type="button"
+              onClick={onStop}
+              aria-label="Stop Señor Doco"
+              className="neu-button rounded-md border border-border px-3 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-input/60 hover:text-foreground"
+            >
+              Stop
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!canSend}
+            aria-label="Send message"
+            className={cn(
+              "neu-button rounded-md px-3 py-1 text-[11px] font-semibold hover:opacity-90 disabled:opacity-50",
+              "bg-primary text-primary-foreground",
+            )}
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

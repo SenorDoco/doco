@@ -33,7 +33,7 @@ const links: OverviewGraphLink[] = [
 ];
 
 describe("computeProcessRenderedSet", () => {
-  it("renders the focal node's whole process — cross-process neighbours are circles, not members", () => {
+  it("renders the focal node's whole process — cross-process neighbours are outside boxes, not members", () => {
     const { focalPoolIds, renderedNodeIds } = computeProcessRenderedSet({
       nodes,
       pools,
@@ -44,7 +44,7 @@ describe("computeProcessRenderedSet", () => {
     });
     expect([...focalPoolIds]).toEqual(["pool:p1"]);
     // Only the focal process's members render; b1 (another process) does not —
-    // it surfaces as an exit circle drawn by the renderer.
+    // it surfaces as an exit box drawn outside the pool by the renderer.
     expect(renderedNodeIds).toEqual(new Set(["a1", "a2"]));
   });
 

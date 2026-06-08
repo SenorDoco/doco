@@ -73,7 +73,7 @@ describe("processReferences", () => {
       node({ id: "action_pick", name: "Pick items", created_at: "2024-01-01T00:00:00Z" }),
     ];
 
-    const refs = processReferences(pools, lanes, nodes, focal("pool:action_p"), "demo");
+    const refs = processReferences(pools, lanes, nodes, [], focal("pool:action_p"), "demo");
 
     expect(refs.map((r) => `#${r.number} ${r.entity_type}:${r.label}`)).toEqual([
       "#1 action:Fulfill customer orders",
@@ -93,7 +93,7 @@ describe("processReferences", () => {
     expect(refs[1]).toMatchObject({ id: "pool:action_p::principal_sales", href: null });
   });
 
-  it("numbers only the focal process — never another process's pool, lanes, or nodes", () => {
+  it("never numbers another process's pool, lanes, or unconnected nodes", () => {
     const pools: ProcessPool[] = [
       pool({ id: "pool:action_p", process_id: "action_p", label: "Focal", lifecycle: "active" }),
       pool({
@@ -109,14 +109,83 @@ describe("processReferences", () => {
     ];
     const nodes: ProcessNode[] = [
       node({ id: "focal_node", pool_id: "pool:action_p", created_at: "2024-01-01T00:00:00Z" }),
-      // A cross-process neighbour drawn for context — it belongs to action_q and
-      // earns its number only when action_q is the focus, never a borrowed one here.
+      // An out-of-pool node with no sequence flow crossing into focus is never
+      // drawn on the focal canvas, so it earns no number — its number is its
+      // own process's to give when action_q is the focus.
       node({ id: "neighbour_node", pool_id: "pool:action_q", created_at: "2024-01-01T00:00:00Z" }),
     ];
 
-    const refs = processReferences(pools, lanes, nodes, focal("pool:action_p"), "demo");
+    const refs = processReferences(pools, lanes, nodes, [], focal("pool:action_p"), "demo");
 
     expect(refs.map((r) => r.id)).toEqual(["action_p", "pool:action_p::p1", "focal_node"]);
+  });
+
+  it("numbers the focal pool's cross-pool flow neighbours — the boxes drawn outside it — after its members", () => {
+    const pools: ProcessPool[] = [
+      pool({ id: "pool:action_p", process_id: "action_p", label: "Focal", lifecycle: "active" }),
+      pool({
+        id: "pool:action_q",
+        process_id: "action_q",
+        label: "Neighbour",
+        lifecycle: "active",
+      }),
+    ];
+    const lanes: ProcessLane[] = [
+      lane({ id: "pool:action_p::p1", pool_id: "pool:action_p", kind: "actor", label: "P1" }),
+    ];
+    const nodes: ProcessNode[] = [
+      node({ id: "focal_a", pool_id: "pool:action_p", created_at: "2024-01-01T00:00:00Z" }),
+      node({ id: "focal_b", pool_id: "pool:action_p", created_at: "2024-01-02T00:00:00Z" }),
+      // q1 lives in another pool but flows INTO the focal pool, so the canvas
+      // draws it as an entry box outside the pool — it earns the next #N.
+      node({
+        id: "q1",
+        pool_id: "pool:action_q",
+        name: "Upstream step",
+        created_at: "2024-01-03T00:00:00Z",
+        href: "/demo/action/q1",
+      }),
+      // q2 is in another pool with no edge crossing the boundary — never drawn,
+      // never numbered.
+      node({ id: "q2", pool_id: "pool:action_q", created_at: "2024-01-04T00:00:00Z" }),
+    ];
+    const links = [{ source: "q1", target: "focal_a", edge_type: "flows_to" }];
+
+    const refs = processReferences(pools, lanes, nodes, links, focal("pool:action_p"), "demo");
+
+    expect(refs.map((r) => `#${r.number} ${r.id}`)).toEqual([
+      "#1 action_p",
+      "#2 pool:action_p::p1",
+      "#3 focal_a",
+      "#4 focal_b",
+      "#5 q1",
+    ]);
+    // The neighbour box links to its own page, like any node reference.
+    expect(refs.find((r) => r.id === "q1")).toMatchObject({
+      href: "/demo/action/q1",
+      entity_type: "action",
+    });
+  });
+
+  it("numbers a node that is both an entry and an exit neighbour once", () => {
+    const pools: ProcessPool[] = [
+      pool({ id: "pool:action_p", process_id: "action_p", label: "Focal", lifecycle: "active" }),
+    ];
+    const nodes: ProcessNode[] = [
+      node({ id: "focal_a", pool_id: "pool:action_p", created_at: "2024-01-01T00:00:00Z" }),
+      node({ id: "q1", pool_id: "pool:action_q", created_at: "2024-01-02T00:00:00Z" }),
+    ];
+    // q1 flows into the pool AND the pool flows back out to q1: two boxes, one
+    // node, one number.
+    const links = [
+      { source: "q1", target: "focal_a", edge_type: "flows_to" },
+      { source: "focal_a", target: "q1", edge_type: "flows_to" },
+    ];
+
+    const refs = processReferences(pools, [], nodes, links, focal("pool:action_p"), "demo");
+
+    expect(refs.filter((r) => r.id === "q1")).toHaveLength(1);
+    expect(refs.map((r) => r.id)).toEqual(["action_p", "focal_a", "q1"]);
   });
 
   it("keeps every number stable when a node is retired / hidden / lifecycle-filtered", () => {
@@ -132,10 +201,10 @@ describe("processReferences", () => {
       node({ id: "b", created_at: "2024-01-02T00:00:00Z" }),
       node({ id: "c", created_at: "2024-01-03T00:00:00Z" }),
     ];
-    const before = processReferences(pools, [], nodes, focal("pool:action_p"), "demo");
+    const before = processReferences(pools, [], nodes, [], focal("pool:action_p"), "demo");
 
     const afterRetire = nodes.map((n) => (n.id === "b" ? { ...n, lifecycle: "retired" } : n));
-    const after = processReferences(pools, [], afterRetire, focal("pool:action_p"), "demo");
+    const after = processReferences(pools, [], afterRetire, [], focal("pool:action_p"), "demo");
 
     expect(numbersById(after)).toEqual(numbersById(before));
     // b is still numbered — membership is unchanged, only its lifecycle flag is.
@@ -150,7 +219,7 @@ describe("processReferences", () => {
       node({ id: "a", created_at: "2024-01-01T00:00:00Z" }),
       node({ id: "b", created_at: "2024-01-02T00:00:00Z" }),
     ];
-    const before = processReferences(pools, [], existing, focal("pool:action_p"), "demo");
+    const before = processReferences(pools, [], existing, [], focal("pool:action_p"), "demo");
 
     // A genuinely new node has the newest `created_at`, so it sorts last and
     // takes the next number; #1 process, #2 a, #3 b are untouched.
@@ -158,7 +227,7 @@ describe("processReferences", () => {
       ...existing,
       node({ id: "c", created_at: "2024-06-01T00:00:00Z" }),
     ];
-    const after = processReferences(pools, [], withNew, focal("pool:action_p"), "demo");
+    const after = processReferences(pools, [], withNew, [], focal("pool:action_p"), "demo");
 
     expect(before.map((r) => [r.id, r.number])).toEqual([
       ["action_p", 1],
@@ -179,7 +248,7 @@ describe("processReferences", () => {
       node({ id: "node_a", created_at: "2024-01-01T00:00:00Z" }),
     ];
 
-    const refs = processReferences([], [], nodes, focal("pool:action_p"), "demo");
+    const refs = processReferences([], [], nodes, [], focal("pool:action_p"), "demo");
 
     expect(refs.map((r) => r.id)).toEqual(["node_a", "node_z"]);
   });
@@ -209,6 +278,7 @@ describe("processReferences", () => {
       pools,
       lanes,
       [],
+      [],
       focal("pool:action_p", "__unassigned__"),
       "demo",
     );
@@ -228,6 +298,7 @@ describe("processReferences", () => {
           lifecycle: "active",
         }),
       ],
+      [],
       [],
       [],
       focal("pool:action_p"),

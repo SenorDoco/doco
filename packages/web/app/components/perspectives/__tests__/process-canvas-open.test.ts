@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { openCanvasNode } from "~/components/perspectives/process-perspective";
+import {
+  clickedExternalNeighbour,
+  openCanvasNode,
+} from "~/components/perspectives/process-perspective";
 import type { ProcessNode } from "~/lib/process-perspective.server";
 
 const node = (id: string, overrides: Partial<ProcessNode> = {}): ProcessNode => ({
@@ -53,5 +56,27 @@ describe("openCanvasNode", () => {
     const h = { ...handlers(), onNodeClick: undefined };
     openCanvasNode(member, { expandSubprocess: false }, h);
     expect(h.navigate).toHaveBeenCalledWith("/doco/action/member_2");
+  });
+});
+
+describe("clickedExternalNeighbour", () => {
+  it("resolves an external-neighbour box to the cross-pool node it stands for", () => {
+    const external = node("q1", { pool_id: "pool:other" });
+    expect(
+      clickedExternalNeighbour({
+        id: "external:entry:q1:pool:action_p",
+        data: { node: external },
+      }),
+    ).toBe(external);
+  });
+
+  it("returns null for an ordinary in-pool flow node", () => {
+    expect(
+      clickedExternalNeighbour({ id: "member_1", data: { node: node("member_1") } }),
+    ).toBeNull();
+  });
+
+  it("returns null for an external id whose data carries no node", () => {
+    expect(clickedExternalNeighbour({ id: "external:entry:q1:pool:p" })).toBeNull();
   });
 });
