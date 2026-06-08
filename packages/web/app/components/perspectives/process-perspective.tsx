@@ -40,7 +40,7 @@ import {
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import { usePublishedReferences } from "~/lib/perspective-references";
-import { computeExternalNeighbours } from "~/lib/process-boundary";
+import { computeExternalNeighbours, computeParentProcesses } from "~/lib/process-boundary";
 import { processEdgeLabelStyles, processEdgeLabelText } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
@@ -833,6 +833,83 @@ export function ProcessPerspective({
     nodeByFullId,
   ]);
 
+  // Parent processes — the process(es) this pool's Action hangs under
+  // (`has_parent`). They render as task boxes from the TOP of the focal pool
+  // toward the left, each with a `has_parent` arrow rising from the pool header
+  // into it. An Action can belong to multiple processes, so EVERY parent is
+  // drawn. Clicking a box drills into that parent's own pool.
+  const parentProcesses = useMemo(() => {
+    const parents = computeParentProcesses(focalPoolIds, links);
+    const nodes: FlowNode[] = [];
+    const edges: FlowEdge[] = [];
+    const poolGeometryById = new Map(layout.poolGeometry.map((p) => [p.id, p]));
+    const poolByPoolId = new Map(pools.map((p) => [p.id, p]));
+    const xCursorByPool = new Map<string, number>(); // poolId → next left-edge x
+    let count = 0;
+
+    for (const parent of parents) {
+      if (count >= PROCESS_PLACEHOLDER_STUB_BUDGET) break;
+      const geometry = poolGeometryById.get(parent.poolId);
+      if (!geometry) continue;
+      // A parent must itself head a pool for us to label its box; that pool
+      // carries the parent Action's prose and lifecycle.
+      const parentPool = poolByPoolId.get(`pool:${parent.id}`);
+      if (!parentPool) continue;
+      const parentNode: ProcessNode = {
+        id: parent.id,
+        entity_type: "action",
+        name: parentPool.label,
+        lifecycle: parentPool.lifecycle,
+        created_at: null,
+        href: docoHandle ? `/${docoHandle}/action/${parent.id}` : null,
+        shape: "task",
+        laneId: "",
+        pool_id: parentPool.id,
+        is_process: true,
+      };
+      const size = sizeForNode(parentNode);
+      // Anchor the row at the pool's left edge and lay parents out left-to-right
+      // so they sit at the pool's top-left, just above its header band.
+      const x = xCursorByPool.get(parent.poolId) ?? LANE_LEFT_INSET;
+      xCursorByPool.set(parent.poolId, x + size.width + NODE_GAP_X);
+      const y = geometry.y - PARENT_PROCESS_GAP - size.height;
+      const id = `parent:${parent.id}::${parent.poolId}`;
+      const stroke = lifecycleColor(parentNode.lifecycle);
+
+      nodes.push({
+        id,
+        type: nodeTypeForShape(parentNode.shape),
+        position: { x, y },
+        // `isParentProcess` routes the click to drill UP into the parent's pool.
+        data: { node: parentNode, isParentProcess: true },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        initialWidth: size.width,
+        initialHeight: size.height,
+        style: { width: size.width, height: size.height, zIndex: 1 },
+      });
+
+      // The `has_parent` arrow: it leaves the child pool's header top edge and
+      // points UP to the parent box (arrowhead at the parent it belongs to).
+      edges.push({
+        id: `parent-edge:${id}`,
+        source: `pool-header:${parent.poolId}`,
+        sourceHandle: "pool-top",
+        target: id,
+        type: "stableLabeledBezier",
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+        style: { stroke, strokeWidth: 1.75 },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: stroke },
+      });
+      count++;
+    }
+
+    return { nodes, edges };
+  }, [focalPoolIds, links, layout.poolGeometry, pools, docoHandle]);
+
   // Cache of the previous render's flow nodes, keyed by id, so unchanged
   // nodes keep their object identity across layout re-runs (see below).
   const prevFlowNodesRef = useRef<Map<string, FlowNode>>(new Map());
@@ -874,7 +951,7 @@ export function ProcessPerspective({
     // are unchanged, so the memo'd shape components skip work when a focus
     // shift re-runs the layout. (On pan this memo doesn't recompute at
     // all — none of its deps depend on the viewport anymore.)
-    const built = [...windowed, ...externalNeighbours.nodes];
+    const built = [...windowed, ...externalNeighbours.nodes, ...parentProcesses.nodes];
     const stable = reuseStableNodes(built, prevFlowNodesRef.current);
     prevFlowNodesRef.current = indexById(stable);
     return stable;
@@ -886,6 +963,7 @@ export function ProcessPerspective({
     openLaneNode,
     viewSubprocess,
     externalNeighbours.nodes,
+    parentProcesses.nodes,
   ]);
   const flowEdges = useMemo<FlowEdge[]>(
     () => [
@@ -899,8 +977,9 @@ export function ProcessPerspective({
           return { ...edge, className };
         }),
       ...externalNeighbours.edges,
+      ...parentProcesses.edges,
     ],
-    [layout.flowEdges, renderedNodeIds, externalNeighbours.edges],
+    [layout.flowEdges, renderedNodeIds, externalNeighbours.edges, parentProcesses.edges],
   );
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
   // selection center (highest global PageRank in the BPMN view) so opening
@@ -1164,6 +1243,14 @@ export function ProcessPerspective({
                 openPoolNode(pool);
                 return;
               }
+              // A parent-process box (drawn above the pool) stands for a process
+              // this pool's Action hangs under. Clicking it drills UP into that
+              // parent's own pool.
+              if (node.id.startsWith("parent:")) {
+                const parentId = node.id.slice("parent:".length).split("::")[0];
+                openProcess(parentId);
+                return;
+              }
               // A box drawn outside the pool stands in for a node in another
               // process. Clicking it focuses that node — collapsing any
               // expansion so its OWN pool renders (a different pool).
@@ -1382,6 +1469,10 @@ const POOL_GAP = 16;
 // outside the anchor member (left for an entry, right for an exit).
 const BOUNDARY_CIRCLE_DIAMETER = 56;
 const BOUNDARY_CIRCLE_GAP = 40;
+// Vertical gap between a focal pool's top edge and the parent-process boxes
+// drawn above it. Mirrors BOUNDARY_CIRCLE_GAP, which spaces the left/right
+// sequence-flow neighbours off the pool's sides.
+const PARENT_PROCESS_GAP = 40;
 // Vertical room reserved at the bottom of a sub-process Action so the
 // "View subprocess" affordance sits inside the box without colliding with the
 // label. The layout grows the node by this much; the node component pads its
@@ -1911,6 +2002,9 @@ interface ProcessNodeData {
   /** This Action is itself a process (it has `has_parent` children) — render
    *  the collapsed-subprocess "View subprocess" affordance. */
   isSubprocess?: boolean;
+  /** A stand-in for a parent process this pool's Action hangs under, drawn
+   *  above the pool. Clicking it drills into that parent's own pool. */
+  isParentProcess?: boolean;
   /** Open this subprocess: expand its own pool and open its dialog (the "View
    *  subprocess" click). */
   onViewSubprocess?: (node: ProcessNode) => void;
@@ -2036,7 +2130,9 @@ export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData })
         </>
       )}
       {/* Anchors for external-neighbour arrows that touch the process Action:
-          they attach to the title band's left edge (entry) / right edge (exit). */}
+          they attach to the title band's left edge (entry) / right edge (exit).
+          The top edge anchors the `has_parent` arrows that rise to the parent
+          processes drawn above the pool. */}
       <Handle
         id="pool-left"
         type="target"
@@ -2047,6 +2143,12 @@ export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData })
         id="pool-right"
         type="source"
         position={Position.Right}
+        style={{ background: "transparent", border: "none" }}
+      />
+      <Handle
+        id="pool-top"
+        type="source"
+        position={Position.Top}
         style={{ background: "transparent", border: "none" }}
       />
     </div>
