@@ -10,15 +10,15 @@
 // every upload — no separate cron needed for the alpha-cutover scale
 // this runs at.
 //
-// Auth: signed-in only; the row is keyed to the caller's rolling
-// conversation, so a second user can't fetch back the bytes.
+// Auth: signed-in only; the row is keyed to the caller (principal), so a
+// second user can't fetch back the bytes — and so the file survives whichever
+// thread the next message lands on (rolling vs. a Doco's chat).
 
 import {
   ATTACHMENT_ALLOWED_MIME,
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_RETENTION_DAYS,
   ATTACHMENT_RETENTION_NOTICE,
-  loadOrCreateConversation,
   normalizeUploadMime,
   saveAttachment,
 } from "~/lib/agent-chat.server";
@@ -48,7 +48,6 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "no_files" }, { status: 400 });
   }
 
-  const conv = await loadOrCreateConversation(me.id);
   const accepted: unknown[] = [];
   const rejected: Array<{ filename: string; reason: string }> = [];
 
@@ -73,7 +72,6 @@ export async function action({ request }: { request: Request }) {
     const buf = Buffer.from(await f.arrayBuffer());
     try {
       const meta = await saveAttachment({
-        conversationId: conv.id,
         principalId: me.id,
         filename: f.name,
         mimeType: mime,

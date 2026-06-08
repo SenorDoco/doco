@@ -52,7 +52,7 @@ vi.mock("../internal-fetch.server", () => ({ internalFetch: vi.fn(async () => nu
 vi.mock("../dotenv.server", () => ({ ensureEnvLoaded: vi.fn() }));
 vi.mock("../telemetry.server", () => ({ upsertAgentTurn: vi.fn(async () => {}) }));
 
-import { TURN_TIME_BUDGET_MS, runAssistantTurn } from "../agent-chat.server";
+import { TURN_TIME_BUDGET_MS, runAssistantTurn, saveAttachment } from "../agent-chat.server";
 import type { ChatConversationRow, ChatStreamContext } from "../agent-chat.server";
 
 type Block =
@@ -194,6 +194,55 @@ describe("agent loop against a real database", () => {
 
     const messages = await persistedMessages();
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("delivers an attachment the user uploaded, even when the turn runs on a different conversation than the upload created", async () => {
+    // Reproduces the Doco-page first-message bug: the upload route stores
+    // the file under the user's rolling conversation, but the message turn
+    // runs on the Doco-scoped conversation. The attachment must still reach
+    // the model — it belongs to the principal, not to a single thread.
+    const att = await saveAttachment({
+      principalId: USER,
+      filename: "actions.png",
+      mimeType: "image/png",
+      // 1x1 transparent PNG.
+      bytes: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    });
+
+    runtime.stream.mockReturnValueOnce(
+      makeStream([{ type: "text", text: "I can see the screenshot." }], "end_turn"),
+    );
+
+    const events: Array<Record<string, unknown>> = [];
+    for await (const ev of runAssistantTurn({
+      conversation: conversation(),
+      userText: "Import these actions",
+      ctx: { ...ctx(), attachmentIds: [att.id] },
+    })) {
+      events.push(ev as Record<string, unknown>);
+    }
+
+    // The model received the image block in the user message.
+    const call = runtime.stream.mock.calls[0]?.[0] as
+      | { messages: Array<{ role: string; content: unknown }> }
+      | undefined;
+    const userMessage = call?.messages.find((m) => m.role === "user");
+    const blocks = Array.isArray(userMessage?.content) ? userMessage.content : [];
+    expect(blocks.some((b: { type?: string }) => b.type === "image")).toBe(true);
+
+    // And the persisted user row carries the attachment_ref, not a bare line.
+    const messages = await persistedMessages();
+    const persistedUser = messages.find((m) => m.role === "user");
+    const persistedBlocks = Array.isArray(persistedUser?.content) ? persistedUser.content : [];
+    expect(
+      persistedBlocks.some(
+        (b: { type?: string; attachment_id?: string }) =>
+          b.type === "attachment_ref" && b.attachment_id === att.id,
+      ),
+    ).toBe(true);
   });
 
   it("runs a tool turn, then a text turn, persisting the full tool_use/tool_result pair", async () => {
