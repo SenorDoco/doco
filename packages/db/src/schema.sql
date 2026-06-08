@@ -114,9 +114,6 @@ CREATE TABLE IF NOT EXISTS docos (
   -- never collides.
   deleted_at      timestamptz
 );
--- Sweeper lookup: only ever scans tombstoned rows, so a partial index keeps it
--- tiny no matter how many live Docos exist.
-CREATE INDEX IF NOT EXISTS docos_deleted_at_idx ON docos (deleted_at) WHERE deleted_at IS NOT NULL;
 
 -- Per-Doco policies. Every policy is an authoring policy; the standalone
 -- `kind` classifies it ('suggestion' | 'deterministic' | 'probabilistic') and
@@ -488,6 +485,12 @@ CREATE TABLE IF NOT EXISTS oauth_access_tokens (
   granted_workspace_roles jsonb NOT NULL DEFAULT '{}'::jsonb,
   granted_workspace_write_types jsonb NOT NULL DEFAULT '{}'::jsonb,
   scope             text,
+  -- An 'actor' access token carries no stored grants: it acts as `user_id`,
+  -- capped at `actor_role` (null = owner = full live role), resolved live
+  -- against the user's current membership on every request.
+  grant_type        text NOT NULL DEFAULT 'regular'
+                    CHECK (grant_type IN ('regular', 'actor')),
+  actor_role        text CHECK (actor_role IS NULL OR actor_role IN ('reader','writer','owner')),
   expires_at        timestamptz NOT NULL,
   revoked           boolean NOT NULL DEFAULT false,
   created_at        timestamptz NOT NULL DEFAULT now()
@@ -713,9 +716,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_created
   ON chat_messages (conversation_id, created_at);
 
+-- An attachment belongs to the principal who uploaded it, not to a single
+-- thread: the composer uploads the bytes before the turn picks which
+-- conversation to run on (rolling vs. Doco-scoped), so any lookup must key on
+-- the owner. Reads filter by (id, user_id); the PK covers the id set.
 CREATE TABLE IF NOT EXISTS chat_attachments (
   id               text PRIMARY KEY,
-  conversation_id  text NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
   user_id          text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   filename         text NOT NULL,
   mime_type        text NOT NULL,
@@ -724,8 +730,7 @@ CREATE TABLE IF NOT EXISTS chat_attachments (
   created_at       timestamptz NOT NULL DEFAULT now(),
   expires_at       timestamptz NOT NULL DEFAULT (now() + INTERVAL '30 days')
 );
-CREATE INDEX IF NOT EXISTS idx_chat_attachments_conversation ON chat_attachments (conversation_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_chat_attachments_expires      ON chat_attachments (expires_at);
+CREATE INDEX IF NOT EXISTS idx_chat_attachments_expires ON chat_attachments (expires_at);
 
 -- Telemetry. user_id / doco_id are plain text (no FK).
 CREATE TABLE IF NOT EXISTS agent_turn_metrics (
@@ -919,9 +924,15 @@ END $$;
 -- explicitly here. Idempotent (ADD COLUMN IF NOT EXISTS), re-asserted on every
 -- cold start; a no-op once the column is present (incl. on a fresh DB, where
 -- the CREATE TABLE already made it). The CHECK matches the inline definition.
--- Soft-delete tombstone for Docos created before the column shipped.
+-- Soft-delete tombstone for Docos created before the column shipped. The
+-- partial sweeper index lives HERE, after the ADD COLUMN — not in the docos
+-- table block above — because schema.sql re-applies top-to-bottom on every
+-- boot: on a pre-existing docos table the inline CREATE TABLE is a no-op, so an
+-- index that referenced `deleted_at` earlier in the file would hit a column
+-- that this migration hasn't added yet and abort the entire schema-apply.
 ALTER TABLE docos
   ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+CREATE INDEX IF NOT EXISTS docos_deleted_at_idx ON docos (deleted_at) WHERE deleted_at IS NOT NULL;
 
 ALTER TABLE oauth_authorization_codes
   ADD COLUMN IF NOT EXISTS actor_role text
@@ -930,6 +941,24 @@ ALTER TABLE oauth_refresh_tokens
   ADD COLUMN IF NOT EXISTS actor_role text
   CHECK (actor_role IS NULL OR actor_role IN ('reader','writer','owner'));
 ALTER TABLE oauth_device_authorizations
+  ADD COLUMN IF NOT EXISTS actor_role text
+  CHECK (actor_role IS NULL OR actor_role IN ('reader','writer','owner'));
+
+-- Untie chat_attachments from a single conversation. The composer uploads
+-- bytes before the turn knows which thread it runs on, so keying the row to a
+-- conversation dropped the file whenever the upload thread and the message
+-- thread differed (a Doco page's first message). Attachments are owned by the
+-- principal now; reads filter on user_id. Drop the conversation index first
+-- (it depends on the column), then the column itself.
+DROP INDEX IF EXISTS idx_chat_attachments_conversation;
+ALTER TABLE chat_attachments DROP COLUMN IF EXISTS conversation_id;
+
+-- Actor access tokens act as their user, capped at actor_role, resolved live —
+-- so the access token (not just the refresh token) carries the actor marker.
+ALTER TABLE oauth_access_tokens
+  ADD COLUMN IF NOT EXISTS grant_type text NOT NULL DEFAULT 'regular'
+  CHECK (grant_type IN ('regular', 'actor'));
+ALTER TABLE oauth_access_tokens
   ADD COLUMN IF NOT EXISTS actor_role text
   CHECK (actor_role IS NULL OR actor_role IN ('reader','writer','owner'));
 

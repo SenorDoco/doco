@@ -53,13 +53,449 @@ describe("removed templates are gone", () => {
       "bugs",
       "data-decisions",
       "design-decisions",
+      "evals",
+      "faq",
       "github-pull-requests",
       "glossary",
       "org-chart",
       "process",
       "product-decisions",
       "product-roadmap",
+      "test-scenarios",
     ]);
+  });
+});
+
+describe("evals template", () => {
+  const template = findDocoTemplateByName("evals");
+  if (!template) throw new Error("evals template not registered");
+
+  it("is registered in DEFAULT_DOCO_TEMPLATES under its plain handle", () => {
+    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "evals")).toBeDefined();
+  });
+
+  it("has the expected metadata (icon, label, defaultNodeLifecycle, description)", () => {
+    expect(template.icon).toBe("🧪");
+    expect(template.label).toBe("AI evals");
+    // An eval is sketched and a run captured before either is finalized, so new
+    // nodes start `drafting` and the completeness/quality gates spare a sketch.
+    expect(template.defaultNodeLifecycle).toBe("drafting");
+    expect(template.description).toMatch(/eval/i);
+  });
+
+  it("opens on the built-in List perspective (an eval log is a list of evals and runs)", () => {
+    expect(template.perspectives).toEqual([{ slug: "list", isDefault: true }]);
+  });
+
+  describe("node-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_node_type",
+    )?.predicate;
+
+    it("admits Eval (definitions), Log (runs), Reference (data/system), Rule (criteria), Principal (owners)", () => {
+      expect(allowlist?.kind).toBe("requires_node_type");
+      if (allowlist?.kind !== "requires_node_type") return;
+      expect([...allowlist.node_types].sort()).toEqual(
+        ["eval", "log", "principal", "reference", "rule"].sort(),
+      );
+    });
+
+    it("excludes flow/work and free-form node types (action, state, intent, idea, decision)", () => {
+      if (allowlist?.kind !== "requires_node_type") throw new Error("allowlist missing");
+      for (const t of ["action", "state", "intent", "idea", "decision"]) {
+        expect(allowlist.node_types).not.toContain(t as never);
+      }
+    });
+  });
+
+  describe("edge-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_edge_type",
+    )?.predicate;
+
+    it("admits the eval-log relationship edges and bars sequence flow", () => {
+      expect(allowlist?.kind).toBe("requires_edge_type");
+      if (allowlist?.kind !== "requires_edge_type") return;
+      expect(new Set(allowlist.edge_types)).toEqual(
+        new Set([
+          "supports",
+          "derived_from",
+          "attributed_to",
+          "constrained_by",
+          "has_parent",
+          "replaces",
+          "relates_to",
+        ]),
+      );
+      // Process sequence flow has no meaning in an eval log.
+      expect(allowlist.edge_types).not.toContain("flows_to");
+    });
+  });
+
+  it("requires a grading `criterion` on every committed Eval (queued/active) via requires_field", () => {
+    const rule = template.policies.find(
+      (r) => r.predicate?.kind === "requires_field" && r.predicate.when_node_type?.includes("eval"),
+    );
+    expect(rule?.predicate?.kind).toBe("requires_field");
+    if (rule?.predicate?.kind !== "requires_field") return;
+    expect(rule.predicate.fields).toEqual(["criterion"]);
+    // A `drafting` eval may capture the intent first and choose the grader later.
+    expect(rule.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  describe("the run→eval spine (every committed run links to the eval it ran)", () => {
+    const spine = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "requires_edge" &&
+        r.predicate.edge_type === "supports" &&
+        r.predicate.target_node_type === "eval" &&
+        (r.predicate.when_node_type?.includes("log") ?? false),
+    );
+
+    it("ties a committed Log to its Eval via a supports edge, on committed stages only", () => {
+      expect(spine?.predicate?.kind).toBe("requires_edge");
+      expect(spine?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+
+    it("seeds as a blocking deterministic policy carrying the predicate verbatim", () => {
+      if (!spine) throw new Error("run→eval spine gate missing");
+      const seeded = templatePolicyToPolicyRow(spine);
+      expect(seeded.kind).toBe("deterministic");
+      expect(seeded.on_violation).toBe("block");
+      expect(seeded.predicate.sub_kind).toBe("requires_edge");
+      expect(seeded.predicate.edge_type).toBe("supports");
+      expect(seeded.predicate.target_node_type).toBe("eval");
+    });
+  });
+
+  it("gates membership softly (warn, all stages) on the primary content node types", () => {
+    const membership = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.on_violation === "warn" &&
+        r.fires_when_node_lifecycle === undefined &&
+        /belongs in an AI-eval log/i.test(r.predicate.spec),
+    );
+    expect(membership?.predicate?.kind).toBe("probabilistic");
+    if (membership?.predicate?.kind !== "probabilistic") return;
+    expect([...(membership.predicate.when_node_type ?? [])].sort()).toEqual(
+      ["eval", "log", "reference"].sort(),
+    );
+    // Owners (Principal) and criteria/gates (Rule) are supporting cast, not
+    // membership candidates.
+    expect(membership.predicate.when_node_type).not.toContain("principal");
+    expect(membership.predicate.when_node_type).not.toContain("rule");
+  });
+
+  it("judges eval-definition quality probabilistically as a warn on committed evals", () => {
+    const quality = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.predicate.when_node_type?.includes("eval") &&
+        Array.isArray(r.fires_when_node_lifecycle) &&
+        /what counts as success/i.test(r.predicate.spec),
+    );
+    expect(quality?.on_violation).toBe("warn");
+    expect(quality?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  it("judges run quality probabilistically as a warn on committed runs", () => {
+    const quality = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.predicate.when_node_type?.includes("log") &&
+        /records BOTH/i.test(r.predicate.spec),
+    );
+    expect(quality?.on_violation).toBe("warn");
+    expect(quality?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  it("encodes the eval best practices in prose guidance", () => {
+    const prose = template.policies
+      .filter((p) => !p.predicate)
+      .map((p) => p.policy ?? "")
+      .join("\n");
+    // Two-layer model: stable definition vs append-only run log.
+    expect(prose).toMatch(/append-only/i);
+    // Grading methods: code-based / LLM-as-judge / human.
+    expect(prose).toMatch(/LLM-as-judge/i);
+    expect(prose).toMatch(/code-based|programmatic/i);
+    expect(prose).toMatch(/human/i);
+    // SMART success criteria captured as a Rule threshold.
+    expect(prose).toMatch(/SMART/);
+    expect(prose).toMatch(/constrained_by/);
+    // Versioned dataset / golden set.
+    expect(prose).toMatch(/golden|dataset/i);
+    // Pin the model/prompt versions per run.
+    expect(prose).toMatch(/pin/i);
+    // pass@k / pass^k for non-deterministic systems.
+    expect(prose).toMatch(/pass@k/);
+    expect(prose).toMatch(/pass\^k/);
+    // Capability vs regression evals.
+    expect(prose).toMatch(/regression/i);
+    // Ownership by a Principal that is a person OR an agent.
+    expect(prose).toMatch(/attributed_to/);
+    expect(prose).toMatch(/agent/i);
+    // Suite grouping + supersession.
+    expect(prose).toMatch(/has_parent|suite/i);
+    expect(prose).toMatch(/replaces/);
+  });
+
+  it("does not gate one committed stage without the other", () => {
+    for (const p of template.policies) {
+      const lifecycles = p.fires_when_node_lifecycle;
+      if (!lifecycles) continue;
+      expect(lifecycles.includes("queued")).toBe(lifecycles.includes("active"));
+    }
+  });
+});
+
+describe("glossary template", () => {
+  const template = findDocoTemplateByName("glossary");
+  if (!template) throw new Error("glossary template not registered");
+
+  it("is registered in DEFAULT_DOCO_TEMPLATES under its plain handle", () => {
+    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "glossary")).toBeDefined();
+  });
+
+  it("has the expected metadata (icon, label, defaultNodeLifecycle, description)", () => {
+    expect(template.icon).toBe("📖");
+    expect(template.label).toBe("Glossary");
+    // A term is captured before it is fully defined, so new nodes start as
+    // `drafting` and the completeness/quality gates spare a sketch.
+    expect(template.defaultNodeLifecycle).toBe("drafting");
+    expect(template.description).toMatch(/vocabulary|terms?|glossary|definition/i);
+  });
+
+  it("ships with the Glossary perspective attached as the default", () => {
+    expect(template.perspectives).toEqual([{ slug: "glossary", isDefault: true }]);
+  });
+
+  describe("node-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_node_type",
+    )?.predicate;
+
+    it("admits only Reference (terms) and Principal (stewards)", () => {
+      expect(allowlist?.kind).toBe("requires_node_type");
+      if (allowlist?.kind !== "requires_node_type") return;
+      expect([...allowlist.node_types].sort()).toEqual(["principal", "reference"]);
+    });
+  });
+
+  describe("edge-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_edge_type",
+    )?.predicate;
+
+    it("admits only the glossary relationship edges", () => {
+      expect(allowlist?.kind).toBe("requires_edge_type");
+      if (allowlist?.kind !== "requires_edge_type") return;
+      expect([...allowlist.edge_types].sort()).toEqual([
+        "attributed_to",
+        "has_parent",
+        "relates_to",
+        "replaces",
+      ]);
+    });
+  });
+
+  it("requires a `definition` on every committed term (queued/active) via requires_field", () => {
+    const rule = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "requires_field" && r.predicate.when_node_type?.includes("reference"),
+    );
+    expect(rule?.predicate?.kind).toBe("requires_field");
+    if (rule?.predicate?.kind !== "requires_field") return;
+    expect(rule.predicate.fields).toEqual(["definition"]);
+    // A `drafting` stub may capture the headword first; the definition is
+    // required only once the term is committed.
+    expect(rule.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  it("gates membership softly (warn, all stages) so an off-topic node is surfaced, not blocked", () => {
+    const membership = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.predicate.when_node_type?.includes("reference") &&
+        r.on_violation === "warn" &&
+        r.fires_when_node_lifecycle === undefined,
+    );
+    expect(membership).toBeDefined();
+  });
+
+  it("judges definition quality probabilistically as a warn on committed terms", () => {
+    const quality = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.predicate.when_node_type?.includes("reference") &&
+        Array.isArray(r.fires_when_node_lifecycle),
+    );
+    expect(quality?.predicate?.kind).toBe("probabilistic");
+    expect(quality?.on_violation).toBe("warn");
+    expect(quality?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  it("guides preferred terms, synonyms, cross-references, provenance, stewardship, and lifecycle in prose", () => {
+    const prose = template.policies
+      .filter((p) => !p.predicate)
+      .map((p) => p.policy ?? "")
+      .join("\n");
+    expect(prose).toMatch(/synonym|alias|alternativ/i);
+    expect(prose).toMatch(/relates_to|cross-reference/i);
+    expect(prose).toMatch(/has_parent|broader|categor/i);
+    expect(prose).toMatch(/replaces|deprecat|supersede/i);
+    expect(prose).toMatch(/derived_from|source|cite/i);
+    expect(prose).toMatch(/attributed_to|steward|owner/i);
+    expect(prose).toMatch(/lifecycle|drafting|queued|active|retired/i);
+  });
+});
+
+describe("faq template", () => {
+  const template = findDocoTemplateByName("faq");
+  if (!template) throw new Error("faq template not registered");
+
+  it("is registered in DEFAULT_DOCO_TEMPLATES under its plain handle", () => {
+    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "faq")).toBeDefined();
+  });
+
+  it("has the expected metadata (icon, label, defaultNodeLifecycle, description)", () => {
+    expect(template.icon).toBe("❓");
+    expect(template.label).toBe("FAQ");
+    // A question is captured the moment it is asked, before its answer is
+    // written, so new nodes start as `drafting` and the completeness/quality
+    // gates spare a sketch.
+    expect(template.defaultNodeLifecycle).toBe("drafting");
+    expect(template.description).toMatch(/frequently asked questions/i);
+  });
+
+  it("opens on the built-in List perspective (a FAQ is a filterable list of entries)", () => {
+    expect(template.perspectives).toEqual([{ slug: "list", isDefault: true }]);
+  });
+
+  describe("node-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_node_type",
+    )?.predicate;
+
+    it("admits only Reference (entries), Log (results), and Principal (stewards)", () => {
+      expect(allowlist?.kind).toBe("requires_node_type");
+      if (allowlist?.kind !== "requires_node_type") return;
+      expect([...allowlist.node_types].sort()).toEqual(["log", "principal", "reference"]);
+    });
+
+    it("excludes process/decision node types (Action, Decision, State, Eval, Intent, Idea, Rule)", () => {
+      if (allowlist?.kind !== "requires_node_type") throw new Error("allowlist missing");
+      for (const t of ["action", "decision", "state", "eval", "intent", "idea", "rule"]) {
+        expect(allowlist.node_types).not.toContain(t as never);
+      }
+    });
+  });
+
+  describe("edge-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_edge_type",
+    )?.predicate;
+
+    it("admits the knowledge/association edges, barring process-flow and guard edges", () => {
+      expect(allowlist?.kind).toBe("requires_edge_type");
+      if (allowlist?.kind !== "requires_edge_type") return;
+      expect(new Set(allowlist.edge_types)).toEqual(
+        new Set([
+          "attributed_to",
+          "supports",
+          "relates_to",
+          "has_parent",
+          "replaces",
+          "derived_from",
+        ]),
+      );
+      // No sequence flow and no policy guards in a Q&A knowledge base.
+      expect(allowlist.edge_types).not.toContain("flows_to");
+      expect(allowlist.edge_types).not.toContain("constrained_by");
+    });
+  });
+
+  it("requires an `answer` on every committed entry (queued/active) via requires_field", () => {
+    const rule = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "requires_field" && r.predicate.when_node_type?.includes("reference"),
+    );
+    expect(rule?.predicate?.kind).toBe("requires_field");
+    if (rule?.predicate?.kind !== "requires_field") return;
+    expect(rule.predicate.fields).toEqual(["answer"]);
+    // A `drafting` stub may capture the question first; the answer is required
+    // only once the entry is committed.
+    expect(rule.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  it("requires a stewarding Principal on every committed entry (attributed_to → principal)", () => {
+    // Unlike the glossary (stewardship is guidance there), the FAQ hard-gates
+    // ownership on committed entries — a named owner is the defense against a
+    // stale answer.
+    const gate = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "requires_edge" &&
+        r.predicate.edge_type === "attributed_to" &&
+        r.predicate.target_node_type === "principal" &&
+        (r.predicate.when_node_type?.includes("reference") ?? false),
+    );
+    expect(gate?.predicate?.kind).toBe("requires_edge");
+    expect(gate?.on_violation ?? "block").toBe("block");
+    expect(gate?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  it("gates membership softly (warn, all stages) so an off-topic node is surfaced, not blocked", () => {
+    const membership = template.policies.find(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.predicate.when_node_type?.includes("reference") &&
+        /belongs in an FAQ/i.test(r.predicate.spec) &&
+        r.on_violation === "warn" &&
+        r.fires_when_node_lifecycle === undefined,
+    );
+    expect(membership).toBeDefined();
+  });
+
+  it("judges question and answer quality probabilistically as warns on committed entries", () => {
+    const quality = template.policies.filter(
+      (r) =>
+        r.predicate?.kind === "probabilistic" &&
+        r.predicate.when_node_type?.includes("reference") &&
+        Array.isArray(r.fires_when_node_lifecycle),
+    );
+    // Two committed-only quality judges: one over the question, one over the answer.
+    expect(quality).toHaveLength(2);
+    for (const q of quality) {
+      expect(q.on_violation).toBe("warn");
+      expect(q.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    }
+    const specs = quality.flatMap((q) =>
+      q.predicate?.kind === "probabilistic" ? [q.predicate.spec] : [],
+    );
+    expect(specs.some((s) => /the way a real user would ask/i.test(s))).toBe(true);
+    expect(specs.some((s) => /leads with the direct response/i.test(s))).toBe(true);
+  });
+
+  it("guides authoring, results-logging, gaps, dedup, freshness, and lifecycle in prose", () => {
+    const prose = template.policies
+      .filter((p) => !p.predicate)
+      .map((p) => p.policy ?? "")
+      .join("\n");
+    // Entry authoring: one question per entry, source of truth, paraphrases.
+    expect(prose).toMatch(/one question per entry/i);
+    expect(prose).toMatch(/source of truth|locator/i);
+    expect(prose).toMatch(/paraphrase|alternativ|synonym/i);
+    // Dedup + supersession.
+    expect(prose).toMatch(/replaces|duplicate|merge/i);
+    // The logging half: results, outcome, reuse-is-review, gaps.
+    expect(prose).toMatch(/`supports`|reuse is review/i);
+    expect(prose).toMatch(/outcome|succeeded|failed/i);
+    expect(prose).toMatch(/gap|derived_from/i);
+    // Stewardship + freshness.
+    expect(prose).toMatch(/steward|owner|last_reviewed|stale/i);
+    // Lifecycle / KCS states.
+    expect(prose).toMatch(/lifecycle|drafting|queued|active|retired/i);
   });
 });
 
@@ -245,107 +681,6 @@ describe("bug tracker template", () => {
       expect(prose).toMatch(/postmortem/i);
       expect(prose).toMatch(/cve|cvss|cwe/i);
     });
-  });
-});
-
-describe("glossary template", () => {
-  const template = findDocoTemplateByName("glossary");
-  if (!template) throw new Error("glossary template not registered");
-
-  it("is registered in DEFAULT_DOCO_TEMPLATES under its plain handle", () => {
-    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "glossary")).toBeDefined();
-  });
-
-  it("has the expected metadata (icon, label, defaultNodeLifecycle, description)", () => {
-    expect(template.icon).toBe("📖");
-    expect(template.label).toBe("Glossary");
-    // A term is captured before it is fully defined, so new nodes start as
-    // `drafting` and the completeness/quality gates spare a sketch.
-    expect(template.defaultNodeLifecycle).toBe("drafting");
-    expect(template.description).toMatch(/vocabulary|terms?|glossary|definition/i);
-  });
-
-  it("ships with the Glossary perspective attached as the default", () => {
-    expect(template.perspectives).toEqual([{ slug: "glossary", isDefault: true }]);
-  });
-
-  describe("node-type allowlist", () => {
-    const allowlist = template.policies.find(
-      (r) => r.predicate?.kind === "requires_node_type",
-    )?.predicate;
-
-    it("admits only Reference (terms) and Principal (stewards)", () => {
-      expect(allowlist?.kind).toBe("requires_node_type");
-      if (allowlist?.kind !== "requires_node_type") return;
-      expect([...allowlist.node_types].sort()).toEqual(["principal", "reference"]);
-    });
-  });
-
-  describe("edge-type allowlist", () => {
-    const allowlist = template.policies.find(
-      (r) => r.predicate?.kind === "requires_edge_type",
-    )?.predicate;
-
-    it("admits only the glossary relationship edges", () => {
-      expect(allowlist?.kind).toBe("requires_edge_type");
-      if (allowlist?.kind !== "requires_edge_type") return;
-      expect([...allowlist.edge_types].sort()).toEqual([
-        "attributed_to",
-        "has_parent",
-        "relates_to",
-        "replaces",
-      ]);
-    });
-  });
-
-  it("requires a `definition` on every committed term (queued/active) via requires_field", () => {
-    const rule = template.policies.find(
-      (r) =>
-        r.predicate?.kind === "requires_field" && r.predicate.when_node_type?.includes("reference"),
-    );
-    expect(rule?.predicate?.kind).toBe("requires_field");
-    if (rule?.predicate?.kind !== "requires_field") return;
-    expect(rule.predicate.fields).toEqual(["definition"]);
-    // A `drafting` stub may capture the headword first; the definition is
-    // required only once the term is committed.
-    expect(rule.fires_when_node_lifecycle).toEqual(["queued", "active"]);
-  });
-
-  it("gates membership softly (warn, all stages) so an off-topic node is surfaced, not blocked", () => {
-    const membership = template.policies.find(
-      (r) =>
-        r.predicate?.kind === "probabilistic" &&
-        r.predicate.when_node_type?.includes("reference") &&
-        r.on_violation === "warn" &&
-        r.fires_when_node_lifecycle === undefined,
-    );
-    expect(membership).toBeDefined();
-  });
-
-  it("judges definition quality probabilistically as a warn on committed terms", () => {
-    const quality = template.policies.find(
-      (r) =>
-        r.predicate?.kind === "probabilistic" &&
-        r.predicate.when_node_type?.includes("reference") &&
-        Array.isArray(r.fires_when_node_lifecycle),
-    );
-    expect(quality?.predicate?.kind).toBe("probabilistic");
-    expect(quality?.on_violation).toBe("warn");
-    expect(quality?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
-  });
-
-  it("guides preferred terms, synonyms, cross-references, provenance, stewardship, and lifecycle in prose", () => {
-    const prose = template.policies
-      .filter((p) => !p.predicate)
-      .map((p) => p.policy ?? "")
-      .join("\n");
-    expect(prose).toMatch(/synonym|alias|alternativ/i);
-    expect(prose).toMatch(/relates_to|cross-reference/i);
-    expect(prose).toMatch(/has_parent|broader|categor/i);
-    expect(prose).toMatch(/replaces|deprecat|supersede/i);
-    expect(prose).toMatch(/derived_from|source|cite/i);
-    expect(prose).toMatch(/attributed_to|steward|owner/i);
-    expect(prose).toMatch(/lifecycle|drafting|queued|active|retired/i);
   });
 });
 
@@ -706,11 +1041,13 @@ describe("process template", () => {
     });
   });
 
-  describe("sequence-flow wiring rules (entry points)", () => {
-    // Two role-free `requires_edge` floors keep a committed process wired up:
-    //  - reach: every flow node is reached by the flow (≥1 INCOMING `flows_to`)
-    //    unless it is an `entry_point`;
-    //  - lead:  an `entry_point` leads somewhere (≥1 OUTGOING `flows_to`).
+  describe("sequence-flow wiring rules (entry/exit points)", () => {
+    // Two symmetric, role-free `requires_edge` floors keep a committed process
+    // wired up:
+    //  - reach: every flow node is REACHED by the flow (≥1 INCOMING `flows_to`)
+    //    unless it is an `entry_point` (the start) or `top_level_process`;
+    //  - lead:  every flow node LEADS SOMEWHERE (≥1 OUTGOING `flows_to`) unless
+    //    it is an `exit_point` (the end) or `top_level_process`.
     // Both fire on the committed stages only — a `drafting` sketch may dangle.
     const reach = template.policies.find(
       (r) =>
@@ -722,7 +1059,8 @@ describe("process template", () => {
       (r) =>
         r.predicate?.kind === "requires_edge" &&
         r.predicate.edge_type === "flows_to" &&
-        r.predicate.require_when_field_truthy === "entry_point",
+        r.predicate.direction === "outgoing" &&
+        (r.predicate.exempt_when_field_truthy?.includes("exit_point") ?? false),
     );
 
     it("a flow node must be reached (≥1 incoming flows_to) unless entry point or top-level process", () => {
@@ -739,11 +1077,18 @@ describe("process template", () => {
       expect(reach.fires_when_node_lifecycle).toEqual(["queued", "active"]);
     });
 
-    it("an entry point must lead somewhere (≥1 outgoing flows_to)", () => {
+    it("a flow node must lead somewhere (≥1 outgoing flows_to) unless exit point or top-level process", () => {
       expect(lead?.predicate?.kind).toBe("requires_edge");
       if (lead?.predicate?.kind !== "requires_edge") return;
       expect(lead.predicate.direction).toBe("outgoing");
-      expect(lead.predicate.require_when_field_truthy).toBe("entry_point");
+      // The ONLY nodes excused from leading somewhere are exit points (ends) and
+      // the pool container — not, as before, "only entry points are held to it".
+      expect(lead.predicate.exempt_when_field_truthy).toBe("exit_point, top_level_process");
+      expect([...(lead.predicate.when_node_type ?? [])].sort()).toEqual([
+        "action",
+        "decision",
+        "state",
+      ]);
       expect(lead.fires_when_node_lifecycle).toEqual(["queued", "active"]);
     });
   });
@@ -1355,6 +1700,200 @@ describe("product-roadmap template", () => {
     it("tells agents to author via the contract + changesets", () => {
       expect(haystack).toMatch(/authoring-contract/);
       expect(haystack).toMatch(/changesets/);
+    });
+  });
+});
+
+describe("test-scenarios template", () => {
+  const template = findDocoTemplateByName("test-scenarios");
+  if (!template) throw new Error("test-scenarios template not registered");
+
+  it("is registered in DEFAULT_DOCO_TEMPLATES under its plain handle", () => {
+    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "test-scenarios")).toBeDefined();
+    expect(findDocoTemplateByName("test-scenarios")?.name).toBe("test-scenarios");
+  });
+
+  it("has the expected metadata (icon, label, defaultNodeLifecycle, description)", () => {
+    expect(template.icon).toBe("🧪");
+    expect(template.label).toBe("Test scenarios");
+    // A scenario is sketched before its steps and expected result are written,
+    // so new nodes start `drafting` and the completeness/quality gates spare a
+    // sketch; runs (Logs) are recorded directly as `active` facts.
+    expect(template.defaultNodeLifecycle).toBe("drafting");
+    expect(template.description).toMatch(/test scenario/i);
+    expect(template.description).toMatch(/run|environment|evidence/i);
+  });
+
+  it("opens on the list reading (a test Doco is a list of scenarios + runs)", () => {
+    expect(template.perspectives).toEqual([{ slug: "list", isDefault: true }]);
+  });
+
+  describe("node-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_node_type",
+    )?.predicate;
+
+    it("admits only Eval, Intent, Log, Principal, Reference", () => {
+      expect(allowlist?.kind).toBe("requires_node_type");
+      if (allowlist?.kind !== "requires_node_type") return;
+      expect([...allowlist.node_types].sort()).toEqual([
+        "eval",
+        "intent",
+        "log",
+        "principal",
+        "reference",
+      ]);
+    });
+
+    it("excludes process/work and governance node types (Action, State, Decision, Rule, Idea)", () => {
+      if (allowlist?.kind !== "requires_node_type") throw new Error("allowlist missing");
+      for (const excluded of ["action", "state", "decision", "rule", "idea"]) {
+        expect(allowlist.node_types).not.toContain(excluded as never);
+      }
+    });
+  });
+
+  describe("edge-type allowlist", () => {
+    const allowlist = template.policies.find(
+      (r) => r.predicate?.kind === "requires_edge_type",
+    )?.predicate;
+
+    it("admits the evidence/validation + association edges, barring flow and guard edges", () => {
+      expect(allowlist?.kind).toBe("requires_edge_type");
+      if (allowlist?.kind !== "requires_edge_type") return;
+      expect(new Set(allowlist.edge_types)).toEqual(
+        new Set([
+          "supports",
+          "attributed_to",
+          "has_parent",
+          "relates_to",
+          "replaces",
+          "derived_from",
+        ]),
+      );
+      // `flows_to` is process sequence; `constrained_by` guards with a Rule —
+      // neither belongs in a test Doco.
+      expect(allowlist.edge_types).not.toContain("flows_to");
+      expect(allowlist.edge_types).not.toContain("constrained_by");
+    });
+  });
+
+  describe("scenario completeness floor (how_to_run)", () => {
+    const floor = template.policies.find(
+      (r) => r.predicate?.kind === "requires_field" && r.predicate.when_node_type?.includes("eval"),
+    );
+
+    it("requires `how_to_run` on every committed (queued/active) scenario, as a hard block", () => {
+      expect(floor?.predicate?.kind).toBe("requires_field");
+      if (floor?.predicate?.kind !== "requires_field") return;
+      expect(floor.predicate.fields).toEqual(["how_to_run"]);
+      // A drafting sketch may omit the steps; the floor fires once committed.
+      expect(floor.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+      expect(floor.on_violation ?? "block").toBe("block");
+    });
+
+    it("seeds as a deterministic block carrying the predicate verbatim", () => {
+      if (!floor) throw new Error("completeness floor missing");
+      const seeded = templatePolicyToPolicyRow(floor);
+      expect(seeded.kind).toBe("deterministic");
+      expect(seeded.on_violation).toBe("block");
+      expect(seeded.predicate.sub_kind).toBe("requires_field");
+      expect(seeded.predicate.fields).toEqual(["how_to_run"]);
+      expect(seeded.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+  });
+
+  describe("traceability gate (supports)", () => {
+    const gate = template.policies.find(
+      (r) => r.predicate?.kind === "requires_edge" && r.predicate.edge_type === "supports",
+    );
+
+    it("nudges every committed scenario AND run to link what it covers via `supports`, as a warn", () => {
+      expect(gate?.predicate?.kind).toBe("requires_edge");
+      if (gate?.predicate?.kind !== "requires_edge") return;
+      // One gate covering both halves: a scenario (Eval) supports its objective/
+      // requirement; a run (Log) supports the scenario it executed.
+      expect([...(gate.predicate.when_node_type ?? [])].sort()).toEqual(["eval", "log"]);
+      // Warn, not block: an ad-hoc smoke check or a quick capture is allowed.
+      expect(gate.on_violation).toBe("warn");
+      expect(gate.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+  });
+
+  describe("soft semantic gates (warnings, LLM-judged)", () => {
+    it("warns when a node does not read as test content (membership), exempting Principals", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" && /belongs in a test Doco/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      if (gate?.predicate?.kind !== "probabilistic") return;
+      const types = gate.predicate.when_node_type ?? [];
+      expect(types).toEqual(expect.arrayContaining(["eval", "log", "intent", "reference"]));
+      // Principals are actors (testers / systems), not test content.
+      expect(types).not.toContain("principal");
+      // A soft, all-stages gate — surfaced, never blocking.
+      expect(gate.fires_when_node_lifecycle).toBeUndefined();
+    });
+
+    it("judges scenario quality (one behavior, reproducible, one observable expected result)", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          r.predicate.when_node_type?.includes("eval") &&
+          /single observable, checkable expected result/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      expect(gate?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+
+    it("judges result quality (environment, outcome, evidence on failure) on runs", () => {
+      const gate = template.policies.find(
+        (r) =>
+          r.predicate?.kind === "probabilistic" &&
+          r.predicate.when_node_type?.includes("log") &&
+          /browser and version/i.test(r.predicate.spec),
+      );
+      expect(gate?.on_violation).toBe("warn");
+      if (gate?.predicate?.kind !== "probabilistic") return;
+      expect(gate.predicate.spec).toMatch(/passed, failed, blocked, or skipped/i);
+      expect(gate.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+    });
+  });
+
+  describe("guidance encodes the test-documentation best practices", () => {
+    const haystack = template.policies
+      .filter((r) => !r.predicate)
+      .map((r) => r.policy ?? "")
+      .join("\n");
+
+    it("separates the durable scenario (Eval) from its append-only runs (Log)", () => {
+      expect(haystack).toMatch(/two halves/i);
+      expect(haystack).toMatch(/append-only/i);
+    });
+    it("records the environment on every run and sizes the matrix from real usage", () => {
+      expect(haystack).toMatch(/record the environment on every run/i);
+      expect(haystack).toMatch(/real user analytics/i);
+    });
+    it("distinguishes failed from blocked, and severity from priority", () => {
+      expect(haystack).toMatch(/failed from blocked/i);
+      expect(haystack).toMatch(/severity/i);
+      expect(haystack).toMatch(/priority/i);
+    });
+    it("attaches evidence and references the external defect", () => {
+      expect(haystack).toMatch(/evidence/i);
+      expect(haystack).toMatch(/defect/i);
+    });
+    it("covers BDD Given/When/Then and session-based exploratory testing (PROOF)", () => {
+      expect(haystack).toMatch(/Given \/ When \/ Then/);
+      expect(haystack).toMatch(/PROOF/);
+      expect(haystack).toMatch(/charter/i);
+    });
+    it("walks the scenario lifecycle and stays expandable to specialized tests", () => {
+      expect(haystack).toMatch(/drafting/i);
+      expect(haystack).toMatch(/retired/i);
+      expect(haystack).toMatch(/specialized tests/i);
+      expect(haystack).toMatch(/WCAG|performance|visual-regression/i);
     });
   });
 });

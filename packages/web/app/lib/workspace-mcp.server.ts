@@ -21,6 +21,9 @@ export interface WorkspaceMcpContext {
   workspaceId: string;
   workspaceHandle: string;
   principalId: string;
+  /** Actor "act as me" mode: reach every workspace the human belongs to (the
+   * app-wide `/mcp` with an actor token). `workspaceId`/`Handle` are empty. */
+  allWorkspaces?: boolean;
 }
 
 export type WorkspaceMcpGate =
@@ -76,6 +79,9 @@ async function tokenReachesWorkspace(
   token: ValidAccessToken,
   workspaceId: string,
 ): Promise<boolean> {
+  // An actor token acts as the human — it carries no stored grants, so its
+  // reach is the human's membership (verified by principalReachesWorkspace).
+  if (token.grant_type === "actor") return true;
   if ((token.granted_workspace_ids ?? []).includes(workspaceId)) return true;
   const docoIds = (token.granted_doco_ids ?? []).filter((id) => id && id !== "*");
   if (docoIds.length === 0) return false;

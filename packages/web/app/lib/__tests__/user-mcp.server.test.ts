@@ -37,6 +37,23 @@ describe("gateUserMcp", () => {
     });
   });
 
+  it("enters all-workspaces mode for an actor token (reaches every workspace)", async () => {
+    mocks.getOauthTokenForRequest.mockResolvedValue({
+      grant_type: "actor",
+      actor_role: null,
+      granted_workspace_ids: [],
+    });
+    expect(await gateUserMcp(req)).toEqual({
+      ok: true,
+      ctx: {
+        workspaceId: "",
+        workspaceHandle: "",
+        principalId: "user_alice",
+        allWorkspaces: true,
+      },
+    });
+  });
+
   it("is unauthenticated without a principal", async () => {
     mocks.getCurrentPrincipalAsync.mockResolvedValue(null);
     expect(await gateUserMcp(req)).toMatchObject({ ok: false, kind: "unauthenticated" });
