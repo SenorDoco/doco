@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   requestDocoAccess: vi.fn(),
   loadAgentIdentity: vi.fn(),
   getWorkspaceConstitutionsByIds: vi.fn(),
+  gatherAgentDebug: vi.fn(),
   fetchMock: vi.fn(),
 }));
 
@@ -24,6 +25,7 @@ vi.mock("~/lib/access-requests.server", () => ({
   requestDocoAccess: mocks.requestDocoAccess,
 }));
 vi.mock("~/lib/agent-identity.server", () => ({ loadAgentIdentity: mocks.loadAgentIdentity }));
+vi.mock("~/lib/agent-debug.server", () => ({ gatherAgentDebug: mocks.gatherAgentDebug }));
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
 vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
 vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction }));
@@ -133,7 +135,72 @@ describe("POST /<workspace-id>/mcp (per-workspace remote MCP)", () => {
       "doco_relate",
       "doco_changeset",
       "doco_request_access",
+      "doco_agent_debug",
     ]);
+  });
+
+  it("doco_agent_debug is denied for non-superadmin credentials", async () => {
+    mocks.loadAgentIdentity.mockResolvedValue({
+      user_id: "user_alice",
+      username: "alice",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @alice]",
+      grants: [{ scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" }],
+    });
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 90,
+          method: "tools/call",
+          params: { name: "doco_agent_debug", arguments: { search: "BPMN" } },
+        },
+        BEARER,
+      ),
+      params: PARAMS,
+    });
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("superadmin");
+    expect(mocks.gatherAgentDebug).not.toHaveBeenCalled();
+  });
+
+  it("doco_agent_debug returns production diagnostics for the superadmin", async () => {
+    mocks.loadAgentIdentity.mockResolvedValue({
+      user_id: "user_t",
+      username: "torrenegra",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @torrenegra]",
+      grants: [],
+    });
+    const report = {
+      generated_at: "2026-06-08T00:00:00.000Z",
+      limit: 20,
+      recent_turns: [{ id: "atm_1", input_tokens: 1234 }],
+      search_results: [{ conversation_id: "conversation_match", match_count: 1 }],
+      conversation_analysis: null,
+    };
+    mocks.gatherAgentDebug.mockResolvedValue(report);
+    const res = await action({
+      request: rpc(
+        {
+          jsonrpc: "2.0",
+          id: 91,
+          method: "tools/call",
+          params: { name: "doco_agent_debug", arguments: { search: "wiring", limit: 5 } },
+        },
+        BEARER,
+      ),
+      params: PARAMS,
+    });
+    const body: Json = await res.json();
+    expect(body.result.isError).toBeFalsy();
+    expect(mocks.gatherAgentDebug).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "wiring", limit: 5 }),
+    );
+    expect(body.result.structuredContent).toEqual(report);
   });
 
   it("doco_whoami reports the bound workspace and only its docos", async () => {

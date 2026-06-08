@@ -15,7 +15,9 @@
 
 import { getDocoByIdOrHandle, getWorkspaceConstitutionsByIds } from "@doco/db";
 import { requestDocoAccess } from "~/lib/access-requests.server";
+import { gatherAgentDebug } from "~/lib/agent-debug.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
+import { isSuperadmin } from "~/lib/session.server";
 import {
   type WorkspaceMcpGate,
   gateWorkspaceMcp,
@@ -47,6 +49,10 @@ const SERVER_INSTRUCTIONS = [
   "write is denied, your token has read but not write on that Doco — call",
   "doco_request_access to ask an owner for writer; once they approve your",
   "same token works on the next call (a grant change, no re-auth).",
+  "To investigate a production incident (a stuck/failed Señor Doco turn, a",
+  "missing attachment, a capture error), the host superadmin can call",
+  "doco_agent_debug — it reads the deployed app's diagnostics (and analyzes",
+  "why an attached file did or didn't reach the model); it denies everyone else.",
   "Remote MCP auth is the client connector's job: do not hand-drive OAuth.",
   "Do not ask the user to paste localhost callback URLs back into chat.",
   "If the callback listener fails, restart the client MCP auth flow; use",
@@ -264,6 +270,58 @@ const LIST_WORKSPACES_TOOL = {
   inputSchema: { type: "object", properties: {} },
 };
 
+const AGENT_DEBUG_TOOL = {
+  name: "doco_agent_debug",
+  description: [
+    "Read PRODUCTION Señor Doco diagnostics — the data behind",
+    "/admin/agent-debug.json. Restricted to the Doco host superadmin; for",
+    "anyone else it returns a denial. Use it to investigate a real incident",
+    "from the deployed app (a stuck/failed turn, a missing attachment, a",
+    "capture error) without a human pasting logs.",
+    "",
+    "With no arguments: recent turns (with input/output tokens, stop_reason,",
+    "error, phases), in-flight/stuck conversations, and recent capture/model",
+    "errors — the last `limit` of each (default 20).",
+    "",
+    "`search`: find conversations whose messages contain a phrase (e.g. a",
+    "quote from a screenshot) — returns conversation ids so you can drill in.",
+    "",
+    "`conversation`: tail that thread's last `messages` rows AND return a",
+    "replay-window analysis: for every attached file, whether the model still",
+    "sees it on the next turn or it was evicted by the message/token cap or",
+    "deleted by the 30-day retention purge. This is how you answer 'why did",
+    "Señor Doco say it didn't have the file I attached?'.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      conversation: {
+        type: "string",
+        description: "Conversation id to tail and analyze (e.g. conversation_01…).",
+      },
+      search: {
+        type: "string",
+        description: "Find conversations whose message content contains this phrase.",
+      },
+      messages: {
+        type: "integer",
+        minimum: 1,
+        maximum: 200,
+        default: 30,
+        description:
+          "How many of the conversation's most recent messages to return (with `conversation`).",
+      },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 100,
+        default: 20,
+        description: "Cap on each row list (turns, stuck, errors, search hits). Default 20.",
+      },
+    },
+  },
+};
+
 const TOOLS = [
   WHOAMI_TOOL,
   LIST_WORKSPACES_TOOL,
@@ -273,6 +331,7 @@ const TOOLS = [
   RELATE_TOOL,
   CHANGESET_TOOL,
   REQUEST_ACCESS_TOOL,
+  AGENT_DEBUG_TOOL,
 ];
 
 type Rpc = {
@@ -680,6 +739,26 @@ async function runDocoRequestAccess(ctx: Ctx, args: Record<string, unknown>): Pr
   };
 }
 
+// doco_agent_debug: production incident diagnostics. NOT Doco-scoped — it reads
+// app-wide Señor Doco telemetry, so it ignores `ctx` and gates purely on the
+// acting human being the host superadmin. Works on any connection (including
+// the actor "act as me" one), so the superadmin can diagnose from any session.
+async function runAgentDebug(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
+  const identity = await loadAgentIdentity(request);
+  if (!isSuperadmin(identity?.username)) {
+    return toolError(
+      "doco_agent_debug is restricted to the Doco host superadmin. Your credential isn't authorized for production diagnostics.",
+    );
+  }
+  const report = await gatherAgentDebug({
+    limit: typeof args.limit === "number" ? args.limit : undefined,
+    conversation: typeof args.conversation === "string" ? args.conversation : null,
+    messages: typeof args.messages === "number" ? args.messages : undefined,
+    search: typeof args.search === "string" ? args.search : null,
+  });
+  return { content: [{ type: "text", text: JSON.stringify(report) }], structuredContent: report };
+}
+
 async function dispatch(message: Rpc, request: Request, ctx: Ctx): Promise<Response> {
   switch (message.method) {
     case "initialize":
@@ -716,6 +795,8 @@ async function dispatch(message: Rpc, request: Request, ctx: Ctx): Promise<Respo
           return rpcResult(message.id, await runDocoChangeset(request, ctx, args));
         case "doco_request_access":
           return rpcResult(message.id, await runDocoRequestAccess(ctx, args));
+        case "doco_agent_debug":
+          return rpcResult(message.id, await runAgentDebug(request, args));
         default:
           return rpcError(message.id, -32602, `Unknown tool: ${name}`);
       }

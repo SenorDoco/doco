@@ -38,6 +38,16 @@ export interface CurrentPrincipal {
   email?: string;
 }
 
+// The single source of truth for "is this the host superadmin?". The admin
+// dashboards and the agent-diagnostics surfaces all gate on the host owner's
+// username; centralizing the literal here keeps that one definition instead of
+// a copy scattered across every admin route.
+export const SUPERADMIN_USERNAME = "torrenegra";
+
+export function isSuperadmin(username: string | null | undefined): boolean {
+  return username === SUPERADMIN_USERNAME;
+}
+
 /** Human-facing display name for a user row. */
 export function userDisplayName(row: {
   id: string;
