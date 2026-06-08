@@ -900,9 +900,10 @@ export function ProcessPerspective({
   // Parent processes — the process(es) this pool's Action hangs under
   // (`has_parent`). Each renders as a task box ON TOP of the focal pool,
   // left-aligned in a row (one beside the next), tied to the pool by a dashed
-  // arrow that leaves the parent box's bottom and lands on the pool title,
-  // inset from its left. An Action can belong to multiple processes, so EVERY
-  // parent is drawn. Clicking a box drills into that parent's own pool.
+  // `has_parent` arrow that rises from the pool title (inset from its left) up
+  // to the parent box, where its head lands. An Action can belong to multiple
+  // processes, so EVERY parent is drawn. Clicking a box drills into that
+  // parent's own pool.
   const parentProcesses = useMemo(() => {
     const parents = computeParentProcesses(focalPoolIds, links);
     const nodes: FlowNode[] = [];
@@ -958,17 +959,18 @@ export function ProcessPerspective({
           style: { width: size.width, height: size.height, zIndex: 1 },
         });
 
-        // A dashed arrow leaving the parent box's bottom and landing on the
-        // pool title (inset from its left, not centered): the parent sits over
-        // the pool it parents. has_parent is containment, never conditional, so
+        // A dashed arrow for the `has_parent` link. The edge points child →
+        // parent, so it runs FROM the pool title (the child, inset from the
+        // title's left) UP to the parent box, landing its arrowhead on the
+        // parent's bottom edge. has_parent is containment, never conditional, so
         // it carries no branch label — its tag is the edge type itself (every
         // process arrow shows a tag, per processEdgeLabelData).
         edges.push({
           id: `parent-edge:${id}`,
-          source: id,
-          sourceHandle: "parent-link-bottom",
-          target: `pool-header:${poolId}`,
-          targetHandle: "pool-top",
+          source: `pool-header:${poolId}`,
+          sourceHandle: "pool-top",
+          target: id,
+          targetHandle: "parent-link-bottom",
           type: "stableLabeledBezier",
           data: processEdgeLabelData(null, parent.edgeType, stroke, 1),
           selectable: false,
@@ -2318,10 +2320,10 @@ export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData })
       />
       <Handle
         id="pool-top"
-        type="target"
+        type="source"
         position={Position.Top}
         // Inset from the title's left edge rather than centered, so the dashed
-        // parent arrows land near the left-aligned parent boxes above.
+        // parent arrows leave near the left-aligned parent boxes above.
         style={{
           left: PARENT_LINK_TITLE_INSET,
           transform: "none",
@@ -2672,12 +2674,12 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
       {commonHandles()}
-      {/* A parent-process box drops a dashed containment line from its bottom
-          edge down to the pool it sits over (see `parentProcesses`). */}
+      {/* A parent-process box receives the dashed `has_parent` arrow on its
+          bottom edge, rising from the pool it sits over (see `parentProcesses`). */}
       {data.isParentProcess ? (
         <Handle
           id="parent-link-bottom"
-          type="source"
+          type="target"
           position={Position.Bottom}
           style={{ background: "transparent", border: "none" }}
         />
