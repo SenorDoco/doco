@@ -359,6 +359,29 @@ export function resolveCanvasNodeClick(
   return { kind: "node", node: target };
 }
 
+/**
+ * The empty-state message for the BPMN canvas, or null to render the graph.
+ *
+ *   • Home (the default overview) with no synthetic top-level pool — i.e. no
+ *     Action flagged `top_level` — is empty *by design*: the overview IS the
+ *     directory of top-level Actions, so prompt the author to mark one rather
+ *     than silently falling back to an arbitrary process pool.
+ *   • Otherwise a canvas with no lanes and no pools at all is generically empty.
+ *
+ * Pure so the precedence (the top-level prompt wins over the generic message)
+ * is unit-tested without mounting the React Flow canvas.
+ */
+export function processEmptyMessage(args: {
+  home: boolean;
+  pools: ProcessPool[];
+  laneCount: number;
+}): string | null {
+  const hasTopLevelPool = args.pools.some((pool) => pool.id === TOP_LEVEL_POOL_ID);
+  if (args.home && !hasTopLevelPool) return "No actions have been marked as top-level yet.";
+  if (args.laneCount === 0 && args.pools.length === 0) return "So empty";
+  return null;
+}
+
 export function ProcessPerspective({
   docoHandle,
   pools,
@@ -1138,10 +1161,15 @@ export function ProcessPerspective({
     return () => cancelAnimationFrame(frame);
   }, [initialFocusFlowNodeId, initialFocusId, fitInitialFocus]);
 
-  if (filteredLanes.length === 0 && pools.length === 0) {
+  const emptyMessage = processEmptyMessage({
+    home: homeMode,
+    pools,
+    laneCount: filteredLanes.length,
+  });
+  if (emptyMessage) {
     return (
       <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
-        So empty
+        {emptyMessage}
       </div>
     );
   }
