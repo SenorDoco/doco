@@ -235,21 +235,15 @@ export interface CanvasOpenHandlers {
 }
 
 /**
- * Open a node from the BPMN canvas. A plain click focuses the node but keeps
- * any subprocess collapsed inside its parent's pool (`expandSubprocess:
- * false`), so the parent pool frames; the "View subprocess" affordance instead
- * expands the subprocess's OWN pool (`expandSubprocess: true`). Either way the
- * node dialog opens — that is the shared "as usual" behavior: viewing a
- * subprocess no longer swaps the pool silently, it opens the Action's dialog
- * like any other click.
+ * Open a node from the BPMN canvas. Clicking an Action that is itself a
+ * sub-process opens INTO it — its own pool frames the canvas — while every
+ * other node collapses to its parent's pool. Either way the node dialog opens,
+ * exactly as a normal node click does: opening a sub-process both expands its
+ * pool AND opens its Action's dialog, rather than just swapping the pool.
  */
-export function openCanvasNode(
-  node: ProcessNode,
-  options: { expandSubprocess: boolean },
-  handlers: CanvasOpenHandlers,
-): void {
+export function openCanvasNode(node: ProcessNode, handlers: CanvasOpenHandlers): void {
   handlers.setHomeMode(false);
-  handlers.setExpandedProcessId(options.expandSubprocess ? node.id : null);
+  handlers.setExpandedProcessId(subprocessPoolId(node) ? node.id : null);
   handlers.onCenterChange?.(node.id);
   if (handlers.onNodeClick) handlers.onNodeClick(node);
   else if (node.href) handlers.navigate(node.href);
@@ -373,22 +367,19 @@ export function ProcessPerspective({
     [onCenterChange, onProcessOpen],
   );
   // The shared canvas node-open: focus the node, open its dialog as usual, and
-  // frame either its parent pool (a plain click keeps a subprocess collapsed)
-  // or — via the "View subprocess" affordance — the subprocess's own pool.
+  // frame the right pool — a sub-process Action opens INTO its own pool, every
+  // other node collapses to its parent's. Clicking the node, its "View
+  // subprocess" button, or an external-neighbour box all route through here.
   const openNode = useCallback(
-    (node: ProcessNode, options?: { expandSubprocess?: boolean }) =>
-      openCanvasNode(
-        node,
-        { expandSubprocess: options?.expandSubprocess ?? false },
-        { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
-      ),
+    (node: ProcessNode) =>
+      openCanvasNode(node, {
+        setHomeMode,
+        setExpandedProcessId,
+        onCenterChange,
+        onNodeClick,
+        navigate,
+      }),
     [onCenterChange, onNodeClick, navigate],
-  );
-  // The "View subprocess" affordance on a collapsed subprocess Action: expand
-  // it into its own pool AND open its dialog, just like clicking any node.
-  const viewSubprocess = useCallback(
-    (node: ProcessNode) => openNode(node, { expandSubprocess: true }),
-    [openNode],
   );
   // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
   // transforms itself internally; our `viewport` mirror only feeds the
@@ -863,10 +854,10 @@ export function ProcessPerspective({
       // smooths any opacity change a node component sets on its own.
       const className = node.className ? `${node.className} doco-graph-fade` : "doco-graph-fade";
       // A subprocess member carries the "View subprocess" affordance — its
-      // stable handler (so node identity survives reuseStableNodes) expands
-      // the subprocess into its own pool.
+      // stable handler (so node identity survives reuseStableNodes) opens the
+      // subprocess into its own pool and its dialog, same as clicking the node.
       if ((node.data as unknown as ProcessNodeData).isSubprocess) {
-        return [{ ...node, className, data: { ...node.data, onViewSubprocess: viewSubprocess } }];
+        return [{ ...node, className, data: { ...node.data, onViewSubprocess: openNode } }];
       }
       return [{ ...node, className }];
     });
@@ -884,7 +875,7 @@ export function ProcessPerspective({
     renderedPoolIds,
     renderedNodeIds,
     openLaneNode,
-    viewSubprocess,
+    openNode,
     externalNeighbours.nodes,
   ]);
   const flowEdges = useMemo<FlowEdge[]>(
@@ -1181,8 +1172,8 @@ export function ProcessPerspective({
                 openProcess(target.id);
                 return;
               }
-              // A plain click never expands a subprocess — it focuses the node
-              // but keeps it collapsed inside its parent's pool.
+              // Clicking a sub-process Action opens into its own pool and its
+              // dialog; any other node focuses, collapsed in its parent's pool.
               openNode(target);
             }}
             onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
@@ -2385,8 +2376,8 @@ function ViewSubprocessButton({
   return (
     <button
       type="button"
-      // Stop the click from bubbling to React Flow's onNodeClick, which would
-      // treat it as a plain focus and keep the subprocess collapsed.
+      // Stop the click from also bubbling to React Flow's onNodeClick — both
+      // open the subprocess, so without this the node would open twice.
       onClick={(event) => {
         event.stopPropagation();
         data.onViewSubprocess?.(data.node);
