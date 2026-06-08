@@ -2283,14 +2283,35 @@ function LaneBadgeRow({ lane }: { lane: ProcessLane }) {
   );
 }
 
+// The entry/exit indicator is wayfinding, not a lifecycle signal, so it uses a
+// fixed neutral slate instead of the node's lifecycle stroke — tying it to the
+// stroke painted a drafting node's text yellow-on-white, barely legible.
+export const FLOW_POINT_MARKER_COLOR = "#475569"; // slate-600
+
+// BPMN entry/exit marking. The author sets `entry_point` / `exit_point`
+// explicitly (never deduced); a node can carry both. Returns the label text to
+// hang under the node name (uppercased in `ShapeLabel`), or null when neither
+// flag is set.
+function flowPointLabel(node: ProcessNode): string | null {
+  const parts: string[] = [];
+  if (node.entry_point === true) parts.push("Entry");
+  if (node.exit_point === true) parts.push("Exit");
+  return parts.length ? parts.join(" · ") : null;
+}
+
 function ShapeLabel({ node }: { node: ProcessNode }) {
   // `position: relative` + zIndex puts this in the same paint tier as
   // sibling absolutely-positioned shape outlines (the SVG in the
   // Document shape, the rotated div in the Diamond), so DOM order
   // wins and the label paints OVER the fill instead of under it.
+  //
+  // The entry/exit indicator rides here as a second line under the name
+  // rather than as a separate floating badge — in the text flow it can't
+  // collide with the type/lifecycle pills that straddle the card's bottom.
+  const flowPoint = flowPointLabel(node);
   return (
     <div
-      className="pointer-events-none flex items-center justify-center px-2 text-center text-[10px] font-medium leading-tight"
+      className="pointer-events-none flex flex-col items-center justify-center gap-0.5 px-2 text-center text-[10px] font-medium leading-tight"
       style={{
         width: "100%",
         height: "100%",
@@ -2301,6 +2322,14 @@ function ShapeLabel({ node }: { node: ProcessNode }) {
       title={node.name ?? ""}
     >
       <span className="break-words">{node.name ?? <em>(unnamed)</em>}</span>
+      {flowPoint ? (
+        <span
+          className="font-semibold uppercase"
+          style={{ fontSize: 8, letterSpacing: "0.06em", color: FLOW_POINT_MARKER_COLOR }}
+        >
+          {flowPoint}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -2319,68 +2348,6 @@ function commonHandles() {
         style={{ background: "transparent", border: "none" }}
       />
     </>
-  );
-}
-
-// The entry/exit tag is wayfinding, not a lifecycle signal, so it uses a
-// fixed neutral slate instead of the node's lifecycle stroke. Tying it to the
-// stroke painted a drafting node's tag yellow-on-white — barely legible; the
-// thin/thick ring already encodes start vs end, so color is free to be the
-// most readable one at every lifecycle.
-export const FLOW_POINT_MARKER_COLOR = "#475569"; // slate-600
-
-// BPMN entry/exit marking, drawn inside the node below its content. The author
-// sets `entry_point` / `exit_point` explicitly (never deduced). The glyph is the
-// standard BPMN event circle: thin ring = start (entry), thick ring = end
-// (exit), with a small "Entry"/"Exit" tag.
-function ProcessFlowPointMarker({ node }: { node: ProcessNode }) {
-  const isEntry = node.entry_point === true;
-  const isExit = node.exit_point === true;
-  if (!isEntry && !isExit) return null;
-  const tag = (kind: "entry" | "exit") => (
-    <span key={kind} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-      <span
-        aria-hidden="true"
-        style={{
-          display: "inline-block",
-          width: 9,
-          height: 9,
-          borderRadius: "50%",
-          // Thin ring = BPMN start event; thick ring = BPMN end event.
-          border: `${kind === "exit" ? 2.5 : 1}px solid ${FLOW_POINT_MARKER_COLOR}`,
-          boxSizing: "border-box",
-          background: "#fff",
-        }}
-      />
-      {kind === "entry" ? "Entry" : "Exit"}
-    </span>
-  );
-  return (
-    <div
-      className="pointer-events-none"
-      style={{
-        position: "absolute",
-        // The type/lifecycle badge row straddles the card's bottom edge and
-        // pokes ~8px back up into it (see `NodeBadgeRow`). Clear that band so
-        // the tag sits in the gap above the badges instead of behind them.
-        bottom: 12,
-        left: "50%",
-        transform: "translateX(-50%)",
-        display: "inline-flex",
-        gap: 6,
-        fontSize: 8,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-        lineHeight: 1,
-        color: FLOW_POINT_MARKER_COLOR,
-        whiteSpace: "nowrap",
-        zIndex: 2,
-      }}
-    >
-      {isEntry ? tag("entry") : null}
-      {isExit ? tag("exit") : null}
-    </div>
   );
 }
 
@@ -2424,7 +2391,6 @@ export function ProcessRectangleNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -2457,7 +2423,6 @@ function ProcessRoundedNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
@@ -2555,7 +2520,6 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
       {data.isSubprocess ? (
         <ViewSubprocessButton data={data} stroke={stroke} hidden={simplified} />
@@ -2639,8 +2603,6 @@ function ProcessCircleNode({ data }: { data: ProcessNodeData }) {
         }}
       >
         {simplified ? null : <ShapeLabel node={data.node} />}
-        {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
-        {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       </div>
       {commonHandles()}
     </div>
@@ -2747,7 +2709,6 @@ function ProcessDocumentNode({ data }: { data: ProcessNodeData }) {
         />
       </svg>
       {simplified ? null : <ShapeLabel node={data.node} />}
-      {simplified ? null : <ProcessFlowPointMarker node={data.node} />}
       {commonHandles()}
     </div>
   );
