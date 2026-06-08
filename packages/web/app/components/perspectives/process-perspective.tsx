@@ -82,7 +82,7 @@ const ARTIFACTS_LANE_ID = "__artifacts__";
 // The synthetic overview pool — mirrors POOL_TOP_LEVEL_ID in
 // `~/lib/process-perspective.server` (a `.server` value can't be imported into
 // the client bundle). The overview (home) state frames this one pool, which
-// holds every top-level process as a task node in its principal's lane.
+// holds every top-level Action as a task node in its principal's lane.
 export const TOP_LEVEL_POOL_ID = "pool:top-level";
 
 interface ProcessPerspectiveProps {
@@ -387,7 +387,7 @@ export function ProcessPerspective({
   // expansion framed so the re-fit fires once per distinct drill-in.
   const framedExpansionRef = useRef<string | null>(null);
   // The BPMN perspective opens on the synthetic top-level pool (the "home"
-  // overview) — every top-level process drawn as a task node in its principal's
+  // overview) — every top-level Action drawn as a task node in its principal's
   // lane — rather than drilling straight into one process. An explicit camera
   // focus (a node URL, an agent auto-focus, a panel open) skips the overview
   // and drills in. Clicking a process in the overview, or arriving via such a
@@ -585,9 +585,9 @@ export function ProcessPerspective({
     [focusCenterId, defaultCenterId, centerId],
   );
   // The overview (home) state frames the synthetic top-level pool — the one
-  // pool that is not an Action, holding every top-level process as a task node
+  // pool that is not an Action, holding every top-level Action as a task node
   // in its principal's lane. It exists only when the loader emitted it (the
-  // Doco has at least one top-level process); absent that, home falls back to
+  // Doco has at least one top-level Action); absent that, home falls back to
   // framing the first process pool so the canvas is never blank.
   const homePoolId = useMemo(
     () => pools.find((pool) => pool.id === TOP_LEVEL_POOL_ID)?.id ?? null,

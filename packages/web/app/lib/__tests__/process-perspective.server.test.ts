@@ -287,6 +287,54 @@ describe("loadProcessGraph", () => {
     expect(leaf?.is_process).toBeUndefined();
   });
 
+  it("a member Action whose only child is a gateway Decision is NOT a subprocess", async () => {
+    // A process is an Action with CHILD ACTIONS. A gateway Decision (or
+    // milestone State) is a member of a process, not what makes one — so an
+    // Action whose only `has_parent` child is a Decision is not itself a
+    // process. (Under the old "any has_parent child" rule, action_GATE would
+    // have been wrongly flagged a subprocess.)
+    const { client } = makeQueryClient({
+      nodes: [
+        processNode("action_ROOT", "Run the hiring process"),
+        // action_SUBPROC has an action child → it IS a subprocess.
+        processNode("action_SUBPROC", "Screen the applicant", "active", "2026-05-26T00:01:00.000Z"),
+        processNode("action_GRAND", "Read the résumé", "active", "2026-05-26T00:02:00.000Z"),
+        // action_GATE's only child is a gateway Decision → it is NOT a process.
+        processNode("action_GATE", "Branch on seniority", "active", "2026-05-26T00:03:00.000Z"),
+        {
+          id: "decision_DGATE",
+          entity_type: "decision",
+          summary: "Senior?",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:04:00.000Z",
+          data: {},
+        },
+      ],
+      principals: [{ id: "principal_ops", name: "Ops", lifecycle: "active" }],
+      users: [],
+      edges: [
+        edge("e_subproc_root", "action_SUBPROC", "action_ROOT", "member_of"),
+        edge("e_grand_subproc", "action_GRAND", "action_SUBPROC", "member_of"),
+        edge("e_gate_root", "action_GATE", "action_ROOT", "member_of"),
+        edge("e_dgate_gate", "decision_DGATE", "action_GATE", "member_of"),
+        edge("e_subproc_actor", "action_SUBPROC", "principal_ops", "performed_by"),
+        edge("e_gate_actor", "action_GATE", "principal_ops", "performed_by"),
+      ],
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "hiring" });
+
+    // action_SUBPROC has an action child (action_GRAND) → a subprocess.
+    const subproc = graph.nodes.find((n) => n.id === "action_SUBPROC");
+    expect(subproc?.pool_id).toBe("pool:action_ROOT");
+    expect(subproc?.is_process).toBe(true);
+    // action_GATE's only child is a Decision → NOT a process, even though it is
+    // an ordinary member of ROOT's pool.
+    const gate = graph.nodes.find((n) => n.id === "action_GATE");
+    expect(gate?.pool_id).toBe("pool:action_ROOT");
+    expect(gate?.is_process).toBeUndefined();
+  });
+
   it("resolves an actor lane's name even when the Principal is outside the focus window", async () => {
     const processId = "action_01PROCESS";
     const memberId = "action_01POST";
@@ -824,7 +872,7 @@ describe("loadProcessGraph", () => {
     // Pool construction is structural: a standalone Action with no `has_parent`
     // and no children still heads its OWN pool so it can be opened directly.
     // (Which of these the *overview pool* surfaces is a separate question — it
-    // holds only the Actions flagged `top_level_process`.)
+    // holds only the Actions flagged `top_level`.)
     const { client } = makeQueryClient({
       nodes: [
         processNode("action_alpha", "Onboard a customer"),
@@ -845,7 +893,7 @@ describe("loadProcessGraph", () => {
 
   it("renders top-level Actions as task nodes in one synthetic pool, in their principal lanes", async () => {
     // The overview (home) view renders every Action the author *marked*
-    // top-level (`top_level_process` in its `extra`) as a task node inside ONE
+    // top-level (`top_level` in its `extra`) as a task node inside ONE
     // synthetic pool that is not itself an Action, each placed in its
     // principal's actor lane. A parentless draft the author never flagged
     // (`action_flat`) stays out of that pool. The flagged Action still heads
@@ -854,7 +902,7 @@ describe("loadProcessGraph", () => {
       nodes: [
         {
           ...processNode("action_top", "Run the hiring process"),
-          data: { top_level_process: true },
+          data: { top_level: true },
         },
         processNode("action_flat", "Stray unlinked step", "drafting", "2026-05-26T00:01:00.000Z"),
       ],
@@ -896,7 +944,7 @@ describe("loadProcessGraph", () => {
   });
 
   it("carries the entry_point flag onto a top-level Action's synthetic-pool node", async () => {
-    // A top-level process can also be the entry point of its flow — the two
+    // A top-level Action can also be the entry point of its flow — the two
     // BPMN markings are not mutually exclusive. The synthetic-pool node (the
     // overview/home view) must surface the same `entry_point` the regular pool
     // node does, so the start-event glyph / "Entry" tag renders there too.
@@ -904,7 +952,7 @@ describe("loadProcessGraph", () => {
       nodes: [
         {
           ...processNode("action_top", "Run the hiring process"),
-          data: { top_level_process: true, entry_point: true },
+          data: { top_level: true, entry_point: true },
         },
       ],
       principals: [{ id: "principal_recruiter", name: "Recruiter", lifecycle: "active" }],
@@ -918,7 +966,7 @@ describe("loadProcessGraph", () => {
       (n) => n.id === "action_top" && n.pool_id === "pool:top-level",
     );
     expect(topLevelNode?.entry_point).toBe(true);
-    expect(topLevelNode?.top_level_process).toBe(true);
+    expect(topLevelNode?.top_level).toBe(true);
   });
 
   it("omits the synthetic top-level pool when no Action is flagged top-level", async () => {

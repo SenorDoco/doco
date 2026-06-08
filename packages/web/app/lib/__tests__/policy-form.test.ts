@@ -277,7 +277,7 @@ describe("every deterministic check type is editable (no silent corruption)", ()
     // requires_edge case above never exercised `exempt_when_incoming_edge_type`
     // or `exempt_when_field_truthy`, so the prefill silently dropped them on
     // "Save changes" — turning a correctly-exempted floor into one that blocks
-    // every top-level process and entry-point Action.
+    // every top-level and entry-point Action.
     [
       "requires_edge (process membership, both exemptions)",
       {

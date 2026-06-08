@@ -1,8 +1,11 @@
 // BPMN perspective server-side data loader.
 //
 // The canvas is partitioned into **pools** — one per **process**. A
-// process is an Action that has one or more flow nodes linked to it by a
-// `has_parent` edge (its members); the process Action itself is the pool,
+// process is an Action that has one or more **child actions** linked to it by a
+// `has_parent` edge; other flow nodes (gateway Decisions, milestone States) that
+// point at it join the same pool as members. Process-ness comes from those child
+// actions, never from the author's `top_level` flag — a top-level Action with no
+// children is not a process. The process Action itself is the pool,
 // never a member of its own pool. A pool is a bordered horizontal section
 // with its own internal structure (milestone band on top, actor lanes in
 // the middle, artifacts band on the bottom). Pools stack vertically. An
@@ -21,7 +24,7 @@
 //     re-home onto an Action via constrained_by/supports role edges.
 //
 // A **subprocess** is a member Action that is itself a process (it has its
-// own `has_parent` children). It renders as an ordinary member of its
+// own child actions). It renders as an ordinary member of its
 // parent's pool, and can be expanded into its own pool — there is no
 // separate "calling Action ↔ purpose Intent" pairing anymore.
 //
@@ -102,9 +105,11 @@ export interface ProcessNode {
   laneId: string;
   pool_id: string;
   /** True when this node is itself a process — an Action with one or more
-   *  `has_parent` children. Such a node renders as a collapsed subprocess
-   *  (a task with a "View subprocess" affordance) inside its parent's pool,
-   *  and can be expanded into its own pool (`pool:<id>`). */
+   *  child actions linked to it by `has_parent`. Derived from those children,
+   *  never from the `top_level` flag: a top-level Action with no children is NOT
+   *  a process. Such a node renders as a collapsed subprocess (a task with a
+   *  "View subprocess" affordance) inside its parent's pool, and can be expanded
+   *  into its own pool (`pool:<id>`). */
   is_process?: boolean;
   /**
    * Server-side sequence-flow depth. The renderer uses this as a floor
@@ -116,12 +121,12 @@ export interface ProcessNode {
    * BPMN sequence-flow markings, author-set in the node's `extra` (never
    * deduced). `entry_point` (a way into the process — pinned to the first
    * column, drawn with a start-event glyph) and `exit_point` (a way out —
-   * end-event glyph) drive the renderer; `top_level_process` marks the pool
-   * container Action.
+   * end-event glyph) drive the renderer; `top_level` marks a top-level (root)
+   * Action that heads the overview.
    */
   entry_point?: boolean;
   exit_point?: boolean;
-  top_level_process?: boolean;
+  top_level?: boolean;
 }
 
 export interface ProcessGraphData {
@@ -163,9 +168,10 @@ const BAND_UNASSIGNED_BASE = "__unassigned__";
 export const POOL_UNASSIGNED_ID = "pool:unassigned";
 
 // The synthetic overview pool — one pool that is NOT an Action, holding every
-// author-declared top-level process (an Action flagged `top_level_process`) as
-// a task node in its principal's lane. It is the BPMN home: the same swim-lane
-// rendering used everywhere else, in place of a bespoke flat directory list.
+// author-declared top-level Action (flagged `top_level`) as a task node in its
+// principal's lane. It is the BPMN home: the same swim-lane rendering used
+// everywhere else, in place of a bespoke flat directory list. (Being top-level
+// does not make an Action a process; that is decided per node by `is_process`.)
 export const POOL_TOP_LEVEL_ID = "pool:top-level";
 
 // Non-actor node types: their pool placement comes from a different
@@ -317,7 +323,7 @@ export async function loadProcessGraph(
   const allRows = nodeRows.rows.filter((row) => allowedNodeTypes.has(row.entity_type));
 
   // Index of every Action row by id — Actions are the process containers
-  // (a process is an Action with `has_parent` children) and label their pools.
+  // (a process is an Action with child actions) and label their pools.
   const actionsById = new Map<string, NodeRow>();
   for (const row of allRows) {
     if (row.entity_type === "action") actionsById.set(row.id, row);
@@ -354,8 +360,10 @@ export async function loadProcessGraph(
   // A flow node belongs to the process it points at with a `has_parent`
   // edge whose other endpoint is an Action. That parent Action is the
   // process (its pool); membership is single-valued, so the first such
-  // parent wins (the template caps `has_parent` at one). Every Action that
-  // is the target of ≥1 child `has_parent` is a process — it gets a pool.
+  // parent wins (the template caps `has_parent` at one). An Action is a
+  // process only when it has ≥1 CHILD ACTION pointing at it — gateway
+  // Decisions and milestone States are members of a process, not what makes
+  // one. (Being flagged `top_level` never makes an Action a process either.)
   const parentProcessByNode = new Map<string, string>();
   const processIds = new Set<string>();
   for (const row of allRows) {
@@ -365,15 +373,15 @@ export async function loadProcessGraph(
     );
     if (!parent) continue;
     parentProcessByNode.set(row.id, parent);
-    processIds.add(parent);
+    if (row.entity_type === "action") processIds.add(parent);
   }
 
-  // An Action HEADS its own pool when it is a process (has `has_parent`
-  // children) OR a root (no parent process of its own). The latter is what
+  // An Action HEADS its own pool when it is a process (has child actions)
+  // OR a root (no parent process of its own). The latter is what
   // surfaces every top-level Action in the BPMN home view — even one with no
   // sub-steps yet — so a freshly-sketched flat process isn't invisible. A
-  // subprocess (an Action with both a parent and children) heads a pool too, so
-  // it can be expanded. Leaf member Actions (a parent, no children) do not.
+  // subprocess (an Action with both a parent and child actions) heads a pool
+  // too, so it can be expanded. Leaf member Actions (a parent, no children) do not.
   const poolActionIds = new Set<string>(processIds);
   for (const row of allRows) {
     if (row.entity_type !== "action") continue;
@@ -486,9 +494,9 @@ export async function loadProcessGraph(
 
   // One construction path for a member node: both the regular pools and the
   // synthetic top-level pool build their nodes here, so the `is_process` flag
-  // and the BPMN flow markings (`entry_point`, `exit_point`,
-  // `top_level_process`) always travel with the node — a top-level process
-  // that is also a flow entry point keeps its `entry_point` in the overview.
+  // and the BPMN flow markings (`entry_point`, `exit_point`, `top_level`)
+  // always travel with the node — a top-level Action that is also a flow entry
+  // point keeps its `entry_point` in the overview.
   const makeNode = (row: NodeRow, laneId: string, poolId: string): ProcessNode => {
     const node: ProcessNode = {
       id: row.id,
@@ -506,7 +514,7 @@ export async function loadProcessGraph(
     const data = row.data ?? {};
     if (data.entry_point === true) node.entry_point = true;
     if (data.exit_point === true) node.exit_point = true;
-    if (data.top_level_process === true) node.top_level_process = true;
+    if (data.top_level === true) node.top_level = true;
     return node;
   };
 
@@ -579,17 +587,16 @@ export async function loadProcessGraph(
   }
 
   // ── Synthetic top-level pool ──────────────────────────────────────
-  // Every author-declared top-level process (an Action flagged
-  // `top_level_process`) renders as a task node inside ONE synthetic pool that
-  // is not itself an Action, each placed in its principal's actor lane
-  // (resolved from its performed_by edge, falling back to an Unassigned lane).
-  // This is the overview (home) view — the same swim-lane rendering used
-  // everywhere else. A flagged Action still heads its own pool (built below),
-  // so opening it drills into that pool's members.
+  // Every author-declared top-level Action (flagged `top_level`) renders as a
+  // task node inside ONE synthetic pool that is not itself an Action, each
+  // placed in its principal's actor lane (resolved from its performed_by edge,
+  // falling back to an Unassigned lane). This is the overview (home) view — the
+  // same swim-lane rendering used everywhere else. A flagged Action still heads
+  // its own pool (built below), so opening it drills into that pool's members.
   let topLevelPoolUsed = false;
   for (const row of allRows) {
     if (row.entity_type !== "action") continue;
-    if (row.data?.top_level_process !== true) continue;
+    if (row.data?.top_level !== true) continue;
     const ref = laneReferenceFor("action", row.id, outgoingByType, userById);
     const resolved = resolveLane(ref, principalById, principalByName);
     const baseId = resolved.id;
@@ -624,8 +631,8 @@ export async function loadProcessGraph(
   }
 
   // ── Build pools[] ─────────────────────────────────────────────────
-  // One pool per pool-heading Action (every Action with ≥1 `has_parent` child,
-  // plus every root Action), so the home view lists every top-level Action.
+  // One pool per pool-heading Action (every Action that is a process — has ≥1
+  // child action — plus every root Action), so the home view lists every top-level Action.
   // The Unassigned pool appears only when some orphan landed there.
   const pools: ProcessPool[] = [];
   const usedPoolIds = new Set<string>();
@@ -654,7 +661,7 @@ export async function loadProcessGraph(
     });
   }
 
-  // The synthetic overview pool, when it has any top-level processes to hold.
+  // The synthetic overview pool, when it has any top-level Actions to hold.
   if (topLevelPoolUsed) {
     pools.push({ id: POOL_TOP_LEVEL_ID, process_id: null, label: "Processes", lifecycle: null });
   }
