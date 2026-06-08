@@ -411,10 +411,12 @@ export function ProcessPerspective({
     [],
   );
 
-  // Drop nodes whose lifecycle is filtered out. Lanes are never
-  // dropped once the server emits them, so a filtered-out Action
-  // does not make its swim lane disappear. Links are still filtered
-  // by the existing nodeSet check inside layOutProcess.
+  // Drop nodes whose lifecycle is filtered out. The lane list itself isn't
+  // lifecycle-filtered here — a lane carries no lifecycle of its own to test
+  // against — but a lane left with no visible nodes is dropped downstream by
+  // layOutProcess, so an emptied swim lane (a retired principal once "Retired"
+  // is hidden) disappears instead of rendering as a blank band. Links are
+  // still filtered by the existing nodeSet check inside layOutProcess.
   const { filteredNodes, filteredLanes } = useMemo(() => {
     if (!visibleLifecycles) return { filteredNodes: nodes, filteredLanes: lanes };
     const fn = nodes.filter((n) => visibleLifecycles.has(n.lifecycle ?? "active"));
@@ -1450,7 +1452,7 @@ export function computeProcessRenderedSet(params: {
 
 export function layOutProcess(
   pools: ProcessPool[],
-  lanes: ProcessLane[],
+  allLanes: ProcessLane[],
   nodes: ProcessNode[],
   links: OverviewGraphLink[],
   centerId: string | null | undefined,
@@ -1463,6 +1465,16 @@ export function layOutProcess(
   // adjacent cross-intent neighbours), just not for highlighting.
   highlightFocal: boolean,
 ): ProcessLayout {
+  // A lane with no node in the rendered set reserves no space. A swim lane
+  // emptied by the lifecycle filter — e.g. a retired principal in the
+  // overview pool once "Retired" is hidden, or a principal whose only work is
+  // hidden — is dropped entirely rather than left as a blank band. Filtering
+  // here, at the single source of layout geometry, keeps pool height and lane
+  // stacking honest; toggling the hidden lifecycle back on re-populates the
+  // lane and it reappears.
+  const laneHasNode = new Set(nodes.map((node) => node.laneId));
+  const lanes = allLanes.filter((lane) => laneHasNode.has(lane.id));
+
   // Depth from the focal node over the whole rendered graph — drives the
   // opacity fade (positions are unaffected, so re-focusing within a pool
   // never moves a node, only re-fades it).
