@@ -42,6 +42,21 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
       if (/FROM users/i.test(sql)) return { rows: (rows.users ?? []) as T[] };
       // Principals are loaded via `FROM nodes WHERE node_type = 'principal'`.
       if (/node_type = 'principal'/i.test(sql)) return { rows: (rows.principals ?? []) as T[] };
+      // Per-lifecycle step totals (loadNodeLifecycleTotals) — GROUP BY lifecycle
+      // over the step node types in `params[1]`. Aggregate the seeded nodes the
+      // same way real Postgres would so totalByLifecycle is exercised.
+      if (/COUNT\(\*\)::text AS n/i.test(sql)) {
+        const allowed = new Set((params?.[1] as string[] | undefined) ?? []);
+        const counts = new Map<string, number>();
+        for (const node of (rows.nodes ?? []) as { entity_type?: string; lifecycle?: string }[]) {
+          if (allowed.size > 0 && !allowed.has(node.entity_type ?? "")) continue;
+          const lifecycle = node.lifecycle ?? "active";
+          counts.set(lifecycle, (counts.get(lifecycle) ?? 0) + 1);
+        }
+        return {
+          rows: [...counts].map(([lifecycle, n]) => ({ lifecycle, n: String(n) })) as T[],
+        };
+      }
       return { rows: (rows.nodes ?? []) as T[] };
     },
   };
@@ -141,11 +156,15 @@ describe("cross-pool neighbours feed computeExternalNeighbours (real loader outp
       id: "action_EXTNODE",
       direction: "entry",
       attach: { kind: "node", nodeId: "action_FMEMBER" },
+      edgeType: "flows_to",
+      label: null,
     });
     expect(neighbours).toContainEqual({
       id: "action_EXTTITLE",
       direction: "entry",
       attach: { kind: "title", poolId: "pool:action_FOCALPOOL" },
+      edgeType: "flows_to",
+      label: null,
     });
   });
 });
@@ -701,9 +720,12 @@ describe("loadProcessGraph", () => {
     expect(graph.nodes.map((node) => node.id)).toEqual(["action_step_active"]);
     expect(graph.pools.map((pool) => pool.id)).toEqual(["pool:action_proc_active"]);
     expect(graph.lanes).toHaveLength(1);
-    // totalCount is the pre-cap member count (both steps), even though the
-    // delivered slice holds one — so the header can say "Showing the latest 1 of 2 steps".
-    expect(graph.totalCount).toBe(2);
+    // totalByLifecycle is the pre-cap per-stage breakdown of every step node
+    // (both processes + both members), even though the delivered slice holds
+    // one. The header sums the visible stages — with retired hidden by default
+    // that's 4 — to say "Showing the latest 1 of 4 steps", and the active-only
+    // count it shows tracks whatever the lifecycle filter leaves on.
+    expect(graph.totalByLifecycle).toEqual({ drafting: 2, queued: 0, active: 2, retired: 0 });
     expect(graph.nodes).toHaveLength(1);
   });
 
@@ -871,6 +893,32 @@ describe("loadProcessGraph", () => {
     expect(graph.nodes.filter((n) => n.pool_id === "pool:top-level").map((n) => n.id)).toEqual([
       "action_top",
     ]);
+  });
+
+  it("carries the entry_point flag onto a top-level Action's synthetic-pool node", async () => {
+    // A top-level process can also be the entry point of its flow — the two
+    // BPMN markings are not mutually exclusive. The synthetic-pool node (the
+    // overview/home view) must surface the same `entry_point` the regular pool
+    // node does, so the start-event glyph / "Entry" tag renders there too.
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          ...processNode("action_top", "Run the hiring process"),
+          data: { top_level_process: true, entry_point: true },
+        },
+      ],
+      principals: [{ id: "principal_recruiter", name: "Recruiter", lifecycle: "active" }],
+      users: [],
+      edges: [edge("edge_top_actor", "action_top", "principal_recruiter", "performed_by")],
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "hiring" });
+
+    const topLevelNode = graph.nodes.find(
+      (n) => n.id === "action_top" && n.pool_id === "pool:top-level",
+    );
+    expect(topLevelNode?.entry_point).toBe(true);
+    expect(topLevelNode?.top_level_process).toBe(true);
   });
 
   it("omits the synthetic top-level pool when no Action is flagged top-level", async () => {

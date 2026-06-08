@@ -4,6 +4,8 @@ import { loadSlaPerspectiveData } from "../sla-perspective.server";
 function makeQueryClient(rows: Record<string, unknown[]>) {
   const query = vi.fn(async (sql: string, _params?: unknown[]): Promise<{ rows: unknown[] }> => {
     if (/FROM edges/i.test(sql)) return { rows: rows.edges ?? [] };
+    // Per-lifecycle commitment totals (loadNodeLifecycleTotals) — GROUP BY.
+    if (/GROUP BY/i.test(sql)) return { rows: rows.lifecycleTotals ?? [] };
     if (/node_type = 'rule'/i.test(sql)) return { rows: rows.rules ?? [] };
     if (/node_type = 'eval'/i.test(sql)) return { rows: rows.evals ?? [] };
     if (/node_type = 'reference'/i.test(sql)) return { rows: rows.references ?? [] };
@@ -229,15 +231,19 @@ describe("loadSlaPerspectiveData", () => {
 
     await loadSlaPerspectiveData(client, "doco_01", "acme-slas", { limit: 9 });
 
-    const nodeCalls = query.mock.calls.filter(([sql]) => /FROM nodes/i.test(String(sql)));
-    expect(nodeCalls).toHaveLength(6);
-    for (const [sql, params] of nodeCalls) {
+    // The six slice queries carry the LIMIT; the per-lifecycle totals query
+    // (GROUP BY, no limit) is excluded — it counts the full domain.
+    const sliceCalls = query.mock.calls.filter(
+      ([sql]) => /FROM nodes/i.test(String(sql)) && !/GROUP BY/i.test(String(sql)),
+    );
+    expect(sliceCalls).toHaveLength(6);
+    for (const [sql, params] of sliceCalls) {
       expect(String(sql)).toMatch(/LIMIT \$2/);
       expect(params).toEqual(["doco_01", 9]);
     }
   });
 
-  it("reports the true commitment total via a scalar COUNT subquery on the rule query", async () => {
+  it("reports the true per-lifecycle commitment total via a grouped COUNT, immune to the limit", async () => {
     const { client, query } = makeQueryClient({
       rules: [
         {
@@ -247,9 +253,13 @@ describe("loadSlaPerspectiveData", () => {
           created_at: "2026-05-26T00:00:00.000Z",
           created_by: null,
           data: {},
-          // pg returns the scalar-subquery bigint as a string.
-          total_count: "920",
         },
+      ],
+      // pg returns each bigint as a string; counted before the LIMIT so a mostly
+      // retired register still reports its real size once "Retired" is shown.
+      lifecycleTotals: [
+        { lifecycle: "active", n: "900" },
+        { lifecycle: "retired", n: "20" },
       ],
       evals: [],
       references: [],
@@ -261,10 +271,10 @@ describe("loadSlaPerspectiveData", () => {
 
     const data = await loadSlaPerspectiveData(client, "doco_01", "acme-slas", { limit: 1 });
 
-    expect(data.totalCount).toBe(920);
+    expect(data.totalByLifecycle).toEqual({ drafting: 0, queued: 0, active: 900, retired: 20 });
     expect(data.stats.commitments).toBe(1);
-    const ruleCall = query.mock.calls.find(([sql]) => /node_type = 'rule'/i.test(String(sql)));
-    expect(String(ruleCall?.[0])).toMatch(/\(SELECT COUNT\(\*\)/);
+    const totalsCall = query.mock.calls.find(([sql]) => /GROUP BY/i.test(String(sql)));
+    expect(String(totalsCall?.[0])).toMatch(/COUNT\(\*\)::text AS n/);
   });
 
   it("loads every lifecycle so the client filter can reveal a retired register", async () => {
@@ -297,7 +307,9 @@ describe("loadSlaPerspectiveData", () => {
     const data = await loadSlaPerspectiveData(client, "doco_01", "acme-slas");
 
     const nodeCalls = query.mock.calls.filter(([sql]) => /FROM nodes/i.test(String(sql)));
-    expect(nodeCalls).toHaveLength(6);
+    // Six enrichment queries (rule/eval/reference/action/decision/principal)
+    // plus the per-lifecycle totals query — all loading every lifecycle.
+    expect(nodeCalls).toHaveLength(7);
     for (const [sql] of nodeCalls) {
       expect(String(sql)).not.toMatch(/<> 'retired'/);
     }

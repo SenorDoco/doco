@@ -9,10 +9,13 @@ import { ArrowRight } from "lucide-react";
 // transitions include their old → new value so state changes show up in
 // the feed instead of disappearing behind the entity's original created_at.
 //
-// Live feed (ADR-089): re-fetch every 5s so new entities show up
-// without a manual refresh. React Router 7's useRevalidator re-runs the
-// loader. We only poll when the tab is visible to avoid burning cycles
-// on idle tabs.
+// Live feed (ADR-089): keep the perspective near-real-time without a manual
+// refresh. The client polls a cheap per-Doco change cursor (/changes.json, one
+// indexed audit_events lookup) about once a second and only re-runs the heavy
+// loader via React Router's useRevalidator when that cursor advances — so an
+// idle perspective never re-renders (the graph stays smooth to pan/navigate)
+// and a real change lands within a poll interval. We only poll when the tab is
+// visible to avoid burning cycles on idle tabs.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRevalidator, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
@@ -47,6 +50,8 @@ import { PullRequestsPerspective } from "~/components/perspectives/pull-requests
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SiteHeader } from "~/components/site-header";
 import { VisibilityIcon } from "~/components/visibility-icon";
+import { CHANGE_POLL_INTERVAL_MS, shouldRevalidateForCursor } from "~/lib/change-cursor";
+import { readChangeCursor } from "~/lib/change-cursor.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
@@ -249,7 +254,6 @@ export async function loader({
     });
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
-    const totalNodes = facets.entityType.reduce((sum, t) => sum + t.count, 0);
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -379,10 +383,14 @@ export async function loader({
     ).rows[0];
     const githubIntegration = githubIntegrationStatus(githubRow?.gh ?? null);
 
+    // Live-feed baseline: the latest audit-event id this render reflects. The
+    // client polls /changes.json against it and only revalidates when it
+    // advances (see the polling effect below).
+    const changeCursor = await readChangeCursor(c, ctx.meta.docoId);
+
     return {
       items,
       facets,
-      totalNodes,
       byDay,
       topContributors,
       handle,
@@ -413,6 +421,7 @@ export async function loader({
       focusedEdge: selectedEdge,
       selectedNode: dialogNode,
       selectedEdge: dialogEdge,
+      changeCursor,
     };
   });
 }
@@ -526,7 +535,6 @@ export default function DocoHome({
   const {
     items,
     facets,
-    totalNodes,
     byDay,
     topContributors,
     handle,
@@ -555,6 +563,7 @@ export default function DocoHome({
     focusedEdge,
     selectedNode,
     selectedEdge,
+    changeCursor,
   } = loaderData;
 
   const pageRanksMap = useMemo(() => new Map(Object.entries(pageRanks)), [pageRanks]);
@@ -715,6 +724,19 @@ export default function DocoHome({
       return next;
     });
 
+  // The search overlay's "Search N nodes" count tracks the lifecycle filter:
+  // it sums only the per-lifecycle facet counts the filter currently shows
+  // (retired hidden by default), so the searchable-node total matches what the
+  // perspectives render rather than counting hidden lifecycles.
+  const visibleNodeCount = useMemo(
+    () =>
+      facets.lifecycle.reduce(
+        (sum, facet) => (visibleLifecycles.has(facet.value) ? sum + facet.count : sum),
+        0,
+      ),
+    [facets.lifecycle, visibleLifecycles],
+  );
+
   // Pull-requests perspective lifecycle filter — its own state, held in the URL
   // (`?pr_lifecycle=`) rather than the page-level `visibleLifecycles`. The PR
   // list shows GitHub states (Open / Merged / Closed) and is narrowed
@@ -788,17 +810,45 @@ export default function DocoHome({
     return () => observer.disconnect();
   }, []);
 
-  // Live feed polling (ADR-089).
+  // Live feed polling (ADR-089, real-time via change cursor). Instead of
+  // re-running the heavy perspective loader on a timer, poll a cheap per-Doco
+  // change cursor (one indexed audit_events lookup) and only revalidate when
+  // it advances. An idle perspective never reloads, so panning/navigating the
+  // graph stays smooth; a real change lands within one poll interval.
   const revalidator = useRevalidator();
+  // The cursor the rendered data reflects. Re-seeded from the loader after each
+  // completed revalidation so a fresh load marks its own cursor as seen and
+  // doesn't immediately re-trigger.
+  const lastSeenCursorRef = useRef<string | null>(changeCursor);
+  useEffect(() => {
+    lastSeenCursorRef.current = changeCursor;
+  }, [changeCursor]);
   useEffect(() => {
     let tick: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (tick !== null) return;
-      tick = setInterval(() => {
-        if (document.visibilityState === "visible" && revalidator.state === "idle") {
+    let cancelled = false;
+    const poll = async () => {
+      if (document.visibilityState !== "visible" || revalidator.state !== "idle") return;
+      try {
+        const res = await fetch(`/${handle}/changes.json`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok || cancelled) return;
+        const { cursor } = (await res.json()) as { cursor: string | null };
+        if (cancelled) return;
+        if (
+          shouldRevalidateForCursor(lastSeenCursorRef.current, cursor) &&
+          document.visibilityState === "visible" &&
+          revalidator.state === "idle"
+        ) {
           revalidator.revalidate();
         }
-      }, 5000);
+      } catch {
+        // Transient network/poll error — the next tick retries.
+      }
+    };
+    const start = () => {
+      if (tick !== null) return;
+      tick = setInterval(() => void poll(), CHANGE_POLL_INTERVAL_MS);
     };
     const stop = () => {
       if (tick !== null) {
@@ -813,10 +863,11 @@ export default function DocoHome({
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      cancelled = true;
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [revalidator]);
+  }, [revalidator, handle]);
 
   // Refs that capture the current dialog state without being reactive deps,
   // so the revalidation effect (defined after the callbacks below) can read
@@ -1347,7 +1398,7 @@ export default function DocoHome({
               {/* Floats over the top-right of whichever perspective is
                   active — see PerspectiveSearchOverlay for the z-index it
                   must hold to stay above the canvas. */}
-              <PerspectiveSearchOverlay handle={handle} totalNodes={totalNodes} />
+              <PerspectiveSearchOverlay handle={handle} totalNodes={visibleNodeCount} />
               <PerspectiveFrame
                 fillHeight
                 lifecycleFilter={
@@ -1378,8 +1429,7 @@ export default function DocoHome({
                     pageRanks={pageRanksMap}
                     visibleLifecycles={visibleLifecycles}
                     focusId={perspectiveFocusId}
-                    loadedCount={graphState.nodes.length}
-                    totalCount={graphState.totalNodeCount ?? graphState.nodes.length}
+                    totalByLifecycle={graphState.totalNodeByLifecycle}
                   />
                 ) : effectivePerspectiveKind === "glossary" && glossaryData ? (
                   <GlossaryPerspective
@@ -1407,7 +1457,7 @@ export default function DocoHome({
                 ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
                   <OrgTreePerspective
                     nodes={orgTreeData.nodes}
-                    totalCount={orgTreeData.totalCount}
+                    totalByLifecycle={orgTreeData.totalByLifecycle}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
                     initialFocusId={perspectiveFocusId}
@@ -1426,7 +1476,7 @@ export default function DocoHome({
                     pools={processGraph.pools}
                     lanes={processGraph.lanes}
                     nodes={processGraph.nodes}
-                    totalCount={processGraph.totalCount}
+                    totalByLifecycle={processGraph.totalByLifecycle}
                     links={processGraph.links}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}

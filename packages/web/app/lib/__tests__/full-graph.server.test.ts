@@ -18,6 +18,11 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
     if (/FROM edges/i.test(sql)) {
       return { rows: (rows.edges ?? []) as T[] };
     }
+    // The per-lifecycle totals query groups the graph domain by lifecycle —
+    // counted before the slice, so it can exceed the returned rows.
+    if (/GROUP BY/i.test(sql)) {
+      return { rows: (rows.lifecycleTotals ?? []) as T[] };
+    }
     return { rows: (rows.entities ?? []) as T[] };
   };
   const client: QueryClientLike = { query };
@@ -265,8 +270,9 @@ describe("loadOverviewGraph", () => {
   });
 
   it("reports the true total node count and hasMore for a bounded slice", async () => {
-    // The windowed COUNT(*) reflects the full domain (here 750) even though the
-    // slice returns one row; pg hands the bigint back as a string.
+    // The grouped totals query reflects the full domain (here 750) even though
+    // the slice returns one row; pg hands each bigint back as a string. The
+    // header sums the visible stages; the scalar total (Σ stages) drives hasMore.
     const { client, captured } = makeQueryClient({
       entities: [
         {
@@ -276,18 +282,27 @@ describe("loadOverviewGraph", () => {
           label: "Focused decision",
           lifecycle: "active",
           created_at: "2026-05-01T00:00:00.000Z",
-          total_node_count: "750",
         },
+      ],
+      lifecycleTotals: [
+        { lifecycle: "active", n: "740" },
+        { lifecycle: "retired", n: "10" },
       ],
       edges: [],
     });
 
     const graph = await loadOverviewGraph(client, "doco_large", { handle: "large", limit: 1 });
 
-    const entityQuery = captured.find((c) => /FROM nodes t/i.test(c.sql));
-    expect(entityQuery?.sql).toMatch(/\(SELECT COUNT\(\*\)/);
+    const totalsQuery = captured.find((c) => /GROUP BY/i.test(c.sql));
+    expect(totalsQuery?.sql).toMatch(/COUNT\(\*\)::text AS n/);
     expect(graph.nodes).toHaveLength(1);
     expect(graph.totalNodeCount).toBe(750);
+    expect(graph.totalNodeByLifecycle).toEqual({
+      drafting: 0,
+      queued: 0,
+      active: 740,
+      retired: 10,
+    });
     expect(graph.hasMore).toBe(true);
   });
 
@@ -301,7 +316,6 @@ describe("loadOverviewGraph", () => {
           label: "A",
           lifecycle: "active",
           created_at: "2026-04-01T00:00:00Z",
-          total_node_count: "2",
         },
         {
           id: "intent_01",
@@ -310,9 +324,9 @@ describe("loadOverviewGraph", () => {
           label: "B",
           lifecycle: "active",
           created_at: "2026-04-01T00:00:00Z",
-          total_node_count: "2",
         },
       ],
+      lifecycleTotals: [{ lifecycle: "active", n: "2" }],
       edges: [],
     });
 

@@ -20,7 +20,7 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import { lifecycleColor } from "~/lib/node-colors";
+import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { type Point, layoutOverviewGraphNodes } from "~/lib/overview-graph-layout";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
@@ -72,6 +72,13 @@ export interface OverviewGraphData {
    * header falls back to `nodes.length` when it's absent.
    */
   totalNodeCount?: number;
+  /**
+   * Per-lifecycle breakdown of `totalNodeCount`. The List header sums the stages
+   * the lifecycle filter shows, so its count tracks the rendered rows (retired
+   * hidden by default) instead of the full all-lifecycle total. Optional for the
+   * same reason as `totalNodeCount`.
+   */
+  totalNodeByLifecycle?: LifecycleCounts;
   /** True when `nodes` is a bounded slice (`totalNodeCount > nodes.length`). */
   hasMore?: boolean;
 }

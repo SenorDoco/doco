@@ -7,7 +7,10 @@ import { loadGlossaryPerspectiveData } from "../glossary-perspective.server";
 // loader reads only References now — terms are one shape, not five.
 function makeClient(rows: unknown[]) {
   return {
-    async query<T>(_sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+    async query<T>(sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+      // The per-lifecycle totals query (GROUP BY) isn't the subject of these
+      // term-shape tests — return no totals so they stay focused on entries.
+      if (/GROUP BY/i.test(sql)) return { rows: [] as T[] };
       return { rows: rows as T[] };
     },
   };
@@ -26,6 +29,12 @@ function row(over: Record<string, unknown>) {
   };
 }
 
+// The loaded entries, flattened across letter groups — the loader no longer
+// returns a separate `stats` block; the footer derives its counts client-side.
+function entriesOf(data: { groups: { entries: unknown[] }[] }): unknown[] {
+  return data.groups.flatMap((g) => g.entries);
+}
+
 describe("loadGlossaryPerspectiveData", () => {
   it("renders a Reference term entry: the prose is the word, the `definition` attribute is the meaning", async () => {
     const client = makeClient([
@@ -39,7 +48,7 @@ describe("loadGlossaryPerspectiveData", () => {
 
     const data = await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
 
-    expect(data.stats.entries).toBe(1);
+    expect(entriesOf(data)).toHaveLength(1);
     const entry = data.groups[0].entries[0];
     expect(entry.headword).toBe("Torre");
     expect(entry.entityType).toBe("reference");
@@ -135,33 +144,30 @@ describe("loadGlossaryPerspectiveData", () => {
   });
 
   it("queries only References, not the legacy five-type union", async () => {
-    const querySpy = vi.fn();
+    const calls: string[] = [];
     const client = {
-      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
-        querySpy(sql, params);
-        expect(sql).toMatch(/node_type = 'reference'/);
-        expect(sql).not.toMatch(/'decision'/);
+      async query<T>(sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+        calls.push(sql);
         return { rows: [] };
       },
     };
     await loadGlossaryPerspectiveData(client, "doco_01", "acme/glossary");
-    expect(querySpy).toHaveBeenCalledOnce();
+    const termQuery = calls.find((sql) => /node_type = 'reference'/.test(sql));
+    expect(termQuery).toBeDefined();
+    expect(termQuery).not.toMatch(/'decision'/);
   });
 
   it("returns empty groups when the Doco has no terms", async () => {
     const data = await loadGlossaryPerspectiveData(makeClient([]), "doco_01", "acme/glossary");
     expect(data.groups).toEqual([]);
-    expect(data.stats.entries).toBe(0);
+    expect(entriesOf(data)).toHaveLength(0);
   });
 
-  it("passes a SQL limit when a page budget is supplied", async () => {
-    const querySpy = vi.fn();
+  it("passes a SQL limit to the term query when a page budget is supplied", async () => {
+    const calls: { sql: string; params?: unknown[] }[] = [];
     const client: Parameters<typeof loadGlossaryPerspectiveData>[0] = {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
-        querySpy(sql, params);
-        expect(sql).toMatch(/ORDER BY updated_at DESC/);
-        expect(sql).toMatch(/LIMIT \$2/);
-        expect(params).toEqual(["doco_01", 40]);
+        calls.push({ sql, params });
         return { rows: [] };
       },
     };
@@ -170,17 +176,28 @@ describe("loadGlossaryPerspectiveData", () => {
       limit: 40,
     });
 
-    expect(data.stats.entries).toBe(0);
-    expect(data.totalCount).toBe(0);
-    expect(querySpy).toHaveBeenCalledOnce();
+    // The slice query carries the LIMIT; the per-lifecycle totals query
+    // (GROUP BY, no limit) counts the full domain.
+    const termQuery = calls.find((q) => /ORDER BY updated_at DESC/.test(q.sql));
+    expect(termQuery?.sql).toMatch(/LIMIT \$2/);
+    expect(termQuery?.params).toEqual(["doco_01", 40]);
+    expect(entriesOf(data)).toHaveLength(0);
+    expect(data.totalByLifecycle).toEqual({ drafting: 0, queued: 0, active: 0, retired: 0 });
   });
 
-  it("reports the true total via a scalar COUNT subquery so the header can show truncation", async () => {
-    const querySpy = vi.fn();
+  it("reports the true per-lifecycle total via a grouped COUNT so the header can show truncation", async () => {
     const client = {
-      async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
-        querySpy(sql, params);
-        expect(sql).toMatch(/\(SELECT COUNT\(\*\)/);
+      async query<T>(sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+        // The grouped totals query is counted before the LIMIT, so a mostly
+        // retired lexicon still reports its real size once "Retired" is shown.
+        if (/GROUP BY/.test(sql)) {
+          return {
+            rows: [
+              { lifecycle: "active", n: "1798" },
+              { lifecycle: "retired", n: "2" },
+            ] as T[],
+          };
+        }
         return {
           rows: [
             row({
@@ -188,8 +205,6 @@ describe("loadGlossaryPerspectiveData", () => {
               label: "Doco",
               prose: "Doco",
               data: { definition: "institutional memory." },
-              // pg returns the windowed bigint as a string.
-              total_count: "1800",
             }),
           ] as T[],
         };
@@ -200,8 +215,8 @@ describe("loadGlossaryPerspectiveData", () => {
       limit: 1,
     });
 
-    expect(data.totalCount).toBe(1800);
-    expect(data.stats.entries).toBe(1);
+    expect(data.totalByLifecycle).toEqual({ drafting: 0, queued: 0, active: 1798, retired: 2 });
+    expect(entriesOf(data)).toHaveLength(1);
   });
 
   it("loads every lifecycle so the client filter can reveal retired entries", async () => {

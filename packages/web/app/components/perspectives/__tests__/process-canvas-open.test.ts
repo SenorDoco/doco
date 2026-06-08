@@ -29,10 +29,10 @@ function handlers() {
 }
 
 describe("openCanvasNode", () => {
-  it("viewing a subprocess expands its OWN pool AND opens its node dialog", () => {
-    const subprocess = node("sub_1");
+  it("clicking a sub-process Action opens INTO its own pool AND opens its dialog", () => {
+    const subprocess = node("sub_1", { is_process: true });
     const h = handlers();
-    openCanvasNode(subprocess, { expandSubprocess: true }, h);
+    openCanvasNode(subprocess, h);
     // "open the sub-process" — its own pool frames the canvas…
     expect(h.setExpandedProcessId).toHaveBeenCalledWith("sub_1");
     expect(h.onCenterChange).toHaveBeenCalledWith("sub_1");
@@ -42,19 +42,27 @@ describe("openCanvasNode", () => {
     expect(h.setHomeMode).toHaveBeenCalledWith(false);
   });
 
-  it("a plain node click collapses to the parent pool but still opens the dialog", () => {
+  it("clicking an ordinary node collapses to its parent pool but still opens the dialog", () => {
     const member = node("member_1");
     const h = handlers();
-    openCanvasNode(member, { expandSubprocess: false }, h);
+    openCanvasNode(member, h);
     expect(h.setExpandedProcessId).toHaveBeenCalledWith(null);
     expect(h.onCenterChange).toHaveBeenCalledWith("member_1");
     expect(h.onNodeClick).toHaveBeenCalledWith(member);
   });
 
+  it("only Actions are sub-processes — a process-flagged Decision does not expand", () => {
+    const decision = node("dec_1", { entity_type: "decision", is_process: true });
+    const h = handlers();
+    openCanvasNode(decision, h);
+    expect(h.setExpandedProcessId).toHaveBeenCalledWith(null);
+    expect(h.onNodeClick).toHaveBeenCalledWith(decision);
+  });
+
   it("falls back to navigation when no dialog handler is wired", () => {
     const member = node("member_2");
     const h = { ...handlers(), onNodeClick: undefined };
-    openCanvasNode(member, { expandSubprocess: false }, h);
+    openCanvasNode(member, h);
     expect(h.navigate).toHaveBeenCalledWith("/doco/action/member_2");
   });
 });

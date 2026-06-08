@@ -1637,8 +1637,9 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
   GET   /<handle>/api/authoring-contract.json    — agent contract: valid entity types, relation kinds, perspective constraints, and changeset examples
   POST  /<handle>/api/changesets.json            — generic graph-authoring batch: create nodes and add relations in one request; prefer this for BPMN/process/org-tree style structures
+  GET   /<handle>/api/edges.json                 — list edges. Same envelope as /api/<type>.json: { ok, type, doco_id, count, items }. Filter ?from_id=<id> and/or ?to_id=<id> to pin one edge by its endpoints — this is how you get an edge's id (search.json does NOT cover edges). Then DELETE /<handle>/api/edges/<id>.json to retire it (or PATCH its lifecycle).
   GET   /<handle>/api/settings.json              — doco settings (handle, visibility, goal)
-  GET   /<handle>/search.json?q=<query>          — hybrid search (semantic + keyword) across this doco's nodes; finds nodes even before they are embedded
+  GET   /<handle>/search.json?q=<query>          — hybrid search (semantic + keyword) across this doco's NODES only (not edges); finds nodes even before they are embedded
   GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like workspace/doco
   POST  /api/v1/docos.json                       — create a doco; owner role on the target workspace required
   POST  /api/v1/workspaces.json                        — create an workspace (NO GET — to list the user's workspaces, see the "Your workspaces" section below)
@@ -1657,6 +1658,7 @@ real data. Examples:
 - "remove all principles/principals" → \`GET /<handle>/api/principals.json\`, read \`principal_nodes\`, then PATCH each one's lifecycle to "retired".
 - "list intents" / "what intents do I have?" → \`GET /<handle>/api/intents.json\`, read \`items\`.
 - "find the X about Y" → \`GET /<handle>/search.json?q=Y\`, scan results.
+- "the edge between X and Y is wrong / remove it" → \`GET /<handle>/api/edges.json?from_id=<X>&to_id=<Y>\`, read \`items[].id\`, then DELETE \`/<handle>/api/edges/<id>.json\`. search.json indexes nodes, not edges — this filtered list is the only way to resolve an edge's id from its endpoints. Try both directions if unsure which way it points.
 - "how many decisions?" → \`GET /<handle>/status.json\` (counts only; cheaper than listing).
 
 ## Capture body structure

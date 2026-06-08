@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { loadOrgTreeData } from "../org-tree-perspective.server";
 
 describe("loadOrgTreeData", () => {
@@ -113,39 +113,43 @@ describe("loadOrgTreeData", () => {
     expect(data.nodes[1]?.type).toBe("person"); // kind=human beats "AI agent …" prose
   });
 
-  it("passes a SQL limit when a page budget is supplied", async () => {
-    const querySpy = vi.fn();
+  it("passes a SQL limit to the principal query when a page budget is supplied", async () => {
+    const queries: { sql: string; params?: unknown[] }[] = [];
     const client: Parameters<typeof loadOrgTreeData>[0] = {
       async query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
-        querySpy(sql, params);
-        expect(sql).toMatch(/LIMIT \$2/);
-        expect(params).toEqual(["doco_acme", 3]);
+        queries.push({ sql, params });
         return { rows: [] };
       },
     };
 
     const data = await loadOrgTreeData(client, "doco_acme", "acme", { limit: 3 });
 
+    // The slice query carries the LIMIT; the per-lifecycle totals query does
+    // not (it counts the full domain, immune to the page budget).
+    const sliceQuery = queries.find((q) => /ORDER BY created_at/i.test(q.sql));
+    expect(sliceQuery?.sql).toMatch(/LIMIT \$2/);
+    expect(sliceQuery?.params).toEqual(["doco_acme", 3]);
     expect(data.nodes).toEqual([]);
-    expect(data.totalCount).toBe(0);
-    expect(querySpy).toHaveBeenCalledOnce();
+    expect(data.totalByLifecycle).toEqual({ drafting: 0, queued: 0, active: 0, retired: 0 });
   });
 
-  it("reports the true principal total via a scalar COUNT subquery", async () => {
+  it("reports the true per-lifecycle principal total via a grouped COUNT", async () => {
     const client: Parameters<typeof loadOrgTreeData>[0] = {
       async query<T>(sql: string): Promise<{ rows: T[] }> {
         if (/FROM edges/i.test(sql)) return { rows: [] as T[] };
-        expect(sql).toMatch(/\(SELECT COUNT\(\*\)/);
+        // The grouped totals query is counted before the LIMIT, so a fully
+        // retired org still reports its real size once "Retired" is toggled on.
+        if (/GROUP BY/i.test(sql)) {
+          return {
+            rows: [
+              { lifecycle: "active", n: "800" },
+              { lifecycle: "retired", n: "30" },
+            ] as T[],
+          };
+        }
         return {
           rows: [
-            {
-              id: "principal_alex",
-              name: "Alex — Person, CEO",
-              lifecycle: "active",
-              data: {},
-              // pg returns the windowed bigint as a string.
-              total_count: "830",
-            },
+            { id: "principal_alex", name: "Alex — Person, CEO", lifecycle: "active", data: {} },
           ] as T[],
         };
       },
@@ -153,7 +157,7 @@ describe("loadOrgTreeData", () => {
 
     const data = await loadOrgTreeData(client, "doco_acme", "acme", { limit: 1 });
 
-    expect(data.totalCount).toBe(830);
+    expect(data.totalByLifecycle).toEqual({ drafting: 0, queued: 0, active: 800, retired: 30 });
     expect(data.nodes).toHaveLength(1);
   });
 

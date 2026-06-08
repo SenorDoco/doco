@@ -531,7 +531,8 @@ describe("org-tree perspective — 10 realistic rendering scenarios", () => {
     // Data Analyst dotted-lines to the CFO (analytics serves finance).
     await relEdge(data1, cfo, "relates_to");
     const data = await loadOrgTreeData(dbm.db, docoId, "acme");
-    expect(data.totalCount).toBe(12);
+    const total = Object.values(data.totalByLifecycle).reduce((sum, n) => sum + n, 0);
+    expect(total).toBe(12);
     expect(data.nodes).toHaveLength(12);
     expect(byId(data, cro)?.type).toBe("vacant");
     expect(byId(data, eng3)?.type).toBe("agent");

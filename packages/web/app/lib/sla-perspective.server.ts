@@ -1,3 +1,5 @@
+import { loadNodeLifecycleTotals } from "./lifecycle-totals.server";
+import type { LifecycleCounts } from "./node-colors";
 import type { PerspectiveWindowSelection } from "./perspective-window.server";
 import { windowNodeIds } from "./perspective-window.server";
 
@@ -12,8 +14,6 @@ interface RuleRow {
   created_at: string | null;
   created_by: string | null;
   data: Record<string, unknown> | null;
-  /** Scalar-subquery total commitments (bigint → string from pg). */
-  total_count?: number | string | null;
 }
 
 interface EvalRow {
@@ -97,11 +97,12 @@ export interface SlaCommitment {
 export interface SlaPerspectiveData {
   commitments: SlaCommitment[];
   /**
-   * TRUE total of SLA commitments (rule nodes, all lifecycles) for this Doco,
-   * counted before the page limit. `commitments.length` is the loaded slice;
-   * the header reports loaded vs this total.
+   * TRUE total of SLA commitments (rule nodes) for this Doco, broken out per
+   * lifecycle and counted before the page limit. `commitments.length` is the
+   * loaded slice; the header sums the stages the lifecycle filter shows and
+   * reports loaded vs that visible total.
    */
-  totalCount: number;
+  totalByLifecycle: LifecycleCounts;
   stats: {
     commitments: number;
     evidenceLinked: number;
@@ -259,22 +260,21 @@ export async function loadSlaPerspectiveData(
   // filter too so a revealed retired commitment resolves its linked evidence
   // and owner instead of bogusly reading empty. Mirrors full-graph.server and
   // the BPMN loader (PR #819), which return every lifecycle.
-  const [rules, evals, references, actions, decisions, principals] = await Promise.all([
-    c.query<RuleRow>(
-      `SELECT id, prose AS rule, COALESCE(lifecycle, 'active') AS lifecycle,
-              created_at::text AS created_at, created_by, extra AS data,
-              (SELECT COUNT(*) FROM nodes
-                WHERE node_type = 'rule' AND doco_id = $1) AS total_count
+  const [rules, evals, references, actions, decisions, principals, totalByLifecycle] =
+    await Promise.all([
+      c.query<RuleRow>(
+        `SELECT id, prose AS rule, COALESCE(lifecycle, 'active') AS lifecycle,
+              created_at::text AS created_at, created_by, extra AS data
          FROM nodes
         WHERE node_type = 'rule'
           AND doco_id = $1
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
-      params,
-    ),
-    c.query<EvalRow>(
-      `SELECT id, prose AS eval, COALESCE(lifecycle, 'active') AS lifecycle,
+        params,
+      ),
+      c.query<EvalRow>(
+        `SELECT id, prose AS eval, COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, extra AS data
          FROM nodes
         WHERE node_type = 'eval'
@@ -282,10 +282,10 @@ export async function loadSlaPerspectiveData(
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
-      params,
-    ),
-    c.query<ReferenceRow>(
-      `SELECT id, prose AS reference,
+        params,
+      ),
+      c.query<ReferenceRow>(
+        `SELECT id, prose AS reference,
               locator,
               COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, extra AS data
@@ -295,10 +295,10 @@ export async function loadSlaPerspectiveData(
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
-      params,
-    ),
-    c.query<ActionRow>(
-      `SELECT id, prose AS action, COALESCE(lifecycle, 'active') AS lifecycle,
+        params,
+      ),
+      c.query<ActionRow>(
+        `SELECT id, prose AS action, COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, extra AS data
          FROM nodes
         WHERE node_type = 'action'
@@ -306,10 +306,10 @@ export async function loadSlaPerspectiveData(
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
-      params,
-    ),
-    c.query<DecisionRow>(
-      `SELECT id, prose AS decision, COALESCE(lifecycle, 'active') AS lifecycle,
+        params,
+      ),
+      c.query<DecisionRow>(
+        `SELECT id, prose AS decision, COALESCE(lifecycle, 'active') AS lifecycle,
               created_at::text AS created_at, extra AS data
          FROM nodes
         WHERE node_type = 'decision'
@@ -317,19 +317,22 @@ export async function loadSlaPerspectiveData(
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
-      params,
-    ),
-    c.query<PrincipalRow>(
-      `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle
+        params,
+      ),
+      c.query<PrincipalRow>(
+        `SELECT id, prose AS name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM nodes
         WHERE node_type = 'principal'
           AND doco_id = $1
           ${windowFilterSql}
         ORDER BY created_at DESC
         ${limitSql}`,
-      params,
-    ),
-  ]);
+        params,
+      ),
+      // Per-lifecycle commitment totals — the header counts only the stages it
+      // shows, immune to the page LIMIT above.
+      loadNodeLifecycleTotals(c, docoId, ["rule"]),
+    ]);
 
   const ruleIds = rules.rows.map((row) => row.id);
   const edges =
@@ -478,7 +481,5 @@ export async function loadSlaPerspectiveData(
     externalRefs: references.rows.filter((row) => Boolean(row.locator)).length,
   };
 
-  const totalCount = Number(rules.rows[0]?.total_count ?? 0);
-
-  return { commitments, totalCount, stats };
+  return { commitments, totalByLifecycle, stats };
 }

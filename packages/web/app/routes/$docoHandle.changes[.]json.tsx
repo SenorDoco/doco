@@ -1,0 +1,35 @@
+import { withClient } from "@doco/db";
+import { readChangeCursor } from "~/lib/change-cursor.server";
+import { docoPath } from "~/lib/db.server";
+import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
+import { readDocoMetadata } from "~/lib/doco-metadata.server";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
+
+/**
+ * /<doco-handle>/changes.json — the live-feed change cursor.
+ *
+ * Returns the Doco's latest audit-event id (or null). The perspective view
+ * polls this once a second and only re-runs its heavy loader when the cursor
+ * advances, so node alterations land near-real-time without re-rendering the
+ * graph on every idle tick. Read-gated exactly like status.json.
+ */
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { docoId: string };
+}) {
+  const { handle } = await normalizeDocoParams(params);
+  const dir = docoPath(handle);
+  const meta = await readDocoMetadata(dir);
+  if (!meta) {
+    return Response.json({ cursor: null }, { status: 404 });
+  }
+  const me = await getCurrentPrincipalAsync(request);
+  if (!(await canReadDocoForRequest(request, meta, me?.id ?? null))) {
+    return Response.json({ cursor: null }, { status: 404 });
+  }
+  const cursor = await withClient((c) => readChangeCursor(c, meta.docoId));
+  return Response.json({ cursor });
+}

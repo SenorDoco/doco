@@ -4,17 +4,51 @@
 // honest line: the TRUE total of its domain (server-computed) and, when the
 // slice is smaller than that total, how many of the latest it is showing.
 //
-// The headline is about the DATASET, never about the client-side lifecycle
-// filter — that filter's effect belongs in per-group / per-row counts. Keeping
-// the wording here means "Showing the latest N of M …" reads identically across
-// the Pull-requests, List, Approval, Glossary, SLA, Org-tree, and BPMN
-// perspectives. Pure.
+// The headline TRACKS THE LIFECYCLE FILTER: the canvas hides the lifecycles the
+// page filter turns off (retired by default), so the count counts only the
+// lifecycles it shows — otherwise a mostly-retired Doco reads "137 steps" over a
+// near-empty canvas. Callers feed `total` from `visibleLifecycleTotal` (the
+// per-lifecycle domain totals summed over the visible set) and `loaded` from the
+// in-memory filtered slice, so toggling "Retired" on grows both the count and
+// the canvas together. Keeping the wording here means "Showing the latest N of
+// M …" reads identically across the Pull-requests, List, Approval, Glossary,
+// SLA, Org-tree, and BPMN perspectives. Pure.
+
+import type { LifecycleCounts } from "./node-colors";
 
 export interface PerspectiveCountSummary {
   /** Rows actually loaded into the page (the bounded slice). */
   loaded: number;
   /** TRUE total of the perspective's full domain (every row its query matches). */
   total: number;
+}
+
+// The four canonical lifecycle stages, matching the keys of LifecycleCounts.
+// Local copy so this module stays a pure, dependency-free formatter.
+const LIFECYCLE_STAGES: readonly (keyof LifecycleCounts)[] = [
+  "drafting",
+  "queued",
+  "active",
+  "retired",
+];
+
+/**
+ * The visible-lifecycle total: the sum of a domain's per-stage totals over the
+ * lifecycles the page filter currently shows. This is what makes a
+ * perspective's headline track its canvas — hide "Retired" and the total drops
+ * to the active set; toggle it back on and the full total returns. With
+ * `visible` omitted/null (no filter wired) every stage counts. A filter entry
+ * that isn't a canonical stage contributes nothing. Pure.
+ */
+export function visibleLifecycleTotal(
+  totalByLifecycle: LifecycleCounts,
+  visible?: ReadonlySet<string> | null,
+): number {
+  let sum = 0;
+  for (const stage of LIFECYCLE_STAGES) {
+    if (!visible || visible.has(stage)) sum += totalByLifecycle[stage] ?? 0;
+  }
+  return sum;
 }
 
 function fmt(n: number): string {
