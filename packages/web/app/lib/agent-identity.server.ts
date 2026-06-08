@@ -75,11 +75,13 @@ export async function loadAgentIdentity(request: Request): Promise<AgentIdentity
   const options = await loadScopeOptions(display.user_id);
 
   let grants: IdentityGrant[];
-  // Every token is explicit-scope (bound to one workspace, with optional
-  // per-Doco narrowing) — there is no defer-to-matrix "*" token anymore. So a
-  // bearer request shows exactly the granted targets, capped to the token's
-  // role; a cookie session (no token) shows the principal's full membership.
-  if (token) {
+  // A REGULAR token is explicit-scope (bound to one workspace, with optional
+  // per-Doco narrowing), so a bearer request shows exactly the granted targets,
+  // capped to the token's role. An ACTOR token carries no stored grants — it
+  // acts as the human across their FULL membership, capped at actor_role — so
+  // it takes the cookie-session path below (with the ceiling applied), letting
+  // whoami / list_workspaces surface every workspace it can actually reach.
+  if (token && token.grant_type !== "actor") {
     const workspaceIds = new Set(token.granted_workspace_ids ?? []);
     const docoIds = new Set(token.granted_doco_ids ?? []);
     // A Doco is in scope if granted directly OR owned by a granted Workspace
@@ -108,7 +110,15 @@ export async function loadAgentIdentity(request: Request): Promise<AgentIdentity
         return { scope: o.level, id: o.id, label: o.label, role };
       });
   } else {
-    grants = options.map((o) => ({ scope: o.level, id: o.id, label: o.label, role: o.myRole }));
+    // Cookie session, or an actor token. An actor token caps every role at its
+    // actor_role ceiling (null = full owner); a cookie session is uncapped.
+    const ceiling = token?.grant_type === "actor" ? token.actor_role : null;
+    grants = options.map((o) => ({
+      scope: o.level,
+      id: o.id,
+      label: o.label,
+      role: ceiling && rankOf(ceiling) < rankOf(o.myRole) ? ceiling : o.myRole,
+    }));
   }
   grants.sort((a, b) => a.label.localeCompare(b.label));
 
