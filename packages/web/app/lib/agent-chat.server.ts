@@ -1257,7 +1257,6 @@ export async function purgeExpiredAttachments(): Promise<number> {
 
 interface ChatAttachmentRow {
   id: string;
-  conversation_id: string;
   user_id: string;
   filename: string;
   mime_type: string;
@@ -1268,7 +1267,6 @@ interface ChatAttachmentRow {
 }
 
 export async function saveAttachment(args: {
-  conversationId: string;
   principalId: string;
   filename: string;
   mimeType: string;
@@ -1288,18 +1286,10 @@ export async function saveAttachment(args: {
     const id = `att_${generateUlid()}`;
     const r = await c.query<{ created_at: Date; expires_at: Date }>(
       `INSERT INTO chat_attachments
-         (id, conversation_id, user_id, filename, mime_type, size_bytes, content)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (id, user_id, filename, mime_type, size_bytes, content)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING created_at, expires_at`,
-      [
-        id,
-        args.conversationId,
-        args.principalId,
-        args.filename,
-        mimeType,
-        args.bytes.byteLength,
-        args.bytes,
-      ],
+      [id, args.principalId, args.filename, mimeType, args.bytes.byteLength, args.bytes],
     );
     const row = r.rows[0];
     if (!row) throw new Error("failed to save attachment");
@@ -1326,7 +1316,7 @@ export async function loadAttachmentForPrincipal(
 ): Promise<ChatAttachmentRow | null> {
   return await withClient(async (c) => {
     const r = await c.query<ChatAttachmentRow>(
-      `SELECT id, conversation_id, user_id, filename, mime_type, size_bytes,
+      `SELECT id, user_id, filename, mime_type, size_bytes,
               content, created_at, expires_at
          FROM chat_attachments
         WHERE id = $1
@@ -1340,18 +1330,18 @@ export async function loadAttachmentForPrincipal(
 
 async function loadAttachmentsByIds(
   ids: string[],
-  conversationId: string,
+  principalId: string,
 ): Promise<Map<string, ChatAttachmentRow>> {
   if (ids.length === 0) return new Map();
   return await withClient(async (c) => {
     const r = await c.query<ChatAttachmentRow>(
-      `SELECT id, conversation_id, user_id, filename, mime_type, size_bytes,
+      `SELECT id, user_id, filename, mime_type, size_bytes,
               content, created_at, expires_at
          FROM chat_attachments
         WHERE id = ANY($1::text[])
-          AND conversation_id = $2
+          AND user_id = $2
           AND expires_at > now()`,
-      [ids, conversationId],
+      [ids, principalId],
     );
     const out = new Map<string, ChatAttachmentRow>();
     for (const row of r.rows) out.set(row.id, row);
@@ -1408,7 +1398,7 @@ function refToAnthropicBlock(
  */
 async function hydrateMessageContent(
   content: PersistedContentBlock[],
-  conversationId: string,
+  principalId: string,
 ): Promise<ContentBlockParam[]> {
   const refIds: string[] = [];
   for (const b of content) {
@@ -1416,7 +1406,7 @@ async function hydrateMessageContent(
       refIds.push((b as AttachmentRefBlock).attachment_id);
     }
   }
-  const rows = await loadAttachmentsByIds(refIds, conversationId);
+  const rows = await loadAttachmentsByIds(refIds, principalId);
   return content.map((b): ContentBlockParam => {
     if ((b as AttachmentRefBlock).type === "attachment_ref") {
       const ref = b as AttachmentRefBlock;
@@ -2196,10 +2186,10 @@ export function coalesceAdjacentUserMessagesForAnthropic(messages: MessageParam[
   return out;
 }
 
-async function rowsToHistory(rows: ChatMessageRow[]): Promise<MessageParam[]> {
+async function rowsToHistory(rows: ChatMessageRow[], principalId: string): Promise<MessageParam[]> {
   const raw: MessageParam[] = [];
   for (const r of rows) {
-    const content = await hydrateMessageContent(r.content, r.conversation_id);
+    const content = await hydrateMessageContent(r.content, principalId);
     raw.push({ role: r.role, content });
   }
   const out = coalesceAdjacentUserMessagesForAnthropic(stitchMissingToolResults(raw));
@@ -2412,7 +2402,10 @@ async function* streamAssistantTurn(args: {
   // their message disappeared on refresh. The agent doesn't see the
   // persisted row, it sees the in-memory `userContent` later, so saving
   // it now is purely a durability win.
-  const attachmentRows = await loadAttachmentsByIds(args.ctx.attachmentIds, args.conversation.id);
+  const attachmentRows = await loadAttachmentsByIds(
+    args.ctx.attachmentIds,
+    args.conversation.user_id,
+  );
   const turnAttachmentBlocks: ContentBlockParam[] = [];
   const turnAttachmentRefs: AttachmentRefBlock[] = [];
   for (const id of args.ctx.attachmentIds) {
@@ -2503,7 +2496,7 @@ async function* streamAssistantTurn(args: {
   if (history.length > 0 && history[history.length - 1].id === userRow.id) {
     history.pop();
   }
-  const messages: MessageParam[] = await rowsToHistory(history);
+  const messages: MessageParam[] = await rowsToHistory(history, args.conversation.user_id);
   historyLoadMs = performance.now() - histStart;
   historyMessageCount = history.length;
 

@@ -9,6 +9,7 @@
 import { HOST_RESERVED_SLUGS } from "@doco/shared";
 import {
   type CSSProperties,
+  type DragEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -380,6 +381,12 @@ type SyncMessage = { kind: "changed" } | { kind: "remote-inflight"; busy: boolea
 
 function isNearScrollBottom(el: HTMLElement, thresholdPx: number): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
+}
+
+// True only when the drag carries OS files — so dragging selected text or a
+// page element around the chat doesn't pop the "drop to attach" overlay.
+function isFileDrag(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types ?? []).includes("Files");
 }
 
 /**
@@ -1230,6 +1237,43 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     setStaged((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
+  // File drag-and-drop over the whole chat area (message list + composer), not
+  // just the input box. `dragDepthRef` counts enter/leave across descendants —
+  // both events bubble to the wrapper, so a child boundary crossing nets to
+  // zero and the overlay only clears when the cursor truly leaves the area.
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
+  const handleChatDragEnter = useCallback((e: DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  }, []);
+  const handleChatDragOver = useCallback((e: DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+  const handleChatDragLeave = useCallback((e: DragEvent) => {
+    if (!isFileDrag(e)) return;
+    dragDepthRef.current -= 1;
+    if (dragDepthRef.current <= 0) {
+      dragDepthRef.current = 0;
+      setDragActive(false);
+    }
+  }, []);
+  const handleChatDrop = useCallback(
+    (e: DragEvent) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setDragActive(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length > 0) void uploadFiles(files);
+    },
+    [uploadFiles],
+  );
+
   // Append helper for the thinking event log. The id is monotonic
   // within the React closure for stable list keys; at_ms is relative
   // to turn start so the panel can render elapsed-time markers.
@@ -2019,7 +2063,13 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 onArchive={(id) => void archiveThread(id)}
               />
             ) : (
-              <>
+              <div
+                className="relative flex min-h-0 flex-1 flex-col"
+                onDragEnter={handleChatDragEnter}
+                onDragOver={handleChatDragOver}
+                onDragLeave={handleChatDragLeave}
+                onDrop={handleChatDrop}
+              >
                 {/* Chat header — the non-editable "workspace / doco" reference.
               The chat lives on its Doco's pages, so there's no back-to-inbox
               control here; leaving the Doco returns to the inbox. */}
@@ -2085,7 +2135,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   onUploadFiles={uploadFiles}
                   onRemoveStaged={removeStaged}
                 />
-              </>
+                {dragActive ? (
+                  <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-md border-2 border-dashed border-primary/60 bg-card/80 backdrop-blur-sm">
+                    <div className="neu-surface rounded-md bg-card px-3 py-2 text-xs font-semibold text-primary">
+                      Drop files to attach
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
         </>
@@ -3152,7 +3209,6 @@ function Composer({
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const echoGuardRef = useRef<{ text: string; at: number } | null>(null);
-  const [dragOver, setDragOver] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -3176,23 +3232,7 @@ function Composer({
     onChange(r.value);
   };
   return (
-    <div
-      className={cn(
-        "shrink-0 border-t border-border bg-card px-3 py-2",
-        dragOver && "ring-2 ring-primary/40",
-      )}
-      onDragOver={(e) => {
-        e.preventDefault();
-        if (!dragOver) setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragOver(false);
-        const files = Array.from(e.dataTransfer?.files ?? []);
-        if (files.length > 0) onUploadFiles(files);
-      }}
-    >
+    <div className="shrink-0 border-t border-border bg-card px-3 py-2">
       {staged.length > 0 ? (
         <div className="mb-1.5 space-y-1">
           {staged.map((a) => (
