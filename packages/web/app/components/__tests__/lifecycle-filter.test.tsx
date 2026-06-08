@@ -1,7 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { LIFECYCLE_COLOR } from "~/lib/node-colors";
 import { pullRequestLabel } from "~/lib/pull-requests";
-import { edgeLifecycle, isEdgeLifecycleVisible, newlyVisibleLifecycles } from "../lifecycle-filter";
+import {
+  edgeLifecycle,
+  edgeStrokeColor,
+  isEdgeLifecycleVisible,
+  newlyVisibleLifecycles,
+} from "../lifecycle-filter";
 import { PerspectiveFrame } from "../perspective-frame";
 
 /** Strip HTML tags to recover the visible text content. */
@@ -131,5 +137,16 @@ describe("edge lifecycle visibility", () => {
   it("reveals a retired edge once retired is toggled on", () => {
     const visible = new Set(["drafting", "queued", "active", "retired"]);
     expect(isEdgeLifecycleVisible({ lifecycle: "retired" }, visible)).toBe(true);
+  });
+
+  it("colors an edge by its OWN lifecycle, not an endpoint node's", () => {
+    // A drafting edge between two active nodes is yellow, not black — the edge
+    // carries its own stage. Every perspective strokes edges through this.
+    expect(edgeStrokeColor({ lifecycle: "drafting" })).toBe(LIFECYCLE_COLOR.drafting);
+    expect(edgeStrokeColor({ lifecycle: "queued" })).toBe(LIFECYCLE_COLOR.queued);
+    expect(edgeStrokeColor({ lifecycle: "active" })).toBe(LIFECYCLE_COLOR.active);
+    expect(edgeStrokeColor({ lifecycle: "retired" })).toBe(LIFECYCLE_COLOR.retired);
+    // A lifecycle-less edge rides the active default.
+    expect(edgeStrokeColor({})).toBe(LIFECYCLE_COLOR.active);
   });
 });

@@ -6,6 +6,8 @@
 // `initialVisibleLifecycles(...)` (everything except retired, which
 // hides out of the box).
 
+import { lifecycleColor } from "~/lib/node-colors";
+
 /**
  * Canonical render order. The filter row renders entries in this
  * order regardless of which lifecycles the data actually contains;
@@ -43,6 +45,17 @@ export function isEdgeLifecycleVisible(
   visible: ReadonlySet<string>,
 ): boolean {
   return visible.has(edgeLifecycle(link));
+}
+
+/**
+ * The stroke color for a rendered edge: its OWN lifecycle color, never an
+ * endpoint node's. An edge carries its own stage (a drafting edge between two
+ * active nodes is still drafting), so it must read in its own color — yellow
+ * drafting, blue queued, black active, red retired. Every perspective that
+ * draws edges colors them through this one helper.
+ */
+export function edgeStrokeColor(link: { lifecycle?: string | null }): string {
+  return lifecycleColor(edgeLifecycle(link));
 }
 
 /**

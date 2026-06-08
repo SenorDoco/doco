@@ -41,11 +41,25 @@ export interface OrgTreeNode {
   /** Manager principal id; null for top-of-chain. */
   reports_to: string | null;
   /**
-   * Secondary / dotted-line (matrix) manager principal ids. Rendered as
-   * dashed edges layered on top of the primary `reports_to` tree.
+   * Lifecycle of the solid `has_parent` reporting edge to `reports_to` — so the
+   * edge can be colored and filtered by its OWN stage (independent of either
+   * endpoint principal's lifecycle). null when there is no manager.
    */
-  dotted_reports_to: string[];
+  reports_to_lifecycle: string | null;
+  /**
+   * Secondary / dotted-line (matrix) managers — each a `relates_to` edge to
+   * another principal, carrying its own lifecycle. Rendered as dashed edges
+   * layered on top of the primary `reports_to` tree.
+   */
+  dotted_reports_to: OrgTreeDottedReport[];
   href: string;
+}
+
+/** A dotted-line (matrix) reporting edge: the manager principal + the edge's
+ *  own lifecycle, so the dashed edge colors/filters by its stage. */
+export interface OrgTreeDottedReport {
+  id: string;
+  lifecycle: string;
 }
 
 export interface OrgTreeData {
@@ -204,9 +218,10 @@ export async function loadOrgTreeData(
           )
         ).rows;
   const principalIdSet = new Set(principalIds);
-  // Best `has_parent` per principal: to_id + the lifecycle rank that won it.
-  const reportsToByPrincipal = new Map<string, { to: string; rank: number }>();
-  const dottedByPrincipal = new Map<string, string[]>();
+  // Best `has_parent` per principal: to_id + the lifecycle (and the rank it won
+  // on) of the edge that became the solid reporting line.
+  const reportsToByPrincipal = new Map<string, { to: string; rank: number; lifecycle: string }>();
+  const dottedByPrincipal = new Map<string, OrgTreeDottedReport[]>();
   for (const edge of edgeRows) {
     if (edge.edge_type === "has_parent") {
       // A seat can carry several `has_parent` edges — re-pointing a reporting
@@ -218,16 +233,21 @@ export async function loadOrgTreeData(
       const rank = lifecycleRenderRank(edge.lifecycle);
       const current = reportsToByPrincipal.get(edge.from_id);
       if (!current || rank < current.rank)
-        reportsToByPrincipal.set(edge.from_id, { to: edge.to_id, rank });
+        reportsToByPrincipal.set(edge.from_id, {
+          to: edge.to_id,
+          rank,
+          lifecycle: edge.lifecycle ?? "active",
+        });
     } else {
       // A `relates_to` edge between TWO principals is a dotted-line / matrix
       // report (from the seat to its secondary manager). A relate to a
       // non-principal (a Reference, say) is an ordinary association, not a
       // reporting line, so both endpoints must be principals in this Doco.
       if (!principalIdSet.has(edge.from_id) || !principalIdSet.has(edge.to_id)) continue;
+      const entry: OrgTreeDottedReport = { id: edge.to_id, lifecycle: edge.lifecycle ?? "active" };
       const list = dottedByPrincipal.get(edge.from_id);
-      if (list) list.push(edge.to_id);
-      else dottedByPrincipal.set(edge.from_id, [edge.to_id]);
+      if (list) list.push(entry);
+      else dottedByPrincipal.set(edge.from_id, [entry]);
     }
   }
 
@@ -235,10 +255,13 @@ export async function loadOrgTreeData(
     const type = mapPrincipalKind(r.kind) ?? inferKindFromProse(r.name);
     // No separate body to derive a role sub-label from — the prose IS the name.
     const role = null;
-    const reports_to = reportsToByPrincipal.get(r.id)?.to ?? null;
+    const reportsRec = reportsToByPrincipal.get(r.id);
+    const reports_to = reportsRec?.to ?? null;
     // Dotted-line / matrix managers — `relates_to` edges to other principals,
     // minus any that merely duplicate the solid reporting line.
-    const dotted_reports_to = (dottedByPrincipal.get(r.id) ?? []).filter((id) => id !== reports_to);
+    const dotted_reports_to = (dottedByPrincipal.get(r.id) ?? []).filter(
+      (d) => d.id !== reports_to,
+    );
     return {
       id: r.id,
       name: r.name,
@@ -246,6 +269,7 @@ export async function loadOrgTreeData(
       type,
       lifecycle: r.lifecycle ?? "active",
       reports_to,
+      reports_to_lifecycle: reportsRec?.lifecycle ?? null,
       dotted_reports_to,
       href: `/${handle}/principal/${r.id}`,
     };

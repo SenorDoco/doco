@@ -17,6 +17,9 @@ export interface OrgTreeLayoutEdge {
   id: string;
   source: string;
   target: string;
+  /** The reporting edge's OWN lifecycle, so it colors and filters by its stage
+   *  (independent of either endpoint principal). */
+  lifecycle: string;
   /** Secondary / dotted-line (matrix) reporting edge — rendered dashed
    *  and excluded from the parent/child tree placement. */
   dotted?: boolean;
@@ -126,6 +129,7 @@ export function layoutOrgTree(rawNodes: OrgTreeNode[], centerId: string | null):
       id: `${n.id}->${n.reports_to}`,
       source: n.reports_to as string,
       target: n.id,
+      lifecycle: n.reports_to_lifecycle ?? "active",
     }));
 
   // Secondary / dotted-line (matrix) edges layer on top of the tree —
@@ -133,8 +137,14 @@ export function layoutOrgTree(rawNodes: OrgTreeNode[], centerId: string | null):
   // placement (the hierarchy above used `reports_to` only).
   for (const n of rawNodes) {
     for (const mgr of n.dotted_reports_to ?? []) {
-      if (!byId.has(mgr) || mgr === n.id) continue;
-      edges.push({ id: `${n.id}⇢${mgr}`, source: mgr, target: n.id, dotted: true });
+      if (!byId.has(mgr.id) || mgr.id === n.id) continue;
+      edges.push({
+        id: `${n.id}⇢${mgr.id}`,
+        source: mgr.id,
+        target: n.id,
+        lifecycle: mgr.lifecycle,
+        dotted: true,
+      });
     }
   }
 

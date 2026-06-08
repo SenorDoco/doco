@@ -2,7 +2,7 @@ import { type Edge, Handle, MarkerType, type Node, Position } from "@xyflow/reac
 import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
-import { isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
+import { edgeStrokeColor, isEdgeLifecycleVisible } from "~/components/lifecycle-filter";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/node-badges";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { StandardControls } from "~/components/perspective-canvas-overlays";
@@ -687,11 +687,9 @@ export function OverviewGraph({
           ? link.target === anchorId && !renderedNodeIds.has(link.source)
           : link.source === anchorId && !renderedNodeIds.has(link.target),
       );
-      const colorNode =
-        direction === "incoming"
-          ? visibleNodeById.get(matchingLink?.source ?? "")
-          : visibleNodeById.get(anchorId);
-      const stroke = lifecycleColor(colorNode ? nodeLifecycle(colorNode) : "active");
+      // The stub stands in for a real edge to an off-canvas node, so it carries
+      // the edge's OWN lifecycle colour, not an endpoint node's.
+      const stroke = matchingLink ? edgeStrokeColor(matchingLink) : lifecycleColor("active");
 
       nodes.push({
         id,
@@ -748,7 +746,7 @@ export function OverviewGraph({
     });
 
     return { nodes, edges };
-  }, [visibleLinks, renderedNodeIds, visibleIds, positions, visibleNodeById]);
+  }, [visibleLinks, renderedNodeIds, visibleIds, positions]);
 
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;
@@ -826,11 +824,10 @@ export function OverviewGraph({
         renderWindowOpacityById.get(link.source) ?? 1,
         renderWindowOpacityById.get(link.target) ?? 1,
       );
-      // Edge inherits the origin node's lifecycle colour and is painted
-      // straight at its depth-ramp opacity — opacityForEdge already fades
-      // far edges, so no second baseline alpha is layered on. transitionOpacity
-      // is the orthogonal render-window fade, not a second depth layer.
-      const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "active";
+      // An edge is painted in its OWN lifecycle colour (never an endpoint
+      // node's) at its depth-ramp opacity — opacityForEdge already fades far
+      // edges, so no second baseline alpha is layered on. transitionOpacity is
+      // the orthogonal render-window fade, not a second depth layer.
       const isFocused = Boolean(focusedEdgeId && link.id === focusedEdgeId);
       const clickable = Boolean(link.id && (link.href || onEdgeClick));
       const baseStrokeWidth = focalEdgeWidth(link.source, link.target, focusCenterId, 1);
@@ -862,7 +859,7 @@ export function OverviewGraph({
         interactionWidth: clickable ? 18 : 0,
         zIndex: isFocused ? 3 : 0,
         style: {
-          stroke: lifecycleColor(sourceLifecycle),
+          stroke: edgeStrokeColor(link),
           strokeWidth: isFocused ? Math.max(baseStrokeWidth, 4) : baseStrokeWidth,
           strokeOpacity: isFocused ? 0.95 : edgeOpacity * transitionOpacity,
         },
@@ -875,7 +872,6 @@ export function OverviewGraph({
     focalActive,
     focusCenterId,
     focusedEdgeId,
-    nodeById,
     onEdgeClick,
     renderWindowOpacityById,
     externalEdgeStubs.edges,
