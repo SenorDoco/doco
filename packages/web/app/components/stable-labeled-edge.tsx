@@ -42,10 +42,11 @@ export type StableLabeledEdgeModel = Edge<StableLabeledEdgeData>;
 
 /**
  * A process edge with a stable HTML label. The path is chosen by
- * getStableEdgePath (bezier forward, smoothstep for backward loops).
- * React Flow's built-in edge labels measure SVG text before showing it,
- * which can flicker when visible edges remount during pan/zoom; this
- * renderer places the label directly at the path midpoint instead.
+ * getStableEdgePath — one bezier family for every edge, with a loop bow added
+ * to backward edges. React Flow's built-in edge labels measure SVG text
+ * before showing it, which can flicker when visible edges remount during
+ * pan/zoom; this renderer places the label directly at the path midpoint
+ * instead.
  */
 export function StableLabeledBezierEdge({
   id,

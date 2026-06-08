@@ -1,4 +1,4 @@
-import { Position, getBezierPath, getSmoothStepPath } from "@xyflow/react";
+import { Position, getBezierPath } from "@xyflow/react";
 
 export interface StableEdgeGeometryInput {
   sourceX: number;
@@ -15,23 +15,32 @@ export interface StableEdgeGeometryInput {
   bowLift?: number;
 }
 
-// A backward edge — one whose target sits left of its source, e.g. a
-// gateway's feedback loop — routes orthogonally with rounded corners rather
-// than as a bezier. A single bezier doubling back folds onto itself into a
-// zero-radius cusp (the unreadable 180° spike); a smoothstep never cusps and
-// reads cleanly whether the loop spans one row or many.
-export const BACKWARD_EDGE_RADIUS = 12; // px corner radius for the orthogonal route
-// When a backward edge is near same-row, the orthogonal route has no vertical
-// room and collapses flat onto the node row. Drop its middle segment this far
-// below both endpoints so the loop clears the node boxes and stays readable.
-// Sized to clear the NODE_HEIGHT (60px) floor used by the process layout.
-export const BACKWARD_LOOP_DROP = 52; // px
+// A backward edge — one whose target sits left of its source, e.g. a feedback
+// loop or a flow back to an entry point — draws with the SAME bezier as every
+// forward edge, so the canvas reads as one consistent family of curves rather
+// than a mix of smooth and squared-off routes. The only failure mode of a
+// plain bezier here is the near-same-row case, where a doubling-back cubic
+// folds onto itself into a zero-radius cusp. To avoid it the control points
+// gain a vertical bow that grows as the two rows converge and tapers back to
+// zero once they're a loop-height apart — so a well-separated backward edge is
+// byte-for-byte React Flow's bezier, and a tight one lifts into a readable
+// loop instead of a spike.
+export const BACKWARD_LOOP_BOW = 72; // px max control-point bow for a same-row loop
+
+// React Flow's bezier control reach (curvature 0.25): how far a control point
+// extends from its endpoint along the handle axis. A negative distance (the
+// handle points away from the other endpoint, as on a backward edge) uses the
+// gentler sqrt reach so the curve still bulges outward.
+const CURVATURE = 0.25;
+function controlReach(distance: number): number {
+  return distance >= 0 ? 0.5 * distance : CURVATURE * 25 * Math.sqrt(-distance);
+}
 
 /**
  * Picks the path a process edge should draw. Forward edges keep React Flow's
- * bezier; an edge the layout marked as blocked arcs over/under the obstacle;
- * a backward edge routes as a smoothstep loop. Returns the SVG path plus the
- * label anchor, matching React Flow's path helpers.
+ * bezier; an edge the layout marked as blocked arcs over/under the obstacle; a
+ * backward edge uses the same bezier, bowed into a loop when it nears same-row.
+ * Returns the SVG path plus the label anchor, matching React Flow's helpers.
  */
 export function getStableEdgePath(
   input: StableEdgeGeometryInput,
@@ -59,21 +68,20 @@ export function getStableEdgePath(
   const isBackward =
     sourcePosition === Position.Right && targetPosition === Position.Left && targetX < sourceX;
   if (isBackward) {
-    const [path, labelX, labelY] = getSmoothStepPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-      borderRadius: BACKWARD_EDGE_RADIUS,
-      // Near same-row the default middle segment (the endpoints' midpoint)
-      // lands on the node row and renders flat; force it below both endpoints.
-      ...(Math.abs(dy) < 2 * BACKWARD_LOOP_DROP
-        ? { centerY: Math.max(sourceY, targetY) + BACKWARD_LOOP_DROP }
-        : {}),
-    });
-    return [path, labelX, labelY];
+    const reach = controlReach(dx); // dx < 0 here → the outward sqrt reach
+    // Bow direction follows the (small) vertical drift; ties default to down.
+    const dir = dy >= 0 ? 1 : -1;
+    // Full bow at same-row, tapering to none once |dy| clears a loop height.
+    const bow = Math.max(0, BACKWARD_LOOP_BOW - Math.abs(dy) / 2);
+    const c1x = sourceX + reach;
+    const c1y = sourceY + dir * bow;
+    const c2x = targetX - reach;
+    const c2y = targetY + dir * bow;
+    return [
+      `M${sourceX},${sourceY} C${c1x},${c1y} ${c2x},${c2y} ${targetX},${targetY}`,
+      0.125 * sourceX + 0.375 * c1x + 0.375 * c2x + 0.125 * targetX,
+      0.125 * sourceY + 0.375 * c1y + 0.375 * c2y + 0.125 * targetY,
+    ];
   }
 
   const [path, labelX, labelY] = getBezierPath({
