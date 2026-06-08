@@ -4,7 +4,14 @@
 //   ?to_id=<node_id>          scope to edges targeting one node
 //   ?include_retired=true     include retired edges (default: live only)
 // from_id and to_id are independent filters; supplying both narrows to the
-// edges between those two nodes.
+// edges between those two nodes — the way to pin one edge's id by its
+// endpoints (e.g. before retiring it).
+//
+// The list response uses the same envelope as every other list endpoint
+// (`GET /api/<type>.json`): { ok, type, doco_id, count, items }. One shape
+// lets agents iterate without per-endpoint branching, and lets the doco_api
+// result truncator trim `items` gracefully instead of slicing a bespoke
+// array into invalid JSON.
 //
 // Edge authoring. Writes go through the append-only commit()
 // boundary; per-edge-type write grants gate creation, exactly like nodes.
@@ -56,7 +63,13 @@ export async function loader({ request, params }: { request: Request; params: Pa
       args,
     ),
   );
-  return Response.json({ edges: rows.rows });
+  return Response.json({
+    ok: true,
+    type: "edges",
+    doco_id: meta.docoId,
+    count: rows.rows.length,
+    items: rows.rows,
+  });
 }
 
 export async function action({ request, params }: { request: Request; params: Params }) {
