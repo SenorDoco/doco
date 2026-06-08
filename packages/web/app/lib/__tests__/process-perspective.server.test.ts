@@ -877,6 +877,32 @@ describe("loadProcessGraph", () => {
     ]);
   });
 
+  it("carries the entry_point flag onto a top-level Action's synthetic-pool node", async () => {
+    // A top-level process can also be the entry point of its flow — the two
+    // BPMN markings are not mutually exclusive. The synthetic-pool node (the
+    // overview/home view) must surface the same `entry_point` the regular pool
+    // node does, so the start-event glyph / "Entry" tag renders there too.
+    const { client } = makeQueryClient({
+      nodes: [
+        {
+          ...processNode("action_top", "Run the hiring process"),
+          data: { top_level_process: true, entry_point: true },
+        },
+      ],
+      principals: [{ id: "principal_recruiter", name: "Recruiter", lifecycle: "active" }],
+      users: [],
+      edges: [edge("edge_top_actor", "action_top", "principal_recruiter", "performed_by")],
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "hiring" });
+
+    const topLevelNode = graph.nodes.find(
+      (n) => n.id === "action_top" && n.pool_id === "pool:top-level",
+    );
+    expect(topLevelNode?.entry_point).toBe(true);
+    expect(topLevelNode?.top_level_process).toBe(true);
+  });
+
   it("omits the synthetic top-level pool when no Action is flagged top-level", async () => {
     // No flag → no synthetic pool (it only appears when it has members).
     const { client } = makeQueryClient({
