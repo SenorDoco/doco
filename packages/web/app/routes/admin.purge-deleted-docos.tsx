@@ -1,8 +1,9 @@
 // /admin/purge-deleted-docos — Vercel-Cron-hit endpoint that hard-deletes
 // Docos whose soft-delete tombstone (`docos.deleted_at`) has aged past the
-// 30-day grace window. Deleting a Doco only stamps `deleted_at`; this sweep is
-// what eventually removes it for good, cascading every node, edge, immutable
-// history row, and grant via ON DELETE CASCADE.
+// 30-day grace window. Deleting a Doco only stamps `deleted_at` (and frees its
+// name by stamping the deletion timestamp onto the tombstoned handle); this
+// sweep is what eventually removes it for good, cascading every node, edge,
+// immutable history row, and grant via ON DELETE CASCADE.
 //
 // Auth mirrors admin.agent-health-cron: an authenticated `torrenegra` session
 // (handy for a manual trigger) OR Vercel's signed cron request
