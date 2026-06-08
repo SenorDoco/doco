@@ -832,10 +832,13 @@ export function ProcessPerspective({
       const key = `${poolId}:${n.direction}`;
       const offset = stackOffset.get(key) ?? 0;
       stackOffset.set(key, offset + size.height + NODE_GAP_Y);
-      const x =
-        n.direction === "entry"
-          ? LANE_LEFT_INSET - BOUNDARY_CIRCLE_GAP - size.width
-          : LANE_LEFT_INSET + layout.laneWidth + BOUNDARY_CIRCLE_GAP;
+      const x = boundaryNeighbourX({
+        direction: n.direction,
+        laneLeftInset: LANE_LEFT_INSET,
+        laneWidth: layout.laneWidth,
+        nodeWidth: size.width,
+        gap: BOUNDARY_NEIGHBOUR_GAP,
+      });
       const y = pool.y + offset;
       const attachKey = n.attach.kind === "title" ? n.attach.poolId : n.attach.nodeId;
       const id = `external:${n.direction}:${n.id}:${attachKey}`;
@@ -1561,18 +1564,36 @@ interface ProcessLayout {
 const POOL_HEADER_HEIGHT = 32;
 const POOL_GAP = 16;
 
-// Entry/exit boundary circle geometry. A circle stands for a node in another
-// process that connects to the focal pool through sequence flow; it sits just
-// outside the anchor member (left for an entry, right for an exit).
-const BOUNDARY_CIRCLE_DIAMETER = 56;
-const BOUNDARY_CIRCLE_GAP = 40;
+// Horizontal separation between the focal pool and the out-of-pool
+// sequence-flow neighbours drawn beside it — boxes standing in for nodes in
+// OTHER pools that connect through `flows_to` (entries to the LEFT, exits to
+// the RIGHT). Exported so the layout contract stays unit-tested.
+export const BOUNDARY_NEIGHBOUR_GAP = 80;
 // Vertical gap between a focal pool's top edge and the parent-process boxes
 // drawn above it — roomy enough that the dashed parent arrows read clearly
-// above the pool (twice the side spacing the boundary neighbours use).
+// above the pool (matching the side spacing the boundary neighbours use).
 const PARENT_PROCESS_GAP = 80;
 // How far in from the pool title's left edge the parent arrows land — the
 // dashed parent links attach here instead of the title's center.
 const PARENT_LINK_TITLE_INSET = 200;
+
+/**
+ * Canvas x for an out-of-pool sequence-flow neighbour box. Entries hang to the
+ * LEFT of the pool — their full width plus `gap` clear of its left edge — while
+ * exits sit to the RIGHT, `gap` clear of its right edge. Pure so the separation
+ * stays unit-tested in lockstep with the renderer.
+ */
+export function boundaryNeighbourX(opts: {
+  direction: "entry" | "exit";
+  laneLeftInset: number;
+  laneWidth: number;
+  nodeWidth: number;
+  gap: number;
+}): number {
+  return opts.direction === "entry"
+    ? opts.laneLeftInset - opts.gap - opts.nodeWidth
+    : opts.laneLeftInset + opts.laneWidth + opts.gap;
+}
 // Vertical room a sub-process Action reserves on EACH of its top and bottom
 // edges. The bottom strip holds the "View subprocess" affordance clear of both
 // the label and the type/lifecycle badge row straddling the edge; the top strip
