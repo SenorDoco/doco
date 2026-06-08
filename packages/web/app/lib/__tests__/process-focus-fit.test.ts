@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { processFocusFlowNodeId, processPoolFitNodeIds } from "../process-focus-fit";
+import {
+  processExpansionFitNodeId,
+  processFocusFlowNodeId,
+  processPoolFitNodeIds,
+} from "../process-focus-fit";
 
 describe("processPoolFitNodeIds", () => {
   const laneFlowNodeId = (id: string) => `lane:${id}`;
@@ -63,5 +67,45 @@ describe("processFocusFlowNodeId", () => {
   it("returns null when neither the Intent's pool header nor the node is rendered", () => {
     expect(processFocusFlowNodeId("intent_b", poolIdByIntentId, rendered)).toBeNull();
     expect(processFocusFlowNodeId("decision_x", poolIdByIntentId, rendered)).toBeNull();
+  });
+});
+
+describe("processExpansionFitNodeId", () => {
+  const poolIdByProcessId = new Map([
+    ["action_parent", "pool:action_parent"],
+    ["action_sub", "pool:action_sub"],
+  ]);
+  const rendered = new Set(["pool-header:pool:action_sub", "lane:pool:action_sub::ops"]);
+
+  it("frames the freshly expanded process's pool header", () => {
+    expect(processExpansionFitNodeId("action_sub", null, poolIdByProcessId, rendered)).toBe(
+      "pool-header:pool:action_sub",
+    );
+  });
+
+  it("returns null when nothing is expanded, leaving the camera put", () => {
+    expect(processExpansionFitNodeId(null, null, poolIdByProcessId, rendered)).toBeNull();
+  });
+
+  it("returns null when the expansion only mirrors the URL focus (cold-open already frames it)", () => {
+    expect(
+      processExpansionFitNodeId("action_sub", "action_sub", poolIdByProcessId, rendered),
+    ).toBeNull();
+  });
+
+  it("re-frames a subprocess even when a different node holds the URL focus", () => {
+    // "View subprocess" while a parent action is the URL focus must still
+    // frame the subprocess's OWN pool, not stay parked on the parent.
+    expect(
+      processExpansionFitNodeId("action_sub", "action_parent", poolIdByProcessId, rendered),
+    ).toBe("pool-header:pool:action_sub");
+  });
+
+  it("returns null until the expanded pool's header has actually rendered", () => {
+    expect(processExpansionFitNodeId("action_sub", null, poolIdByProcessId, new Set())).toBeNull();
+  });
+
+  it("returns null for a process that heads no pool", () => {
+    expect(processExpansionFitNodeId("action_ghost", null, poolIdByProcessId, rendered)).toBeNull();
   });
 });

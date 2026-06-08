@@ -44,7 +44,11 @@ import { usePublishedReferences } from "~/lib/perspective-references";
 import { computeExternalNeighbours, computeParentProcesses } from "~/lib/process-boundary";
 import { processEdgeLabelData } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
-import { processFocusFlowNodeId, processPoolFitNodeIds } from "~/lib/process-focus-fit";
+import {
+  processExpansionFitNodeId,
+  processFocusFlowNodeId,
+  processPoolFitNodeIds,
+} from "~/lib/process-focus-fit";
 import { packProcessLaneColumns } from "~/lib/process-lane-packing";
 import { type LaneRowNode, computeLaneRowCenters } from "~/lib/process-lane-rows";
 import { processSimplifiedAtZoom } from "~/lib/process-lod";
@@ -319,6 +323,11 @@ export function ProcessPerspective({
   // it fires so subsequent clicks (which reshuffle `selectionCenterId`)
   // don't yank the canvas around.
   const defaultFocusAppliedRef = useRef(false);
+  // The expanded process whose pool the camera has already framed. A drill-in
+  // (overview pick / "View subprocess") must re-center on the pool it opens
+  // even after the one-time default fit is spent; this tracks the last
+  // expansion framed so the re-fit fires once per distinct drill-in.
+  const framedExpansionRef = useRef<string | null>(null);
   // The BPMN perspective opens on the synthetic top-level pool (the "home"
   // overview) — every top-level process drawn as a task node in its principal's
   // lane — rather than drilling straight into one process. An explicit camera
@@ -971,6 +980,18 @@ export function ProcessPerspective({
     ],
     [layout.flowEdges, renderedNodeIds, externalNeighbours.edges, parentProcesses.edges],
   );
+  // The flow-node ids currently on the canvas, and the map from a process
+  // Action id to the pool it heads. Both feed the camera-fit machinery below
+  // (initial/URL focus AND the drill-in re-fit), so they're computed once here
+  // rather than rebuilt inside each consumer.
+  const flowNodeIdSet = useMemo(() => new Set(flowNodes.map((node) => node.id)), [flowNodes]);
+  const poolIdByProcessId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const candidate of pools) {
+      if (candidate.process_id) map.set(candidate.process_id, candidate.id);
+    }
+    return map;
+  }, [pools]);
   // Initial focus: an explicit URL focus wins; otherwise fall back to the
   // selection center (highest global PageRank in the BPMN view) so opening
   // the perspective centers on the most important node, matching the
@@ -980,32 +1001,27 @@ export function ProcessPerspective({
     // whole synthetic pool (fitView) instead of zooming to one node.
     const rawTarget = initialFocusId ?? (homeMode && homePoolId ? null : selectionCenterId);
     if (!rawTarget) return null;
-    const flowNodeIds = new Set(flowNodes.map((node) => node.id));
     // A *process* focus frames the WHOLE pool (its header, which the fit then
     // expands to header + lanes), not just the entry step; a *node* focus
     // frames that node.
-    const poolIdByProcessId = new Map<string, string>();
-    for (const candidate of pools) {
-      if (candidate.process_id) poolIdByProcessId.set(candidate.process_id, candidate.id);
-    }
-    const direct = processFocusFlowNodeId(rawTarget, poolIdByProcessId, flowNodeIds);
+    const direct = processFocusFlowNodeId(rawTarget, poolIdByProcessId, flowNodeIdSet);
     if (direct) return direct;
     // Degenerate fallbacks: a process whose pool header isn't rendered drops
     // to its entry point; an actor-lane target frames that lane.
     const target = resolveProcessToEntry(rawTarget);
-    if (target && flowNodeIds.has(target)) return target;
+    if (target && flowNodeIdSet.has(target)) return target;
     const lane = renderedLanes.find((candidate) => candidate.base_id === target);
     if (lane) {
       const id = laneNodeId(lane.id);
-      if (flowNodeIds.has(id)) return id;
+      if (flowNodeIdSet.has(id)) return id;
     }
     return null;
   }, [
-    flowNodes,
+    flowNodeIdSet,
+    poolIdByProcessId,
     initialFocusId,
     selectionCenterId,
     resolveProcessToEntry,
-    pools,
     renderedLanes,
     homeMode,
     homePoolId,
@@ -1017,8 +1033,7 @@ export function ProcessPerspective({
   // target zooms to that single node at 100%.
   const fitInitialFocus = useCallback(
     (instance: FlowInstance, targetId: string) => {
-      const flowNodeIds = new Set(flowNodes.map((node) => node.id));
-      const poolFit = processPoolFitNodeIds(targetId, renderedLanes, laneNodeId, flowNodeIds);
+      const poolFit = processPoolFitNodeIds(targetId, renderedLanes, laneNodeId, flowNodeIdSet);
       instance.fitView?.(
         poolFit && poolFit.length > 0
           ? { nodes: poolFit.map((id) => ({ id })), padding: 0.15, maxZoom: 1, duration: 0 }
@@ -1027,8 +1042,40 @@ export function ProcessPerspective({
       const current = instance.getViewport?.();
       if (current) updateViewport(current);
     },
-    [flowNodes, renderedLanes, updateViewport],
+    [flowNodeIdSet, renderedLanes, updateViewport],
   );
+
+  // Re-center on a freshly opened pool. Drilling into a process — picking one
+  // from the overview (`openProcess`) or the "View subprocess" affordance
+  // (`viewSubprocess`) expanding a subprocess into its own pool — is a
+  // deliberate "frame this pool" gesture. The one-shot fit below won't do it
+  // for a *second* drill-in: a plain browse has no URL focus, so that fit
+  // takes the default path, which is spent after the first frame
+  // (`defaultFocusAppliedRef`). So fit the expanded pool here, once per
+  // distinct expansion — that's why the first drill-in centered but later ones
+  // landed wherever the new layout fell. (A plain node click clears
+  // `expandedProcessId`, so it never reaches here and the camera stays put.)
+  useEffect(() => {
+    if (!expandedProcessId) {
+      framedExpansionRef.current = null;
+      return;
+    }
+    if (framedExpansionRef.current === expandedProcessId) return;
+    const headerId = processExpansionFitNodeId(
+      expandedProcessId,
+      initialFocusId ?? null,
+      poolIdByProcessId,
+      flowNodeIdSet,
+    );
+    if (!headerId) return;
+    const instance = flowInstanceRef.current;
+    if (!instance?.fitView) return;
+    const frame = requestAnimationFrame(() => {
+      fitInitialFocus(instance, headerId);
+      framedExpansionRef.current = expandedProcessId;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [expandedProcessId, initialFocusId, poolIdByProcessId, flowNodeIdSet, fitInitialFocus]);
 
   useEffect(() => {
     if (!initialFocusFlowNodeId) return;
