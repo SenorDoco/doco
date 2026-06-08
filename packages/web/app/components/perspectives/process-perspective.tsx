@@ -56,7 +56,6 @@ import { processReferences } from "~/lib/process-references";
 import { computeForwardSequenceDepths } from "~/lib/process-sequence-depth";
 import { indexById, reuseStableNodes } from "~/lib/process-stable-nodes";
 import { subprocessPoolId } from "~/lib/process-subprocess";
-import { topLevelProcessPools } from "~/lib/process-top-level-processes";
 import {
   ReferenceNumberStoreContext,
   createReferenceNumberStore,
@@ -70,6 +69,11 @@ import "@xyflow/react/dist/style.css";
 // value-imports from them fail the build.
 const MILESTONE_LANE_ID = "__milestones__";
 const ARTIFACTS_LANE_ID = "__artifacts__";
+// The synthetic overview pool — mirrors POOL_TOP_LEVEL_ID in
+// `~/lib/process-perspective.server` (a `.server` value can't be imported into
+// the client bundle). The overview (home) state frames this one pool, which
+// holds every top-level process as a task node in its principal's lane.
+const TOP_LEVEL_POOL_ID = "pool:top-level";
 
 interface ProcessPerspectiveProps {
   docoHandle?: string | null;
@@ -298,12 +302,13 @@ export function ProcessPerspective({
   // it fires so subsequent clicks (which reshuffle `selectionCenterId`)
   // don't yank the canvas around.
   const defaultFocusAppliedRef = useRef(false);
-  // The BPMN perspective opens on a list of the Doco's top-level processes
-  // (the "home" view) rather than drilling straight into one pool. An
-  // explicit camera focus — a node URL, an agent auto-focus, a panel open —
-  // skips the list and drills in. Picking a process from the list, or
-  // arriving via such a focus, switches to the swim-lane canvas; the Home
-  // button returns to the list.
+  // The BPMN perspective opens on the synthetic top-level pool (the "home"
+  // overview) — every top-level process drawn as a task node in its principal's
+  // lane — rather than drilling straight into one process. An explicit camera
+  // focus (a node URL, an agent auto-focus, a panel open) skips the overview
+  // and drills in. Clicking a process in the overview, or arriving via such a
+  // focus, switches to that process's swim-lane pool; the Home button returns
+  // to the overview.
   const [homeMode, setHomeMode] = useState<boolean>(() => !initialFocusId);
   useEffect(() => {
     if (initialFocusId) setHomeMode(false);
@@ -328,8 +333,9 @@ export function ProcessPerspective({
       nodesRaw.some((node) => node.id === initialFocusId && node.is_process);
     if (isProcess) setExpandedProcessId(initialFocusId);
   }, [initialFocusId, pools, nodesRaw]);
-  // Reset the one-shot camera-fit machinery so the next drill-in (after the
-  // canvas remounts coming out of the list) frames its process afresh.
+  // Reset the one-shot camera-fit machinery so returning to the overview (and
+  // the next drill-in out of it) frames the synthetic pool / next process
+  // afresh.
   const goHome = useCallback(() => {
     hasFitRef.current = false;
     flowInstanceRef.current = null;
@@ -339,6 +345,8 @@ export function ProcessPerspective({
     setHomeMode(true);
     onHomeReset?.();
   }, [onHomeReset]);
+  // Drill from the overview into a process's own swim-lane pool: leave home,
+  // expand and center that process, and sync the URL (a focus-only action link).
   const openProcess = useCallback(
     (processId: string) => {
       setHomeMode(false);
@@ -483,15 +491,15 @@ export function ProcessPerspective({
     () => focusCenterId ?? defaultCenterId ?? centerId ?? null,
     [focusCenterId, defaultCenterId, centerId],
   );
-  // The home view's clickable directory: every Action the author declared a
-  // top-level process (the `top_level_process` flag, surfaced onto the pool by
-  // the loader), then filtered for display so a hidden-lifecycle process drops
-  // out of the list too.
-  const listPools = useMemo(() => {
-    const top = topLevelProcessPools(pools);
-    if (!visibleLifecycles) return top;
-    return top.filter((pool) => visibleLifecycles.has(pool.lifecycle ?? "active"));
-  }, [pools, visibleLifecycles]);
+  // The overview (home) state frames the synthetic top-level pool — the one
+  // pool that is not an Action, holding every top-level process as a task node
+  // in its principal's lane. It exists only when the loader emitted it (the
+  // Doco has at least one top-level process); absent that, home falls back to
+  // framing the first process pool so the canvas is never blank.
+  const homePoolId = useMemo(
+    () => pools.find((pool) => pool.id === TOP_LEVEL_POOL_ID)?.id ?? null,
+    [pools],
+  );
   useEffect(() => {
     if (!centerId || focusCenterId || !selectionCenterId || selectionCenterId === centerId) return;
     onCenterChange?.(selectionCenterId);
@@ -518,9 +526,13 @@ export function ProcessPerspective({
   // The single node the view is focused on. Always defined (falls back to
   // the first pool's entry point), because the BPMN perspective always
   // frames one focal node and the one swim lane that owns it.
+  // In the overview (home) state the synthetic top-level pool frames the whole
+  // directory — it owns no single node, so there's no focal node to resolve and
+  // the depth-fade/highlight stay off. (With no top-level pool to show, home
+  // falls through to framing the first process pool.)
   const effectiveCenterId = useMemo(
-    () => resolveProcessToEntry(selectionCenterId),
-    [resolveProcessToEntry, selectionCenterId],
+    () => (homeMode && homePoolId ? null : resolveProcessToEntry(selectionCenterId)),
+    [homeMode, homePoolId, resolveProcessToEntry, selectionCenterId],
   );
   // The pool(s) drawn as swim lanes, and the exact set of nodes rendered —
   // no budget, no PageRank windowing, no buffering. A node focus (or an
@@ -539,6 +551,7 @@ export function ProcessPerspective({
         expandedProcessId,
         focusedEdgeId: focusedEdgeId ?? null,
         focusedNodeIds: focusedNodeIdSet,
+        defaultPoolId: homeMode ? homePoolId : null,
       }),
     [
       filteredNodes,
@@ -548,6 +561,8 @@ export function ProcessPerspective({
       expandedProcessId,
       focusedEdgeId,
       focusedNodeIdSet,
+      homeMode,
+      homePoolId,
     ],
   );
   const renderedNodes = useMemo(
@@ -874,7 +889,9 @@ export function ProcessPerspective({
   // the perspective centers on the most important node, matching the
   // overview graph's behavior.
   const initialFocusFlowNodeId = useMemo(() => {
-    const rawTarget = initialFocusId ?? selectionCenterId;
+    // The overview (home) state has no focal node — let the camera fit the
+    // whole synthetic pool (fitView) instead of zooming to one node.
+    const rawTarget = initialFocusId ?? (homeMode && homePoolId ? null : selectionCenterId);
     if (!rawTarget) return null;
     const flowNodeIds = new Set(flowNodes.map((node) => node.id));
     // A *process* focus frames the WHOLE pool (its header, which the fit then
@@ -896,7 +913,16 @@ export function ProcessPerspective({
       if (flowNodeIds.has(id)) return id;
     }
     return null;
-  }, [flowNodes, initialFocusId, selectionCenterId, resolveProcessToEntry, pools, renderedLanes]);
+  }, [
+    flowNodes,
+    initialFocusId,
+    selectionCenterId,
+    resolveProcessToEntry,
+    pools,
+    renderedLanes,
+    homeMode,
+    homePoolId,
+  ]);
 
   // Apply the one-shot initial/default camera focus. A pool target fits the
   // WHOLE pool (header + its lanes) so the camera frames the entire process
@@ -939,20 +965,6 @@ export function ProcessPerspective({
     return (
       <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
         So empty
-      </div>
-    );
-  }
-
-  // Home view: the directory of top-level processes. Rendered instead of
-  // the swim-lane canvas so the canvas (and its Home button) only mount
-  // once the viewer has drilled into a process — coming back out resets
-  // the fit machinery (goHome) so the next pick frames its pool afresh.
-  // A Doco with no top-level Intents (e.g. only Unassigned work) has
-  // nothing to list, so it falls through to the canvas as before.
-  if (homeMode && listPools.length > 0) {
-    return (
-      <div ref={graphRef} className="relative h-full w-full">
-        <ProcessProcessList pools={listPools} onSelect={openProcess} />
       </div>
     );
   }
@@ -1145,6 +1157,13 @@ export function ProcessPerspective({
               }
               const target = nodeById.get(node.id);
               if (!target) return;
+              // A node in the synthetic overview pool is the directory entry for
+              // a top-level process: clicking it drills into that process's own
+              // pool (the way the old home list did), instead of opening detail.
+              if (target.pool_id === TOP_LEVEL_POOL_ID) {
+                openProcess(target.id);
+                return;
+              }
               // A plain click never expands a subprocess — it focuses the node
               // but keeps it collapsed inside its parent's pool.
               openNode(target);
@@ -1263,58 +1282,6 @@ export function ProcessPerspective({
   );
 }
 
-/**
- * The BPMN home view: a clickable directory of the Doco's top-level
- * processes (always at least one — the caller renders the canvas instead
- * when there are none). Picking one focuses that process Action so the
- * canvas drills into its swim-lane pool. Reads as "the list of processes you
- * can dive into," the BPMN analogue of the graph's fit-to-everything
- * default.
- */
-export function ProcessProcessList({
-  pools,
-  onSelect,
-}: {
-  pools: ProcessPool[];
-  onSelect: (processId: string) => void;
-}) {
-  return (
-    // Center the directory both ways inside the frame. `my-auto` (not
-    // `items-center`) vertically centers a short list while still letting a
-    // tall one scroll from the top without clipping its first rows.
-    <div className="flex h-full w-full justify-center overflow-auto p-6">
-      {/* No standalone "Processes" heading — each row carries its own
-          identity inline, the way a pool header does. The list keeps its
-          accessible name via aria-label so the visible title can go. */}
-      <ul className="my-auto flex w-full max-w-md flex-col gap-1.5" aria-label="Processes">
-        {pools.map((pool) => {
-          const processId = pool.process_id;
-          if (!processId) return null;
-          const lifecycle = pool.lifecycle ?? "active";
-          return (
-            <li key={pool.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(processId)}
-                // Mirrors ProcessPoolHeaderNode: the type + lifecycle pills sit
-                // inline before the label, vertically centered in the row —
-                // sewn into the band rather than pinned to its top corners.
-                className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <TypeBadge entityType="action" lifecycle={lifecycle} anchor="inline" />
-                <LifecycleBadge lifecycle={lifecycle} anchor="inline" />
-                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                  {pool.label}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
 // ─── Layout ─────────────────────────────────────────────────────────
 
 interface FlowNode {
@@ -1427,9 +1394,24 @@ export function computeProcessRenderedSet(params: {
   expandedProcessId?: string | null;
   focusedEdgeId: string | null;
   focusedNodeIds: ReadonlySet<string>;
+  /**
+   * The pool to frame when nothing else is focal — the overview's synthetic
+   * top-level pool. Lets the home state render that whole pool without singling
+   * out a focal node. Omitted/null elsewhere, where an empty focal set renders
+   * nothing.
+   */
+  defaultPoolId?: string | null;
 }): { focalPoolIds: Set<string>; renderedNodeIds: Set<string> } {
-  const { nodes, pools, links, centerId, expandedProcessId, focusedEdgeId, focusedNodeIds } =
-    params;
+  const {
+    nodes,
+    pools,
+    links,
+    centerId,
+    expandedProcessId,
+    focusedEdgeId,
+    focusedNodeIds,
+    defaultPoolId,
+  } = params;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const poolByProcessId = new Map(
     pools.flatMap((pool) => (pool.process_id ? [[pool.process_id, pool.id] as const] : [])),
@@ -1454,6 +1436,9 @@ export function computeProcessRenderedSet(params: {
       if (poolId) focalPoolIds.add(poolId);
     }
   }
+
+  // Nothing else is focal (the overview/home state): frame the default pool.
+  if (focalPoolIds.size === 0 && defaultPoolId) focalPoolIds.add(defaultPoolId);
 
   const renderedNodeIds = new Set<string>();
   if (focalPoolIds.size === 0) return { focalPoolIds, renderedNodeIds };

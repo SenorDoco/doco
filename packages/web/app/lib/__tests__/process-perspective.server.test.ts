@@ -801,8 +801,8 @@ describe("loadProcessGraph", () => {
   it("heads a pool for every parentless Action so each stays drillable, even with no sub-steps", async () => {
     // Pool construction is structural: a standalone Action with no `has_parent`
     // and no children still heads its OWN pool so it can be opened directly.
-    // (Which of these the *home directory* surfaces is a separate question —
-    // see `topLevelProcessPools`, which lists only the flagged ones.)
+    // (Which of these the *overview pool* surfaces is a separate question — it
+    // holds only the Actions flagged `top_level_process`.)
     const { client } = makeQueryClient({
       nodes: [
         processNode("action_alpha", "Onboard a customer"),
@@ -821,12 +821,13 @@ describe("loadProcessGraph", () => {
     expect(graph.nodes).toEqual([]);
   });
 
-  it("flags a pool top_level_process iff its Action carries the authored flag", async () => {
-    // The default (home) view lists only Actions the author *marked* top-level
-    // (`top_level_process` in the Action's `extra`) — not every parentless
-    // Action. The loader surfaces that flag onto the pool so the home directory
-    // can filter on it. `action_flat` is a parentless draft that was never
-    // flagged, so its pool is not top-level even though it heads its own pool.
+  it("renders top-level Actions as task nodes in one synthetic pool, in their principal lanes", async () => {
+    // The overview (home) view renders every Action the author *marked*
+    // top-level (`top_level_process` in its `extra`) as a task node inside ONE
+    // synthetic pool that is not itself an Action, each placed in its
+    // principal's actor lane. A parentless draft the author never flagged
+    // (`action_flat`) stays out of that pool. The flagged Action still heads
+    // its own pool so opening it drills into its members.
     const { client } = makeQueryClient({
       nodes: [
         {
@@ -835,17 +836,58 @@ describe("loadProcessGraph", () => {
         },
         processNode("action_flat", "Stray unlinked step", "drafting", "2026-05-26T00:01:00.000Z"),
       ],
+      principals: [{ id: "principal_recruiter", name: "Recruiter", lifecycle: "active" }],
+      users: [],
+      edges: [edge("edge_top_actor", "action_top", "principal_recruiter", "performed_by")],
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "hiring" });
+
+    // The synthetic pool exists, is not backed by an Action, and is pinned first.
+    expect(graph.pools[0]).toEqual(
+      expect.objectContaining({ id: "pool:top-level", process_id: null }),
+    );
+    // The flagged Action renders as a task node in that pool, in its actor lane.
+    expect(graph.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "action_top",
+        entity_type: "action",
+        shape: "task",
+        pool_id: "pool:top-level",
+        laneId: "pool:top-level::principal_recruiter",
+      }),
+    );
+    expect(graph.lanes).toContainEqual(
+      expect.objectContaining({
+        id: "pool:top-level::principal_recruiter",
+        pool_id: "pool:top-level",
+        kind: "actor",
+        label: "Recruiter",
+      }),
+    );
+    // It still heads its own (drill-in) pool. The never-flagged draft is not in
+    // the synthetic pool.
+    expect(graph.pools.map((p) => p.id)).toContain("pool:action_top");
+    expect(graph.nodes.filter((n) => n.pool_id === "pool:top-level").map((n) => n.id)).toEqual([
+      "action_top",
+    ]);
+  });
+
+  it("omits the synthetic top-level pool when no Action is flagged top-level", async () => {
+    // No flag → no synthetic pool (it only appears when it has members).
+    const { client } = makeQueryClient({
+      nodes: [
+        processNode("action_alpha", "Onboard a customer"),
+        processNode("action_beta", "Close the books", "active", "2026-05-26T00:01:00.000Z"),
+      ],
       principals: [],
       users: [],
       edges: [],
     });
 
-    const graph = await loadProcessGraph(client, "doco_01", { handle: "hiring" });
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "flat" });
 
-    const top = graph.pools.find((p) => p.process_id === "action_top");
-    const flat = graph.pools.find((p) => p.process_id === "action_flat");
-    expect(top?.top_level_process).toBe(true);
-    expect(flat?.top_level_process).toBeFalsy();
+    expect(graph.pools.map((p) => p.id)).not.toContain("pool:top-level");
   });
 });
 
