@@ -220,6 +220,37 @@ interface FlowModule {
   ControlButton: typeof import("@xyflow/react").ControlButton;
 }
 
+/** The side effects opening a node from the BPMN canvas commands. Injected so
+ *  the open rule is pure and unit-testable, free of React state. */
+export interface CanvasOpenHandlers {
+  setHomeMode: (value: boolean) => void;
+  setExpandedProcessId: (id: string | null) => void;
+  onCenterChange?: (id: string | null) => void;
+  onNodeClick?: (node: ProcessNode) => void;
+  navigate: (href: string) => void;
+}
+
+/**
+ * Open a node from the BPMN canvas. A plain click focuses the node but keeps
+ * any subprocess collapsed inside its parent's pool (`expandSubprocess:
+ * false`), so the parent pool frames; the "View subprocess" affordance instead
+ * expands the subprocess's OWN pool (`expandSubprocess: true`). Either way the
+ * node dialog opens — that is the shared "as usual" behavior: viewing a
+ * subprocess no longer swaps the pool silently, it opens the Action's dialog
+ * like any other click.
+ */
+export function openCanvasNode(
+  node: ProcessNode,
+  options: { expandSubprocess: boolean },
+  handlers: CanvasOpenHandlers,
+): void {
+  handlers.setHomeMode(false);
+  handlers.setExpandedProcessId(options.expandSubprocess ? node.id : null);
+  handlers.onCenterChange?.(node.id);
+  if (handlers.onNodeClick) handlers.onNodeClick(node);
+  else if (node.href) handlers.navigate(node.href);
+}
+
 export function ProcessPerspective({
   docoHandle,
   pools,
@@ -317,16 +348,23 @@ export function ProcessPerspective({
     },
     [onCenterChange, onProcessOpen],
   );
-  // Expand a collapsed subprocess into its own pool (the "View subprocess"
-  // affordance). Focuses the subprocess Action and marks its pool expanded.
+  // The shared canvas node-open: focus the node, open its dialog as usual, and
+  // frame either its parent pool (a plain click keeps a subprocess collapsed)
+  // or — via the "View subprocess" affordance — the subprocess's own pool.
+  const openNode = useCallback(
+    (node: ProcessNode, options?: { expandSubprocess?: boolean }) =>
+      openCanvasNode(
+        node,
+        { expandSubprocess: options?.expandSubprocess ?? false },
+        { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
+      ),
+    [onCenterChange, onNodeClick, navigate],
+  );
+  // The "View subprocess" affordance on a collapsed subprocess Action: expand
+  // it into its own pool AND open its dialog, just like clicking any node.
   const viewSubprocess = useCallback(
-    (processId: string) => {
-      setHomeMode(false);
-      setExpandedProcessId(processId);
-      onCenterChange?.(processId);
-      onProcessOpen?.(processId);
-    },
-    [onCenterChange, onProcessOpen],
+    (node: ProcessNode) => openNode(node, { expandSubprocess: true }),
+    [openNode],
   );
   // Pan/zoom fires `onMove` many times per frame. The React Flow canvas
   // transforms itself internally; our `viewport` mirror only feeds the
@@ -1102,24 +1140,14 @@ export function ProcessPerspective({
               if (node.id.startsWith("circle:")) {
                 const externalId = node.id.slice(node.id.lastIndexOf(":") + 1);
                 const external = nodeByFullId.get(externalId);
-                setExpandedProcessId(null);
-                if (onCenterChange) onCenterChange(externalId);
-                if (external && onNodeClick) onNodeClick(external);
-                else if (external?.href) navigate(external.href);
+                if (external) openNode(external);
                 return;
               }
               const target = nodeById.get(node.id);
               if (!target) return;
               // A plain click never expands a subprocess — it focuses the node
-              // but keeps it collapsed inside its parent's pool. Clear any
-              // expansion so the parent pool is what frames.
-              setExpandedProcessId(null);
-              if (onCenterChange) onCenterChange(target.id);
-              if (onNodeClick) {
-                onNodeClick(target);
-                return;
-              }
-              if (target.href) navigate(target.href);
+              // but keeps it collapsed inside its parent's pool.
+              openNode(target);
             }}
             onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
               const link = (edge.data as { graphLink?: OverviewGraphLink } | undefined)?.graphLink;
@@ -1873,8 +1901,9 @@ interface ProcessNodeData {
   isSubprocess?: boolean;
   /** A boundary stand-in for a node in another process (entry/exit circle). */
   isBoundaryCircle?: boolean;
-  /** Expand this subprocess into its own pool (the "View subprocess" click). */
-  onViewSubprocess?: (processId: string) => void;
+  /** Open this subprocess: expand its own pool and open its dialog (the "View
+   *  subprocess" click). */
+  onViewSubprocess?: (node: ProcessNode) => void;
 }
 
 interface ProcessLaneData {
@@ -2350,7 +2379,7 @@ function ViewSubprocessButton({
       // treat it as a plain focus and keep the subprocess collapsed.
       onClick={(event) => {
         event.stopPropagation();
-        data.onViewSubprocess?.(data.node.id);
+        data.onViewSubprocess?.(data.node);
       }}
       onPointerDown={(event) => event.stopPropagation()}
       style={{
