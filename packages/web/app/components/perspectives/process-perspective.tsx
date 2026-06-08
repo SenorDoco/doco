@@ -1940,7 +1940,20 @@ export function layOutProcess(
         connectable: false,
         initialWidth: laneWidth,
         initialHeight: laneHeight,
-        style: { width: laneWidth, height: laneHeight, zIndex: 0, padding: 0 },
+        // The lane box spans the whole pool width and sits at the sequence
+        // edges' z-index (0). React Flow paints `pointer-events: all` on every
+        // node wrapper because the canvas wires `onNodeClick`, so without this
+        // the box — which renders after the edges in the DOM — would cover them
+        // and swallow every click meant for an edge crossing the lane. The
+        // lane's own click target is its label column (ProcessLaneNode
+        // re-enables pointer events there), never the box, so the box opts out.
+        style: {
+          width: laneWidth,
+          height: laneHeight,
+          zIndex: 0,
+          padding: 0,
+          pointerEvents: "none",
+        },
       });
       cursorY += laneHeight;
     }
@@ -2424,6 +2437,12 @@ export function ProcessLaneNode({ data }: { data: ProcessLaneData }) {
             textTransform: "none",
             letterSpacing: 0,
             cursor: isClickableLane ? "pointer" : undefined,
+            // The lane box itself is click-through (pointer-events: none) so
+            // edges drawn across the lane stay clickable; re-enable events on
+            // this label column so the principal lane stays clickable and its
+            // hover tooltip still works. The column sits left of the node
+            // content gutter, so it never overlaps an edge.
+            pointerEvents: "auto",
           }}
           onClick={
             isClickableLane
