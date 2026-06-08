@@ -176,7 +176,10 @@ const LANE_LABEL_WIDTH = 140;
 const LANE_CONTENT_LEFT_GUTTER = 32;
 const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
-const NODE_GAP_X = 60;
+// Horizontal gap between columns. Edge tags (`flows_to`, condition labels
+// like Yes/No/Recurrent) render in this band, so it's kept wide enough for
+// a label to sit between two nodes without overlapping either shape.
+const NODE_GAP_X = 120;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
 const PROCESS_RENDER_EDGE_BUDGET = 700;
 const PROCESS_PLACEHOLDER_STUB_BUDGET = 120;
