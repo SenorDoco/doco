@@ -124,6 +124,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-06-07",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "bugs",
+    label: "Bug tracker",
+    description:
+      "Track software bugs as failing checks — expected vs actual behavior, steps to reproduce, severity and priority, root cause, the fix, and a regression test that turns from red to green.",
+    updatedAt: "2026-06-07",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc

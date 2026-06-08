@@ -3,7 +3,7 @@ import { DOCO_TEMPLATES, findDocoTemplateMeta } from "../doco-templates-meta";
 
 // The picker offers the blank `generic` start, `process`,
 // `github-pull-requests`, the four decision-record templates, `glossary`,
-// `org-chart`, `evals`, `product-roadmap`, `test-scenarios`, and `faq`. The
+// `org-chart`, `evals`, `product-roadmap`, `test-scenarios`, `faq`, and `bugs`. The
 // glossary concept returned as the singular `glossary` (reshaped around
 // References), `org-chart` returned as the abstraction for documenting org
 // structure, and `faq` documents a question-and-answer knowledge base alongside
@@ -22,6 +22,7 @@ const SURVIVING_HANDLES = [
   "product-roadmap",
   "test-scenarios",
   "faq",
+  "bugs",
 ] as const;
 
 const REMOVED_HANDLES = ["glossaries"] as const;
