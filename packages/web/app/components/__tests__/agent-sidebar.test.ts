@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   COMPOSER_ECHO_GUARD_MS,
+  Composer,
   DocoChatRef,
   SenorDocoExplainer,
   applyComposerEchoGuard,
@@ -285,6 +286,43 @@ describe("applyComposerEchoGuard", () => {
       value: "typing…",
       guard: null,
     });
+  });
+});
+
+describe("Composer", () => {
+  function markup(props: Record<string, unknown> = {}) {
+    return renderToStaticMarkup(
+      createElement(Composer, {
+        value: "",
+        onChange: () => {},
+        onSend: () => {},
+        onStop: () => {},
+        username: "alice",
+        staged: [],
+        queuedCount: 0,
+        uploading: false,
+        uploadError: null,
+        onUploadFiles: () => {},
+        onRemoveStaged: () => {},
+        busy: false,
+        ...props,
+      } as never),
+    );
+  }
+
+  it("offers a Stop button beside Send while Señor Doco is replying", () => {
+    const out = markup({ busy: true });
+    expect(out).toContain('aria-label="Stop Señor Doco"');
+    expect(out).toContain(">Stop<");
+    // Send stays — a message typed mid-reply still queues behind the turn.
+    expect(out).toContain(">Send<");
+  });
+
+  it("hides Stop when idle — there is nothing to interrupt", () => {
+    const out = markup({ busy: false });
+    expect(out).not.toContain('aria-label="Stop Señor Doco"');
+    expect(out).not.toContain(">Stop<");
+    expect(out).toContain(">Send<");
   });
 });
 
