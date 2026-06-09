@@ -1237,3 +1237,74 @@ describe("process template — a flow node belongs to at most one process", () =
     }
   });
 });
+
+// ─── Suite H: a node is attributed to AT MOST one principal (attribution ceiling) ──
+//
+// The actor-attribution FLOOR (≥1 `attributed_to` → principal) gets a matching
+// CEILING (≤1): every committed Action or gateway Decision has exactly one
+// accountable owner — the step's performer or the gateway's decider. Like the
+// floor, the ceiling fires on the committed stages only (`queued`, `active`) — a
+// `drafting` sketch is exempt. This is the exact case a reader hits when a node
+// ends up wired to two Principals: the BPMN renderer reads only the first
+// `attributed_to` and silently drops the second, so the ambiguity goes unseen
+// until the ceiling catches it.
+
+describe("process template — a node is attributed to at most one principal", () => {
+  it("seeds the limits_edge attribution ceiling (attributed_to → principal), firing on committed stages only", () => {
+    const ceiling = policies.find(
+      (p) =>
+        isDeterministicPredicate(p.predicate) &&
+        p.predicate.sub_kind === "limits_edge" &&
+        p.predicate.edge_type === "attributed_to" &&
+        p.predicate.target_node_type === "principal",
+    );
+    expect(ceiling).toBeDefined();
+    expect(ceiling?.on_violation).toBe("block");
+    expect(ceiling?.fires_when_node_lifecycle).toEqual(["queued", "active"]);
+  });
+
+  // The gateway Decision is already `decided_by` principals[0]; attribute it to a
+  // SECOND principal too — the ambiguous two-decider case from the screenshot.
+  function gatewayWithTwoDeciders(lifecycle: Lifecycle): {
+    candidate: CandidateFields;
+    graph: BuiltProcess;
+  } {
+    const g = buildProcess(SCENARIOS[0], lifecycle);
+    g.edges.push(edge(g.gateway.id, g.principals[1].id, "attributed_to", "decided_by"));
+    return { candidate: g.gateway, graph: g };
+  }
+
+  for (const lifecycle of ["queued", "active"] as const) {
+    it(`blocks a gateway Decision attributed to two principals at ${lifecycle}`, () => {
+      const { candidate, graph } = gatewayWithTwoDeciders(lifecycle);
+      const blocks = deterministicBlocks(evaluate(candidate, graph));
+      expect(
+        blocks.some(
+          (b) => b.sub_kind === "limits_edge" && /attributed_to.*principal/.test(b.reason),
+        ),
+        `${lifecycle}: expected the attribution ceiling to block, got: ${blocks.map((b) => `${b.sub_kind}: ${b.reason}`).join("; ")}`,
+      ).toBe(true);
+    });
+  }
+
+  it("does NOT block a gateway attributed to two principals while it is a drafting sketch", () => {
+    const { candidate, graph } = gatewayWithTwoDeciders("drafting");
+    const blocks = deterministicBlocks(evaluate(candidate, graph));
+    expect(
+      blocks.some((b) => b.sub_kind === "limits_edge" && /attributed_to.*principal/.test(b.reason)),
+    ).toBe(false);
+  });
+
+  it("does NOT block nodes that each name exactly one accountable principal (no false positive)", () => {
+    const g = buildProcess(SCENARIOS[0], "active");
+    for (const candidate of [g.actions[0], g.gateway, g.process]) {
+      const blocks = deterministicBlocks(evaluate(candidate, g));
+      expect(
+        blocks.some(
+          (b) => b.sub_kind === "limits_edge" && /attributed_to.*principal/.test(b.reason),
+        ),
+        `${candidate.node_type} ${candidate.id} wrongly tripped the attribution ceiling`,
+      ).toBe(false);
+    }
+  });
+});
