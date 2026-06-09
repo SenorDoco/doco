@@ -42,8 +42,9 @@ Per client:
 
 Tools available now: \`doco_whoami\` (identity + reach — who you act as and the
 workspaces + Docos you can touch), \`list_workspaces\` (enumerate the workspaces
-in reach), \`doco_search\` + \`doco_get\` (read), \`doco_capture\`, \`doco_relate\`
-+ \`doco_changeset\` (write), and \`doco_request_access\` (ask an owner for a
+in reach), \`doco_search\` + \`doco_get\` (read), \`doco_capture\`, \`doco_relate\`,
+\`doco_changeset\` + \`doco_policy\` (write — the last writes/modifies a Doco's
+authoring policies, owner only), and \`doco_request_access\` (ask an owner for a
 grant). An "act as me" connection reaches every workspace you belong to, one
 Doco at a time — pass any reachable Doco's <handle> to the tools; a
 workspace-scoped token pins you to one. Call doco_whoami / list_workspaces to
@@ -154,7 +155,8 @@ for backwards compat.
   PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'writer' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for capture-capable body shapes
   GET  ${baseUrl}/<handle>/api/policies.json      # list policies (NOT nodes)
-  POST ${baseUrl}/<handle>/api/policies.json      # capture a policy
+  POST ${baseUrl}/<handle>/api/policies.json      # write a policy (need 'owner' role)
+  PATCH ${baseUrl}/<handle>/api/policies/<id>.json # modify a policy: supersede or retire/activate (owner)
   POST ${baseUrl}/api/v1/docos.json                 # create a Doco in one request
 
 Node types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,

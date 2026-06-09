@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   captureAction: vi.fn(),
   edgesAction: vi.fn(),
   changesetsAction: vi.fn(),
+  policiesAction: vi.fn(),
+  policyIdAction: vi.fn(),
   requestDocoAccess: vi.fn(),
   loadAgentIdentity: vi.fn(),
   getWorkspaceConstitutionsByIds: vi.fn(),
@@ -34,6 +36,8 @@ vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
 vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
 vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction }));
 vi.mock("../$docoHandle.api.changesets[.]json", () => ({ action: mocks.changesetsAction }));
+vi.mock("../$docoHandle.api.policies[.]json", () => ({ action: mocks.policiesAction }));
+vi.mock("../$docoHandle.api.policies.$id[.]json", () => ({ action: mocks.policyIdAction }));
 
 import { action, loader } from "../mcp";
 
@@ -124,6 +128,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
       "doco_capture",
       "doco_relate",
       "doco_changeset",
+      "doco_policy",
       "doco_request_access",
       "doco_agent_debug",
     ]);
@@ -366,6 +371,58 @@ describe("POST /mcp (hosted remote MCP)", () => {
     const body: Json = await res.json();
     expect(body.result.isError).toBe(true);
     expect(mocks.changesetsAction).not.toHaveBeenCalled();
+  });
+
+  it("doco_policy without an id POSTs the body to the policies create route", async () => {
+    mocks.policiesAction.mockResolvedValue(
+      Response.json({ ok: true, id: "policy_1" }, { status: 201 }),
+    );
+    await call(
+      {
+        jsonrpc: "2.0",
+        id: 40,
+        method: "tools/call",
+        params: {
+          name: "doco_policy",
+          arguments: {
+            doco: "proj1",
+            body: { kind: "suggestion", agent_instruction: "Prefer examples." },
+          },
+        },
+      },
+      BEARER,
+    );
+    expect(mocks.policyIdAction).not.toHaveBeenCalled();
+    const callArg: Json = mocks.policiesAction.mock.calls[0][0];
+    expect(callArg.params).toEqual({ docoHandle: "proj1" });
+    expect(callArg.request.method).toBe("POST");
+    expect(callArg.request.url).toContain("/proj1/api/policies.json");
+    expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
+  });
+
+  it("doco_policy with an id PATCHes the body to the per-policy modify route", async () => {
+    mocks.policyIdAction.mockResolvedValue(
+      Response.json({ ok: true, id: "policy_2", superseded: "policy_1" }, { status: 201 }),
+    );
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 41,
+        method: "tools/call",
+        params: {
+          name: "doco_policy",
+          arguments: { doco: "proj1", id: "policy_1", body: { lifecycle: "retired" } },
+        },
+      },
+      BEARER,
+    );
+    expect(mocks.policiesAction).not.toHaveBeenCalled();
+    const callArg: Json = mocks.policyIdAction.mock.calls[0][0];
+    expect(callArg.params).toEqual({ docoHandle: "proj1", id: "policy_1" });
+    expect(callArg.request.method).toBe("PATCH");
+    expect(callArg.request.url).toContain("/proj1/api/policies/policy_1.json");
+    const body: Json = await res.json();
+    expect(body.result.structuredContent.superseded).toBe("policy_1");
   });
 
   it("doco_request_access constrains to a doco in this workspace", async () => {

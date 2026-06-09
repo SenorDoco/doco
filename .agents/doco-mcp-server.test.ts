@@ -327,6 +327,7 @@ describe("doco-mcp-server", () => {
       "doco_capture",
       "doco_relate",
       "doco_changeset",
+      "doco_policy",
       "doco_authenticate",
       "doco_complete_authentication",
     ]);
@@ -343,6 +344,9 @@ describe("doco-mcp-server", () => {
     expect(get?.inputSchema.required).toEqual(["resource"]);
     const changeset = tools.find((t) => t.name === "doco_changeset");
     expect(changeset?.inputSchema.required).toEqual(["operations"]);
+    const policy = tools.find((t) => t.name === "doco_policy");
+    expect(policy?.inputSchema.required).toEqual(["body"]);
+    expect(policy?.description).toMatch(/modify/i);
     const authenticate = tools.find((t) => t.name === "doco_authenticate");
     expect(authenticate?.description).toMatch(/device-flow/);
     expect(authenticate?.description).toMatch(/shared/);
@@ -1635,6 +1639,146 @@ describe("doco-mcp-server", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       rmSync(projectDir, { recursive: true, force: true });
     }
+  });
+
+  it("doco_policy without an id POSTs the body to the policies create route", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-policy-create-"));
+    mkdirSync(join(projectDir, ".doco"));
+    writeFileSync(join(projectDir, ".doco", "connections.md"), "https://doco.to/doco-bpms/\n");
+    const seen: Array<{ method: string; url: string; body: string }> = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/doco-bpms/api/policies.json") {
+        seen.push({
+          method: String(req.method),
+          url: String(req.url),
+          body: await readRequestBody(req),
+        });
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, id: "policy_abc", footer_lines: ["Policy added"] }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_owner", ""].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doco_policy",
+              arguments: { body: { kind: "suggestion", agent_instruction: "Prefer examples." } },
+            },
+          },
+        ],
+        2,
+        { cwd: projectDir, env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined } },
+      );
+      const result = responses.find((r) => r.id === 2)?.result as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain("policy_abc");
+      expect(seen).toHaveLength(1);
+      expect(seen[0].method).toBe("POST");
+      expect(JSON.parse(seen[0].body)).toEqual({
+        kind: "suggestion",
+        agent_instruction: "Prefer examples.",
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_policy with an id PATCHes the body to the per-policy modify route", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-policy-modify-"));
+    mkdirSync(join(projectDir, ".doco"));
+    writeFileSync(join(projectDir, ".doco", "connections.md"), "https://doco.to/doco-bpms/\n");
+    const seen: Array<{ method: string; body: string }> = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "PATCH" && req.url === "/doco-bpms/api/policies/policy_old.json") {
+        seen.push({ method: String(req.method), body: await readRequestBody(req) });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, id: "policy_old", lifecycle: "retired" }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const host = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_owner", ""].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doco_policy",
+              arguments: { id: "policy_old", body: { lifecycle: "retired" } },
+            },
+          },
+        ],
+        2,
+        { cwd: projectDir, env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined } },
+      );
+      const result = responses.find((r) => r.id === 2)?.result as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(seen).toHaveLength(1);
+      expect(seen[0].method).toBe("PATCH");
+      expect(JSON.parse(seen[0].body)).toEqual({ lifecycle: "retired" });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_policy returns isError when the body is missing", async () => {
+    const responses = await exchange(
+      [
+        INIT_MESSAGE,
+        INITIALIZED_NOTIFICATION,
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "doco_policy", arguments: { id: "policy_x" } },
+        },
+      ],
+      2,
+    );
+    const result = responses.find((r) => r.id === 2)?.result as {
+      isError?: boolean;
+      content: Array<{ text: string }>;
+    };
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/body/);
   });
 
   it("doco_get reads a path under the doco and renders the JSON body", async () => {

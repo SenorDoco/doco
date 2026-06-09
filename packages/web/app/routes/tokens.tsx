@@ -535,10 +535,10 @@ export function ManualMcpPanel({ host }: { host: string }) {
       {/* What you get */}
       <p className="border-t border-border pt-3 text-xs text-muted-foreground">
         The connector is read <em>and</em> write — <Code>doco_search</Code>, <Code>doco_get</Code>{" "}
-        (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, <Code>doco_changeset</Code>{" "}
-        (write), and <Code>doco_request_access</Code> — scoped to the Docos your token can reach.
-        Read vs write is a live permission on the same token, so stepping up never means
-        reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration).
+        (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, <Code>doco_changeset</Code>,{" "}
+        <Code>doco_policy</Code> (write), and <Code>doco_request_access</Code> — scoped to the Docos
+        your token can reach. Read vs write is a live permission on the same token, so stepping up
+        never means reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration).
       </p>
     </section>
   );

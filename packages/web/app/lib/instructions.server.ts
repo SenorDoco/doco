@@ -73,6 +73,10 @@ There are two access channels — pick the one your runtime supports.
   - \`doco_changeset\` — create and wire many nodes in one atomic
     batch (write; the efficient way to import a process or backfill
     history without dozens of single calls).
+  - \`doco_policy\` — write or modify a Doco's authoring policies
+    (write; owner only). Omit \`id\` to create; pass an existing
+    policy \`id\` to modify (a draft supersedes it, \`{lifecycle}\`
+    retires or re-activates).
   - \`doco_authenticate\` — start OAuth device flow when a call
     returns 401/403. Returns a ready-to-render block with a
     clickable verification URL.

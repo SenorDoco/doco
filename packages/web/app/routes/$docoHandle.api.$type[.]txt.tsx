@@ -734,12 +734,26 @@ EXAMPLE — deterministic
       "on_violation": "block"
     }'
 
-UPDATE A SPECIFIC POLICY
+MODIFY A SPECIFIC POLICY (owner role required)
   PATCH ${baseUrl}/${handle}/api/policies/<id>.json
   Content-Type: application/json
 
-  The per-id endpoint remains available for editing existing policies.
-  Body shape mirrors the relevant capture draft.
+  Two body shapes:
+
+  • A full policy draft (must include \`kind\`, same shape as the capture
+    body above) SUPERSEDES the policy: a new policy is captured from the
+    draft and this one is retired with \`superseded_by: <new id>\`, so the
+    enforcement history stays intact in the audit trail. The response is:
+      { "ok": true, "id": "policy_<new ULID>", "superseded": "policy_<id>",
+        "footer_lines": [...] }
+
+  • { "lifecycle": "retired" } retires the policy in place (stops enforcing
+    it); { "lifecycle": "active" } re-activates a retired policy. The
+    response is:
+      { "ok": true, "id": "policy_<id>", "lifecycle": "retired" | "active" }
+
+  GET ${baseUrl}/${handle}/api/policies/<id>.json returns the stored draft
+  + lifecycle for one policy.
 
 RELATED
   GET  ${baseUrl}/${handle}/policies             HTML view of the policies

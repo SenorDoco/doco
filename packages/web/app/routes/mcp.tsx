@@ -24,6 +24,8 @@ import { resolveDocoInWorkspace } from "~/lib/workspace-mcp.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
 import { action as changesetsAction } from "./$docoHandle.api.changesets[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
+import { action as policyIdAction } from "./$docoHandle.api.policies.$id[.]json";
+import { action as policiesAction } from "./$docoHandle.api.policies[.]json";
 import { loader as searchLoader } from "./$docoHandle.search[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
@@ -45,8 +47,9 @@ const SERVER_INSTRUCTIONS = [
   "a project does things; there is almost always prior art you'd otherwise miss.",
   "Use doco_capture to record decisions/rules/etc. as they form and doco_relate",
   "to link them — or doco_changeset to create and wire many nodes in one atomic",
-  "batch (the efficient way to import a process or backfill history). Use doco_get",
-  "to read the authoring contract, policies, status, or a node by id. If a",
+  "batch (the efficient way to import a process or backfill history). Use",
+  "doco_policy to write or modify a Doco's authoring policies (owner only). Use",
+  "doco_get to read the authoring contract, policies, status, or a node by id. If a",
   "write is denied, your token has read but not write on that Doco — call",
   "doco_request_access to ask an owner for writer; once they approve your",
   "same token works on the next call (a grant change, no re-auth).",
@@ -256,6 +259,43 @@ const CHANGESET_TOOL = {
   },
 };
 
+const POLICY_TOOL = {
+  name: "doco_policy",
+  description: [
+    "Write or modify an authoring policy on a Doco — the rules that govern how",
+    "the Doco is authored (kind: suggestion | deterministic | probabilistic).",
+    "Policies are Doco-level metadata, NOT nodes, and live on a dedicated",
+    "endpoint; owner role is required. Two modes:",
+    "  • create — omit `id`; `body` MUST include `kind` plus the per-kind draft.",
+    "  • modify — pass an existing `id` (policy_…). A content modify (a draft",
+    "    with `kind`) SUPERSEDES: it captures a new policy and retires the old",
+    "    with superseded_by, returning the NEW id. A `body` of just",
+    '    { "lifecycle": "retired" | "active" } retires or re-activates in place.',
+    "Read the body shape at /<doco>/api/policies.txt first; list existing",
+    "policies with doco_get resource='api/policies.json'.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      doco: {
+        type: "string",
+        description: "Handle of the Doco to write to (must be in this workspace).",
+      },
+      id: {
+        type: "string",
+        description: "Existing policy id (policy_…) to MODIFY. Omit to CREATE a new policy.",
+      },
+      body: {
+        type: "object",
+        description:
+          "Policy fields. On create / content modify: { kind, ...draft } where kind is suggestion|deterministic|probabilistic. To only retire/re-activate: { lifecycle: 'retired' | 'active' }. See /<doco>/api/policies.txt.",
+        additionalProperties: true,
+      },
+    },
+    required: ["doco", "body"],
+  },
+};
+
 const WHOAMI_TOOL = {
   name: "doco_whoami",
   description: [
@@ -340,6 +380,7 @@ const TOOLS = [
   CAPTURE_TOOL,
   RELATE_TOOL,
   CHANGESET_TOOL,
+  POLICY_TOOL,
   REQUEST_ACCESS_TOOL,
   AGENT_DEBUG_TOOL,
 ];
@@ -581,6 +622,49 @@ async function runDocoChangeset(
   );
 }
 
+// doco_policy writes or modifies a Doco's authoring policies. Policies have a
+// dedicated endpoint (they are not nodes), so it delegates to the policies
+// routes rather than the generic node dispatcher: POST /api/policies.json to
+// create, PATCH /api/policies/<id>.json to modify (a draft supersedes; a bare
+// `{lifecycle}` transitions). The route's own owner gate enforces access.
+async function runDocoPolicy(
+  request: Request,
+  ctx: Ctx,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const resolved = await inWorkspace(ctx, args.doco);
+  if ("error" in resolved) return resolved.error;
+  const doco = resolved.handle;
+  const body = args.body;
+  if (!body || typeof body !== "object") {
+    return toolError(
+      "doco_policy requires a `body` object — see /<doco>/api/policies.txt for the shape.",
+    );
+  }
+  const id = String(args.id ?? "").trim();
+  const origin = new URL(request.url).origin;
+  if (id) {
+    const url = `${origin}/${encodeURIComponent(doco)}/api/policies/${encodeURIComponent(id)}.json`;
+    const req = new Request(url, {
+      method: "PATCH",
+      headers: bearerHeaders(request, { "content-type": "application/json" }),
+      body: JSON.stringify(body),
+    });
+    return delegate("modify a policy in", doco, () =>
+      policyIdAction({ request: req, params: { docoHandle: doco, id } as never }),
+    );
+  }
+  const url = `${origin}/${encodeURIComponent(doco)}/api/policies.json`;
+  const req = new Request(url, {
+    method: "POST",
+    headers: bearerHeaders(request, { "content-type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  return delegate("write a policy to", doco, () =>
+    policiesAction({ request: req, params: { docoHandle: doco } as never }),
+  );
+}
+
 // doco_get is the generic read surface: it GETs any document under the Doco's
 // HTTP API (or the root /status.json) with the caller's bearer replayed.
 async function runDocoGet(
@@ -805,6 +889,8 @@ async function dispatch(message: Rpc, request: Request, ctx: Ctx): Promise<Respo
           return rpcResult(message.id, await runDocoRelate(request, ctx, args));
         case "doco_changeset":
           return rpcResult(message.id, await runDocoChangeset(request, ctx, args));
+        case "doco_policy":
+          return rpcResult(message.id, await runDocoPolicy(request, ctx, args));
         case "doco_request_access":
           return rpcResult(message.id, await runDocoRequestAccess(ctx, args));
         case "doco_agent_debug":
