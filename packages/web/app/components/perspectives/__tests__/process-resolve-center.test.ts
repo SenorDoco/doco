@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import { resolveProcessCenter } from "~/components/perspectives/process-perspective";
+import {
+  isWholeProcessFocus,
+  resolveProcessCenter,
+} from "~/components/perspectives/process-perspective";
 import type { ProcessNode, ProcessPool } from "~/lib/process-perspective.server";
 
 const node = (id: string, poolId: string): ProcessNode => ({
@@ -53,5 +56,30 @@ describe("resolveProcessCenter", () => {
 
   it("returns null for an empty center", () => {
     expect(resolveProcessCenter(null, { expandedProcessId: null, pools, nodes, links })).toBeNull();
+  });
+});
+
+describe("isWholeProcessFocus", () => {
+  it("treats a plain click on a subprocess STEP as a node focus (so it bolds like any node)", () => {
+    // The bug: a2's id doubles as its own pool's process_id, so the old
+    // `pools.some(p => p.process_id === id)` test read this as a whole-process
+    // focus and suppressed the highlight. A subprocess step is a NODE focus.
+    expect(isWholeProcessFocus("a2", { expandedProcessId: null, pools, nodes })).toBe(false);
+  });
+
+  it("treats an expanded subprocess as a whole-process focus (its own pool frames)", () => {
+    expect(isWholeProcessFocus("a2", { expandedProcessId: "a2", pools, nodes })).toBe(true);
+  });
+
+  it("treats a pool header (a process_id with no member step) as a whole-process focus", () => {
+    expect(isWholeProcessFocus("p1", { expandedProcessId: null, pools, nodes })).toBe(true);
+  });
+
+  it("treats a plain node as a node focus", () => {
+    expect(isWholeProcessFocus("a1", { expandedProcessId: null, pools, nodes })).toBe(false);
+  });
+
+  it("treats an empty center as no focus", () => {
+    expect(isWholeProcessFocus(null, { expandedProcessId: null, pools, nodes })).toBe(false);
   });
 });
