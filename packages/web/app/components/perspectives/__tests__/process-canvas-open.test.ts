@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   TOP_LEVEL_POOL_ID,
-  clickedExternalNeighbour,
+  clickedBoundaryNode,
   openCanvasNode,
   resolveCanvasNodeClick,
 } from "~/components/perspectives/process-perspective";
@@ -98,18 +98,21 @@ describe("resolveCanvasNodeClick", () => {
     });
   });
 
-  it("routes a parent-process box to drilling UP into that parent's pool", () => {
-    expect(resolveCanvasNodeClick({ id: "parent:proc_1::pool:p2" }, ctx([]))).toEqual({
-      kind: "parentProcess",
-      processId: "proc_1",
-    });
+  it("routes a parent-process box to a boundary peek — its body opens the dialog, not a drill", () => {
+    // The body click is a pure peek: it resolves to the parent node so the
+    // dialog opens, but NOT to a drill (the box's "View process" button does
+    // that). So the kind is boundaryNode, not a re-centering node open.
+    const parent = node("proc_1", { is_process: true });
+    expect(
+      resolveCanvasNodeClick({ id: "parent:proc_1::pool:p2", data: { node: parent } }, ctx([])),
+    ).toEqual({ kind: "boundaryNode", node: parent });
   });
 
-  it("routes an external-neighbour box to opening the cross-pool node it stands for", () => {
+  it("routes an external-neighbour box to a boundary peek, not a re-centering open", () => {
     const external = node("q1", { pool_id: "pool:other" });
     expect(
       resolveCanvasNodeClick({ id: "external:entry:q1:pool:p", data: { node: external } }, ctx([])),
-    ).toEqual({ kind: "node", node: external });
+    ).toEqual({ kind: "boundaryNode", node: external });
   });
 
   // The default-view (synthetic overview) entries must render and behave
@@ -150,24 +153,26 @@ describe("resolveCanvasNodeClick", () => {
   });
 });
 
-describe("clickedExternalNeighbour", () => {
+describe("clickedBoundaryNode", () => {
   it("resolves an external-neighbour box to the cross-pool node it stands for", () => {
     const external = node("q1", { pool_id: "pool:other" });
     expect(
-      clickedExternalNeighbour({
-        id: "external:entry:q1:pool:action_p",
-        data: { node: external },
-      }),
+      clickedBoundaryNode({ id: "external:entry:q1:pool:action_p", data: { node: external } }),
     ).toBe(external);
   });
 
-  it("returns null for an ordinary in-pool flow node", () => {
-    expect(
-      clickedExternalNeighbour({ id: "member_1", data: { node: node("member_1") } }),
-    ).toBeNull();
+  it("resolves a parent-process box to the parent node it stands for", () => {
+    const parent = node("proc_1", { is_process: true });
+    expect(clickedBoundaryNode({ id: "parent:proc_1::pool:p2", data: { node: parent } })).toBe(
+      parent,
+    );
   });
 
-  it("returns null for an external id whose data carries no node", () => {
-    expect(clickedExternalNeighbour({ id: "external:entry:q1:pool:p" })).toBeNull();
+  it("returns null for an ordinary in-pool flow node", () => {
+    expect(clickedBoundaryNode({ id: "member_1", data: { node: node("member_1") } })).toBeNull();
+  });
+
+  it("returns null for a boundary id whose data carries no node", () => {
+    expect(clickedBoundaryNode({ id: "external:entry:q1:pool:p" })).toBeNull();
   });
 });

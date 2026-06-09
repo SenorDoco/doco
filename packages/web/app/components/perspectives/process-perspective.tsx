@@ -301,17 +301,18 @@ export function openCanvasNode(
 }
 
 /**
- * A box drawn OUTSIDE the focal pool stands in for a cross-pool sequence-flow
- * neighbour — a node in another process that flows into or out of this one. Its
- * React Flow id is `external:…` and its `data.node` is the real node in the
- * other pool. Clicking it focuses that node (which renders its OWN pool).
- * Returns that node, or null for any other flow node.
+ * A box drawn OUTSIDE the focal pool — a parent process THIS pool hangs under
+ * (`parent:…`), or a cross-pool sequence-flow neighbour that flows into or out
+ * of it (`external:…`). Either way `data.node` is the real node it stands in for.
+ * Returns that node, or null for any in-pool flow node. The BODY of a boundary
+ * box only opens the node's dialog; its in-node drill button does the
+ * navigation — so this routes a body click, not the drill.
  */
-export function clickedExternalNeighbour(flowNode: {
+export function clickedBoundaryNode(flowNode: {
   id: string;
   data?: unknown;
 }): ProcessNode | null {
-  if (!flowNode.id.startsWith("external:")) return null;
+  if (!flowNode.id.startsWith("external:") && !flowNode.id.startsWith("parent:")) return null;
   const node = (flowNode.data as { node?: ProcessNode } | undefined)?.node;
   return node ?? null;
 }
@@ -319,7 +320,7 @@ export function clickedExternalNeighbour(flowNode: {
 /** What clicking a flow node on the BPMN canvas should do. */
 export type CanvasNodeClick =
   | { kind: "pool"; pool: ProcessPool }
-  | { kind: "parentProcess"; processId: string }
+  | { kind: "boundaryNode"; node: ProcessNode }
   | { kind: "node"; node: ProcessNode };
 
 /**
@@ -327,8 +328,10 @@ export type CanvasNodeClick =
  * boxes alongside the real flow nodes, so a click means different things:
  *
  *   • a pool header → focus that whole pool;
- *   • a `parent:` box (a process THIS pool hangs under) → drill UP into it;
- *   • an `external:` box (a node in another pool) → open that real node;
+ *   • a boundary box (`parent:` above, or `external:` beside, the focal pool) →
+ *     open that node's dialog WITHOUT refocusing the canvas. The box's own drill
+ *     button is the only thing that navigates (drill up / view-in-own-process),
+ *     so a body click is a pure peek;
  *   • any real node — INCLUDING the synthetic overview pool's directory entries
  *     — → open it through the shared node-open, which alone decides whether to
  *     drill into a pool: only a sub-process Action does (`subprocessPoolId`),
@@ -348,12 +351,8 @@ export function resolveCanvasNodeClick(
 ): CanvasNodeClick | null {
   const pool = ctx.poolByHeaderId.get(flowNode.id);
   if (pool) return { kind: "pool", pool };
-  if (flowNode.id.startsWith("parent:")) {
-    const processId = flowNode.id.slice("parent:".length).split("::")[0];
-    return { kind: "parentProcess", processId };
-  }
-  const external = clickedExternalNeighbour(flowNode);
-  if (external) return { kind: "node", node: external };
+  const boundary = clickedBoundaryNode(flowNode);
+  if (boundary) return { kind: "boundaryNode", node: boundary };
   const target = ctx.nodeById.get(flowNode.id);
   if (!target) return null;
   return { kind: "node", node: target };
@@ -501,6 +500,37 @@ export function ProcessPerspective({
         { setHomeMode, setExpandedProcessId, onCenterChange, onNodeClick, navigate },
       ),
     [onCenterChange, onNodeClick, navigate, setHomeMode, setExpandedProcessId],
+  );
+  // A boundary box (a parent process, or a cross-flow neighbour, drawn outside
+  // the focal pool): a click on its BODY opens the node's dialog WITHOUT
+  // reframing the canvas — it stays put, so the boundary box is a pure peek. The
+  // box's own drill button is the only thing that navigates into that node's
+  // process (openProcess / openNode), so this deliberately skips onCenterChange.
+  const openNodeDialog = useCallback(
+    (node: ProcessNode) => {
+      if (onNodeClick) onNodeClick(node);
+      else if (node.href) navigate(node.href);
+    },
+    [onNodeClick, navigate],
+  );
+  // The drill pill descriptors, one stable object per category so a node's
+  // `data.drill` keeps its identity across layout re-runs (reuseStableNodes
+  // compares data shallowly — a fresh descriptor each pass would force every
+  // drill-bearing node to re-render on every focus change). Each `onClick` takes
+  // the node it is rendered on, so the same descriptor serves every node in its
+  // category: "View subprocess" expands a collapsed subprocess, "View process"
+  // drills up into a parent, "View in own process" reframes onto a neighbour.
+  const subprocessDrill = useMemo(
+    () => ({ label: "View subprocess", glyph: "⊞", onClick: viewSubprocess }),
+    [viewSubprocess],
+  );
+  const neighbourDrill = useMemo(
+    () => ({ label: "View in own process", onClick: openNode }),
+    [openNode],
+  );
+  const parentDrill = useMemo(
+    () => ({ label: "View process", onClick: (node: ProcessNode) => openProcess(node.id) }),
+    [openProcess],
   );
   // Drop nodes whose lifecycle is filtered out. The lane list itself isn't
   // lifecycle-filtered here — a lane carries no lifecycle of its own to test
@@ -678,10 +708,13 @@ export function ProcessPerspective({
   // process URL) frames the entire pool without singling out any node — so the
   // depth-fade + focal highlight are suppressed. Focusing a specific node
   // (clicking a shape) still highlights it. `selectionCenterId` is the process
-  // Action id in the former case and a node id in the latter.
+  // Action id in the former case and a node id in the latter — and a subprocess
+  // step is the latter even though its id doubles as its own pool's process_id
+  // (see isWholeProcessFocus), so plain-clicking it bolds like any other node.
   const isProcessFocus = useMemo(
-    () => pools.some((pool) => pool.process_id === selectionCenterId),
-    [pools, selectionCenterId],
+    () =>
+      isWholeProcessFocus(selectionCenterId, { expandedProcessId, pools, nodes: filteredNodes }),
+    [pools, filteredNodes, selectionCenterId, expandedProcessId],
   );
   // A cross-process edge frames two whole processes; singling out one focal
   // node with a depth-fade would wash the *other* process out, so suppress
@@ -816,7 +849,10 @@ export function ProcessPerspective({
       if (!poolId) continue;
       const pool = poolById.get(poolId);
       if (!pool) continue;
+      // A boundary box wears a "View in own process" drill, so it reserves the
+      // same top+bottom strips a subprocess box does — grow it to match.
       const size = sizeForNode(external);
+      size.height += 2 * DRILL_BUTTON_ROOM;
       const key = `${poolId}:${n.direction}`;
       const offset = stackOffset.get(key) ?? 0;
       stackOffset.set(key, offset + size.height + NODE_GAP_Y);
@@ -834,11 +870,15 @@ export function ProcessPerspective({
 
       nodes.push({
         id,
-        type: nodeTypeForShape(external.shape),
+        // Render as a task box (like the subprocess boxes) so the boundary
+        // neighbour reads as "a step over in its own process", drill pill and all.
+        type: "processTask",
         position: { x, y },
-        // The box stands in for a node in another pool; its `external:` id is
-        // what routes the click to focus that node (clickedExternalNeighbour).
-        data: { node: external },
+        // The box stands in for a node in another pool. Its BODY opens that
+        // node's dialog without refocusing (routed by the `external:` id, see
+        // resolveCanvasNodeClick → boundaryNode); its "View in own process" drill
+        // is the only thing that reframes the canvas onto that node's own pool.
+        data: { node: external, drill: neighbourDrill },
         draggable: false,
         selectable: false,
         connectable: false,
@@ -886,6 +926,7 @@ export function ProcessPerspective({
     layout.laneWidth,
     nodeById,
     nodeByFullId,
+    neighbourDrill,
   ]);
 
   // Parent processes — the process(es) this pool's Action hangs under
@@ -931,7 +972,10 @@ export function ProcessPerspective({
           pool_id: parentPool.id,
           is_process: true,
         };
+        // A parent box wears a "View process" drill, so it reserves the same
+        // top+bottom strips a subprocess box does — grow it to match.
         const size = sizeForNode(node);
+        size.height += 2 * DRILL_BUTTON_ROOM;
         const position = { x, y: geometry.y - PARENT_PROCESS_GAP - size.height };
         x += size.width + NODE_GAP_X;
         const id = `parent:${parent.id}::${poolId}`;
@@ -940,8 +984,12 @@ export function ProcessPerspective({
           id,
           type: nodeTypeForShape(node.shape),
           position,
-          // `isParentProcess` routes the click to drill UP into the parent's pool.
-          data: { node, isParentProcess: true },
+          // The body opens the parent's dialog without refocusing (routed by the
+          // `parent:` id, see resolveCanvasNodeClick → boundaryNode);
+          // `isParentProcess` lands the rising dashed has_parent arrow on its
+          // bottom edge, and the "View process" drill is the only thing that
+          // drills UP into the parent's own pool.
+          data: { node, isParentProcess: true, drill: parentDrill },
           draggable: false,
           selectable: false,
           connectable: false,
@@ -974,7 +1022,7 @@ export function ProcessPerspective({
     }
 
     return { nodes, edges };
-  }, [focalPoolIds, links, layout.poolGeometry, pools, docoHandle]);
+  }, [focalPoolIds, links, layout.poolGeometry, pools, docoHandle, parentDrill]);
 
   // Cache of the previous render's flow nodes, keyed by id, so unchanged
   // nodes keep their object identity across layout re-runs (see below).
@@ -1005,12 +1053,13 @@ export function ProcessPerspective({
       // there is no render-window fade). The `.doco-graph-fade` class still
       // smooths any opacity change a node component sets on its own.
       const className = node.className ? `${node.className} doco-graph-fade` : "doco-graph-fade";
-      // A subprocess member carries the "View subprocess" affordance — its
-      // stable handler (so node identity survives reuseStableNodes) opens the
+      // A subprocess member carries the "View subprocess" drill — a stable
+      // descriptor (so node identity survives reuseStableNodes) that opens the
       // subprocess into its own pool and its dialog. Only this button drills in;
       // a plain click on the Action body (openNode) keeps it collapsed.
-      if ((node.data as unknown as ProcessNodeData).isSubprocess) {
-        return [{ ...node, className, data: { ...node.data, onViewSubprocess: viewSubprocess } }];
+      const pdata = node.data as unknown as ProcessNodeData;
+      if (pdata.isSubprocess) {
+        return [{ ...node, className, data: { ...node.data, drill: subprocessDrill } }];
       }
       return [{ ...node, className }];
     });
@@ -1028,7 +1077,7 @@ export function ProcessPerspective({
     renderedPoolIds,
     renderedNodeIds,
     openLaneNode,
-    viewSubprocess,
+    subprocessDrill,
     externalNeighbours.nodes,
     parentProcesses.nodes,
   ]);
@@ -1215,7 +1264,8 @@ export function ProcessPerspective({
               onNodeClick={(_e: unknown, node: { id: string; data?: unknown }) => {
                 // One routing rule for every canvas click (see resolveCanvasNodeClick):
                 //   • pool header → focus that whole pool;
-                //   • `parent:` box → drill UP into the parent process's pool;
+                //   • boundary box (`parent:` / `external:`) → open its dialog
+                //     WITHOUT reframing; its own drill button does the navigation;
                 //   • any real node — overview directory entries included — →
                 //     openNode, which alone drills into a pool, and only for a
                 //     sub-process Action. A non-process Action thus focuses where
@@ -1223,7 +1273,7 @@ export function ProcessPerspective({
                 const click = resolveCanvasNodeClick(node, { poolByHeaderId, nodeById });
                 if (!click) return;
                 if (click.kind === "pool") openPoolNode(click.pool);
-                else if (click.kind === "parentProcess") openProcess(click.processId);
+                else if (click.kind === "boundaryNode") openNodeDialog(click.node);
                 else openNode(click.node);
               }}
               onEdgeClick={(event: unknown, edge: ReactFlowEdge) => {
@@ -1594,18 +1644,19 @@ export function boundaryNeighbourX(opts: {
     ? opts.laneLeftInset - opts.gap - opts.nodeWidth
     : opts.laneLeftInset + opts.laneWidth + opts.gap;
 }
-// Vertical room a sub-process Action reserves on EACH of its top and bottom
-// edges. The bottom strip holds the "View subprocess" affordance clear of both
-// the label and the type/lifecycle badge row straddling the edge; the top strip
-// mirrors it so the label (the node's core) stays vertically centered rather
-// than shoved up. The layout grows the box by 2× this; the node component pads
-// its label area by this much top and bottom so text never enters either strip.
-const SUBPROCESS_MARKER_ROOM = 38;
-// Where the "View subprocess" pill sits within the bottom strip — lifted well
-// off the bottom edge so it doesn't crowd the type/lifecycle badge row that
-// straddles the edge below it. The strip above is sized to keep the pill (~18px
-// tall) clear of the centered label even when the label fills the box.
-const SUBPROCESS_BUTTON_BOTTOM = 18;
+// Vertical room a node with a drill affordance reserves on EACH of its top and
+// bottom edges. The bottom strip holds the pill button ("View subprocess" on a
+// collapsed subprocess, "View process" / "View in own process" on a boundary
+// box) clear of both the label and the type/lifecycle badge row straddling the
+// edge; the top strip mirrors it so the label (the node's core) stays vertically
+// centered rather than shoved up. The box grows by 2× this; the node component
+// pads its label area by this much top and bottom so text never enters a strip.
+const DRILL_BUTTON_ROOM = 38;
+// Where the drill pill sits within the bottom strip — lifted well off the bottom
+// edge so it doesn't crowd the type/lifecycle badge row that straddles the edge
+// below it. The strip above is sized to keep the pill (~18px tall) clear of the
+// centered label even when the label fills the box.
+const DRILL_BUTTON_BOTTOM = 18;
 
 /**
  * The focal node a process *center* resolves to. Focusing a whole process —
@@ -1640,6 +1691,39 @@ export function resolveProcessCenter(
   const asStep = ctx.nodes.find((node) => node.id === id);
   if (asStep && asStep.pool_id !== ownPool.id) return id;
   return topEntryPointId(ownPool.id, ctx.nodes, ctx.links) ?? id;
+}
+
+/**
+ * True when a center frames a WHOLE pool (a directory pick, a pool-header click,
+ * a process URL, or "View subprocess") rather than singling out one node — the
+ * case where the depth-fade and focal-node highlight are suppressed.
+ *
+ * The one trap this guards against: a subprocess Action's id is ALSO the
+ * `process_id` of its own (collapsed) pool, so a naive "is this id any pool's
+ * process_id?" test would misread a plain click on a subprocess STEP as a
+ * whole-process focus and wash out its highlight. A subprocess clicked as a step
+ * is a NODE focus — it must bold like any other node — so it returns false here,
+ * mirroring the same exception `resolveProcessCenter` and
+ * `computeProcessRenderedSet` already make.
+ */
+export function isWholeProcessFocus(
+  id: string | null | undefined,
+  ctx: {
+    expandedProcessId: string | null | undefined;
+    pools: ProcessPool[];
+    nodes: ProcessNode[];
+  },
+): boolean {
+  if (!id) return false;
+  // Expanding a subprocess frames its OWN pool — a whole-process focus.
+  if (id === ctx.expandedProcessId) return true;
+  const ownPool = ctx.pools.find((pool) => pool.process_id === id);
+  if (!ownPool) return false; // a plain node — a node focus, highlight it
+  // A subprocess Action sitting as a STEP inside another pool, clicked plainly,
+  // focuses the node where it sits — NOT its own pool — so it is a node focus.
+  const asStep = ctx.nodes.find((node) => node.id === id);
+  if (asStep && asStep.pool_id !== ownPool.id) return false;
+  return true; // a pool header / process URL — frame the whole pool
 }
 
 // The exact node set the BPMN perspective draws for a given focus, and the
@@ -1830,7 +1914,7 @@ export function layOutProcess(
       // "View subprocess" affordance clear of the label, and the matching top
       // strip keeps the label centered. The component pads the label by the
       // same amount on each side; stacking/lane-height math below keys off size.
-      size.height += 2 * SUBPROCESS_MARKER_ROOM;
+      size.height += 2 * DRILL_BUTTON_ROOM;
     }
     sizeByNode.set(node.id, size);
     // Only pool nodes drive the column step / lane height, so the swim
@@ -2205,15 +2289,21 @@ function isActorLane(lane: ProcessLane): boolean {
 interface ProcessNodeData {
   node: ProcessNode;
   isCenter?: boolean;
-  /** This Action is itself a process (it has `has_parent` children) — render
-   *  the collapsed-subprocess "View subprocess" affordance. */
+  /** This Action is itself a process (it has `has_parent` children) — it carries
+   *  the collapsed-subprocess "View subprocess" drill affordance. */
   isSubprocess?: boolean;
-  /** A stand-in for a parent process this pool's Action hangs under, drawn
-   *  above the pool. Clicking it drills into that parent's own pool. */
+  /** A stand-in for a parent process this pool's Action hangs under, drawn above
+   *  the pool — it receives the rising dashed `has_parent` arrow on its bottom
+   *  edge. Its "View process" drill drills into that parent's own pool. */
   isParentProcess?: boolean;
-  /** Open this subprocess: expand its own pool and open its dialog (the "View
-   *  subprocess" click). */
-  onViewSubprocess?: (node: ProcessNode) => void;
+  /** A pill button rendered in the node's reserved bottom strip. The body of the
+   *  node opens its dialog; THIS button is the only thing that navigates —
+   *  "View subprocess" expands a collapsed subprocess, "View process" drills
+   *  into a parent, "View in own process" reframes onto a cross-flow neighbour.
+   *  The box is grown (top+bottom strips) wherever a drill is present. A stable
+   *  descriptor per category (its onClick takes the node) so the node's identity
+   *  survives reuseStableNodes — see subprocessDrill / neighbourDrill / parentDrill. */
+  drill?: { label: string; glyph?: string; onClick: (node: ProcessNode) => void };
 }
 
 interface ProcessLaneData {
@@ -2618,19 +2708,21 @@ function ProcessRoundedNode({ data }: { data: ProcessNodeData }) {
   );
 }
 
-// The "View subprocess" affordance on a collapsed subprocess Action (OMG BPMN
-// 2.0 §10.2.4: a collapsed sub-process is a task glyph with a drill-in marker).
-// It sits inside the box's reserved bottom strip, centered, lifted clear of the
-// type/lifecycle badge row that straddles the edge below it. Clicking it expands
-// the subprocess into its own pool (a different swim-lane view) — and ONLY this
-// button does: a plain click on the Action body focuses it where it sits.
-// Hidden under LOD (zoomed out, the label strip is illegible anyway).
-function ViewSubprocessButton({
-  data,
+// The drill pill a node carries in its reserved bottom strip. The collapsed
+// subprocess wears it as the OMG BPMN 2.0 §10.2.4 drill-in marker ("⊞ View
+// subprocess"); a parent box wears "View process" and a cross-flow boundary box
+// "View in own process". It sits centered, lifted clear of the type/lifecycle
+// badge row that straddles the edge below it, and is the ONLY thing that
+// navigates — a plain click on the node body just opens its dialog. Hidden under
+// LOD (zoomed out, the label strip is illegible anyway).
+export function NodeDrillButton({
+  drill,
+  node,
   stroke,
   hidden = false,
 }: {
-  data: ProcessNodeData;
+  drill: { label: string; glyph?: string; onClick: (node: ProcessNode) => void };
+  node: ProcessNode;
   stroke: string;
   hidden?: boolean;
 }) {
@@ -2638,11 +2730,11 @@ function ViewSubprocessButton({
   return (
     <button
       type="button"
-      // Stop the click from also bubbling to React Flow's onNodeClick — both
-      // open the subprocess, so without this the node would open twice.
+      // Stop the click from also bubbling to React Flow's onNodeClick — the body
+      // click opens the dialog, so without this the drill would also fire it.
       onClick={(event) => {
         event.stopPropagation();
-        data.onViewSubprocess?.(data.node);
+        drill.onClick(node);
       }}
       onPointerDown={(event) => event.stopPropagation()}
       // `.neu-pill-button` paints the raised → pressed neumorphic shadow so the
@@ -2652,7 +2744,7 @@ function ViewSubprocessButton({
       className="nodrag nopan neu-pill-button"
       style={{
         position: "absolute",
-        bottom: SUBPROCESS_BUTTON_BOTTOM,
+        bottom: DRILL_BUTTON_BOTTOM,
         left: "50%",
         transform: "translateX(-50%)",
         maxWidth: "calc(100% - 12px)",
@@ -2675,7 +2767,7 @@ function ViewSubprocessButton({
         zIndex: 3,
       }}
     >
-      <span aria-hidden="true">⊞</span> View subprocess
+      {drill.glyph ? <span aria-hidden="true">{drill.glyph}</span> : null} {drill.label}
     </button>
   );
 }
@@ -2701,13 +2793,13 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
         alignItems: "center",
         justifyContent: "center",
         boxShadow: simplified ? undefined : "0 1px 2px rgba(0,0,0,0.04)",
-        // Reserve a matching strip top and bottom: the bottom keeps the centered
-        // label clear of the "View subprocess" affordance, the top mirrors it so
-        // the label stays centered rather than pushed up. The layout grew the
-        // box by 2× this; border-box keeps the padding inside that box.
-        paddingTop: data.isSubprocess ? SUBPROCESS_MARKER_ROOM : undefined,
-        paddingBottom: data.isSubprocess ? SUBPROCESS_MARKER_ROOM : undefined,
-        boxSizing: data.isSubprocess ? "border-box" : undefined,
+        // Reserve a matching strip top and bottom whenever the node carries a
+        // drill pill: the bottom keeps the centered label clear of the pill, the
+        // top mirrors it so the label stays centered rather than pushed up. The
+        // box was grown by 2× this; border-box keeps the padding inside that box.
+        paddingTop: data.drill ? DRILL_BUTTON_ROOM : undefined,
+        paddingBottom: data.drill ? DRILL_BUTTON_ROOM : undefined,
+        boxSizing: data.drill ? "border-box" : undefined,
       }}
     >
       {simplified ? null : <ProcessBadgeRow data={data} />}
@@ -2723,8 +2815,8 @@ function ProcessTaskNode({ data }: { data: ProcessNodeData }) {
           style={{ background: "transparent", border: "none" }}
         />
       ) : null}
-      {data.isSubprocess ? (
-        <ViewSubprocessButton data={data} stroke={stroke} hidden={simplified} />
+      {data.drill ? (
+        <NodeDrillButton drill={data.drill} node={data.node} stroke={stroke} hidden={simplified} />
       ) : null}
     </div>
   );
