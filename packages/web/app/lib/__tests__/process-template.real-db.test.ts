@@ -187,6 +187,7 @@ function probabilisticLabels(vs: Violation[]): Set<string> {
     else if (/enumeration|exhaustive|default\/else/i.test(s)) out.add("gateway-exhaustive");
     else if (/milestone or entry\/exit condition/i.test(s)) out.add("milestone-naming");
     else if (/swim-lane|role, team, external party/i.test(s)) out.add("principal-lane");
+    else if (/concise label/i.test(s)) out.add("concise-name");
   }
   return out;
 }
@@ -624,19 +625,22 @@ describe("process template — ten real-life processes (well-formed, active)", (
     const g = buildProcess(SCENARIOS[0], "active");
     // The process container is an Action, so it queues the same probabilistic
     // checks any Action does — there is no separate Intent-shape check anymore.
+    // The concise-name nudge fires on every flow node (Action / Decision /
+    // State), so those three sets carry it; Principal is out of scope (its
+    // prose carries lane responsibility, not a bare label).
     expect(probabilisticLabels(evaluate(g.process, g))).toEqual(
-      new Set(["membership", "imported-metadata", "atomic-activity"]),
+      new Set(["membership", "imported-metadata", "atomic-activity", "concise-name"]),
     );
     expect(probabilisticLabels(evaluate(g.actions[0], g))).toEqual(
-      new Set(["membership", "imported-metadata", "atomic-activity"]),
+      new Set(["membership", "imported-metadata", "atomic-activity", "concise-name"]),
     );
     expect(probabilisticLabels(evaluate(g.gateway, g))).toEqual(
-      new Set(["membership", "imported-metadata", "gateway-exhaustive"]),
+      new Set(["membership", "imported-metadata", "gateway-exhaustive", "concise-name"]),
     );
     // State is exempt from the membership gate (a lone milestone reads like a
     // bare state-machine stage); milestone-naming governs its quality instead.
     expect(probabilisticLabels(evaluate(g.states[0], g))).toEqual(
-      new Set(["imported-metadata", "milestone-naming"]),
+      new Set(["imported-metadata", "milestone-naming", "concise-name"]),
     );
     expect(probabilisticLabels(evaluate(g.principals[0], g))).toEqual(
       new Set(["principal-lane", "imported-metadata"]),
@@ -899,10 +903,13 @@ describe("process template — all flow-node gates committed-only, drafting exem
     const draftG = buildProcess(SCENARIOS[0], "drafting");
     const queuedG = buildProcess(SCENARIOS[0], "queued");
     // The imported-metadata / atomic-activity checks are committed-stage only;
-    // the soft membership gate fires at every stage.
-    expect(probabilisticLabels(evaluate(draftG.process, draftG))).toEqual(new Set(["membership"]));
+    // the soft membership gate and the concise-name nudge fire at every stage,
+    // including drafting (neither carries a `fires_when_node_lifecycle`).
+    expect(probabilisticLabels(evaluate(draftG.process, draftG))).toEqual(
+      new Set(["membership", "concise-name"]),
+    );
     expect(probabilisticLabels(evaluate(queuedG.process, queuedG))).toEqual(
-      new Set(["membership", "imported-metadata", "atomic-activity"]),
+      new Set(["membership", "imported-metadata", "atomic-activity", "concise-name"]),
     );
   });
 
