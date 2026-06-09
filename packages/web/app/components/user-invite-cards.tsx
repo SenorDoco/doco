@@ -125,12 +125,7 @@ function InviteHumanCard({
           testId="invite-result"
           promptTestId="invite-url"
           copyButtonTestId="invite-copy"
-          note={
-            <>
-              Single-use, expires in 72 hours. Grants <strong>{inviteResult.role}</strong> at the{" "}
-              {inviteResult.level} level.
-            </>
-          }
+          note="Single-use, expires in 72 hours."
         />
       ) : null}
     </div>
