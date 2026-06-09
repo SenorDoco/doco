@@ -886,7 +886,16 @@ function firstEdgeTarget(
   fromId: string,
   edgeType: string,
 ): string | null {
-  return edgeTargets(outgoing, fromId, edgeType)[0] ?? null;
+  // Single-valued role lookup (lane attribution, eval host): a retired edge is
+  // a PAST link, not the current one. When a node carries both a live and a
+  // retired edge for the same role — e.g. a Decision re-attributed from one
+  // Principal to another — the live edge wins, so the node lands in the
+  // current performer's lane rather than the old one. Fall back to a retired
+  // target only when every edge for the role is retired (a fully-retired
+  // process still needs its lane).
+  const edges = outgoing.get(fromId)?.get(edgeType) ?? [];
+  const live = edges.find((edge) => edge.lifecycle !== "retired");
+  return (live ?? edges[0])?.to_id ?? null;
 }
 
 function laneReferenceFor(
