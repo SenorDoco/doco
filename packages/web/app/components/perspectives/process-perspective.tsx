@@ -161,6 +161,11 @@ interface ProcessPerspectiveProps {
    */
   visibleLifecycles?: Set<string>;
   /**
+   * Re-frames the camera to the cold-start fit when it changes (a revalidation
+   * or a lifecycle-filter change); see `fitResetKey`. Focus never changes it.
+   */
+  fitResetKey?: string;
+  /**
    * When set, the BPMN canvas fades non-neighbours of this node
    * based on BFS depth (focused 100%, 1st-degree 75%, 2nd 50%, 3rd+ 25%).
    * Edges fade with their deepest endpoint. When null/undefined,
@@ -399,6 +404,7 @@ export function ProcessPerspective({
   onSetHome,
   onExpandProcess,
   visibleLifecycles,
+  fitResetKey,
   centerId,
   initialFocusId,
   focusedEdgeId,
@@ -1209,6 +1215,24 @@ export function ProcessPerspective({
     });
     return () => cancelAnimationFrame(frame);
   }, [initialFocusFlowNodeId, initialFocusId, fitInitialFocus]);
+
+  // Re-frame to the cold-start fit (the whole rendered flow) whenever the set
+  // is refreshed for a non-focus reason — a revalidation or a lifecycle-filter
+  // change (`fitResetKey` changes then, never on focus). A drill-in (above) and
+  // an explicit URL/agent focus frame their own pool, so skip while one is set.
+  // The seen-ref skips the mount, which `onInit` already fits.
+  const coldStartFitSeenRef = useRef(fitResetKey);
+  useEffect(() => {
+    if (coldStartFitSeenRef.current === fitResetKey) return;
+    coldStartFitSeenRef.current = fitResetKey;
+    if (initialFocusId) return;
+    const instance = flowInstanceRef.current;
+    if (!instance?.fitView) return;
+    const frame = requestAnimationFrame(() => {
+      instance.fitView?.({ padding: 0.18 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fitResetKey, initialFocusId]);
 
   const emptyMessage = processEmptyMessage({
     home: homeMode,

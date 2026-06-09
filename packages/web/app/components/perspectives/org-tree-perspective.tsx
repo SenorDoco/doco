@@ -45,6 +45,9 @@ interface OrgTreePerspectiveProps {
    *  lifecycle filter shows, so the count tracks the rendered tree. */
   totalByLifecycle?: LifecycleCounts;
   visibleLifecycles?: Set<string> | null;
+  /** Re-frames the camera to the cold-start fit when it changes (a revalidation
+   *  or lifecycle-filter change); see `fitResetKey`. */
+  fitResetKey?: string;
   centerId?: string | null;
   initialFocusId?: string | null;
   onCenterChange?: (id: string | null) => void;
@@ -137,6 +140,7 @@ function OrgTreeInner({
   nodes,
   totalByLifecycle,
   visibleLifecycles,
+  fitResetKey,
   centerId,
   initialFocusId,
   onCenterChange,
@@ -222,21 +226,6 @@ function OrgTreeInner({
   );
   usePublishedReferences("org-tree", references);
 
-  // Stable signature of the layout's *shape* — node ids + reports_to
-  // edges, in deterministic order. A revalidation (the viewer's own edit,
-  // or clicking "Refresh") hands `nodes`/`filtered` fresh array identity
-  // even when no Principal actually changed. Gating fitView on identity
-  // would zoom-reset the canvas on any such reload; gating on this
-  // signature only fires when topology actually changes (added/removed/
-  // rewired Principal, lifecycle filter toggle).
-  const layoutSignature = useMemo(
-    () =>
-      filtered
-        .map((n) => `${n.id}>${n.reports_to ?? ""}`)
-        .sort()
-        .join("|"),
-    [filtered],
-  );
   const initialFocusFlowNodeId = useMemo(() => {
     if (!initialFocusId) return null;
     return rawRfNodes.some((node) => node.id === initialFocusId) ? initialFocusId : null;
@@ -262,20 +251,25 @@ function OrgTreeInner({
     return () => cancelAnimationFrame(frame);
   }, [flow, initialFocusFlowNodeId]);
 
-  // Fit-to-view whenever the layout actually changes shape.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: layoutSignature is the intentional trigger.
+  // Re-frame to the cold-start fit (the whole tree) whenever the rendered set
+  // is refreshed for a non-focus reason — a revalidation or a lifecycle-filter
+  // change (`fitResetKey` changes then, never on focus). An explicit URL/agent
+  // focus frames its own node, so skip while one is set. The seen-ref skips the
+  // mount; React Flow's own `fitView` handles the first paint.
+  const coldStartFitSeenRef = useRef(fitResetKey);
   useEffect(() => {
+    if (coldStartFitSeenRef.current === fitResetKey) return;
+    coldStartFitSeenRef.current = fitResetKey;
     if (initialFocusId) return;
     const id = requestAnimationFrame(() => {
       try {
         flow.fitView({ padding: 0.2, duration: 250 });
       } catch {
-        // React Flow may not be ready on the very first paint — silent
-        // skip; the next layout effect will retry.
+        // React Flow may not be ready on the very first paint.
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [flow, layoutSignature]);
+  }, [flow, fitResetKey, initialFocusId]);
 
   const handleNodeClick = useCallback(
     (_e: React.MouseEvent, node: Node<OrgTreeNodeData>) => {
