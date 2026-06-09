@@ -101,7 +101,7 @@ const STEPS: ReadonlyArray<{ n: string; title: string; body: string }> = [
 /**
  * The primary call to action. Reused verbatim in the hero and the closing
  * band, so it lives in one place. Joining a workspace is no longer a wizard —
- * humans arrive via an invite link, agents via the per-workspace MCP connector
+ * humans arrive via an invite link, agents via the hosted MCP connector at /mcp
  * — so the only landing-page action is creating a workspace.
  */
 function PrimaryCtas() {

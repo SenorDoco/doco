@@ -73,21 +73,23 @@ export function approvalTargetNotOwnedMessage(targetDocoHandle: string): string 
 }
 
 // ---------------------------------------------------------------------------
-// Per-workspace MCP binding.
+// Workspace-scoped consent.
 //
-// An MCP connector lives at `/<workspace-id>/mcp` and authorizes against that
-// URL (RFC 8707 `resource`), so a connector is bound to ONE workspace. When
-// the authorize request carries that resource we scope the consent to just
+// A connector can authorize against a workspace `resource` (RFC 8707) of the
+// form `<host>/<workspace-id>/mcp` to scope its consent to ONE workspace. When
+// the authorize request carries such a resource we scope the consent to just
 // that workspace — the approver should never see, or be able to grant, any
-// other workspace through a connector that can't reach it.
+// other workspace through a connector that asked for only one. (The default
+// flow authorizes against the app-wide `/mcp` resource and keeps the full
+// picker.)
 // ---------------------------------------------------------------------------
 
 const WORKSPACE_RESOURCE_RE = /\/(workspace_[A-Za-z0-9]+)\/mcp(?:[/?#]|$)/;
 
 /**
  * Pull the bound workspace id out of an OAuth `resource` value. Returns null
- * for anything that isn't a per-workspace MCP endpoint (missing param, an
- * app-wide URL, a Doco URL, …) so non-MCP flows keep the full picker.
+ * for anything that isn't a workspace-scoped resource (missing param, the
+ * app-wide /mcp URL, a Doco URL, …) so non-scoped flows keep the full picker.
  */
 export function parseWorkspaceFromResource(resource: string | null | undefined): string | null {
   if (!resource) return null;

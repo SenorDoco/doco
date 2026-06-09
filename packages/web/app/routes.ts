@@ -30,7 +30,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   /by-id/:docoId                 Stable Doco-id redirect to the current handle
- *   (agent self-service: install the per-WORKSPACE MCP connector at /:workspaceId/mcp; OAuth dance kicks off automatically)
+ *   (agent self-service: install the hosted MCP connector at /mcp; OAuth dance kicks off automatically)
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
@@ -104,28 +104,15 @@ export default [
   route(".well-known/oauth-authorization-server", "routes/oauth-metadata-authorization-server.tsx"),
   route(".well-known/oauth-protected-resource", "routes/oauth-metadata-protected-resource.tsx"),
   // THE hosted MCP endpoint, at `/mcp` + its RFC 9728 metadata. One connection
-  // per user, reaching every workspace they belong to; each session is pinned to
-  // ONE workspace by the (single-workspace) access token. Registered BEFORE the
-  // :workspaceId and :docoHandle variants so the literal `mcp` segment matches
-  // first — otherwise a param route would capture it.
+  // per user; the session's reach comes from the token (an actor token reaches
+  // every workspace the user belongs to, a workspace-scoped token pins one).
+  // Registered BEFORE the :docoHandle catch-all so the literal `mcp` segment
+  // matches first — otherwise a param route would capture it.
   route(
     ".well-known/oauth-protected-resource/mcp",
     "routes/oauth-metadata-protected-resource.mcp.tsx",
   ),
-  // Reuses the same handler as the legacy per-workspace endpoint; the absence of
-  // a :workspaceId segment is what selects the user-level gate (see the action).
-  route("mcp", "routes/$workspaceId.mcp.tsx", { id: "user-mcp" }),
-  // LEGACY per-workspace metadata + endpoint. Superseded by `/mcp` above (the
-  // app-wide /mcp the old "no app-wide MCP, for security" decision forbade is
-  // safe now: a session can't cross workspaces — the access token is
-  // single-workspace). Kept so existing per-workspace connectors keep working;
-  // no longer surfaced in the UI. A 401 points clients at the per-workspace
-  // protected-resource metadata.
-  route(
-    ".well-known/oauth-protected-resource/:workspaceId/mcp",
-    "routes/oauth-metadata-protected-resource.$workspaceId.tsx",
-  ),
-  route(":workspaceId/mcp", "routes/$workspaceId.mcp.tsx"),
+  route("mcp", "routes/mcp.tsx"),
   // OAuth 2.1 authorization server endpoints. The runtime hits these
   // via the metadata document above; the user sees /oauth/authorize
   // in their browser when a runtime requests Doco access.
@@ -187,8 +174,8 @@ export default [
   // doco_request_access MCP tool; humans via the private-doco 403 page.
   route("access-requests", "routes/access-requests.tsx"),
   // Invites: humans accept in the browser; agents authenticate via OAuth and
-  // install the per-workspace MCP connector at /<workspace-id>/mcp. There is
-  // no separate join wizard. decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
+  // install the hosted MCP connector at /mcp. There is no separate join wizard.
+  // decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
   route("invite/:code", "routes/invite.$code.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
   // an invite URL ("redeem this") fetch this to learn the MCP-OAuth

@@ -34,7 +34,7 @@ export function OAuthAccessApprovalForm({
   docos: OAuthApprovalDoco[];
   workspaces: OAuthApprovalWorkspace[];
   /**
-   * When the connector is bound to one workspace (per-workspace MCP), the picker
+   * When the connector authorized against a workspace-scoped resource, the picker
    * leads with "The entire <name> workspace" (an access-level dropdown inline)
    * and can still narrow to specific Docos / node-edge types within it — never
    * other workspaces. The catalog is expected to already be scoped to it.

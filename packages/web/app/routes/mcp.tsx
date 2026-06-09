@@ -1,28 +1,26 @@
-// POST /<workspace-id>/mcp — per-workspace hosted remote MCP endpoint
-// (Streamable HTTP, JSON-RPC 2.0).
+// POST /mcp — the hosted remote MCP endpoint (Streamable HTTP, JSON-RPC 2.0).
 //
-// There is no app-wide MCP (removed for security): every MCP server is bound
-// to ONE workspace via the `<workspace-id>` in its URL. The caller presents an
-// OAuth 2.1 bearer (`Authorization: Bearer doco_at_…`); a token reaches at most
-// one workspace, and this endpoint refuses any token not bound to the
-// workspace in its path. Every tool is constrained to Docos owned by this
-// workspace — the connector physically cannot read or write another
-// workspace's Docos through this URL.
+// One connection per user. The caller presents an OAuth 2.1 bearer
+// (`Authorization: Bearer doco_at_…`) and the gate (gateUserMcp) reads the
+// session's reach from the token, not the URL:
+//   - an "act as me" (actor) token reaches EVERY workspace the user belongs to,
+//     one Doco at a time — `list_workspaces` enumerates them and any Doco's
+//     <handle> works with the tools regardless of which workspace it's in;
+//   - a workspace-scoped token pins the session to its single workspace.
+// Either way a tool call can only touch Docos the live grant allows.
 //
-// An unauthenticated request gets 401 + WWW-Authenticate pointing at this
-// workspace's RFC 9728 protected-resource metadata, which a connector follows
-// to discover the OAuth server (RFC 8414) and run the flow.
+// An unauthenticated request gets 401 + WWW-Authenticate pointing at the
+// RFC 9728 protected-resource metadata at
+// /.well-known/oauth-protected-resource/mcp, which a connector follows to
+// discover the OAuth server (RFC 8414) and run the flow.
 
 import { getDocoByIdOrHandle, getWorkspaceConstitutionsByIds } from "@doco/db";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { gatherAgentDebug } from "~/lib/agent-debug.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
 import { isSuperadmin } from "~/lib/session.server";
-import {
-  type WorkspaceMcpGate,
-  gateWorkspaceMcp,
-  resolveDocoInWorkspace,
-} from "~/lib/workspace-mcp.server";
+import { gateUserMcp } from "~/lib/user-mcp.server";
+import { resolveDocoInWorkspace } from "~/lib/workspace-mcp.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
 import { action as changesetsAction } from "./$docoHandle.api.changesets[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
@@ -35,17 +33,20 @@ const SERVER_VERSION = "1.0.0-workspace";
 // Self-sufficient instructions: in a connector context there is no repo
 // AGENTS.md, so the essentials ride here. Full protocol is linked.
 const SERVER_INSTRUCTIONS = [
-  "This MCP server is bound to a single Doco Workspace — every tool here",
-  "operates only on the Docos inside THIS workspace, and your token reaches",
-  "no other. Call doco_whoami to see the workspace, its constitution (the",
-  "charter your captures must honor), and which of its Docos this token can",
-  "reach (the <handle> in /<handle>). Call doco_search before",
-  "answering substantive questions about how the project does things; there is",
-  "almost always prior art you'd otherwise miss. Use doco_capture to record",
-  "decisions/rules/etc. as they form and doco_relate to link them — or",
-  "doco_changeset to create and wire many nodes in one atomic batch (the",
-  "efficient way to import a process or backfill history). Use doco_get to",
-  "read the authoring contract, policies, status, or a node by id. If a",
+  "This is Doco's hosted MCP server — institutional memory (decisions, rules,",
+  "intents, actions, history) for the projects you work on. It connects once and",
+  "acts as you: depending on how the connection was authorized it reaches either",
+  "EVERY Doco Workspace you belong to (one Doco at a time) or a single workspace.",
+  "Call doco_whoami FIRST to see who you're acting as, your reach, the workspace",
+  "constitution(s) your captures must honor, and the <handle> in /<handle> for",
+  "each Doco you can touch. Call list_workspaces to enumerate the workspaces in",
+  "reach — a Doco's <handle> works with the tools regardless of which workspace",
+  "it lives in. Call doco_search before answering substantive questions about how",
+  "a project does things; there is almost always prior art you'd otherwise miss.",
+  "Use doco_capture to record decisions/rules/etc. as they form and doco_relate",
+  "to link them — or doco_changeset to create and wire many nodes in one atomic",
+  "batch (the efficient way to import a process or backfill history). Use doco_get",
+  "to read the authoring contract, policies, status, or a node by id. If a",
   "write is denied, your token has read but not write on that Doco — call",
   "doco_request_access to ask an owner for writer; once they approve your",
   "same token works on the next call (a grant change, no re-auth).",
@@ -258,11 +259,12 @@ const CHANGESET_TOOL = {
 const WHOAMI_TOOL = {
   name: "doco_whoami",
   description: [
-    "Identity + reach for the current credential, scoped to THIS workspace: who",
-    "you're acting as, the workspace this MCP is bound to, and which Docos in it",
-    "this token can reach, with your role in each. Call this FIRST to orient —",
-    "it's how you find a project's Doco handle (the <handle> in /<handle>)",
-    "without guessing. No arguments.",
+    "Identity + reach for the current credential: who you're acting as, the",
+    "workspace(s) this connection reaches (every one you belong to on an 'act as",
+    "me' token, or the single workspace a scoped token pins), the relevant",
+    "constitution, and which Docos you can touch, with your role in each. Call",
+    "this FIRST to orient — it's how you find a project's Doco handle (the",
+    "<handle> in /<handle>) without guessing. No arguments.",
   ].join("\n"),
   inputSchema: { type: "object", properties: {} },
 };
@@ -610,10 +612,12 @@ async function runDocoGet(
   return delegate("read from", doco, () => fetch(url, { headers: bearerHeaders(request) }));
 }
 
-// doco_whoami: identity + the Docos reachable in THIS workspace. The token is
-// bound to a single workspace, so its grants already live here; we surface the
-// workspace and its Docos, filtering out anything outside it (belt-and-braces
-// for cookie sessions, whose membership listing is broader).
+// doco_whoami: identity + reach. On an "act as me" (actor) connection it
+// surfaces every workspace the human belongs to and every reachable Doco; on a
+// workspace-scoped connection it surfaces just the pinned workspace and its
+// Docos (filtering out anything outside it — belt-and-braces for cookie
+// sessions, whose membership listing is broader) plus that workspace's
+// constitution.
 // list_workspaces: every workspace the human belongs to, with their role. The
 // primary discovery tool on an "act as me" connection; harmless (and still
 // correct) on a single-workspace one.
@@ -824,21 +828,16 @@ export function loader() {
   return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
 }
 
-/**
- * The shared MCP request core. The gate (workspace- or user-scoped) and the
- * protected-resource metadata URL are the ONLY per-endpoint differences; the
- * parse + JSON-RPC dispatch + tool confinement are identical. Both
- * `/<workspace-id>/mcp` and `/me/mcp` run through here, so the tool surface and
- * the single-workspace confinement can never diverge between them. Kept local
- * (not exported) — a route module may only export server code via
- * loader/action, so the user-level path reaches it through this same module's
- * `action` (the /me/mcp route points here), never a cross-module import.
- */
-async function runGatedMcp(
-  request: Request,
-  gate: WorkspaceMcpGate,
-  metadataUrl: string,
-): Promise<Response> {
+export async function action({ request }: { request: Request }): Promise<Response> {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
+  }
+  const origin = new URL(request.url).origin;
+  const metadataUrl = `${origin}/.well-known/oauth-protected-resource/mcp`;
+
+  // Identity + reach come from the token, not the URL (gateUserMcp): an actor
+  // token reaches every workspace the user belongs to, a scoped token pins one.
+  const gate = await gateUserMcp(request);
   if (!gate.ok) {
     if (gate.kind === "unauthenticated") return unauthorized(metadataUrl);
     if (gate.kind === "not_found") return new Response(gate.message, { status: 404 });
@@ -856,29 +855,4 @@ async function runGatedMcp(
   // Notifications (no id) expect no response body.
   if (message.id === undefined) return new Response(null, { status: 202 });
   return dispatch(message, request, gate.ctx);
-}
-
-export async function action({
-  request,
-  params,
-}: {
-  request: Request;
-  params: { workspaceId?: string };
-}): Promise<Response> {
-  if (request.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
-  }
-  const origin = new URL(request.url).origin;
-  const workspaceId = params.workspaceId ?? "";
-  if (workspaceId) {
-    const gate = await gateWorkspaceMcp(request, workspaceId);
-    const metadataUrl = `${origin}/.well-known/oauth-protected-resource/${workspaceId}/mcp`;
-    return runGatedMcp(request, gate, metadataUrl);
-  }
-  // The hosted endpoint at `/mcp`: no `:workspaceId` segment. The session
-  // workspace comes from the token, not the URL. Lazy-import keeps the legacy
-  // per-workspace path — and its tests — free of the user-gate's deps.
-  const { gateUserMcp } = await import("~/lib/user-mcp.server");
-  const gate = await gateUserMcp(request);
-  return runGatedMcp(request, gate, `${origin}/.well-known/oauth-protected-resource/mcp`);
 }

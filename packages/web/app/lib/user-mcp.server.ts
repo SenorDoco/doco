@@ -1,11 +1,11 @@
-// Gate for the hosted MCP endpoint at `/mcp`.
-//
-// One durable credential reaches all of a user's workspaces, but each access
-// token is single-workspace — minted per session via the actor→access exchange
-// with an RFC 8707 `resource` (see oauth-server.server.ts). So the token's lone
-// `granted_workspace_ids[0]` IS this session's workspace, and we confine every
-// tool to it exactly as the legacy per-workspace endpoint does — just resolved
-// from the token instead of the URL path.
+// Gate for the hosted MCP endpoint at `/mcp`. The session's reach comes from
+// the token, not the URL:
+//   - an "act as me" (actor) token carries no stored grants: it acts as the
+//     human across EVERY workspace they belong to, capped at actor_role and
+//     resolved live per request. Enter all-workspaces mode; tools resolve Docos
+//     globally and `list_workspaces` lets the agent discover what it can reach.
+//   - a workspace-scoped token pins the session to its lone
+//     `granted_workspace_ids[0]`, and every tool is confined to that workspace.
 
 import { getWorkspaceById } from "@doco/db";
 import { getOauthTokenForRequest } from "./doco-access.server";

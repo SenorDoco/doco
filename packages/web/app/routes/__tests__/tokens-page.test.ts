@@ -38,7 +38,6 @@ import ApiKeysPage, {
   action,
   actorScopeLabel,
   formatLastUsedLabel,
-  mcpUrlForWorkspace,
   meta,
 } from "../tokens";
 
@@ -217,16 +216,7 @@ describe("/tokens page action", () => {
     expect(actorScopeLabel(null)).toBe("All your workspaces — one at a time");
   });
 
-  it("builds the per-workspace MCP URL, trimming a trailing slash on the host", () => {
-    expect(mcpUrlForWorkspace("https://doco.test", "workspace_01ABC")).toBe(
-      "https://doco.test/workspace_01ABC/mcp",
-    );
-    expect(mcpUrlForWorkspace("https://doco.test/", "workspace_01ABC")).toBe(
-      "https://doco.test/workspace_01ABC/mcp",
-    );
-  });
-
-  it("shows ONE /mcp connector URL with the one-workspace-per-session copy (no picker)", () => {
+  it("shows ONE /mcp connector URL describing the multi-workspace reach (no picker)", () => {
     const markup = renderToStaticMarkup(
       createElement(ManualMcpPanel, { host: "https://doco.test" }),
     );
@@ -238,6 +228,10 @@ describe("/tokens page action", () => {
     expect(markup).not.toContain("Select a workspace");
     expect(markup).not.toContain("WORKSPACE_ID");
     expect(markup).not.toContain("/workspace_");
+    // Copy reflects the actual reach, not the old "one workspace per session".
+    expect(markup).toContain("every workspace you belong to");
+    expect(markup).not.toContain("can never touch two");
+    expect(markup).not.toContain("doco_select_workspace");
     // Capabilities note + provider options still render.
     expect(markup).toContain("doco_request_access");
     expect(markup).toContain("Claude Code");
@@ -268,7 +262,7 @@ describe("/tokens page action", () => {
   });
 
   it("renders client-specific setup only for the chosen provider", () => {
-    const url = "https://doco.test/workspace_01ABC/mcp";
+    const url = "https://doco.test/mcp";
 
     // Claude Code keeps the mcp-remote bridge command…
     const code = renderToStaticMarkup(

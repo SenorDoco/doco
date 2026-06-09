@@ -49,7 +49,7 @@ interface AuthorizeParams {
   requested_role: string | null;
   /** RFC 8707 resource the connector authorizes against (verbatim). */
   resource: string | null;
-  /** Workspace the connector is bound to, parsed from `resource` (per-workspace MCP). */
+  /** Workspace the connector scoped consent to, parsed from a workspace `resource`. */
   bound_workspace_id: string | null;
 }
 
@@ -96,9 +96,9 @@ export async function loader({ request }: { request: Request }) {
   const client_name = client.client_name ?? client.client_id.slice(0, 20);
   const { docos, workspaces } = await loadApprovalGrantOptions(principal.id);
 
-  // Per-workspace MCP: the connector authorizes against a workspace resource,
-  // so the consent must cover ONLY that workspace — never the approver's
-  // others. Scope to it (or block when the approver doesn't own it).
+  // Workspace-scoped resource: the connector authorized against one workspace's
+  // resource, so the consent must cover ONLY that workspace — never the
+  // approver's others. Scope to it (or block when the approver doesn't own it).
   if (params.bound_workspace_id) {
     const scoped = scopeApprovalToBoundWorkspace(docos, workspaces, params.bound_workspace_id);
     return {

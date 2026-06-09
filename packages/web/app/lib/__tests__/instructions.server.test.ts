@@ -43,11 +43,15 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).not.toContain("captures the *why* as it forms");
   });
 
-  it("teaches the /mcp endpoint and the one-workspace-per-session rule", () => {
+  it("teaches the /mcp endpoint and the multi-workspace 'act as me' reach", () => {
     expect(CANONICAL_INSTRUCTIONS).toContain("MCP connector lives at");
     // The endpoint is /mcp now, not the interim /me/mcp.
     expect(CANONICAL_INSTRUCTIONS).not.toContain("/me/mcp");
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/one workspace per session/i);
+    // An actor connection reaches every workspace, one doco at a time — the old
+    // "one workspace per session, never cross workspaces" rule is gone.
+    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/one workspace per session/i);
+    expect(CANONICAL_INSTRUCTIONS).toContain("list_workspaces");
+    expect(CANONICAL_INSTRUCTIONS).toMatch(/one doco at a time/i);
   });
 
   it("lists exactly the catalog node types (no non-node routes like invites/audit)", () => {
