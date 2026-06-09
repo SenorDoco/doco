@@ -93,7 +93,19 @@ export function PerspectiveFrame({
         )}
         style={frameRadiusStyle}
       >
-        <div className="relative z-0 h-full w-full overflow-hidden">{children}</div>
+        {/* `contain: layout paint` makes the perspective canvas its own
+            rendering/compositing unit, so React Flow's per-frame DOM churn while
+            panning stays inside this box instead of dragging the rest of the page
+            (app shell, Señor Doco rail, side panel, frame chrome) into the
+            browser's style/paint/composite pass every frame. This is what going
+            fullscreen does implicitly — the canvas becomes the top-layer element
+            and only it is rendered — which is why a fullscreened perspective pans
+            noticeably smoother than the same one boxed inside the page. The box
+            already clips via `overflow-hidden`, so paint containment changes
+            nothing visually. */}
+        <div className="relative z-0 h-full w-full overflow-hidden [contain:layout_paint]">
+          {children}
+        </div>
         {lifecycleFilter ? <LifecycleFilterPanel spec={lifecycleFilter} /> : null}
         <div
           aria-hidden
