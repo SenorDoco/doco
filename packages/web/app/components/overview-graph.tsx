@@ -117,6 +117,12 @@ interface OverviewGraphProps extends OverviewGraphData {
    */
   visibleLifecycles?: Set<string>;
   /**
+   * Re-frames the camera to the cold-start fit when it changes (a revalidation
+   * or a lifecycle-filter change); see `fitResetKey`. Focus never changes it,
+   * so focusing a node leaves the camera put.
+   */
+  fitResetKey?: string;
+  /**
    * When the user clicks a node on the canvas, we want the graph
    * to re-center on it: depth-based opacity recomputes from the new
    * focal node and the clustered layout re-runs so relevant neighbours
@@ -336,6 +342,7 @@ export function OverviewGraph({
   onHomeReset,
   focusedEdgeId,
   focusedNodeIds,
+  fitResetKey,
   onEdgeClick,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
@@ -960,6 +967,30 @@ export function OverviewGraph({
     });
     return () => cancelAnimationFrame(frame);
   }, [initialFocusFlowNodeId, initialFocusId, fitInitialFocusNode]);
+
+  // Re-frame to the cold-start fit (the whole rendered graph) whenever the set
+  // is refreshed for a non-focus reason — a revalidation or a lifecycle-filter
+  // change (`fitResetKey` changes then, never on focus). An explicit URL/agent
+  // focus frames its own node, so skip while one is set. The seen-ref skips the
+  // mount, which `onInit` already fits.
+  const coldStartFitSeenRef = useRef(fitResetKey);
+  useEffect(() => {
+    if (coldStartFitSeenRef.current === fitResetKey) return;
+    coldStartFitSeenRef.current = fitResetKey;
+    if (initialFocusId) return;
+    const instance = flowInstanceRef.current;
+    if (!instance?.fitView || renderedNodes.length === 0) return;
+    const frame = requestAnimationFrame(() => {
+      instance.fitView?.({
+        ...GRAPH_FIT_VIEW_OPTIONS,
+        nodes: renderedNodes.map((node) => ({ id: node.id })),
+        duration: 300,
+      });
+      const next = instance.getViewport?.();
+      if (next) updateViewport(next);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fitResetKey, initialFocusId, renderedNodes, updateViewport]);
 
   return (
     <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>

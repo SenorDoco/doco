@@ -61,6 +61,7 @@ import {
   type EdgeLifecycleStage,
   loadEdgeDialogDetail,
 } from "~/lib/edge-detail.server";
+import { fitResetKey } from "~/lib/fit-reset-key";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { githubIntegrationStatus } from "~/lib/github-connection.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -950,6 +951,15 @@ export default function DocoHome({
     revalidator.revalidate();
   }, [revalidator]);
 
+  // Camera-reset key for the canvas perspectives. It changes on a revalidation
+  // (the cursor advanced — cold start, an edit, or Refresh) or a lifecycle
+  // filter change, never on focus, so those re-frame to the cold-start fit
+  // while focusing a node leaves the camera put.
+  const perspectiveFitResetKey = useMemo(
+    () => fitResetKey(changeCursor, visibleLifecycles),
+    [changeCursor, visibleLifecycles],
+  );
+
   // Refs that capture the current dialog state without being reactive deps,
   // so the revalidation effect (defined after the callbacks below) can read
   // the latest dialog without listing it as a dep.
@@ -1575,6 +1585,7 @@ export default function DocoHome({
                     nodes={orgTreeData.nodes}
                     totalByLifecycle={orgTreeData.totalByLifecycle}
                     visibleLifecycles={visibleLifecycles}
+                    fitResetKey={perspectiveFitResetKey}
                     centerId={graphState.centerId}
                     initialFocusId={perspectiveFocusId}
                     onCenterChange={(id) => {
@@ -1594,6 +1605,7 @@ export default function DocoHome({
                     nodes={processGraph.nodes}
                     links={processGraph.links}
                     visibleLifecycles={visibleLifecycles}
+                    fitResetKey={perspectiveFitResetKey}
                     centerId={graphState.centerId}
                     initialFocusId={perspectiveFocusId}
                     focusedEdgeId={edgeFocus?.id ?? null}
@@ -1640,6 +1652,7 @@ export default function DocoHome({
                     pageRanks={pageRanksMap}
                     fillHeight
                     visibleLifecycles={visibleLifecycles}
+                    fitResetKey={perspectiveFitResetKey}
                     initialFocusId={perspectiveFocusId}
                     focusedEdgeId={edgeFocus?.id ?? null}
                     focusedNodeIds={focusedGraphNodeIds}
