@@ -425,11 +425,6 @@ function CopyableCode({ value, testid }: { value: string; testid?: string }) {
   );
 }
 
-/** The hosted MCP endpoint for one workspace: `<host>/<workspace-id>/mcp`. */
-export function mcpUrlForWorkspace(host: string, workspaceId: string): string {
-  return `${host.replace(/\/+$/, "")}/${workspaceId}/mcp`;
-}
-
 // The MCP clients we give tailored setup steps for. The list drives the
 // clickable options; ProviderInstructions renders the steps for one.
 const MCP_PROVIDERS: { id: string; label: string }[] = [
@@ -477,10 +472,10 @@ export function ProviderInstructions({ providerId, url }: { providerId: string; 
 
 export function ManualMcpPanel({ host }: { host: string }) {
   const baseUrl = host.replace(/\/+$/, "");
-  // ONE hosted MCP endpoint at /mcp. Connect once; the connection reaches every
-  // workspace the user belongs to, and each session is pinned to a single one
-  // (by .doco/connections.md or the doco_select_workspace tool). No
-  // per-workspace URL to pick anymore.
+  // ONE hosted MCP endpoint at /mcp. Connect once; an "act as me" token reaches
+  // every workspace the user belongs to (one Doco at a time — list_workspaces
+  // enumerates them), while a workspace-scoped token pins one. No per-workspace
+  // URL to pick.
   const url = `${baseUrl}/mcp`;
   const [provider, setProvider] = useState("");
 
@@ -490,10 +485,9 @@ export function ManualMcpPanel({ host }: { host: string }) {
         <h2 className="text-base font-semibold">Connect an agent to Doco</h2>
         <p className="text-xs text-muted-foreground">
           Doco hosts <strong>one</strong> remote MCP server at <Code>/mcp</Code> — connect once and
-          it reaches every workspace you belong to. Each session works in just one workspace, pinned
-          by <Code>.doco/connections.md</Code> or the <Code>doco_select_workspace</Code> tool; it
-          can never touch two in the same session. Copy the URL, then choose your client for setup
-          steps. Machine-readable version:{" "}
+          it reaches every workspace you belong to, one Doco at a time. Call{" "}
+          <Code>doco_whoami</Code> / <Code>list_workspaces</Code> to see your reach. Copy the URL,
+          then choose your client for setup steps. Machine-readable version:{" "}
           <a href="/llms.txt" className="underline hover:opacity-80">
             /llms.txt
           </a>
@@ -542,9 +536,9 @@ export function ManualMcpPanel({ host }: { host: string }) {
       <p className="border-t border-border pt-3 text-xs text-muted-foreground">
         The connector is read <em>and</em> write — <Code>doco_search</Code>, <Code>doco_get</Code>{" "}
         (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, <Code>doco_changeset</Code>{" "}
-        (write), and <Code>doco_request_access</Code> — all scoped to the session's workspace. Read
-        vs write is a live permission on the same token, so stepping up never means reconnecting.
-        Auth is OAuth 2.1 (PKCE + dynamic client registration).
+        (write), and <Code>doco_request_access</Code> — scoped to the Docos your token can reach.
+        Read vs write is a live permission on the same token, so stepping up never means
+        reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration).
       </p>
     </section>
   );

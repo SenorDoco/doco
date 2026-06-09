@@ -85,21 +85,24 @@ field in clean framing (no claudeMd-style "may not be relevant"
 wrapper), so this is the channel that survives sandboxed agent
 runtimes where project-scope hooks are filtered.
 
-The hosted remote MCP connector lives at \`/mcp\` — one connection that
-reaches every workspace you belong to (each session pins exactly one; see
-below). Authentication belongs to the MCP client transport: do not
+The hosted remote MCP connector lives at \`/mcp\` — one connection whose
+reach comes from your token. An "act as me" (\`actor\`) token reaches
+**every** workspace you belong to; a workspace-scoped token pins you to a
+single one. Authentication belongs to the MCP client transport: do not
 hand-drive OAuth or ask the user to paste localhost callback URLs back
 into chat; if the callback listener fails, restart the client MCP auth
 flow. Use the direct OAuth recipes only when you are not connected
 through remote MCP.
 
-**One workspace per session.** Your credential may reach many
-workspaces (a user-level / \`actor\` token covers all of yours), but you
-operate within exactly **one** per session — the one named in
-\`.doco/connections.md\`, or the single workspace your token is scoped to.
-Multiple docos *within* that workspace are fine; never read or write a
-doco in another workspace in the same session. If the task needs a
-different workspace, tell the user to start a new session.
+**Know your reach.** Call \`doco_whoami\` to see who you're acting as and
+which workspaces + docos you can touch, and \`list_workspaces\` to
+enumerate the workspaces in reach. On an actor connection you work across
+every workspace you belong to, **one doco at a time** — pass any reachable
+doco's \`<handle>\` to the tools regardless of which workspace it lives in;
+spanning multiple workspaces in a single session is expected, not
+forbidden. A workspace-scoped token instead confines you to its single
+workspace. Either way, honor each workspace's constitution and policies as
+you move between them.
 
 **Direct HTTP** (any runtime, or when MCP isn't available). You
 drive OAuth directly. Two recipes, full step-by-step at:

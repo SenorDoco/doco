@@ -68,7 +68,7 @@ export function GrantPicker({
    */
   offerActor?: boolean;
   /**
-   * When the connector is bound to one workspace (per-workspace MCP), the
+   * When the connector authorized against a workspace-scoped resource, the
    * first scope option becomes "The entire <name> workspace" with its
    * access-level dropdown inline in the row; "Specific docos" / "types" still
    * narrow within it. The catalog is expected to already be scoped to that one

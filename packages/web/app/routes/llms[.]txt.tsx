@@ -21,10 +21,10 @@ Doco hosts ONE remote MCP server, at:
 
     ${baseUrl}/mcp
 
-Connect once — it reaches every workspace you belong to. Each session
-works in exactly ONE workspace, pinned by the repo's \`.doco/connections.md\`
-or the \`doco_select_workspace\` tool; it can never touch two workspaces in
-the same session (the access token a session uses is single-workspace).
+Connect once — an "act as me" token reaches every workspace you belong to,
+one Doco at a time (call \`list_workspaces\` to enumerate them and pass any
+reachable Doco's <handle> to the tools). A workspace-scoped token instead
+pins the session to its single workspace.
 
 It speaks MCP over Streamable HTTP (JSON-RPC 2.0), gated by the same
 OAuth 2.1 server described below. An unauthenticated request gets a 401
@@ -40,12 +40,15 @@ Per client:
   - Claude Code: bridge with \`npx mcp-remote ${baseUrl}/mcp\`.
   - ChatGPT and other MCP clients: add the same URL as a connector.
 
-Tools available now: \`doco_whoami\` (identity + the Docos you can reach in
-this session's workspace), \`doco_search\` + \`doco_get\` (read), \`doco_capture\`,
-\`doco_relate\` + \`doco_changeset\` (write), and \`doco_request_access\` (ask an
-owner for a grant). Every tool operates only on Docos inside the session's
-workspace; doco_whoami lists them, so find a project's Doco there rather
-than guessing the handle. Read vs write is a live grant on the same token,
+Tools available now: \`doco_whoami\` (identity + reach — who you act as and the
+workspaces + Docos you can touch), \`list_workspaces\` (enumerate the workspaces
+in reach), \`doco_search\` + \`doco_get\` (read), \`doco_capture\`, \`doco_relate\`
++ \`doco_changeset\` (write), and \`doco_request_access\` (ask an owner for a
+grant). An "act as me" connection reaches every workspace you belong to, one
+Doco at a time — pass any reachable Doco's <handle> to the tools; a
+workspace-scoped token pins you to one. Call doco_whoami / list_workspaces to
+find a project's Doco rather than guessing the handle. Read vs write is a live
+grant on the same token,
 so stepping up read→write never needs a re-auth — request it and an owner
 approves. There are no auth tools here — the bearer token is the auth.
 
@@ -235,7 +238,7 @@ governing its work across every project it can reach.
 
     ${baseUrl}/sign-in
     ${baseUrl}/new-doco
-    ${baseUrl}/<workspace-id>/mcp
+    ${baseUrl}/mcp
     ${baseUrl}/.well-known/oauth-authorization-server
     ${baseUrl}/.well-known/oauth-protected-resource
     ${baseUrl}/protocol/canonical-instructions

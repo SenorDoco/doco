@@ -18,8 +18,8 @@ export function loader({ request }: { request: Request }) {
 ## Use the hosted MCP connector first (recommended)
 
 The simplest path is the hosted MCP connector — no OAuth code to write.
-There is one endpoint; point any MCP-capable client at it. It reaches
-every workspace you belong to, one per session:
+There is one endpoint; point any MCP-capable client at it. An "act as me"
+token reaches every workspace you belong to, one doco at a time:
 
     ${baseUrl}/mcp
 
@@ -27,9 +27,10 @@ It speaks MCP over Streamable HTTP. An unauthenticated request returns
 401 + a \`WWW-Authenticate\` header pointing at
 \`${baseUrl}/.well-known/oauth-protected-resource/mcp\`
 (RFC 9728); a connector client follows that to discover the OAuth server
-(RFC 8414) and run the flow for you. The resulting token is bound to that
-one workspace. The connector is read + write —
-\`doco_whoami\`, \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
+(RFC 8414) and run the flow for you. Call \`list_workspaces\` / \`doco_whoami\`
+to see your reach (a workspace-scoped token instead pins one workspace).
+The connector is read + write — \`doco_whoami\`, \`list_workspaces\`,
+\`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
 same token, never a different login. Setup per client lives in Tokens/MCP:
 open ${baseUrl}/tokens and choose the "Add MCP" tab.
