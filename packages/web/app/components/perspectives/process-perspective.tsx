@@ -55,6 +55,7 @@ import {
 import { processEdgeLabelData } from "~/lib/process-edge-label-style";
 import { topEntryPointId } from "~/lib/process-entry-points";
 import {
+  processCameraFitTarget,
   processExpansionFitNodeId,
   processFocusFlowNodeId,
   processPoolFitNodeIds,
@@ -415,7 +416,12 @@ export function ProcessPerspective({
   const nodes = nodesRaw;
   const navigate = useNavigate();
   const [Flow, setFlow] = useState<FlowModule | null>(null);
-  const hasFitRef = useRef(false);
+  // One camera rule (see the fit effect): re-frame whenever the navigation
+  // target changes. `flowReady` flips once React Flow hands us its instance so
+  // the effect can run its first fit; `lastFitKeyRef` records the target last
+  // framed so it fits on a navigation and never on a plain re-render.
+  const [flowReady, setFlowReady] = useState(false);
+  const lastFitKeyRef = useRef<string | null>(null);
   type FlowFitView = (options?: {
     nodes?: { id: string }[];
     padding?: number;
@@ -428,17 +434,6 @@ export function ProcessPerspective({
     getViewport?: () => FlowViewport;
   };
   const flowInstanceRef = useRef<FlowInstance | null>(null);
-  const initialFocusAppliedRef = useRef<string | null>(null);
-  // The default (no-URL-focus) auto-fit on the highest-PageRank node is a
-  // one-time mount affordance — `defaultFocusAppliedRef` flips true after
-  // it fires so subsequent clicks (which reshuffle `selectionCenterId`)
-  // don't yank the canvas around.
-  const defaultFocusAppliedRef = useRef(false);
-  // The expanded process whose pool the camera has already framed. A drill-in
-  // (overview pick / "View subprocess") must re-center on the pool it opens
-  // even after the one-time default fit is spent; this tracks the last
-  // expansion framed so the re-fit fires once per distinct drill-in.
-  const framedExpansionRef = useRef<string | null>(null);
   // The BPMN perspective opens on the synthetic top-level pool (the "home"
   // overview) — every top-level Action drawn as a task node in its principal's
   // lane — rather than drilling straight into one process. An explicit camera
@@ -465,10 +460,8 @@ export function ProcessPerspective({
   // afresh. The host owns the stage itself — `onHomeReset` clears it and records
   // the history entry; here we only reset the canvas-local camera bookkeeping.
   const goHome = useCallback(() => {
-    hasFitRef.current = false;
-    flowInstanceRef.current = null;
-    defaultFocusAppliedRef.current = false;
-    initialFocusAppliedRef.current = null;
+    // The host clears the stage; the fit effect re-frames the overview because
+    // the camera target changes back to home.
     onHomeReset?.();
   }, [onHomeReset]);
   // Drill from the overview into a process's own swim-lane pool: leave home,
@@ -1166,73 +1159,56 @@ export function ProcessPerspective({
     [flowNodeIdSet, renderedLanes],
   );
 
-  // Re-center on a freshly opened pool. Drilling into a process — picking one
-  // from the overview (`openProcess`) or the "View subprocess" affordance
-  // (`viewSubprocess`) expanding a subprocess into its own pool — is a
-  // deliberate "frame this pool" gesture. The one-shot fit below won't do it
-  // for a *second* drill-in: a plain browse has no URL focus, so that fit
-  // takes the default path, which is spent after the first frame
-  // (`defaultFocusAppliedRef`). So fit the expanded pool here, once per
-  // distinct expansion — that's why the first drill-in centered but later ones
-  // landed wherever the new layout fell. (A plain node click clears
-  // `expandedProcessId`, so it never reaches here and the camera stays put.)
+  // The one camera rule. Frame the current navigation target — the overview
+  // pool (home), a drilled-in process pool, or a focused node — and re-frame it
+  // whenever that target changes (navigating home, drilling in, or revisiting a
+  // process). A revalidation or lifecycle-filter change (`fitResetKey`) also
+  // re-frames to the cold-start fit, but only while no URL/agent focus holds the
+  // camera — both folded into the one key. A plain re-render (pan/zoom, an
+  // unrelated state update) leaves the key unchanged, so the camera stays where
+  // the user put it. `lastFitKeyRef` records the target last framed.
+  //
+  // This replaces four one-shot guards (mount / default / URL focus /
+  // expansion), each reset on a different navigation path — the mismatch that
+  // let Home-after-a-drill-in and revisiting a process skip the re-fit.
   useEffect(() => {
-    if (!expandedProcessId) {
-      framedExpansionRef.current = null;
-      return;
-    }
-    if (framedExpansionRef.current === expandedProcessId) return;
-    const headerId = processExpansionFitNodeId(
-      expandedProcessId,
-      initialFocusId ?? null,
-      poolIdByProcessId,
-      flowNodeIdSet,
-    );
-    if (!headerId) return;
+    if (!flowReady) return;
     const instance = flowInstanceRef.current;
     if (!instance?.fitView) return;
+    const fit = processCameraFitTarget({
+      homeMode,
+      homePoolHeaderId: homePoolId ? `pool-header:${homePoolId}` : null,
+      expandedPoolHeaderId: processExpansionFitNodeId(
+        expandedProcessId,
+        poolIdByProcessId,
+        flowNodeIdSet,
+      ),
+      focusFlowNodeId: initialFocusFlowNodeId,
+      urlFocused: Boolean(initialFocusId),
+      fitResetKey,
+    });
+    if (!fit) return;
+    // A real target that hasn't laid out yet — retry once React Flow renders it.
+    if (fit.target && !flowNodeIdSet.has(fit.target)) return;
+    if (lastFitKeyRef.current === fit.key) return;
     const frame = requestAnimationFrame(() => {
-      fitInitialFocus(instance, headerId);
-      framedExpansionRef.current = expandedProcessId;
+      if (fit.target) fitInitialFocus(instance, fit.target);
+      else instance.fitView?.({ padding: 0.18 });
+      lastFitKeyRef.current = fit.key;
     });
     return () => cancelAnimationFrame(frame);
-  }, [expandedProcessId, initialFocusId, poolIdByProcessId, flowNodeIdSet, fitInitialFocus]);
-
-  useEffect(() => {
-    if (!initialFocusFlowNodeId) return;
-    const hasExplicitFocus = Boolean(initialFocusId);
-    if (hasExplicitFocus) {
-      if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
-    } else if (defaultFocusAppliedRef.current) {
-      return;
-    }
-    const instance = flowInstanceRef.current;
-    if (!instance?.fitView) return;
-    const frame = requestAnimationFrame(() => {
-      fitInitialFocus(instance, initialFocusFlowNodeId);
-      if (hasExplicitFocus) initialFocusAppliedRef.current = initialFocusFlowNodeId;
-      else defaultFocusAppliedRef.current = true;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [initialFocusFlowNodeId, initialFocusId, fitInitialFocus]);
-
-  // Re-frame to the cold-start fit (the whole rendered flow) whenever the set
-  // is refreshed for a non-focus reason — a revalidation or a lifecycle-filter
-  // change (`fitResetKey` changes then, never on focus). A drill-in (above) and
-  // an explicit URL/agent focus frame their own pool, so skip while one is set.
-  // The seen-ref skips the mount, which `onInit` already fits.
-  const coldStartFitSeenRef = useRef(fitResetKey);
-  useEffect(() => {
-    if (coldStartFitSeenRef.current === fitResetKey) return;
-    coldStartFitSeenRef.current = fitResetKey;
-    if (initialFocusId) return;
-    const instance = flowInstanceRef.current;
-    if (!instance?.fitView) return;
-    const frame = requestAnimationFrame(() => {
-      instance.fitView?.({ padding: 0.18 });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [fitResetKey, initialFocusId]);
+  }, [
+    flowReady,
+    homeMode,
+    homePoolId,
+    expandedProcessId,
+    initialFocusFlowNodeId,
+    initialFocusId,
+    poolIdByProcessId,
+    flowNodeIdSet,
+    fitResetKey,
+    fitInitialFocus,
+  ]);
 
   const emptyMessage = processEmptyMessage({
     home: homeMode,
@@ -1272,17 +1248,10 @@ export function ProcessPerspective({
               zoomOnPinch
               preventScrolling
               onInit={(instance: FlowInstance) => {
+                // Hand the instance to the fit effect, which runs the first (and
+                // every later) frame off the navigation target — see lastFitKeyRef.
                 flowInstanceRef.current = instance;
-                if (!hasFitRef.current) {
-                  if (initialFocusFlowNodeId) {
-                    fitInitialFocus(instance, initialFocusFlowNodeId);
-                    if (initialFocusId) initialFocusAppliedRef.current = initialFocusFlowNodeId;
-                    else defaultFocusAppliedRef.current = true;
-                  } else {
-                    instance.fitView?.({ padding: 0.18 });
-                  }
-                  hasFitRef.current = true;
-                }
+                setFlowReady(true);
               }}
               onPaneClick={onPaneClick}
               onNodeClick={(_e: unknown, node: { id: string; data?: unknown }) => {
