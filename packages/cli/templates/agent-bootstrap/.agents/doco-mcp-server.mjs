@@ -64,6 +64,7 @@ const SERVER_INSTRUCTIONS = [
   "- doco_capture: record a decision/intent/rule/etc. as it forms (write).",
   "- doco_relate: link two nodes with a typed edge (write).",
   "- doco_changeset: create and wire many nodes in one atomic batch (write).",
+  "- doco_policy: write or modify a Doco's authoring policies, owner only (write).",
   "- doco_authenticate: start OAuth device flow when a call returns 401/403,",
   "  or to step up to writer (requested_role='writer') for capture/relate.",
   "- doco_complete_authentication: finalize OAuth after the user approves.",
@@ -418,12 +419,47 @@ const CHANGESET_TOOL = {
   },
 };
 
+const POLICY_TOOL = {
+  name: "doco_policy",
+  description: [
+    "Write or modify an authoring policy in this project's Doco — the rules",
+    "that govern how the Doco is authored (kind: suggestion | deterministic |",
+    "probabilistic). Policies are Doco-level metadata, NOT nodes, and live on a",
+    "dedicated endpoint; owner role is required. Two modes:",
+    "  • create — omit `id`; `body` MUST include `kind` plus the per-kind draft.",
+    "  • modify — pass an existing `id` (policy_…). A content modify (a draft",
+    "    with `kind`) SUPERSEDES: it captures a new policy and retires the old",
+    "    with superseded_by, returning the NEW id. A `body` of just",
+    '    { "lifecycle": "retired" | "active" } retires or re-activates in place.',
+    "Read GET /<handle>/api/policies.txt for the body shape first; list existing",
+    "policies with doco_get resource='api/policies.json'. Same writer step-up as",
+    "doco_capture if it returns 403.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: {
+        type: "string",
+        description: "Existing policy id (policy_…) to MODIFY. Omit to CREATE a new policy.",
+      },
+      body: {
+        type: "object",
+        description:
+          "Policy fields. On create / content modify: { kind, ...draft } where kind is suggestion|deterministic|probabilistic. To only retire/re-activate: { lifecycle: 'retired' | 'active' }. See /<handle>/api/policies.txt.",
+        additionalProperties: true,
+      },
+    },
+    required: ["body"],
+  },
+};
+
 const TOOLS = [
   SEARCH_TOOL,
   GET_TOOL,
   CAPTURE_TOOL,
   RELATE_TOOL,
   CHANGESET_TOOL,
+  POLICY_TOOL,
   AUTH_TOOL,
   COMPLETE_AUTH_TOOL,
 ];
@@ -518,6 +554,8 @@ async function handleToolCall(message) {
       return handleRelate(message);
     case CHANGESET_TOOL.name:
       return handleChangeset(message);
+    case POLICY_TOOL.name:
+      return handlePolicy(message);
     case AUTH_TOOL.name:
       return handleAuthenticate(message);
     case COMPLETE_AUTH_TOOL.name:
@@ -722,6 +760,54 @@ async function handleChangeset(message) {
     jsonrpc: "2.0",
     id: message.id,
     result: { content: [{ type: "text", text: formatChangesetResult(result.body, handle) }] },
+  });
+}
+
+// Write or modify a policy. Policies have a dedicated endpoint (they are not
+// nodes): POST /api/policies.json to create, PATCH /api/policies/<id>.json to
+// modify (a draft supersedes the old policy; a bare `{lifecycle}` retires or
+// re-activates it). Same stored-credential + owner gate as the other writes.
+async function handlePolicy(message) {
+  const args = message.params?.arguments || {};
+  const body = args.body;
+  if (!body || typeof body !== "object") {
+    return errorResult(
+      message.id,
+      "doco_policy requires a `body` object. Read GET /<handle>/api/policies.txt for the exact shape.",
+    );
+  }
+  const id = String(args.id || "").trim();
+  const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
+  if (!handle) {
+    return errorResult(message.id, "No Doco found in .doco/connections.md.");
+  }
+  const host = normalizeHost(readEnv("DOCO_HOST") || DEFAULT_HOST);
+  const path = id
+    ? `/${encodeURIComponent(handle)}/api/policies/${encodeURIComponent(id)}.json`
+    : `/${encodeURIComponent(handle)}/api/policies.json`;
+  const url = new URL(path, host);
+  const result = await requestJsonWithStoredCredential(url, host, {
+    method: id ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!result.ok) {
+    return errorResult(message.id, formatWriteErrorForAgent(result, handle, "policies"));
+  }
+  return send({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: {
+      content: [
+        {
+          type: "text",
+          text: formatWriteResult(
+            result.body,
+            `${id ? "Modified" : "Wrote"} policy in Doco '${handle}'.`,
+          ),
+        },
+      ],
+    },
   });
 }
 

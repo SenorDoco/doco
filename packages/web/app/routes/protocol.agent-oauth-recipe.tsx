@@ -31,7 +31,7 @@ It speaks MCP over Streamable HTTP. An unauthenticated request returns
 to see your reach (a workspace-scoped token instead pins one workspace).
 The connector is read + write — \`doco_whoami\`, \`list_workspaces\`,
 \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
-\`doco_changeset\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
+\`doco_changeset\`, \`doco_policy\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
 same token, never a different login. Setup per client lives in Tokens/MCP:
 open ${baseUrl}/tokens and choose the "Add MCP" tab.
 
