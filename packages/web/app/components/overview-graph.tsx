@@ -973,24 +973,37 @@ export function OverviewGraph({
   // change (`fitResetKey` changes then, never on focus). An explicit URL/agent
   // focus frames its own node, so skip while one is set. The seen-ref skips the
   // mount, which `onInit` already fits.
+  // `renderedNodes` and `updateViewport` are read through refs, NOT effect
+  // deps, on purpose: a lifecycle-filter toggle churns `renderedNodes` (the
+  // buffered render window resettles, detail fetches land) right after it
+  // bumps `fitResetKey`. If they were deps, that churn would re-run the
+  // effect, fire the cleanup, and cancel the just-scheduled fit before the
+  // animation frame — so the camera never re-framed (the overview-only bug
+  // process/org-tree avoided by keying on fitResetKey alone). Keying solely on
+  // `fitResetKey`/`initialFocusId` lets the scheduled fit survive the churn.
+  const renderedNodesRef = useRef(renderedNodes);
+  renderedNodesRef.current = renderedNodes;
+  const updateViewportRef = useRef(updateViewport);
+  updateViewportRef.current = updateViewport;
   const coldStartFitSeenRef = useRef(fitResetKey);
   useEffect(() => {
     if (coldStartFitSeenRef.current === fitResetKey) return;
     coldStartFitSeenRef.current = fitResetKey;
     if (initialFocusId) return;
     const instance = flowInstanceRef.current;
-    if (!instance?.fitView || renderedNodes.length === 0) return;
+    const rendered = renderedNodesRef.current;
+    if (!instance?.fitView || rendered.length === 0) return;
     const frame = requestAnimationFrame(() => {
       instance.fitView?.({
         ...GRAPH_FIT_VIEW_OPTIONS,
-        nodes: renderedNodes.map((node) => ({ id: node.id })),
+        nodes: rendered.map((node) => ({ id: node.id })),
         duration: 300,
       });
       const next = instance.getViewport?.();
-      if (next) updateViewport(next);
+      if (next) updateViewportRef.current(next);
     });
     return () => cancelAnimationFrame(frame);
-  }, [fitResetKey, initialFocusId, renderedNodes, updateViewport]);
+  }, [fitResetKey, initialFocusId]);
 
   return (
     <ReferenceNumberStoreContext.Provider value={referenceNumberStore}>
