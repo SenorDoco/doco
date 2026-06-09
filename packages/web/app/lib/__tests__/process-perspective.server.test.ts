@@ -413,6 +413,59 @@ describe("loadProcessGraph", () => {
     );
   });
 
+  it("places a node in its live attribution's lane, not a retired one", async () => {
+    // A Decision re-attributed from one Principal to another keeps the old
+    // `attributed_to` edge as retired and adds a live one. Lane placement
+    // follows the LIVE attribution (Torre) — a retired edge is a past
+    // attribution, not the current decider — even when the retired edge
+    // happens to be listed first.
+    const processId = "action_01REATTRIB";
+    const decisionId = "decision_01REATTRIB";
+
+    const { client } = makeQueryClient({
+      nodes: [
+        processNode(processId, "Sell Emma Reach"),
+        {
+          id: decisionId,
+          entity_type: "decision",
+          summary: "Does the Talent seeker pay for Emma Reach?",
+          lifecycle: "queued",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {},
+        },
+      ],
+      principals: [
+        { id: "principal_talent", name: "Talent seeker", lifecycle: "active" },
+        { id: "principal_torre", name: "Torre", lifecycle: "active" },
+      ],
+      users: [],
+      edges: [
+        edge("edge_REATTRIB_MEMBER", decisionId, processId, "member_of"),
+        // Retired attribution listed FIRST — what the pre-fix `[0]` pick lands on.
+        {
+          ...edge("edge_REATTRIB_OLD", decisionId, "principal_talent", "decided_by"),
+          lifecycle: "retired",
+        },
+        {
+          ...edge("edge_REATTRIB_NEW", decisionId, "principal_torre", "decided_by"),
+          lifecycle: "active",
+        },
+      ],
+    });
+
+    const graph = await loadProcessGraph(client, "doco_01", { handle: "emma-reach" });
+
+    expect(graph.nodes).toContainEqual(
+      expect.objectContaining({
+        id: decisionId,
+        laneId: `pool:${processId}::principal_torre`,
+      }),
+    );
+    // It must NOT land in the retired attribution's lane.
+    const decisionNode = graph.nodes.find((n) => n.id === decisionId);
+    expect(decisionNode?.laneId).not.toBe(`pool:${processId}::principal_talent`);
+  });
+
   it("loads every lifecycle so the client filter can reveal retired nodes", async () => {
     const processId = "action_01RETIRED";
     const firstId = "action_01RET_A";
