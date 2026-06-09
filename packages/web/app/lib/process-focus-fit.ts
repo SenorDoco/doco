@@ -58,34 +58,78 @@ export function processFocusFlowNodeId(
 }
 
 /**
- * The pool header the camera should re-frame when a process is *freshly
- * expanded* — drilling into a process from the overview, or the "View
- * subprocess" affordance opening a subprocess into its OWN pool.
+ * The pool header the camera should frame for a *drilled-in* process — picking
+ * a process from the overview, or the "View subprocess" affordance opening a
+ * subprocess into its OWN pool. The caller pairs this with the pool header →
+ * `processPoolFitNodeIds` so the whole pool (header + lanes) is framed.
  *
- * This is distinct from the one-shot initial/URL focus. That fit fires once
- * (per target, or once for the default browse) so a plain node click can't
- * yank the camera; but a deliberate drill-in is a "frame this pool" gesture
- * that must move the camera EVERY time, even after the default fit is spent.
- * The caller pairs this with the pool header → `processPoolFitNodeIds` so the
- * whole pool (header + lanes) is framed.
- *
- * Returns null when:
- *   • nothing is expanded (`expandedProcessId` is null) — camera stays put;
- *   • the expansion merely mirrors the current URL focus
- *     (`expandedProcessId === initialFocusId`) — the cold-open path already
- *     frames that pool, so re-fitting here would just double up;
- *   • the process heads no pool, or that pool's header isn't rendered yet —
- *     the caller retries once the layout catches up.
+ * Returns null when nothing is expanded (`expandedProcessId` is null), when the
+ * process heads no pool, or when that pool's header isn't rendered yet (the
+ * caller retries once the layout catches up).
  */
 export function processExpansionFitNodeId(
   expandedProcessId: string | null,
-  initialFocusId: string | null,
   poolIdByProcessId: ReadonlyMap<string, string>,
   renderedFlowNodeIds: ReadonlySet<string>,
 ): string | null {
-  if (!expandedProcessId || expandedProcessId === initialFocusId) return null;
+  if (!expandedProcessId) return null;
   const poolId = poolIdByProcessId.get(expandedProcessId);
   if (!poolId) return null;
   const headerId = `${POOL_HEADER_PREFIX}${poolId}`;
   return renderedFlowNodeIds.has(headerId) ? headerId : null;
+}
+
+/** What the BPMN camera should frame right now, plus a key identifying it. */
+export interface ProcessCameraFit {
+  /**
+   * Stable identity of the current camera target. The controller re-fits
+   * exactly when this changes from the last applied key, so navigating (home,
+   * a drill-in, a focus) re-frames while a plain re-render (pan/zoom, an
+   * unrelated state update) leaves it untouched.
+   */
+  key: string;
+  /** The flow node to frame, or null to fit the whole canvas (degenerate home). */
+  target: string | null;
+}
+
+/**
+ * The single camera rule for the BPMN perspective: what the viewport should
+ * frame right now. This collapses the four one-shot guards it replaces (mount /
+ * default / URL focus / expansion — each reset on a different navigation path,
+ * which is why Home-after-drill-in and revisiting a process used to skip the
+ * re-fit) into one keyed decision. The caller fits whenever `key` changes and
+ * never otherwise.
+ *
+ * Priority, highest first:
+ *   • home (the overview) — frame the whole synthetic top-level pool, or fit the
+ *     whole canvas when the Doco has no top-level pool to frame;
+ *   • a freshly drilled-in pool (`expandedPoolHeaderId`) — frame that pool, even
+ *     when no URL focus changed (overview → process is a focus-less drill-in);
+ *   • the URL / default focus node (`focusFlowNodeId`) — frame that node.
+ *
+ * A revalidation or lifecycle-filter change (`fitResetKey`) re-frames to the
+ * cold-start fit — but only while NOT holding a URL/agent focus (`urlFocused`),
+ * which must keep its framing. It folds into the same key, so the one rule
+ * covers it: when focused, the reset is invisible to the key.
+ *
+ * Returns null when nothing is laid out to frame yet — the caller retries once
+ * React Flow renders the target.
+ */
+export function processCameraFitTarget(input: {
+  homeMode: boolean;
+  homePoolHeaderId: string | null;
+  expandedPoolHeaderId: string | null;
+  focusFlowNodeId: string | null;
+  urlFocused: boolean;
+  fitResetKey?: string;
+}): ProcessCameraFit | null {
+  const reset = input.urlFocused ? "" : `|reset:${input.fitResetKey ?? ""}`;
+  if (input.homeMode) {
+    return {
+      key: `${input.homePoolHeaderId ?? "home:all"}${reset}`,
+      target: input.homePoolHeaderId,
+    };
+  }
+  const target = input.expandedPoolHeaderId ?? input.focusFlowNodeId;
+  return target ? { key: `${target}${reset}`, target } : null;
 }
