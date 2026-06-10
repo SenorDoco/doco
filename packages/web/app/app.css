@@ -684,6 +684,26 @@ button[class*="bg-primary"]:active {
   cursor: pointer;
 }
 
+/* Promote the React Flow canvas to its own GPU compositing layer.
+
+   Profiling a boxed perspective in Safari showed the pan is COMPOSITE-bound
+   (~550ms composite vs ~20ms style + ~34ms layout over a short drag), with the
+   `#document` layer repainting ~once per frame — i.e. the canvas's nodes/edges
+   paint into the base document layer, so every pan dirties it and forces the
+   compositor to re-blend the whole page (side panel, Señor Doco rail, node
+   dialog, frame chrome). Fullscreen avoids this by rendering only the canvas,
+   which is why it pans much smoother.
+
+   `translateZ(0)` gives `.react-flow` its own backing layer, so a pan repaints
+   only that layer instead of `#document`. We promote the CONTAINER (not the
+   inner `.react-flow__viewport`, which carries the zoom `scale`): the container
+   isn't scaled, so there's no GPU-bitmap-scaling text blur on zoom, and
+   `onlyRenderVisibleElements` keeps the painted area ~viewport-sized, so the
+   layer texture stays small (no giant-texture risk from the full graph extent). */
+.react-flow {
+  transform: translateZ(0);
+}
+
 /* Morphic styling for React Flow's top-right zoom-controls stack. True
    neumorphism — the panel uses the SAME colour as the page background
    and gets its "raised" feel entirely from the shadow + highlight pair,
