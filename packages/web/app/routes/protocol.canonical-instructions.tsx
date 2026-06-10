@@ -1,4 +1,4 @@
-// GET /protocol/canonical-instructions — the four-invariant agent
+// GET /protocol/canonical-instructions — the three-invariant agent
 // protocol every Doco-connected reply must follow.
 //
 // Served as text/markdown. Public; no auth. Replaces the MCP-resource
