@@ -37,9 +37,8 @@ import {
  *   /new-doco         Create the Doco
  *   /:handle/welcome  Key Doco concepts (Continue -> Doco home)
  *
- * The prior `/:handle/onboarding/agent` "Bootstrap and collaborate"
- * step was removed from the flow — its affordances (invite, API
- * keys) are reachable from the Doco home page directly.
+ * There's no separate "Bootstrap and collaborate" step — invite and
+ * API-key affordances are reachable from the Doco home page directly.
  */
 
 const DEFAULT_TEMPLATE_HANDLE = "generic";

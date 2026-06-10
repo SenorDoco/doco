@@ -27,7 +27,6 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /mentor/feedback               legacy redirect → /feedback
  *   /users/<username>              signed-in user's tiny profile placeholder
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
- *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   /by-id/:docoId                 Stable Doco-id redirect to the current handle
  *   (agent self-service: install the hosted MCP connector at /mcp; OAuth dance kicks off automatically)
@@ -135,8 +134,7 @@ export default [
   // (Recipe B). Public; served as text/markdown.
   route("protocol/agent-oauth-recipe", "routes/protocol.agent-oauth-recipe.tsx"),
   // Self-service create. The doco-create flow starts with one form,
-  // then continues under :docoHandle/welcome and
-  // :docoHandle/onboarding/agent.
+  // then continues under :docoHandle/welcome.
   route("new-doco", "routes/new-doco.tsx"),
   route("new-doco/template", "routes/new-doco.template.tsx"),
   route("new-workspace", "routes/new-workspace.tsx"),
@@ -328,7 +326,6 @@ export default [
   route(":docoHandle/graph-edge-details.json", "routes/$docoHandle.graph-edge-details[.]json.tsx"),
   route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
-  route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
   route(":docoHandle/rules/new", "routes/$docoHandle.rules.new.tsx"),
   // Edges — Doco's relationships are rows in the `edges`
   // table. The list view is one row per

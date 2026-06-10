@@ -972,20 +972,6 @@ export async function loadDocoRouteForAdmin(
   return { ...route, ...loaded };
 }
 
-export async function loadPostCreateDocoRouteForAdmin(
-  request: Request,
-  params: DocoRouteParams,
-): Promise<LoadedPostCreateDocoRoute> {
-  const createdDocoId = readCreatedDocoIdSearchParam(request);
-  const routeParam = createdDocoId ?? readDocoRouteParam(params);
-  if (!routeParam) {
-    throw notFoundForAccessDenied("", "");
-  }
-  const loaded = await loadDocoForAdmin(request, routeParam);
-  const route = loadedDocoRouteFields(loaded);
-  return { ...route, ...loaded, createdDocoId };
-}
-
 /**
  * If the request is authenticated via an OAuth access token, the
  * token must grant access to this Doco — either:

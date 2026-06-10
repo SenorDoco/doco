@@ -11,9 +11,8 @@ import { withCreatedDocoId } from "~/lib/post-create-doco-route";
  *
  * Reached after Step 1 creates the doco. Introduces the core Doco
  * concepts; the Continue button then drops the user straight on the
- * Doco home page (the prior `/onboarding/agent` "Bootstrap and
- * collaborate" step was removed since its affordances are reachable
- * from the doco page itself).
+ * Doco home page (there's no separate bootstrap step — its invite and
+ * token affordances are reachable from the doco page itself).
  */
 
 export async function loader({
@@ -46,13 +45,11 @@ export default function NewDocoStep4({
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
   const { me, handle, ownerSlug, createdDocoId } = loaderData;
-  // Continue lands the user on the doco home. The old
-  // /:handle/onboarding/agent step ("Bootstrap and collaborate")
-  // duplicated affordances now reachable from the doco page itself
-  // (users link + API keys link), so it was removed from
-  // the post-create flow. createdDocoId stays in the URL so the
-  // Doco page can highlight the just-created Doco in any "recent"
-  // surfaces.
+  // Continue lands the user on the doco home. There's no separate
+  // bootstrap step — the invite + API-key affordances it used to
+  // carry are reachable from the doco page itself. createdDocoId
+  // stays in the URL so the Doco page can highlight the just-created
+  // Doco in any "recent" surfaces.
   const docoHomePath = createdDocoId
     ? withCreatedDocoId(`/${handle}`, createdDocoId)
     : `/${handle}`;

@@ -84,7 +84,7 @@ const STEPS: ReadonlyArray<{ n: string; title: string; body: string }> = [
   {
     n: "1",
     title: "Connect",
-    body: "Run the connect wizard and Doco commits a few files so every teammate and agent finds the same memory.",
+    body: "Add Doco's hosted MCP connector to your agents and invite your teammates — everyone shares the same memory, no install.",
   },
   {
     n: "2",
