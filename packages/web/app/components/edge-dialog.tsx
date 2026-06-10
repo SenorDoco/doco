@@ -17,7 +17,7 @@ interface EdgeDialogProps {
   lifecycleError: string | null;
   onClose: () => void;
   onLifecycleChange: (stage: EdgeLifecycleStage) => void;
-  onOpenNode: (entityType: string, id: string, href: string) => void;
+  onOpenNode: (nodeType: string, id: string, href: string) => void;
 }
 
 function lifecycleButtonClass(
@@ -113,16 +113,12 @@ function EndpointRow({
     <button
       type="button"
       className="block w-full rounded-md border border-border bg-card px-3 py-2 text-left hover:bg-input/30"
-      onClick={() => onOpenNode(endpoint.entity_type, endpoint.id, endpoint.href)}
+      onClick={() => onOpenNode(endpoint.node_type, endpoint.id, endpoint.href)}
     >
       <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
         <span className="font-semibold uppercase">{label}</span>
         <span className="inline-flex items-center gap-1">
-          <TypeBadge
-            entityType={endpoint.entity_type}
-            lifecycle={endpoint.lifecycle}
-            anchor="inline"
-          />
+          <TypeBadge nodeType={endpoint.node_type} lifecycle={endpoint.lifecycle} anchor="inline" />
           <LifecycleBadge lifecycle={endpoint.lifecycle} anchor="inline" />
         </span>
       </div>

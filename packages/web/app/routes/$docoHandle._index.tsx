@@ -171,10 +171,10 @@ export async function loader({
     typeof params.type === "string" ? normalizeNodeType(params.type) : null;
   const requestedNode =
     requestedEntityType && typeof params.id === "string"
-      ? { entityType: requestedEntityType, id: params.id }
+      ? { nodeType: requestedEntityType, id: params.id }
       : null;
   const requestedEdgeId = typeof params.edgeKey === "string" ? params.edgeKey : null;
-  if (requestedNode && !isGraphNodeType(requestedNode.entityType)) {
+  if (requestedNode && !isGraphNodeType(requestedNode.nodeType)) {
     throw new Response("Unknown node type", { status: 404 });
   }
   if (typeof params.type === "string" && typeof params.id === "string" && !requestedNode) {
@@ -309,7 +309,7 @@ export async function loader({
     const selectedNode = requestedNode
       ? await loadNodeDialogDetail(c, ctx.meta, {
           handle,
-          entityType: requestedNode.entityType,
+          nodeType: requestedNode.nodeType,
           id: requestedNode.id,
           principalId: me?.id ?? null,
         })
@@ -429,15 +429,15 @@ export async function loader({
 
 function allNodesSearchPath(handle: string): string {
   const params = new URLSearchParams();
-  params.set("entity_type", "*");
+  params.set("node_type", "*");
   params.set("lifecycle", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
 }
 
-function nodeTypeSearchPath(handle: string, entityType: string): string {
+function nodeTypeSearchPath(handle: string, nodeType: string): string {
   const params = new URLSearchParams();
-  params.set("entity_type", entityType);
+  params.set("node_type", nodeType);
   params.set("lifecycle", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
@@ -971,7 +971,7 @@ export default function DocoHome({
 
   const loadNodeDialog = useCallback(
     async (
-      entityType: string,
+      nodeType: string,
       id: string,
       href: string,
       options: {
@@ -990,7 +990,7 @@ export default function DocoHome({
           pushView({
             perspective: activeSlug,
             expandedProcessId: expandedProcessIdRef.current,
-            overlay: { kind: "node", entityType, id, href },
+            overlay: { kind: "node", nodeType, id, href },
           });
         }
         setEdgeDialog(null);
@@ -1004,7 +1004,7 @@ export default function DocoHome({
       }
       try {
         const detailUrl = new URL(`/${handle}/graph-node-details.json`, window.location.origin);
-        detailUrl.searchParams.set("type", entityType);
+        detailUrl.searchParams.set("type", nodeType);
         detailUrl.searchParams.set("id", id);
         const res = await fetch(detailUrl.toString(), {
           headers: { Accept: "application/json" },
@@ -1114,7 +1114,7 @@ export default function DocoHome({
     if (prev !== "loading" || revalidator.state !== "idle") return;
     const nd = nodeDialogRef.current;
     if (nd?.detail && !nd.loading) {
-      void loadNodeDialog(nd.detail.entity_type, nd.detail.id, nd.detail.href, {
+      void loadNodeDialog(nd.detail.node_type, nd.detail.id, nd.detail.href, {
         pushUrl: false,
         silent: true,
       });
@@ -1136,8 +1136,8 @@ export default function DocoHome({
 
   const handleGraphNodeClick = useCallback(
     (node: OverviewGraphNode) => {
-      const href = node.href ?? `/${handle}/${node.entity_type}/${node.id}`;
-      void loadNodeDialog(node.entity_type, node.id, href);
+      const href = node.href ?? `/${handle}/${node.node_type}/${node.id}`;
+      void loadNodeDialog(node.node_type, node.id, href);
     },
     [handle, loadNodeDialog],
   );
@@ -1161,7 +1161,7 @@ export default function DocoHome({
       // pool; every other restored stage is a focused one.
       setProcessHome(view.overlay.kind === "none" && view.expandedProcessId === null);
       if (view.overlay.kind === "node") {
-        void loadNodeDialog(view.overlay.entityType, view.overlay.id, view.overlay.href, {
+        void loadNodeDialog(view.overlay.nodeType, view.overlay.id, view.overlay.href, {
           pushUrl: false,
           focusPerspective: true,
         });
@@ -1303,7 +1303,7 @@ export default function DocoHome({
               }
             : prev,
         );
-        await loadNodeDialog(detail.entity_type, detail.id, detail.href, {
+        await loadNodeDialog(detail.node_type, detail.id, detail.href, {
           pushUrl: false,
           keepDetail: true,
         });
@@ -1379,11 +1379,11 @@ export default function DocoHome({
   const sections: NodesOverviewSection[] = [
     {
       title: "Node types",
-      items: facets.entityType.map((t) => ({
+      items: facets.nodeType.map((t) => ({
         key: `type-${t.value}`,
         href: nodeTypeSearchPath(handle, t.value),
         label: nodeTypeLabel(t.value),
-        icon: <NodeTypeIcon entityType={t.value} />,
+        icon: <NodeTypeIcon nodeType={t.value} />,
         count: t.count,
         counts: t.counts,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
@@ -1421,8 +1421,8 @@ export default function DocoHome({
         lifecycleError={lifecycleError}
         onClose={closeOverlay}
         onLifecycleChange={handleLifecycleChange}
-        onOpenNode={(entityType, id, href) => {
-          void loadNodeDialog(entityType, id, href, { focusPerspective: true });
+        onOpenNode={(nodeType, id, href) => {
+          void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
         }}
         onOpenEdge={(edge) => {
           void loadEdgeDialog(edge);
@@ -1437,8 +1437,8 @@ export default function DocoHome({
         lifecycleError={edgeLifecycleError}
         onClose={closeOverlay}
         onLifecycleChange={handleEdgeLifecycleChange}
-        onOpenNode={(entityType, id, href) => {
-          void loadNodeDialog(entityType, id, href, { focusPerspective: true });
+        onOpenNode={(nodeType, id, href) => {
+          void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
         }}
       />
     ) : null;
@@ -1565,7 +1565,7 @@ export default function DocoHome({
                     focusId={perspectiveFocusId}
                     onOpenNode={(entry) => {
                       void loadNodeDialog(
-                        entry.entityType,
+                        entry.nodeType,
                         entry.id,
                         withPerspectiveParam(entry.href, activeSlug),
                       );
@@ -1620,9 +1620,9 @@ export default function DocoHome({
                     onEdgeClick={handleGraphEdgeClick}
                     onNodeClick={(node) => {
                       void loadNodeDialog(
-                        node.entity_type,
+                        node.node_type,
                         node.id,
-                        node.href ?? `/${handle}/${node.entity_type}/${node.id}`,
+                        node.href ?? `/${handle}/${node.node_type}/${node.id}`,
                       );
                     }}
                     onPoolClick={(pool) => {
@@ -1677,8 +1677,8 @@ export default function DocoHome({
                       lifecycleError={lifecycleError}
                       onClose={closeOverlay}
                       onLifecycleChange={handleLifecycleChange}
-                      onOpenNode={(entityType, id, href) => {
-                        void loadNodeDialog(entityType, id, href, { focusPerspective: true });
+                      onOpenNode={(nodeType, id, href) => {
+                        void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
                       }}
                       onOpenEdge={(edge) => {
                         void loadEdgeDialog(edge);
@@ -1693,8 +1693,8 @@ export default function DocoHome({
                       lifecycleError={edgeLifecycleError}
                       onClose={closeOverlay}
                       onLifecycleChange={handleEdgeLifecycleChange}
-                      onOpenNode={(entityType, id, href) => {
-                        void loadNodeDialog(entityType, id, href, { focusPerspective: true });
+                      onOpenNode={(nodeType, id, href) => {
+                        void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
                       }}
                     />
                   ) : null}

@@ -26,21 +26,21 @@ export interface RegistryEntry {
   build: () => ReturnType<typeof makeCaptureRoute<unknown>>;
   /** Plural url segment (e.g. "actions"). */
   type: string;
-  /** Singular entity_type used by the storage layer (e.g. "action"). */
-  entityType: string;
+  /** Singular node_type used by the storage layer (e.g. "action"). */
+  nodeType: string;
   captureFn: ErasedCaptureFn;
   fillFromAuth?: (draft: unknown, me: MeLike, docoId: string) => Promise<void> | void;
 }
 
 function entry<TDraft>(
-  entityType: string,
+  nodeType: string,
   captureFn: Parameters<typeof makeCaptureRoute<TDraft>>[0]["captureFn"],
   fillFromAuth?: (draft: TDraft, me: MeLike, docoId: string) => Promise<void> | void,
 ): RegistryEntry {
-  const type = NODE_CATALOG[entityType as keyof typeof NODE_CATALOG]?.segment ?? `${entityType}s`;
+  const type = NODE_CATALOG[nodeType as keyof typeof NODE_CATALOG]?.segment ?? `${nodeType}s`;
   return {
     type,
-    entityType,
+    nodeType,
     captureFn: (docoDir, docoId, ownerSlug, docoSlug, draft, docoHost, authoring) =>
       captureFn(docoDir, docoId, ownerSlug, docoSlug, draft as TDraft, docoHost, authoring),
     ...(fillFromAuth
@@ -52,7 +52,7 @@ function entry<TDraft>(
     build: () =>
       makeCaptureRoute<TDraft>({
         type,
-        entityType,
+        nodeType,
         captureFn,
         ...(fillFromAuth ? { fillFromAuth } : {}),
       }) as unknown as ReturnType<typeof makeCaptureRoute<unknown>>,
@@ -62,19 +62,19 @@ function entry<TDraft>(
 /**
  * Generic node-capture entry: every generic node type routes through the
  * single `captureGenericNode` writer (node-shape slim-down), bound to its
- * entity_type. No per-type capture function — the API exposes the row
+ * node_type. No per-type capture function — the API exposes the row
  * schema (`{prose, kind?, extra}`) directly.
  */
-function genericEntry(entityType: string): RegistryEntry {
+function genericEntry(nodeType: string): RegistryEntry {
   return entry<GenericNodeDraft>(
-    entityType,
+    nodeType,
     (docoDir, docoId, ownerSlug, docoSlug, draft, docoHost, authoring) =>
       captureGenericNode(
         docoDir,
         docoId,
         ownerSlug,
         docoSlug,
-        entityType,
+        nodeType,
         draft,
         docoHost,
         authoring,
@@ -87,8 +87,8 @@ function genericEntry(entityType: string): RegistryEntry {
 // wired here automatically, so adding one to NODE_CATALOG (capture:
 // "generic") lights up its capture route + changeset/contract coverage.
 export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = Object.fromEntries(
-  GENERIC_CAPTURE_NODE_TYPES.map((entityType) => {
-    const e = genericEntry(entityType);
+  GENERIC_CAPTURE_NODE_TYPES.map((nodeType) => {
+    const e = genericEntry(nodeType);
     return [e.type, e];
   }),
 );
@@ -98,7 +98,7 @@ export const CAPTURE_REGISTRY: Record<string, RegistryEntry> = Object.fromEntrie
 // captureFn instead of a generic one. Kept separate from CAPTURE_REGISTRY so the
 // generic /<doco>/api/<type>.json route stays generic-only — these have their
 // own bespoke route — while still being first-class everywhere that authors by
-// entity_type (changeset, the authoring contract). Same CaptureFn contract, so
+// node_type (changeset, the authoring contract). Same CaptureFn contract, so
 // nothing downstream special-cases them.
 export const BESPOKE_CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   principals: entry<PrincipalDraft>("principal", capturePrincipal),
@@ -109,7 +109,7 @@ export const BESPOKE_CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
 // bespoke type can't silently fall out (guarded by node-type-capture-coverage).
 export const CAPTURE_REGISTRY_BY_NODE_TYPE: Record<string, RegistryEntry> = Object.fromEntries(
   [...Object.values(CAPTURE_REGISTRY), ...Object.values(BESPOKE_CAPTURE_REGISTRY)].map((entry) => [
-    entry.entityType,
+    entry.nodeType,
     entry,
   ]),
 );

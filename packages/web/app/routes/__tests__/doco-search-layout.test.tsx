@@ -22,7 +22,7 @@ function renderSearch(): string {
     hits: [
       {
         id: "principal_01KT7NYEQ8MR0017DCHT02K8RD",
-        entity_type: "principal",
+        node_type: "principal",
         lifecycle: "active",
         vector_score: 0.4013,
         gpr: 0.0011,
@@ -37,10 +37,10 @@ function renderSearch(): string {
     handle: "acme/hiring",
     host: {},
     me: null,
-    filters: { lifecycle: ["active"], entityType: null, limit: 100 },
+    filters: { lifecycle: ["active"], nodeType: null, limit: 100 },
     facets: {
       lifecycle: [{ value: "active", count: 11, updatedAt: null }],
-      entityType: [
+      nodeType: [
         { value: "principal", count: 10, updatedAt: null },
         { value: "rule", count: 1, updatedAt: null },
       ],

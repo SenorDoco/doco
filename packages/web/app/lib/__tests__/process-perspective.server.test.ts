@@ -89,7 +89,7 @@ function processNode(
   lifecycle = "active",
   at = "2026-05-26T00:00:00.000Z",
 ) {
-  return { id, entity_type: "action", summary, lifecycle, created_at: at, data: {} };
+  return { id, node_type: "action", summary, lifecycle, created_at: at, data: {} };
 }
 
 describe("cross-pool neighbours feed computeExternalNeighbours (real loader output)", () => {
@@ -288,7 +288,7 @@ describe("loadProcessGraph", () => {
         processNode("action_GATE", "Branch on seniority", "active", "2026-05-26T00:03:00.000Z"),
         {
           id: "decision_DGATE",
-          entity_type: "decision",
+          node_type: "decision",
           summary: "Senior?",
           lifecycle: "active",
           created_at: "2026-05-26T00:04:00.000Z",
@@ -380,7 +380,7 @@ describe("loadProcessGraph", () => {
         processNode(processId, "Verify the user"),
         {
           id: decisionId,
-          entity_type: "decision",
+          node_type: "decision",
           summary: "Is the user verified?",
           lifecycle: "active",
           created_at: "2026-05-26T00:01:00.000Z",
@@ -427,7 +427,7 @@ describe("loadProcessGraph", () => {
         processNode(processId, "Sell Emma Reach"),
         {
           id: decisionId,
-          entity_type: "decision",
+          node_type: "decision",
           summary: "Does the Talent seeker pay for Emma Reach?",
           lifecycle: "queued",
           created_at: "2026-05-26T00:01:00.000Z",
@@ -520,7 +520,7 @@ describe("loadProcessGraph", () => {
         processNode(processId, "Talent seeker pays to activate Torre Reach", "drafting"),
         {
           id: "decision_01CREDITS",
-          entity_type: "decision",
+          node_type: "decision",
           summary: "Does the user have Reach credits?",
           lifecycle: "drafting",
           created_at: "2026-05-26T00:01:00.000Z",
@@ -528,7 +528,7 @@ describe("loadProcessGraph", () => {
         },
         {
           id: stateId,
-          entity_type: "state",
+          node_type: "state",
           summary: "Process started",
           lifecycle: "active",
           created_at: "2026-05-26T00:02:00.000Z",
@@ -580,7 +580,7 @@ describe("loadProcessGraph", () => {
         processNode(processId, "Route yes/no process"),
         {
           id: decisionId,
-          entity_type: "decision",
+          node_type: "decision",
           summary: "Does the user qualify?",
           lifecycle: "active",
           created_at: "2026-05-26T00:01:00.000Z",
@@ -743,7 +743,7 @@ describe("loadProcessGraph", () => {
         processNode(processId, "Talent seeker pays to activate Torre Reach"),
         {
           id: decisionId,
-          entity_type: "decision",
+          node_type: "decision",
           summary: "Are credits enough for the first day?",
           lifecycle: "active",
           created_at: "2026-05-26T00:07:00.000Z",
@@ -824,7 +824,7 @@ describe("loadProcessGraph", () => {
         processNode(memberId, "Do the thing", "active", "2026-05-26T00:01:00.000Z"),
         {
           id: referenceId,
-          entity_type: "reference",
+          node_type: "reference",
           summary: "Background doc",
           lifecycle: "active",
           created_at: "2026-05-26T00:02:00.000Z",
@@ -843,7 +843,7 @@ describe("loadProcessGraph", () => {
     const graph = await loadProcessGraph(client, "doco_01", { handle: "proc" });
 
     expect(graph.nodes.map((n) => n.id)).toContain(memberId);
-    expect(graph.nodes.map((n) => n.entity_type)).not.toContain("reference");
+    expect(graph.nodes.map((n) => n.node_type)).not.toContain("reference");
     expect(graph.nodes.map((n) => n.id)).not.toContain(referenceId);
     expect(graph.links.some((l) => l.source === referenceId || l.target === referenceId)).toBe(
       false,
@@ -873,7 +873,7 @@ describe("loadProcessGraph", () => {
         // own and falls to Unassigned.
         {
           id: "decision_01ORPHAN",
-          entity_type: "decision",
+          node_type: "decision",
           summary: "Dangling gateway",
           lifecycle: "drafting",
           created_at: "2026-05-26T00:03:00.000Z",
@@ -957,7 +957,7 @@ describe("loadProcessGraph", () => {
     expect(graph.nodes).toContainEqual(
       expect.objectContaining({
         id: "action_top",
-        entity_type: "action",
+        node_type: "action",
         shape: "task",
         pool_id: "pool:top-level",
         laneId: "pool:top-level::principal_recruiter",

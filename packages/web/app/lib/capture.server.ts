@@ -45,7 +45,6 @@ import { type AuthoringResult, runAuthoringPolicies } from "./authoring-runner.s
 const SYSTEM_MANAGED_FIELDS: ReadonlySet<string> = new Set([
   "id",
   "doco_id",
-  "entity_type",
   "node_type",
   "created_at",
   "created_by",
@@ -108,7 +107,7 @@ async function enforceAuthoringPolicies(
 async function enforceAndPersist(args: {
   docoId: string;
   fm: Record<string, unknown>;
-  entityType: string;
+  nodeType: string;
   id: string;
   authoring?: AuthoringWriteContext;
 }): Promise<AuthoringResult> {
@@ -116,7 +115,7 @@ async function enforceAndPersist(args: {
     const pred = await enforceAuthoringPolicies(args.docoId, args.fm, c);
     if (pred.blocking) return pred;
     await persistEntity({
-      entityType: args.entityType,
+      nodeType: args.nodeType,
       id: args.id,
       docoId: args.docoId,
       fm: args.fm,
@@ -180,18 +179,18 @@ export function appendOperationTiming(
  * storage; there is no on-disk file. Callers (footer renderer, CLI)
  * already key off the entity URL, not this string.
  */
-function syntheticPath(entityType: string, id: string): string {
-  return `<postgres>:${entityType}s/${id}`;
+function syntheticPath(nodeType: string, id: string): string {
+  return `<postgres>:${nodeType}s/${id}`;
 }
 
 /**
  * Read an existing entity's parsed frontmatter from Postgres.
  */
 async function readEntityFromPostgres(
-  entityType: string,
+  nodeType: string,
   id: string,
 ): Promise<{ fm: Record<string, unknown> } | null> {
-  const rec = await getEntity(entityType, id);
+  const rec = await getEntity(nodeType, id);
   if (!rec) return null;
   // Flatten the honest node row into the mutable working bag the update path
   // patches and re-persists. (This bag is local to the update algorithm — the
@@ -223,7 +222,7 @@ async function readEntityFromPostgres(
  * reindex would race the upsert and may not see the new row.
  */
 async function persistEntity(args: {
-  entityType: string;
+  nodeType: string;
   id: string;
   docoId: string;
   fm: Record<string, unknown>;
@@ -238,7 +237,7 @@ async function persistEntity(args: {
     // Two honest writers, one per category — no generic `EntityRecord` envelope.
     // A policy keeps its real `policies.data` jsonb; every node type splits its
     // captured field bag into the typed `NodeRow` at the one write boundary.
-    if (args.entityType === "policy") {
+    if (args.nodeType === "policy") {
       await upsertPolicy(
         {
           id: args.id,
@@ -254,7 +253,7 @@ async function persistEntity(args: {
       );
     } else {
       await upsertNode(
-        nodeRowFromFields(args.entityType, { ...fm, id: args.id, doco_id: args.docoId }),
+        nodeRowFromFields(args.nodeType, { ...fm, id: args.id, doco_id: args.docoId }),
         args.client,
       );
     }
@@ -267,7 +266,7 @@ async function persistEntity(args: {
     const recordVersion = (c: PoolClient) =>
       recordEntityVersion(c, {
         docoId: args.docoId,
-        entityType: args.entityType,
+        entityType: args.nodeType,
         entityId: args.id,
         payload: fm,
         actor: versionActor,
@@ -277,7 +276,7 @@ async function persistEntity(args: {
     if (args.client) await recordVersion(args.client);
     else await withClient(recordVersion);
   } catch (err) {
-    console.error(`postgres persist failed for ${args.entityType}/${args.id}:`, err);
+    console.error(`postgres persist failed for ${args.nodeType}/${args.id}:`, err);
     throw err;
   } finally {
     recordPhase("persist_ms", performance.now() - start);
@@ -381,7 +380,7 @@ const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
 /**
  * Envelope keys on a `GenericNodeDraft` that the generic capture path
  * consumes itself — they must never be folded into the `extra` bag.
- * (The legacy type-named prose key is excluded separately, by entityType.)
+ * (The legacy type-named prose key is excluded separately, by nodeType.)
  */
 const RESERVED_DRAFT_KEYS: ReadonlySet<string> = new Set([
   "prose",
@@ -562,7 +561,7 @@ export async function renderOperationLines(opts: {
    * the handle differs from `<owner>-<slug>` (e.g., custom requested_id).
    */
   docoId?: string;
-  entityType: string;
+  nodeType: string;
   /** Entity ULID id — used to build the markdown link URL. */
   id: string;
   /**
@@ -581,7 +580,7 @@ export async function renderOperationLines(opts: {
   duration_ms?: number;
   authoringPoliciesPassed?: number;
 }): Promise<string[]> {
-  const Type = capType(opts.entityType);
+  const Type = capType(opts.nodeType);
   // Every Doco URL is `/<handle>/...`. Use the explicit handle when
   // given; otherwise look it up by docoId; otherwise fall back to the
   // historical `<owner>-<slug>` synthesis used by old call sites.
@@ -597,7 +596,7 @@ export async function renderOperationLines(opts: {
   // Policies are not nodes: their page lives at the plural `/policies/<id>`,
   // not the generic `/<type>/<id>` node route (which 404s for `policy`). Every
   // other entity type maps straight to its singular segment.
-  const entitySegment = opts.entityType === "policy" ? "policies" : opts.entityType;
+  const entitySegment = opts.nodeType === "policy" ? "policies" : opts.nodeType;
   const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${entitySegment}/${opts.id}` : null;
   const buildAnchor = (labelForLine: string): string => {
     const text = trunc(labelForLine);
@@ -889,7 +888,7 @@ async function finishNodeCapture(args: {
   ownerSlug: string;
   docoSlug: string;
   docoHost?: string;
-  entityType: string;
+  nodeType: string;
   id: string;
   label: string;
   fm: Record<string, unknown>;
@@ -903,14 +902,14 @@ async function finishNodeCapture(args: {
     ownerSlug,
     docoSlug,
     docoHost,
-    entityType,
+    nodeType,
     id,
     label,
     fm,
     createdById,
     authoring,
   } = args;
-  const pred = await enforceAndPersist({ docoId, fm, entityType, id, authoring });
+  const pred = await enforceAndPersist({ docoId, fm, nodeType, id, authoring });
   if (pred.blocking) {
     return {
       error: `Authoring policy violation: ${pred.blocking.reason}`,
@@ -922,7 +921,7 @@ async function finishNodeCapture(args: {
     docoDir,
     docoId,
     actorId: createdById ?? null,
-    entity_type: entityType,
+    entity_type: nodeType,
     entity_id: id,
     label,
   });
@@ -932,7 +931,7 @@ async function finishNodeCapture(args: {
     docoId,
     ownerSlug,
     docoSlug,
-    entityType,
+    nodeType,
     id,
     label,
     docoHost,
@@ -944,7 +943,7 @@ async function finishNodeCapture(args: {
   return {
     ok: true,
     id,
-    path: syntheticPath(entityType, id),
+    path: syntheticPath(nodeType, id),
     footer_lines,
     duration_ms,
     ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
@@ -988,8 +987,8 @@ export interface GenericNodeDraft {
  * Actions/Logs default to `retired` and Ideas to `drafting`. A type the
  * schema doesn't list (none today) falls back to `active`.
  */
-function defaultLifecycleForType(entityType: string): string {
-  return CAPTURE_SCHEMAS[entityType as keyof typeof CAPTURE_SCHEMAS]?.defaultLifecycle ?? "active";
+function defaultLifecycleForType(nodeType: string): string {
+  return CAPTURE_SCHEMAS[nodeType as keyof typeof CAPTURE_SCHEMAS]?.defaultLifecycle ?? "active";
 }
 
 /**
@@ -997,8 +996,8 @@ function defaultLifecycleForType(entityType: string): string {
  * `succeeded` outcome — a capture usually records work already done.
  * (Driven by the schema's default lifecycle, not a per-type branch.)
  */
-function defaultOutcomeForType(entityType: string): "succeeded" | undefined {
-  return STRUCK_LIFECYCLES.has(defaultLifecycleForType(entityType)) ? "succeeded" : undefined;
+function defaultOutcomeForType(nodeType: string): "succeeded" | undefined {
+  return STRUCK_LIFECYCLES.has(defaultLifecycleForType(nodeType)) ? "succeeded" : undefined;
 }
 
 /**
@@ -1013,7 +1012,7 @@ export async function captureGenericNode(
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  entityType: string,
+  nodeType: string,
   draft: GenericNodeDraft,
   docoHost?: string,
   authoring?: AuthoringWriteContext,
@@ -1034,7 +1033,7 @@ export async function captureGenericNode(
     Object.assign(extra, nested);
   }
   for (const [k, v] of Object.entries(draft)) {
-    if (RESERVED_DRAFT_KEYS.has(k) || k === entityType) continue;
+    if (RESERVED_DRAFT_KEYS.has(k) || k === nodeType) continue;
     extra[k] = v;
   }
 
@@ -1043,7 +1042,7 @@ export async function captureGenericNode(
     rejectNodeJsonEdgeKeys(draft as Record<string, unknown>) ?? rejectNodeJsonEdgeKeys(extra);
   if (edgeKeyError) return edgeKeyError;
 
-  const id = `${entityType}_${generateUlid()}`;
+  const id = `${nodeType}_${generateUlid()}`;
   const label = firstLine(prose);
   const now = new Date().toISOString();
 
@@ -1052,15 +1051,15 @@ export async function captureGenericNode(
 
   const status = lifecycleAttrs(
     draft,
-    await resolveDefaultLifecycle(docoId, defaultLifecycleForType(entityType)),
-    defaultOutcomeForType(entityType),
+    await resolveDefaultLifecycle(docoId, defaultLifecycleForType(nodeType)),
+    defaultOutcomeForType(nodeType),
   );
   if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: entityType,
+    node_type: nodeType,
     // The node's text has one canonical name — `prose` — matching the `prose`
     // column storage promotes it to and the key every authoring-policy spec
     // reads. No type-named key.
@@ -1082,7 +1081,7 @@ export async function captureGenericNode(
     ownerSlug,
     docoSlug,
     docoHost,
-    entityType,
+    nodeType,
     id,
     label,
     fm,
@@ -1181,7 +1180,7 @@ export async function updateDecision(
   const pred = await enforceAndPersist({
     docoId,
     fm,
-    entityType: "decision",
+    nodeType: "decision",
     id: decisionId,
     authoring,
   });
@@ -1210,7 +1209,7 @@ export async function updateDecision(
     docoId,
     ownerSlug,
     docoSlug,
-    entityType: "decision",
+    nodeType: "decision",
     id: decisionId,
     label,
     docoHost,
@@ -1254,7 +1253,7 @@ export async function updateEntity(opts: {
   docoId: string;
   ownerSlug: string;
   docoSlug: string;
-  entityType: NodeTypeName;
+  nodeType: NodeTypeName;
   pluralDir: string;
   id: string;
   patch: EntityPatch;
@@ -1276,7 +1275,7 @@ export async function updateEntity(opts: {
     docoId,
     ownerSlug,
     docoSlug,
-    entityType,
+    nodeType,
     id,
     patch,
     docoHost,
@@ -1284,8 +1283,8 @@ export async function updateEntity(opts: {
     authoring,
   } = opts;
 
-  const existing = await readEntityFromPostgres(entityType, id);
-  if (!existing) return { error: `${entityType} not found: ${id}` };
+  const existing = await readEntityFromPostgres(nodeType, id);
+  if (!existing) return { error: `${nodeType} not found: ${id}` };
   const fm = existing.fm;
   const normalizedPatch = patch;
   const nodeJsonEdgeKeyError = rejectNodeJsonEdgeKeys(patch);
@@ -1293,7 +1292,7 @@ export async function updateEntity(opts: {
   // Every node carries its text in the single `prose` column (the
   // typeNamedColumn). Policies carry no type-named prose column — their
   // structured fields flow through the generic data-jsonb loop below.
-  const typeNamedColumn = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
+  const typeNamedColumn = ALL_ENTITY_TABLES[nodeType]?.typeNamedColumn;
 
   // Snapshot pre-mutation values for the audit log.
   const beforeFm: Record<string, unknown> = { ...fm };
@@ -1399,7 +1398,7 @@ export async function updateEntity(opts: {
   const pred = await enforceAndPersist({
     docoId,
     fm,
-    entityType,
+    nodeType,
     id,
     authoring,
   });
@@ -1414,7 +1413,7 @@ export async function updateEntity(opts: {
     docoDir,
     docoId,
     actorId: actorId ?? null,
-    entity_type: entityType,
+    entity_type: nodeType,
     entity_id: id,
     changed,
     beforeFm,
@@ -1431,7 +1430,7 @@ export async function updateEntity(opts: {
     docoId,
     ownerSlug,
     docoSlug,
-    entityType,
+    nodeType,
     id,
     label,
     docoHost,
@@ -1443,7 +1442,7 @@ export async function updateEntity(opts: {
   return {
     ok: true,
     id,
-    path: syntheticPath(entityType, id),
+    path: syntheticPath(nodeType, id),
     footer_lines,
     changed,
     duration_ms,
@@ -1576,7 +1575,7 @@ export interface PolicyCaptureExtras {
 
 interface PolicyPayload {
   id: string;
-  entityType: "policy";
+  nodeType: "policy";
   /** Human label derived from the predicate — used in audit + footer surfaces. */
   label: string;
   lifecycle: string;
@@ -1661,7 +1660,7 @@ async function buildPolicyPayload(
 
   return {
     id,
-    entityType: "policy",
+    nodeType: "policy",
     label: summarizePredicate(predicate),
     lifecycle,
     fm,
@@ -1687,7 +1686,7 @@ export async function capturePolicy(
   const pred = await enforceAndPersist({
     docoId,
     fm: payload.fm,
-    entityType: payload.entityType,
+    nodeType: payload.nodeType,
     id: payload.id,
     authoring: extras.authoring,
   });
@@ -1702,7 +1701,7 @@ export async function capturePolicy(
     docoDir,
     docoId,
     actorId: payload.createdById,
-    entity_type: payload.entityType,
+    entity_type: payload.nodeType,
     entity_id: payload.id,
     label: payload.label,
   });
@@ -1713,7 +1712,7 @@ export async function capturePolicy(
     docoId,
     ownerSlug,
     docoSlug,
-    entityType: payload.entityType,
+    nodeType: payload.nodeType,
     id: payload.id,
     label: payload.label,
     docoHost,
@@ -1725,7 +1724,7 @@ export async function capturePolicy(
   return {
     ok: true,
     id: payload.id,
-    path: syntheticPath(payload.entityType, payload.id),
+    path: syntheticPath(payload.nodeType, payload.id),
     footer_lines,
     duration_ms,
     ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),

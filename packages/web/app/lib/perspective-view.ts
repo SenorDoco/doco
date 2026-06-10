@@ -24,7 +24,7 @@
 export interface NodeOverlay {
   kind: "node";
   /** Entity-type URL segment (decision, intent, principal, action, …). */
-  entityType: string;
+  nodeType: string;
   id: string;
   /** Detail-fetch href the overlay re-loads from when restored. */
   href: string;
@@ -87,7 +87,7 @@ export function perspectiveViewUrl(handle: string, view: PerspectiveView): strin
 
   let path = base;
   if (view.overlay.kind === "node") {
-    path = `${base}/${view.overlay.entityType}/${view.overlay.id}`;
+    path = `${base}/${view.overlay.nodeType}/${view.overlay.id}`;
   } else if (view.overlay.kind === "edge") {
     path = `${base}/edges/${view.overlay.id}`;
   } else if (view.expandedProcessId) {
@@ -110,14 +110,10 @@ function readOverlay(value: unknown): Overlay | null {
   const o = value as Record<string, unknown>;
   if (o.kind === "none") return { kind: "none" };
   if (o.kind === "node") {
-    if (
-      typeof o.entityType !== "string" ||
-      typeof o.id !== "string" ||
-      typeof o.href !== "string"
-    ) {
+    if (typeof o.nodeType !== "string" || typeof o.id !== "string" || typeof o.href !== "string") {
       return null;
     }
-    return { kind: "node", entityType: o.entityType, id: o.id, href: o.href };
+    return { kind: "node", nodeType: o.nodeType, id: o.id, href: o.href };
   }
   if (o.kind === "edge") {
     if (typeof o.id !== "string" || typeof o.href !== "string") return null;

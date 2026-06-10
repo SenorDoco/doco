@@ -961,7 +961,7 @@ export function ProcessPerspective({
         if (!parentPool) continue;
         const node: ProcessNode = {
           id: parent.id,
-          entity_type: "action",
+          node_type: "action",
           name: parentPool.label,
           lifecycle: parentPool.lifecycle,
           created_at: null,
@@ -2406,7 +2406,7 @@ export function ProcessPoolHeaderNode({ data }: { data: ProcessPoolHeaderData })
           ) : null}
           {!isUnassigned && data.pool.process_id ? (
             <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
-              <TypeBadge entityType="action" lifecycle={data.pool.lifecycle} anchor="inline" />
+              <TypeBadge nodeType="action" lifecycle={data.pool.lifecycle} anchor="inline" />
               <LifecycleBadge lifecycle={data.pool.lifecycle} anchor="inline" />
             </span>
           ) : null}
@@ -2579,7 +2579,7 @@ function LaneBadgeRow({ lane }: { lane: ProcessLane }) {
   if (lane.kind !== "actor") return null;
   return (
     <span style={{ display: "inline-flex", gap: 4 }}>
-      <TypeBadge entityType="principal" lifecycle={lane.lifecycle} anchor="inline" />
+      <TypeBadge nodeType="principal" lifecycle={lane.lifecycle} anchor="inline" />
       <LifecycleBadge lifecycle={lane.lifecycle} anchor="inline" />
     </span>
   );
@@ -3022,7 +3022,7 @@ function graphReferenceAttributes(
     "data-node-id": data.node.id,
     "data-node-label": data.node.name ?? data.node.id,
     "data-node-lifecycle": data.node.lifecycle ?? "active",
-    "data-node-type": data.node.entity_type,
+    "data-node-type": data.node.node_type,
   };
 }
 
@@ -3116,7 +3116,7 @@ function ProcessBadgeRow({ data }: { data: ProcessNodeData; circular?: boolean }
   return (
     <>
       <NodeBadgeRow
-        entityType={data.node.entity_type}
+        nodeType={data.node.node_type}
         lifecycle={data.node.lifecycle}
         className="nodrag nopan"
         interactive

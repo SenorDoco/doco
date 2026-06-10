@@ -120,7 +120,7 @@ describe("updateEntity", () => {
       docoId: DOCO_ID,
       ownerSlug: "test",
       docoSlug: "doco",
-      entityType: "state",
+      nodeType: "state",
       pluralDir: "states",
       id: STATE_ID,
       patch: {
@@ -158,7 +158,7 @@ describe("updateEntity", () => {
       docoId: DOCO_ID,
       ownerSlug: "test",
       docoSlug: "doco",
-      entityType: "idea",
+      nodeType: "idea",
       pluralDir: "ideas",
       id: IDEA_ID,
       patch: {
@@ -267,7 +267,7 @@ describe("updateEntity", () => {
       docoId: DOCO_ID,
       ownerSlug: "test",
       docoSlug: "doco",
-      entityType: "reference",
+      nodeType: "reference",
       pluralDir: "references",
       id: REFERENCE_ID,
       patch: {
@@ -306,7 +306,7 @@ describe("updateEntity", () => {
       docoId: DOCO_ID,
       ownerSlug: "test",
       docoSlug: "doco",
-      entityType: "reference",
+      nodeType: "reference",
       pluralDir: "references",
       id: REFERENCE_ID,
       patch: {
@@ -342,7 +342,7 @@ describe("updateEntity", () => {
       docoId: DOCO_ID,
       ownerSlug: "test",
       docoSlug: "doco",
-      entityType: "reference",
+      nodeType: "reference",
       pluralDir: "references",
       id: REFERENCE_ID,
       patch: {
@@ -420,7 +420,7 @@ describe("updateEntity", () => {
       docoId: DOCO_ID,
       ownerSlug: "test",
       docoSlug: "doco",
-      entityType: "idea",
+      nodeType: "idea",
       pluralDir: "ideas",
       id: IDEA_ID,
       patch: {
@@ -454,7 +454,7 @@ describe("updateEntity", () => {
       docoId: DOCO_ID,
       ownerSlug: "test",
       docoSlug: "doco",
-      entityType: "action",
+      nodeType: "action",
       pluralDir: "actions",
       id: ACTION_ID,
       patch: {
@@ -480,7 +480,7 @@ describe("renderOperationLines", () => {
       ownerSlug: "acme",
       docoSlug: "ops",
       handle: "acme-ops",
-      entityType: "decision",
+      nodeType: "decision",
       id: "decision_01TEST0000000000000000001",
       label: "Use checked footers",
       docoHost: "https://doco.test",
@@ -499,7 +499,7 @@ describe("renderOperationLines", () => {
       ownerSlug: "acme",
       docoSlug: "ops",
       handle: "acme-ops",
-      entityType: "decision",
+      nodeType: "decision",
       id: "decision_01TEST0000000000000000001",
       label: "Use checked footers",
       ops: [{ kind: "added", summary: "Use checked footers" }],

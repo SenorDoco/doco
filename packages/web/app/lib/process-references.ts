@@ -78,7 +78,7 @@ export function processReferences(
     items.push({
       number: items.length + 1,
       id: pool.process_id,
-      entity_type: "action",
+      node_type: "action",
       label: pool.label,
       lifecycle: pool.lifecycle ?? "active",
       href: docoHandle ? `/${docoHandle}/action/${pool.process_id}` : null,
@@ -89,7 +89,7 @@ export function processReferences(
     items.push({
       number: items.length + 1,
       id: lane.id,
-      entity_type: "principal",
+      node_type: "principal",
       label: lane.label,
       lifecycle: lane.lifecycle ?? "active",
       href: null,
@@ -100,7 +100,7 @@ export function processReferences(
     items.push({
       number: items.length + 1,
       id: node.id,
-      entity_type: node.entity_type,
+      node_type: node.node_type,
       label: node.name ?? node.id,
       lifecycle: node.lifecycle ?? "active",
       href: node.href ?? null,
@@ -121,7 +121,7 @@ export function processReferences(
     items.push({
       number: items.length + 1,
       id: node.id,
-      entity_type: node.entity_type,
+      node_type: node.node_type,
       label: node.name ?? node.id,
       lifecycle: node.lifecycle ?? "active",
       href: node.href ?? null,

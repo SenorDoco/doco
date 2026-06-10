@@ -32,7 +32,7 @@ describe("nodeToApi — the honest node row on read", () => {
         extra: { pr_body: "…" },
       }),
     );
-    expect(res.entity_type).toBe("reference");
+    expect(res.node_type).toBe("reference");
     expect(res.prose).toBe("ACME PR #1");
     expect(res.locator).toBe("https://x");
     expect(res.extra).toEqual({ pr_body: "…" });

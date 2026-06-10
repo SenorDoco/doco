@@ -9,7 +9,7 @@ function candidate(
 ): ReferenceCandidate {
   return {
     id,
-    entity_type: "action",
+    node_type: "action",
     label: id.toUpperCase(),
     lifecycle: "active",
     href: `/d/${id}`,
@@ -50,7 +50,7 @@ describe("referencesFromCandidates", () => {
   it("carries each candidate's display fields through to the reference item", () => {
     const [ref] = referencesFromCandidates([
       candidate("a", 0, 0, {
-        entity_type: "principal",
+        node_type: "principal",
         label: "Alice",
         lifecycle: "retired",
         href: "/d/alice",
@@ -59,7 +59,7 @@ describe("referencesFromCandidates", () => {
     expect(ref).toEqual({
       number: 1,
       id: "a",
-      entity_type: "principal",
+      node_type: "principal",
       label: "Alice",
       lifecycle: "retired",
       href: "/d/alice",

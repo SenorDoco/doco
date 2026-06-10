@@ -39,7 +39,7 @@ export function ActivityFeedLine({
 }) {
   const url = entityUrl({
     docoHandle,
-    entityType: item.entity_type,
+    nodeType: item.entity_type,
     id: item.id,
   });
   const summary = item.summary ?? auditSummaryFallback(item.entity_type, item.id);

@@ -1,5 +1,5 @@
 // The ONE serializer that turns a stored node row into its API JSON shape —
-// `{ id, entity_type, doco_id, lifecycle, prose, extra, kind?, locator?,
+// `{ id, node_type, doco_id, lifecycle, prose, extra, kind?, locator?,
 // proposer_id?, …audit }`. There is no `data` envelope and no type-named key.
 // Every node-returning surface (GET by id, list endpoints, the Slack mirror)
 // runs rows through this so the wire shape can't drift between them.
@@ -30,12 +30,13 @@ export interface NodeApiRow {
  * Serialize a node row to its API JSON: the honest row — `prose`, the `extra`
  * bag, whichever promoted columns it carries, identity + audit. One shape for
  * every node-returning endpoint; no synthetic `data` envelope, no type-named
- * key. `node_type` is surfaced as `entity_type` (the public discriminator).
+ * key. `node_type` is the node's public type discriminator (peer to an edge's
+ * `edge_type`).
  */
 export function nodeToApi(rec: NodeApiRow): Record<string, unknown> {
   return {
     id: rec.id,
-    entity_type: rec.node_type,
+    node_type: rec.node_type,
     doco_id: rec.doco_id,
     lifecycle: rec.lifecycle,
     prose: rec.prose,

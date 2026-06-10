@@ -48,7 +48,7 @@ interface TermRow {
 function termRow(t: TermRow, i: number) {
   return {
     id: `reference_${i}`,
-    entity_type: "reference",
+    node_type: "reference",
     label: t.word, // SQL: split_part(prose, '\n', 1)
     prose: t.word,
     lifecycle: t.lifecycle ?? "active",

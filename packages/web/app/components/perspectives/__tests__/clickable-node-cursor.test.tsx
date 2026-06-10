@@ -45,7 +45,7 @@ const orgNode: OrgTreeNode = {
 
 const processNode: ProcessNode = {
   id: "node_1",
-  entity_type: "action",
+  node_type: "action",
   name: "Review application",
   lifecycle: "active",
   created_at: null,
@@ -79,7 +79,7 @@ describe("clickable node cursor", () => {
           data: {
             node: {
               id: "node_1",
-              entity_type: "decision",
+              node_type: "decision",
               name: "Approve budget",
               lifecycle: "active",
               created_at: null,

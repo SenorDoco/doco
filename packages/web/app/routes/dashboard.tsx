@@ -366,7 +366,7 @@ function formatTemplateUpdatedAt(isoDate: string): string {
 function DashboardFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
     docoHandle: event.handle,
-    entityType: event.entity_type,
+    nodeType: event.entity_type,
     id: event.entity_id,
   });
   const summary = event.summary ?? auditSummaryFallback(event.entity_type, event.entity_id);

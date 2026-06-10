@@ -5,7 +5,7 @@ import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 // makeUpdateRoute and capture.server.ts).
 const route = makeUpdateRoute({
   type: "logs",
-  entityType: "log",
+  nodeType: "log",
   pluralDir: "logs",
 });
 

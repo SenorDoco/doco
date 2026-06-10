@@ -1,7 +1,7 @@
 // Parity: the authoring contract presents node types and relation kinds as
 // peers. Node types are `node_types` (each entry keyed by `node_type`) — the
 // privileged word "entity" no longer stands in for "node" — sitting alongside
-// `relation_kinds`. The create op shape advertises `node_type`, not entity_type.
+// `relation_kinds`. The create op shape advertises `node_type`, not `entity_type`.
 
 import { describe, expect, it, vi } from "vitest";
 

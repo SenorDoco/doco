@@ -340,7 +340,7 @@ describe("upsertPullRequestReference", () => {
       { ...opts, resolveAuthorUserId },
     );
     expect(resolveAuthorUserId).toHaveBeenCalledWith("octocat");
-    // captureGenericNode(dir, docoId, ownerSlug, docoSlug, entityType, draft, …):
+    // captureGenericNode(dir, docoId, ownerSlug, docoSlug, nodeType, draft, …):
     // the PR maps onto the raw row shape — prose = title; locator lands in
     // extra (promoted to its column by the writer). The PR body is not stored.
     expect(mocks.captureGenericNode.mock.calls[0][4]).toBe("reference");

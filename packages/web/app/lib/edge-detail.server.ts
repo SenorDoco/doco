@@ -68,7 +68,7 @@ interface EdgeDetailRow {
 
 interface EdgeEndpointRow {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary: string | null;
   name: string | null;
   lifecycle: string | null;
@@ -87,7 +87,7 @@ interface EdgeVersionRow {
 
 export interface EdgeDialogEndpoint {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary: string;
   name: string | null;
   lifecycle: string;
@@ -178,27 +178,27 @@ function toIso(value: Date | string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function endpointFallback(handle: string, id: string, entityType: string): EdgeDialogEndpoint {
+function endpointFallback(handle: string, id: string, nodeType: string): EdgeDialogEndpoint {
   return {
     id,
-    entity_type: entityType,
+    node_type: nodeType,
     summary: id,
     name: null,
     lifecycle: "active",
     created_at: null,
-    href: `/${handle}/${entityType}/${id}`,
+    href: `/${handle}/${nodeType}/${id}`,
   };
 }
 
 function endpointFromRow(handle: string, row: EdgeEndpointRow): EdgeDialogEndpoint {
   return {
     id: row.id,
-    entity_type: row.entity_type,
+    node_type: row.node_type,
     summary: row.summary ?? row.name ?? row.id,
     name: row.name,
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
-    href: `/${handle}/${row.entity_type}/${row.id}`,
+    href: `/${handle}/${row.node_type}/${row.id}`,
   };
 }
 
@@ -225,7 +225,7 @@ export async function loadEdgeDialogDetail(
       // first line of `prose`; `name` is principal-only (NULL for prose types,
       // matching the old column's shape).
       `SELECT id,
-              node_type AS entity_type,
+              node_type,
               NULLIF(split_part(prose, E'\n', 1), '') AS summary,
               CASE WHEN node_type = 'principal' THEN NULLIF(prose, '') END AS name,
               COALESCE(lifecycle, 'active') AS lifecycle,

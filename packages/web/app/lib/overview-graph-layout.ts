@@ -4,7 +4,7 @@ import { FAR_DEPTH, computeDepthFromCenter, depthBucket } from "./graph-depth";
 
 export interface OverviewLayoutNode {
   id: string;
-  entity_type: string;
+  node_type: string;
 }
 
 export interface OverviewLayoutLink {
@@ -68,8 +68,8 @@ function placeRing(
 ) {
   if (others.length === 0) return;
   others.sort((a, b) => {
-    const ai = NODE_TYPE_ORDER.get(a.entity_type) ?? 999;
-    const bi = NODE_TYPE_ORDER.get(b.entity_type) ?? 999;
+    const ai = NODE_TYPE_ORDER.get(a.node_type) ?? 999;
+    const bi = NODE_TYPE_ORDER.get(b.node_type) ?? 999;
     if (ai !== bi) return ai - bi;
     return a.id.localeCompare(b.id);
   });

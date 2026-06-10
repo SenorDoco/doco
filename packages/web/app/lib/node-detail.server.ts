@@ -62,7 +62,7 @@ export interface NodeLifecycleOption {
 
 export interface NodeDialogDetail {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary: string;
   name: string | null;
   primary_field: string;
@@ -92,7 +92,7 @@ export interface NodeDialogDetail {
 }
 
 // Plural URL segment per node type. Derived from the shared per-type
-// registry (`NODE_TYPE_META`); the `?? entityType` fallback below covers any
+// registry (`NODE_TYPE_META`); the `?? nodeType` fallback below covers any
 // type not in the registry (e.g. principal, handled by its own literal entry).
 const UPDATE_SEGMENTS: Record<string, string> = Object.fromEntries(
   Object.entries(NODE_TYPE_META).map(([type, meta]) => [type, meta.segment]),
@@ -113,19 +113,19 @@ type GraphNodeConfig = {
 
 const GRAPH_NODE_TABLES: Record<string, GraphNodeConfig> = {
   ...(Object.fromEntries(
-    Object.entries(DOCO_NODE_TABLE_BY_TYPE).map(([entityType, _spec]) => {
+    Object.entries(DOCO_NODE_TABLE_BY_TYPE).map(([nodeType, _spec]) => {
       // Post-collapse: every node lives in `nodes` with its text in the shared
       // `prose` column. The logical field name (the old type-named column) is
       // kept for the client-facing `primary_field`.
-      const typeNamedField = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType;
+      const typeNamedField = ALL_ENTITY_TABLES[nodeType]?.typeNamedColumn ?? nodeType;
       return [
-        entityType,
+        nodeType,
         {
-          nodeType: entityType,
+          nodeType: nodeType,
           primaryColumn: "prose",
           typeNamedColumn: typeNamedField,
           primaryField: typeNamedField,
-          updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
+          updateSegment: UPDATE_SEGMENTS[nodeType] ?? nodeType,
         },
       ];
     }),
@@ -198,7 +198,7 @@ export function isGraphNodeType(type: string | undefined): type is keyof typeof 
 
 interface DialogRelatedNodeDetail {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary: string;
   name: string | null;
   lifecycle: string;
@@ -236,7 +236,7 @@ function relatedDetailsSql(): string {
     .map((cfg) => `'${cfg.nodeType}'`)
     .join(", ");
   return `SELECT id,
-                 node_type AS entity_type,
+                 node_type,
                  NULLIF(split_part(prose, E'\n', 1), '') AS summary,
                  CASE WHEN node_type = 'principal' THEN NULLIF(prose, '') END AS name,
                  COALESCE(lifecycle, 'active') AS lifecycle
@@ -257,7 +257,7 @@ async function loadDialogRelatedDetails(
   const rows = (
     await c.query<{
       id: string;
-      entity_type: string;
+      node_type: string;
       summary: string | null;
       name: string | null;
       lifecycle: string | null;
@@ -265,11 +265,11 @@ async function loadDialogRelatedDetails(
   ).rows;
   return rows.map((row) => ({
     id: row.id,
-    entity_type: row.entity_type,
+    node_type: row.node_type,
     summary: row.summary ?? row.name ?? row.id,
     name: row.name,
     lifecycle: row.lifecycle ?? "active",
-    href: `/${handle}/${row.entity_type}/${row.id}`,
+    href: `/${handle}/${row.node_type}/${row.id}`,
   }));
 }
 
@@ -412,12 +412,12 @@ export async function loadNodeDialogDetail(
   meta: { docoId: string; ownerId: string },
   options: {
     handle: string;
-    entityType: string;
+    nodeType: string;
     id: string;
     principalId: string | null;
   },
 ): Promise<NodeDialogDetail | null> {
-  const cfg = GRAPH_NODE_TABLES[options.entityType];
+  const cfg = GRAPH_NODE_TABLES[options.nodeType];
   if (!cfg) return null;
 
   // Every node stores its text in the shared `prose` column; the client-facing
@@ -518,7 +518,7 @@ export async function loadNodeDialogDetail(
   const relatedById = new Map(relatedDetails.map((detail) => [detail.id, detail]));
   const outgoing: NodeDialogEdge[] = allOutgoingRows.map((edge) => {
     const detail = relatedById.get(edge.to_id);
-    const otherNodeType = detail?.entity_type ?? edge.to_node_type;
+    const otherNodeType = detail?.node_type ?? edge.to_node_type;
     return {
       edge_id: edge.edge_id,
       edge_type: edge.edge_type,
@@ -535,7 +535,7 @@ export async function loadNodeDialogDetail(
   });
   const incoming: NodeDialogEdge[] = allIncomingRows.map((edge) => {
     const detail = relatedById.get(edge.from_id);
-    const otherNodeType = detail?.entity_type ?? edge.from_node_type;
+    const otherNodeType = detail?.node_type ?? edge.from_node_type;
     return {
       edge_id: edge.edge_id,
       edge_type: edge.edge_type,
@@ -603,7 +603,7 @@ export async function loadNodeDialogDetail(
 
   return {
     id: row.id,
-    entity_type: options.entityType,
+    node_type: options.nodeType,
     summary,
     name,
     primary_field: cfg.primaryField,
@@ -623,7 +623,7 @@ export async function loadNodeDialogDetail(
     },
     frontmatter,
     raw_json: row.raw_json,
-    href: `/${options.handle}/${options.entityType}/${row.id}`,
+    href: `/${options.handle}/${options.nodeType}/${row.id}`,
     update_url: updateUrl,
     user_role: userRole,
     can_change_lifecycle: canChangeLifecycle,

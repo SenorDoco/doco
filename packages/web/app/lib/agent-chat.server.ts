@@ -232,7 +232,7 @@ export interface ChatStreamContext {
 export interface VisibleGraphReference {
   number: number;
   id: string;
-  entity_type: string;
+  node_type: string;
   label: string;
   lifecycle: string | null;
   href: string | null;
@@ -2272,7 +2272,7 @@ function formatVisibleGraphReferences(groups: VisibleGraphReferenceGroup[]): str
       const href = reference.href ? ` ${reference.href}` : "";
       const lifecycle = reference.lifecycle ? ` lifecycle=${reference.lifecycle}` : "";
       lines.push(
-        `${reference.number}. ${reference.entity_type} ${reference.id}${lifecycle}${href} — ${reference.label}`,
+        `${reference.number}. ${reference.node_type} ${reference.id}${lifecycle}${href} — ${reference.label}`,
       );
     }
   }

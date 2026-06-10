@@ -2,11 +2,11 @@ import type * as React from "react";
 import { cn } from "~/lib/cn";
 
 export interface NodeTypeIconProps extends React.SVGAttributes<SVGSVGElement> {
-  entityType: string;
+  nodeType: string;
 }
 
-function iconPath(entityType: string) {
-  switch (entityType) {
+function iconPath(nodeType: string) {
+  switch (nodeType) {
     case "principal":
       return (
         <>
@@ -120,7 +120,7 @@ function iconPath(entityType: string) {
   }
 }
 
-export function NodeTypeIcon({ entityType, className, ...props }: NodeTypeIconProps) {
+export function NodeTypeIcon({ nodeType, className, ...props }: NodeTypeIconProps) {
   return (
     <svg
       aria-hidden="true"
@@ -133,7 +133,7 @@ export function NodeTypeIcon({ entityType, className, ...props }: NodeTypeIconPr
       className={cn("h-3.5 w-3.5 shrink-0", className)}
       {...props}
     >
-      {iconPath(entityType)}
+      {iconPath(nodeType)}
     </svg>
   );
 }

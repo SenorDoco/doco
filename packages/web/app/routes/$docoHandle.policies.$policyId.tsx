@@ -143,7 +143,7 @@ export default function PolicyDetail({
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <CardTitle className="flex items-center gap-2">
-                <NodeTypeIcon entityType="policy" className="h-4 w-4" />
+                <NodeTypeIcon nodeType="policy" className="h-4 w-4" />
                 <span>Policy</span>
                 <span className="neu-surface rounded px-2 py-1 font-mono text-[10px] font-normal text-muted-foreground">
                   {item.lifecycle ?? "active"}

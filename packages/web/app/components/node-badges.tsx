@@ -25,7 +25,7 @@ interface BadgeProps {
 }
 
 interface TypeBadgeProps extends BadgeProps {
-  entityType: string;
+  nodeType: string;
 }
 
 export function badgeStyle(
@@ -100,10 +100,10 @@ export function labelForType(type: string): string {
   }
 }
 
-export function TypeBadge({ entityType, lifecycle, anchor = "left", className }: TypeBadgeProps) {
+export function TypeBadge({ nodeType, lifecycle, anchor = "left", className }: TypeBadgeProps) {
   return (
     <span style={badgeStyle(lifecycle, anchor)} className={className}>
-      {labelForType(entityType)}
+      {labelForType(nodeType)}
     </span>
   );
 }
@@ -124,14 +124,14 @@ export function LifecycleBadge({ lifecycle, anchor = "right", className }: Badge
  * lifecycle) reads bottom.
  */
 interface NodeBadgeRowProps {
-  entityType: string;
+  nodeType: string;
   lifecycle: string | null | undefined;
   className?: string;
   interactive?: boolean;
 }
 
 export function NodeBadgeRow({
-  entityType,
+  nodeType,
   lifecycle,
   className,
   interactive = false,
@@ -153,7 +153,7 @@ export function NodeBadgeRow({
   };
   return (
     <div style={rowStyle} className={className}>
-      <TypeBadge entityType={entityType} lifecycle={lifecycle} anchor="inline" />
+      <TypeBadge nodeType={nodeType} lifecycle={lifecycle} anchor="inline" />
       <LifecycleBadge lifecycle={lifecycle} anchor="inline" />
     </div>
   );

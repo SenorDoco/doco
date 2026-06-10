@@ -81,24 +81,21 @@ type StatusGroup = "note" | "policy";
 // notes, `table` for policies. The plural keys are the public collection
 // names and stay unchanged.
 const TYPE_MAP: {
-  entityType: string;
   nodeType: string | null;
   table: string | null;
   plural: string;
   group: StatusGroup;
 }[] = [
   ...DOCO_NODE_TABLE_SPECS.map((spec) => ({
-    entityType: spec.entityType,
-    nodeType: spec.entityType,
+    nodeType: spec.nodeType,
     table: null as string | null,
     // Public plural key (decisions, intents, …, references). Derived from the
     // node type now that every node lives in the unified `nodes` table — was
     // `spec.table`, which is uniformly "nodes" post-collapse.
-    plural: `${spec.entityType}s`,
+    plural: `${spec.nodeType}s`,
     group: "note" as const,
   })),
   {
-    entityType: "policy",
     nodeType: null,
     table: "policies",
     plural: "policies",

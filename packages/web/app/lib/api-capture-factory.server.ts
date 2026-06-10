@@ -49,7 +49,7 @@ export interface CaptureRouteConfig<TDraft> {
   /** Plural url segment (e.g. "intents", "decisions", "references"). */
   type: string;
   /** Singular entity type (e.g. "intent", "reference"); used for relation-owner checks. */
-  entityType: string;
+  nodeType: string;
   /** Backing capture function from capture.server.ts. */
   captureFn: CaptureFn<TDraft>;
   /**
@@ -125,7 +125,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
           // The generic node writer speaks the raw row shape directly:
           // `{prose, kind?, extra:{…}}` — no translation shim needed here.
           const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(
-            cfg.entityType,
+            cfg.nodeType,
             draft as Record<string, unknown>,
           );
           if (nodeJsonEdgeKeyError) {
@@ -149,7 +149,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             request,
             { ownerId: meta.ownerId, docoId: meta.docoId },
             me.id,
-            cfg.entityType,
+            cfg.nodeType,
             "write",
           );
           if (denied) return denied;
@@ -190,8 +190,8 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
 export interface UpdateRouteConfig {
   /** Plural url segment (e.g. "intents"). */
   type: string;
-  /** Singular entity_type stored on the YAML (e.g. "intent"). */
-  entityType: NodeTypeName;
+  /** Singular node_type stored on the YAML (e.g. "intent"). */
+  nodeType: NodeTypeName;
   /** Plural directory name under docoDir (usually matches `type`). */
   pluralDir: string;
 }
@@ -211,12 +211,12 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
     }) {
       const { id } = params;
       const ctx = await loadDocoRouteForRead(request, params);
-      const rec = await getEntity(cfg.entityType, id);
+      const rec = await getEntity(cfg.nodeType, id);
       // Cross-doco probe by ULID is effectively unguessable (128 bits), but
       // we still gate on the doco the caller actually has read access to —
       // returning 404 for "wrong doco" matches the agent-facing contract.
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
-        return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
+        return Response.json({ error: `${cfg.nodeType} not found: ${id}` }, { status: 404 });
       }
       // Time-travel reads: ?history=1 returns the full append-only
       // version timeline; ?as_of=<tx_id> reconstructs the snapshot at/​before
@@ -224,11 +224,11 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       const tt = new URL(request.url).searchParams;
       if (tt.get("history")) {
         const versions = await withClient((c) => getVersions(c, "node", id));
-        return Response.json({ id, entity_type: cfg.entityType, versions });
+        return Response.json({ id, node_type: cfg.nodeType, versions });
       }
       if (tt.get("verify")) {
         const result = await withClient((c) => verifyHistory(c, "node", id));
-        return Response.json({ id, entity_type: cfg.entityType, ...result });
+        return Response.json({ id, node_type: cfg.nodeType, ...result });
       }
       const asOf = tt.get("as_of");
       if (asOf) {
@@ -280,15 +280,15 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       // moves drafting → queued → active → retired) requires write access on
       // THIS node type. What a writer may do beyond that is governed by
       // the Doco's own policies, not a built-in role ladder.
-      const existing = await getEntity(cfg.entityType, id);
+      const existing = await getEntity(cfg.nodeType, id);
       if (!existing || existing.doco_id !== meta.docoId) {
-        return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
+        return Response.json({ error: `${cfg.nodeType} not found: ${id}` }, { status: 404 });
       }
       const denied = await requireDocoTypeWriteForRequest(
         request,
         { ownerId: meta.ownerId, docoId: meta.docoId },
         me.id,
-        cfg.entityType,
+        cfg.nodeType,
         "edit",
       );
       if (denied) return denied;
@@ -301,7 +301,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
           docoId: meta.docoId,
           ownerSlug,
           docoSlug,
-          entityType: cfg.entityType,
+          nodeType: cfg.nodeType,
           pluralDir: cfg.pluralDir,
           id,
           patch,
@@ -317,7 +317,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       waitUntil(
         recordCaptureTiming({
           doco_id: meta.docoId,
-          entity_type: cfg.entityType,
+          entity_type: cfg.nodeType,
           http_method: "PATCH",
           principal_id: me?.id ?? null,
           total_ms: totalMs,

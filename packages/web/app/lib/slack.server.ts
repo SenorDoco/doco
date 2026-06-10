@@ -1525,12 +1525,12 @@ async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record
   // the public collection names and stay unchanged.
   const typeMap = [
     ...DOCO_NODE_TABLE_SPECS.map((spec) => ({
-      nodeType: spec.entityType,
+      nodeType: spec.nodeType,
       table: null as string | null,
       // Public plural key (decisions, …, references). Derived from the node
       // type now that all nodes live in `nodes` (was `spec.table`, uniformly
       // "nodes" post-collapse).
-      plural: `${spec.entityType}s`,
+      plural: `${spec.nodeType}s`,
       group: "note" as const,
     })),
     {
@@ -1606,7 +1606,7 @@ async function readSlackDocoApiSearch(
     count: hits.length,
     hits: hits.map((hit) => ({
       id: hit.entityId,
-      entity_type: hit.nodeType,
+      node_type: hit.nodeType,
       doco_label: hit.docoLabel,
       name: hit.summary,
       summary: hit.body ?? hit.summary,
@@ -1626,14 +1626,14 @@ async function readSlackDocoApiCollection(
   if (type === "audit") return readSlackDocoApiAudit(doco, searchParams);
   if (type === "perspectives") return readSlackDocoApiPerspectives(doco);
   if (type === "authoring-contract") return readSlackDocoApiAuthoringContract(doco);
-  const entityType = slackApiEntityType(type);
-  if (!entityType) {
+  const nodeType = slackApiEntityType(type);
+  if (!nodeType) {
     return {
       error: `Unknown or unsupported Slack read endpoint: /api/${type}.json`,
       supported_types: slackSupportedApiTypes(),
     };
   }
-  const rows = await listNodesByDoco(entityType, doco.id);
+  const rows = await listNodesByDoco(nodeType, doco.id);
   return {
     ok: true,
     type,
@@ -1650,14 +1650,14 @@ async function readSlackDocoApiDetail(
   id: string | undefined,
 ): Promise<Record<string, unknown>> {
   if (!id) return { error: "Entity id is required." };
-  const entityType = slackApiEntityType(type);
-  if (!entityType && type !== "principals") {
+  const nodeType = slackApiEntityType(type);
+  if (!nodeType && type !== "principals") {
     return {
       error: `Unknown or unsupported Slack read endpoint: /api/${type}/${id}.json`,
       supported_types: slackSupportedApiTypes(),
     };
   }
-  const row = await getEntity(entityType ?? "principal", id);
+  const row = await getEntity(nodeType ?? "principal", id);
   if (!row || row.doco_id !== doco.id) {
     return { error: `Entity not found in ${doco.qualifiedHandle}: ${id}` };
   }
@@ -1958,12 +1958,12 @@ async function readSlackDocoApiAuthoringContract(
     ok: true,
     doco_id: doco.id,
     qualified_handle: doco.qualifiedHandle,
-    entity_types: DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => ({
-      entity_type: spec.entityType,
+    node_types: DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => ({
+      node_type: spec.nodeType,
       // Public plural collection name + endpoint (decisions, …, references).
       // Derived from the node type now that `spec.table` is uniformly "nodes".
-      collection: `${spec.entityType}s`,
-      capture_endpoint: `/${doco.handle}/api/${spec.entityType}s.json`,
+      collection: `${spec.nodeType}s`,
+      capture_endpoint: `/${doco.handle}/api/${spec.nodeType}s.json`,
     })),
     relation_kinds: relationKindList(),
     perspective_contracts: contractForAttachedPerspectives(attached),
@@ -1977,15 +1977,15 @@ async function readSlackDocoApiAuthoringContract(
 function slackApiEntityType(type: string): string | null {
   const normalized = type.toLowerCase();
   for (const spec of DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS) {
-    const plural = `${spec.entityType}s`;
-    if (normalized === plural) return spec.entityType;
+    const plural = `${spec.nodeType}s`;
+    if (normalized === plural) return spec.nodeType;
   }
   return null;
 }
 
 function slackSupportedApiTypes(): string[] {
   return [
-    ...DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => `${spec.entityType}s`),
+    ...DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => `${spec.nodeType}s`),
     "principals",
     "policies",
     "settings",
@@ -2198,7 +2198,7 @@ function slackOverviewUnionSql(): string {
   // line of `prose`; `body` is the full `prose`. The outer query scopes
   // by doco via the scoped_docos join, so no doco filter here.
   const typeList = DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) =>
-    sqlString(spec.entityType),
+    sqlString(spec.nodeType),
   ).join(", ");
   return `SELECT id AS entity_id,
                  doco_id,

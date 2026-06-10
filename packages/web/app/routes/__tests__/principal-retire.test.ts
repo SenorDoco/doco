@@ -114,7 +114,7 @@ describe("principal retire API", () => {
 
     expect(response.status).toBe(200);
     // A principal is an ordinary node: the route writes a flat field bag through
-    // the one node boundary — no `entity_type`/`data` envelope.
+    // the one node boundary — no `node_type`/`data` envelope.
     expect(mocks.upsertNode).toHaveBeenCalledWith(
       expect.objectContaining({
         id: PRINCIPAL_ID,

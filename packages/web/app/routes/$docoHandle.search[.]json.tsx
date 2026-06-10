@@ -19,7 +19,7 @@ import { type SearchHit, hybridSearch } from "~/lib/search.server";
 
 interface JsonSearchHit {
   id: string;
-  entity_type: string;
+  node_type: string;
   name: string | null;
   summary?: string;
   lifecycle: string | null;
@@ -59,7 +59,7 @@ export async function loader({
 
     const filtersOut = {
       lifecycle: filters.lifecycle,
-      entity_type: filters.entityType,
+      node_type: filters.nodeType,
       limit: filters.limit,
     };
 

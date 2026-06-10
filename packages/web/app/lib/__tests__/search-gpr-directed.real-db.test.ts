@@ -67,10 +67,10 @@ async function seed(): Promise<Client> {
   return db as unknown as Client;
 }
 
-function hit(id: string, entityType: string): SearchHit {
+function hit(id: string, nodeType: string): SearchHit {
   return {
     id,
-    entity_type: entityType,
+    node_type: nodeType,
     summary: id,
     name: null,
     lifecycle: "active",

@@ -63,7 +63,7 @@ export const MAX_GRAPH_REFERENCES = 120;
  */
 export interface ReferenceCandidate {
   id: string;
-  entity_type: string;
+  node_type: string;
   label: string;
   lifecycle: string | null;
   href: string | null;
@@ -109,7 +109,7 @@ export function referencesFromCandidates(candidates: ReferenceCandidate[]): Grap
     .map((candidate, index) => ({
       number: index + 1,
       id: candidate.id,
-      entity_type: candidate.entity_type,
+      node_type: candidate.node_type,
       label: candidate.label,
       lifecycle: candidate.lifecycle,
       href: candidate.href,

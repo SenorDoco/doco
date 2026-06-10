@@ -41,7 +41,7 @@ export async function loader({
   const cfg = CAPTURE_REGISTRY[params.type];
   if (!cfg) return notFound(params.type);
   const { meta } = await loadDocoRouteForRead(request, params);
-  const rows = await listNodesByDoco(cfg.entityType, meta.docoId);
+  const rows = await listNodesByDoco(cfg.nodeType, meta.docoId);
   return Response.json({
     ok: true,
     type: params.type,

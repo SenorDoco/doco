@@ -65,8 +65,8 @@ export function activityRowLifecycle(
   return transitionLifecycle ?? currentLifecycle ?? afterLifecycle ?? "active";
 }
 
-export function auditSummaryFallback(entityType: string, id: string): string {
-  return `${entityType}_${id.slice(-6)}`;
+export function auditSummaryFallback(nodeType: string, id: string): string {
+  return `${nodeType}_${id.slice(-6)}`;
 }
 
 function stringField(

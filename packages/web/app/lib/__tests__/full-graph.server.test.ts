@@ -35,7 +35,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "principal_alice",
-          entity_type: "principal",
+          node_type: "principal",
           name: "alice",
           lifecycle: "active",
           created_at: "2026-05-01T00:00:00Z",
@@ -56,7 +56,7 @@ describe("loadOverviewGraph", () => {
     expect(graph.nodes).toHaveLength(1);
     expect(graph.nodes[0]).toMatchObject({
       id: "principal_alice",
-      entity_type: "principal",
+      node_type: "principal",
       name: "alice",
     });
   });
@@ -66,14 +66,14 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "decision_01",
-          entity_type: "decision",
+          node_type: "decision",
           name: null,
           lifecycle: "active",
           created_at: "2026-04-01T00:00:00Z",
         },
         {
           id: "principal_alice",
-          entity_type: "principal",
+          node_type: "principal",
           name: "alice",
           lifecycle: "active",
           created_at: "2026-05-01T00:00:00Z",
@@ -84,7 +84,7 @@ describe("loadOverviewGraph", () => {
 
     const graph = await loadOverviewGraph(client, "doco_acme", { handle: "acme" });
 
-    const types = graph.nodes.map((n) => n.entity_type).sort();
+    const types = graph.nodes.map((n) => n.node_type).sort();
     expect(types).toEqual(["decision", "principal"]);
   });
 
@@ -93,7 +93,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "state_01TEST0000000000000000001",
-          entity_type: "state",
+          node_type: "state",
           name: null,
           label: "Waiting for approval",
           lifecycle: "active",
@@ -120,7 +120,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "decision_focus",
-          entity_type: "decision",
+          node_type: "decision",
           name: null,
           label: "Focused decision",
           lifecycle: "drafting",
@@ -147,7 +147,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "decision_focus",
-          entity_type: "decision",
+          node_type: "decision",
           name: null,
           label: "Focused decision",
           lifecycle: "active",
@@ -178,7 +178,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "decision_01",
-          entity_type: "decision",
+          node_type: "decision",
           name: null,
           label: "Pick the runtime",
           lifecycle: "active",
@@ -186,7 +186,7 @@ describe("loadOverviewGraph", () => {
         },
         {
           id: "intent_01",
-          entity_type: "intent",
+          node_type: "intent",
           name: null,
           label: "Ship the flow",
           lifecycle: "active",
@@ -226,7 +226,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "decision_01",
-          entity_type: "decision",
+          node_type: "decision",
           name: null,
           label: "A",
           lifecycle: "active",
@@ -234,7 +234,7 @@ describe("loadOverviewGraph", () => {
         },
         {
           id: "intent_01",
-          entity_type: "intent",
+          node_type: "intent",
           name: null,
           label: "B",
           lifecycle: "active",
@@ -277,7 +277,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "decision_focus",
-          entity_type: "decision",
+          node_type: "decision",
           name: null,
           label: "Focused decision",
           lifecycle: "active",
@@ -311,7 +311,7 @@ describe("loadOverviewGraph", () => {
       entities: [
         {
           id: "decision_01",
-          entity_type: "decision",
+          node_type: "decision",
           name: null,
           label: "A",
           lifecycle: "active",
@@ -319,7 +319,7 @@ describe("loadOverviewGraph", () => {
         },
         {
           id: "intent_01",
-          entity_type: "intent",
+          node_type: "intent",
           name: null,
           label: "B",
           lifecycle: "active",

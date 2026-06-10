@@ -37,7 +37,7 @@ export async function loader({
     }
     const node = await loadNodeDialogDetail(c, ctx.meta, {
       handle,
-      entityType: selectedType,
+      nodeType: selectedType,
       id: selectedId,
       principalId: ctx.me?.id ?? null,
     });

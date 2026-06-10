@@ -22,7 +22,7 @@ type Client = Parameters<typeof rankSearchFts>[0];
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
-const ALL: SearchFilters = { lifecycle: null, entityType: null, limit: 100 };
+const ALL: SearchFilters = { lifecycle: null, nodeType: null, limit: 100 };
 
 async function seed(): Promise<Client> {
   const db = new PGlite();
@@ -75,7 +75,7 @@ describe("FTS floor finds nodes the vector index never got", () => {
       await seed(),
       "doco_1",
       "Widget calibration",
-      { lifecycle: ["active"], entityType: null, limit: 50 },
+      { lifecycle: ["active"], nodeType: null, limit: 50 },
       50,
     );
     expect(hits.map((h) => h.id)).toEqual(["reference_embedded"]);
@@ -85,7 +85,7 @@ describe("FTS floor finds nodes the vector index never got", () => {
 describe("mergeSearchHits (reciprocal rank fusion)", () => {
   const hit = (id: string, vector_score: number | null, gpr = 0): SearchHit => ({
     id,
-    entity_type: "reference",
+    node_type: "reference",
     summary: id,
     name: null,
     lifecycle: "active",

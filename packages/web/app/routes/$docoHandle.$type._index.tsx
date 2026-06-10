@@ -17,7 +17,7 @@ import { getCurrentPrincipal } from "~/lib/session.server";
 
 // The generic prose node types this list route serves; each is a `node_type`
 // value on the unified `nodes` table.
-const KNOWN = new Set<string>(DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => spec.entityType));
+const KNOWN = new Set<string>(DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS.map((spec) => spec.nodeType));
 
 export async function loader({
   params,
@@ -110,7 +110,7 @@ export default function ListByTypeInDoco({
                 <TableRow key={it.id}>
                   <TableCell>
                     <Link
-                      to={entityUrl({ docoHandle: handle, entityType: type, id: it.id })}
+                      to={entityUrl({ docoHandle: handle, nodeType: type, id: it.id })}
                       className="text-primary hover:underline"
                     >
                       {it.name ?? it.id}
