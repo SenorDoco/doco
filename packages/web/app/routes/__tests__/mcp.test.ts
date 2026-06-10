@@ -115,6 +115,9 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(instructions).toContain("doco_whoami");
     expect(instructions).toContain("list_workspaces");
     expect(body.result.serverInfo.name).toBe("doco");
+    // The grant is the scope: use all of it, no one-at-a-time cap.
+    expect(instructions).not.toMatch(/one Doco at a time/i);
+    expect(instructions).toContain("Use all of it");
   });
 
   it("tools/list advertises whoami + read + write tools", async () => {

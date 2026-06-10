@@ -43,15 +43,18 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).not.toContain("captures the *why* as it forms");
   });
 
-  it("teaches the /mcp endpoint and the multi-workspace 'act as me' reach", () => {
+  it("scopes the agent to its whole grant — never caps it at one doco/workspace", () => {
     expect(CANONICAL_INSTRUCTIONS).toContain("MCP connector lives at");
-    // The endpoint is /mcp now, not the interim /me/mcp.
     expect(CANONICAL_INSTRUCTIONS).not.toContain("/me/mcp");
-    // An actor connection reaches every workspace, one doco at a time — the old
-    // "one workspace per session, never cross workspaces" rule is gone.
-    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/one workspace per session/i);
     expect(CANONICAL_INSTRUCTIONS).toContain("list_workspaces");
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/one doco at a time/i);
+    // The user's grant is the scope; respect it — no artificial one-at-a-time
+    // cap, and no "spanning is the exception" hedge either.
+    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/one doco at a time/i);
+    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/one workspace per session/i);
+    expect(CANONICAL_INSTRUCTIONS).not.toContain(
+      "spanning multiple workspaces in a single session is expected",
+    );
+    expect(CANONICAL_INSTRUCTIONS).toContain("use all of it");
   });
 
   it("tells agents to paste the server-built display lines, not manufacture them", () => {
