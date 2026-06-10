@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BESPOKE_CAPTURE_REGISTRY,
   CAPTURE_REGISTRY,
-  CAPTURE_REGISTRY_BY_ENTITY_TYPE,
+  CAPTURE_REGISTRY_BY_NODE_TYPE,
 } from "../node-capture-registry.server";
 
 // The set of node types is defined once in @doco/shared's NODE_CATALOG, but the
@@ -13,10 +13,10 @@ import {
 // (capture: "bespoke") became uncreatable via changeset and absent from the
 // contract, with nothing failing to flag it. This guard turns that drift into a
 // CI failure: every catalog node type — generic OR bespoke — must be reachable
-// by entity_type. Add a type to NODE_CATALOG and you MUST wire its capture.
+// by node_type. Add a type to NODE_CATALOG and you MUST wire its capture.
 describe("node-type capture coverage", () => {
   it("every NODE_CATALOG type is wired into the capture machinery", () => {
-    const covered = new Set(Object.keys(CAPTURE_REGISTRY_BY_ENTITY_TYPE));
+    const covered = new Set(Object.keys(CAPTURE_REGISTRY_BY_NODE_TYPE));
     const missing = CATALOG_NODE_TYPES.filter((type) => !covered.has(type));
     expect(missing).toEqual([]);
   });

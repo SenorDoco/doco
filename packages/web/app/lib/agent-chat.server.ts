@@ -1785,7 +1785,7 @@ Changeset example for BPMN-style ordered flow:
         "relation_kind": "flows_to",
         "after": "decision_01...",
         "label": "Yes",
-        "entity_type": "action",
+        "node_type": "action",
         "alias": "charge_card",
         "body": {
           "action": "SuD charges the authorized card",

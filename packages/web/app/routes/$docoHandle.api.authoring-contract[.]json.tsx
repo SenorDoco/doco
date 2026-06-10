@@ -17,24 +17,24 @@ export async function loader({
   const attached = await listPerspectivesForDoco(meta.docoId);
   // Generic AND bespoke node types — agents discover every authorable type,
   // including bespoke ones like `principal`, from this one contract.
-  const entityTypes = [
+  const nodeTypes = [
     ...Object.values(CAPTURE_REGISTRY),
     ...Object.values(BESPOKE_CAPTURE_REGISTRY),
   ].map((entry) => ({
-    entity_type: entry.entityType,
+    node_type: entry.entityType,
     collection: entry.type,
     capture_endpoint: `/${params.docoHandle}/api/${entry.type}.json`,
   }));
   return Response.json({
     ok: true,
     doco_id: meta.docoId,
-    entity_types: entityTypes,
+    node_types: nodeTypes,
     relation_kinds: relationKindList(),
     perspective_contracts: contractForAttachedPerspectives(attached),
     changeset_endpoint: `/${params.docoHandle}/api/changesets.json`,
     operations: {
       create: {
-        shape: { op: "create", entity_type: "action", alias: "optional_name", body: {} },
+        shape: { op: "create", node_type: "action", alias: "optional_name", body: {} },
         note: "Creates one node. Alias can be referenced later as $optional_name in the same changeset.",
       },
       relate: {
@@ -68,7 +68,7 @@ export async function loader({
           op: "append",
           relation_kind: "flows_to",
           after: "existing_source_id",
-          entity_type: "action",
+          node_type: "action",
           alias: "new_action",
           body: {},
           label: "optional edge label",
@@ -91,7 +91,7 @@ export async function loader({
         shape: {
           op: "supersede",
           target: "old_node_id",
-          entity_type: "action",
+          node_type: "action",
           alias: "optional_name",
           body: {},
         },
@@ -109,7 +109,7 @@ export async function loader({
               relation_kind: "flows_to",
               after: "decision_01...",
               label: "Yes",
-              entity_type: "action",
+              node_type: "action",
               alias: "charge_card",
               body: {
                 action: "SuD charges the authorized card",
@@ -133,7 +133,7 @@ export async function loader({
           operations: [
             {
               op: "create",
-              entity_type: "action",
+              node_type: "action",
               alias: "charge_card",
               body: {
                 action: "Charge the authorized card",
@@ -143,7 +143,7 @@ export async function loader({
             },
             {
               op: "create",
-              entity_type: "action",
+              node_type: "action",
               alias: "manual_review",
               body: {
                 action: "Send payment request to manual review",
@@ -187,7 +187,7 @@ export async function loader({
           operations: [
             {
               op: "create",
-              entity_type: "rule",
+              node_type: "rule",
               alias: "refund_rule",
               body: {
                 rule: "Refunds require a cancellation Decision",

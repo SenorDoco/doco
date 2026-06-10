@@ -12,7 +12,7 @@ import {
   getUserById,
   getWorkspaceConstitutionsByIds,
   listDocoUsers,
-  listEntitiesByDoco,
+  listNodesByDoco,
   withClient,
 } from "@doco/db";
 import { type PolicyPredicate, generateUlid, summarizePredicate } from "@doco/shared";
@@ -1633,7 +1633,7 @@ async function readSlackDocoApiCollection(
       supported_types: slackSupportedApiTypes(),
     };
   }
-  const rows = await listEntitiesByDoco(entityType, doco.id);
+  const rows = await listNodesByDoco(entityType, doco.id);
   return {
     ok: true,
     type,
@@ -1675,7 +1675,7 @@ async function readSlackDocoApiPrincipals(
 ): Promise<Record<string, unknown>> {
   const [docoUsers, nodeRows] = await Promise.all([
     listDocoUsers(doco.id),
-    listEntitiesByDoco("principal", doco.id),
+    listNodesByDoco("principal", doco.id),
   ]);
   const users = (
     await Promise.all(

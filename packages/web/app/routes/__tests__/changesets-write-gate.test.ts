@@ -33,7 +33,7 @@ vi.mock("~/lib/edge-capture.server", () => ({
 }));
 
 vi.mock("~/lib/node-capture-registry.server", () => ({
-  CAPTURE_REGISTRY_BY_ENTITY_TYPE: {
+  CAPTURE_REGISTRY_BY_NODE_TYPE: {
     decision: {
       entityType: "decision",
       captureFn: mocks.captureFn,
@@ -224,7 +224,7 @@ describe("changesets write gate", () => {
           {
             op: "supersede",
             target: "decision_0123456789ABCDEFGHJKMNPQRS",
-            entity_type: "decision",
+            node_type: "decision",
             body: { decision: "Revised", question: "Why?" },
           },
         ],
@@ -257,7 +257,7 @@ describe("changesets write gate", () => {
           {
             op: "supersede",
             target: "decision_0123456789ABCDEFGHJKMNPQRS",
-            entity_type: "decision",
+            node_type: "decision",
             body: { decision: "x", question: "y" },
           },
         ],
@@ -279,7 +279,7 @@ describe("changesets write gate", () => {
         operations: [
           {
             op: "append",
-            entity_type: "decision",
+            node_type: "decision",
             alias: "gateway",
             after: "state_01BEFORE",
             relation_kind: "flows_to",
@@ -369,5 +369,34 @@ describe("changesets write gate", () => {
     expect(response.status).toBe(403);
     expect(mocks.captureFn).not.toHaveBeenCalled();
     expect(mocks.captureEdge).not.toHaveBeenCalled();
+  });
+
+  it("creates a node from a `node_type` create op (the renamed wire field)", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [
+          { op: "create", node_type: "decision", body: { decision: "X", question: "Y?" } },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.captureFn).toHaveBeenCalled();
+  });
+
+  it("rejects the former `entity_type` field on create — renamed to `node_type`, no backwards compat", async () => {
+    const response = await action({
+      request: changesetRequest({
+        operations: [
+          { op: "create", entity_type: "decision", body: { decision: "X", question: "Y?" } },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: string };
+    // Preflight rejects the unknown type before any op runs (op.node_type is absent).
+    expect(body.error).toContain("Unsupported create node_type");
+    expect(mocks.captureFn).not.toHaveBeenCalled();
   });
 });

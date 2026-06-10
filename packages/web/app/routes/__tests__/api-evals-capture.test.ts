@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   appendAuditEvent: vi.fn(),
   getDocoById: vi.fn(),
   getDocoLevelRole: vi.fn(),
-  listEntitiesByDoco: vi.fn(),
+  listNodesByDoco: vi.fn(),
   listPrincipals: vi.fn(),
   loadDocoRouteForRead: vi.fn(),
   reindex: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock("@doco/db", () => {
       eval: { table: "evals", typeNamedColumn: "eval" },
     },
     getDocoById: mocks.getDocoById,
-    listEntitiesByDoco: mocks.listEntitiesByDoco,
+    listNodesByDoco: mocks.listNodesByDoco,
     listPrincipals: mocks.listPrincipals,
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
