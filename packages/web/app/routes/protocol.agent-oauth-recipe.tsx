@@ -141,7 +141,11 @@ instructions, and create \`CLAUDE.md\` as a one-line shim:
 
 Commit these when they exist or changed:
 
-- \`.doco/connections.md\` — public Doco URL(s) for this repo.
+- \`.doco/connections.md\` — the public Doco URL(s) this repo connects
+  to, which double as the project's **focus**: the one-or-more
+  workspaces/docos this checkout is about. An agent with broader grant
+  works across exactly this set, not its whole grant; declare more than
+  one when the project spans several.
 - \`AGENTS.md\` and \`CLAUDE.md\` — bootstrap pointers.
 - \`.agents/doco-agent-client.mjs\` — helper that reads credentials
   inside Node.
