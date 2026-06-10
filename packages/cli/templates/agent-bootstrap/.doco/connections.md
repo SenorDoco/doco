@@ -14,7 +14,7 @@ connected to mint an invite for you from the Doco's Invites page.
 ## Agent protocol
 
 `AGENTS.md` carries the contributor pointer. The full operating
-contract (the four invariants) is at
+contract (the three invariants) is at
 `https://doco.to/protocol/canonical-instructions` and applies to
 any agent working in a Doco-tracked project.
 
