@@ -9,6 +9,7 @@ import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { etaggedJson } from "~/lib/etag.server";
+import { buildSearchDisplay } from "~/lib/indicator-lines";
 import {
   type SearchFilters,
   computeFilterFacets,
@@ -63,12 +64,19 @@ export async function loader({
     };
 
     if (!q) {
+      const duration_ms = Math.round(performance.now() - start);
       return Response.json({
         query: "",
         doco_goal: goal,
         viewer,
         count: 0,
-        duration_ms: Math.round(performance.now() - start),
+        duration_ms,
+        display: buildSearchDisplay({
+          indicatorPrefix: viewer?.indicator_prefix,
+          count: 0,
+          durationMs: duration_ms,
+          label: handle,
+        }),
         filters: filtersOut,
         hits: [],
       });
@@ -107,11 +115,18 @@ export async function loader({
     const allHits = hits.map(toJsonSearchHit);
 
     if (allHits.length === 0) {
+      const duration_ms = Math.round(performance.now() - start);
       return Response.json({
         query: q,
         doco_goal: goal,
         count: 0,
-        duration_ms: Math.round(performance.now() - start),
+        duration_ms,
+        display: buildSearchDisplay({
+          indicatorPrefix: viewer?.indicator_prefix,
+          count: 0,
+          durationMs: duration_ms,
+          label: handle,
+        }),
         filters: filtersOut,
         hits: [],
         viewer,
@@ -128,11 +143,21 @@ export async function loader({
       hits: allHits,
       ...(semanticWarning ? { warning: semanticWarning } : {}),
     };
+    const duration_ms = Math.round(performance.now() - start);
     return etaggedJson(
       request,
       {
         ...stableData,
-        duration_ms: Math.round(performance.now() - start),
+        duration_ms,
+        // `display` carries the wall-clock duration, so it stays OUT of
+        // `stableData` (the etag basis) — otherwise the etag would churn
+        // every request.
+        display: buildSearchDisplay({
+          indicatorPrefix: viewer?.indicator_prefix,
+          count: allHits.length,
+          durationMs: duration_ms,
+          label: handle,
+        }),
       },
       { stableData },
     );
