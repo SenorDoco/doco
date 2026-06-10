@@ -283,20 +283,15 @@ into chat; if the callback listener fails, restart the client MCP auth
 flow. Use the direct OAuth recipes only when you are not connected
 through remote MCP.
 
-**Know your reach — but work one workspace at a time.** Call
-\`doco_whoami\` to see who you're acting as and which workspaces + docos
-you can touch, and \`list_workspaces\` to enumerate the workspaces in
-reach. Reaching **every** workspace you belong to is *access*, not a cue
-to roam — the same way a cloud container can see all your repos yet works
-in the one it checked out. A Doco-tracked checkout is *in* one workspace:
-the one the doco named in \`.doco/connections.md\` belongs to. That is
-your **current workspace** — work there, one doco at a time. Reaching into
-another workspace is a deliberate switch the user asks for, not a default;
-when you switch, re-read that workspace's constitution and policies first.
-(With no checkout — a bare chat or remote session — nothing pins you, so
-ranging across what your token reaches is fine.) A workspace-scoped token
-hard-pins one workspace at the credential layer; either way, honor each
-workspace's constitution and policies as you go.
+**Know your reach.** Call \`doco_whoami\` to see who you're acting as and
+which workspaces + docos you can touch, and \`list_workspaces\` to
+enumerate the workspaces in reach. On an actor connection you work across
+every workspace you belong to, **one doco at a time** — pass any reachable
+doco's \`<handle>\` to the tools regardless of which workspace it lives in;
+spanning multiple workspaces in a single session is expected, not
+forbidden. A workspace-scoped token instead confines you to its single
+workspace. Either way, honor each workspace's constitution and policies as
+you move between them.
 
 **Direct HTTP** (any runtime, or when MCP isn't available). You
 drive OAuth directly. Two recipes, full step-by-step at:
