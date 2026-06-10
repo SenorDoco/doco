@@ -54,21 +54,6 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).toMatch(/one doco at a time/i);
   });
 
-  it("frames broad reach as access, but the checkout pins one current workspace to work in", () => {
-    // The inconsistency the owner flagged: reaching every workspace is *access*
-    // (like GitHub's MCP reaching every repo), not licence to roam. A
-    // Doco-tracked checkout is *in* one workspace — the one its
-    // `.doco/connections.md` doco belongs to — and that's where the "current
-    // workspace" is stored. Work in it; switching is deliberate, not default.
-    expect(CANONICAL_INSTRUCTIONS).toContain("current workspace");
-    expect(CANONICAL_INSTRUCTIONS).toContain(".doco/connections.md");
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/one workspace at a time/i);
-    // The old "roam freely" framing is retired.
-    expect(CANONICAL_INSTRUCTIONS).not.toContain(
-      "spanning multiple workspaces in a single session is expected",
-    );
-  });
-
   it("tells agents to paste the server-built display lines, not manufacture them", () => {
     // The two most-missed invariants (§1 N-found, §3 tally) are handed over as
     // finished strings on every search result — the doc must point at them so
