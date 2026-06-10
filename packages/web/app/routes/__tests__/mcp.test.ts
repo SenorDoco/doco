@@ -118,6 +118,10 @@ describe("POST /mcp (hosted remote MCP)", () => {
     // The grant is the scope: use all of it, no one-at-a-time cap.
     expect(instructions).not.toMatch(/one Doco at a time/i);
     expect(instructions).toContain("Use all of it");
+    // A project may declare an explicit (one-to-many) focus in connections.md;
+    // absent that the whole grant stands, and the agent never self-narrows.
+    expect(instructions).toContain(".doco/connections.md");
+    expect(instructions).toMatch(/focus/i);
   });
 
   it("tools/list advertises whoami + read + write tools", async () => {

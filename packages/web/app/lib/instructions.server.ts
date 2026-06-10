@@ -291,6 +291,23 @@ workspaces and docos the task needs — never cap yourself at one. Each
 tool call names a doco by its \`<handle>\`, in any workspace you reach.
 Honor each workspace's constitution and policies as you go.
 
+**Focus only when the project declares it.** Your grant is what you
+*can* reach; a project may also say what it is *about* — a working set
+of **one or more** workspaces and/or docos for this checkout, named in
+\`.doco/connections.md\`. When that file declares a set, work across
+exactly that set — it is one-to-many, so never collapse it to one — and
+treat it as the user's deliberate choice for this project, the same kind
+of choice the grant itself is. With no such declared focus, your whole
+grant stands. Either way you never narrow on your own initiative: only
+the user narrows you, through the grant or through the project's declared
+set. If you find more than one declaration and they disagree (e.g.
+\`.doco/connections.md\` and an \`AGENTS.md\` focus marker name different
+sets), don't guess — ask the user which is authoritative, then rewrite
+the stale one to match so the next agent finds a single answer.
+\`.doco/connections.md\` is the structured source of truth and wins
+whenever both exist; reach for an \`AGENTS.md\` focus line only when you
+can record a project's focus but cannot write \`.doco/\`.
+
 **Direct HTTP** (any runtime, or when MCP isn't available). You
 drive OAuth directly. Two recipes, full step-by-step at:
 

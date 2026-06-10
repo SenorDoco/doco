@@ -124,7 +124,9 @@ exist:
     test -f CLAUDE.md
 
 If any are missing, add them before you declare setup done: create
-\`.doco/connections.md\` with the public Doco URL, \`AGENTS.md\` with
+\`.doco/connections.md\` with the public Doco URL(s) — one or more, since
+that set is also the project's focus (what this checkout is about, which
+an agent works across instead of its whole grant) — \`AGENTS.md\` with
 the Doco connection/OAuth instructions, and \`CLAUDE.md\` as
 \`@./AGENTS.md\`.
 
