@@ -115,6 +115,9 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(instructions).toContain("doco_whoami");
     expect(instructions).toContain("list_workspaces");
     expect(body.result.serverInfo.name).toBe("doco");
+    // Broad reach is access, not licence to roam: focus on one workspace at a
+    // time and treat reaching another as a deliberate switch.
+    expect(instructions).toMatch(/one workspace at a time/i);
   });
 
   it("tools/list advertises whoami + read + write tools", async () => {
