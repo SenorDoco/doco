@@ -123,8 +123,7 @@ exist:
     test -f AGENTS.md
     test -f CLAUDE.md
 
-If any are missing, add them before you declare setup done. With the
-CLI installed, run \`doco install-agent-bootstrap\`; otherwise create
+If any are missing, add them before you declare setup done: create
 \`.doco/connections.md\` with the public Doco URL, \`AGENTS.md\` with
 the Doco connection/OAuth instructions, and \`CLAUDE.md\` as
 \`@./AGENTS.md\`.

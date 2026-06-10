@@ -29,7 +29,6 @@ kept in [PLANNING.md](PLANNING.md) for historical context.
 ```
 .
 ├── packages/
-│   ├── cli/                 # `doco` CLI (login, install-agent-bootstrap)
 │   ├── db/                  # Postgres adapter, schema.sql + numbered migrations
 │   ├── host/                # Host/Doco/Principal/Workspace domain layer
 │   ├── index/               # Edge derivation + embedding index helpers
@@ -54,8 +53,8 @@ From then on every API call sends `Authorization: Bearer
 $DOCO_ACCESS`; no secret appears in the URL. See `/llms.txt` on
 this host for the complete recipe.
 
-When `doco login` or `doco install-agent-bootstrap` creates or updates
-bootstrap files, commit only the non-secret ones:
+When you connect a repo to Doco, commit only the non-secret bootstrap
+files:
 
 ```sh
 test -f .doco/connections.md

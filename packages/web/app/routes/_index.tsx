@@ -84,7 +84,7 @@ const STEPS: ReadonlyArray<{ n: string; title: string; body: string }> = [
   {
     n: "1",
     title: "Connect",
-    body: "Run the wizard or doco install-agent-bootstrap. Doco commits a few files so every teammate and agent finds the same memory.",
+    body: "Run the connect wizard and Doco commits a few files so every teammate and agent finds the same memory.",
   },
   {
     n: "2",

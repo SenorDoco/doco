@@ -3,8 +3,8 @@
 // dead ends today — bare 404s with no next step — and the right
 // recovery is wildly different between them (create-new vs ask-for-
 // access). Conflating them is exactly the failure mode the user flagged:
-// telling an inaccessible-but-real-Doco caller to `doco login --create`
-// would fork a new Doco when the real one is right there.
+// telling an inaccessible-but-real-Doco caller to create a new Doco
+// would fork one when the real one is right there.
 //
 // Three call sites consume this:
 //   - /api/v1/agent-bootstrap     (warning field — single-line, agent reads)
@@ -58,7 +58,7 @@ export function buildMissingDocoGuidance(args: {
       actions: [
         {
           label: "Create a new Doco in the web UI",
-          explainer: `Open ${host}/new-doco in a browser, create the Doco there, then rerun \`doco login --host ${host}\` to authorize this checkout. The CLI writes the Doco URL to .doco/connections.md and stores the OAuth credentials in .env.`,
+          explainer: `Open ${host}/new-doco in a browser and create the Doco there. Then put its URL in .doco/connections.md and authorize this checkout — connect via the MCP at ${host}/mcp, or set DOCO_ACCESS in .env from a token minted at ${host}/tokens.`,
         },
         {
           label: "Recover the right id for an existing Doco",
@@ -83,9 +83,7 @@ export function buildMissingDocoGuidance(args: {
       },
       {
         label: "Re-authorize with the right account",
-        command: `doco login --host ${host}`,
-        explainer:
-          "Mints a fresh access credential. If you have access under a different account or workspace, switch to that one in the browser flow.",
+        explainer: `Mint a fresh access credential at ${host}/tokens, or reconnect the MCP at ${host}/mcp. If you have access under a different account or workspace, switch to that one in the browser flow.`,
       },
       {
         label: "Do NOT try to create a second Doco",
