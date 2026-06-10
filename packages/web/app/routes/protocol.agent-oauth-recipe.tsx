@@ -131,16 +131,9 @@ test -f AGENTS.md
 test -f CLAUDE.md
 \`\`\`
 
-If any are missing, add them. If \`doco-cli\` is installed, the easiest
-path is:
-
-\`\`\`sh
-doco install-agent-bootstrap
-\`\`\`
-
-Otherwise create \`.doco/connections.md\` with the public Doco URL,
-create \`AGENTS.md\` with the Doco connection/OAuth instructions, and
-create \`CLAUDE.md\` as a one-line shim:
+If any are missing, add them: create \`.doco/connections.md\` with the
+public Doco URL, create \`AGENTS.md\` with the Doco connection/OAuth
+instructions, and create \`CLAUDE.md\` as a one-line shim:
 
 \`\`\`
 @./AGENTS.md
