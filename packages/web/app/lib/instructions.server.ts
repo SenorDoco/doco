@@ -3,6 +3,11 @@
  * /protocol/canonical-instructions (public, text/markdown) and
  * embedded in /api/v1/agent-bootstrap.json.
  *
+ * Structure: the three reply invariants come FIRST (what an agent does
+ * every turn), then the connection/credential mechanics some runtimes
+ * need as reference below. A doc that opens with the rules is followed
+ * better than one that buries them under auth plumbing.
+ *
  * MCP delivery: agents in MCP-aware runtimes (Claude Code, Cursor,
  * Codex CLI) auto-discover this project's MCP server via .mcp.json
  * and read the protocol summary from the server's
@@ -49,9 +54,189 @@ Use Doco naturally as a verb when you talk with the project owner:
 owner says "doco it", interpret that as a request to capture per
 this doco's policies.
 
-This document carries the **three invariants** every reply must follow.
+The **three invariants** below govern every reply, so they come first —
+they're what you do on every turn. The connection and credential
+mechanics some runtimes need follow after: they're about how you
+*connect*, not how you *reply*, and the invariants hold whichever way
+you connected.
 
-## How you read + write Doco today
+## 1. TOP OF EVERY REPLY — connection indicator
+
+Render indicators in **rendering order around tool calls**. Text
+between tool calls is shown to the user as those tool calls run, so
+use that ordering to communicate "what I'm about to do" vs. "what I
+just finished." Don't batch everything at the end.
+
+**On the first reply of a session that uses Doco**, render the
+Loading line as the very first text, BEFORE any MCP tool call:
+
+\`\`\`
+[🔮 Doco] Loading <doco_handle>...
+\`\`\`
+
+The trailing \`...\` is required. If this turn doesn't touch Doco at
+all (greeting, one-word ack, off-topic), emit nothing.
+
+**When you call \`doco_search\`**, render the corky verb on its own
+line IMMEDIATELY BEFORE the tool call (so the user sees it as the
+query is sent), then the N-found line AFTER the result returns:
+
+\`\`\`
+[🔮 Doco] <querying-verb>
+
+   ← tool call here
+
+[🔮 Doco] <N> relevant nodes found (<X.X>s)
+\`\`\`
+
+**Don't hand-build that N-found line — paste it.** Every \`doco_search\`
+result carries a \`display\` object with the exact lines already
+formatted from your credential: \`display.found\` is the
+"<N> relevant nodes found (<X.X>s)" line above, and \`display.tally\`
+is the closing tally (§3). Emit \`display.found\` verbatim after the
+result, and \`display.tally\` verbatim as your last line. The server
+owns the format so you can't drift from it; only fall back to
+constructing the line by hand when a result lacks \`display\`.
+
+**Your Doco credential label.** Every \`doco_search\` response may carry
+\`viewer.indicator_prefix\`, and \`doco_complete_authentication\` returns
+an "Authenticated as <credential>" block. Once you know the prefix, use it
+verbatim for every Doco indicator line. For OAuth/API-key agents this
+looks like \`[🔮 Doco <token nickname> on behalf of @username]\`, so the
+query/count/tally lines become \`[🔮 Doco <token nickname> on behalf of
+@username] <querying-verb>\`, \`[🔮 Doco <token nickname> on behalf of
+@username] <N> relevant nodes found …\`, and the closing tally. If the
+response lacks \`viewer.indicator_prefix\` but has \`viewer.username\`,
+fall back to \`[🔮 Doco @username]\`. Before you know either (the very
+first line of a cold session, before any search returns), plain
+\`[🔮 Doco]\` is fine.
+
+Pick \`<querying-verb>\` at random:
+
+Querying... · Looking it up... · Asking around... · Reading the room... ·
+Sniffing for hits... · Flipping through notes... · Scanning the graph... ·
+Searching the lore... · Peering into the orb... · Combing the archive... ·
+Hunting for prior art... · Pinging the memory... · Cross-referencing... ·
+Checking what's known... · Tracing the trail... · Diving in... ·
+Polling the doco... · Skimming the index... · Asking the oracle... · Searching...
+
+**Only render the verb if you have DOCO_ACCESS, or a shared \`.env\`
+with DOCO_REFRESH + DOCO_CLIENT_ID, and expect the search to succeed.**
+If both DOCO_ACCESS and refresh credentials are missing, skip the
+search and go to the not-connected flow below — no verb. If your
+credential turns out invalid (401) and local refresh cannot recover
+it, it's fine that the verb appeared; follow up with the not-connected
+flow.
+
+If you didn't need to query (greeting, one-word ack), emit nothing
+at the top — no "Not querying" placeholder. Absence is the signal.
+
+**If Doco access isn't granted** (no usable DOCO_ACCESS and no usable
+DOCO_REFRESH/DOCO_CLIENT_ID after checking the shared repo-root
+\`.env\`, or \`doco_search\` returned 401/403 after refresh, or the
+bootstrap couldn't reach Doco):
+
+1. Call \`doco_authenticate\` to get the verification URL.
+2. Render the block returned by \`doco_authenticate\` at the top of
+   your reply:
+
+   \`\`\`
+   [🔮 Doco] <doco-or-workspace-name> access not granted yet
+
+   To let me read this project's prior decisions and rules, open
+   [<URL>](<URL>) and click Approve. I'll pause here until you do.
+   \`\`\`
+
+   The URL must be wrapped in markdown link syntax so it renders
+   clickable.
+3. **Immediately call \`doco_complete_authentication\` with
+   \`wait_seconds: 120\` in the same turn.** Do not wait for the user
+   to send another message saying they approved; the tool blocks while
+   polling so the agent can learn when approval lands.
+4. **If it succeeds**: \`doco_complete_authentication\` returns an
+   "Authenticated as <credential>. I've got the following levels of
+   access:" block — render it verbatim at the top of your reply, then
+   retry \`doco_search\` and continue with the substantive answer using
+   the now-available doco.
+5. **If it returns "still pending" or any error**: end your reply
+   with a short "I'll wait — send any message when you've approved"
+   plus the tally line. **Do NOT continue substantive work without
+   Doco access.** Doco contains prior decisions and rules; doing
+   work that hasn't checked them risks contradicting them.
+
+**The query has two jobs:**
+
+1. **Inform.** Let prior Decisions, Rules, and Intents shape what
+   you say and do. An answer that contradicts a documented Decision
+   because you didn't check is a defect.
+2. **Deduplicate.** Before suggesting a new node, scan for nodes
+   that already cover the same territory. Patch the existing one
+   rather than create a near-duplicate.
+
+## 2. AFTER EVERY WRITE — footer_lines verbatim
+
+When the project owner captures a node on your behalf (via the web
+UI), the host returns \`footer_lines: string[]\` from the capture
+endpoint. If they share those with you, paste them verbatim, one
+per line:
+
+\`\`\`
+[🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) (✅ <n> authoring policies passed in <X.Xs>)
+\`\`\`
+
+Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
+➖ removed · 🔁 replaced · 🏷️ renamed · 🗑️ deleted.
+
+## 3. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
+
+Render one tally line per source the agent has potential access to
+(each doco or workspace listed in the project's connections).
+
+**Connected source** (you queried or wrote — even if N == 0):
+
+\`\`\`
+[🔮 Doco <token nickname> on behalf of @username] <doco-or-workspace-name>: **<N>** nodes added/updated
+\`\`\`
+
+(Use \`viewer.indicator_prefix\` once you know it — see "Your Doco
+credential label" in section 1. Fall back to \`[🔮 Doco @username]\`
+only when no credential-aware prefix is provided. Plain \`[🔮 Doco]\`
+only before your first search of a cold session.)
+
+**Paste \`display.tally\`, don't rebuild it.** The \`doco_search\`
+result hands you \`display.tally\` — this exact line, already formatted
+with your credential and the source you queried, for a read-only turn
+(**0**). If the turn captured nothing, emit it verbatim as your last
+line. If you DID capture, bump **0** to the number of nodes you wrote
+this turn — one per capture \`footer_lines\` line. This is the same
+"echo the server-provided string" contract as \`footer_lines\` (§2):
+the host owns the format so the ritual can't drift.
+
+**Source whose access hasn't been granted yet**:
+
+\`\`\`
+[🔮 Doco] ⚠️ <doco-or-workspace-name> not queried or updated as access hasn't been granted yet.
+\`\`\`
+
+The tally lines are the LAST lines of the LAST text output of the turn.
+
+- \`<doco-or-workspace-name>\` is the human-readable doco handle if access is
+  scoped to one doco, or the workspace name if access is granted
+  workspace-wide (covering multiple docos under that workspace).
+- \`<N>\` counts distinct entities the project owner captured on your
+  behalf this turn (patch-3-fields-of-1-Decision = 1).
+- \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
+- Singular form for \`**1**\`; plural otherwise (zero is plural).
+- The connected-source line renders EVEN when N == 0 — that's the
+  explicit no-op signal.
+- The not-granted-yet line replaces the normal tally for that source
+  until access is granted (then switch to the normal line).
+
+## Connecting and writing — the mechanics
+
+Everything below is reference: how to reach a doco, authenticate, and
+write to it. Read it when you need it — the three invariants above are
+the part you apply on every turn, whichever way you connected.
 
 There are two access channels — pick the one your runtime supports.
 
@@ -262,7 +447,7 @@ Action capture example:
 Public docos return 200 for unauthenticated reads; private docos
 return 403 until you finish the OAuth recipe.
 
-## Bootstrap: read the policies
+### Bootstrap: read the policies
 
 Every doco has a set of **policies** — short, project-owner-authored
 statements that govern how you, the agent, author nodes inside it.
@@ -302,181 +487,6 @@ Once you hold a Bearer token, hit:
 The response carries the policies for every doco you have
 read-or-above access to, exposed as a single \`policies[]\` array,
 each entry carrying its \`kind\`.
-
-The three invariants below apply whichever path you took — the
-protocol is about how you reply, not about how you authenticated.
-
-## 1. TOP OF EVERY REPLY — connection indicator
-
-Render indicators in **rendering order around tool calls**. Text
-between tool calls is shown to the user as those tool calls run, so
-use that ordering to communicate "what I'm about to do" vs. "what I
-just finished." Don't batch everything at the end.
-
-**On the first reply of a session that uses Doco**, render the
-Loading line as the very first text, BEFORE any MCP tool call:
-
-\`\`\`
-[🔮 Doco] Loading <doco_handle>...
-\`\`\`
-
-The trailing \`...\` is required. If this turn doesn't touch Doco at
-all (greeting, one-word ack, off-topic), emit nothing.
-
-**When you call \`doco_search\`**, render the corky verb on its own
-line IMMEDIATELY BEFORE the tool call (so the user sees it as the
-query is sent), then the N-found line AFTER the result returns:
-
-\`\`\`
-[🔮 Doco] <querying-verb>
-
-   ← tool call here
-
-[🔮 Doco] <N> relevant nodes found (<X.X>s)
-\`\`\`
-
-**Don't hand-build that N-found line — paste it.** Every \`doco_search\`
-result carries a \`display\` object with the exact lines already
-formatted from your credential: \`display.found\` is the
-"<N> relevant nodes found (<X.X>s)" line above, and \`display.tally\`
-is the closing tally (§3). Emit \`display.found\` verbatim after the
-result, and \`display.tally\` verbatim as your last line. The server
-owns the format so you can't drift from it; only fall back to
-constructing the line by hand when a result lacks \`display\`.
-
-**Your Doco credential label.** Every \`doco_search\` response may carry
-\`viewer.indicator_prefix\`, and \`doco_complete_authentication\` returns
-an "Authenticated as <credential>" block. Once you know the prefix, use it
-verbatim for every Doco indicator line. For OAuth/API-key agents this
-looks like \`[🔮 Doco <token nickname> on behalf of @username]\`, so the
-query/count/tally lines become \`[🔮 Doco <token nickname> on behalf of
-@username] <querying-verb>\`, \`[🔮 Doco <token nickname> on behalf of
-@username] <N> relevant nodes found …\`, and the closing tally. If the
-response lacks \`viewer.indicator_prefix\` but has \`viewer.username\`,
-fall back to \`[🔮 Doco @username]\`. Before you know either (the very
-first line of a cold session, before any search returns), plain
-\`[🔮 Doco]\` is fine.
-
-Pick \`<querying-verb>\` at random:
-
-Querying... · Looking it up... · Asking around... · Reading the room... ·
-Sniffing for hits... · Flipping through notes... · Scanning the graph... ·
-Searching the lore... · Peering into the orb... · Combing the archive... ·
-Hunting for prior art... · Pinging the memory... · Cross-referencing... ·
-Checking what's known... · Tracing the trail... · Diving in... ·
-Polling the doco... · Skimming the index... · Asking the oracle... · Searching...
-
-**Only render the verb if you have DOCO_ACCESS, or a shared \`.env\`
-with DOCO_REFRESH + DOCO_CLIENT_ID, and expect the search to succeed.**
-If both DOCO_ACCESS and refresh credentials are missing, skip the
-search and go to the not-connected flow below — no verb. If your
-credential turns out invalid (401) and local refresh cannot recover
-it, it's fine that the verb appeared; follow up with the not-connected
-flow.
-
-If you didn't need to query (greeting, one-word ack), emit nothing
-at the top — no "Not querying" placeholder. Absence is the signal.
-
-**If Doco access isn't granted** (no usable DOCO_ACCESS and no usable
-DOCO_REFRESH/DOCO_CLIENT_ID after checking the shared repo-root
-\`.env\`, or \`doco_search\` returned 401/403 after refresh, or the
-bootstrap couldn't reach Doco):
-
-1. Call \`doco_authenticate\` to get the verification URL.
-2. Render the block returned by \`doco_authenticate\` at the top of
-   your reply:
-
-   \`\`\`
-   [🔮 Doco] <doco-or-workspace-name> access not granted yet
-
-   To let me read this project's prior decisions and rules, open
-   [<URL>](<URL>) and click Approve. I'll pause here until you do.
-   \`\`\`
-
-   The URL must be wrapped in markdown link syntax so it renders
-   clickable.
-3. **Immediately call \`doco_complete_authentication\` with
-   \`wait_seconds: 120\` in the same turn.** Do not wait for the user
-   to send another message saying they approved; the tool blocks while
-   polling so the agent can learn when approval lands.
-4. **If it succeeds**: \`doco_complete_authentication\` returns an
-   "Authenticated as <credential>. I've got the following levels of
-   access:" block — render it verbatim at the top of your reply, then
-   retry \`doco_search\` and continue with the substantive answer using
-   the now-available doco.
-5. **If it returns "still pending" or any error**: end your reply
-   with a short "I'll wait — send any message when you've approved"
-   plus the tally line. **Do NOT continue substantive work without
-   Doco access.** Doco contains prior decisions and rules; doing
-   work that hasn't checked them risks contradicting them.
-
-**The query has two jobs:**
-
-1. **Inform.** Let prior Decisions, Rules, and Intents shape what
-   you say and do. An answer that contradicts a documented Decision
-   because you didn't check is a defect.
-2. **Deduplicate.** Before suggesting a new node, scan for nodes
-   that already cover the same territory. Patch the existing one
-   rather than create a near-duplicate.
-
-## 2. AFTER EVERY WRITE — footer_lines verbatim
-
-When the project owner captures a node on your behalf (via the web
-UI), the host returns \`footer_lines: string[]\` from the capture
-endpoint. If they share those with you, paste them verbatim, one
-per line:
-
-\`\`\`
-[🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) (✅ <n> authoring policies passed in <X.Xs>)
-\`\`\`
-
-Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
-➖ removed · 🔁 replaced · 🏷️ renamed · 🗑️ deleted.
-
-## 3. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
-
-Render one tally line per source the agent has potential access to
-(each doco or workspace listed in the project's connections).
-
-**Connected source** (you queried or wrote — even if N == 0):
-
-\`\`\`
-[🔮 Doco <token nickname> on behalf of @username] <doco-or-workspace-name>: **<N>** nodes added/updated
-\`\`\`
-
-(Use \`viewer.indicator_prefix\` once you know it — see "Your Doco
-credential label" in section 1. Fall back to \`[🔮 Doco @username]\`
-only when no credential-aware prefix is provided. Plain \`[🔮 Doco]\`
-only before your first search of a cold session.)
-
-**Paste \`display.tally\`, don't rebuild it.** The \`doco_search\`
-result hands you \`display.tally\` — this exact line, already formatted
-with your credential and the source you queried, for a read-only turn
-(**0**). If the turn captured nothing, emit it verbatim as your last
-line. If you DID capture, bump **0** to the number of nodes you wrote
-this turn — one per capture \`footer_lines\` line. This is the same
-"echo the server-provided string" contract as \`footer_lines\` (§2):
-the host owns the format so the ritual can't drift.
-
-**Source whose access hasn't been granted yet**:
-
-\`\`\`
-[🔮 Doco] ⚠️ <doco-or-workspace-name> not queried or updated as access hasn't been granted yet.
-\`\`\`
-
-The tally lines are the LAST lines of the LAST text output of the turn.
-
-- \`<doco-or-workspace-name>\` is the human-readable doco handle if access is
-  scoped to one doco, or the workspace name if access is granted
-  workspace-wide (covering multiple docos under that workspace).
-- \`<N>\` counts distinct entities the project owner captured on your
-  behalf this turn (patch-3-fields-of-1-Decision = 1).
-- \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
-- Singular form for \`**1**\`; plural otherwise (zero is plural).
-- The connected-source line renders EVEN when N == 0 — that's the
-  explicit no-op signal.
-- The not-granted-yet line replaces the normal tally for that source
-  until access is granted (then switch to the normal line).
 
 ## Doco is the memory — your private memory isn't
 
