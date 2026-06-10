@@ -65,6 +65,22 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).toContain("don't rebuild it");
   });
 
+  it("leads with the three invariants; demotes the credential/OAuth mechanics below them", () => {
+    // The behavioral contract (what you do every turn) comes first; the access
+    // plumbing some runtimes need is reference material that follows. A 470-line
+    // doc with the rules buried at the bottom is followed worse than one that
+    // opens with them.
+    const firstInvariant = CANONICAL_INSTRUCTIONS.indexOf("## 1. TOP OF EVERY REPLY");
+    const lastInvariant = CANONICAL_INSTRUCTIONS.indexOf("## 3. CLOSING LINE OF THE TURN");
+    const mechanics = CANONICAL_INSTRUCTIONS.indexOf("the mechanics");
+    const credentialSharing = CANONICAL_INSTRUCTIONS.indexOf("Repo-local credential sharing");
+    expect(firstInvariant).toBeGreaterThan(0);
+    // All three invariants land before any of the connection/credential prose.
+    expect(firstInvariant).toBeLessThan(mechanics);
+    expect(lastInvariant).toBeLessThan(mechanics);
+    expect(firstInvariant).toBeLessThan(credentialSharing);
+  });
+
   it("lists exactly the catalog node types (no non-node routes like invites/audit)", () => {
     expect(CANONICAL_INSTRUCTIONS).toContain(
       "Node types: intents, ideas, rules, decisions, actions, logs, evals,",
