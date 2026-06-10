@@ -52,13 +52,13 @@ function capturedFields(): Record<string, unknown> {
   return call[1];
 }
 
-function capture(entityType: string, draft: Record<string, unknown>) {
+function capture(nodeType: string, draft: Record<string, unknown>) {
   return captureGenericNode(
     "/tmp/doco",
     DOCO_ID,
     "test",
     "doco",
-    entityType,
+    nodeType,
     draft,
     "https://doco.test",
   );

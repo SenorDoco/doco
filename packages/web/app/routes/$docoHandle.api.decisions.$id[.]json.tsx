@@ -17,7 +17,7 @@ import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco
  */
 export const loader = makeUpdateRoute({
   type: "decisions",
-  entityType: "decision",
+  nodeType: "decision",
   pluralDir: "decisions",
 }).loader;
 

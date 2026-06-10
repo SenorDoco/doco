@@ -11,7 +11,7 @@ const pools: ProcessPool[] = [
 ];
 const node = (id: string, poolId: string): ProcessNode => ({
   id,
-  entity_type: "action",
+  node_type: "action",
   name: id,
   lifecycle: "active",
   created_at: null,

@@ -37,7 +37,7 @@ describe("perspectiveViewUrl — one URL per stage", () => {
         view({
           overlay: {
             kind: "node",
-            entityType: "decision",
+            nodeType: "decision",
             id: "decision_1",
             href: "/acme/decision/decision_1",
           },
@@ -54,7 +54,7 @@ describe("perspectiveViewUrl — one URL per stage", () => {
           perspective: "process",
           overlay: {
             kind: "node",
-            entityType: "decision",
+            nodeType: "decision",
             id: "decision_1",
             href: "/acme/decision/decision_1",
           },
@@ -92,7 +92,7 @@ describe("perspectiveViewUrl — one URL per stage", () => {
           expandedProcessId: "action_1",
           overlay: {
             kind: "node",
-            entityType: "action",
+            nodeType: "action",
             id: "action_1",
             href: "/acme/action/action_1",
           },
@@ -114,7 +114,7 @@ describe("perspectiveView history round-trip", () => {
       expandedProcessId: "action_1",
       overlay: {
         kind: "node",
-        entityType: "action",
+        nodeType: "action",
         id: "action_1",
         href: "/acme/action/action_1",
       },

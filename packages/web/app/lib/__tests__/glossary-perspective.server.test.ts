@@ -19,7 +19,7 @@ function makeClient(rows: unknown[]) {
 function row(over: Record<string, unknown>) {
   return {
     id: "x",
-    entity_type: "reference",
+    node_type: "reference",
     label: null,
     prose: null,
     lifecycle: "active",
@@ -51,7 +51,7 @@ describe("loadGlossaryPerspectiveData", () => {
     expect(entriesOf(data)).toHaveLength(1);
     const entry = data.groups[0].entries[0];
     expect(entry.headword).toBe("Torre");
-    expect(entry.entityType).toBe("reference");
+    expect(entry.nodeType).toBe("reference");
     expect(entry.href).toBe("/acme/glossary/reference/reference_01");
     // The definition comes from the attribute, never the prose/headword.
     expect(entry.senses).toEqual(["The company building this product."]);

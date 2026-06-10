@@ -1,6 +1,6 @@
 export interface OverviewNodeLabelSource {
   id: string;
-  entity_type: string;
+  node_type: string;
   name: string | null;
 }
 

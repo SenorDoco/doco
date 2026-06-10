@@ -96,7 +96,7 @@ describe("torre-bpm state node page focus path (post name-column drop)", () => {
     const detail = await loadNodeDialogDetail(
       db as never,
       { docoId: DOCO, ownerId: OWNER },
-      { handle: "torre-bpm", entityType: "state", id: STATE, principalId: USER },
+      { handle: "torre-bpm", nodeType: "state", id: STATE, principalId: USER },
     );
     expect(detail?.id).toBe(STATE);
     expect(detail?.summary).toBe("Visits Torre");

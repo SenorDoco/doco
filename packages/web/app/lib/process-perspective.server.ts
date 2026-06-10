@@ -95,7 +95,7 @@ export interface ProcessLane {
 
 export interface ProcessNode {
   id: string;
-  entity_type: string;
+  node_type: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -135,13 +135,13 @@ export interface ProcessGraphData {
   links: OverviewGraphLink[];
 }
 
-const PROCESS_TABLES: { table: string; entityType: string }[] = [
-  { table: "decisions", entityType: "decision" },
-  { table: "actions", entityType: "action" },
-  { table: "rules", entityType: "rule" },
-  { table: "evals", entityType: "eval" },
-  { table: "states", entityType: "state" },
-  { table: "ideas", entityType: "idea" },
+const PROCESS_TABLES: { table: string; nodeType: string }[] = [
+  { table: "decisions", nodeType: "decision" },
+  { table: "actions", nodeType: "action" },
+  { table: "rules", nodeType: "rule" },
+  { table: "evals", nodeType: "eval" },
+  { table: "states", nodeType: "state" },
+  { table: "ideas", nodeType: "idea" },
 ];
 
 // Flow nodes carry process sequence and pool membership: Action, gateway
@@ -181,13 +181,13 @@ const SHAPE_BY_TYPE: Record<string, ProcessShape> = {
   eval: "document",
 };
 
-export function shapeForEntityType(entityType: string): ProcessShape {
-  return SHAPE_BY_TYPE[entityType] ?? "rectangle";
+export function shapeForEntityType(nodeType: string): ProcessShape {
+  return SHAPE_BY_TYPE[nodeType] ?? "rectangle";
 }
 
 interface NodeRow {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -237,13 +237,13 @@ export async function loadProcessGraph(
   // retired here would make toggling "Retired" on a no-op, leaving the
   // canvas "So empty" for a retired process. This mirrors the Graph/List
   // loader (full-graph.server), which also returns every lifecycle.
-  const allowedNodeTypes = new Set(PROCESS_TABLES.map((entry) => entry.entityType));
-  const processTypeList = PROCESS_TABLES.map((entry) => `'${entry.entityType}'`).join(", ");
+  const allowedNodeTypes = new Set(PROCESS_TABLES.map((entry) => entry.nodeType));
+  const processTypeList = PROCESS_TABLES.map((entry) => `'${entry.nodeType}'`).join(", ");
   const windowIds = windowNodeIds(opts.window);
   const nodeParams: unknown[] = [docoId];
   if (windowIds.length > 0) nodeParams.push(windowIds);
   const nodeSql = `SELECT t.id,
-              t.node_type AS entity_type,
+              t.node_type,
               t.prose AS summary,
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
@@ -306,13 +306,13 @@ export async function loadProcessGraph(
   // keeps the JS in lockstep with that list — a References row that somehow
   // arrives (e.g. from a query client that ignores the type filter) is
   // dropped before it can reach the node cap, PageRank, pooling, or layout.
-  const allRows = nodeRows.rows.filter((row) => allowedNodeTypes.has(row.entity_type));
+  const allRows = nodeRows.rows.filter((row) => allowedNodeTypes.has(row.node_type));
 
   // Index of every Action row by id — Actions are the process containers
   // (a process is an Action with child actions) and label their pools.
   const actionsById = new Map<string, NodeRow>();
   for (const row of allRows) {
-    if (row.entity_type === "action") actionsById.set(row.id, row);
+    if (row.node_type === "action") actionsById.set(row.id, row);
   }
 
   // Load outgoing edges up front: rendered links use the rows whose target is
@@ -353,13 +353,13 @@ export async function loadProcessGraph(
   const parentProcessByNode = new Map<string, string>();
   const processIds = new Set<string>();
   for (const row of allRows) {
-    if (!FLOW_TYPES.has(row.entity_type)) continue;
+    if (!FLOW_TYPES.has(row.node_type)) continue;
     const parent = edgeTargets(outgoingByType, row.id, "has_parent").find((id) =>
       actionsById.has(id),
     );
     if (!parent) continue;
     parentProcessByNode.set(row.id, parent);
-    if (row.entity_type === "action") processIds.add(parent);
+    if (row.node_type === "action") processIds.add(parent);
   }
 
   // An Action HEADS its own pool when it is a process (has child actions)
@@ -370,7 +370,7 @@ export async function loadProcessGraph(
   // too, so it can be expanded. Leaf member Actions (a parent, no children) do not.
   const poolActionIds = new Set<string>(processIds);
   for (const row of allRows) {
-    if (row.entity_type !== "action") continue;
+    if (row.node_type !== "action") continue;
     if (!parentProcessByNode.has(row.id)) poolActionIds.add(row.id);
   }
 
@@ -397,7 +397,7 @@ export async function loadProcessGraph(
   const poolByNode = new Map<string, string>();
 
   for (const row of allRows) {
-    if (FLOW_TYPES.has(row.entity_type)) {
+    if (FLOW_TYPES.has(row.node_type)) {
       const parent = parentProcessByNode.get(row.id);
       if (parent) {
         poolByNode.set(row.id, `pool:${parent}`);
@@ -417,7 +417,7 @@ export async function loadProcessGraph(
   // constrained_by/role=gated_by. First Action wins (cross-pool duplication is
   // a later phase).
   for (const row of allRows) {
-    if (row.entity_type !== "action") continue;
+    if (row.node_type !== "action") continue;
     const gatedBy = edgeTargets(outgoingByType, row.id, "gated_by");
     if (gatedBy.length === 0) continue;
     const actionPool = poolByNode.get(row.id);
@@ -433,7 +433,7 @@ export async function loadProcessGraph(
   // Re-home Evals to their tested target's pool when the target lives
   // in a real Intent pool (not Unassigned).
   for (const row of allRows) {
-    if (row.entity_type !== "eval") continue;
+    if (row.node_type !== "eval") continue;
     const targetRef = firstEdgeTarget(outgoingByType, row.id, "tests");
     if (!targetRef) continue;
     const targetPool = poolByNode.get(targetRef);
@@ -486,12 +486,12 @@ export async function loadProcessGraph(
   const makeNode = (row: NodeRow, laneId: string, poolId: string): ProcessNode => {
     const node: ProcessNode = {
       id: row.id,
-      entity_type: row.entity_type,
+      node_type: row.node_type,
       name: row.summary,
       lifecycle: row.lifecycle,
       created_at: row.created_at,
-      href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
-      shape: shapeForEntityType(row.entity_type),
+      href: opts.handle ? `/${opts.handle}/${row.node_type}/${row.id}` : null,
+      shape: shapeForEntityType(row.node_type),
       laneId,
       pool_id: poolId,
     };
@@ -514,11 +514,11 @@ export async function loadProcessGraph(
     let kind: ProcessLaneKind;
     let label: string;
 
-    if (row.entity_type === "state") {
+    if (row.node_type === "state") {
       baseId = BAND_MILESTONE_BASE;
       kind = "milestone";
       label = "Milestones";
-    } else if (ARTIFACT_TYPES.has(row.entity_type)) {
+    } else if (ARTIFACT_TYPES.has(row.node_type)) {
       // A Rule or Eval that re-homed onto an actor-type host
       // (constrained_by/supports role edge) lands in the host's
       // *actor* lane, not the artifacts band. Others stay in artifacts.
@@ -541,7 +541,7 @@ export async function loadProcessGraph(
       }
     } else {
       // Action / Decision / Log: actor lane.
-      const ref = laneReferenceFor(row.entity_type, row.id, outgoingByType, userById);
+      const ref = laneReferenceFor(row.node_type, row.id, outgoingByType, userById);
       const resolved = resolveLane(ref, principalById, principalByName);
       baseId = resolved.id;
       kind = resolved.id.startsWith("principal_")
@@ -581,7 +581,7 @@ export async function loadProcessGraph(
   // its own pool (built below), so opening it drills into that pool's members.
   let topLevelPoolUsed = false;
   for (const row of allRows) {
-    if (row.entity_type !== "action") continue;
+    if (row.node_type !== "action") continue;
     if (row.data?.top_level !== true) continue;
     const ref = laneReferenceFor("action", row.id, outgoingByType, userById);
     const resolved = resolveLane(ref, principalById, principalByName);
@@ -899,12 +899,12 @@ function firstEdgeTarget(
 }
 
 function laneReferenceFor(
-  entityType: string,
+  nodeType: string,
   rowId: string,
   outgoing: OutgoingEdgesByType,
   userById: Map<string, UserRow>,
 ): string | null {
-  switch (entityType) {
+  switch (nodeType) {
     case "action":
     case "log":
       return firstEdgeTarget(outgoing, rowId, "performed_by");
@@ -955,9 +955,9 @@ function resolveRehomeHostLane(
   principalByName: Map<string, PrincipalRow>,
   userById: Map<string, UserRow>,
 ): { id: string; label: string } | null {
-  if (row.entity_type === "rule") {
+  if (row.node_type === "rule") {
     for (const candidate of allRows) {
-      if (candidate.entity_type !== "action") continue;
+      if (candidate.node_type !== "action") continue;
       const gatedBy = edgeTargets(outgoing, candidate.id, "gated_by");
       if (!gatedBy.includes(row.id)) continue;
       const ref = laneReferenceFor("action", candidate.id, outgoing, userById);
@@ -967,12 +967,12 @@ function resolveRehomeHostLane(
     }
     return null;
   }
-  if (row.entity_type === "eval") {
+  if (row.node_type === "eval") {
     const targetRef = firstEdgeTarget(outgoing, row.id, "tests");
     if (!targetRef) return null;
     const target = allRows.find((r) => r.id === targetRef);
     if (!target) return null;
-    const ref = laneReferenceFor(target.entity_type, target.id, outgoing, userById);
+    const ref = laneReferenceFor(target.node_type, target.id, outgoing, userById);
     const resolved = resolveLane(ref, principalById, principalByName);
     if (resolved.id.startsWith("principal_")) return resolved;
     return null;
@@ -1001,7 +1001,7 @@ function computeLaneEntryOrder(
     };
     const depth = depthByNode.get(node.id) ?? 0;
     if (depth < entry.firstAnyDepth) entry.firstAnyDepth = depth;
-    if (node.entity_type === "action" && depth < entry.firstActionDepth) {
+    if (node.node_type === "action" && depth < entry.firstActionDepth) {
       entry.firstActionDepth = depth;
     }
     const createdAt = node.created_at ? Date.parse(node.created_at) : Number.POSITIVE_INFINITY;

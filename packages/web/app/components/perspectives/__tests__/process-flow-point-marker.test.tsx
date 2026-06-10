@@ -18,7 +18,7 @@ vi.mock("@xyflow/react", () => ({
 function node(lifecycle: string, flags: Partial<ProcessNode>): ProcessNode {
   return {
     id: "node_1",
-    entity_type: "action",
+    node_type: "action",
     name: "Professional visits Torre.ai",
     lifecycle,
     created_at: null,

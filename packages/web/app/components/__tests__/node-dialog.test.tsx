@@ -29,7 +29,7 @@ function edge(overrides: Partial<NodeDialogEdge>): NodeDialogEdge {
 function detail(overrides: Partial<NodeDialogDetail>): NodeDialogDetail {
   return {
     id: "decision_01",
-    entity_type: "decision",
+    node_type: "decision",
     summary: "Root node",
     name: "Root node",
     primary_field: "decision",

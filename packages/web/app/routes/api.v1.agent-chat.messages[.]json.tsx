@@ -65,13 +65,13 @@ function parseGraphReferences(value: unknown): VisibleGraphReferenceGroup[] {
       const candidate = item as Record<string, unknown>;
       const number = Number(candidate.number);
       const id = cleanString(candidate.id, 128);
-      const entityType = cleanString(candidate.entity_type, 64);
-      if (!Number.isInteger(number) || number < 1 || !id || !entityType) return [];
+      const nodeType = cleanString(candidate.node_type, 64);
+      if (!Number.isInteger(number) || number < 1 || !id || !nodeType) return [];
       return [
         {
           number,
           id,
-          entity_type: entityType,
+          node_type: nodeType,
           label: cleanString(candidate.label, 220) || id,
           lifecycle: cleanString(candidate.lifecycle, 40) || null,
           href: cleanString(candidate.href, 240) || null,

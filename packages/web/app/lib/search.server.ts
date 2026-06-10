@@ -6,7 +6,7 @@ import { type SearchFilters, resolveFilteredCandidates } from "~/lib/search-filt
 
 export interface SearchHit {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary?: string;
   name: string | null;
   lifecycle: string | null;
@@ -23,25 +23,23 @@ export interface SearchTypeSpec {
   // `node_type` discriminator on `nodes`, or null for host-level types
   // that don't live in `nodes` (workspace).
   nodeType: string | null;
-  entityType: string;
   selectExtra: string;
   hostLevel: boolean;
   toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<SearchHit, "gpr">;
 }
 
-function entitySpec(entityType: string): SearchTypeSpec {
+function entitySpec(nodeType: string): SearchTypeSpec {
   // Post-collapse: every node type lives in `nodes`, prose in the
   // shared `prose` column. The projected alias stays `summary` so the
   // rest of the search hit shape doesn't change.
   return {
     table: "nodes",
-    nodeType: entityType,
-    entityType,
+    nodeType,
     selectExtra: `split_part(prose, E'\n', 1) AS summary, lifecycle, created_at`,
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
-      entity_type: entityType,
+      node_type: nodeType,
       summary: (row.summary as string) ?? "",
       name: null,
       lifecycle: (row.lifecycle as string) ?? null,
@@ -59,13 +57,12 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   {
     table: "nodes",
     nodeType: "principal",
-    entityType: "principal",
     // Slim-down: principal label lives in `prose` now (no `name` column).
     selectExtra: "prose AS name, created_at",
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
-      entity_type: "principal",
+      node_type: "principal",
       summary: (row.name as string) ?? "",
       name: (row.name as string) ?? null,
       lifecycle: null,
@@ -76,12 +73,11 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   {
     table: "workspaces",
     nodeType: null,
-    entityType: "workspace",
     selectExtra: "handle, name, created_at",
     hostLevel: true,
     toHit: (row, score) => ({
       id: String(row.id),
-      entity_type: "workspace",
+      node_type: "workspace",
       summary: (row.name as string) ?? "",
       name: (row.handle as string) ?? null,
       lifecycle: null,

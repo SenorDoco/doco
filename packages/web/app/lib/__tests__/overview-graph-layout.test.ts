@@ -3,7 +3,7 @@ import { clusteredForceLayout, layoutOverviewGraphNodes } from "../overview-grap
 
 const nodes = ["focus", "a", "b", "c", "d", "e", "f"].map((id) => ({
   id,
-  entity_type: "idea",
+  node_type: "idea",
 }));
 
 function link(source: string, target: string, edge_type = "supports") {

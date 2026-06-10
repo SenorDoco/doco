@@ -52,7 +52,7 @@ describe("loadEdgeDialogDetail", () => {
             rows: [
               {
                 id: "decision_01FROM",
-                entity_type: "decision",
+                node_type: "decision",
                 summary: "Pick the runtime",
                 name: null,
                 lifecycle: "active",
@@ -60,7 +60,7 @@ describe("loadEdgeDialogDetail", () => {
               },
               {
                 id: "intent_01TO",
-                entity_type: "intent",
+                node_type: "intent",
                 summary: "Ship the flow",
                 name: null,
                 lifecycle: "drafting",
@@ -117,14 +117,14 @@ describe("loadEdgeDialogDetail", () => {
       href: "/test-doco/edges/edge_01TEST",
       from: {
         id: "decision_01FROM",
-        entity_type: "decision",
+        node_type: "decision",
         summary: "Pick the runtime",
         lifecycle: "active",
         href: "/test-doco/decision/decision_01FROM",
       },
       to: {
         id: "intent_01TO",
-        entity_type: "intent",
+        node_type: "intent",
         summary: "Ship the flow",
         lifecycle: "drafting",
         href: "/test-doco/intent/intent_01TO",

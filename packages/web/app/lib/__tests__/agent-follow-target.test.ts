@@ -50,7 +50,7 @@ describe("pendingCreateForRequest", () => {
     expect(pendingCreateForRequest("/acme/api/decisions.json", "POST")).toEqual({
       kind: "node",
       handle: "acme",
-      entityType: "decision",
+      nodeType: "decision",
     });
   });
 
@@ -78,7 +78,7 @@ describe("pendingCreateForRequest", () => {
 describe("focusTargetForCreate", () => {
   it("focuses a freshly created node", () => {
     expect(
-      focusTargetForCreate({ kind: "node", handle: "acme", entityType: "decision" }, "decision_01"),
+      focusTargetForCreate({ kind: "node", handle: "acme", nodeType: "decision" }, "decision_01"),
     ).toEqual({ pathname: "/acme/decision/decision_01", perspectiveAware: true });
   });
 

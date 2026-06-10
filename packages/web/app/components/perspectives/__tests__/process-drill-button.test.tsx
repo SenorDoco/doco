@@ -16,7 +16,7 @@ vi.mock("@xyflow/react", () => ({
 
 const node: ProcessNode = {
   id: "n1",
-  entity_type: "action",
+  node_type: "action",
   name: "Post a job",
   lifecycle: "active",
   created_at: null,

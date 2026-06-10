@@ -14,7 +14,7 @@
 
 export interface SubprocessCandidate {
   id: string;
-  entity_type: string;
+  node_type: string;
   /** True when this node is itself a process — an Action with `has_parent`
    *  children. Only such a node carries the collapsed-subprocess affordance. */
   is_process?: boolean;
@@ -28,7 +28,7 @@ export interface SubprocessCandidate {
  * target is deterministically `pool:<id>`: the node's own process pool.
  */
 export function subprocessPoolId(node: SubprocessCandidate): string | null {
-  if (node.entity_type !== "action") return null;
+  if (node.node_type !== "action") return null;
   if (!node.is_process) return null;
   return `pool:${node.id}`;
 }

@@ -22,7 +22,7 @@ const lanes: ProcessLane[] = [
 // column slot (zero centering offset) and the gap reduces to the column gap.
 const node = (id: string): ProcessNode => ({
   id,
-  entity_type: "action",
+  node_type: "action",
   name: "Step",
   lifecycle: "active",
   created_at: "2026-05-26T00:00:00.000Z",

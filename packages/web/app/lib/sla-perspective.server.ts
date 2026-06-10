@@ -180,13 +180,13 @@ function isDue(date: string | null): boolean {
   return time <= Date.now();
 }
 
-function href(handle: string, entityType: string, id: string): string {
-  return `/${handle}/${entityType}/${id}`;
+function href(handle: string, nodeType: string, id: string): string {
+  return `/${handle}/${nodeType}/${id}`;
 }
 
 function linkFor(
   handle: string,
-  entityType: string,
+  nodeType: string,
   row: { id: string; lifecycle: string | null },
   label: string,
 ): SlaLink {
@@ -194,7 +194,7 @@ function linkFor(
     id: row.id,
     // Perspectives render the full node name, not a first-line truncation.
     label: label.trim(),
-    href: href(handle, entityType, row.id),
+    href: href(handle, nodeType, row.id),
     lifecycle: row.lifecycle ?? "active",
   };
 }

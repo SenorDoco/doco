@@ -22,8 +22,8 @@ describe("node-type capture coverage", () => {
   });
 
   it("each type is registered in the registry matching its declared capture mode", () => {
-    const generic = new Set(Object.values(CAPTURE_REGISTRY).map((e) => e.entityType));
-    const bespoke = new Set(Object.values(BESPOKE_CAPTURE_REGISTRY).map((e) => e.entityType));
+    const generic = new Set(Object.values(CAPTURE_REGISTRY).map((e) => e.nodeType));
+    const bespoke = new Set(Object.values(BESPOKE_CAPTURE_REGISTRY).map((e) => e.nodeType));
     for (const type of CATALOG_NODE_TYPES) {
       const mode = NODE_CATALOG[type].capture;
       if (mode === "generic") {

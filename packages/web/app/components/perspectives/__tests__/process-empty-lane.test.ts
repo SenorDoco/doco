@@ -29,7 +29,7 @@ const lanes: ProcessLane[] = [
 ];
 const populated: ProcessNode = {
   id: "a1",
-  entity_type: "action",
+  node_type: "action",
   name: "a1",
   lifecycle: "active",
   created_at: null,

@@ -1,5 +1,5 @@
 // Shared filter logic for /search.json and /search HTML page. Both
-// surfaces accept the same `lifecycle` / `entity_type` filters applied
+// surfaces accept the same `lifecycle` / `node_type` filters applied
 // BEFORE the cosine top-N slice.
 import { NODE_TYPES } from "@doco/shared";
 import type { PoolClient } from "pg";
@@ -14,7 +14,7 @@ export interface SearchFilters {
   /** Allowed lifecycle values. `null` = no filter (all values). */
   lifecycle: string[] | null;
   /** Allowed node types. `null` = no filter (all types). */
-  entityType: string[] | null;
+  nodeType: string[] | null;
   /** Top-N to return after filtering + cosine. */
   limit: number;
 }
@@ -45,17 +45,17 @@ export function parseSearchFilters(params: URLSearchParams, facets: FilterFacets
     lifecycle = lifecycleVals;
   }
 
-  const entityTypeVals = readMulti(params, "entity_type");
-  let entityType: string[] | null;
+  const entityTypeVals = readMulti(params, "node_type");
+  let nodeType: string[] | null;
   if (entityTypeVals === null) {
-    entityType = facets.entityType.map((f) => f.value);
+    nodeType = facets.nodeType.map((f) => f.value);
   } else if (entityTypeVals.length === 1 && entityTypeVals[0] === "*") {
-    entityType = null;
+    nodeType = null;
   } else {
-    entityType = entityTypeVals;
+    nodeType = entityTypeVals;
   }
 
-  return { lifecycle, entityType, limit };
+  return { lifecycle, nodeType, limit };
 }
 
 function readMulti(params: URLSearchParams, key: string): string[] | null {
@@ -83,7 +83,7 @@ export async function resolveFilteredCandidates(
   docoId: string,
   filters: SearchFilters,
 ): Promise<Set<string> | null> {
-  if (filters.lifecycle === null && filters.entityType === null) {
+  if (filters.lifecycle === null && filters.nodeType === null) {
     return null;
   }
 
@@ -92,21 +92,21 @@ export async function resolveFilteredCandidates(
     lifecycleIds = new Set();
     // Nodes only — policies are not nodes and never participate in
     // node search results, even when their lifecycle matches.
-    for (const entityType of SEARCHABLE_NODE_TYPES) {
+    for (const nodeType of SEARCHABLE_NODE_TYPES) {
       const r = await c.query<{ id: string }>(
         `SELECT id FROM nodes
           WHERE node_type = $3 AND doco_id = $1
             AND COALESCE(lifecycle, 'active') = ANY($2::text[])`,
-        [docoId, filters.lifecycle, entityType],
+        [docoId, filters.lifecycle, nodeType],
       );
       for (const row of r.rows) lifecycleIds.add(row.id);
     }
   }
 
   let entityTypeIds: Set<string> | null = null;
-  if (filters.entityType !== null) {
+  if (filters.nodeType !== null) {
     entityTypeIds = new Set();
-    for (const nt of filters.entityType) {
+    for (const nt of filters.nodeType) {
       if (!SEARCHABLE_NODE_TYPE_SET.has(nt)) continue;
       const r = await c.query<{ id: string }>(
         "SELECT id FROM nodes WHERE node_type = $2 AND doco_id = $1",
@@ -130,7 +130,7 @@ export async function resolveFilteredCandidates(
 
 export interface FilterFacets {
   lifecycle: { value: string; count: number; updatedAt: string | null }[];
-  entityType: {
+  nodeType: {
     value: string;
     count: number;
     // Per-lifecycle breakdown (drafting / queued / active / retired) of `count`.
@@ -253,7 +253,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
         if (bi !== -1) return 1;
         return a.value.localeCompare(b.value);
       }),
-    entityType: entityTypeCounts,
+    nodeType: entityTypeCounts,
     edgeType: edgeTypeCounts,
   };
 }

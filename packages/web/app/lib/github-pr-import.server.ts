@@ -512,7 +512,7 @@ export async function upsertPullRequestReference(
       docoId: opts.docoId,
       ownerSlug: opts.ownerSlug,
       docoSlug: opts.docoSlug,
-      entityType: "reference",
+      nodeType: "reference",
       pluralDir: "references",
       id: existingId,
       // Patch the title prose (the Reference's only text — the PR body is not

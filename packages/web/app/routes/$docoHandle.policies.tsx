@@ -121,7 +121,7 @@ function PolicySection({
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
-            <NodeTypeIcon entityType="policy" className="h-4 w-4" />
+            <NodeTypeIcon nodeType="policy" className="h-4 w-4" />
             <span>{title}</span>
             <span className="font-mono text-xs font-normal text-muted-foreground">
               {policies.length}

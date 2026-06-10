@@ -10,9 +10,9 @@ vi.mock("@doco/db", () => ({
     reference: { table: "nodes", body: false, typeNamedColumn: "reference" },
   },
   DOCO_NODE_TABLE_BY_TYPE: {
-    action: { table: "actions", entityType: "action", body: false },
-    decision: { table: "decisions", entityType: "decision", body: false },
-    reference: { table: "nodes", entityType: "reference", body: false },
+    action: { table: "actions", nodeType: "action", body: false },
+    decision: { table: "decisions", nodeType: "decision", body: false },
+    reference: { table: "nodes", nodeType: "reference", body: false },
   },
   roleAtLeast: () => true,
 }));
@@ -53,7 +53,7 @@ describe("loadNodeDialogDetail", () => {
       meta,
       {
         handle: "test-doco",
-        entityType: "principal",
+        nodeType: "principal",
         id: "principal_01TEST",
         principalId: "principal_owner",
       },
@@ -82,7 +82,7 @@ describe("loadNodeDialogDetail", () => {
       meta,
       {
         handle: "test-doco",
-        entityType: "decision",
+        nodeType: "decision",
         id: "decision_01TEST",
         principalId: "principal_owner",
       },
@@ -114,7 +114,7 @@ describe("loadNodeDialogDetail", () => {
       meta,
       {
         handle: "test-doco",
-        entityType: "reference",
+        nodeType: "reference",
         id: "reference_01TEST",
         principalId: "principal_owner",
       },
@@ -142,7 +142,7 @@ describe("loadNodeDialogDetail", () => {
       meta,
       {
         handle: "test-doco",
-        entityType: "decision",
+        nodeType: "decision",
         id: "decision_01TEST",
         principalId: "principal_owner",
       },
@@ -226,7 +226,7 @@ describe("loadNodeDialogDetail", () => {
 
     const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
-      entityType: "decision",
+      nodeType: "decision",
       id: "decision_01TEST",
       principalId: "principal_owner",
     });
@@ -310,7 +310,7 @@ describe("loadNodeDialogDetail", () => {
 
     const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
-      entityType: "decision",
+      nodeType: "decision",
       id: "decision_01TEST",
       principalId: "principal_owner",
     });
@@ -418,7 +418,7 @@ describe("loadNodeDialogDetail", () => {
 
     const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
-      entityType: "decision",
+      nodeType: "decision",
       id: decisionId,
       principalId: "principal_owner",
     });
@@ -470,7 +470,7 @@ describe("loadNodeDialogDetail", () => {
 
     const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
-      entityType: "decision",
+      nodeType: "decision",
       id: "decision_01TEST",
       principalId: "principal_owner",
     });
@@ -538,7 +538,7 @@ describe("loadNodeDialogDetail", () => {
 
     const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
-      entityType: "decision",
+      nodeType: "decision",
       id: "decision_01TEST",
       principalId: "principal_owner",
     });
@@ -593,7 +593,7 @@ describe("loadNodeDialogDetail", () => {
 
     const detail = await loadNodeDialogDetail(client, meta, {
       handle: "test-doco",
-      entityType: "decision",
+      nodeType: "decision",
       id: "decision_01TEST",
       principalId: "principal_owner",
     });

@@ -23,7 +23,7 @@ function lane(overrides: Partial<ProcessLane> & Pick<ProcessLane, "id" | "kind">
 
 function node(overrides: Partial<ProcessNode> & Pick<ProcessNode, "id">): ProcessNode {
   return {
-    entity_type: "action",
+    node_type: "action",
     name: overrides.id,
     lifecycle: "active",
     created_at: null,
@@ -75,7 +75,7 @@ describe("processReferences", () => {
 
     const refs = processReferences(pools, lanes, nodes, [], focal("pool:action_p"), "demo");
 
-    expect(refs.map((r) => `#${r.number} ${r.entity_type}:${r.label}`)).toEqual([
+    expect(refs.map((r) => `#${r.number} ${r.node_type}:${r.label}`)).toEqual([
       "#1 action:Fulfill customer orders",
       "#2 principal:Sales",
       "#3 principal:Warehouse",
@@ -85,7 +85,7 @@ describe("processReferences", () => {
     // The process reference points at the process Action and links to its page.
     expect(refs[0]).toMatchObject({
       id: "action_p",
-      entity_type: "action",
+      node_type: "action",
       href: "/demo/action/action_p",
     });
     // Swimlanes key off the composite lane id (so the same Principal in two
@@ -163,7 +163,7 @@ describe("processReferences", () => {
     // The neighbour box links to its own page, like any node reference.
     expect(refs.find((r) => r.id === "q1")).toMatchObject({
       href: "/demo/action/q1",
-      entity_type: "action",
+      node_type: "action",
     });
   });
 
@@ -284,7 +284,7 @@ describe("processReferences", () => {
     );
 
     expect(refs).toHaveLength(2);
-    expect(refs.map((r) => r.entity_type)).toEqual(["action", "principal"]);
+    expect(refs.map((r) => r.node_type)).toEqual(["action", "principal"]);
     expect(refs.map((r) => r.number)).toEqual([1, 2]);
   });
 

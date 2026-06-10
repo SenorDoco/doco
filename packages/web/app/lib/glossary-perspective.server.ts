@@ -24,7 +24,7 @@ type QueryClient = {
 
 interface NodeRow {
   id: string;
-  entity_type: string;
+  node_type: string;
   /** First line of the prose column (the headword). */
   label: string | null;
   /** Full prose column (the headword; a term's prose is just the word). */
@@ -50,7 +50,7 @@ export interface GlossaryAlternative {
 export interface GlossaryEntry {
   id: string;
   href: string;
-  entityType: string;
+  nodeType: string;
   /** The term — the dictionary headword. */
   headword: string;
   /** Uppercase first letter used for A–Z grouping ("#" when non-alpha). */
@@ -190,8 +190,8 @@ function letterOf(headword: string): string {
   return /[A-Z]/.test(ch) ? ch : "#";
 }
 
-function href(handle: string, entityType: string, id: string): string {
-  return `/${handle}/${entityType}/${id}`;
+function href(handle: string, nodeType: string, id: string): string {
+  return `/${handle}/${nodeType}/${id}`;
 }
 
 /** Map one Reference into a dictionary entry. */
@@ -207,8 +207,8 @@ function toEntry(row: NodeRow, handle: string): GlossaryEntry {
 
   return {
     id: row.id,
-    href: href(handle, row.entity_type, row.id),
-    entityType: row.entity_type,
+    href: href(handle, row.node_type, row.id),
+    nodeType: row.node_type,
     headword,
     letter: letterOf(headword),
     pronunciation: pseudoPronunciation(headword),
@@ -245,7 +245,7 @@ export async function loadGlossaryPerspectiveData(
     c.query<NodeRow>(
       `
     SELECT id,
-           node_type AS entity_type,
+           node_type,
            split_part(prose, E'\n', 1) AS label,
            prose AS prose,
            COALESCE(lifecycle, 'active') AS lifecycle,

@@ -7,7 +7,7 @@ describe("overviewNodeDisplayLabel", () => {
       overviewNodeDisplayLabel(
         {
           id: "reference_01TEST00000000000000001",
-          entity_type: "reference",
+          node_type: "reference",
           name: "Canonical Doco agent protocol",
         },
         {

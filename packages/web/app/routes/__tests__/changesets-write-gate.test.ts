@@ -35,7 +35,7 @@ vi.mock("~/lib/edge-capture.server", () => ({
 vi.mock("~/lib/node-capture-registry.server", () => ({
   CAPTURE_REGISTRY_BY_NODE_TYPE: {
     decision: {
-      entityType: "decision",
+      nodeType: "decision",
       captureFn: mocks.captureFn,
     },
   },
@@ -101,7 +101,7 @@ describe("changesets write gate", () => {
     );
     expect(mocks.updateEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        entityType: "decision",
+        nodeType: "decision",
         pluralDir: "decisions",
         id: "decision_0123456789ABCDEFGHJKMNPQRS",
         patch: { lifecycle: "active" },
@@ -119,7 +119,7 @@ describe("changesets write gate", () => {
     expect(response.status).toBe(200);
     expect(mocks.updateEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        entityType: "decision",
+        nodeType: "decision",
         pluralDir: "decisions",
         id: "decision_0123456789ABCDEFGHJKMNPQRS",
         patch: { lifecycle: "queued" },

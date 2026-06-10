@@ -11,12 +11,12 @@ vi.mock("@doco/db", () => ({
     intent: { table: "intents", body: false, typeNamedColumn: "intent" },
   },
   DOCO_NODE_TABLE_SPECS: [
-    { table: "decisions", entityType: "decision", body: false },
-    { table: "intents", entityType: "intent", body: false },
+    { table: "decisions", nodeType: "decision", body: false },
+    { table: "intents", nodeType: "intent", body: false },
   ],
   DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS: [
-    { table: "decisions", entityType: "decision", body: false },
-    { table: "intents", entityType: "intent", body: false },
+    { table: "decisions", nodeType: "decision", body: false },
+    { table: "intents", nodeType: "intent", body: false },
   ],
   getUserById: vi.fn(),
   getEntity: vi.fn(),

@@ -26,7 +26,7 @@ interface EdgeRow {
 
 interface OverviewGraphRow {
   id: string;
-  entity_type: string;
+  node_type: string;
   name: string | null;
   label?: string | null;
   lifecycle: string | null;
@@ -69,11 +69,11 @@ function toIso(value: Date | string | null | undefined): string | null {
 
 function overviewEntityHref(
   handle: string | undefined,
-  entityType: string,
+  nodeType: string,
   id: string,
 ): string | undefined {
   if (!handle) return undefined;
-  return `/${handle}/${entityType}/${id}`;
+  return `/${handle}/${nodeType}/${id}`;
 }
 
 function overviewEdgeHref(handle: string | undefined, id: string): string | undefined {
@@ -89,11 +89,11 @@ function overviewRowsSql(includeLabel = false): string {
   // types) to match the old column's shape. Principals also drop retired
   // role-personas (the other types don't filter lifecycle here), so the
   // lifecycle filter is principal-scoped.
-  const types = GRAPH_TABLES.map((entry) => entry.entityType);
+  const types = GRAPH_TABLES.map((entry) => entry.nodeType);
   const typeList = types.map((t) => `'${t}'`).join(", ");
   const labelExpr = "NULLIF(split_part(t.prose, E'\n', 1), '')";
   return `SELECT t.id,
-                 t.node_type AS entity_type,
+                 t.node_type,
                  CASE WHEN t.node_type = 'principal' THEN NULLIF(t.prose, '') END AS name,
                  COALESCE(t.lifecycle, 'active') AS lifecycle,
                  t.created_at::text AS created_at
@@ -224,11 +224,11 @@ export async function loadOverviewGraph(
   }));
   const nodes: OverviewGraphNode[] = rows.map((row) => ({
     id: row.id,
-    entity_type: row.entity_type,
+    node_type: row.node_type,
     name: row.label ?? row.name,
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
-    href: overviewEntityHref(options.handle, row.entity_type, row.id),
+    href: overviewEntityHref(options.handle, row.node_type, row.id),
     is_center: row.id === (options.centerId ?? options.window?.focusNodeId ?? undefined),
   }));
   const requestedCenterId = options.centerId ?? options.window?.focusNodeId ?? undefined;
@@ -287,12 +287,12 @@ export async function loadOverviewNodeDetails(
     return [
       {
         id: row.id,
-        entity_type: row.entity_type,
+        node_type: row.node_type,
         summary: row.label ?? row.name ?? row.id,
         name: row.name,
         lifecycle: row.lifecycle ?? "active",
         created_at: toIso(row.created_at),
-        href: overviewEntityHref(handle, row.entity_type, row.id),
+        href: overviewEntityHref(handle, row.node_type, row.id),
       },
     ];
   });

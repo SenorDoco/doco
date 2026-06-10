@@ -116,7 +116,7 @@ export default function ActivityPage({
                       <Link
                         to={entityUrl({
                           docoHandle: handle,
-                          entityType: e.entity_type as never,
+                          nodeType: e.entity_type as never,
                           id: e.entity_id as EntityId<never>,
                         })}
                         style={{ color: lifecycleColor(activityRowLifecycle(e)) }}
@@ -125,7 +125,7 @@ export default function ActivityPage({
                           shouldStrikeActivityTarget(e) && "line-through decoration-2",
                         )}
                       >
-                        <NodeTypeBadge entityType={e.entity_type} />
+                        <NodeTypeBadge nodeType={e.entity_type} />
                         <span className="font-mono">{e.entity_id}</span>
                       </Link>
                     </div>
@@ -175,7 +175,7 @@ function FilterChips({
             className="neu-surface inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono"
           >
             <span>entity_type=</span>
-            <NodeTypeBadge entityType={String(v)} />
+            <NodeTypeBadge nodeType={String(v)} />
           </span>
         ) : (
           <code key={k} className="neu-surface rounded-md px-2 py-0.5 font-mono">

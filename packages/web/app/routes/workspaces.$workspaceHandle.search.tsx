@@ -32,7 +32,7 @@ const RESULTS_LIMIT = 50;
 
 interface Hit {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary: string;
   lifecycle: string | null;
   created_at: string | null;
@@ -82,7 +82,7 @@ async function hydrateHits(
         `SELECT id, split_part(prose, E'\n', 1) AS summary, lifecycle, created_at::text AS created_at
            FROM nodes
           WHERE id = ANY($1::text[]) AND node_type = $2`,
-        [ids, spec.entityType],
+        [ids, spec.nodeType],
       )
     ).rows;
     for (const row of rows) {
@@ -93,7 +93,7 @@ async function hydrateHits(
       if (!docoHandle) continue;
       hits.push({
         id,
-        entity_type: spec.entityType,
+        node_type: spec.nodeType,
         summary: row.summary ?? "",
         lifecycle: row.lifecycle,
         created_at: row.created_at ? String(row.created_at) : null,
@@ -269,11 +269,11 @@ export default function WorkspaceSearch({
                         <li key={h.id} className="px-5 py-3 text-sm">
                           <div className="flex flex-wrap items-baseline justify-between gap-3">
                             <Link
-                              to={`/${h.docoHandle}/${h.entity_type}/${h.id}`}
+                              to={`/${h.docoHandle}/${h.node_type}/${h.id}`}
                               className="font-medium text-primary hover:underline"
                             >
                               <span aria-hidden className="mr-1.5">
-                                <NodeTypeIcon entityType={h.entity_type} />
+                                <NodeTypeIcon nodeType={h.node_type} />
                               </span>
                               {h.summary || h.id}
                             </Link>
@@ -282,8 +282,8 @@ export default function WorkspaceSearch({
                             </span>
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                            <NodeTypeBadge entityType={h.entity_type}>
-                              {nodeTypePlural(h.entity_type)}
+                            <NodeTypeBadge nodeType={h.node_type}>
+                              {nodeTypePlural(h.node_type)}
                             </NodeTypeBadge>
                             {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
                             <Link

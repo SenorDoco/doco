@@ -21,7 +21,7 @@ export async function loader({
     ...Object.values(CAPTURE_REGISTRY),
     ...Object.values(BESPOKE_CAPTURE_REGISTRY),
   ].map((entry) => ({
-    node_type: entry.entityType,
+    node_type: entry.nodeType,
     collection: entry.type,
     capture_endpoint: `/${params.docoHandle}/api/${entry.type}.json`,
   }));

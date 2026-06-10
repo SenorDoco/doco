@@ -9,7 +9,7 @@ import type { ProcessNode, ProcessPool } from "~/lib/process-perspective.server"
 
 const node = (id: string, overrides: Partial<ProcessNode> = {}): ProcessNode => ({
   id,
-  entity_type: "action",
+  node_type: "action",
   name: id,
   lifecycle: "active",
   created_at: null,
@@ -63,7 +63,7 @@ describe("openCanvasNode", () => {
   });
 
   it("only Action sub-processes expand — a process-flagged Decision never opens a pool, even via the affordance", () => {
-    const decision = node("dec_1", { entity_type: "decision", is_process: true });
+    const decision = node("dec_1", { node_type: "decision", is_process: true });
     const h = handlers();
     openCanvasNode(decision, { expandSubprocess: true }, h);
     expect(h.setExpandedProcessId).toHaveBeenCalledWith(null);

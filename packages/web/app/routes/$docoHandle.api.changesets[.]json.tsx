@@ -500,7 +500,7 @@ async function applyLifecyclePatch(
     docoId: ctx.docoId,
     ownerSlug: ctx.ownerSlug,
     docoSlug: ctx.docoSlug,
-    entityType: nodeType as Parameters<typeof updateEntity>[0]["entityType"],
+    nodeType: nodeType as Parameters<typeof updateEntity>[0]["nodeType"],
     pluralDir: segment,
     id,
     patch,
@@ -606,7 +606,7 @@ async function createNode(
     return { op_index: index, op: "create", ok: false, error: resolvedBody.error };
   }
   const body = resolvedBody.body;
-  const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(entry.entityType, body);
+  const nodeJsonEdgeKeyError = unsupportedNodeJsonEdgeKeyError(entry.nodeType, body);
   if (nodeJsonEdgeKeyError) {
     return { op_index: index, op: "create", ok: false, error: nodeJsonEdgeKeyError };
   }

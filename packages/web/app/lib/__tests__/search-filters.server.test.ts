@@ -60,7 +60,7 @@ describe("computeFilterFacets", () => {
       { value: "drafting", count: 1, updatedAt: "2026-05-31T17:00:00.000Z" },
       { value: "active", count: 2, updatedAt: "2026-05-31T18:00:00.000Z" },
     ]);
-    expect(facets.entityType).toEqual([
+    expect(facets.nodeType).toEqual([
       {
         value: "decision",
         count: 2,

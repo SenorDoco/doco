@@ -42,7 +42,7 @@ function relativeTimeIso(iso: string | null): string {
 }
 
 const SEARCH_PAGE_SIZE = 25;
-const FILTER_PARAM_NAMES = ["lifecycle", "entity_type"] as const;
+const FILTER_PARAM_NAMES = ["lifecycle", "node_type"] as const;
 
 function hasExplicitSearchFilter(params: URLSearchParams): boolean {
   return FILTER_PARAM_NAMES.some((name) => params.has(name));
@@ -171,7 +171,7 @@ function withHitDerivedCounts(facets: FilterFacets, hits: SearchHit[]): FilterFa
   for (const h of hits) {
     const lc = h.lifecycle ?? "active";
     lifecycleCounts.set(lc, (lifecycleCounts.get(lc) ?? 0) + 1);
-    nodeTypeCounts.set(h.entity_type, (nodeTypeCounts.get(h.entity_type) ?? 0) + 1);
+    nodeTypeCounts.set(h.node_type, (nodeTypeCounts.get(h.node_type) ?? 0) + 1);
   }
 
   return {
@@ -180,7 +180,7 @@ function withHitDerivedCounts(facets: FilterFacets, hits: SearchHit[]): FilterFa
       count: lifecycleCounts.get(f.value) ?? 0,
       updatedAt: f.updatedAt,
     })),
-    entityType: facets.entityType.map((f) => ({
+    nodeType: facets.nodeType.map((f) => ({
       value: f.value,
       count: nodeTypeCounts.get(f.value) ?? 0,
       updatedAt: f.updatedAt,
@@ -237,16 +237,16 @@ export default function SearchInDoco({
             <div className="space-y-4">
               <FacetGroup
                 label="Types"
-                name="entity_type"
+                name="node_type"
                 searchParams={sp}
-                options={facets.entityType.map((f) => ({
+                options={facets.nodeType.map((f) => ({
                   value: f.value,
                   label: nodeTypePlural(f.value),
                   count: f.count,
-                  icon: <NodeTypeIcon entityType={f.value} />,
+                  icon: <NodeTypeIcon nodeType={f.value} />,
                 }))}
-                selected={new Set(filters.entityType ?? [])}
-                wildcardActive={filters.entityType === null}
+                selected={new Set(filters.nodeType ?? [])}
+                wildcardActive={filters.nodeType === null}
               />
               <FacetGroup
                 label="Life cycles"
@@ -288,9 +288,9 @@ export default function SearchInDoco({
                 <Card key={hit.id}>
                   <CardHeader>
                     <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
-                      <NodeTypeBadge entityType={hit.entity_type} />
+                      <NodeTypeBadge nodeType={hit.node_type} />
                       <Link
-                        to={`/${handle}/${hit.entity_type}/${hit.id}`}
+                        to={`/${handle}/${hit.node_type}/${hit.id}`}
                         className="break-all font-mono text-xs text-primary hover:underline"
                       >
                         {hit.id}

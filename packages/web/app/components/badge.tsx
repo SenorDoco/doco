@@ -30,12 +30,12 @@ export function Badge({ className, variant, ...props }: BadgeProps) {
 }
 
 export interface NodeTypeBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  entityType: string;
+  nodeType: string;
 }
 
 export function NodeTypeBadge({
   className,
-  entityType,
+  nodeType,
   style,
   children,
   ...props
@@ -48,8 +48,8 @@ export function NodeTypeBadge({
       }}
       {...props}
     >
-      <NodeTypeIcon entityType={entityType} />
-      {children ?? entityType}
+      <NodeTypeIcon nodeType={nodeType} />
+      {children ?? nodeType}
     </Badge>
   );
 }

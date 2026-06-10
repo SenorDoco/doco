@@ -39,7 +39,7 @@ const lanes: ProcessLane[] = [
 ];
 const mkNode = (id: string): ProcessNode => ({
   id,
-  entity_type: "action",
+  node_type: "action",
   name: id,
   lifecycle: "active",
   created_at: null,

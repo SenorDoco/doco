@@ -210,7 +210,7 @@ function OrgTreeInner({
     () =>
       rawRfNodes.map((n) => ({
         id: n.id,
-        entity_type: "principal",
+        node_type: "principal",
         label: n.data.org.name,
         lifecycle: n.data.org.lifecycle,
         href: n.data.org.href ?? null,

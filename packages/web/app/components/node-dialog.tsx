@@ -36,7 +36,7 @@ interface NodeDialogProps {
   lifecycleError: string | null;
   onClose: () => void;
   onLifecycleChange: (stage: LifecycleStage) => void;
-  onOpenNode: (entityType: string, id: string, href: string) => void;
+  onOpenNode: (nodeType: string, id: string, href: string) => void;
   onOpenEdge: (edge: OpenEdgeTarget) => void;
 }
 
@@ -155,13 +155,13 @@ export function NodeDialog({
       <header className="px-4 py-3">
         <div className="flex items-start gap-3">
           {detail ? (
-            <NodeTypeIcon entityType={detail.entity_type} className="mt-0.5 !h-4 !w-4 shrink-0" />
+            <NodeTypeIcon nodeType={detail.node_type} className="mt-0.5 !h-4 !w-4 shrink-0" />
           ) : null}
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase text-muted-foreground">
-                  {detail?.entity_type ?? "Node"}
+                  {detail?.node_type ?? "Node"}
                 </p>
                 {hasPrimaryText ? null : (
                   <h2 className="mt-0.5 break-words text-sm font-semibold leading-snug text-foreground">
@@ -421,7 +421,7 @@ export function EdgeList({
   direction: "incoming" | "outgoing";
   currentNodeId: string;
   edges: NodeDialogDetail["outgoing"];
-  onOpenNode: (entityType: string, id: string, href: string) => void;
+  onOpenNode: (nodeType: string, id: string, href: string) => void;
   onOpenEdge: (edge: OpenEdgeTarget) => void;
 }) {
   return (
@@ -495,7 +495,7 @@ export function EdgeList({
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                     <span className="inline-flex items-center gap-1" aria-label="Related node">
                       <TypeBadge
-                        entityType={edge.other_node_type}
+                        nodeType={edge.other_node_type}
                         lifecycle={edge.other_lifecycle}
                         anchor="inline"
                       />

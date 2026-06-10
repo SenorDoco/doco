@@ -40,7 +40,7 @@ export interface FocusTarget {
  * and resolve the focus target once the result streams back.
  */
 export type PendingCreate =
-  | { kind: "node"; handle: string; entityType: string }
+  | { kind: "node"; handle: string; nodeType: string }
   | { kind: "edge"; handle: string }
   | { kind: "policy"; handle: string };
 
@@ -60,9 +60,9 @@ function focusTargetForResource(handle: string, plural: string, id: string): Foc
   if (plural === "policies") {
     return { pathname: `/${handle}/policies/${id}/edit`, perspectiveAware: false };
   }
-  const entityType = normalizeNodeType(plural);
-  if (!entityType) return null;
-  return { pathname: `/${handle}/${entityType}/${id}`, perspectiveAware: true };
+  const nodeType = normalizeNodeType(plural);
+  if (!nodeType) return null;
+  return { pathname: `/${handle}/${nodeType}/${id}`, perspectiveAware: true };
 }
 
 /**
@@ -90,9 +90,9 @@ export function pendingCreateForRequest(apiPath: string, method: string): Pendin
   const [, handle, plural] = m;
   if (plural === "edges") return { kind: "edge", handle };
   if (plural === "policies") return { kind: "policy", handle };
-  const entityType = normalizeNodeType(plural);
-  if (!entityType) return null;
-  return { kind: "node", handle, entityType };
+  const nodeType = normalizeNodeType(plural);
+  if (!nodeType) return null;
+  return { kind: "node", handle, nodeType };
 }
 
 /** Focus target for a create once its server-generated id is known. */
@@ -103,7 +103,7 @@ export function focusTargetForCreate(pending: PendingCreate, id: string): FocusT
   if (pending.kind === "policy") {
     return { pathname: `/${pending.handle}/policies/${id}/edit`, perspectiveAware: false };
   }
-  return { pathname: `/${pending.handle}/${pending.entityType}/${id}`, perspectiveAware: true };
+  return { pathname: `/${pending.handle}/${pending.nodeType}/${id}`, perspectiveAware: true };
 }
 
 /**
@@ -127,9 +127,9 @@ export function focusTargetForNavigateUrl(rawUrl: string): FocusTarget | null {
   if (mid === "edges") {
     return { pathname: `/${handle}/edges/${id}`, perspectiveAware: true };
   }
-  const entityType = normalizeNodeType(mid);
-  if (!entityType) return null;
-  return { pathname: `/${handle}/${entityType}/${id}`, perspectiveAware: true };
+  const nodeType = normalizeNodeType(mid);
+  if (!nodeType) return null;
+  return { pathname: `/${handle}/${nodeType}/${id}`, perspectiveAware: true };
 }
 
 /**

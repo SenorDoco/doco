@@ -1,7 +1,7 @@
 export interface GraphReferenceItem {
   number: number;
   id: string;
-  entity_type: string;
+  node_type: string;
   label: string;
   lifecycle: string | null;
   href?: string | null;
@@ -61,13 +61,13 @@ export function readGraphReferenceGroups(): GraphReferenceGroup[] {
     .flatMap((element) => {
       const number = Number(element.dataset.graphReferenceNumber);
       const id = element.dataset.nodeId ?? "";
-      const entityType = element.dataset.nodeType ?? "";
-      if (!Number.isInteger(number) || number < 1 || !id || !entityType) return [];
+      const nodeType = element.dataset.nodeType ?? "";
+      if (!Number.isInteger(number) || number < 1 || !id || !nodeType) return [];
       return [
         {
           number,
           id,
-          entity_type: entityType,
+          node_type: nodeType,
           label: element.dataset.nodeLabel ?? element.textContent?.trim() ?? id,
           lifecycle: element.dataset.nodeLifecycle ?? null,
           href: element.dataset.nodeHref ?? null,

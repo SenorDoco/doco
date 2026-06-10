@@ -40,7 +40,7 @@ import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
   id: string;
-  entity_type: string;
+  node_type: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -90,7 +90,7 @@ export interface OverviewGraphData {
 
 export interface OverviewNodeDetail {
   id: string;
-  entity_type: string;
+  node_type: string;
   summary: string;
   name: string | null;
   lifecycle: string | null;
@@ -285,7 +285,7 @@ export function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         data-node-id={data.node.id}
         data-node-label={title}
         data-node-lifecycle={lifecycle}
-        data-node-type={data.node.entity_type}
+        data-node-type={data.node.node_type}
         data-overview-node-new={data.isNew ? "true" : undefined}
         style={{
           borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
@@ -295,7 +295,7 @@ export function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         title={title}
       >
         <div className="flex items-center gap-2">
-          <NodeTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
+          <NodeTypeIcon nodeType={data.node.node_type} className="!h-4 !w-4 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">
             {title}
           </span>
@@ -315,7 +315,7 @@ export function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           padding-box (which is shifted right by the 6px left border —
           centers the badge ~3px right of the card's true middle). */}
       <NodeBadgeRow
-        entityType={data.node.entity_type}
+        nodeType={data.node.node_type}
         lifecycle={lifecycle}
         className="nodrag nopan"
         interactive
@@ -640,7 +640,7 @@ export function OverviewGraph({
         return [
           {
             id: node.id,
-            entity_type: node.entity_type,
+            node_type: node.node_type,
             label: overviewNodeDisplayLabel(node, detail),
             lifecycle: node.lifecycle,
             href: detail?.href ?? node.href ?? null,

@@ -71,7 +71,7 @@ const MAX_GRAPH_REFERENCES = 120;
 
 export interface ListPerspectiveNode {
   id: string;
-  entity_type: string;
+  node_type: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -122,7 +122,7 @@ export function ListPerspective({
       sorted.slice(0, MAX_GRAPH_REFERENCES).map((node, index) => ({
         number: index + 1,
         id: node.id,
-        entity_type: node.entity_type,
+        node_type: node.node_type,
         label: node.name ?? node.id,
         lifecycle: node.lifecycle ?? "active",
         href: node.href ?? null,
@@ -220,7 +220,7 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
       data-node-id={node.id}
       data-node-label={node.name ?? node.id}
       data-node-lifecycle={node.lifecycle ?? "active"}
-      data-node-type={node.entity_type}
+      data-node-type={node.node_type}
     >
       {referenceNumber ? (
         <span
@@ -232,7 +232,7 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
         </span>
       ) : null}
       <span aria-hidden className="shrink-0">
-        <NodeTypeIcon entityType={node.entity_type} />
+        <NodeTypeIcon nodeType={node.node_type} />
       </span>
       <span
         className="min-w-0 flex-1 whitespace-pre-line break-words"
@@ -325,11 +325,11 @@ function typeAwareCompare(
   sort: ListSortKey,
 ): number {
   // First: node-type canonical order.
-  const typeDiff = nodeTypeRank(a.entity_type) - nodeTypeRank(b.entity_type);
+  const typeDiff = nodeTypeRank(a.node_type) - nodeTypeRank(b.node_type);
   if (typeDiff !== 0) return typeDiff;
 
   // Within type: type-specific tiebreaker.
-  switch (a.entity_type) {
+  switch (a.node_type) {
     case "decision":
     case "intent":
     case "rule":
@@ -360,7 +360,7 @@ function lifecycleRank(lifecycle: string | null): number {
 }
 
 function policyPin(node: ListPerspectiveNode): number {
-  return POLICY_TYPES.has(node.entity_type) ? 0 : 1;
+  return POLICY_TYPES.has(node.node_type) ? 0 : 1;
 }
 
 function tsValue(value: string | null): number {
