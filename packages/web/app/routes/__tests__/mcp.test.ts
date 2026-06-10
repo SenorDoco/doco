@@ -317,6 +317,48 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.structuredContent.count).toBe(1);
   });
 
+  it("doco_search passes the server-built `display` lines through to the agent", async () => {
+    // The route hands back ready-to-paste protocol lines; the MCP layer must
+    // surface them so the agent echoes rather than manufactures the format.
+    mocks.searchLoader.mockResolvedValue(
+      Response.json({
+        count: 1,
+        hits: [{ id: "decision_1" }],
+        display: {
+          prefix: "[🔮 Doco @alice]",
+          found: "[🔮 Doco @alice] 1 relevant nodes found (0.4s)",
+          tally: "[🔮 Doco @alice] proj1: **0** nodes added/updated",
+        },
+      }),
+    );
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 44,
+        method: "tools/call",
+        params: { name: "doco_search", arguments: { query: "auth", doco: "proj1" } },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    expect(body.result.structuredContent.display.found).toBe(
+      "[🔮 Doco @alice] 1 relevant nodes found (0.4s)",
+    );
+    expect(body.result.structuredContent.display.tally).toContain("**0** nodes added/updated");
+  });
+
+  it("the doco_search tool description tells agents to paste the display lines verbatim", async () => {
+    // Durable reinforcement: tool descriptions re-enter context on every
+    // tools/list, unlike serverInfo.instructions (delivered once at connect).
+    const res = await call({ jsonrpc: "2.0", id: 45, method: "tools/list" }, BEARER);
+    const body: Json = await res.json();
+    const search = body.result.tools.find((t: Json) => t.name === "doco_search");
+    expect(search.description).toContain("display.found");
+    expect(search.description).toContain("display.tally");
+    const capture = body.result.tools.find((t: Json) => t.name === "doco_capture");
+    expect(capture.description).toContain("footer_lines");
+  });
+
   it("confines tools to the session workspace — a doco in another workspace is refused", async () => {
     mocks.resolveDocoInWorkspace.mockResolvedValue({
       ok: false,

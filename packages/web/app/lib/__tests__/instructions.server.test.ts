@@ -54,6 +54,17 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).toMatch(/one doco at a time/i);
   });
 
+  it("tells agents to paste the server-built display lines, not manufacture them", () => {
+    // The two most-missed invariants (§1 N-found, §3 tally) are handed over as
+    // finished strings on every search result — the doc must point at them so
+    // the agent echoes rather than rebuilds the format.
+    expect(CANONICAL_INSTRUCTIONS).toContain("display.found");
+    expect(CANONICAL_INSTRUCTIONS).toContain("display.tally");
+    // The "echo, don't manufacture" directive for each invariant.
+    expect(CANONICAL_INSTRUCTIONS).toContain("verbatim as your last line");
+    expect(CANONICAL_INSTRUCTIONS).toContain("don't rebuild it");
+  });
+
   it("lists exactly the catalog node types (no non-node routes like invites/audit)", () => {
     expect(CANONICAL_INSTRUCTIONS).toContain(
       "Node types: intents, ideas, rules, decisions, actions, logs, evals,",

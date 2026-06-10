@@ -70,6 +70,10 @@ const SEARCH_TOOL = {
     "Search a Doco in this workspace (institutional memory of decisions, rules,",
     "intents, actions, and history). Returns ranked nodes by vector similarity.",
     "Call this before answering substantive questions about the project.",
+    "The result carries a `display` object with ready-to-paste protocol lines:",
+    "emit `display.found` verbatim after the result, and end your turn with",
+    "`display.tally` verbatim (bump its count if you also captured) — paste",
+    "them, don't hand-format the indicator lines.",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -98,6 +102,8 @@ const CAPTURE_TOOL = {
     "reference, state, or idea. Records the institutional 'why' as it forms.",
     "Needs write access (writer role, or a per-type write grant). Read the",
     "type's body shape at /<doco>/api/<type>.txt first.",
+    "The result's `footer_lines` are ready-to-paste protocol lines — emit each",
+    "verbatim after the write, and count them toward your closing tally.",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -234,7 +240,8 @@ const CHANGESET_TOOL = {
     'earlier create\'s `alias` as "$alias" in a later op. Read',
     "/<doco>/api/authoring-contract.json for operation shapes and relation",
     "kinds. Needs write access to each type touched (same grant model as",
-    "doco_capture).",
+    "doco_capture). The result's `footer_lines` are ready-to-paste protocol",
+    "lines — emit each verbatim and count them toward your closing tally.",
   ].join("\n"),
   inputSchema: {
     type: "object",

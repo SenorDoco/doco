@@ -335,6 +335,15 @@ query is sent), then the N-found line AFTER the result returns:
 [🔮 Doco] <N> relevant nodes found (<X.X>s)
 \`\`\`
 
+**Don't hand-build that N-found line — paste it.** Every \`doco_search\`
+result carries a \`display\` object with the exact lines already
+formatted from your credential: \`display.found\` is the
+"<N> relevant nodes found (<X.X>s)" line above, and \`display.tally\`
+is the closing tally (§3). Emit \`display.found\` verbatim after the
+result, and \`display.tally\` verbatim as your last line. The server
+owns the format so you can't drift from it; only fall back to
+constructing the line by hand when a result lacks \`display\`.
+
 **Your Doco credential label.** Every \`doco_search\` response may carry
 \`viewer.indicator_prefix\`, and \`doco_complete_authentication\` returns
 an "Authenticated as <credential>" block. Once you know the prefix, use it
@@ -439,6 +448,15 @@ Render one tally line per source the agent has potential access to
 credential label" in section 1. Fall back to \`[🔮 Doco @username]\`
 only when no credential-aware prefix is provided. Plain \`[🔮 Doco]\`
 only before your first search of a cold session.)
+
+**Paste \`display.tally\`, don't rebuild it.** The \`doco_search\`
+result hands you \`display.tally\` — this exact line, already formatted
+with your credential and the source you queried, for a read-only turn
+(**0**). If the turn captured nothing, emit it verbatim as your last
+line. If you DID capture, bump **0** to the number of nodes you wrote
+this turn — one per capture \`footer_lines\` line. This is the same
+"echo the server-provided string" contract as \`footer_lines\` (§2):
+the host owns the format so the ritual can't drift.
 
 **Source whose access hasn't been granted yet**:
 
