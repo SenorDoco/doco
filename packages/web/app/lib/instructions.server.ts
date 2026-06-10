@@ -283,15 +283,13 @@ into chat; if the callback listener fails, restart the client MCP auth
 flow. Use the direct OAuth recipes only when you are not connected
 through remote MCP.
 
-**Know your reach.** Call \`doco_whoami\` to see who you're acting as and
-which workspaces + docos you can touch, and \`list_workspaces\` to
-enumerate the workspaces in reach. On an actor connection you work across
-every workspace you belong to, **one doco at a time** — pass any reachable
-doco's \`<handle>\` to the tools regardless of which workspace it lives in;
-spanning multiple workspaces in a single session is expected, not
-forbidden. A workspace-scoped token instead confines you to its single
-workspace. Either way, honor each workspace's constitution and policies as
-you move between them.
+**Know your reach, and use all of it.** Call \`doco_whoami\` — and
+\`list_workspaces\` — to see what your credential covers: one workspace,
+several, or specific docos, exactly as the user granted. That grant is
+your scope and the user chose it deliberately, so work across whatever
+workspaces and docos the task needs — never cap yourself at one. Each
+tool call names a doco by its \`<handle>\`, in any workspace you reach.
+Honor each workspace's constitution and policies as you go.
 
 **Direct HTTP** (any runtime, or when MCP isn't available). You
 drive OAuth directly. Two recipes, full step-by-step at:
