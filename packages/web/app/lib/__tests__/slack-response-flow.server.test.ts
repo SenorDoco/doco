@@ -21,7 +21,7 @@ vi.mock("@doco/db", () => ({
   getUserById: vi.fn(),
   getEntity: vi.fn(),
   listDocoUsers: vi.fn(),
-  listEntitiesByDoco: vi.fn(),
+  listNodesByDoco: vi.fn(),
   withClient: mocks.withClient,
 }));
 

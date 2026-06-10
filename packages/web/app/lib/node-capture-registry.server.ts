@@ -104,10 +104,10 @@ export const BESPOKE_CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   principals: entry<PrincipalDraft>("principal", capturePrincipal),
 };
 
-// All capture-able node types keyed by singular entity_type — generic AND
-// bespoke. Changeset and any caller authoring by entity_type uses this, so a
+// All capture-able node types keyed by singular node_type — generic AND
+// bespoke. Changeset and any caller authoring by node_type uses this, so a
 // bespoke type can't silently fall out (guarded by node-type-capture-coverage).
-export const CAPTURE_REGISTRY_BY_ENTITY_TYPE: Record<string, RegistryEntry> = Object.fromEntries(
+export const CAPTURE_REGISTRY_BY_NODE_TYPE: Record<string, RegistryEntry> = Object.fromEntries(
   [...Object.values(CAPTURE_REGISTRY), ...Object.values(BESPOKE_CAPTURE_REGISTRY)].map((entry) => [
     entry.entityType,
     entry,

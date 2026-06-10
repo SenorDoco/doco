@@ -1,4 +1,4 @@
-import { getUserById, listDocoUsers, listEntitiesByDoco } from "@doco/db";
+import { getUserById, listDocoUsers, listNodesByDoco } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoRouteForRead, requireDocoTypeWriteForRequest } from "~/lib/doco-access.server";
 import { capturePrincipal } from "~/lib/principal-capture.server";
@@ -101,7 +101,7 @@ export async function loader({
   // nodes (role-personas rendered by perspectives).
   const [docoUsers, nodeRows] = await Promise.all([
     listDocoUsers(meta.docoId),
-    listEntitiesByDoco("principal", meta.docoId),
+    listNodesByDoco("principal", meta.docoId),
   ]);
   const users = (
     await Promise.all(

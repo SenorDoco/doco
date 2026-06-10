@@ -253,7 +253,7 @@ const CHANGESET_TOOL = {
       operations: {
         type: "array",
         description:
-          "Ordered ops: {op:'create',entity_type,alias?,body} | {op:'relate',relation_kind,from,to,lifecycle?} | {op:'relate_many',relations:[…]} | {op:'append',entity_type,after,relation_kind,body} | {op:'activate',target} | {op:'queue',target,retire_active_edges?} | {op:'retire',target,retire_active_edges?} | {op:'supersede',target,entity_type,body}. activate/queue/retire/supersede `target` is a node id or a $alias from this batch. Edges share the node lifecycle: an ACTIVE edge can only connect ACTIVE nodes — relate `lifecycle` (drafting|queued|active) defaults to active iff both endpoints are active, else drafting. When demoting a node off active, pass `retire_active_edges:true` to also retire its active edges.",
+          "Ordered ops: {op:'create',node_type,alias?,body} | {op:'relate',relation_kind,from,to,lifecycle?} | {op:'relate_many',relations:[…]} | {op:'append',node_type,after,relation_kind,body} | {op:'activate',target} | {op:'queue',target,retire_active_edges?} | {op:'retire',target,retire_active_edges?} | {op:'supersede',target,node_type,body}. activate/queue/retire/supersede `target` is a node id or a $alias from this batch. Edges share the node lifecycle: an ACTIVE edge can only connect ACTIVE nodes — relate `lifecycle` (drafting|queued|active) defaults to active iff both endpoints are active, else drafting. When demoting a node off active, pass `retire_active_edges:true` to also retire its active edges.",
         items: { type: "object", additionalProperties: true },
       },
       validate_against: {

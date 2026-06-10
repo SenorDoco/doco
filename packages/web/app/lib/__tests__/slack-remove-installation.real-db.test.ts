@@ -20,7 +20,7 @@ vi.mock("@doco/db", () => ({
   getUserById: vi.fn(),
   getEntity: vi.fn(),
   listDocoUsers: vi.fn(),
-  listEntitiesByDoco: vi.fn(),
+  listNodesByDoco: vi.fn(),
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
 }));
 vi.mock("../doco-access.server", () => ({

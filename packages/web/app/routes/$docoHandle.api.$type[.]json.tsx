@@ -14,7 +14,7 @@
 // types so consumers can iterate without per-type branching:
 //   { ok: true, type: "<plural>", doco_id, count, items: [...] }
 
-import { listEntitiesByDoco } from "@doco/db";
+import { listNodesByDoco } from "@doco/db";
 import { nodeToApi } from "~/lib/api-capture-shape";
 import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { CAPTURE_REGISTRY } from "~/lib/node-capture-registry.server";
@@ -41,7 +41,7 @@ export async function loader({
   const cfg = CAPTURE_REGISTRY[params.type];
   if (!cfg) return notFound(params.type);
   const { meta } = await loadDocoRouteForRead(request, params);
-  const rows = await listEntitiesByDoco(cfg.entityType, meta.docoId);
+  const rows = await listNodesByDoco(cfg.entityType, meta.docoId);
   return Response.json({
     ok: true,
     type: params.type,

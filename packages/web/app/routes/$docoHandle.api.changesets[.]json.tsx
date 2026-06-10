@@ -22,7 +22,7 @@ import {
   relationKind,
   unsupportedNodeJsonEdgeKeyError,
 } from "~/lib/graph-authoring-contract.server";
-import { CAPTURE_REGISTRY_BY_ENTITY_TYPE, type MeLike } from "~/lib/node-capture-registry.server";
+import { CAPTURE_REGISTRY_BY_NODE_TYPE, type MeLike } from "~/lib/node-capture-registry.server";
 
 type Operation =
   | CreateOperation
@@ -36,7 +36,7 @@ type Operation =
 
 interface CreateOperation {
   op: "create";
-  entity_type: string;
+  node_type: string;
   alias?: string;
   body: Record<string, unknown>;
 }
@@ -67,7 +67,7 @@ interface RelateManyOperation {
 
 interface AppendOperation {
   op: "append";
-  entity_type: string;
+  node_type: string;
   alias?: string;
   body: Record<string, unknown>;
   after: string;
@@ -108,7 +108,7 @@ interface RetireOperation {
 interface SupersedeOperation {
   op: "supersede";
   target: string;
-  entity_type: string;
+  node_type: string;
   alias?: string;
   body: Record<string, unknown>;
 }
@@ -277,35 +277,35 @@ function collectChangesetWriteTypes(
   operations: unknown[],
 ): { types: string[] } | { error: string } {
   const types = new Set<string>();
-  // Alias → entity_type, so activate/queue/retire/supersede targeting a node created
+  // Alias → node_type, so activate/queue/retire/supersede targeting a node created
   // earlier in the same batch can be type-checked before anything runs.
   const aliasTypes = new Map<string, string>();
   for (const raw of operations) {
     const op = raw as CreateOperation | AppendOperation | SupersedeOperation;
     if (!op || typeof op !== "object" || !("op" in op)) continue;
     if ((op.op === "create" || op.op === "append" || op.op === "supersede") && op.alias) {
-      const entityType = normalizeEntityType(op.entity_type);
-      if (entityType) aliasTypes.set(cleanAlias(op.alias), entityType);
+      const nodeType = normalizeNodeType(op.node_type);
+      if (nodeType) aliasTypes.set(cleanAlias(op.alias), nodeType);
     }
   }
   const targetType = (target: unknown): string | null => {
     const t = String(target ?? "").trim();
     if (!t) return null;
-    return t.startsWith("$") ? (aliasTypes.get(cleanAlias(t)) ?? null) : entityTypeFromId(t);
+    return t.startsWith("$") ? (aliasTypes.get(cleanAlias(t)) ?? null) : nodeTypeFromId(t);
   };
   for (let i = 0; i < operations.length; i++) {
     const op = operations[i] as Operation;
     if (!op || typeof op !== "object" || !("op" in op)) continue;
     if (op.op === "create") {
-      const entityType = normalizeEntityType(op.entity_type);
-      if (!entityType) return { error: `Unsupported create entity_type "${op.entity_type}".` };
-      types.add(entityType);
+      const nodeType = normalizeNodeType(op.node_type);
+      if (!nodeType) return { error: `Unsupported create node_type "${op.node_type}".` };
+      types.add(nodeType);
       continue;
     }
     if (op.op === "append") {
-      const entityType = normalizeEntityType(op.entity_type);
-      if (!entityType) return { error: `Unsupported append entity_type "${op.entity_type}".` };
-      types.add(entityType);
+      const nodeType = normalizeNodeType(op.node_type);
+      if (!nodeType) return { error: `Unsupported append node_type "${op.node_type}".` };
+      types.add(nodeType);
       const spec = relationKind(op.relation_kind);
       if (!spec) return { error: `Unknown relation_kind "${op.relation_kind}".` };
       types.add(spec.kind);
@@ -329,16 +329,16 @@ function collectChangesetWriteTypes(
       continue;
     }
     if (op.op === "activate" || op.op === "queue" || op.op === "retire") {
-      const entityType = targetType(op.target);
-      if (!entityType) {
+      const nodeType = targetType(op.target);
+      if (!nodeType) {
         return { error: `Cannot ${op.op}: unrecognized node id/alias "${op.target}".` };
       }
-      types.add(entityType);
+      types.add(nodeType);
       continue;
     }
     if (op.op === "supersede") {
-      const newType = normalizeEntityType(op.entity_type);
-      if (!newType) return { error: `Unsupported supersede entity_type "${op.entity_type}".` };
+      const newType = normalizeNodeType(op.node_type);
+      if (!newType) return { error: `Unsupported supersede node_type "${op.node_type}".` };
       types.add(newType);
       const oldType = targetType(op.target);
       if (!oldType) return { error: `Cannot supersede: unrecognized target "${op.target}".` };
@@ -370,7 +370,7 @@ async function applyOperation(
   }
   if (op.op === "append") {
     const created = await createNode(
-      { op: "create", entity_type: op.entity_type, alias: op.alias, body: op.body },
+      { op: "create", node_type: op.node_type, alias: op.alias, body: op.body },
       index,
       ctx,
       aliases,
@@ -485,11 +485,9 @@ async function applyLifecyclePatch(
   index: number,
   ctx: ChangesetContext,
 ): Promise<OperationResult> {
-  const entityType = entityTypeFromId(id);
-  const segment = entityType
-    ? NODE_CATALOG[entityType as keyof typeof NODE_CATALOG]?.segment
-    : null;
-  if (!entityType || !segment) {
+  const nodeType = nodeTypeFromId(id);
+  const segment = nodeType ? NODE_CATALOG[nodeType as keyof typeof NODE_CATALOG]?.segment : null;
+  if (!nodeType || !segment) {
     return {
       op_index: index,
       op: opName,
@@ -502,7 +500,7 @@ async function applyLifecyclePatch(
     docoId: ctx.docoId,
     ownerSlug: ctx.ownerSlug,
     docoSlug: ctx.docoSlug,
-    entityType: entityType as Parameters<typeof updateEntity>[0]["entityType"],
+    entityType: nodeType as Parameters<typeof updateEntity>[0]["entityType"],
     pluralDir: segment,
     id,
     patch,
@@ -536,7 +534,7 @@ async function supersedeNode(
     };
   }
   const created = await createNode(
-    { op: "create", entity_type: op.entity_type, alias: op.alias, body: op.body },
+    { op: "create", node_type: op.node_type, alias: op.alias, body: op.body },
     index,
     ctx,
     aliases,
@@ -587,14 +585,14 @@ async function createNode(
   ctx: ChangesetContext,
   aliases: Map<string, string>,
 ): Promise<OperationResult> {
-  const entityType = normalizeEntityType(op.entity_type);
-  const entry = entityType ? CAPTURE_REGISTRY_BY_ENTITY_TYPE[entityType] : null;
+  const nodeType = normalizeNodeType(op.node_type);
+  const entry = nodeType ? CAPTURE_REGISTRY_BY_NODE_TYPE[nodeType] : null;
   if (!entry) {
     return {
       op_index: index,
       op: "create",
       ok: false,
-      error: `Unsupported create entity_type "${op.entity_type}".`,
+      error: `Unsupported create node_type "${op.node_type}".`,
     };
   }
   if (!op.body || typeof op.body !== "object" || Array.isArray(op.body)) {
@@ -905,18 +903,18 @@ function relationMetadata(
   };
 }
 
-function normalizeEntityType(value: unknown): string | null {
+function normalizeNodeType(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
-  if (CAPTURE_REGISTRY_BY_ENTITY_TYPE[trimmed]) return trimmed;
+  if (CAPTURE_REGISTRY_BY_NODE_TYPE[trimmed]) return trimmed;
   if (trimmed.endsWith("s")) {
     const singular = trimmed.slice(0, -1);
-    if (CAPTURE_REGISTRY_BY_ENTITY_TYPE[singular]) return singular;
+    if (CAPTURE_REGISTRY_BY_NODE_TYPE[singular]) return singular;
   }
   return null;
 }
 
-function entityTypeFromId(id: string): string | null {
+function nodeTypeFromId(id: string): string | null {
   const m = ENTITY_ID_RE.exec(id);
   return m?.[1] ?? null;
 }
@@ -950,9 +948,9 @@ async function summarizeIntegrity(docoId: string, perspective: string, createdId
   });
   const entities = new Map<string, Awaited<ReturnType<typeof getEntity>>>();
   for (const id of createdIds) {
-    const entityType = entityTypeFromId(id);
-    if (!entityType) continue;
-    const entity = await getEntity(entityType, id);
+    const nodeType = nodeTypeFromId(id);
+    if (!nodeType) continue;
+    const entity = await getEntity(nodeType, id);
     if (!entity || entity.doco_id !== docoId) continue;
     entities.set(id, entity);
   }
