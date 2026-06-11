@@ -23,6 +23,7 @@ const SURVIVING_HANDLES = [
   "test-scenarios",
   "faq",
   "bugs",
+  "ideas",
 ] as const;
 
 const REMOVED_HANDLES = ["glossaries"] as const;

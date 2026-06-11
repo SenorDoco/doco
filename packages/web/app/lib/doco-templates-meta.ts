@@ -132,6 +132,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-06-07",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "ideas",
+    label: "Ideas",
+    description:
+      "Capture and track product ideas — each separates the problem from the proposed solution, accumulates demand and evidence on one canonical record, is evaluated against explicit criteria, and ends with an honest disposition: promoted, parked, or rejected with the reason.",
+    updatedAt: "2026-06-11",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
