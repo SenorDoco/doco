@@ -221,7 +221,9 @@ describe("/tokens page action", () => {
       createElement(ManualMcpPanel, { host: "https://doco.test" }),
     );
 
-    expect(markup).toContain("Connect an agent to Doco");
+    // The two steps now carry the headings; the old panel title is gone.
+    expect(markup).not.toContain("Connect an agent to Doco");
+    expect(markup).toContain("1. Connect the MCP to your environment");
     // One endpoint at /mcp — no per-workspace picker, no workspace in the URL.
     expect(markup).toContain("https://doco.test/mcp");
     expect(markup).not.toContain("per workspace");
@@ -236,12 +238,12 @@ describe("/tokens page action", () => {
     expect(markup).toContain("Claude Code");
     // Step 2: the paste-to-agent block that makes the agent remember Doco
     // (records the directive in AGENTS.md and applies it this session).
-    expect(markup).toContain("Tell your agent to remember Doco");
+    expect(markup).toContain("2. Tell your agent to use Doco");
     expect(markup).toContain("Search Doco first");
     expect(markup).toContain("Know your default scope");
     expect(markup).toContain('data-testid="agent-memory-prompt"');
-    // The capabilities note is trimmed to a single read/write + OAuth line.
-    expect(markup).toContain("Read and write on one OAuth 2.1 token");
+    // The standalone read/write + OAuth capabilities line was dropped.
+    expect(markup).not.toContain("Read and write on one OAuth 2.1 token");
   });
 
   it("trims a trailing slash on the host when building the /mcp URL", () => {
