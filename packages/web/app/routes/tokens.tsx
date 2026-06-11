@@ -382,18 +382,6 @@ export function ExistingTokensPanel({
   );
 }
 
-function Code({ children }: { children: string }) {
-  return <code className="rounded bg-input px-1 py-0.5 font-mono">{children}</code>;
-}
-
-function FieldLabel({ children }: { children: string }) {
-  return (
-    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-      {children}
-    </div>
-  );
-}
-
 // A code box with its own Copy button. The MCP URL and the per-client
 // setup commands are all things you paste somewhere, so each is copyable.
 function CopyableCode({ value, testid }: { value: string; testid?: string }) {
@@ -423,51 +411,6 @@ function CopyableCode({ value, testid }: { value: string; testid?: string }) {
       </button>
     </div>
   );
-}
-
-// The MCP clients we give tailored setup steps for. The list drives the
-// clickable options; ProviderInstructions renders the steps for one.
-const MCP_PROVIDERS: { id: string; label: string }[] = [
-  { id: "claude-cursor", label: "claude.ai · Claude Desktop · Claude mobile · Cursor" },
-  { id: "claude-code", label: "Claude Code" },
-  { id: "chatgpt", label: "ChatGPT & other clients" },
-];
-
-export function ProviderInstructions({ providerId, url }: { providerId: string; url: string }) {
-  if (providerId === "claude-cursor") {
-    return (
-      <div className="space-y-2" data-testid="provider-instructions">
-        <p className="text-xs text-muted-foreground">
-          Settings → Connectors → Add custom connector, and paste your workspace's URL:
-        </p>
-        <CopyableCode value={url} />
-        <p className="text-xs text-muted-foreground">
-          Approve the OAuth prompt — pick the workspace and, optionally, narrow to specific docos.
-        </p>
-      </div>
-    );
-  }
-  if (providerId === "claude-code") {
-    return (
-      <div className="space-y-2" data-testid="provider-instructions">
-        <p className="text-xs text-muted-foreground">
-          Claude Code reaches the remote server through the <Code>mcp-remote</Code> bridge:
-        </p>
-        <CopyableCode value={`claude mcp add doco -- npx -y mcp-remote ${url}`} />
-      </div>
-    );
-  }
-  if (providerId === "chatgpt") {
-    return (
-      <div className="space-y-2" data-testid="provider-instructions">
-        <p className="text-xs text-muted-foreground">
-          Add a connector / custom MCP server with your workspace's URL:
-        </p>
-        <CopyableCode value={url} />
-      </div>
-    );
-  }
-  return null;
 }
 
 // The Step-2 block a user pastes to their coding agent. It installs the Doco
@@ -500,44 +443,15 @@ export function ManualMcpPanel({ host }: { host: string }) {
   // scope (one workspace, several, or specific docos — list_workspaces
   // enumerates the reach). No per-workspace URL to pick.
   const url = `${baseUrl}/mcp`;
-  const [provider, setProvider] = useState("");
 
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
-      {/* Step 1 — connect the MCP: the URL + per-client setup */}
+      {/* Step 1 — connect the MCP: the URL */}
       <div className="space-y-3">
         <h2 className="text-base font-semibold">1. Connect the MCP to your environment</h2>
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">Your MCP URL</p>
           <CopyableCode value={url} testid="mcp-url" />
-        </div>
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Pick your client for step-by-step setup.</p>
-          <div className="flex flex-wrap gap-1.5">
-            {MCP_PROVIDERS.map((p) => {
-              const active = p.id === provider;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  aria-pressed={active}
-                  data-testid={`mcp-provider-${p.id}`}
-                  onClick={() => setProvider(active ? "" : p.id)}
-                  className={cn(
-                    "neu-button rounded-md px-3 py-1.5 text-xs font-semibold",
-                    active ? "bg-primary text-primary-foreground" : "",
-                  )}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
-          {provider ? (
-            <div className="rounded-md border border-border bg-background/40 p-3">
-              <ProviderInstructions providerId={provider} url={url} />
-            </div>
-          ) : null}
         </div>
       </div>
 
