@@ -228,13 +228,18 @@ describe("/tokens page action", () => {
     expect(markup).not.toContain("Select a workspace");
     expect(markup).not.toContain("WORKSPACE_ID");
     expect(markup).not.toContain("/workspace_");
-    // Copy reflects the actual reach, not the old "one workspace per session".
-    expect(markup).toContain("every workspace you belong to");
     expect(markup).not.toContain("can never touch two");
     expect(markup).not.toContain("doco_select_workspace");
-    // Capabilities note + provider options still render.
-    expect(markup).toContain("doco_request_access");
+    // The stale "one Doco at a time" reach prose is gone (the grant is the scope).
+    expect(markup).not.toMatch(/one Doco at a time/i);
+    // Provider options still render.
     expect(markup).toContain("Claude Code");
+    // Step 2: the paste-to-agent block that makes the agent remember Doco
+    // (records the directive in AGENTS.md and applies it this session).
+    expect(markup).toContain("Tell your agent to remember Doco");
+    expect(markup).toContain("Search Doco first");
+    expect(markup).toContain("Know your default scope");
+    expect(markup).toContain('data-testid="agent-memory-prompt"');
   });
 
   it("trims a trailing slash on the host when building the /mcp URL", () => {

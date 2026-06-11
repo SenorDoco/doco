@@ -470,76 +470,87 @@ export function ProviderInstructions({ providerId, url }: { providerId: string; 
   return null;
 }
 
+// The Step-2 block a user pastes to their coding agent. It installs the Doco
+// memory directive into AGENTS.md (so every future agent inherits it) and tells
+// the agent to honor it this same session. Plain markdown — it lands verbatim
+// in AGENTS.md.
+export const AGENT_MEMORY_PROMPT = `This repository is connected to Doco, an MCP server holding this project's institutional memory (decisions, rules, intent, history). Make it durable and start using it now:
+
+1. Add the "Doco" section below to AGENTS.md (create it if missing). Make sure the other agent-instruction files this project uses carry it too — CLAUDE.md can be the one-line shim @./AGENTS.md; same for .cursor/rules or GEMINI.md if present. Commit these files. Never commit tokens or secrets.
+2. Then follow it for the rest of this session, starting with your next answer — don't wait for a restart.
+
+If you can't write files here, follow the rule for this session and tell me exactly what to add.
+
+---
+## Doco — institutional memory (consult before answering "how / why")
+
+This project is connected to Doco over MCP. Doco is the source of truth for **why** the project is the way it is (decisions, rules, intent); the codebase is the source of truth for **what** it currently does. Use both, in that order, for "how/why."
+
+**Search Doco first.** Before answering any question about how or why this project works — architecture, a decision, a rule, process, terminology — or before making a change such a decision could govern, call doco_search (orient with doco_whoami / list_workspaces) and ground your answer in what it returns. Consult Doco *before* reading source for these questions, not after. Cite the node ids you used. If Doco returns nothing relevant, say so and fall back to the codebase.
+
+**Know your default scope — ask, don't assume.** Your credential may reach several workspaces and docos; don't choose for the user. Ask which workspaces and docos this project should work in by default, and record the answer in this section so the next agent inherits it. If a default is already recorded here, honor it (and re-confirm only if the task clearly needs more).
+
+**Delegation carries the rule.** If you hand research to a subagent, tell it to search Doco the same way. The rule binds whoever actually does the work, not just the orchestrator.
+
+**Capture as you go.** When a decision or rule gets made this session, record it in Doco (doco_capture) so the next agent inherits it instead of re-deriving it.`;
+
 export function ManualMcpPanel({ host }: { host: string }) {
   const baseUrl = host.replace(/\/+$/, "");
-  // ONE hosted MCP endpoint at /mcp. Connect once; an "act as me" token reaches
-  // every workspace the user belongs to (one Doco at a time — list_workspaces
-  // enumerates them), while a workspace-scoped token pins one. No per-workspace
-  // URL to pick.
+  // ONE hosted MCP endpoint at /mcp. Connect once; the token's grant is the
+  // scope (one workspace, several, or specific docos — list_workspaces
+  // enumerates the reach). No per-workspace URL to pick.
   const url = `${baseUrl}/mcp`;
   const [provider, setProvider] = useState("");
 
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
-      <div className="space-y-1.5">
-        <h2 className="text-base font-semibold">Connect an agent to Doco</h2>
-        <p className="text-xs text-muted-foreground">
-          Doco hosts <strong>one</strong> remote MCP server at <Code>/mcp</Code> — connect once and
-          it reaches every workspace you belong to, one Doco at a time. Call{" "}
-          <Code>doco_whoami</Code> / <Code>list_workspaces</Code> to see your reach. Copy the URL,
-          then choose your client for setup steps. Machine-readable version:{" "}
-          <a href="/llms.txt" className="underline hover:opacity-80">
-            /llms.txt
-          </a>
-          .
-        </p>
-      </div>
+      <h2 className="text-base font-semibold">Connect an agent to Doco</h2>
 
-      {/* The URL */}
-      <div className="space-y-1.5 border-t border-border pt-3">
-        <FieldLabel>Your MCP URL</FieldLabel>
-        <CopyableCode value={url} testid="mcp-url" />
-      </div>
-
-      {/* Per-client setup, revealed on click */}
-      <div className="space-y-2 border-t border-border pt-3">
-        <FieldLabel>Set up your client</FieldLabel>
-        <p className="text-xs text-muted-foreground">Pick your client for step-by-step setup.</p>
-        <div className="flex flex-wrap gap-1.5">
-          {MCP_PROVIDERS.map((p) => {
-            const active = p.id === provider;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                aria-pressed={active}
-                data-testid={`mcp-provider-${p.id}`}
-                onClick={() => setProvider(active ? "" : p.id)}
-                className={cn(
-                  "neu-button rounded-md px-3 py-1.5 text-xs font-semibold",
-                  active ? "bg-primary text-primary-foreground" : "",
-                )}
-              >
-                {p.label}
-              </button>
-            );
-          })}
+      {/* Step 1 — connect the MCP: the URL + per-client setup */}
+      <div className="space-y-3">
+        <FieldLabel>1. Connect the MCP</FieldLabel>
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">Your MCP URL</p>
+          <CopyableCode value={url} testid="mcp-url" />
         </div>
-        {provider ? (
-          <div className="rounded-md border border-border bg-background/40 p-3">
-            <ProviderInstructions providerId={provider} url={url} />
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Pick your client for step-by-step setup.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {MCP_PROVIDERS.map((p) => {
+              const active = p.id === provider;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={active}
+                  data-testid={`mcp-provider-${p.id}`}
+                  onClick={() => setProvider(active ? "" : p.id)}
+                  className={cn(
+                    "neu-button rounded-md px-3 py-1.5 text-xs font-semibold",
+                    active ? "bg-primary text-primary-foreground" : "",
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
           </div>
-        ) : null}
+          {provider ? (
+            <div className="rounded-md border border-border bg-background/40 p-3">
+              <ProviderInstructions providerId={provider} url={url} />
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {/* What you get */}
-      <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-        The connector is read <em>and</em> write — <Code>doco_search</Code>, <Code>doco_get</Code>{" "}
-        (read), <Code>doco_capture</Code>, <Code>doco_relate</Code>, <Code>doco_changeset</Code>,{" "}
-        <Code>doco_policy</Code> (write), and <Code>doco_request_access</Code> — scoped to the Docos
-        your token can reach. Read vs write is a live permission on the same token, so stepping up
-        never means reconnecting. Auth is OAuth 2.1 (PKCE + dynamic client registration).
-      </p>
+      {/* Step 2 — make the agent remember Doco across sessions and agents */}
+      <div className="space-y-2 border-t border-border pt-3">
+        <FieldLabel>2. Tell your agent to remember Doco</FieldLabel>
+        <p className="text-xs text-muted-foreground">
+          Paste this to your coding agent — it records Doco in the repo and starts using it now.
+        </p>
+        <CopyableCode value={AGENT_MEMORY_PROMPT} testid="agent-memory-prompt" />
+      </div>
     </section>
   );
 }
