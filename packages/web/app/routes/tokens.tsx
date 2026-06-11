@@ -504,11 +504,9 @@ export function ManualMcpPanel({ host }: { host: string }) {
 
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
-      <h2 className="text-base font-semibold">Connect an agent to Doco</h2>
-
       {/* Step 1 — connect the MCP: the URL + per-client setup */}
       <div className="space-y-3">
-        <FieldLabel>1. Connect the MCP</FieldLabel>
+        <h2 className="text-base font-semibold">1. Connect the MCP to your environment</h2>
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">Your MCP URL</p>
           <CopyableCode value={url} testid="mcp-url" />
@@ -541,14 +539,11 @@ export function ManualMcpPanel({ host }: { host: string }) {
             </div>
           ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Read and write on one OAuth 2.1 token — stepping up to write never means reconnecting.
-        </p>
       </div>
 
       {/* Step 2 — make the agent remember Doco across sessions and agents */}
       <div className="space-y-2 border-t border-border pt-3">
-        <FieldLabel>2. Tell your agent to remember Doco</FieldLabel>
+        <h2 className="text-base font-semibold">2. Tell your agent to use Doco</h2>
         <p className="text-xs text-muted-foreground">
           Paste this to your coding agent — it records Doco in the repo and starts using it now.
         </p>
