@@ -541,6 +541,9 @@ export function ManualMcpPanel({ host }: { host: string }) {
             </div>
           ) : null}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Read and write on one OAuth 2.1 token — stepping up to write never means reconnecting.
+        </p>
       </div>
 
       {/* Step 2 — make the agent remember Doco across sessions and agents */}

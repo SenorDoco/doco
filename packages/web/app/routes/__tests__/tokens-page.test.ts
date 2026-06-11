@@ -240,6 +240,8 @@ describe("/tokens page action", () => {
     expect(markup).toContain("Search Doco first");
     expect(markup).toContain("Know your default scope");
     expect(markup).toContain('data-testid="agent-memory-prompt"');
+    // The capabilities note is trimmed to a single read/write + OAuth line.
+    expect(markup).toContain("Read and write on one OAuth 2.1 token");
   });
 
   it("trims a trailing slash on the host when building the /mcp URL", () => {
