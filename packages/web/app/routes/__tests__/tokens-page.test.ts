@@ -34,7 +34,6 @@ import { catalogFromOptions } from "~/lib/grant-picker";
 import ApiKeysPage, {
   ExistingTokensPanel,
   ManualMcpPanel,
-  ProviderInstructions,
   action,
   actorScopeLabel,
   formatLastUsedLabel,
@@ -234,8 +233,11 @@ describe("/tokens page action", () => {
     expect(markup).not.toContain("doco_select_workspace");
     // The stale "one Doco at a time" reach prose is gone (the grant is the scope).
     expect(markup).not.toMatch(/one Doco at a time/i);
-    // Provider options still render.
-    expect(markup).toContain("Claude Code");
+    // The per-client picker is gone — just the URL connects the MCP now.
+    expect(markup).not.toContain("Pick your client for step-by-step setup.");
+    expect(markup).not.toContain("claude.ai · Claude Desktop · Claude mobile · Cursor");
+    expect(markup).not.toContain("ChatGPT & other clients");
+    expect(markup).not.toContain("mcp-provider-");
     // Step 2: the paste-to-agent block that makes the agent remember Doco
     // (records the directive in AGENTS.md and applies it this session).
     expect(markup).toContain("2. Tell your agent to use Doco");
@@ -268,50 +270,6 @@ describe("/tokens page action", () => {
     expect(urlBlock).toContain("pr-24");
     expect(copyButton).toContain("bg-primary");
     expect(copyButton).toContain("text-primary-foreground");
-  });
-
-  it("renders client-specific setup only for the chosen provider", () => {
-    const url = "https://doco.test/mcp";
-
-    // Claude Code keeps the mcp-remote bridge command…
-    const code = renderToStaticMarkup(
-      createElement(ProviderInstructions, { providerId: "claude-code", url }),
-    );
-    expect(code).toContain(`claude mcp add doco -- npx -y mcp-remote ${url}`);
-    // …but the hand-edited claude_desktop_config.json block is gone: modern
-    // Claude Desktop uses the same custom-connector flow as Claude.ai, not a
-    // local config file.
-    expect(code).not.toContain("claude_desktop_config.json");
-
-    // Claude Desktop now rides the connector path — paste the URL, no config
-    // file, no bridge.
-    const connector = renderToStaticMarkup(
-      createElement(ProviderInstructions, { providerId: "claude-cursor", url }),
-    );
-    expect(connector).toContain("Add custom connector");
-    expect(connector).toContain(url);
-    expect(connector).not.toContain("claude_desktop_config.json");
-    expect(connector).not.toContain("mcp-remote");
-
-    const chatgpt = renderToStaticMarkup(
-      createElement(ProviderInstructions, { providerId: "chatgpt", url }),
-    );
-    expect(chatgpt).toContain(url);
-    // The ChatGPT path doesn't carry the Claude Desktop config.
-    expect(chatgpt).not.toContain("claude_desktop_config.json");
-  });
-
-  it("groups Claude Desktop with the connector clients and gives Claude Code its own tab", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, { host: "https://doco.test" }),
-    );
-
-    // Claude Desktop now shares the custom-connector button with Claude.ai…
-    expect(markup).toContain("claude.ai · Claude Desktop · Claude mobile · Cursor");
-    // …and Claude Code keeps its own (mcp-remote bridge) tab.
-    expect(markup).toContain("Claude Code");
-    // The old combined "Claude Desktop · Claude Code" tab is gone.
-    expect(markup).not.toContain("Claude Desktop · Claude Code");
   });
 });
 
