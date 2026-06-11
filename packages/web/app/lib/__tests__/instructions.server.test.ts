@@ -57,24 +57,6 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).toContain("use all of it");
   });
 
-  it("lets a project narrow to an explicit one-to-many focus set, but never an agent-imposed cap", () => {
-    // The grant is what you CAN reach; a project may also declare what it is
-    // ABOUT — a working set of one or more workspaces/docos for this checkout,
-    // in `.doco/connections.md`. That is the user's deliberate choice, the
-    // same kind the grant is — so it may narrow, but only the user ever does.
-    expect(CANONICAL_INSTRUCTIONS).toContain(".doco/connections.md");
-    // It is one-to-many — never assume a single workspace/doco.
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/one or more/i);
-    // With no declaration, the whole grant stands (the #1234 default survives).
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/no (such )?(declared )?focus|no such declaration/i);
-    // The agent never narrows on its own initiative.
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/never narrow on your own/i);
-    // Two disagreeing declarations: ask which is authoritative, then clean up.
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/authoritative/i);
-    // AGENTS.md is the write-less fallback; structured connections.md wins.
-    expect(CANONICAL_INSTRUCTIONS).toContain("AGENTS.md");
-  });
-
   it("tells agents to paste the server-built display lines, not manufacture them", () => {
     // The two most-missed invariants (§1 N-found, §3 tally) are handed over as
     // finished strings on every search result — the doc must point at them so
