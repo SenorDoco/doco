@@ -381,12 +381,23 @@ async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalInd
 }
 
 async function loadEdges(c: PgClient, docoId: string): Promise<EngineEdge[]> {
+  // Edge gates ask "does this relationship EXIST?", so they see every LIVE
+  // (non-retired) edge — not only `active` ones. The distinction matters
+  // because an edge created while either endpoint is still `drafting` lands
+  // `drafting` itself (an `active` edge requires active endpoints — see
+  // EDGE_ENDPOINTS_NOT_ACTIVE), and nothing later promotes it. Filtering to
+  // active-only made those edges invisible, so a committed-stage `requires_edge`
+  // gate could never be satisfied by wiring drawn on a drafting node: the node
+  // could never leave the inbox (a `requires_edge` catch-22), and a `drafting`
+  // edge slipped past `limits_edge` ceilings. A `retired` edge is a severed
+  // relationship and stays excluded — matching how `loadPopulation` and
+  // `loadPrincipals` drop retired nodes.
   const r = await c.query<{
     from_id: string;
     to_id: string;
     edge_type: string;
   }>(
-    "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'",
+    "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') <> 'retired'",
     [docoId],
   );
   return r.rows;
