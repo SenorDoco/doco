@@ -1275,4 +1275,133 @@ describe("ideas template — end-to-end via runAuthoringPolicies", () => {
     ).toEqual([]);
     expect(result.blocking).toBeNull();
   });
+
+  // ── The funnel's core move: drafting → queued with edge-gated wiring ──────
+  //
+  // The cases above wire the idea with edges that default to `active` (a bare
+  // INSERT with no lifecycle). That hides the bug the real changeset path hits:
+  // an edge created while its endpoint is `drafting` lands `drafting` (an
+  // active edge demands active endpoints), and the committed-stage gates must
+  // still see it through `loadEdges`. These three exercise the live-graph rule
+  // from all three sides — floor, retired boundary, and ceiling.
+
+  it("queues an idea wired to its shepherd and opportunity by `drafting` edges", async () => {
+    judge.run.mockResolvedValue({ ok: true });
+    // The exact sequence that failed in production: an idea jotted as
+    // `drafting`, wired to its shepherd and opportunity in the same changeset,
+    // then triaged to `queued`. Both wiring edges are `drafting` because the
+    // idea wasn't active when they were drawn. The shepherd `requires_edge`
+    // (block) and the opportunity floor must read them as live — otherwise a
+    // required-edge template traps every idea in the inbox forever. Same graph
+    // as the fully-wired case above, but with `drafting` edges, not `active`.
+    const ideaId = "idea_01IDEAE2EDRAFT00000000001";
+    const ownerId = "principal_01IDEAE2EDRAFTOWNER0001";
+    const oppId = "intent_01IDEAE2EDRAFTOPP0000001";
+    await dbm.db.query(
+      `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose) VALUES
+         ($1, $4, 'idea', 'queued', 'Bulk CSV import for legacy wikis.'),
+         ($2, $4, 'principal', 'active', 'Growth PM'),
+         ($3, $4, 'intent', 'active', 'Help teams migrating from legacy wikis reach their first shared doc')`,
+      [ideaId, ownerId, oppId, docoId],
+    );
+    await dbm.db.query(
+      `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, lifecycle) VALUES
+         ('edge_01IDEAE2EDRAFTATTR00001', $4, 'attributed_to', $1, 'idea', $2, 'principal', 'drafting'),
+         ('edge_01IDEAE2EDRAFTPARENT001', $4, 'has_parent', $1, 'idea', $3, 'intent', 'drafting')`,
+      [ideaId, ownerId, oppId, docoId],
+    );
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: ideaId,
+        node_type: "idea",
+        doco_id: docoId,
+        prose:
+          "Bulk CSV import that maps legacy wiki pages into docs, authors and dates preserved.",
+        problem:
+          "Teams arriving from legacy wikis re-create hundreds of pages by hand, so trials stall before the team ever works in the product.",
+        lifecycle: "queued",
+      },
+    });
+    expect(
+      result.violations.filter((v) => v.kind === "deterministic"),
+      result.violations.map((v) => `${v.sub_kind}: ${v.reason}`).join("; "),
+    ).toEqual([]);
+    expect(result.blocking).toBeNull();
+  });
+
+  it("does not let a `retired` `attributed_to` edge satisfy the shepherd gate", async () => {
+    judge.run.mockResolvedValue({ ok: true });
+    // The boundary of the rule: gates see LIVE (non-retired) edges, not every
+    // edge ever drawn. A retired attribution is a severed relationship — the
+    // idea is ownerless again — so the committed-stage shepherd gate blocks.
+    const ideaId = "idea_01IDEAE2ERET0000000000001";
+    const ownerId = "principal_01IDEAE2ERETOWNER00001";
+    await dbm.db.query(
+      `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose) VALUES
+         ($1, $3, 'idea', 'queued', 'Idea whose shepherd left.'),
+         ($2, $3, 'principal', 'active', 'Departed PM')`,
+      [ideaId, ownerId, docoId],
+    );
+    await dbm.db.query(
+      `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, lifecycle, retired_at)
+         VALUES ('edge_01IDEAE2ERETATTR000001', $3, 'attributed_to', $1, 'idea', $2, 'principal', 'retired', now())`,
+      [ideaId, ownerId, docoId],
+    );
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: ideaId,
+        node_type: "idea",
+        doco_id: docoId,
+        prose: "A real need that outlived the person who championed it.",
+        problem: "Without a new shepherd the idea stalls in the funnel.",
+        lifecycle: "queued",
+      },
+    });
+    expect(deterministicBlocks(result.violations).some((v) => v.sub_kind === "requires_edge")).toBe(
+      true,
+    );
+  });
+
+  it("counts a `drafting` edge toward the `has_parent` ceiling (no cap evasion)", async () => {
+    judge.run.mockResolvedValue({ ok: true });
+    // The same rule from the ceiling side: `limits_edge` caps an idea at one
+    // opportunity. If gates saw only active edges, a second `drafting`
+    // `has_parent` would be invisible and slip the cap. Two opportunities is
+    // two, whatever the edge lifecycle.
+    const ideaId = "idea_01IDEAE2ECAP0000000000001";
+    const ownerId = "principal_01IDEAE2ECAPOWNER00001";
+    const oppA = "intent_01IDEAE2ECAPOPPA000001";
+    const oppB = "intent_01IDEAE2ECAPOPPB000001";
+    await dbm.db.query(
+      `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose) VALUES
+         ($1, $5, 'idea', 'queued', 'Idea pinned to two opportunities.'),
+         ($2, $5, 'principal', 'active', 'PM'),
+         ($3, $5, 'intent', 'active', 'Opportunity A'),
+         ($4, $5, 'intent', 'active', 'Opportunity B')`,
+      [ideaId, ownerId, oppA, oppB, docoId],
+    );
+    await dbm.db.query(
+      `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type, lifecycle) VALUES
+         ('edge_01IDEAE2ECAPATTR000001', $5, 'attributed_to', $1, 'idea', $2, 'principal', 'active'),
+         ('edge_01IDEAE2ECAPPARENTA01', $5, 'has_parent', $1, 'idea', $3, 'intent', 'active'),
+         ('edge_01IDEAE2ECAPPARENTB01', $5, 'has_parent', $1, 'idea', $4, 'intent', 'drafting')`,
+      [ideaId, ownerId, oppA, oppB, docoId],
+    );
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: ideaId,
+        node_type: "idea",
+        doco_id: docoId,
+        prose: "Idea pinned to two opportunities at once.",
+        problem: "A real need, but the record conflates two distinct opportunities.",
+        lifecycle: "queued",
+      },
+    });
+    expect(deterministicBlocks(result.violations).some((v) => v.sub_kind === "limits_edge")).toBe(
+      true,
+    );
+  });
 });
