@@ -2,9 +2,13 @@
 //
 // Convention: https://llmstxt.org/. Served as text/plain.
 import { getPublicBaseUrl } from "@doco/shared";
+import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 
 export function loader({ request }: { request: Request }) {
   const baseUrl = getPublicBaseUrl(request).replace(/\/+$/, "");
+  const templateList = DOCO_TEMPLATES.map(
+    (template) => `     - ${template.handle} — ${template.label}: ${template.description}`,
+  ).join("\n");
   const body = `# Doco
 
 > Doco is AI-native documentation of intents, decisions, rules, and
@@ -14,6 +18,63 @@ export function loader({ request }: { request: Request }) {
 
 If a user just told you something like "let's start using Doco" or
 "visit doco.to and follow the wizard", you're at the right page.
+
+## One project = one Workspace
+
+A **Workspace** is a project: a product, a repo, a team's shared
+memory. It holds the members, the constitution every agent honors, and
+the project's Docos. A **Doco** is one kind of knowledge inside the
+project, created from a template: its architectural decisions, its
+ideas, its bugs, its glossary, its roadmap. A project usually has
+several Docos, and a Doco never stands in for the project.
+
+So when a user says "use Doco for <project>":
+
+1. **Find the project's Workspace.** Call \`list_workspaces\` (MCP) or
+
+       GET ${baseUrl}/api/v1/workspaces.json
+
+   If one of them is the project, work there. Don't probe for a Doco
+   handle named after the project; Docos are named for what they hold.
+
+2. **No match? Create a Workspace for the project.** Don't create a
+   Doco named after the project inside another workspace (the user's
+   personal one, or some other project's):
+
+       POST ${baseUrl}/api/v1/workspaces.json
+       Content-Type: application/json
+       Authorization: Bearer doco_at_<token>
+
+       { "requested_id": "<project>" }
+
+   You become its owner. The 201 reply is \`{ id, handle }\`; the
+   handle is auto-suffixed (\`<project>-2\`) if taken.
+
+3. **Create the project's Docos inside it**, one per kind of knowledge
+   the user wants to keep. Ask which ones. Doco handles are global, so
+   prefix them with the project:
+
+       POST ${baseUrl}/api/v1/docos.json
+       Content-Type: application/json
+       Authorization: Bearer doco_at_<token>
+
+       {
+         "workspace_id": "<id from step 2>",
+         "name": "<project>-decisions",
+         "template_handle": "architectural-decisions"
+       }
+
+   \`template_handle\` is one of:
+
+${templateList}
+
+4. **Connect the repo** to those Docos (see "Share the Doco connection
+   through Git" below).
+
+The hosted MCP server has no create tools. An MCP-only agent asks the
+user to create the Workspace at ${baseUrl}/new-workspace and its Docos
+from the Workspace's page. Every other agent gets a token from the
+recipes below and makes the two POSTs itself.
 
 ## Connect via the hosted MCP server (easiest)
 
@@ -156,7 +217,9 @@ for backwards compat.
   GET  ${baseUrl}/<handle>/api/policies.json      # list policies (NOT nodes)
   POST ${baseUrl}/<handle>/api/policies.json      # write a policy (need 'owner' role)
   PATCH ${baseUrl}/<handle>/api/policies/<id>.json # modify a policy: supersede or retire/activate (owner)
-  POST ${baseUrl}/api/v1/docos.json                 # create a Doco in one request
+  GET  ${baseUrl}/api/v1/workspaces.json            # list your Workspaces (projects)
+  POST ${baseUrl}/api/v1/workspaces.json            # create a Workspace for a new project
+  POST ${baseUrl}/api/v1/docos.json                 # create a Doco inside a Workspace
 
 Node types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,
 \`actions\`, \`logs\`, \`evals\`, \`references\`, \`states\`,
@@ -192,19 +255,6 @@ Common principal relationship roles on attributed_to/has_parent edges:
 authenticated session or token. Never send \`created_by\` in request
 bodies.
 
-Create a Doco with:
-
-    POST ${baseUrl}/api/v1/docos.json
-    Content-Type: application/json
-    Authorization: Bearer doco_at_<token>
-
-    {
-      "template_handle": "generic",
-      "workspace_id": "<workspace-id>",
-      "name": "acme-bpms",
-      "privacy": "private"
-    }
-
 ## Public Doco reads (no auth)
 
 Public Docos accept anonymous reads. If your project owner tells you
@@ -238,6 +288,7 @@ governing its work across every project it can reach.
 ## Related routes
 
     ${baseUrl}/sign-in
+    ${baseUrl}/new-workspace
     ${baseUrl}/new-doco
     ${baseUrl}/mcp
     ${baseUrl}/.well-known/oauth-authorization-server

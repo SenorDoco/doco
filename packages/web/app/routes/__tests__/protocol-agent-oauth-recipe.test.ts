@@ -14,4 +14,17 @@ describe("/protocol/agent-oauth-recipe", () => {
     expect(body).toContain("https://doco.test/tokens");
     expect(body).not.toContain("https://doco.test/connect");
   });
+
+  it("starts a project with its Workspace, then creates Docos inside it", async () => {
+    const response = loader({
+      request: new Request("https://doco.test/protocol/agent-oauth-recipe"),
+    });
+    const body = await response.text();
+
+    const createWorkspace = body.indexOf("POST https://doco.test/api/v1/workspaces.json");
+    const createDoco = body.indexOf("POST https://doco.test/api/v1/docos.json");
+    expect(createWorkspace).toBeGreaterThan(-1);
+    expect(createDoco).toBeGreaterThan(createWorkspace);
+    expect(body).toContain("One project = one Workspace");
+  });
 });

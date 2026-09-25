@@ -454,20 +454,30 @@ GET ${baseUrl}/<handle>/                          # HTML home; no JSON form
 GET ${baseUrl}/<handle>/status.json               # counts + freshness (root, not /api/)
 \`\`\`
 
-**Create a Doco in one request:**
+**Start a project.** One project = one Workspace; its Docos are the
+kinds of knowledge inside it (decisions, ideas, bugs, …). Find the
+project's Workspace first (\`GET ${baseUrl}/api/v1/workspaces.json\`).
+Only when none matches, create one, then create its Docos inside it:
 
 \`\`\`
+POST ${baseUrl}/api/v1/workspaces.json
+Content-Type: application/json
+Authorization: Bearer doco_at_<your-access-token>
+
+{ "requested_id": "acme" }
+
 POST ${baseUrl}/api/v1/docos.json
 Content-Type: application/json
 Authorization: Bearer doco_at_<your-access-token>
 
 {
-  "template_handle": "generic",
-  "workspace_id": "<workspace-id>",
-  "name": "acme-bpms",
-  "privacy": "private"
+  "workspace_id": "<id from the workspace reply>",
+  "name": "acme-decisions",
+  "template_handle": "architectural-decisions"
 }
 \`\`\`
+
+Every \`template_handle\` is listed in ${baseUrl}/llms.txt.
 
 **List + capture per node type** — types are \`decisions\`,
 \`rules\`, \`intents\`, \`actions\`, \`logs\`, \`evals\`, \`references\`,

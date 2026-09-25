@@ -57,8 +57,8 @@ export function buildMissingDocoGuidance(args: {
         "Either the id is wrong (typo, deleted, wrong host) or no Doco has been created yet under this id.",
       actions: [
         {
-          label: "Create a new Doco in the web UI",
-          explainer: `Open ${host}/new-doco in a browser and create the Doco there. Then put its URL in .doco/connections.md and authorize this checkout — connect via the MCP at ${host}/mcp, or set DOCO_ACCESS in .env from a token minted at ${host}/tokens.`,
+          label: "Create the Doco in the project's Workspace",
+          explainer: `Every Doco lives in its project's Workspace. If the project has none yet, create one at ${host}/new-workspace, then add the Doco from that workspace's page. Then put its URL in .doco/connections.md and authorize this checkout — connect via the MCP at ${host}/mcp, or set DOCO_ACCESS in .env from a token minted at ${host}/tokens.`,
         },
         {
           label: "Recover the right id for an existing Doco",

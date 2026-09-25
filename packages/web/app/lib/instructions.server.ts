@@ -315,6 +315,9 @@ that, every API call is:
     Authorization: Bearer doco_at_<token>
 
 The \`<handle>\` is a **doco** — the unit every endpoint addresses.
+One project = one Workspace; each doco in it holds one kind of that
+project's knowledge (decisions, ideas, bugs, …), so a new project gets a
+new Workspace, never a lone doco inside another project's workspace.
 Access is granted to you at one of two levels: a **Workspace** (covers
 every doco in it — the common case when an owner invites an agent) or a
 **single doco**. \`GET /api/v1/whoami.json\` returns both — the
