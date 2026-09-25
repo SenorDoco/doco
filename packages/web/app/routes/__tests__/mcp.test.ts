@@ -120,6 +120,14 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(instructions).toContain("Use all of it");
   });
 
+  it("initialize maps a project to a Workspace, so a new project gets a new Workspace", async () => {
+    const res = await call({ jsonrpc: "2.0", id: 8, method: "initialize" }, BEARER);
+    const body = (await res.json()) as Json;
+    const instructions: string = body.result.instructions;
+    expect(instructions).toContain("One project = one Workspace");
+    expect(instructions).toContain("/new-workspace");
+  });
+
   it("tools/list advertises whoami + read + write tools", async () => {
     const res = await call({ jsonrpc: "2.0", id: 2, method: "tools/list" }, BEARER);
     const body: Json = await res.json();
