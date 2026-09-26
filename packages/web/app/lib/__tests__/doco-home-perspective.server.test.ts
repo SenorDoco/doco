@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   loadOverviewGraph: vi.fn(),
   loadPullRequestsPerspective: vi.fn(),
   loadSlaPerspectiveData: vi.fn(),
+  loadSlackPerspective: vi.fn(),
   pageRank: vi.fn(),
   selectPerspectiveWindow: vi.fn(),
   window: {
@@ -38,6 +39,9 @@ vi.mock("../pull-requests-perspective.server", () => ({
 }));
 vi.mock("../sla-perspective.server", () => ({
   loadSlaPerspectiveData: mocks.loadSlaPerspectiveData,
+}));
+vi.mock("../slack-mirror-read.server", () => ({
+  loadSlackPerspective: mocks.loadSlackPerspective,
 }));
 vi.mock("../pagerank", () => ({ pageRank: mocks.pageRank }));
 vi.mock("../perspective-window.server", () => ({
@@ -87,6 +91,35 @@ describe("loadDocoHomePerspectiveData", () => {
       hasMore: false,
     });
     mocks.selectPerspectiveWindow.mockResolvedValue(mocks.window);
+  });
+
+  it("loads the Slack reader from its URL state, without a node window", async () => {
+    const slackData = {
+      teamDomain: "acme",
+      channels: [],
+      channelId: null,
+      query: "",
+      messages: [],
+    };
+    mocks.loadSlackPerspective.mockResolvedValue(slackData);
+
+    const data = await loadDocoHomePerspectiveData(client, {
+      activeKind: "slack",
+      docoId: "doco_1",
+      handle: "acme",
+      focusNodeId: null,
+      slack: { channelId: "C1", before: "1700000000.000100", query: null },
+    });
+
+    expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
+    expect(mocks.loadSlackPerspective).toHaveBeenCalledWith(client, "doco_1", {
+      channelId: "C1",
+      before: "1700000000.000100",
+      query: null,
+      limit: 50,
+    });
+    expect(data.slackData).toBe(slackData);
+    expect(data.graph).toBeNull();
   });
 
   it.each(ALL_KINDS)("applies the default page budget to %s", async (kind) => {

@@ -17,7 +17,8 @@ export type PerspectiveKind =
   | "org-tree"
   | "sla"
   | "glossary"
-  | "pull-requests";
+  | "pull-requests"
+  | "slack";
 
 export interface Perspective {
   id: string;

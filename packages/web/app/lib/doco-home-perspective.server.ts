@@ -14,6 +14,8 @@ import type { PullRequestsPerspectiveData } from "./pull-requests-perspective.se
 import { loadPullRequestsPerspective } from "./pull-requests-perspective.server";
 import type { SlaPerspectiveData } from "./sla-perspective.server";
 import { loadSlaPerspectiveData } from "./sla-perspective.server";
+import type { SlackPerspectiveData } from "./slack-mirror-read.server";
+import { loadSlackPerspective } from "./slack-mirror-read.server";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -42,6 +44,7 @@ export interface DocoHomePerspectiveData {
   slaData: SlaPerspectiveData | null;
   glossaryData: GlossaryPerspectiveData | null;
   pullRequestsData: PullRequestsPerspectiveData | null;
+  slackData: SlackPerspectiveData | null;
 }
 
 export async function loadDocoHomePerspectiveData(
@@ -57,6 +60,8 @@ export async function loadDocoHomePerspectiveData(
      * (or every stage) loads the full list; a subset narrows it server-side.
      */
     pullRequestLifecycles?: string[];
+    /** The Slack perspective's URL state: channel, older-page cursor, search. */
+    slack?: { channelId?: string | null; before?: string | null; query?: string | null };
   },
 ): Promise<DocoHomePerspectiveData> {
   const budget = args.budget ?? DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET;
@@ -68,9 +73,12 @@ export async function loadDocoHomePerspectiveData(
     slaData: null,
     glossaryData: null,
     pullRequestsData: null,
+    slackData: null,
   };
   const perspectiveWindow =
-    args.activeKind === "pull-requests" || args.activeKind === "process"
+    args.activeKind === "pull-requests" ||
+    args.activeKind === "process" ||
+    args.activeKind === "slack"
       ? null
       : await selectPerspectiveWindow(c, {
           docoId: args.docoId,
@@ -141,6 +149,14 @@ export async function loadDocoHomePerspectiveData(
           lifecycles: args.pullRequestLifecycles,
         }),
       };
+    case "slack":
+      return {
+        ...empty,
+        slackData: await loadSlackPerspective(c, args.docoId, {
+          ...args.slack,
+          limit: 50,
+        }),
+      };
     default: {
       const exhaustive: never = args.activeKind;
       throw new Error(`Unhandled perspective kind: ${exhaustive}`);
@@ -149,7 +165,7 @@ export async function loadDocoHomePerspectiveData(
 }
 
 function perspectiveWindowSpecFor(
-  kind: Exclude<PerspectiveKind, "pull-requests">,
+  kind: Exclude<PerspectiveKind, "pull-requests" | "slack">,
 ): PerspectiveWindowSpec {
   if (kind === "list") return PERSPECTIVE_WINDOW_SPECS.graph;
   return PERSPECTIVE_WINDOW_SPECS[kind];

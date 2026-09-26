@@ -3,6 +3,8 @@
 // Agents call this at the START of every new task to find nodes in the
 // Doco relevant to the user's request. Hybrid ranking: vector similarity
 // with a full-text floor (ADR-052) so un-embedded nodes are still found.
+// A Slack-mirror Doco also returns matching Slack messages (`slack_messages`)
+// unless the caller filters by node type or lifecycle.
 // Resource route — no default export.
 import { withClient } from "@doco/db";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
@@ -16,6 +18,9 @@ import {
   parseSearchFilters,
 } from "~/lib/search-filters.server";
 import { type SearchHit, hybridSearch } from "~/lib/search.server";
+import { searchSlackMirror } from "~/lib/slack-mirror-read.server";
+
+const SLACK_MESSAGE_LIMIT = 20;
 
 interface JsonSearchHit {
   id: string;
@@ -79,6 +84,7 @@ export async function loader({
         }),
         filters: filtersOut,
         hits: [],
+        slack_messages: [],
       });
     }
 
@@ -113,8 +119,18 @@ export async function loader({
       filters.limit,
     );
     const allHits = hits.map(toJsonSearchHit);
+    const slackMessages =
+      url.searchParams.has("node_type") || url.searchParams.has("lifecycle")
+        ? []
+        : await searchSlackMirror(
+            c,
+            ctx.meta.docoId,
+            q,
+            Math.min(filters.limit, SLACK_MESSAGE_LIMIT),
+          );
+    const count = allHits.length + slackMessages.length;
 
-    if (allHits.length === 0) {
+    if (count === 0) {
       const duration_ms = Math.round(performance.now() - start);
       return Response.json({
         query: q,
@@ -129,6 +145,7 @@ export async function loader({
         }),
         filters: filtersOut,
         hits: [],
+        slack_messages: [],
         viewer,
         warning: semanticWarning ?? "No entities match the query or the active filters.",
       });
@@ -138,9 +155,10 @@ export async function loader({
       query: q,
       doco_goal: goal,
       viewer,
-      count: allHits.length,
+      count,
       filters: filtersOut,
       hits: allHits,
+      slack_messages: slackMessages,
       ...(semanticWarning ? { warning: semanticWarning } : {}),
     };
     const duration_ms = Math.round(performance.now() - start);
@@ -154,7 +172,7 @@ export async function loader({
         // every request.
         display: buildSearchDisplay({
           indicatorPrefix: viewer?.indicator_prefix,
-          count: allHits.length,
+          count,
           durationMs: duration_ms,
           label: handle,
         }),
