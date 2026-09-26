@@ -43,6 +43,7 @@ import {
 
 const DEFAULT_TEMPLATE_HANDLE = "generic";
 const GITHUB_PR_TEMPLATE_HANDLE = "github-pull-requests";
+const SLACK_TEMPLATE_HANDLE = "slack";
 
 /**
  * Sentinel <option> value for "+ Create a new workspace". Kept
@@ -217,6 +218,9 @@ export async function action({ request }: { request: Request }) {
     });
     if (state.templateHandle === GITHUB_PR_TEMPLATE_HANDLE) {
       throw redirect(`/${rec.handle}/integrations/github`);
+    }
+    if (state.templateHandle === SLACK_TEMPLATE_HANDLE) {
+      throw redirect(`/${rec.handle}/integrations/slack`);
     }
     throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {

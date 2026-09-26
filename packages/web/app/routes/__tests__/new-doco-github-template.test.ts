@@ -58,4 +58,18 @@ describe("/new-doco GitHub PR template", () => {
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe("/acme-prs/integrations/github");
   });
+
+  it("continues Slack Doco creation into turning on the Slack mirror", async () => {
+    mocks.createDocoInWorkspace.mockResolvedValue({ docoId: "doco_2", handle: "acme-slack" });
+    const response = (await action({
+      request: postNewDoco({
+        template_handle: "slack",
+        workspace_id: "workspace_1",
+        name: "acme-slack",
+      }),
+    }).catch((error: Response) => error)) as Response;
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/acme-slack/integrations/slack");
+  });
 });

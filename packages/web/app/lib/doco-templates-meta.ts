@@ -45,6 +45,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
+    handle: "slack",
+    label: "Slack workspace",
+    description:
+      "A read-only copy of a Slack workspace's public channels, kept in sync, so its conversations can be searched alongside your Doco knowledge.",
+    updatedAt: "2026-09-26",
+    owner: TEMPLATE_OWNER,
+  },
+  {
     handle: "architectural-decisions",
     label: "Architectural decisions (ADR)",
     description:

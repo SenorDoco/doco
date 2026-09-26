@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   buildSlackChannelIntroLine: vi.fn(),
   removeSlackInstallation: vi.fn(),
   mirrorSlackEvent: vi.fn(),
+  turnOnSlackMirror: vi.fn(),
+  startSlackMirror: vi.fn(),
   waitUntil: vi.fn(),
 }));
 
@@ -55,6 +57,11 @@ vi.mock("~/lib/slack.server", () => ({
 
 vi.mock("~/lib/slack-mirror.server", () => ({
   mirrorSlackEvent: mocks.mirrorSlackEvent,
+}));
+
+vi.mock("~/lib/slack-mirror-setup.server", () => ({
+  turnOnSlackMirror: mocks.turnOnSlackMirror,
+  startSlackMirror: mocks.startSlackMirror,
 }));
 
 vi.mock("@vercel/functions", () => ({
@@ -186,6 +193,82 @@ describe("Slack integration routes", () => {
       response: expect.objectContaining({ team: { id: "T123", name: "Acme" } }),
       installedByUserId: "user_alice",
       docoWorkspaceId: "workspace_acme",
+    });
+  });
+
+  describe("callback that turns on the public-channel mirror", () => {
+    beforeEach(() => {
+      mocks.verifySlackState.mockReturnValue({
+        installerId: "user_alice",
+        docoWorkspaceId: "workspace_acme",
+        mirrorDocoId: "doco_slack",
+      });
+      mocks.getWorkspaceRole.mockResolvedValue("owner");
+      mocks.exchangeSlackOAuthCode.mockResolvedValue({
+        ok: true,
+        team: { id: "T123", name: "Acme" },
+        authed_user: { id: "U_ALICE" },
+        access_token: "xoxb-token",
+      });
+      mocks.upsertSlackInstallation.mockResolvedValue(undefined);
+      mocks.startSlackMirror.mockResolvedValue(undefined);
+    });
+
+    const callback = () =>
+      callbackLoader({
+        request: new Request(
+          "https://doco.test/integrations/slack/callback?code=abc&state=signed-state",
+        ),
+      }).catch((error: Response) => error) as Promise<Response>;
+
+    it("turns the mirror on, starts the first sync, and returns to the mirror page", async () => {
+      mocks.turnOnSlackMirror.mockResolvedValue({ ok: true, handle: "acme-slack" });
+
+      const response = await callback();
+
+      expect(response.headers.get("Location")).toBe(
+        "/acme-slack/integrations/slack?slack=mirroring",
+      );
+      expect(mocks.turnOnSlackMirror).toHaveBeenCalledWith({
+        docoId: "doco_slack",
+        docoWorkspaceId: "workspace_acme",
+        installerId: "user_alice",
+        teamId: "T123",
+        authedChatUserId: "U_ALICE",
+        token: "xoxb-token",
+      });
+      await flushSlackBackgroundWork();
+      expect(mocks.startSlackMirror).toHaveBeenCalledWith({
+        docoId: "doco_slack",
+        token: "xoxb-token",
+      });
+    });
+
+    it("explains when the Slack user who approved isn't a Slack admin", async () => {
+      mocks.turnOnSlackMirror.mockResolvedValue({
+        ok: false,
+        reason: "not_slack_admin",
+        handle: "acme-slack",
+      });
+
+      const response = await callback();
+
+      expect(response.headers.get("Location")).toBe(
+        "/acme-slack/integrations/slack?slack=not_slack_admin",
+      );
+      expect(mocks.startSlackMirror).not.toHaveBeenCalled();
+    });
+
+    it("never touches a mirror on a plain install", async () => {
+      mocks.verifySlackState.mockReturnValue({
+        installerId: "user_alice",
+        docoWorkspaceId: "workspace_acme",
+      });
+
+      const response = await callback();
+
+      expect(response.headers.get("Location")).toBe("/integrations/slack/setup?team_id=T123");
+      expect(mocks.turnOnSlackMirror).not.toHaveBeenCalled();
     });
   });
 
