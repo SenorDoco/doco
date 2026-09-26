@@ -303,6 +303,11 @@ describe("doco-mcp-server", () => {
     expect(result.instructions).toContain("retry doco_search before");
     expect(result.instructions).toContain("DOCO_REFRESH");
     expect(result.instructions).toContain("asking the user to approve again");
+    // Baseline duties every connected agent carries, not per-Doco opt-ins.
+    expect(result.instructions).toContain("Load context first");
+    expect(result.instructions).toContain("Document every decision");
+    expect(result.instructions).toContain("Record the conversation");
+    expect(result.instructions).not.toMatch(/does not mandate captures/i);
   });
 
   it("advertises doco_search, doco_authenticate, and doco_complete_authentication via tools/list", async () => {

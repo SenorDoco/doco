@@ -128,6 +128,16 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(instructions).toContain("/new-workspace");
   });
 
+  it("initialize states the baseline duties: load context, document decisions, record the conversation", async () => {
+    const res = await call({ jsonrpc: "2.0", id: 9, method: "initialize" }, BEARER);
+    const body = (await res.json()) as Json;
+    const instructions: string = body.result.instructions;
+    expect(instructions).toContain("Load context first");
+    expect(instructions).toContain("Document every decision");
+    expect(instructions).toContain("Record the conversation");
+    expect(instructions).not.toMatch(/does not mandate captures/i);
+  });
+
   it("tools/list advertises whoami + read + write tools", async () => {
     const res = await call({ jsonrpc: "2.0", id: 2, method: "tools/list" }, BEARER);
     const body: Json = await res.json();
