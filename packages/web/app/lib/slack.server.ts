@@ -42,6 +42,7 @@ import {
 } from "./graph-authoring-contract.server";
 import { internalFetch } from "./internal-fetch.server";
 import { listAvailablePerspectives, listPerspectivesForDoco } from "./perspectives.server";
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "./secret-box.server";
 import {
   type AgentLoopEvent,
   type AgentLoopModelResult,
@@ -505,7 +506,7 @@ export async function upsertSlackInstallation(input: SlackInstallationInput): Pr
         teamId,
         workspaceName,
         input.response.bot_user_id ?? null,
-        input.response.access_token ?? null,
+        input.response.access_token ? encryptSecret(input.response.access_token) : null,
         scopes,
         input.response.authed_user?.id ?? null,
         input.installedByUserId,
@@ -2470,7 +2471,19 @@ export async function getSlackBotToken(workspaceId: string): Promise<string | nu
       [workspaceId],
     ),
   );
-  return result.rows[0]?.bot_access_token ?? null;
+  const stored = result.rows[0]?.bot_access_token ?? null;
+  if (!stored) return null;
+  if (isEncryptedSecret(stored)) return decryptSecret(stored);
+  // Installed before tokens were encrypted at rest: encrypt it in place on first
+  // use. Every bot event reads the token, so live installs convert immediately.
+  await withClient((c) =>
+    c.query(
+      `UPDATE group_chat_installations SET bot_access_token = $1
+        WHERE provider = 'slack' AND workspace_id = $2 AND bot_access_token = $3`,
+      [encryptSecret(stored), workspaceId, stored],
+    ),
+  );
+  return stored;
 }
 
 export interface SlackBotIdentity {

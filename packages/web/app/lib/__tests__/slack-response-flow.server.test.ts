@@ -25,11 +25,15 @@ vi.mock("@doco/db", () => ({
   withClient: mocks.withClient,
 }));
 
+import { randomBytes } from "node:crypto";
+import { encryptSecret } from "../secret-box.server";
 import {
   buildSlackAppMentionResponse,
   clearSlackIntegrationContextCache,
   getSlackBotIdentity,
 } from "../slack.server";
+
+process.env.DOCO_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 describe("Slack response flow", () => {
   beforeEach(() => {
@@ -159,7 +163,7 @@ describe("getSlackBotIdentity", () => {
   it("resolves a missing bot id via auth.test and backfills the install row", async () => {
     mocks.query
       .mockResolvedValueOnce({ rows: [{ bot_user_id: "U1", data: null }] })
-      .mockResolvedValueOnce({ rows: [{ bot_access_token: "xoxb-1" }] })
+      .mockResolvedValueOnce({ rows: [{ bot_access_token: encryptSecret("xoxb-1") }] })
       .mockResolvedValueOnce({ rows: [] });
     const fetchSpy = vi.fn(async () => ({
       ok: true,
@@ -181,7 +185,7 @@ describe("getSlackBotIdentity", () => {
   it("degrades to the stored user id when auth.test is unavailable", async () => {
     mocks.query
       .mockResolvedValueOnce({ rows: [{ bot_user_id: "U1", data: null }] })
-      .mockResolvedValueOnce({ rows: [{ bot_access_token: "xoxb-1" }] });
+      .mockResolvedValueOnce({ rows: [{ bot_access_token: encryptSecret("xoxb-1") }] });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: false, json: async () => ({ ok: false }) })),
