@@ -49,6 +49,7 @@ import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspecti
 import { ProcessPerspective } from "~/components/perspectives/process-perspective";
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
+import { SlackPerspective } from "~/components/perspectives/slack-perspective";
 import { SiteHeader } from "~/components/site-header";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/lib/change-cursor";
@@ -352,14 +353,30 @@ export async function loader({
     // narrows the list server-side. Absent → the full list (parse → null).
     const pullRequestLifecycles =
       parsePrLifecycles(new URL(request.url).searchParams.get("pr_lifecycle")) ?? undefined;
-    const { graph, pageRanks, processGraph, orgTreeData, slaData, glossaryData, pullRequestsData } =
-      await loadDocoHomePerspectiveData(c, {
-        activeKind,
-        docoId: ctx.meta.docoId,
-        handle,
-        focusNodeId,
-        pullRequestLifecycles,
-      });
+    // Slack perspective URL state: `?slack_channel=C…&slack_before=<ts>&slack_q=…`.
+    const params = new URL(request.url).searchParams;
+    const slack = {
+      channelId: params.get("slack_channel"),
+      before: params.get("slack_before"),
+      query: params.get("slack_q"),
+    };
+    const {
+      graph,
+      pageRanks,
+      processGraph,
+      orgTreeData,
+      slaData,
+      glossaryData,
+      pullRequestsData,
+      slackData,
+    } = await loadDocoHomePerspectiveData(c, {
+      activeKind,
+      docoId: ctx.meta.docoId,
+      handle,
+      focusNodeId,
+      pullRequestLifecycles,
+      slack,
+    });
 
     // Active policy count — guidance + node-authoring policies attached to this
     // Doco. Retired policies are excluded so the button reflects what's actually
@@ -417,6 +434,7 @@ export async function loader({
       slaData,
       glossaryData,
       pullRequestsData,
+      slackData,
       focusedNodeId: selectedNode?.id ?? null,
       focusedEdgeId: selectedEdge?.id ?? null,
       focusedEdge: selectedEdge,
@@ -560,6 +578,7 @@ export default function DocoHome({
     slaData,
     glossaryData,
     pullRequestsData,
+    slackData,
     focusedNodeId,
     focusedEdge,
     selectedNode,
@@ -1530,19 +1549,22 @@ export default function DocoHome({
                 lifecycleFilter={
                   // The Pull requests list runs its own filter — GitHub states
                   // (Open / Merged / Closed), narrowed server-side, kept in the
-                  // URL. Every other perspective uses the page-level set.
-                  effectivePerspectiveKind === "pull-requests"
-                    ? {
-                        visible: prVisibleLifecycles,
-                        available: PR_LIFECYCLE_ORDER,
-                        onToggle: togglePrLifecycle,
-                        labelFor: pullRequestLabel,
-                      }
-                    : {
-                        visible: visibleLifecycles,
-                        available: availableLifecycles,
-                        onToggle: toggleLifecycle,
-                      }
+                  // URL. Slack messages have no lifecycle. Every other
+                  // perspective uses the page-level set.
+                  effectivePerspectiveKind === "slack"
+                    ? undefined
+                    : effectivePerspectiveKind === "pull-requests"
+                      ? {
+                          visible: prVisibleLifecycles,
+                          available: PR_LIFECYCLE_ORDER,
+                          onToggle: togglePrLifecycle,
+                          labelFor: pullRequestLabel,
+                        }
+                      : {
+                          visible: visibleLifecycles,
+                          available: availableLifecycles,
+                          onToggle: toggleLifecycle,
+                        }
                 }
                 fullscreen={{
                   isFullscreen: isPerspectiveFullscreen,
@@ -1578,6 +1600,8 @@ export default function DocoHome({
                     focusId={perspectiveFocusId}
                     filtered={prVisibleLifecycles.size < PR_LIFECYCLE_ORDER.length}
                   />
+                ) : effectivePerspectiveKind === "slack" && slackData ? (
+                  <SlackPerspective data={slackData} handle={handle} />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
                   <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
                 ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
