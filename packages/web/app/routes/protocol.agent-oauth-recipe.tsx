@@ -395,6 +395,10 @@ If your token's \`granted_workspace_ids\` includes an workspace, that grant
 user creates after the token was minted**. You do not need to
 re-run the OAuth flow when a new Doco appears under an already-
 granted workspace — the same Bearer token works on it immediately.
+An "act as me" token goes one level up: it reaches every Workspace the
+user belongs to, including Workspaces they create after the token was
+minted, so a brand-new project is reachable the moment the user creates
+its Workspace.
 
 Concretely: if a user asks you to work on a project that has no
 Doco yet, and \`oauth_grant.granted_workspace_ids\` already contains the
@@ -457,21 +461,21 @@ GET ${baseUrl}/<handle>/status.json               # counts + freshness (root, no
 **Start a project.** One project = one Workspace; its Docos are the
 kinds of knowledge inside it (decisions, ideas, bugs, …). Find the
 project's Workspace first (\`GET ${baseUrl}/api/v1/workspaces.json\`).
-Only when none matches, create one, then create its Docos inside it:
+If none matches, ask the user to create one at ${baseUrl}/new-workspace
+— agents never create Workspaces, and the API has no create call for
+them (a POST to the workspaces endpoint answers 405). Your access to it
+comes from your grant: all of the user's Workspaces (an "act as me"
+token, which reaches Workspaces created after it was minted), one
+Workspace, or a subset of its Docos. Then create the project's Docos
+inside it:
 
 \`\`\`
-POST ${baseUrl}/api/v1/workspaces.json
-Content-Type: application/json
-Authorization: Bearer doco_at_<your-access-token>
-
-{ "requested_id": "acme" }
-
 POST ${baseUrl}/api/v1/docos.json
 Content-Type: application/json
 Authorization: Bearer doco_at_<your-access-token>
 
 {
-  "workspace_id": "<id from the workspace reply>",
+  "workspace_id": "<id from the workspaces list>",
   "name": "acme-decisions",
   "template_handle": "architectural-decisions"
 }

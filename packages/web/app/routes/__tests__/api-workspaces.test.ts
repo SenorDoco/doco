@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  addWorkspaceByHandle: vi.fn(),
   getCurrentPrincipalAsync: vi.fn(),
-  isSenorDocoRequest: vi.fn(),
   listWorkspacesForUser: vi.fn(),
   tokenReachableWorkspaceIdsForRequest: vi.fn(),
 }));
@@ -13,12 +11,7 @@ vi.mock("@doco/db", () => ({
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
-  isSenorDocoRequest: mocks.isSenorDocoRequest,
   tokenReachableWorkspaceIdsForRequest: mocks.tokenReachableWorkspaceIdsForRequest,
-}));
-
-vi.mock("~/lib/redeem.server", () => ({
-  addWorkspaceByHandle: mocks.addWorkspaceByHandle,
 }));
 
 vi.mock("~/lib/session.server", () => ({
@@ -36,7 +29,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_alice", username: "alice" });
   mocks.listWorkspacesForUser.mockResolvedValue(ORGS);
-  mocks.isSenorDocoRequest.mockReturnValue(false);
 });
 
 describe("GET /api/v1/workspaces.json", () => {
@@ -59,26 +51,21 @@ describe("GET /api/v1/workspaces.json", () => {
   });
 });
 
-describe("POST /api/v1/workspaces.json — Señor Doco owner cap", () => {
-  function postRequest(): Request {
-    return new Request("https://doco.test/api/v1/workspaces.json", {
+describe("POST /api/v1/workspaces.json", () => {
+  // Workspaces are created by people at /new-workspace; agents only get access
+  // to ones that exist. The API has no create path for anyone, and the refusal
+  // teaches the access model instead of a bare method error.
+  it("refuses with 405 and points at the human create page", async () => {
+    const request = new Request("https://doco.test/api/v1/workspaces.json", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ requested_id: "newws" }),
     });
-  }
-
-  it("403s a Señor Doco request — creating a workspace would confer owner", async () => {
-    mocks.isSenorDocoRequest.mockReturnValue(true);
-    const response = await action({ request: postRequest() } as never);
-    expect(response.status).toBe(403);
-    expect(mocks.addWorkspaceByHandle).not.toHaveBeenCalled();
-  });
-
-  it("lets a human create a workspace", async () => {
-    mocks.addWorkspaceByHandle.mockResolvedValue({ id: "workspace_new", handle: "newws" });
-    const response = await action({ request: postRequest() } as never);
-    expect(response.status).toBe(201);
-    expect(mocks.addWorkspaceByHandle).toHaveBeenCalledTimes(1);
+    const response = await action({ request } as never);
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("GET");
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("https://doco.test/new-workspace");
+    expect(body.error).toMatch(/created by people/i);
   });
 });

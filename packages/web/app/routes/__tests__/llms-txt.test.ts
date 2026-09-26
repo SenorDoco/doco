@@ -18,16 +18,27 @@ describe("/llms.txt", () => {
     expect(body).toMatch(/a Doco never stands in for the project/i);
   });
 
-  it("finds or creates the project's Workspace before creating any Doco", async () => {
+  // Agents never create Workspaces: people do, and agents get access to all
+  // of a user's workspaces, one workspace, or a subset of its Docos. The page
+  // must send the agent to the user for the Workspace, never to a create call.
+  it("finds the project's Workspace, has the user create a missing one, then creates Docos", async () => {
     const body = await llmsTxt();
     const findWorkspace = body.indexOf("GET https://doco.test/api/v1/workspaces.json");
-    const createWorkspace = body.indexOf("POST https://doco.test/api/v1/workspaces.json");
+    const askUser = body.indexOf("Ask the user to create the Workspace");
     const createDoco = body.indexOf("POST https://doco.test/api/v1/docos.json");
     expect(findWorkspace).toBeGreaterThan(-1);
-    expect(createWorkspace).toBeGreaterThan(findWorkspace);
-    expect(createDoco).toBeGreaterThan(createWorkspace);
-    expect(body).toContain('"requested_id"');
+    expect(askUser).toBeGreaterThan(findWorkspace);
+    expect(createDoco).toBeGreaterThan(askUser);
     expect(body).toContain("https://doco.test/new-workspace");
+    expect(body).not.toContain("POST https://doco.test/api/v1/workspaces.json");
+    expect(body).not.toContain('"requested_id"');
+  });
+
+  it("names the three access levels a user can grant", async () => {
+    const body = await llmsTxt();
+    expect(body).toContain("all of their Workspaces");
+    expect(body).toContain("one Workspace");
+    expect(body).toContain("a subset of Docos");
   });
 
   it("lists every creatable template so the agent can pick the project's Docos", async () => {

@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { AGENT_REFERENCE, CANONICAL_INSTRUCTIONS } from "../instructions.server";
 
 describe("CANONICAL_INSTRUCTIONS", () => {
+  // Agents never create Workspaces. People do, and agents are granted access
+  // at one of three levels: all of a user's Workspaces, one, or a subset of
+  // its docos. The canonical instructions must say so, and list workspace
+  // creation among the human-only actions.
+  it("says people create Workspaces and names the three access levels", () => {
+    expect(CANONICAL_INSTRUCTIONS).toMatch(/People create Workspaces/);
+    expect(CANONICAL_INSTRUCTIONS).toMatch(/you never do/);
+    expect(CANONICAL_INSTRUCTIONS).toContain("**all of the user's Workspaces**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**one Workspace**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**a subset of docos**");
+    expect(AGENT_REFERENCE).toContain(
+      "- Create / delete a workspace, and grant agents access to it.",
+    );
+  });
+
   it("teaches agents to link a policy by its stable URL when citing it", () => {
     // The stable per-policy URL pattern the Policy page is served at.
     expect(CANONICAL_INSTRUCTIONS).toContain("https://doco.to/<handle>/policies/<policy_id>");

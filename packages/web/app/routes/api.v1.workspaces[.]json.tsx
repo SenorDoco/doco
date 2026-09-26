@@ -1,27 +1,22 @@
-// GET  /api/v1/workspaces.json — list Workspaces the caller belongs to.
-// POST /api/v1/workspaces.json — create an Workspace (v15).
+// GET /api/v1/workspaces.json — list Workspaces the caller can reach.
 //
-// GET response: { workspaces: [{ id, handle, name, member_count }] }.
-// Empty array when the caller is in no workspaces. Sorted by handle ASC
-// for stable client rendering. A cookie session lists every workspace the
-// caller belongs to; an OAuth bearer is narrowed to the workspaces the token
-// can reach (granted workspaces ∪ workspaces that own a granted Doco) so a scoped
-// token never enumerates the caller's other workspaces.
+// Response: { workspaces: [{ id, handle, name, member_count }] }. Empty array
+// when the caller is in no workspaces. Sorted by handle ASC for stable client
+// rendering. A cookie session lists every workspace the caller belongs to; an
+// OAuth bearer is narrowed to the workspaces the token can reach (granted
+// workspaces ∪ workspaces that own a granted Doco) so a scoped token never
+// enumerates the caller's other workspaces.
 //
-// POST body (JSON): { requested_id: string }
+// There is deliberately no POST. People create Workspaces at /new-workspace;
+// agents are granted access to Workspaces that already exist (all of a user's,
+// one, or a subset of its Docos). A POST answers 405 with that pointer so an
+// agent that guesses the old create call learns the access model instead of a
+// bare method error.
 //
-// POST behavior: caller becomes `owner` in `workspace_users`; server
-// normalizes requested_id to kebab-case and silently appends `-2`,
-// `-3`, … on collision (API path uses `autoSuffix: true`). Returns
-// 201 with `{ id, handle }` — `id` is the internal ULID; `handle`
-// is the (possibly suffixed) public identifier.
-//
-// Auth: requires a signed-in principal (cookie session or OAuth
-// bearer). Rate-limiting is out of scope.
+// Auth: requires a signed-in principal (cookie session or OAuth bearer).
 
 import { listWorkspacesForUser } from "@doco/db";
-import { isSenorDocoRequest, tokenReachableWorkspaceIdsForRequest } from "~/lib/doco-access.server";
-import { addWorkspaceByHandle } from "~/lib/redeem.server";
+import { tokenReachableWorkspaceIdsForRequest } from "~/lib/doco-access.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
@@ -30,9 +25,6 @@ export async function loader({ request }: { request: Request }) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
   const rows = await listWorkspacesForUser(me.id);
-  // Cookie sessions see every membership workspace; an OAuth bearer is scoped
-  // to the workspaces it can reach so a token can't enumerate the caller's
-  // other workspaces.
   const reachable = await tokenReachableWorkspaceIdsForRequest(request);
   const visible = reachable ? rows.filter((r) => reachable.has(r.id)) : rows;
   visible.sort((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0));
@@ -46,45 +38,12 @@ export async function loader({ request }: { request: Request }) {
   });
 }
 
-export async function action({ request }: { request: Request }) {
-  if (request.method !== "POST") {
-    return Response.json({ error: "Use POST." }, { status: 405 });
-  }
-  const me = await getCurrentPrincipalAsync(request);
-  if (!me) {
-    return Response.json({ error: "Authentication required." }, { status: 401 });
-  }
-  // Creating a workspace makes the caller its owner. Señor Doco never holds
-  // owner access, so the agent cannot create workspaces — even on behalf of a
-  // human (the human can do it themselves on the web, outside the agent).
-  if (isSenorDocoRequest(request)) {
-    return Response.json(
-      { error: "Señor Doco cannot create workspaces — that is an owner-tier operation." },
-      { status: 403 },
-    );
-  }
-  const ct = (request.headers.get("content-type") ?? "").toLowerCase();
-  if (!ct.includes("application/json")) {
-    return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
-  }
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch (e) {
-    return Response.json({ error: `Invalid JSON: ${(e as Error).message}` }, { status: 400 });
-  }
-  const requested = (body as { requested_id?: unknown })?.requested_id;
-  if (typeof requested !== "string" || !requested.trim()) {
-    return Response.json({ error: "`requested_id` is required (string)." }, { status: 400 });
-  }
-  try {
-    const { id, handle } = await addWorkspaceByHandle({
-      handle: requested.trim().toLowerCase(),
-      ownerUserId: me.id,
-      autoSuffix: true,
-    });
-    return Response.json({ id, handle }, { status: 201 });
-  } catch (e) {
-    return Response.json({ error: (e as Error).message }, { status: 400 });
-  }
+export function action({ request }: { request: Request }) {
+  const host = new URL(request.url).origin;
+  return Response.json(
+    {
+      error: `Workspaces are created by people, not agents. Ask the user to create it at ${host}/new-workspace and grant you access (all their workspaces, one workspace, or specific Docos), then GET this endpoint to find it.`,
+    },
+    { status: 405, headers: { Allow: "GET" } },
+  );
 }
