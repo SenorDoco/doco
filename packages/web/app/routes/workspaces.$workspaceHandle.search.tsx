@@ -1,6 +1,6 @@
 // /workspaces/:workspaceHandle/search — workspace-level semantic search.
 //
-// Aggregates embeddings across every Doco the workspace owns, scores against
+// Aggregates embeddings across the workspace's Docos the caller can read, scores against
 // the query embedding, and hydrates the top results with their per-Doco
 // context (handle + entity URL). Vector-only ranking — no facet
 // filtering yet (a follow-up to the doco-level search, which carries
@@ -26,7 +26,7 @@ import { loadHostConfig } from "~/lib/host.server";
 import { nodeTypePlural } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
-import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
+import { loadWorkspaceForRead } from "~/lib/workspace-helpers.server";
 
 const RESULTS_LIMIT = 50;
 
@@ -43,14 +43,18 @@ interface Hit {
 
 const TYPE_SPECS = DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS;
 
+// Only vectors from the query's own model are comparable: after a provider
+// switch, older rows hold a different model's vectors (even a different
+// dimension) until they are re-embedded.
 async function getEmbeddingsForDocos(
   c: PoolClient,
   docoIds: string[],
+  modelId: string,
 ): Promise<{ entity_id: string; doco_id: string; embedding: Float32Array }[]> {
   if (docoIds.length === 0) return [];
   const r = await c.query<{ entity_id: string; doco_id: string; embedding: Buffer }>(
-    "SELECT entity_id, doco_id, embedding FROM embeddings WHERE doco_id = ANY($1::text[])",
-    [docoIds],
+    "SELECT entity_id, doco_id, embedding FROM embeddings WHERE doco_id = ANY($1::text[]) AND model_id = $2",
+    [docoIds, modelId],
   );
   return r.rows.map((row) => ({
     entity_id: String(row.entity_id),
@@ -116,24 +120,18 @@ export async function loader({
   request: Request;
   params: { workspaceHandle: string };
 }) {
-  const workspace = await resolveWorkspaceByHandle(params.workspaceHandle);
-  if (!workspace) {
-    throw new Response(`Workspace "${params.workspaceHandle}" not found.`, { status: 404 });
-  }
   const me = await getCurrentPrincipal(request);
+  const { workspace, docos: docoRows } = await loadWorkspaceForRead(
+    params.workspaceHandle,
+    me?.id ?? null,
+  );
   const host = await loadHostConfig();
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
 
   return withClient(async (c) => {
-    const docoRows = (
-      await c.query<{ id: string; handle: string }>(
-        "SELECT id, handle FROM docos WHERE workspace_id = $1 AND deleted_at IS NULL",
-        [workspace.id],
-      )
-    ).rows;
-    const docoIds = docoRows.map((r) => String(r.id));
-    const docoHandleById = new Map(docoRows.map((r) => [String(r.id), String(r.handle)]));
+    const docoIds = docoRows.map((r) => r.id);
+    const docoHandleById = new Map(docoRows.map((r) => [r.id, r.handle]));
 
     if (!q || docoIds.length === 0) {
       return {
@@ -183,7 +181,7 @@ export async function loader({
       };
     }
 
-    const all = await getEmbeddingsForDocos(c, docoIds);
+    const all = await getEmbeddingsForDocos(c, docoIds, provider.modelId);
     if (all.length === 0) {
       return {
         workspace,

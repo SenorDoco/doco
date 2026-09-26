@@ -635,6 +635,42 @@ export async function listAccessibleDocoIdsInWorkspace(
   });
 }
 
+export interface ReadableWorkspaceDoco {
+  id: string;
+  handle: string;
+  visibility: "public" | "private";
+}
+
+/**
+ * The Docos in one workspace that `principalId` may read: the public ones, plus
+ * the ones they hold a grant on. Anything that lists a workspace's Docos to a
+ * caller (the workspace home, workspace search) enumerates through this —
+ * never `docos WHERE workspace_id` — so a workspace page never surfaces a Doco
+ * the caller couldn't open directly.
+ */
+export async function listReadableDocosInWorkspace(
+  workspaceId: string,
+  principalId: string | null,
+): Promise<ReadableWorkspaceDoco[]> {
+  const granted = principalId
+    ? await listAccessibleDocoIdsInWorkspace(principalId, workspaceId)
+    : [];
+  return withClient(async (c) => {
+    const r = await c.query<ReadableWorkspaceDoco>(
+      `SELECT id, handle, visibility FROM docos
+        WHERE workspace_id = $1 AND deleted_at IS NULL
+          AND (visibility = 'public' OR id = ANY($2::text[]))
+        ORDER BY handle`,
+      [workspaceId, granted],
+    );
+    return r.rows.map((row) => ({
+      id: String(row.id),
+      handle: String(row.handle),
+      visibility: row.visibility,
+    }));
+  });
+}
+
 /**
  * Same as `canAccessDoco` but for write/admin operations — the
  * owner-tier gate. Per decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, owner-tier
