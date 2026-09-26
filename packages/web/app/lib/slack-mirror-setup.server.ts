@@ -285,6 +285,9 @@ export interface SlackMirrorChannelStatus {
   joined: boolean;
   archived: boolean;
   messages: number;
+  /** How far back the history backfill has copied (ISO), null before it starts. */
+  historyBackTo: string | null;
+  historyDone: boolean;
 }
 
 export interface SlackMirrorStatus {
@@ -293,6 +296,8 @@ export interface SlackMirrorStatus {
   consentedAt: string;
   historySince: string;
   messageCount: number;
+  /** Threads whose earlier replies the backfill still has to fetch. */
+  threadsPending: number;
   channels: SlackMirrorChannelStatus[];
 }
 
@@ -321,8 +326,11 @@ export async function loadSlackMirrorStatus(docoId: string): Promise<SlackMirror
         joined: boolean;
         archived: boolean;
         messages: number;
+        history_oldest_ts: string | null;
+        history_done: boolean;
       }>(
         `SELECT ch.channel_id, ch.name, ch.excluded, ch.joined_at IS NOT NULL AS joined, ch.archived,
+                ch.history_oldest_ts, ch.history_done_at IS NOT NULL AS history_done,
                 (SELECT count(*)::int FROM group_chat_messages m
                   WHERE m.doco_id = ch.doco_id AND m.channel_id = ch.channel_id) AS messages
            FROM group_chat_channels ch
@@ -337,13 +345,27 @@ export async function loadSlackMirrorStatus(docoId: string): Promise<SlackMirror
       joined: row.joined,
       archived: row.archived,
       messages: Number(row.messages),
+      historyBackTo: row.history_oldest_ts
+        ? new Date(Number(row.history_oldest_ts) * 1000).toISOString()
+        : null,
+      historyDone: row.history_done,
     }));
+    const threadsPending = Number(
+      (
+        await c.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM group_chat_messages
+            WHERE doco_id = $1 AND reply_count > 0 AND replies_synced_at IS NULL`,
+          [docoId],
+        )
+      ).rows[0]?.n ?? 0,
+    );
     return {
       teamName: mirror.workspace_name,
       teamDomain: mirror.team_domain,
       consentedAt: new Date(mirror.consented_at).toISOString(),
       historySince: new Date(mirror.history_since).toISOString(),
       messageCount: channels.reduce((sum, ch) => sum + ch.messages, 0),
+      threadsPending,
       channels,
     };
   });

@@ -478,6 +478,7 @@ describe("managing a mirror", () => {
     expect(status).toMatchObject({
       teamDomain: "acme",
       messageCount: 2,
+      threadsPending: 0,
       channels: [
         {
           channelId: "C2",
@@ -486,6 +487,8 @@ describe("managing a mirror", () => {
           joined: true,
           archived: false,
           messages: 1,
+          historyBackTo: null,
+          historyDone: false,
         },
         {
           channelId: "C1",
@@ -498,6 +501,23 @@ describe("managing a mirror", () => {
       ],
     });
     expect(await loadSlackMirrorStatus("doco_other")).toBeNull();
+  });
+
+  it("reports how far back each channel's history has been copied", async () => {
+    await dbm.db.exec(
+      `UPDATE group_chat_channels SET history_oldest_ts = '1600000000.000100' WHERE channel_id = 'C1';
+       UPDATE group_chat_channels SET history_done_at = now() WHERE channel_id = 'C2';
+       UPDATE group_chat_messages SET reply_count = 2 WHERE channel_id = 'C1'`,
+    );
+
+    const status = await loadSlackMirrorStatus("doco_slack");
+
+    expect(status?.threadsPending).toBe(1);
+    expect(status?.channels.find((c) => c.channelId === "C1")).toMatchObject({
+      historyBackTo: "2020-09-13T12:26:40.000Z",
+      historyDone: false,
+    });
+    expect(status?.channels.find((c) => c.channelId === "C2")).toMatchObject({ historyDone: true });
   });
 
   it("excluding a channel deletes what was copied from it", async () => {

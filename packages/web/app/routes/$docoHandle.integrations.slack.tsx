@@ -219,6 +219,16 @@ function TurnOnMirror({
   );
 }
 
+function historyProgress(channel: {
+  historyDone: boolean;
+  historyBackTo: string | null;
+}): string {
+  if (channel.historyDone) return "history complete";
+  return channel.historyBackTo
+    ? `history back to ${channel.historyBackTo.slice(0, 10)}`
+    : "history queued";
+}
+
 function MirrorStatus({
   status,
   canManage,
@@ -236,8 +246,11 @@ function MirrorStatus({
           </CardTitle>
           <CardDescription>
             {mirrored.length} public {mirrored.length === 1 ? "channel" : "channels"} ·{" "}
-            {status.messageCount.toLocaleString()} messages copied · history back to{" "}
+            {status.messageCount.toLocaleString()} messages copied · copying history back to{" "}
             {status.historySince.slice(0, 10)}
+            {status.threadsPending > 0
+              ? ` · ${status.threadsPending.toLocaleString()} threads waiting for earlier replies`
+              : ""}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -255,7 +268,7 @@ function MirrorStatus({
                       : channel.archived
                         ? "archived"
                         : channel.joined
-                          ? `${channel.messages.toLocaleString()} messages`
+                          ? `${channel.messages.toLocaleString()} messages · ${historyProgress(channel)}`
                           : "joining…"}
                   </span>
                 </span>
