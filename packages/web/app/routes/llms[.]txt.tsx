@@ -37,18 +37,30 @@ So when a user says "use Doco for <project>":
    If one of them is the project, work there. Don't probe for a Doco
    handle named after the project; Docos are named for what they hold.
 
-2. **No match? Create a Workspace for the project.** Don't create a
-   Doco named after the project inside another workspace (the user's
-   personal one, or some other project's):
+2. **No match? Ask the user to create the Workspace.** Agents never
+   create Workspaces; people do, at ${baseUrl}/new-workspace. There is
+   no create call in the API (a POST to the workspaces endpoint is
+   refused with 405). Don't work around it by creating a Doco named
+   after the project inside another workspace (the user's personal
+   one, or some other project's). Tell the user:
 
-       POST ${baseUrl}/api/v1/workspaces.json
-       Content-Type: application/json
-       Authorization: Bearer doco_at_<token>
+   > Create a Workspace for <project> at ${baseUrl}/new-workspace,
+   > then grant me access to it. I'll pick it up from there.
 
-       { "requested_id": "<project>" }
+   Once the Workspace exists, your access to it comes from your grant,
+   which the user chooses at one of three levels:
 
-   You become its owner. The 201 reply is \`{ id, handle }\`; the
-   handle is auto-suffixed (\`<project>-2\`) if taken.
+     - **all of their Workspaces** — an "act as me" token, which reaches
+       every Workspace they belong to, including ones they create later;
+     - **one Workspace** — a workspace-scoped grant covering every Doco
+       in it, now and in the future;
+     - **a subset of Docos** inside a Workspace — per-Doco grants.
+
+   With an "act as me" token the new Workspace is reachable as soon as
+   the user creates it. With a narrower grant, ask the user to approve
+   access to it: re-run your MCP client's auth, or the OAuth recipe
+   below, and they pick the new Workspace on the approve screen. Then
+   repeat step 1 to pick up its id.
 
 3. **Create the project's Docos inside it**, one per kind of knowledge
    the user wants to keep. Ask which ones. Doco handles are global, so
@@ -59,7 +71,7 @@ So when a user says "use Doco for <project>":
        Authorization: Bearer doco_at_<token>
 
        {
-         "workspace_id": "<id from step 2>",
+         "workspace_id": "<id from step 1>",
          "name": "<project>-decisions",
          "template_handle": "architectural-decisions"
        }
@@ -72,9 +84,9 @@ ${templateList}
    through Git" below).
 
 The hosted MCP server has no create tools. An MCP-only agent asks the
-user to create the Workspace at ${baseUrl}/new-workspace and its Docos
-from the Workspace's page. Every other agent gets a token from the
-recipes below and makes the two POSTs itself.
+user to create the Docos from the Workspace's page too. Every other
+agent gets a token from the recipes below and makes the Doco POST
+itself.
 
 ## Connect via the hosted MCP server (easiest)
 
@@ -217,8 +229,7 @@ for backwards compat.
   GET  ${baseUrl}/<handle>/api/policies.json      # list policies (NOT nodes)
   POST ${baseUrl}/<handle>/api/policies.json      # write a policy (need 'owner' role)
   PATCH ${baseUrl}/<handle>/api/policies/<id>.json # modify a policy: supersede or retire/activate (owner)
-  GET  ${baseUrl}/api/v1/workspaces.json            # list your Workspaces (projects)
-  POST ${baseUrl}/api/v1/workspaces.json            # create a Workspace for a new project
+  GET  ${baseUrl}/api/v1/workspaces.json            # list the Workspaces (projects) you can reach; no POST — people create them at /new-workspace
   POST ${baseUrl}/api/v1/docos.json                 # create a Doco inside a Workspace
 
 Node types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,

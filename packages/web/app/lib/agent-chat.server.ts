@@ -1684,7 +1684,6 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/search.json?q=<query>          — hybrid search (semantic + keyword) across this doco's NODES only (not edges); finds nodes even before they are embedded
   GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like workspace/doco
   POST  /api/v1/docos.json                       — create a doco; owner role on the target workspace required
-  POST  /api/v1/workspaces.json                        — create an workspace (NO GET — to list the user's workspaces, see the "Your workspaces" section below)
   GET   /api/v1/agent-bootstrap.json             — re-read policies
 
 ${buildDocoCreationContractPrompt()}
