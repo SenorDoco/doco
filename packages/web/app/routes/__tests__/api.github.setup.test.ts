@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   getCurrentPrincipalAsync: vi.fn(),
   getDocoConnectionsContext: vi.fn(),
   getInstallationAccount: vi.fn(),
+  exchangeInstallationCode: vi.fn(),
+  listUserInstallationIds: vi.fn(),
   importInstallationConnections: vi.fn(),
   kickBackfillRun: vi.fn(),
   recordInstallationAuthorization: vi.fn(),
@@ -33,9 +35,16 @@ vi.mock("~/lib/doco-access.server", () => ({
 
 vi.mock("~/lib/github-app.server", () => ({
   getInstallationAccount: mocks.getInstallationAccount,
+  exchangeInstallationCode: mocks.exchangeInstallationCode,
+  listUserInstallationIds: mocks.listUserInstallationIds,
 }));
 
-vi.mock("~/lib/github-connection.server", () => ({
+vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
+  // The real state signer/verifier: the route must reject anything it didn't sign.
+  signInstallState: (await importOriginal<typeof import("~/lib/github-connection.server")>())
+    .signInstallState,
+  verifyInstallState: (await importOriginal<typeof import("~/lib/github-connection.server")>())
+    .verifyInstallState,
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
   importInstallationConnections: mocks.importInstallationConnections,
   recordInstallationAuthorization: mocks.recordInstallationAuthorization,
@@ -51,15 +60,25 @@ vi.mock("../api.github.backfill-run", () => ({
   kickBackfillRun: mocks.kickBackfillRun,
 }));
 
+import { signInstallState } from "~/lib/github-connection.server";
 import { loader } from "../api.github.setup";
 
-function setupRequest(params = "installation_id=42&state=doco_1"): Request {
+function signedState(userId = "user_1", issuedAt = Date.now()): string {
+  return signInstallState({ docoId: "doco_1", userId, issuedAt }) ?? "";
+}
+
+function setupRequest(
+  params = `installation_id=42&code=gh-code&state=${encodeURIComponent(signedState())}`,
+): Request {
   return new Request(`https://doco.test/api/github/setup?${params}`);
 }
 
 describe("api.github.setup loader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
+    mocks.exchangeInstallationCode.mockResolvedValue("ghu_user");
+    mocks.listUserInstallationIds.mockResolvedValue(new Set([42]));
     mocks.getDocoByIdOrHandle.mockResolvedValue({
       id: "doco_1",
       handle: "prs",
@@ -98,6 +117,50 @@ describe("api.github.setup loader", () => {
     );
     expect(mocks.subscribeInstallation).not.toHaveBeenCalled();
     expect(mocks.importInstallationConnections).not.toHaveBeenCalled();
+    expect(mocks.exchangeInstallationCode).toHaveBeenCalledWith("gh-code");
+    expect(mocks.listUserInstallationIds).toHaveBeenCalledWith("ghu_user");
+  });
+
+  it("refuses an installation the installing GitHub user cannot access", async () => {
+    mocks.listUserInstallationIds.mockResolvedValue(new Set([7]));
+
+    const response = await loader({ request: setupRequest() });
+
+    expect(response.headers.get("Location")).toBe(
+      "/prs/integrations/github?github=installation_not_yours",
+    );
+    expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("refuses a callback without GitHub's user authorization code", async () => {
+    const response = await loader({
+      request: setupRequest(`installation_id=42&state=${encodeURIComponent(signedState())}`),
+    });
+
+    expect(response.headers.get("Location")).toBe(
+      "/prs/integrations/github?github=authorization_required",
+    );
+    expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unsigned state (a bare Doco id)", async () => {
+    const response = await loader({
+      request: setupRequest("installation_id=42&code=gh-code&state=doco_1"),
+    });
+
+    expect(response.headers.get("Location")).toBe("/dashboard?github=setup_error");
+    expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("refuses a state signed for a different Doco user", async () => {
+    const response = await loader({
+      request: setupRequest(
+        `installation_id=42&code=gh-code&state=${encodeURIComponent(signedState("user_2"))}`,
+      ),
+    });
+
+    expect(response.headers.get("Location")).toBe("/prs/integrations/github?github=forbidden");
+    expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
   });
 
   it("does not import repositories until the user selects them", async () => {

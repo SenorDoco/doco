@@ -2,6 +2,7 @@
 // This is the glue the webhook (findDocoByInstallation) and backfill read:
 // it records which GitHub repo + App installation a Doco is wired to. Written
 // by the settings panel / connect endpoint.
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { withClient } from "@doco/db";
 import {
   getInstallationAccount,
@@ -80,11 +81,63 @@ export function normalizeConnections(raw: unknown): GitHubConnection[] {
   return out;
 }
 
-/** GitHub App install URL for the click-through flow; null if the app slug
- *  (DOCO_GITHUB_APP_SLUG) isn't configured. `state` round-trips the Doco. Pure. */
-export function buildInstallUrl(state: string): string | null {
+/** What the install flow's `state` carries through GitHub and back. */
+export interface InstallState {
+  docoId: string;
+  /** The Doco user who started the install; the callback must be them. */
+  userId: string;
+  issuedAt: number;
+}
+
+const INSTALL_STATE_TTL_MS = 60 * 60 * 1000;
+
+/** The App's client secret doubles as the state's HMAC key: the flow can't
+ *  verify installs without it anyway (see `exchangeInstallationCode`). */
+function installStateKey(): string | null {
+  return process.env.DOCO_GITHUB_APP_CLIENT_SECRET || null;
+}
+
+function installStateSignature(payload: string, key: string): string {
+  return createHmac("sha256", key).update(payload).digest("base64url");
+}
+
+/** Sign `state` so the setup callback can trust the Doco + user it names.
+ *  Null when the key isn't configured. Pure (given env). */
+export function signInstallState(state: InstallState): string | null {
+  const key = installStateKey();
+  if (!key) return null;
+  const payload = Buffer.from(JSON.stringify(state)).toString("base64url");
+  return `${payload}.${installStateSignature(payload, key)}`;
+}
+
+/** The state `signInstallState` produced, or null if it is unsigned, tampered
+ *  with, or older than an hour. Pure (given env). */
+export function verifyInstallState(raw: string, now = Date.now()): InstallState | null {
+  const key = installStateKey();
+  const [payload, signature, extra] = raw.split(".");
+  if (!key || !payload || !signature || extra !== undefined) return null;
+  const expected = Buffer.from(installStateSignature(payload, key));
+  const given = Buffer.from(signature);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+  try {
+    const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as InstallState;
+    if (typeof state.docoId !== "string" || typeof state.userId !== "string") return null;
+    if (!Number.isFinite(state.issuedAt) || now - state.issuedAt > INSTALL_STATE_TTL_MS) {
+      return null;
+    }
+    return { docoId: state.docoId, userId: state.userId, issuedAt: state.issuedAt };
+  } catch {
+    return null;
+  }
+}
+
+/** GitHub App install URL for the click-through flow, with a signed `state`
+ *  binding the Doco and the installing user; null if the app slug
+ *  (DOCO_GITHUB_APP_SLUG) or client secret isn't configured. */
+export function buildInstallUrl(docoId: string, userId: string): string | null {
   const slug = process.env.DOCO_GITHUB_APP_SLUG;
-  if (!slug) return null;
+  const state = signInstallState({ docoId, userId, issuedAt: Date.now() });
+  if (!slug || !state) return null;
   return `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(state)}`;
 }
 

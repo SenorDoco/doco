@@ -409,6 +409,16 @@ describe("/:docoHandle/integrations/github", () => {
     );
   });
 
+  it("has no free-form connect: a posted installation id is never trusted", async () => {
+    const result = await action({
+      request: postForm({ intent: "connect", repo: "acme/web", installation_id: "42" }),
+      ...routeArgs,
+    });
+
+    expect(result).toMatchObject({ error: "Unknown action: connect" });
+    expect(mocks.addConnection).not.toHaveBeenCalled();
+  });
+
   it("turns a failed per-repo Re-import into a friendly message, not a 500", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "meta-pull-requests",

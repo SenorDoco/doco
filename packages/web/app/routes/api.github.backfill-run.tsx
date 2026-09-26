@@ -10,9 +10,9 @@
 // last persisted cursor.
 //
 // Auth: a shared bearer secret (CRON_SECRET, falling back to the webhook
-// secret) or Vercel's cron header — the same gate the health cron uses. The
-// setup callback kicks the first slice with this secret; each slice re-kicks
-// the next with it.
+// secret). The connect action kicks the first slice with this secret; each
+// slice re-kicks the next with it. The `x-vercel-cron` header is not accepted:
+// any client can send it.
 import { waitUntil } from "@vercel/functions";
 import { docoPath } from "~/lib/db.server";
 import { runBackfillSlice } from "~/lib/github-backfill-driver.server";
@@ -38,7 +38,6 @@ function isAuthorized(request: Request): boolean {
   const secret = backfillRunSecret();
   const bearer = request.headers.get("authorization");
   if (secret && bearer === `Bearer ${secret}`) return true;
-  if (request.headers.get("x-vercel-cron") === "1") return true;
   return false;
 }
 

@@ -1,7 +1,5 @@
 // Per-Doco GitHub connections API (list model). GET lists connections; POST
 // takes an `intent`:
-//   connect    — add a repo ("owner/name"/URL) + installation id (manual
-//                fallback; the click-through setup callback is the main path).
 //   disconnect — remove one repo's connection.
 //   backfill   — import a connected repo's existing PRs as References.
 // Writer access required for mutations; the Integrations panel posts here.
@@ -10,7 +8,6 @@ import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { backfillRepoPullRequests } from "~/lib/github-backfill.server";
 import {
-  addConnection,
   getDocoConnectionsContext,
   listConnections,
   parseRepoSlug,
@@ -67,29 +64,6 @@ export async function action({
       );
     }
     const connections = await removeConnection(meta.docoId, `${parsed.owner}/${parsed.name}`);
-    return Response.json({ ok: true, connections });
-  }
-
-  if (intent === "connect") {
-    const parsed = parseRepoSlug(String(body.repo ?? ""));
-    if (!parsed) {
-      return Response.json(
-        { error: 'repo must be "owner/name" or a GitHub URL.' },
-        { status: 400 },
-      );
-    }
-    const installationId = Number(body.installation_id);
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      return Response.json(
-        { error: "installation_id must be a positive integer." },
-        { status: 400 },
-      );
-    }
-    const connections = await addConnection(meta.docoId, {
-      repo: `${parsed.owner}/${parsed.name}`,
-      installation_id: installationId,
-      connected_at: new Date().toISOString(),
-    });
     return Response.json({ ok: true, connections });
   }
 

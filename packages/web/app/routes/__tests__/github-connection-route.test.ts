@@ -64,25 +64,9 @@ describe("github connection route", () => {
     mocks.removeConnection.mockResolvedValue([]);
   });
 
-  it("connects a repo (normalizes the slug, adds the connection)", async () => {
+  it("has no free-form connect: a caller-supplied installation id is never trusted", async () => {
     const res = await action({
-      request: req({
-        intent: "connect",
-        repo: "https://github.com/acme/store",
-        installation_id: 42,
-      }),
-      params,
-    });
-    expect(res.status).toBe(200);
-    expect(mocks.addConnection).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({ repo: "acme/store", installation_id: 42 }),
-    );
-  });
-
-  it("rejects a bad installation id", async () => {
-    const res = await action({
-      request: req({ intent: "connect", repo: "acme/store", installation_id: "nope" }),
+      request: req({ intent: "connect", repo: "acme/store", installation_id: 42 }),
       params,
     });
     expect(res.status).toBe(400);
@@ -122,10 +106,10 @@ describe("github connection route", () => {
   it("forbids a non-writer", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("reader");
     const res = await action({
-      request: req({ intent: "connect", repo: "acme/store", installation_id: 42 }),
+      request: req({ intent: "disconnect", repo: "acme/store" }),
       params,
     });
     expect(res.status).toBe(403);
-    expect(mocks.addConnection).not.toHaveBeenCalled();
+    expect(mocks.removeConnection).not.toHaveBeenCalled();
   });
 });
