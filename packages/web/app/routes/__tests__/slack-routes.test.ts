@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   postSlackMessage: vi.fn(),
   markSlackChannelIntroducedIfFirst: vi.fn(),
   buildSlackChannelIntroLine: vi.fn(),
+  removeSlackInstallation: vi.fn(),
+  mirrorSlackEvent: vi.fn(),
   waitUntil: vi.fn(),
 }));
 
@@ -48,6 +50,11 @@ vi.mock("~/lib/slack.server", () => ({
   postSlackMessage: mocks.postSlackMessage,
   markSlackChannelIntroducedIfFirst: mocks.markSlackChannelIntroducedIfFirst,
   buildSlackChannelIntroLine: mocks.buildSlackChannelIntroLine,
+  removeSlackInstallation: mocks.removeSlackInstallation,
+}));
+
+vi.mock("~/lib/slack-mirror.server", () => ({
+  mirrorSlackEvent: mocks.mirrorSlackEvent,
 }));
 
 vi.mock("@vercel/functions", () => ({
@@ -475,6 +482,88 @@ describe("Slack integration routes", () => {
     expect(isSlackRetryRequest(request)).toBe(true);
     expect(mocks.buildSlackAppMentionResponse).not.toHaveBeenCalled();
     expect(mocks.postSlackMessage).not.toHaveBeenCalled();
+  });
+
+  describe("public-channel mirror", () => {
+    const channelMessage = {
+      type: "message",
+      channel_type: "channel",
+      channel: "C123",
+      user: "U123",
+      text: "shipping the pooler change today",
+      ts: "1700000001.000100",
+    };
+    const eventRequest = (body: unknown, headers: Record<string, string> = {}) =>
+      new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+    it("mirrors every event, including Slack retries (the write is idempotent)", async () => {
+      const response = await eventsActionThenFlush({
+        request: eventRequest(
+          { type: "event_callback", team_id: "T123", event: channelMessage },
+          { "x-slack-retry-num": "1", "x-slack-retry-reason": "http_error" },
+        ),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mocks.mirrorSlackEvent).toHaveBeenCalledWith({
+        teamId: "T123",
+        event: channelMessage,
+        isExtSharedChannel: false,
+      });
+      expect(mocks.postSlackMessage).not.toHaveBeenCalled();
+    });
+
+    it("tells the mirror when the channel is shared with another organization", async () => {
+      await eventsActionThenFlush({
+        request: eventRequest({
+          type: "event_callback",
+          team_id: "T123",
+          is_ext_shared_channel: true,
+          event: channelMessage,
+        }),
+      });
+
+      expect(mocks.mirrorSlackEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ isExtSharedChannel: true }),
+      );
+    });
+
+    it("answers 500 when the mirror write fails, so Slack redelivers the event", async () => {
+      mocks.mirrorSlackEvent.mockRejectedValueOnce(new Error("db down"));
+
+      const response = await eventsActionThenFlush({
+        request: eventRequest({ type: "event_callback", team_id: "T123", event: channelMessage }),
+      });
+
+      expect(response.status).toBe(500);
+    });
+
+    it.each([
+      ["app_uninstalled", { type: "app_uninstalled" }],
+      ["tokens_revoked (bot token)", { type: "tokens_revoked", tokens: { bot: ["U999"] } }],
+    ])("removes the installation, and with it the mirror, on %s", async (_label, event) => {
+      await eventsActionThenFlush({
+        request: eventRequest({ type: "event_callback", team_id: "T123", event }),
+      });
+
+      expect(mocks.removeSlackInstallation).toHaveBeenCalledWith("T123");
+    });
+
+    it("keeps the installation when only a user token is revoked", async () => {
+      await eventsActionThenFlush({
+        request: eventRequest({
+          type: "event_callback",
+          team_id: "T123",
+          event: { type: "tokens_revoked", tokens: { oauth: ["U123"] } },
+        }),
+      });
+
+      expect(mocks.removeSlackInstallation).not.toHaveBeenCalled();
+    });
   });
 
   it("posts an app-home message answer from Slack Messages tab events", async () => {

@@ -1,4 +1,5 @@
 import { waitUntil } from "@vercel/functions";
+import { mirrorSlackEvent } from "~/lib/slack-mirror.server";
 import {
   type SlackBotIdentity,
   type SlackRecentMessage,
@@ -8,6 +9,7 @@ import {
   getSlackBotIdentity,
   markSlackChannelIntroducedIfFirst,
   postSlackMessage,
+  removeSlackInstallation,
   verifySlackRequest,
 } from "~/lib/slack.server";
 
@@ -15,6 +17,10 @@ import {
 // a multi-turn LLM loop) routinely runs longer. We ack immediately and finish
 // the work in the background via `waitUntil`; `maxDuration` keeps that
 // background work from being cut short. (Decision: Slack events ack-then-process.)
+//
+// The public-channel mirror is the exception: its write is a single idempotent
+// upsert, done BEFORE the ack so a failed write answers 500 and Slack redelivers
+// the event. It runs on retries too; only the answer is skipped for a retry.
 export const config = { maxDuration: 300 };
 
 export async function action({ request }: { request: Request }) {
@@ -25,14 +31,12 @@ export async function action({ request }: { request: Request }) {
   if (!(await verifySlackRequest(request, rawBody))) {
     return Response.json({ error: "invalid_slack_signature" }, { status: 401 });
   }
-  if (isSlackRetryRequest(request)) {
-    return Response.json({ ok: true });
-  }
 
   let payload: {
     type?: string;
     challenge?: string;
     team_id?: string;
+    is_ext_shared_channel?: boolean;
     event?: SlackEventPayload;
   };
   try {
@@ -46,11 +50,16 @@ export async function action({ request }: { request: Request }) {
   }
 
   const event = payload.event;
+  const teamId = payload.team_id;
+  if (payload.type !== "event_callback" || !event || !teamId) {
+    return Response.json({ ok: true });
+  }
 
-  if (payload.type === "event_callback" && shouldProcessSlackEvent(event)) {
-    const teamId = payload.team_id;
-    const channelId = event?.channel;
-    if (event && teamId && channelId && !event.bot_id && !event.subtype) {
+  // A retry re-delivers an event whose answer is already under way (it was just
+  // acked late), so it never starts a second answer.
+  if (!isSlackRetryRequest(request) && shouldProcessSlackEvent(event)) {
+    const channelId = event.channel;
+    if (channelId && !event.bot_id && !event.subtype) {
       // Ack now, answer in the background: Slack's ~3s deadline and the function
       // timeout must not gate answer generation. A slow generation previously
       // either triggered Slack retries (suppressed above) or a
@@ -71,7 +80,29 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  try {
+    if (isSlackUninstallEvent(event)) {
+      // Removing the installation cascades to its mirror: uninstalling deletes the copy.
+      await removeSlackInstallation(teamId);
+    } else {
+      await mirrorSlackEvent({
+        teamId,
+        event: event as Record<string, unknown>,
+        isExtSharedChannel: payload.is_ext_shared_channel === true,
+      });
+    }
+  } catch (error) {
+    console.error("[slack] mirror write failed:", error instanceof Error ? error.message : error);
+    return Response.json({ error: "mirror_write_failed" }, { status: 500 });
+  }
+
   return Response.json({ ok: true });
+}
+
+/** The app was uninstalled, or its bot token revoked: the install is dead. */
+function isSlackUninstallEvent(event: SlackEventPayload): boolean {
+  if (event.type === "app_uninstalled") return true;
+  return event.type === "tokens_revoked" && (event.tokens?.bot?.length ?? 0) > 0;
 }
 
 async function respondToSlackEvent(args: {
@@ -136,6 +167,7 @@ interface SlackEventPayload {
   thread_ts?: string;
   bot_id?: string;
   subtype?: string;
+  tokens?: { bot?: string[]; oauth?: string[] };
 }
 
 function slackReplyThreadTs(event: SlackEventPayload | undefined): string | null {
