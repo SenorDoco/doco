@@ -159,6 +159,7 @@ export default [
   route("integrations/slack/events", "routes/integrations.slack.events.tsx"),
   route("integrations/slack/commands", "routes/integrations.slack.commands.tsx"),
   route("integrations/slack/interactions", "routes/integrations.slack.interactions.tsx"),
+  route("api/slack/mirror-sync", "routes/api.slack.mirror-sync.tsx"),
   route("users/:username", "routes/users.$username.tsx"),
   // /tokens — host-level page listing every active OAuth refresh token
   // bound to the signed-in user (both agent-OAuth-flow tokens and personal

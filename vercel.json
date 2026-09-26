@@ -11,6 +11,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/slack/mirror-sync",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/admin/purge-deleted-docos",
       "schedule": "0 3 * * *"
     }
