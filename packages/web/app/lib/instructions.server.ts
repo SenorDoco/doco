@@ -38,15 +38,43 @@ requests, issues, docs), the **states** a process moves through, and
 the **principals** who own it — as typed, linked nodes you can query
 across the project's whole lifetime.
 
-For you, the agent, this means:
+## Baseline duties
 
-- Before answering substantive questions, search the doco. Prior
-  decisions and rules likely shape the right answer.
-- When you make a non-trivial choice or finish load-bearing work,
-  follow this doco's policies to decide what, if anything, to
-  capture. **Each doco sets its own capture rules — the universal
-  protocol does not mandate captures.**
-- Avoid contradicting Decisions and Rules already in the doco.
+Three duties hold on every project, in every runtime, whichever way
+you connected. Each doco sets its own policies for *how* to write
+(which fields, which edges, which lifecycle): policies refine how you
+do these duties, and they never switch them off.
+
+1. **Load context first.** At the start of every session, before the
+   first substantive reply, search the doco for everything that bears
+   on the work: the intents behind it, the decisions already taken,
+   the rules in force, and the logs of what happened last time. Do
+   this even when the user did not ask for it and even when you think
+   you know the answer. Then search again before each substantive
+   question as the conversation moves. Prior decisions and rules
+   shape the right answer, and an answer that contradicts a documented
+   Decision because you didn't check is a defect.
+
+2. **Document every decision.** Whenever a choice gets made in the
+   conversation — by the user, by you, or together — capture it as a
+   Decision: the question, the option chosen, the alternatives weighed
+   and why they lost. Do it as the decision forms, not at the end of
+   the session, and link it to the Intent it serves. If a decision
+   turns into standing guidance, add the Rule. If it reverses an
+   earlier Decision, supersede that one instead of leaving two.
+
+3. **Record the conversation.** A conversation is project history the
+   next contributor can't reconstruct from the code. Before the
+   session ends, capture what it produced: a Log of what was worked
+   on and what came of it (linked to the Decisions and Actions it
+   produced), Intents for goals that surfaced, Ideas for what was
+   floated and not resolved, and References to the artifacts touched
+   (pull requests, issues, documents). A session that changed nothing
+   and decided nothing needs no Log; say so in the tally instead.
+
+Search before you write so you patch or supersede an existing node
+rather than adding a near-duplicate, and avoid contradicting Decisions
+and Rules already in the doco.
 
 Use Doco naturally as a verb when you talk with the project owner:
 "Want me to doco it?", "Doco this decision", "Doco this ADR", and
@@ -252,8 +280,10 @@ There are two access channels — pick the one your runtime supports.
   - \`doco_get\` — read the authoring contract, capture policies,
     status, a node by id, or a type listing (read) — the read
     surface beyond search.
-  - \`doco_capture\` — record a decision/intent/rule/etc. as it
-    forms (write; needs writer).
+  - \`doco_capture\` — record a decision/intent/rule/log/etc. as it
+    forms (write; needs writer). This is how the baseline duties get
+    done: every decision as it forms, the conversation's Log before
+    the session ends.
   - \`doco_relate\` — link two nodes with a typed edge (write).
   - \`doco_changeset\` — create and wire many nodes in one atomic
     batch (write; the efficient way to import a process or backfill

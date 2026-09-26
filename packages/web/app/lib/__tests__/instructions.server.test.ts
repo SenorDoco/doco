@@ -17,6 +17,21 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     );
   });
 
+  // Alexander, 2026-09-26: conversations are worth recording, and decisions
+  // must be documented. That is baseline protocol, not something each doco
+  // opts into — so the old "the universal protocol does not mandate captures"
+  // stance is gone, and the three baseline duties are named up front.
+  it("makes loading context, recording conversations and documenting decisions baseline", () => {
+    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/does not mandate captures/i);
+    expect(CANONICAL_INSTRUCTIONS).toContain("## Baseline duties");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**Load context first.**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**Document every decision.**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**Record the conversation.**");
+    // Policies refine HOW, they never switch the duties off.
+    expect(CANONICAL_INSTRUCTIONS).toMatch(/policies refine how/i);
+    expect(CANONICAL_INSTRUCTIONS).toMatch(/never switch (them|these duties) off/i);
+  });
+
   it("teaches agents to link a policy by its stable URL when citing it", () => {
     // The stable per-policy URL pattern the Policy page is served at.
     expect(CANONICAL_INSTRUCTIONS).toContain("https://doco.to/<handle>/policies/<policy_id>");

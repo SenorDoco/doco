@@ -19,6 +19,30 @@ export function loader({ request }: { request: Request }) {
 If a user just told you something like "let's start using Doco" or
 "visit doco.to and follow the wizard", you're at the right page.
 
+## What every Doco-connected agent does
+
+Three duties hold in every session, whichever way you connect. Each
+Doco's policies refine how you do them; they never switch them off.
+
+1. **Load context first.** At the start of every session, before your
+   first substantive reply, query the project's Docos for the intents,
+   decisions, rules and logs that bear on the work. Search again
+   before each substantive question.
+2. **Document every decision.** When a choice is made in the
+   conversation, capture it as a Decision as it forms: the question,
+   the choice, the alternatives and why they lost. Link it to the
+   Intent it serves.
+3. **Record the conversation.** Before the session ends, capture a Log
+   of what was worked on and what came of it, linked to the Decisions
+   and Actions it produced, plus the Intents, Ideas and References
+   that surfaced.
+
+The full protocol, including the reply rituals, is at:
+
+    ${baseUrl}/protocol/canonical-instructions
+
+The rest of this page is how to get connected.
+
 ## One project = one Workspace
 
 A **Workspace** is a project: a product, a repo, a team's shared

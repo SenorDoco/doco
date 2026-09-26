@@ -26,6 +26,15 @@ describe("senor-doco-prompt.server", () => {
     expect(prompt).toContain("Only test-surface actions are available.");
   });
 
+  it("makes documenting decisions and recording conversations the default, not a proposal", () => {
+    const p = SENOR_DOCO_DOCUMENTATION_CONTRACT_PROMPT;
+    expect(p).toContain("**Document every decision.**");
+    expect(p).toContain("**Record the conversation.**");
+    expect(p).toMatch(/at the start of (a|every) conversation/i);
+    // The old hedge that ambient observations only get proposed is gone.
+    expect(p).not.toContain("should be proposed/drafting unless the user clearly authorizes");
+  });
+
   it("teaches Señor Doco to link a policy by its stable URL when citing it", () => {
     expect(SENOR_DOCO_DOCUMENTATION_CONTRACT_PROMPT).toContain("Referring to policies");
     expect(SENOR_DOCO_DOCUMENTATION_CONTRACT_PROMPT).toContain(

@@ -41,6 +41,22 @@ describe("/llms.txt", () => {
     expect(body).toContain("a subset of Docos");
   });
 
+  // /llms.txt used to be auth and endpoints only. An agent landing here
+  // must also learn the three baseline duties before it reads a single
+  // recipe: load context at the start, document decisions, record the
+  // conversation — and where the full protocol lives.
+  it("teaches the baseline duties before the setup recipes", async () => {
+    const body = await llmsTxt();
+    const duties = body.indexOf("## What every Doco-connected agent does");
+    const setup = body.indexOf("## One project = one Workspace");
+    expect(duties).toBeGreaterThan(-1);
+    expect(duties).toBeLessThan(setup);
+    expect(body).toContain("**Load context first.**");
+    expect(body).toContain("**Document every decision.**");
+    expect(body).toContain("**Record the conversation.**");
+    expect(body).toContain("https://doco.test/protocol/canonical-instructions");
+  });
+
   it("lists every creatable template so the agent can pick the project's Docos", async () => {
     const body = await llmsTxt();
     for (const template of DOCO_TEMPLATES) {
