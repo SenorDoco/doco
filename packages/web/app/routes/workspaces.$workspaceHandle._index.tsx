@@ -36,7 +36,7 @@ import { listDocoStats } from "~/lib/doco-stats.server";
 import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
-import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
+import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
@@ -79,28 +79,21 @@ export async function loader({
   request: Request;
   params: { workspaceHandle: string };
 }) {
-  const workspace = await resolveWorkspaceByHandle(params.workspaceHandle);
-  if (!workspace) {
-    throw new Response(`Workspace "${params.workspaceHandle}" not found.`, { status: 404 });
-  }
   const me = await getCurrentPrincipal(request);
-  const myRole = me ? await getWorkspaceRole(workspace.id, me.id) : null;
+  const {
+    workspace,
+    myRole,
+    docos: docoRows,
+  } = await loadWorkspaceForRead(params.workspaceHandle, me?.id ?? null);
   const canInviteUsers = myRole === "owner";
 
   return withClient(async (c) => {
-    // Docos owned by this workspace.
-    const docoRows = (
-      await c.query<{ id: string; handle: string; visibility: "public" | "private" }>(
-        "SELECT id, handle, visibility FROM docos WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY handle",
-        [workspace.id],
-      )
-    ).rows;
-    const docoIds = docoRows.map((r) => String(r.id));
+    const docoIds = docoRows.map((r) => r.id);
     const statsByDocoId = await listDocoStats(docoIds);
 
     const docos: WorkspaceDoco[] = docoRows
       .map((r): WorkspaceDoco => {
-        const id = String(r.id);
+        const id = r.id;
         const stats = statsByDocoId.get(id) ?? {
           nodes: 0,
           counts: EMPTY_LIFECYCLE_COUNTS,
@@ -108,7 +101,7 @@ export async function loader({
         };
         return {
           docoId: id,
-          handle: String(r.handle),
+          handle: r.handle,
           visibility: r.visibility,
           nodes: stats.nodes,
           counts: stats.counts,
