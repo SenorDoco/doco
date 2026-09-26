@@ -11,7 +11,10 @@
 //
 // Config (set by the repo owner once the App is registered — see the settings
 // panel / docs): DOCO_GITHUB_APP_ID, DOCO_GITHUB_APP_PRIVATE_KEY (PEM; literal
-// "\n" escapes are tolerated for single-line env vars).
+// "\n" escapes are tolerated for single-line env vars), DOCO_GITHUB_APP_SLUG,
+// and the App's DOCO_GITHUB_APP_CLIENT_ID / DOCO_GITHUB_APP_CLIENT_SECRET (the
+// install flow verifies who installed; the App must have "Request user
+// authorization (OAuth) during installation" enabled).
 import { createSign } from "node:crypto";
 import type { GitHubPullRequest, GitHubPullRequestFile } from "./github-pr-import.server";
 
@@ -280,6 +283,54 @@ async function githubGet<T>(
     throw await githubErrorFromResponse(`GitHub GET ${path}`, res);
   }
   return { data: (await res.json()) as T, linkHeader: res.headers.get("link") };
+}
+
+/**
+ * Trade the `code` GitHub hands back after an install for a user-to-server
+ * token. GitHub only sends it when the App has "Request user authorization
+ * (OAuth) during installation" enabled; it is what proves WHICH GitHub user
+ * just installed, so the setup callback can check they can access the
+ * installation id it was given (see `listUserInstallationIds`).
+ */
+export async function exchangeInstallationCode(
+  code: string,
+  fetchImpl?: typeof fetch,
+): Promise<string> {
+  const clientId = process.env.DOCO_GITHUB_APP_CLIENT_ID;
+  const clientSecret = process.env.DOCO_GITHUB_APP_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "DOCO_GITHUB_APP_CLIENT_ID / DOCO_GITHUB_APP_CLIENT_SECRET are not configured.",
+    );
+  }
+  const res = await (fetchImpl ?? fetch)("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
+  if (!res.ok || !body.access_token) {
+    throw new Error(`GitHub code exchange failed: ${body.error ?? `HTTP ${res.status}`}`);
+  }
+  return body.access_token;
+}
+
+/** Ids of this App's installations the token's GitHub user can access. */
+export async function listUserInstallationIds(
+  userToken: string,
+  fetchImpl?: typeof fetch,
+): Promise<Set<number>> {
+  const ids = new Set<number>();
+  for (let page = 1; page <= 10; page++) {
+    const { data, linkHeader } = await githubGet<{ installations?: { id: number }[] }>(
+      userToken,
+      `/user/installations?per_page=100&page=${page}`,
+      fetchImpl,
+    );
+    for (const installation of data.installations ?? []) ids.add(installation.id);
+    if (!linkHeader?.includes('rel="next"')) break;
+  }
+  return ids;
 }
 
 export interface RepoPullRequestsPage {

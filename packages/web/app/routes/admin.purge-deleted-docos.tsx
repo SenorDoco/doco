@@ -6,8 +6,8 @@
 // immutable history row, and grant via ON DELETE CASCADE.
 //
 // Auth mirrors admin.agent-health-cron: an authenticated `torrenegra` session
-// (handy for a manual trigger) OR Vercel's signed cron request
-// (`x-vercel-cron`) / `Authorization: Bearer <CRON_SECRET>`.
+// (handy for a manual trigger) OR Vercel Cron's `Authorization: Bearer
+// <CRON_SECRET>`.
 
 import { purgeDocosDeletedBefore } from "@doco/db";
 import { redirect } from "react-router";
@@ -20,8 +20,6 @@ function isAuthorized(request: Request): boolean {
   const bearer = request.headers.get("authorization");
   const secret = process.env.CRON_SECRET ?? "";
   if (secret && bearer && bearer === `Bearer ${secret}`) return true;
-  // Vercel's cron-invoked requests carry this header too.
-  if (request.headers.get("x-vercel-cron") === "1") return true;
   return false;
 }
 

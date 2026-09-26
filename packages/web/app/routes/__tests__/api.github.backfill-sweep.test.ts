@@ -25,8 +25,14 @@ afterEach(() => {
 });
 
 describe("api.github.backfill-sweep", () => {
-  it("403s without the bearer secret or cron header", async () => {
+  it("403s without the bearer secret", async () => {
     const res = await action({ request: req() });
+    expect(res.status).toBe(403);
+    expect(findStaleRunningBackfills).not.toHaveBeenCalled();
+  });
+
+  it("403s a request carrying only the x-vercel-cron header (any client can set it)", async () => {
+    const res = await action({ request: req({ "x-vercel-cron": "1" }) });
     expect(res.status).toBe(403);
     expect(findStaleRunningBackfills).not.toHaveBeenCalled();
   });
@@ -48,7 +54,7 @@ describe("api.github.backfill-sweep", () => {
 
   it("queries with a staleness cutoff in the past and is a no-op when none are stale", async () => {
     findStaleRunningBackfills.mockResolvedValue([]);
-    const res = await action({ request: req({ "x-vercel-cron": "1" }) });
+    const res = await action({ request: req({ Authorization: `Bearer ${SECRET}` }) });
     expect(await res.json()).toEqual({ ok: true, swept: 0, doco_ids: [] });
     const cutoff = findStaleRunningBackfills.mock.calls[0][0] as string;
     expect(new Date(cutoff).getTime()).toBeLessThan(Date.now());

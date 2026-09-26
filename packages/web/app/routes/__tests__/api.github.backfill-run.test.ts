@@ -165,17 +165,12 @@ describe("api.github.backfill-run action", () => {
     );
   });
 
-  it("accepts Vercel's cron header in lieu of the bearer secret", async () => {
-    getDocoConnectionsContext.mockResolvedValue({
-      handle: "d",
-      workspaceHandle: "o",
-      connections: [],
-      backfill: { status: "done" },
-    });
+  it("rejects a request carrying only the x-vercel-cron header (any client can set it)", async () => {
     const res = await action({
       request: post({ docoId: "doco_1" }, { "x-vercel-cron": "1" }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(getDocoConnectionsContext).not.toHaveBeenCalled();
   });
 
   it("does NOT immediately re-kick when the slice paused for a rate limit", async () => {

@@ -2,13 +2,10 @@
 // health check and, if anything is warning/critical, POSTs the
 // snapshot to whatever URL `DOCO_HEALTH_WEBHOOK_URL` points at.
 //
-// Auth: Vercel signs cron-invoked requests with a known header
-// (`x-vercel-cron`), and the env var `CRON_SECRET` (per Vercel docs)
-// gates the path against random callers. We accept either an
-// authenticated `torrenegra` session (handy for manual triggers) OR
-// a request carrying the `Authorization: Bearer <CRON_SECRET>`
-// header that Vercel attaches when invoking from the dashboard's
-// cron schedule.
+// Auth: an authenticated `torrenegra` session (handy for manual triggers)
+// OR the `Authorization: Bearer <CRON_SECRET>` header Vercel attaches to
+// cron invocations when CRON_SECRET is set. The `x-vercel-cron` header
+// proves nothing — any client can send it — so it is not accepted.
 //
 // When DOCO_HEALTH_WEBHOOK_URL is unset, the endpoint still runs the
 // check and returns the snapshot — useful for testing the cron
@@ -22,8 +19,6 @@ function isAuthorized(request: Request): boolean {
   const bearer = request.headers.get("authorization");
   const secret = process.env.CRON_SECRET ?? "";
   if (secret && bearer && bearer === `Bearer ${secret}`) return true;
-  // Vercel's cron-invoked requests carry this header too.
-  if (request.headers.get("x-vercel-cron") === "1") return true;
   return false;
 }
 

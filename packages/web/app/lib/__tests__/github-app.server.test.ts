@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GitHubApiError,
   buildAppJwt,
+  exchangeInstallationCode,
   getInstallationAccount,
   githubAppConfigured,
   listInstallationRepos,
   listRepoPullRequests,
+  listUserInstallationIds,
   mintInstallationToken,
   normalizePem,
   retryAfterMsFromHeaders,
@@ -150,6 +152,65 @@ describe("listRepoPullRequests", () => {
     });
     const [url] = fetchImpl.mock.calls[0] as unknown as [string];
     expect(url).toContain("page=3");
+  });
+});
+
+describe("exchangeInstallationCode", () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  it("trades the post-install code for a user token with the App's client credentials", async () => {
+    process.env.DOCO_GITHUB_APP_CLIENT_ID = "Iv23.client";
+    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ access_token: "ghu_user" }), { status: 200 }),
+    );
+    const token = await exchangeInstallationCode("code-1", fetchImpl as unknown as typeof fetch);
+    expect(token).toBe("ghu_user");
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://github.com/login/oauth/access_token");
+    expect(JSON.parse(String(init.body))).toEqual({
+      client_id: "Iv23.client",
+      client_secret: "app-secret",
+      code: "code-1",
+    });
+  });
+
+  it("throws when GitHub rejects the code", async () => {
+    process.env.DOCO_GITHUB_APP_CLIENT_ID = "Iv23.client";
+    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ error: "bad_verification_code" }), { status: 200 }),
+    );
+    await expect(
+      exchangeInstallationCode("stale", fetchImpl as unknown as typeof fetch),
+    ).rejects.toThrow(/bad_verification_code/);
+  });
+
+  it("throws when the App's client credentials aren't configured", async () => {
+    process.env.DOCO_GITHUB_APP_CLIENT_ID = "";
+    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "";
+    await expect(exchangeInstallationCode("code-1", vi.fn() as never)).rejects.toThrow(
+      /DOCO_GITHUB_APP_CLIENT_ID/,
+    );
+  });
+});
+
+describe("listUserInstallationIds", () => {
+  it("collects the installation ids the user can access across pages", async () => {
+    const page1 = new Response(JSON.stringify({ installations: [{ id: 1 }, { id: 2 }] }), {
+      status: 200,
+      headers: { Link: '<https://api.github.com/user/installations?page=2>; rel="next"' },
+    });
+    const page2 = new Response(JSON.stringify({ installations: [{ id: 3 }] }), { status: 200 });
+    const fetchImpl = vi.fn().mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
+    const ids = await listUserInstallationIds("ghu_user", fetchImpl as unknown as typeof fetch);
+    expect([...ids]).toEqual([1, 2, 3]);
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      "https://api.github.com/user/installations?per_page=100&page=1",
+    );
   });
 });
 

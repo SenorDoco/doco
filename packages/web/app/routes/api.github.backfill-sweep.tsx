@@ -13,7 +13,8 @@
 // self-heals on the next tick. Re-kicking a still-live chain can't happen: a
 // healthy slice persists every <200s, well under the staleness cutoff.
 //
-// Auth mirrors the worker: the shared bearer secret or Vercel's cron header.
+// Auth mirrors the worker: the shared bearer secret (Vercel Cron sends
+// `Authorization: Bearer <CRON_SECRET>`).
 import { waitUntil } from "@vercel/functions";
 import { findStaleRunningBackfills } from "~/lib/github-connection.server";
 import { backfillRunSecret, kickBackfillRun } from "./api.github.backfill-run";
@@ -29,7 +30,6 @@ const STALE_MINUTES = 5;
 function isAuthorized(request: Request): boolean {
   const secret = backfillRunSecret();
   if (secret && request.headers.get("authorization") === `Bearer ${secret}`) return true;
-  if (request.headers.get("x-vercel-cron") === "1") return true;
   return false;
 }
 

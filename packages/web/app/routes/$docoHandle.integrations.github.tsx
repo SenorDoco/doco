@@ -1,7 +1,7 @@
 // /<doco-handle>/integrations/github — the standalone detail page for the
 // GitHub connection. The Integrations page lists *what* is connected ("Connected
 // to <org>" + a Manage button); the per-integration detail (covered repos,
-// import progress, re-import / disconnect, manual connect) lives here so the
+// import progress, re-import / disconnect) lives here so the
 // Integrations page stays a clean index.
 //
 // Writer-gated mutations (the connection model is a managed list).
@@ -48,7 +48,7 @@ export async function loader({
 }) {
   const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const ctx = await getDocoConnectionsContext(meta.docoId);
-  const docoInstallUrl = buildInstallUrl(meta.docoId);
+  const docoInstallUrl = me ? buildInstallUrl(meta.docoId, me.id) : null;
   const role = me
     ? await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id)
     : null;
@@ -106,20 +106,6 @@ export async function action({
     if (!parsed) return { error: "Invalid repo." };
     await removeConnection(meta.docoId, `${parsed.owner}/${parsed.name}`);
     return { ok: true, message: `Disconnected ${parsed.owner}/${parsed.name}.` };
-  }
-
-  if (intent === "connect") {
-    if (!parsed) return { error: 'Enter a repo as "owner/name" or a GitHub URL.' };
-    const installationId = Number(form.get("installation_id"));
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      return { error: "Installation ID must be a positive number." };
-    }
-    await addConnection(meta.docoId, {
-      repo: `${parsed.owner}/${parsed.name}`,
-      installation_id: installationId,
-      connected_at: new Date().toISOString(),
-    });
-    return { ok: true, message: `Connected ${parsed.owner}/${parsed.name}.` };
   }
 
   if (intent === "connect-existing-repos") {
@@ -492,6 +478,17 @@ export default function DocoGitHubIntegration() {
             in the deployment environment, then try Connect again.
           </p>
         ) : null}
+        {flash === "authorization_required" ? (
+          <p className="rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive">
+            GitHub didn&apos;t confirm who installed the App, so the connection wasn&apos;t saved.
+            Run Connect again and approve the GitHub authorization step.
+          </p>
+        ) : null}
+        {flash === "installation_not_yours" ? (
+          <p className="rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive">
+            Your GitHub account can&apos;t access that installation, so it wasn&apos;t connected.
+          </p>
+        ) : null}
         {flash === "signin_required" ? (
           <p className="rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive">
             Sign in, then run Connect again.
@@ -674,34 +671,6 @@ function AddMoreRepositories({
               ? "Every repository Doco can see is already connected. Grant access to more organizations or repositories in GitHub to track additional ones."
               : "No additional repositories are available to add."}
           </p>
-        )}
-        {docoInstallUrl ? null : (
-          <details className="text-sm">
-            <summary className="cursor-pointer">Connect a repository (manual)</summary>
-            <Form method="post" className="mt-2 space-y-2">
-              <input type="hidden" name="intent" value="connect" />
-              <input
-                name="repo"
-                placeholder="owner/name"
-                required
-                className="block w-full rounded border border-border px-2 py-1 text-sm"
-              />
-              <input
-                name="installation_id"
-                type="number"
-                placeholder="App installation ID"
-                required
-                className="block w-full rounded border border-border px-2 py-1 text-sm"
-              />
-              <button type="submit" className={PRIMARY_BTN}>
-                Connect
-              </button>
-            </Form>
-            <p className="mt-1 text-xs text-muted-foreground">
-              The one-click flow needs DOCO_GITHUB_APP_SLUG configured; until then, enter the repo
-              and App installation id.
-            </p>
-          </details>
         )}
       </CardContent>
     </Card>

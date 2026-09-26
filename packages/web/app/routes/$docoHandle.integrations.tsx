@@ -32,7 +32,7 @@ export async function loader({
 }) {
   const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const ctx = await getDocoConnectionsContext(meta.docoId);
-  const docoInstallUrl = buildInstallUrl(meta.docoId);
+  const docoInstallUrl = me ? buildInstallUrl(meta.docoId, me.id) : null;
   const orgAccounts = ctx
     ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
     : [];
