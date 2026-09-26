@@ -261,6 +261,7 @@ export default [
   route(":docoHandle/integrations", "routes/$docoHandle.integrations.tsx"),
   // Standalone per-integration detail (GitHub: repos, import status, actions).
   route(":docoHandle/integrations/github", "routes/$docoHandle.integrations.github.tsx"),
+  route(":docoHandle/integrations/slack", "routes/$docoHandle.integrations.slack.tsx"),
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
   route(":docoHandle/policies/new", "routes/$docoHandle.policies.new.tsx"),
   // Stable, linkable page for one policy — agents and humans cite a policy by

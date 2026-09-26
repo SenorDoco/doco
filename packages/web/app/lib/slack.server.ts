@@ -57,6 +57,9 @@ import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
 export const SLACK_BOT_SCOPES = [
   "app_mentions:read",
   "channels:history",
+  // Public-channel mirror: list the team's public channels and join them.
+  "channels:join",
+  "channels:read",
   "chat:write",
   "commands",
   "groups:history",
@@ -97,6 +100,9 @@ export interface SlackOAuthState {
   /** The Doco workspace the installer chose to bind this Slack team to. The
    * team is bound at install time, so it is never installed-but-unbound. */
   docoWorkspaceId: string;
+  /** Set when the install turns on the public-channel mirror for this Doco.
+   * Only the mirror consent form mints it, so it also records that consent. */
+  mirrorDocoId?: string;
   nonce: string;
   issuedAt: number;
 }
@@ -314,6 +320,7 @@ export function buildSlackInstallUrl(
   request: Request,
   installerId: string,
   docoWorkspaceId: string,
+  opts: { mirrorDocoId?: string } = {},
 ): string | null {
   const config = getSlackConfig();
   if (!config.configured || !config.clientId || !config.signingSecret) return null;
@@ -322,6 +329,7 @@ export function buildSlackInstallUrl(
     {
       installerId,
       docoWorkspaceId,
+      ...(opts.mirrorDocoId ? { mirrorDocoId: opts.mirrorDocoId } : {}),
       nonce: randomBytes(16).toString("base64url"),
       issuedAt: Date.now(),
     },
