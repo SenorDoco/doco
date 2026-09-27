@@ -1,7 +1,7 @@
 // The agent-bootstrap JSON body, shaped in ONE place so the project-token path
 // and the OAuth/cookie path can never drift in field set or ORDER.
 //
-// The workspace constitution leads: it's the governing "how we work" charter an
+// The workspace constitution leads: it's the governing charter for the workspace's work that an
 // agent should read BEFORE the per-doco policies, so `workspace_constitutions`
 // comes first, not last. Pure (no IO) so the ordering is unit-testable without
 // a database.

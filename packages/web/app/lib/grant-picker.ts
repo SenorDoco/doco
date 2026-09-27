@@ -42,7 +42,7 @@ export interface GrantCatalog {
 /**
  * The scope levels the grant wizard can offer, in breadth order. The
  * first wizard question picks one of these; the flow then adapts:
- *   - actor:   mint a user-level "act as me" TOKEN (no explicit grants; its
+ *   - actor:   mint a user-level "all workspaces" TOKEN (no explicit grants; its
  *              breadth is the user's live membership, one workspace per session).
  *   - workspace:     grant on one workspace (and its Docos).
  *   - doco:    grant role on one Doco.
@@ -288,7 +288,7 @@ export interface ScopeChoice {
 /**
  * Which scope choices the wizard should offer, given what the granting user
  * can reach. One opt-in breadth choice sits at the top, for TOKENS only:
- *   - the consent screens → the `actor` scope (user-level "act as me", one
+ *   - the consent screens → the `actor` scope (user-level "all workspaces", one
  *     workspace per session), offered when the host opts in (`offerActor`),
  *     the user has ≥1 workspace to act in, and the connector isn't pinned to a
  *     single workspace (`boundWorkspaceLabel`). The /tokens page surfaces actor

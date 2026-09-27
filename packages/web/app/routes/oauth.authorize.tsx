@@ -163,7 +163,7 @@ export async function action({ request }: { request: Request }) {
   // so a tampered POST can't bind the token to a different workspace or a Doco
   // outside it.
   if (params.bound_workspace_id) {
-    // An actor ("act as me") credential spans every workspace; a connector
+    // An actor ("all workspaces") credential spans every workspace; a connector
     // bound to a single workspace must never mint one.
     if (grants.grant_type === "actor") {
       throw errorResponse("invalid_scope: a workspace connector can't mint an actor token", 400);

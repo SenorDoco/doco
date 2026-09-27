@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { firstPersonLines } from "~/lib/__tests__/first-person";
 
 // The hosted MCP endpoint at /mcp. Identity + reach come from the token via the
 // user-level gate (gateUserMcp); the tool surface + Doco confinement are shared.
@@ -103,7 +104,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.error.message).toContain("don't have access");
   });
 
-  it("initialize describes the multi-workspace 'act as me' reach, not a single-workspace binding", async () => {
+  it("initialize describes the multi-workspace 'all workspaces' reach, not a single-workspace binding", async () => {
     const res = await call({ jsonrpc: "2.0", id: 7, method: "initialize" }, BEARER);
     const body = (await res.json()) as Json;
     const instructions: string = body.result.instructions;
@@ -136,6 +137,19 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(instructions).toContain("Document every decision");
     expect(instructions).toContain("Record the conversation");
     expect(instructions).not.toMatch(/does not mandate captures/i);
+  });
+
+  it("initialize states the never-first-person rule, and every tool description obeys it", async () => {
+    const res = await call({ jsonrpc: "2.0", id: 9, method: "initialize" }, BEARER);
+    const body = (await res.json()) as Json;
+    const instructions: string = body.result.instructions;
+    expect(instructions).toMatch(/never (write|speak) in the first person/i);
+    expect(firstPersonLines(instructions)).toEqual([]);
+    const tools = await call({ jsonrpc: "2.0", id: 10, method: "tools/list" }, BEARER);
+    const list = (await tools.json()) as Json;
+    for (const tool of list.result.tools as Json[]) {
+      expect(firstPersonLines(String(tool.description))).toEqual([]);
+    }
   });
 
   it("tools/list advertises whoami + read + write tools", async () => {
@@ -243,7 +257,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(text).not.toContain("other/proj2");
   });
 
-  it("doco_whoami on an 'act as me' connection surfaces every workspace + doco", async () => {
+  it("doco_whoami on an 'all workspaces' connection surfaces every workspace + doco", async () => {
     mocks.gateUserMcp.mockResolvedValue({
       ok: true,
       ctx: { workspaceId: "", workspaceHandle: "", principalId: "user_alice", allWorkspaces: true },
@@ -266,7 +280,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     );
     const body: Json = await res.json();
     const text: string = body.result.content[0].text;
-    expect(text).toContain("act as me");
+    expect(text).toContain("all workspaces");
     expect(text).toContain("acme");
     expect(text).toContain("beta");
     expect(text).toContain("beta/proj2: reader");

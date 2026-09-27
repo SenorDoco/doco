@@ -428,7 +428,7 @@ export default function DocoGitHubIntegration() {
             />
             <h1 className="text-2xl font-semibold">Import started</h1>
             <p className="text-sm text-muted-foreground">
-              We&apos;re importing pull requests
+              Importing pull requests
               {count > 0 ? (
                 <>
                   {" "}

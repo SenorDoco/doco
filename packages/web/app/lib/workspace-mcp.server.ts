@@ -15,7 +15,7 @@ export interface WorkspaceMcpContext {
   workspaceId: string;
   workspaceHandle: string;
   principalId: string;
-  /** Actor "act as me" mode: reach every workspace the human belongs to (the
+  /** Actor "all workspaces" mode: reach every workspace the human belongs to (the
    * app-wide `/mcp` with an actor token). `workspaceId`/`Handle` are empty. */
   allWorkspaces?: boolean;
 }

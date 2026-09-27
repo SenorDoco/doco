@@ -422,7 +422,7 @@ export const AGENT_MEMORY_PROMPT = `This repository is connected to Doco, an MCP
 1. Add the "Doco" section below to AGENTS.md (create it if missing). Make sure the other agent-instruction files this project uses carry it too — CLAUDE.md can be the one-line shim @./AGENTS.md; same for .cursor/rules or GEMINI.md if present. Commit these files. Never commit tokens or secrets.
 2. Then follow it for the rest of this session, starting with your next answer — don't wait for a restart.
 
-If you can't write files here, follow the rule for this session and tell me exactly what to add.
+If you can't write files here, follow the rule for this session and say exactly what to add.
 
 ---
 ## Doco — institutional memory (consult before answering "how / why")

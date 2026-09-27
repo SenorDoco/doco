@@ -29,7 +29,7 @@ import {
 //
 //   Step 1 — pick the scope (raised buttons; the chosen one sits pressed):
 //            specific workspaces / specific docos / specific node or edge
-//            types (and, for tokens only, the "act as me" actor scope).
+//            types (and, for tokens only, the "all workspaces" actor scope).
 //   Then, per scope:
 //     workspace     — every workspace listed, each with its own ACCESS dropdown
 //               on the right; grant several at once.
@@ -61,7 +61,7 @@ export function GrantPicker({
    */
   forToken?: boolean;
   /**
-   * Offer the actor ("act as me") scope — a user-level credential, one
+   * Offer the actor ("all workspaces") scope — a user-level credential, one
    * workspace per session. The consent screens set this; the /tokens page
    * surfaces actor through its own top-level toggle instead, so it leaves this
    * off. Suppressed for a bound (per-workspace) connector either way.

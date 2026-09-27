@@ -94,7 +94,7 @@ export async function requestRoleCeiling(request: Request): Promise<DocoRole | n
   return ceiling;
 }
 
-/** True when the request's bearer is an "act as me" actor token. */
+/** True when the request's bearer is an "all workspaces" actor token. */
 async function isActorTokenRequest(request: Request): Promise<boolean> {
   return (await getOauthTokenForRequest(request))?.grant_type === "actor";
 }
@@ -1077,7 +1077,7 @@ async function enforceOauthGrant(
         JSON.stringify({
           kind: liveRole ? "insufficient_scope" : "access_denied",
           error: liveRole
-            ? `This 'act as me' token is capped at '${token.actor_role}', and this operation requires '${minRole}'.`
+            ? `This 'all workspaces' token is capped at '${token.actor_role}', and this operation requires '${minRole}'.`
             : "You don't have access to this Doco.",
         }),
         {

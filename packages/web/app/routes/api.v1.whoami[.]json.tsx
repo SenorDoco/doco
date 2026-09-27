@@ -5,8 +5,8 @@
 // present). Agents call this right after authenticating to tell the user
 // their Doco identity:
 //
-//   [🔮 Doco] Authenticated as <token nickname> on behalf of @username.
-//   I've got the following levels of access:
+//   [🔮 Doco] Authenticated as <token nickname> on behalf of @username,
+//   with these levels of access:
 //     * <workspace/doco>: <role>
 //
 // Auth: requires a signed-in principal (cookie session or OAuth

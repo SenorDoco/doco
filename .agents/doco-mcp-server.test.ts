@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FIRST_PERSON, firstPersonLines } from "../packages/web/app/lib/__tests__/first-person";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = join(__dirname, "doco-mcp-server.mjs");
@@ -302,6 +303,10 @@ describe("doco-mcp-server", () => {
     expect(result.instructions).toContain("same local repository");
     expect(result.instructions).toContain("retry doco_search before");
     expect(result.instructions).toContain("DOCO_REFRESH");
+    // Doco never speaks in the first person; the rule rides in the
+    // instructions and the instructions obey it.
+    expect(result.instructions).toMatch(/never (write|speak) in the first person/i);
+    expect(firstPersonLines(result.instructions)).toEqual([]);
     expect(result.instructions).toContain("asking the user to approve again");
     // Baseline duties every connected agent carries, not per-Doco opt-ins.
     expect(result.instructions).toContain("Load context first");
@@ -1328,6 +1333,8 @@ describe("doco-mcp-server", () => {
       expect(text).toMatch(/project-tokens/);
       // The agent must be told to surface this only once, not on every turn.
       expect(text).toMatch(/once/i);
+      // Doco never speaks in the first person.
+      expect(text).not.toMatch(FIRST_PERSON);
     } finally {
       await new Promise<void>((resolve) => {
         tokenServer.close(() => resolve());

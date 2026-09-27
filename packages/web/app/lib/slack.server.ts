@@ -2263,7 +2263,7 @@ export function slackLlmSystemPrompt(opts?: { constitution?: string | null }): s
   const constitution = opts?.constitution?.trim();
   if (constitution) {
     parts.push(
-      `This workspace's constitution — the governing "how we work" charter for the one workspace this Slack session operates in. Treat it as binding; when a policy and the constitution seem to conflict, surface the conflict rather than silently choosing one. Constitution: ${constitution}`,
+      `This workspace's constitution — the governing charter for the one workspace this Slack session operates in. Treat it as binding; when a policy and the constitution seem to conflict, surface the conflict rather than silently choosing one. Constitution: ${constitution}`,
     );
   }
   return parts.join(" ");

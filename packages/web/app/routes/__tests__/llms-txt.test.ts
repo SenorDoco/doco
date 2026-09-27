@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { firstPersonLines } from "~/lib/__tests__/first-person";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { loader } from "../llms[.]txt";
 
@@ -62,5 +63,15 @@ describe("/llms.txt", () => {
     for (const template of DOCO_TEMPLATES) {
       expect(body).toContain(`- ${template.handle} — ${template.label}`);
     }
+  });
+});
+
+describe("/llms.txt voice", () => {
+  // Doco never uses the first person; the entry page states it with the
+  // duties and the lines it hands agents to say obey it.
+  it("states the never-first-person rule and obeys it", async () => {
+    const body = await llmsTxt();
+    expect(body).toMatch(/never (write|speak) in the first person/i);
+    expect(firstPersonLines(body)).toEqual([]);
   });
 });

@@ -37,6 +37,11 @@ Doco's policies refine how you do them; they never switch them off.
    and Actions it produced, plus the Intents, Ideas and References
    that surfaced.
 
+One rule of voice holds everywhere: never write in the first person,
+singular or plural. Not in replies, not in captured nodes. A doco is
+the project's record; write what was decided, by whom and why, in the
+third person or the imperative.
+
 The full protocol, including the reply rituals, is at:
 
     ${baseUrl}/protocol/canonical-instructions
@@ -69,18 +74,18 @@ So when a user says "use Doco for <project>":
    one, or some other project's). Tell the user:
 
    > Create a Workspace for <project> at ${baseUrl}/new-workspace,
-   > then grant me access to it. I'll pick it up from there.
+   > then grant this agent access to it. Work resumes from there.
 
    Once the Workspace exists, your access to it comes from your grant,
    which the user chooses at one of three levels:
 
-     - **all of their Workspaces** — an "act as me" token, which reaches
+     - **all of their Workspaces** — an "all workspaces" token, which reaches
        every Workspace they belong to, including ones they create later;
      - **one Workspace** — a workspace-scoped grant covering every Doco
        in it, now and in the future;
      - **a subset of Docos** inside a Workspace — per-Doco grants.
 
-   With an "act as me" token the new Workspace is reachable as soon as
+   With an "all workspaces" token the new Workspace is reachable as soon as
    the user creates it. With a narrower grant, ask the user to approve
    access to it: re-run your MCP client's auth, or the OAuth recipe
    below, and they pick the new Workspace on the approve screen. Then
@@ -118,7 +123,7 @@ Doco hosts ONE remote MCP server, at:
 
     ${baseUrl}/mcp
 
-Connect once — an "act as me" token reaches every workspace you belong to,
+Connect once — an "all workspaces" token reaches every workspace you belong to,
 one Doco at a time (call \`list_workspaces\` to enumerate them and pass any
 reachable Doco's <handle> to the tools). A workspace-scoped token instead
 pins the session to its single workspace.
@@ -142,7 +147,7 @@ workspaces + Docos you can touch), \`list_workspaces\` (enumerate the workspaces
 in reach), \`doco_search\` + \`doco_get\` (read), \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\` + \`doco_policy\` (write — the last writes/modifies a Doco's
 authoring policies, owner only), and \`doco_request_access\` (ask an owner for a
-grant). An "act as me" connection reaches every workspace you belong to, one
+grant). An "all workspaces" connection reaches every workspace you belong to, one
 Doco at a time — pass any reachable Doco's <handle> to the tools; a
 workspace-scoped token pins you to one. Call doco_whoami / list_workspaces to
 find a project's Doco rather than guessing the handle. Read vs write is a live

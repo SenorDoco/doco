@@ -76,10 +76,21 @@ Search before you write so you patch or supersede an existing node
 rather than adding a near-duplicate, and avoid contradicting Decisions
 and Rules already in the doco.
 
+## Voice
+
+Never write in the first person, singular or plural. Not in replies
+made on Doco's behalf, not in the nodes you capture, not in the lines
+this protocol hands you to render. A doco is the project's record,
+not a diary: write what was decided, by whom and why, in the third
+person or the imperative. "The team chose Postgres over SQLite for
+concurrent writes." "Access not granted yet; open the link and
+approve." When an actor must be named, name it: the user by name, the
+agent by its credential label, Señor Doco by name.
+
 Use Doco naturally as a verb when you talk with the project owner:
-"Want me to doco it?", "Doco this decision", "Doco this ADR", and
-"Doco the flow" are all normal client-facing phrases. When a project
-owner says "doco it", interpret that as a request to capture per
+"Doco it?", "Doco this decision", "Doco this ADR", and "Doco the
+flow" are all normal client-facing phrases. When a project owner
+says "doco it", interpret that as a request to capture per
 this doco's policies.
 
 The **three invariants** below govern every reply, so they come first —
@@ -92,8 +103,8 @@ you connected.
 
 Render indicators in **rendering order around tool calls**. Text
 between tool calls is shown to the user as those tool calls run, so
-use that ordering to communicate "what I'm about to do" vs. "what I
-just finished." Don't batch everything at the end.
+use that ordering to show what is about to happen vs. what just
+finished. Don't batch everything at the end.
 
 **On the first reply of a session that uses Doco**, render the
 Loading line as the very first text, BEFORE any MCP tool call:
@@ -171,8 +182,8 @@ bootstrap couldn't reach Doco):
    \`\`\`
    [🔮 Doco] <doco-or-workspace-name> access not granted yet
 
-   To let me read this project's prior decisions and rules, open
-   [<URL>](<URL>) and click Approve. I'll pause here until you do.
+   To let this agent read the project's prior decisions and rules,
+   open [<URL>](<URL>) and click Approve. Work pauses until then.
    \`\`\`
 
    The URL must be wrapped in markdown link syntax so it renders
@@ -182,13 +193,13 @@ bootstrap couldn't reach Doco):
    to send another message saying they approved; the tool blocks while
    polling so the agent can learn when approval lands.
 4. **If it succeeds**: \`doco_complete_authentication\` returns an
-   "Authenticated as <credential>. I've got the following levels of
-   access:" block — render it verbatim at the top of your reply, then
+   "Authenticated as <credential>, with these levels of access:"
+   block — render it verbatim at the top of your reply, then
    retry \`doco_search\` and continue with the substantive answer using
    the now-available doco.
 5. **If it returns "still pending" or any error**: end your reply
-   with a short "I'll wait — send any message when you've approved"
-   plus the tally line. **Do NOT continue substantive work without
+   with a short "Waiting for approval — send any message once it's
+   done" plus the tally line. **Do NOT continue substantive work without
    Doco access.** Doco contains prior decisions and rules; doing
    work that hasn't checked them risks contradicting them.
 
@@ -305,8 +316,8 @@ wrapper), so this is the channel that survives sandboxed agent
 runtimes where project-scope hooks are filtered.
 
 The hosted remote MCP connector lives at \`/mcp\` — one connection whose
-reach comes from your token. An "act as me" (\`actor\`) token reaches
-**every** workspace you belong to; a workspace-scoped token pins you to a
+reach comes from your token. An "all workspaces" (\`actor\`) token
+reaches **every** workspace you belong to; a workspace-scoped token pins you to a
 single one. Authentication belongs to the MCP client transport: do not
 hand-drive OAuth or ask the user to paste localhost callback URLs back
 into chat; if the callback listener fails, restart the client MCP auth
@@ -350,7 +361,7 @@ project's knowledge (decisions, ideas, bugs, …), so a new project gets a
 new Workspace, never a lone doco inside another project's workspace.
 People create Workspaces (at /new-workspace); you never do, and the API
 has no call for it. Access is granted to you at one of three levels:
-**all of the user's Workspaces** (an "act as me" token, which also reaches
+**all of the user's Workspaces** (an "all workspaces" token, which also reaches
 Workspaces they create later), **one Workspace** (covers every doco in
 it, now and in the future — the common case when an owner invites an
 agent), or **a subset of docos** inside a Workspace. When a project has
