@@ -186,10 +186,17 @@ export async function syncSlackMirrorChannels(args: {
       )
     ).rows.map((row) => row.channel_id),
   );
+  // Joins stop at the deadline or when Slack rate-limits them; the rest are
+  // joined by the next sync.
   let joined = 0;
   for (const channelId of toJoin) {
     if (args.deadline !== undefined && Date.now() > args.deadline) break;
-    await callSlack(args.token, "conversations.join", { channel: channelId }, args.fetchImpl);
+    try {
+      await callSlack(args.token, "conversations.join", { channel: channelId }, args.fetchImpl);
+    } catch (error) {
+      if (error instanceof SlackApiError && error.error === "ratelimited") break;
+      throw error;
+    }
     await withClient((c) =>
       c.query(
         "UPDATE group_chat_channels SET joined_at = now() WHERE doco_id = $1 AND channel_id = $2",

@@ -24,7 +24,7 @@ import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activi
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EdgeDialog } from "~/components/edge-dialog";
-import { GithubIntegrationCard } from "~/components/github-integration-card";
+import { IntegrationStatusCard } from "~/components/integration-status-card";
 import {
   LIFECYCLE_ORDER,
   initialVisibleLifecycles,
@@ -64,8 +64,8 @@ import {
 } from "~/lib/edge-detail.server";
 import { fitResetKey } from "~/lib/fit-reset-key";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
-import { githubIntegrationStatus } from "~/lib/github-connection.server";
 import { loadHostConfig } from "~/lib/host.server";
+import { loadIntegrationStatuses } from "~/lib/integration-status.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import {
   type LifecycleStage,
@@ -391,15 +391,10 @@ export async function loader({
     ).rows[0];
     const policyCount = Number(policyRow?.n ?? 0);
 
-    // GitHub-connected Docos get a status box atop the right column; the marker
-    // also tells us when the initial PR backfill is still importing old PRs.
-    const githubRow = (
-      await c.query<{ gh: unknown }>(
-        `SELECT data->'github_integration' AS gh FROM docos WHERE id = $1`,
-        [ctx.meta.docoId],
-      )
-    ).rows[0];
-    const githubIntegration = githubIntegrationStatus(githubRow?.gh ?? null);
+    // A Doco that copies from a source (GitHub PRs, a Slack workspace) gets a
+    // status box per source atop the right column: how live the copy is and
+    // how far the import of older items has got.
+    const integrations = await loadIntegrationStatuses(c, ctx.meta.docoId);
 
     // Live-feed baseline: the latest audit-event id this render reflects. The
     // client polls /changes.json against it and only revalidates when it
@@ -418,7 +413,7 @@ export async function loader({
       ownerSlug: ctx.canonicalOwnerSlug,
       ownerIsWorkspace: ctx.meta.ownerId.startsWith("workspace_"),
       canInviteUsers: await canAdminDoco(ctx.meta, me?.id ?? null),
-      githubIntegration,
+      integrations,
       host: await loadHostConfig(),
       me,
       graph,
@@ -563,7 +558,7 @@ export default function DocoHome({
     ownerSlug,
     ownerIsWorkspace,
     canInviteUsers,
-    githubIntegration,
+    integrations,
     me,
     graph,
     policyCount,
@@ -1733,9 +1728,9 @@ export default function DocoHome({
               the browser width before this page gets laid out. */}
           <div className={`relative min-h-0 min-w-0 ${showSidePanel ? "block" : "hidden"}`}>
             <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
-              {githubIntegration ? (
-                <GithubIntegrationCard handle={handle} importing={githubIntegration.importing} />
-              ) : null}
+              {integrations.map((status) => (
+                <IntegrationStatusCard key={status.integration} handle={handle} status={status} />
+              ))}
 
               <Card>
                 <CardHeader className="px-4 py-3">

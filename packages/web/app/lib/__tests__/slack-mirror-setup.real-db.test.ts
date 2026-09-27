@@ -341,6 +341,30 @@ describe("syncSlackMirrorChannels", () => {
     expect(result).toEqual({ joined: 0, pending: 2 });
   });
 
+  it("stops joining when Slack rate-limits a join, leaving the rest for the next sync", async () => {
+    let joins = 0;
+    const slack = fakeSlack({
+      "conversations.list": channelList([
+        [
+          { id: "C1", name: "a", is_member: false },
+          { id: "C2", name: "b", is_member: false },
+          { id: "C3", name: "c", is_member: false },
+        ],
+      ]),
+      "conversations.join": () =>
+        ++joins > 1 ? { ok: false, error: "ratelimited" } : { ok: true },
+    });
+
+    const result = await syncSlackMirrorChannels({
+      docoId: "doco_slack",
+      token: "xoxb",
+      fetchImpl: slack.fetchImpl,
+    });
+
+    expect(result).toEqual({ joined: 1, pending: 2 });
+    expect((await channelRows()).map((row) => row.joined)).toEqual([true, false, false]);
+  });
+
   it("surfaces Slack's rate limit with its retry delay", async () => {
     const fetchImpl = vi.fn(
       async () => new Response("", { status: 429, headers: { "Retry-After": "30" } }),

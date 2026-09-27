@@ -351,7 +351,7 @@ export function githubImportProgress(
  *  status.json flags it as stalled. Set above the 5-minute sweep interval (the
  *  worker checkpoints every <200s) so a healthy chain is never falsely flagged
  *  — only a genuinely stranded one. */
-const IMPORT_STALL_MINUTES = 15;
+export const IMPORT_STALL_MINUTES = 15;
 
 /** PR-import health surfaced on a Doco's status.json — so a stalled or
  *  incomplete backfill is observable instead of silent. */
@@ -409,24 +409,36 @@ export function summarizeBackfillForStatus(
   };
 }
 
-/** View-state for the Doco-home "GitHub integration" box. */
-export interface GitHubIntegrationStatus {
-  /** A PR backfill is actively importing this Doco's historical PRs. */
-  importing: boolean;
+/** How far a Doco's import of a source's older items has got. */
+export type ImportState = "importing" | "stalled" | "done";
+
+/** The old-PR import's progress, for the Doco's integration status. */
+export interface GitHubImportState {
+  state: ImportState;
+  reposDone: number;
+  repos: number;
 }
 
 /**
- * The Doco-home "GitHub integration" box state from a raw
- * `docos.data.github_integration` value: null when the Doco tracks no repo and
- * no org installation (so no box is shown), else whether an initial PR import
- * is still running. A Doco counts as connected the moment it subscribes to an
- * org installation, even before the first repo syncs — same "connected" rule as
- * the Integrations page. Pure, so one column fetch on the home loader drives it.
+ * The old-PR import's progress from a raw `docos.data.github_integration`
+ * value: null when the Doco tracks no repo and no org installation, else
+ * whether the import is running, stalled (see summarizeBackfillForStatus), or
+ * done. A Doco counts as connected the moment it subscribes to an org
+ * installation, even before the first repo syncs — same "connected" rule as the
+ * Integrations page. Pure given the clock.
  */
-export function githubIntegrationStatus(raw: unknown): GitHubIntegrationStatus | null {
+export function githubImportState(
+  raw: unknown,
+  nowMs: number = Date.now(),
+): GitHubImportState | null {
   const connected = normalizeConnections(raw).length > 0 || normalizeInstallations(raw).length > 0;
   if (!connected) return null;
-  return { importing: normalizeBackfillState(raw)?.status === "running" };
+  const summary = summarizeBackfillForStatus(normalizeBackfillState(raw), nowMs);
+  return {
+    state: summary?.status !== "running" ? "done" : summary.stalled ? "stalled" : "importing",
+    reposDone: summary?.repos_done ?? 0,
+    repos: summary?.repos ?? 0,
+  };
 }
 
 /**

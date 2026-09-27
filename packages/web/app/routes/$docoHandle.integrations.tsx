@@ -6,10 +6,12 @@
 //           index; the per-integration detail (repos, import status, actions)
 //           lives on the standalone page.
 //   Right — the catalog of integrations you can wire up at any level.
+import { withClient } from "@doco/db";
 import { useEffect, useRef } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { IntegrationStatusCard } from "~/components/integration-status-card";
 import { AvailableIntegrations, ScopeNavLinks } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -22,6 +24,7 @@ import {
   githubImportProgress,
   githubOrgAccounts,
 } from "~/lib/github-connection.server";
+import { loadIntegrationStatuses } from "~/lib/integration-status.server";
 
 export async function loader({
   request,
@@ -36,6 +39,10 @@ export async function loader({
   const orgAccounts = ctx
     ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
     : [];
+  const slack =
+    (await withClient((c) => loadIntegrationStatuses(c, meta.docoId))).find(
+      (status) => status.integration === "slack",
+    ) ?? null;
   return {
     me,
     handle: meta.handle,
@@ -49,6 +56,7 @@ export async function loader({
       importing: ctx?.backfill?.status === "running",
       importProgress: githubImportProgress(ctx?.backfill ?? null),
     },
+    slack,
   };
 }
 
@@ -89,7 +97,7 @@ export function ImportingNote({ progress }: { progress: GitHubImportProgress | n
 }
 
 export default function DocoIntegrations() {
-  const { me, handle, ownerSlug, workspaceHandle, docoInstallUrl, github } =
+  const { me, handle, ownerSlug, workspaceHandle, docoInstallUrl, github, slack } =
     useLoaderData<typeof loader>();
 
   // While a PR backfill is running, poll the loader so the "importing X of Y"
@@ -168,13 +176,15 @@ export default function DocoIntegrations() {
                   </Link>
                 </CardContent>
               </Card>
-            ) : (
+            ) : null}
+            {slack ? <IntegrationStatusCard handle={handle} status={slack} /> : null}
+            {!github.connected && !slack ? (
               <Card>
                 <CardContent className="py-6 text-sm text-muted-foreground">
                   Nothing connected yet. Wire up an integration from the catalog →
                 </CardContent>
               </Card>
-            )}
+            ) : null}
           </section>
 
           <section className="space-y-3">
