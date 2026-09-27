@@ -296,6 +296,41 @@ describe("hourly channel and member refresh", () => {
   });
 });
 
+describe("joining channels", () => {
+  it("keeps joining every run while Slack rate-limits joins, without holding up history", async () => {
+    await dbm.db.query("UPDATE group_chat_mirrors SET channels_synced_at = NULL");
+    let joins = 0;
+    const slack = fakeSlack({
+      "conversations.list": () => ({
+        ok: true,
+        channels: [
+          { id: "C1", name: "general", is_member: true },
+          { id: "C2", name: "eng", is_member: true },
+          { id: "C4", name: "not-joined-yet", is_member: false },
+        ],
+      }),
+      "conversations.join": () =>
+        ++joins === 1
+          ? new Response("", { status: 429, headers: { "Retry-After": "30" } })
+          : { ok: true },
+      "users.list": () => ({ ok: true, members: [] }),
+      "conversations.history": historyPages({}),
+    });
+
+    const first = await tick(0, slack.fetchImpl);
+    const second = await tick(61, slack.fetchImpl);
+    await tick(122, slack.fetchImpl);
+
+    expect(first).toMatchObject({ channelsSynced: false, historyCalls: 1 });
+    expect(second.channelsSynced).toBe(true);
+    expect(slack.calls.filter((c) => c.method === "conversations.list")).toHaveLength(2);
+    const joined = await dbm.db.query(
+      "SELECT 1 FROM group_chat_channels WHERE channel_id = 'C4' AND joined_at IS NOT NULL",
+    );
+    expect(joined.rows).toHaveLength(1);
+  });
+});
+
 describe("listActiveSlackMirrors", () => {
   it("lists live mirrors with their Slack team, skipping deleted Docos", async () => {
     expect(await listActiveSlackMirrors()).toEqual([{ docoId: "doco_slack", teamId: "T1" }]);

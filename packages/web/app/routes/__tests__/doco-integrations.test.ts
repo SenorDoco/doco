@@ -6,6 +6,13 @@ const mocks = vi.hoisted(() => ({
   loadDocoRouteForRead: vi.fn(),
   getDocoConnectionsContext: vi.fn(),
   buildInstallUrl: vi.fn(),
+  loadIntegrationStatuses: vi.fn(),
+}));
+
+vi.mock("@doco/db", () => ({ withClient: (fn: (c: unknown) => unknown) => fn({}) }));
+
+vi.mock("~/lib/integration-status.server", () => ({
+  loadIntegrationStatuses: mocks.loadIntegrationStatuses,
 }));
 
 vi.mock("~/lib/doco-access.server", () => ({
@@ -50,6 +57,18 @@ describe("/:docoHandle/integrations (index)", () => {
       ownerSlug: "torre",
     });
     mocks.buildInstallUrl.mockReturnValue(null);
+    mocks.loadIntegrationStatuses.mockResolvedValue([]);
+  });
+
+  it("surfaces the Doco's Slack mirror", async () => {
+    mocks.getDocoConnectionsContext.mockResolvedValue(null);
+    const slack = { integration: "slack", teamName: "Torre", state: "importing" };
+    mocks.loadIntegrationStatuses.mockResolvedValue([slack]);
+
+    const data = await loader({ request, ...routeArgs });
+
+    expect(mocks.loadIntegrationStatuses).toHaveBeenCalledWith({}, "doco_1");
+    expect(data.slack).toEqual(slack);
   });
 
   it("surfaces repo import progress while a backfill is running", async () => {

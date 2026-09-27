@@ -97,8 +97,15 @@ function defaultGoalForTemplate(templateHandle: string): string {
   return DOCO_TEMPLATES.find((t) => t.handle === templateHandle)?.description ?? "";
 }
 
-function defaultDocoNameForWorkspace(workspaceHandle: string): string {
-  return workspaceHandle ? `${workspaceHandle}-` : "";
+/**
+ * The Doco handle the form suggests: the workspace handle plus what the Doco
+ * holds — the template's handle, or "doco" for a blank one ("torre-slack",
+ * "torre-doco"). Empty until a workspace is chosen; always a valid handle.
+ */
+export function suggestedDocoHandle(workspaceHandle: string, templateHandle: string): string {
+  if (!workspaceHandle) return "";
+  const what = templateHandle === DEFAULT_TEMPLATE_HANDLE ? "doco" : templateHandle;
+  return `${workspaceHandle}-${what}`.slice(0, 64).replace(/[-_]+$/, "");
 }
 
 /**
@@ -265,7 +272,7 @@ export default function NewDocoStep1({
   const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId);
   const [newWorkspaceHandle, setNewWorkspaceHandle] = useState(formState.newWorkspaceHandle);
   const [name, setName] = useState(
-    formState.name || defaultDocoNameForWorkspace(initialWorkspaceHandle),
+    formState.name || suggestedDocoHandle(initialWorkspaceHandle, initialTemplate),
   );
   const [nameEdited, setNameEdited] = useState(Boolean(formState.name));
   const [visibility, setVisibility] = useState(formState.visibility);
@@ -276,32 +283,34 @@ export default function NewDocoStep1({
   const [goalEdited, setGoalEdited] = useState(
     formState.goal !== defaultGoalForTemplate(initialTemplate),
   );
+  const workspaceHandleFor = (id: string, typedHandle: string) =>
+    id === CREATE_NEW_WORKSPACE_VALUE
+      ? typedHandle
+      : (workspaces.find((o) => o.id === id)?.handle ?? "");
+  const selectedWorkspaceHandle = workspaceHandleFor(workspaceId, newWorkspaceHandle);
+  // The handle follows the workspace and template until the user types one.
   const handleTemplateChange = (value: string) => {
     const next = normalizeTemplateHandle(value);
     setTemplateHandle(next);
     if (!goalEdited) {
       setGoal(defaultGoalForTemplate(next));
     }
+    if (!nameEdited) {
+      setName(suggestedDocoHandle(selectedWorkspaceHandle, next));
+    }
   };
   const isCreateNewWorkspace = workspaceId === CREATE_NEW_WORKSPACE_VALUE;
-  const selectedWorkspaceHandle = isCreateNewWorkspace
-    ? newWorkspaceHandle || "<workspace>"
-    : (workspaces.find((o) => o.id === workspaceId)?.handle ?? "<workspace>");
   const updateWorkspaceId = (value: string) => {
     setWorkspaceId(value);
     if (!nameEdited) {
-      const nextWorkspaceHandle =
-        value === CREATE_NEW_WORKSPACE_VALUE
-          ? newWorkspaceHandle
-          : (workspaces.find((o) => o.id === value)?.handle ?? "");
-      setName(defaultDocoNameForWorkspace(nextWorkspaceHandle));
+      setName(suggestedDocoHandle(workspaceHandleFor(value, newWorkspaceHandle), templateHandle));
     }
   };
   const updateNewWorkspaceHandle = (value: string) => {
     const next = value.toLowerCase();
     setNewWorkspaceHandle(next);
     if (!nameEdited && workspaceId === CREATE_NEW_WORKSPACE_VALUE) {
-      setName(defaultDocoNameForWorkspace(next));
+      setName(suggestedDocoHandle(next, templateHandle));
     }
   };
 
@@ -440,9 +449,7 @@ export default function NewDocoStep1({
                     );
                   }}
                   onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  placeholder={defaultDocoNameForWorkspace(
-                    selectedWorkspaceHandle === "<workspace>" ? "" : selectedWorkspaceHandle,
-                  )}
+                  placeholder={suggestedDocoHandle(selectedWorkspaceHandle, templateHandle)}
                   title={HANDLE_FORMAT_HELP}
                   aria-describedby="new-doco-name-help"
                   className="w-[60ch] max-w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"

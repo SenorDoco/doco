@@ -60,6 +60,10 @@ vi.mock("~/lib/github-connection.server", () => ({
   githubOrgAccounts: vi.fn(),
 }));
 
+vi.mock("~/lib/integration-status.server", () => ({
+  loadIntegrationStatuses: vi.fn(),
+}));
+
 vi.mock("~/lib/integrations-summary.server", () => ({
   loadAccountIntegrationsRollup: vi.fn(),
   loadWorkspaceIntegrationsRollup: vi.fn(),

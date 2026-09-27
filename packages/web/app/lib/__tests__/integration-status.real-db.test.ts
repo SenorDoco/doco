@@ -1,0 +1,179 @@
+// What an integrated Doco reports about each source it copies from: how live
+// the copy is (the newest item copied) and how far the import of older items
+// has got. PGlite runs the real schema.
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
+import { beforeEach, describe, expect, it } from "vitest";
+import { loadIntegrationStatuses } from "../integration-status.server";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
+
+type Client = Parameters<typeof loadIntegrationStatuses>[0];
+let db: PGlite;
+let c: Client;
+
+const NOW = new Date("2026-09-27T15:00:00.000Z");
+const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
+const iso = (ts: number) => new Date(ts * 1000).toISOString();
+
+beforeEach(async () => {
+  db = new PGlite();
+  await db.exec(schemaSql);
+  c = db as unknown as Client;
+  await db.exec(`
+    INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'torre', 'Torre');
+    INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES
+      ('doco_slack', 'torre-slack', 'workspace_1', 'workspace_1', '{}'::jsonb),
+      ('doco_gh', 'torre-prs', 'workspace_1', 'workspace_1', '{}'::jsonb),
+      ('doco_plain', 'torre-doco', 'workspace_1', 'workspace_1', '{}'::jsonb);
+    INSERT INTO group_chat_installations (id, provider, workspace_id, workspace_name, doco_workspace_id)
+      VALUES ('gci_1', 'slack', 'T1', 'Torre', 'workspace_1');
+    INSERT INTO group_chat_mirrors (doco_id, installation_id, team_domain, history_since, consented_at)
+      VALUES ('doco_slack', 'gci_1', 'torre', '2020-09-27T00:00:00Z', '${minutesAgo(60)}');
+    INSERT INTO group_chat_channels
+      (doco_id, channel_id, name, joined_at, excluded, archived, history_oldest_ts, history_done_at) VALUES
+      ('doco_slack', 'C_GEN', 'general', now(), false, false, '1600000000.000100', now()),
+      ('doco_slack', 'C_ENG', 'eng', now(), false, false, '1735689600.000100', NULL),
+      ('doco_slack', 'C_OLD', 'old', NULL, false, true, NULL, NULL),
+      ('doco_slack', 'C_HID', 'hidden', now(), true, false, NULL, NULL);
+    INSERT INTO group_chat_messages (doco_id, channel_id, ts, thread_ts, reply_count, text, posted_at) VALUES
+      ('doco_slack', 'C_GEN', '1790000000.000100', NULL, 0, 'newest', to_timestamp(1790000000)),
+      ('doco_slack', 'C_ENG', '1780000000.000100', '1780000000.000100', 3, 'a thread', to_timestamp(1780000000)),
+      ('doco_slack', 'C_HID', '1799999999.000100', NULL, 0, 'excluded', to_timestamp(1799999999));
+  `);
+});
+
+async function setSlackHeartbeat(minutes: number | null) {
+  await db.query(
+    "UPDATE group_chat_mirrors SET history_next_at = $1 WHERE doco_id = 'doco_slack'",
+    [minutes === null ? null : minutesAgo(minutes)],
+  );
+}
+
+async function setGitHub(integration: unknown) {
+  await db.query(
+    "UPDATE docos SET data = jsonb_build_object('github_integration', $1::jsonb) WHERE id = 'doco_gh'",
+    [JSON.stringify(integration)],
+  );
+}
+
+describe("loadIntegrationStatuses", () => {
+  it("is empty for a Doco that copies from nothing", async () => {
+    expect(await loadIntegrationStatuses(c, "doco_plain", NOW)).toEqual([]);
+  });
+
+  describe("Slack", () => {
+    it("reports the newest message and how far back every channel is copied", async () => {
+      await setSlackHeartbeat(0);
+
+      expect(await loadIntegrationStatuses(c, "doco_slack", NOW)).toEqual([
+        {
+          integration: "slack",
+          teamName: "Torre",
+          latestAt: iso(1790000000),
+          state: "importing",
+          backTo: iso(1735689600.0001),
+          since: "2020-09-27T00:00:00.000Z",
+          channelsDone: 1,
+          channels: 2,
+          threadsPending: 1,
+        },
+      ]);
+    });
+
+    it("hasn't a date to report while a channel's history hasn't started", async () => {
+      await setSlackHeartbeat(0);
+      await db.exec(
+        "UPDATE group_chat_channels SET joined_at = NULL, archived = false WHERE channel_id = 'C_OLD'",
+      );
+
+      const [slack] = await loadIntegrationStatuses(c, "doco_slack", NOW);
+      expect(slack).toMatchObject({ backTo: null, channels: 3, state: "importing" });
+    });
+
+    it("is stalled when the sync hasn't run for a while", async () => {
+      await setSlackHeartbeat(20);
+      expect((await loadIntegrationStatuses(c, "doco_slack", NOW))[0]).toMatchObject({
+        state: "stalled",
+      });
+    });
+
+    it("is stalled when the sync never ran since it was turned on", async () => {
+      await setSlackHeartbeat(null);
+      expect((await loadIntegrationStatuses(c, "doco_slack", NOW))[0]).toMatchObject({
+        state: "stalled",
+      });
+    });
+
+    it("is done once every channel and thread is copied", async () => {
+      await setSlackHeartbeat(20);
+      await db.exec(`
+        UPDATE group_chat_channels SET history_done_at = now() WHERE channel_id = 'C_ENG';
+        UPDATE group_chat_messages SET replies_synced_at = now();
+      `);
+
+      expect((await loadIntegrationStatuses(c, "doco_slack", NOW))[0]).toMatchObject({
+        state: "done",
+        channelsDone: 2,
+        channels: 2,
+        threadsPending: 0,
+      });
+    });
+  });
+
+  describe("GitHub", () => {
+    beforeEach(async () => {
+      await db.exec(`
+        INSERT INTO nodes (id, doco_id, node_type, locator, updated_at) VALUES
+          ('reference_1', 'doco_gh', 'reference', 'https://github.com/acme/store/pull/1', '${minutesAgo(90)}'),
+          ('reference_2', 'doco_gh', 'reference', 'https://github.com/acme/store/pull/2', '${minutesAgo(5)}'),
+          ('reference_3', 'doco_gh', 'reference', 'https://example.com/spec', '${minutesAgo(1)}');
+      `);
+    });
+
+    it("reports the latest PR change and the old-PR import's progress", async () => {
+      await setGitHub({
+        connections: [{ repo: "acme/store", installation_id: 7 }],
+        backfill: { status: "running", repos: 4, repo_index: 1, cursor_at: minutesAgo(1) },
+      });
+
+      expect(await loadIntegrationStatuses(c, "doco_gh", NOW)).toEqual([
+        {
+          integration: "github",
+          latestAt: minutesAgo(5),
+          state: "importing",
+          reposDone: 1,
+          repos: 4,
+        },
+      ]);
+    });
+
+    it("is stalled when the import stopped advancing", async () => {
+      await setGitHub({
+        connections: [{ repo: "acme/store", installation_id: 7 }],
+        backfill: { status: "running", repos: 4, repo_index: 1, cursor_at: minutesAgo(60) },
+      });
+      expect((await loadIntegrationStatuses(c, "doco_gh", NOW))[0]).toMatchObject({
+        state: "stalled",
+      });
+    });
+
+    it("is done once the import finished, or when there was nothing to import", async () => {
+      await setGitHub({
+        connections: [{ repo: "acme/store", installation_id: 7 }],
+        backfill: { status: "done", repos: 4, repo_index: 4 },
+      });
+      expect((await loadIntegrationStatuses(c, "doco_gh", NOW))[0]).toMatchObject({
+        state: "done",
+      });
+
+      await setGitHub({ installations: [{ installation_id: 7, account: "acme" }] });
+      expect((await loadIntegrationStatuses(c, "doco_gh", NOW))[0]).toMatchObject({
+        state: "done",
+      });
+    });
+  });
+});

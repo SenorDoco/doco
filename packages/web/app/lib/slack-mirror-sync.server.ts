@@ -2,7 +2,8 @@
 // /api/slack/mirror-sync:
 //
 //   - hourly, the channel list and members are refreshed (new channels are
-//     joined, gone ones dropped — see syncSlackMirrorChannels);
+//     joined, gone ones dropped — see syncSlackMirrorChannels); while channels
+//     are still waiting to be joined, every run retries them;
 //   - history is backfilled one conversations.history page at a time, always
 //     advancing the channel whose copy reaches least far back, so every
 //     channel fills newest-first together, down to the mirror's history floor;
@@ -88,10 +89,12 @@ export async function runSlackMirrorTick(args: {
     now.getTime() - new Date(mirror.channels_synced_at).getTime() >= CHANNEL_SYNC_INTERVAL_MS
   ) {
     const common = { docoId: args.docoId, token: args.token, ...(fetchImpl ? { fetchImpl } : {}) };
-    await syncSlackMirrorChannels({ ...common, deadline: Date.now() + 20_000 });
+    const { pending } = await syncSlackMirrorChannels({ ...common, deadline: Date.now() + 20_000 });
     await syncSlackMirrorMembers(common);
-    await setMirrorTime(args.docoId, "channels_synced_at", now);
-    result.channelsSynced = true;
+    if (pending === 0) {
+      await setMirrorTime(args.docoId, "channels_synced_at", now);
+      result.channelsSynced = true;
+    }
   }
 
   const paced = async (
