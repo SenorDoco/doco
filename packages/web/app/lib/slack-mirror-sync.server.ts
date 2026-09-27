@@ -2,8 +2,8 @@
 // /api/slack/mirror-sync:
 //
 //   - hourly, the channel list and members are refreshed (new channels are
-//     joined, gone ones dropped — see syncSlackMirrorChannels); while channels
-//     are still waiting to be joined, every run retries them;
+//     tracked, gone ones dropped — see syncSlackMirrorChannels); every run joins
+//     the channels still waiting to be joined, as far as Slack's limits allow;
 //   - history is backfilled one conversations.history page at a time, always
 //     advancing the channel whose copy reaches least far back, so every
 //     channel fills newest-first together, down to the mirror's history floor;
@@ -19,6 +19,7 @@ import { withClient } from "@doco/db";
 import {
   SlackApiError,
   callSlack,
+  joinSlackMirrorChannels,
   syncSlackMirrorChannels,
   syncSlackMirrorMembers,
 } from "./slack-mirror-setup.server";
@@ -26,6 +27,9 @@ import { upsertMessage } from "./slack-mirror.server";
 
 const MINUTE_MS = 60_000;
 const CHANNEL_SYNC_INTERVAL_MS = 60 * MINUTE_MS;
+/** How long a run may spend joining channels, and loading a big team's members. */
+const JOIN_BUDGET_MS = 20_000;
+const MEMBERS_BUDGET_MS = 3 * MINUTE_MS;
 const PAGE_SIZE = 200;
 
 type Json = Record<string, unknown>;
@@ -84,17 +88,18 @@ export async function runSlackMirrorTick(args: {
   };
   if (!mirror) return result;
 
+  const common = { docoId: args.docoId, token: args.token, ...(fetchImpl ? { fetchImpl } : {}) };
+  const joinDeadline = Date.now() + JOIN_BUDGET_MS;
   if (
     !mirror.channels_synced_at ||
     now.getTime() - new Date(mirror.channels_synced_at).getTime() >= CHANNEL_SYNC_INTERVAL_MS
   ) {
-    const common = { docoId: args.docoId, token: args.token, ...(fetchImpl ? { fetchImpl } : {}) };
-    const { pending } = await syncSlackMirrorChannels({ ...common, deadline: Date.now() + 20_000 });
-    await syncSlackMirrorMembers(common);
-    if (pending === 0) {
-      await setMirrorTime(args.docoId, "channels_synced_at", now);
-      result.channelsSynced = true;
-    }
+    await syncSlackMirrorChannels({ ...common, deadline: joinDeadline });
+    await syncSlackMirrorMembers({ ...common, deadline: Date.now() + MEMBERS_BUDGET_MS });
+    await setMirrorTime(args.docoId, "channels_synced_at", now);
+    result.channelsSynced = true;
+  } else {
+    await joinSlackMirrorChannels({ ...common, deadline: joinDeadline });
   }
 
   const paced = async (

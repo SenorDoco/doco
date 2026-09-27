@@ -3,7 +3,7 @@
 // channels (never Slack Connect ones), join the ones the bot isn't in, and load
 // member names. The live copy itself is slack-mirror.server.ts.
 import { withClient } from "@doco/db";
-import { upsertMember } from "./slack-mirror.server";
+import { upsertMembers } from "./slack-mirror.server";
 
 /** How far back the history backfill reaches. */
 export const MIRROR_HISTORY_YEARS = 6;
@@ -152,30 +152,47 @@ export async function syncSlackMirrorChannels(args: {
       "DELETE FROM group_chat_channels WHERE doco_id = $1 AND NOT (channel_id = ANY($2::text[]))",
       [args.docoId, ownChannels.map((ch) => String(ch.id))],
     );
-    for (const ch of ownChannels) {
-      await c.query(
-        `INSERT INTO group_chat_channels
-           (doco_id, channel_id, name, topic, purpose, archived, joined_at)
-         VALUES ($1, $2, $3, $4, $5, $7, CASE WHEN $6 THEN now() END)
-         ON CONFLICT (doco_id, channel_id) DO UPDATE SET
-           name = EXCLUDED.name,
-           topic = EXCLUDED.topic,
-           purpose = EXCLUDED.purpose,
-           archived = EXCLUDED.archived,
-           joined_at = COALESCE(group_chat_channels.joined_at, EXCLUDED.joined_at)`,
-        [
-          args.docoId,
-          String(ch.id),
-          String(ch.name ?? ""),
-          String((ch.topic as Json | undefined)?.value ?? ""),
-          String((ch.purpose as Json | undefined)?.value ?? ""),
-          ch.is_member === true,
-          ch.is_archived === true,
-        ],
-      );
-    }
+    // One write for the whole list: a big team has thousands of channels.
+    await c.query(
+      `INSERT INTO group_chat_channels
+         (doco_id, channel_id, name, topic, purpose, archived, joined_at)
+       SELECT $1, ch.id, ch.name, ch.topic, ch.purpose, ch.archived,
+              CASE WHEN ch.is_member THEN now() END
+         FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[], $7::boolean[])
+           AS ch(id, name, topic, purpose, is_member, archived)
+       ON CONFLICT (doco_id, channel_id) DO UPDATE SET
+         name = EXCLUDED.name,
+         topic = EXCLUDED.topic,
+         purpose = EXCLUDED.purpose,
+         archived = EXCLUDED.archived,
+         joined_at = COALESCE(group_chat_channels.joined_at, EXCLUDED.joined_at)`,
+      [
+        args.docoId,
+        ownChannels.map((ch) => String(ch.id)),
+        ownChannels.map((ch) => String(ch.name ?? "")),
+        ownChannels.map((ch) => String((ch.topic as Json | undefined)?.value ?? "")),
+        ownChannels.map((ch) => String((ch.purpose as Json | undefined)?.value ?? "")),
+        ownChannels.map((ch) => ch.is_member === true),
+        ownChannels.map((ch) => ch.is_archived === true),
+      ],
+    );
   });
 
+  return joinSlackMirrorChannels(args);
+}
+
+/**
+ * Join the mirror's channels the bot isn't in yet (never excluded or archived
+ * ones), until `deadline` or until Slack rate-limits the joins; the rest are
+ * joined by the next call. A channel Slack refuses is logged and skipped, so
+ * it never holds up the others or the history copy.
+ */
+export async function joinSlackMirrorChannels(args: {
+  docoId: string;
+  token: string;
+  fetchImpl?: typeof fetch;
+  deadline?: number;
+}): Promise<{ joined: number; pending: number }> {
   const toJoin = await withClient(async (c) =>
     (
       await c.query<{ channel_id: string }>(
@@ -186,8 +203,6 @@ export async function syncSlackMirrorChannels(args: {
       )
     ).rows.map((row) => row.channel_id),
   );
-  // Joins stop at the deadline or when Slack rate-limits them; the rest are
-  // joined by the next sync.
   let joined = 0;
   for (const channelId of toJoin) {
     if (args.deadline !== undefined && Date.now() > args.deadline) break;
@@ -195,7 +210,8 @@ export async function syncSlackMirrorChannels(args: {
       await callSlack(args.token, "conversations.join", { channel: channelId }, args.fetchImpl);
     } catch (error) {
       if (error instanceof SlackApiError && error.error === "ratelimited") break;
-      throw error;
+      console.error(`[slack mirror] joining ${channelId} failed:`, (error as Error).message);
+      continue;
     }
     await withClient((c) =>
       c.query(
@@ -208,21 +224,35 @@ export async function syncSlackMirrorChannels(args: {
   return { joined, pending: toJoin.length - joined };
 }
 
-/** Load every member of the team, so the mirror can show names. */
+/**
+ * Load every member of the team, so the mirror can show names. Slack allows
+ * about 20 pages a minute, so a big team's list waits out its rate limit;
+ * past `deadline` it stops, keeping the members loaded so far.
+ */
 export async function syncSlackMirrorMembers(args: {
   docoId: string;
   token: string;
   fetchImpl?: typeof fetch;
+  deadline?: number;
 }): Promise<void> {
   let cursor = "";
   do {
-    const page = await callSlack<{ members?: Json[]; response_metadata?: Json }>(
-      args.token,
-      "users.list",
-      { limit: 200, ...(cursor ? { cursor } : {}) },
-      args.fetchImpl,
-    );
-    for (const member of page.members ?? []) await upsertMember(args.docoId, member);
+    let page: { members?: Json[]; response_metadata?: Json };
+    try {
+      page = await callSlack(
+        args.token,
+        "users.list",
+        { limit: 200, ...(cursor ? { cursor } : {}) },
+        args.fetchImpl,
+      );
+    } catch (error) {
+      if (!(error instanceof SlackApiError) || error.error !== "ratelimited") throw error;
+      const waitMs = error.retryAfterMs ?? 60_000;
+      if (args.deadline !== undefined && Date.now() + waitMs > args.deadline) return;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      continue;
+    }
+    await upsertMembers(args.docoId, page.members ?? []);
     cursor = String(page.response_metadata?.next_cursor ?? "");
   } while (cursor);
 }

@@ -55,7 +55,7 @@ export async function mirrorSlackEvent(input: MirrorSlackEventInput): Promise<vo
       return dropChannel(docoId, str(event.channel));
     case "user_change":
     case "team_join":
-      return upsertMember(docoId, asJson(event.user));
+      return upsertMembers(docoId, [asJson(event.user)]);
   }
 }
 
@@ -206,15 +206,30 @@ async function dropChannel(docoId: string, channelId: string): Promise<void> {
   );
 }
 
-export async function upsertMember(docoId: string, user: Json): Promise<void> {
-  const id = str(user.id);
-  if (!id) return;
-  const profile = asJson(user.profile);
+/** Insert or refresh members from Slack user objects, in one write. */
+export async function upsertMembers(docoId: string, users: Json[]): Promise<void> {
+  const rows = users.flatMap((user) => {
+    const id = str(user.id);
+    if (!id) return [];
+    const profile = asJson(user.profile);
+    return [
+      {
+        id,
+        displayName: str(profile.display_name) || str(profile.real_name) || str(user.name),
+        realName: str(profile.real_name) || str(user.real_name),
+        avatarUrl: str(profile.image_72) || null,
+        isBot: user.is_bot === true,
+        deactivated: user.deleted === true,
+      },
+    ];
+  });
+  if (rows.length === 0) return;
   await withClient((c) =>
     c.query(
       `INSERT INTO group_chat_members
          (doco_id, chat_user_id, display_name, real_name, avatar_url, is_bot, deactivated)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       SELECT $1, u.* FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[],
+                                  $7::boolean[]) AS u
        ON CONFLICT (doco_id, chat_user_id) DO UPDATE SET
          display_name = EXCLUDED.display_name,
          real_name = EXCLUDED.real_name,
@@ -223,12 +238,12 @@ export async function upsertMember(docoId: string, user: Json): Promise<void> {
          deactivated = EXCLUDED.deactivated`,
       [
         docoId,
-        id,
-        str(profile.display_name) || str(profile.real_name) || str(user.name),
-        str(profile.real_name) || str(user.real_name),
-        str(profile.image_72) || null,
-        user.is_bot === true,
-        user.deleted === true,
+        rows.map((r) => r.id),
+        rows.map((r) => r.displayName),
+        rows.map((r) => r.realName),
+        rows.map((r) => r.avatarUrl),
+        rows.map((r) => r.isBot),
+        rows.map((r) => r.deactivated),
       ],
     ),
   );

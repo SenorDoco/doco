@@ -365,6 +365,30 @@ describe("syncSlackMirrorChannels", () => {
     expect((await channelRows()).map((row) => row.joined)).toEqual([true, false, false]);
   });
 
+  it("skips a channel Slack won't let the bot join, and joins the rest", async () => {
+    const slack = fakeSlack({
+      "conversations.list": channelList([
+        [
+          { id: "C1", name: "a", is_member: false },
+          { id: "C2", name: "b", is_member: false },
+        ],
+      ]),
+      "conversations.join": (params) =>
+        params.get("channel") === "C1"
+          ? { ok: false, error: "method_not_supported_for_channel_type" }
+          : { ok: true },
+    });
+
+    const result = await syncSlackMirrorChannels({
+      docoId: "doco_slack",
+      token: "xoxb",
+      fetchImpl: slack.fetchImpl,
+    });
+
+    expect(result).toEqual({ joined: 1, pending: 1 });
+    expect((await channelRows()).map((row) => row.joined)).toEqual([false, true]);
+  });
+
   it("surfaces Slack's rate limit with its retry delay", async () => {
     const fetchImpl = vi.fn(
       async () => new Response("", { status: 429, headers: { "Retry-After": "30" } }),
@@ -377,6 +401,67 @@ describe("syncSlackMirrorChannels", () => {
     }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(SlackApiError);
     expect(error).toMatchObject({ error: "ratelimited", retryAfterMs: 30_000 });
+  });
+});
+
+describe("syncSlackMirrorMembers under Slack's rate limit", () => {
+  function membersFetch(firstPageThen: Response) {
+    let calls = 0;
+    return vi.fn(async (_url: string, init?: RequestInit) => {
+      calls++;
+      if (calls === 2) return firstPageThen;
+      const cursor = new URLSearchParams(String(init?.body ?? "")).get("cursor");
+      return new Response(
+        JSON.stringify(
+          cursor === "next"
+            ? { ok: true, members: [{ id: "U2", name: "ben" }] }
+            : {
+                ok: true,
+                members: [{ id: "U1", name: "ana" }],
+                response_metadata: { next_cursor: "next" },
+              },
+        ),
+      );
+    }) as unknown as typeof fetch;
+  }
+
+  async function memberIds() {
+    const r = await dbm.db.query<{ chat_user_id: string }>(
+      "SELECT chat_user_id FROM group_chat_members ORDER BY chat_user_id",
+    );
+    return r.rows.map((row) => row.chat_user_id);
+  }
+
+  beforeEach(async () => {
+    const slack = fakeSlack({ "team.info": teamInfo });
+    await enableSlackMirror({
+      docoId: "doco_slack",
+      teamId: "T1",
+      consentedBy: "user_owner",
+      token: "xoxb",
+      fetchImpl: slack.fetchImpl,
+    });
+  });
+
+  it("waits out Slack's rate limit between pages and carries on", async () => {
+    await syncSlackMirrorMembers({
+      docoId: "doco_slack",
+      token: "xoxb",
+      fetchImpl: membersFetch(new Response("", { status: 429, headers: { "Retry-After": "0" } })),
+    });
+
+    expect(await memberIds()).toEqual(["U1", "U2"]);
+  });
+
+  it("keeps the members loaded so far when the wait would pass the deadline", async () => {
+    await syncSlackMirrorMembers({
+      docoId: "doco_slack",
+      token: "xoxb",
+      fetchImpl: membersFetch(new Response("", { status: 429, headers: { "Retry-After": "60" } })),
+      deadline: Date.now() + 1_000,
+    });
+
+    expect(await memberIds()).toEqual(["U1"]);
   });
 });
 
