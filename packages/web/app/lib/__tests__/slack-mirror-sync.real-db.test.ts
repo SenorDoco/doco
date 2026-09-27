@@ -145,7 +145,7 @@ describe("history backfill", () => {
 
     await tick(0, slack.fetchImpl);
 
-    const [call] = slack.calls;
+    const [call] = slack.calls.filter((c) => c.method === "conversations.history");
     expect(call.params.get("oldest")).toBe(String(HISTORY_SINCE.getTime() / 1000));
     expect(call.params.get("limit")).toBe("200");
   });
@@ -172,7 +172,11 @@ describe("history backfill", () => {
 
     for (let minute = 0; minute < 5; minute++) await tick(minute * 61, slack.fetchImpl);
 
-    const read = new Set(slack.calls.map((c) => c.params.get("channel")));
+    const read = new Set(
+      slack.calls
+        .filter((c) => c.method === "conversations.history")
+        .map((c) => c.params.get("channel")),
+    );
     expect(read.has("C3")).toBe(false);
     expect(read.has("C4")).toBe(false);
   });
@@ -297,7 +301,7 @@ describe("hourly channel and member refresh", () => {
 });
 
 describe("joining channels", () => {
-  it("keeps joining every run while Slack rate-limits joins, without holding up history", async () => {
+  it("joins channels a rate limit left over on the next runs, without re-reading the channel list", async () => {
     await dbm.db.query("UPDATE group_chat_mirrors SET channels_synced_at = NULL");
     let joins = 0;
     const slack = fakeSlack({
@@ -319,11 +323,11 @@ describe("joining channels", () => {
 
     const first = await tick(0, slack.fetchImpl);
     const second = await tick(61, slack.fetchImpl);
-    await tick(122, slack.fetchImpl);
 
-    expect(first).toMatchObject({ channelsSynced: false, historyCalls: 1 });
-    expect(second.channelsSynced).toBe(true);
-    expect(slack.calls.filter((c) => c.method === "conversations.list")).toHaveLength(2);
+    expect(first).toMatchObject({ channelsSynced: true, historyCalls: 1 });
+    expect(second.channelsSynced).toBe(false);
+    expect(slack.calls.filter((c) => c.method === "conversations.list")).toHaveLength(1);
+    expect(slack.calls.filter((c) => c.method === "users.list")).toHaveLength(1);
     const joined = await dbm.db.query(
       "SELECT 1 FROM group_chat_channels WHERE channel_id = 'C4' AND joined_at IS NOT NULL",
     );

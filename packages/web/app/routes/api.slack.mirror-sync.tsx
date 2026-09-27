@@ -10,7 +10,8 @@ import { listActiveSlackMirrors, runSlackMirrorTick } from "~/lib/slack-mirror-s
 // for apps not listed on its Marketplace; raise it once the app is listed.
 import { getSlackBotToken } from "~/lib/slack.server";
 
-export const config = { maxDuration: 60 };
+// The hourly refresh can wait out Slack's limit on a big team's member list.
+export const config = { maxDuration: 300 };
 
 export async function loader({ request }: { request: Request }) {
   return run(request);
