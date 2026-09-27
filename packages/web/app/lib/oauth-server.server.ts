@@ -3,7 +3,7 @@
 //
 // OAuth-backed DOCO_ACCESS tokens for programmatic clients. An MCP runtime registers
 // itself (RFC 7591), opens the authorize URL in the user's browser, the
-// user signs in with GitHub + approves the token's reach (an "act as me" /
+// user signs in with GitHub + approves the token's reach (an "all workspaces" /
 // actor token reaching every workspace they belong to, or a token scoped to one
 // workspace and, within it, specific Docos), the runtime exchanges the resulting
 // code for an access + refresh token, and attaches `Authorization: Bearer
@@ -380,7 +380,7 @@ export interface IssueAuthCodeInput {
   granted_workspace_write_types?: Record<string, string[]>;
   scope?: string;
   /**
-   * 'actor' carries the "act as me" credential through to the minted refresh
+   * 'actor' carries the "all workspaces" credential through to the minted refresh
    * token (empty explicit grants; breadth resolved at refresh time). Defaults
    * to 'regular'. See oauth_refresh_tokens.grant_type.
    */
@@ -710,7 +710,7 @@ export interface ValidAccessToken {
   scope: string | null;
   expires_at: Date;
   /**
-   * 'actor' = an "act as me" token. It carries NO stored grants: it acts as
+   * 'actor' = an "all workspaces" token. It carries NO stored grants: it acts as
    * `user_id`, capped at `actor_role`, resolved live against the user's current
    * membership on every request (see the actor branches in the access gate).
    */
@@ -1054,7 +1054,7 @@ export async function approveDeviceAuthorization(args: {
   granted_workspace_ids?: string[];
   granted_workspace_roles?: Record<string, string>;
   granted_workspace_write_types?: Record<string, string[]>;
-  /** 'actor' = "act as me" credential; see oauth_refresh_tokens.grant_type. Defaults to 'regular'. */
+  /** 'actor' = "all workspaces" credential; see oauth_refresh_tokens.grant_type. Defaults to 'regular'. */
   grant_type?: "regular" | "actor";
   /** Role ceiling for an actor token (reader|writer|owner). null = owner = full live role. */
   actor_role?: DocoRole | null;

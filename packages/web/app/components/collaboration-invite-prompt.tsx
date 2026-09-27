@@ -28,9 +28,9 @@ export function buildAgentInvitePrompt(args: {
   return [
     `Let's collaborate with Doco on this project. The doco is at ${args.docoUrl}.`,
     "",
-    `To get programmatic access, follow the OAuth recipe at ${args.recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — you'll show me a short code and I'll approve at ${args.deviceUrl}.`,
+    `To get programmatic access, follow the OAuth recipe at ${args.recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — show the short code it returns; the approval happens at ${args.deviceUrl}.`,
     "",
-    `At the approve screen I'll name you and choose your doco role. Either way you end up with a Bearer token you can use against ${args.docoUrl}.`,
+    `At the approve screen the doco owner names you and chooses your doco role. Either way you end up with a Bearer token you can use against ${args.docoUrl}.`,
   ].join("\n");
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { firstPersonLines } from "~/lib/__tests__/first-person";
 import { loader } from "../protocol.agent-oauth-recipe";
 
 describe("/protocol/agent-oauth-recipe", () => {
@@ -29,5 +30,15 @@ describe("/protocol/agent-oauth-recipe", () => {
     expect(body).toContain("agents never create Workspaces");
     expect(body).toContain("https://doco.test/new-workspace");
     expect(body).not.toContain("POST https://doco.test/api/v1/workspaces.json");
+  });
+});
+
+describe("/protocol/agent-oauth-recipe voice", () => {
+  it("never puts first-person lines in an agent's mouth", async () => {
+    const response = loader({
+      request: new Request("https://doco.test/protocol/agent-oauth-recipe"),
+    });
+    const body = await response.text();
+    expect(firstPersonLines(body)).toEqual([]);
   });
 });

@@ -68,7 +68,7 @@ export async function loader({ request }: { request: Request }) {
     return {
       user_code,
       stage: "unknown" as const,
-      message: "We don't recognize this code. Double-check what your client showed you.",
+      message: "That code isn't recognized. Double-check what your client showed you.",
       me,
     };
   }

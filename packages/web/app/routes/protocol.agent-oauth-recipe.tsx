@@ -18,7 +18,7 @@ export function loader({ request }: { request: Request }) {
 ## Use the hosted MCP connector first (recommended)
 
 The simplest path is the hosted MCP connector — no OAuth code to write.
-There is one endpoint; point any MCP-capable client at it. An "act as me"
+There is one endpoint; point any MCP-capable client at it. An "all workspaces"
 token reaches every workspace you belong to, one doco at a time:
 
     ${baseUrl}/mcp
@@ -215,7 +215,7 @@ the user sees their full owned-Docos picker.
 
 Open it in the user's browser via \`open\` (macOS) / \`xdg-open\`
 (Linux) / \`start\` (Windows) / equivalent. Tell the user what's
-happening: "I'm asking for access to a Doco — sign in
+happening: "Doco access is being requested — sign in
 and pick which Docos to grant."
 
 ### 4. Wait for the callback
@@ -395,7 +395,7 @@ If your token's \`granted_workspace_ids\` includes an workspace, that grant
 user creates after the token was minted**. You do not need to
 re-run the OAuth flow when a new Doco appears under an already-
 granted workspace — the same Bearer token works on it immediately.
-An "act as me" token goes one level up: it reaches every Workspace the
+An "all workspaces" token goes one level up: it reaches every Workspace the
 user belongs to, including Workspaces they create after the token was
 minted, so a brand-new project is reachable the moment the user creates
 its Workspace.
@@ -404,10 +404,10 @@ Concretely: if a user asks you to work on a project that has no
 Doco yet, and \`oauth_grant.granted_workspace_ids\` already contains the
 workspace they'd create it under, the right move is:
 
-> "I'll wait while you create the Doco at ${baseUrl} (the form starts
-> the name with \`<workspace-handle>-\`, but you can use any available handle). My existing
+> "Create the Doco at ${baseUrl} (the form starts the name with
+> \`<workspace-handle>-\`, but any available handle works). The existing
 > token has workspace-level access, so the new Doco will be reachable as
-> soon as you finish creating it — no re-authorization needed."
+> soon as it exists — no re-authorization needed."
 
 The *wrong* move is to tell the user to grant your token again via
 the consent UI, or to re-run your install's OAuth helper script.
@@ -422,7 +422,7 @@ re-auth ask.)
 
 When you describe your grants to the user, surface the **role cap**
 from \`oauth_grant.granted_workspace_roles[workspace_id]\` (or
-\`granted_doco_roles[doco_id]\`) — not the generic "I can read X"
+\`granted_doco_roles[doco_id]\`) — not a generic "readable: X"
 phrasing. The role table:
 
   - \`reader\` — list + read nodes
@@ -433,12 +433,12 @@ phrasing. The role table:
   - \`owner\` — Doco settings, invites, role changes, granting agent
     access, editing policies (+ everything writer + reader can do)
 
-Saying "Workspaces I can read: doco, torrenegra" when you actually hold
+Saying "Workspaces readable: doco, torrenegra" when you actually hold
 \`writer\` on both is misleading — the user can't tell how much
 work you're authorized to do without re-checking. Prefer:
 
-> "Workspaces I can act on: doco (writer), torrenegra (writer)"
-> "Docos I can act on: doco-bpms (writer, via doco-workspace grant)"
+> "Workspaces in reach: doco (writer), torrenegra (writer)"
+> "Docos in reach: doco-bpms (writer, via doco-workspace grant)"
 
 If the user asks "what can you do?", read out the role from
 \`oauth_grant\` for each grant — don't collapse to the lowest
@@ -464,7 +464,7 @@ project's Workspace first (\`GET ${baseUrl}/api/v1/workspaces.json\`).
 If none matches, ask the user to create one at ${baseUrl}/new-workspace
 — agents never create Workspaces, and the API has no create call for
 them (a POST to the workspaces endpoint answers 405). Your access to it
-comes from your grant: all of the user's Workspaces (an "act as me"
+comes from your grant: all of the user's Workspaces (an "all workspaces"
 token, which reaches Workspaces created after it was minted), one
 Workspace, or a subset of its Docos. Then create the project's Docos
 inside it:
@@ -575,9 +575,9 @@ user — surface both, let them pick.
 ### Mint flow (Doco owner only, requires explicit confirmation)
 
 1. Open \`${baseUrl}/<handle>/project-tokens\`.
-2. Check the "I understand that anyone with read access to a repo
-   where this token is committed will be able to read this Doco"
-   box. The mint button stays disabled until you do.
+2. Check the "Anyone with read access to a repo where this token is
+   committed will be able to read this doco" box. The mint button
+   stays disabled until you do.
 3. Click "Mint project token". The full token body is shown
    **once** — copy it now. The page never displays the body again.
 

@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { FIRST_PERSON } from "./first-person";
 
 vi.mock("../internal-fetch.server", () => ({
   internalFetch: vi.fn(),
@@ -125,7 +126,7 @@ describe("slack.server", () => {
       const response = buildSlackConnectCommandResponse(request, payload);
       const buttons = response.blocks[1]?.elements ?? [];
 
-      expect(JSON.stringify(buttons)).toContain("Authorize my Doco account");
+      expect(JSON.stringify(buttons)).toContain("Authorize a Doco account");
       expect(JSON.stringify(buttons)).toContain("/integrations/slack/link?state=");
       expect(JSON.stringify(buttons)).toContain("Manage workspace defaults");
     } finally {
@@ -185,7 +186,7 @@ describe("slack.server", () => {
         "Do you doco?",
       ),
     ).toBe(
-      "I’m here. By default, I can answer questions accessing all doco's docos. Try “what docos do we have?” for a quick check.",
+      "Señor Doco is here. By default, questions are answered from all doco's docos. Try “what docos are there?” for a quick check.",
     );
   });
 
@@ -892,5 +893,37 @@ describe("slack.server", () => {
       authoringSurface: "slack",
     });
     expect(String(result.result.content)).toContain("Principal added");
+  });
+});
+
+describe("Slack copy voice: never the first person", () => {
+  const workspaceDefault = [
+    {
+      channelId: "*",
+      channelName: "workspace",
+      targetLevel: "workspace" as const,
+      targetId: "workspace_doco",
+      targetLabel: "doco",
+      role: "writer" as const,
+    },
+  ];
+
+  it("keeps every canned Slack reply out of the first person", () => {
+    expect(formatSlackDefaultResponse(workspaceDefault, "hi")).not.toMatch(FIRST_PERSON);
+    expect(formatSlackDefaultResponse(workspaceDefault, "Do you doco?")).not.toMatch(FIRST_PERSON);
+    expect(formatSlackDocoAnswerResponse([])).not.toMatch(FIRST_PERSON);
+    expect(
+      formatSlackDocoAnswerResponse([
+        {
+          entityId: "decision_01",
+          docoLabel: "doco/doco-bpms",
+          nodeType: "decision",
+          summary: "Slack follow-up questions should search Doco content.",
+          body: null,
+          rank: 1,
+        },
+      ]),
+    ).not.toMatch(FIRST_PERSON);
+    expect(slackLlmSystemPrompt({ constitution: "Ship small." })).not.toMatch(FIRST_PERSON);
   });
 });

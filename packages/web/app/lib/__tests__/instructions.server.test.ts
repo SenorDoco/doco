@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_REFERENCE, CANONICAL_INSTRUCTIONS } from "../instructions.server";
+import { firstPersonLines } from "./first-person";
 
 describe("CANONICAL_INSTRUCTIONS", () => {
   // Agents never create Workspaces. People do, and agents are granted access
@@ -120,5 +121,17 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     );
     // invites/audit are route behaviors, not node types — never in the list.
     expect(CANONICAL_INSTRUCTIONS).not.toContain("states, principals, invites, audit");
+  });
+});
+
+describe("voice: never the first person", () => {
+  // Design decision (Alexander, 2026-09-27): Doco never uses the first
+  // person. The protocol states the rule for every agent, and the example
+  // lines it hands agents to say obey it.
+  it("states the rule and obeys it in every example line", () => {
+    expect(CANONICAL_INSTRUCTIONS).toContain("## Voice");
+    expect(CANONICAL_INSTRUCTIONS).toMatch(/never (write|speak) in the first person/i);
+    expect(firstPersonLines(CANONICAL_INSTRUCTIONS)).toEqual([]);
+    expect(firstPersonLines(AGENT_REFERENCE)).toEqual([]);
   });
 });

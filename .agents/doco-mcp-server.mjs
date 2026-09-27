@@ -79,6 +79,10 @@ const SERVER_INSTRUCTIONS = [
   "falling back to device flow. Separate clones or machines need their own",
   "local .env because credentials are secret and must not be committed.",
   "",
+  "Never write in the first person, singular or plural: not in replies, not",
+  "in captured nodes. A doco is the project's record; write what was decided,",
+  "by whom and why, in the third person or the imperative.",
+  "",
   "Three duties hold in every session. Each Doco's policies (fetched at",
   "bootstrap) refine HOW you do them; they never switch them off.",
   "1. Load context first: at the start of every session, before the first",
@@ -1030,7 +1034,7 @@ async function handleAuthenticate(message) {
     "---",
     `[🔮 Doco] ${handle} access not granted yet`,
     "",
-    `To let me read this project's prior decisions and rules, open [${verifyUrl}](${verifyUrl}) and click Approve. I'll pause here until you do.`,
+    `To let this agent read the project's prior decisions and rules, open [${verifyUrl}](${verifyUrl}) and click Approve. Work pauses until then.`,
     "---",
     "",
     `User code (if the URL doesn't auto-fill): ${userCode}`,
@@ -1230,7 +1234,7 @@ function formatIdentityBlock(identity) {
     "RENDER THIS BLOCK VERBATIM AT THE TOP OF YOUR REPLY:",
     "",
     "---",
-    `[🔮 Doco] Authenticated as ${subject}. I've got the following levels of access:`,
+    `[🔮 Doco] Authenticated as ${subject}, with these levels of access:`,
     "",
   ];
   if (grants.length === 0) {

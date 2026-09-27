@@ -297,7 +297,7 @@ describe("OAuth token authorization", () => {
   });
 });
 
-// The consent screens can mint an "act as me" credential: grant_type='actor',
+// The consent screens can mint an "all workspaces" credential: grant_type='actor',
 // no explicit grants, breadth resolved (one workspace per access token) at
 // refresh time. These tests pin the value as it threads through the
 // authorization-code and device-code paths.

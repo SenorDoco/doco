@@ -239,7 +239,7 @@ describe("availableScopes", () => {
     expect(availableScopes({ workspaces: [], targets: [] })).toEqual([]);
   });
   it("leads the token consent with the actor scope when the host opts in", () => {
-    // A token can't snapshot every workspace, but the actor ("act as me")
+    // A token can't snapshot every workspace, but the actor ("all workspaces")
     // credential is the breadth option: user-level reach, one workspace per
     // session. It leads, then workspace/doco/types.
     expect(

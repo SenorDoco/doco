@@ -89,7 +89,7 @@ export async function readOAuthApprovalGrants(
   const rawGrants = String(form.get("grants") ?? "").trim();
   if (rawGrants) {
     const parsed = parseGrantPayload(rawGrants);
-    // An actor ("act as me") pick is the user's whole live membership — it
+    // An actor ("all workspaces") pick is the user's whole live membership — it
     // carries no explicit targets and resolves per-workspace at refresh time,
     // so it short-circuits the per-target ownership checks below. If the human
     // chose it, it wins over any workspace/doco picks bundled in the same form.

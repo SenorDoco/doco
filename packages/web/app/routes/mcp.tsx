@@ -3,7 +3,7 @@
 // One connection per user. The caller presents an OAuth 2.1 bearer
 // (`Authorization: Bearer doco_at_…`) and the gate (gateUserMcp) reads the
 // session's reach from the token, not the URL:
-//   - an "act as me" (actor) token reaches EVERY workspace the user belongs to,
+//   - an "all workspaces" (actor) token reaches EVERY workspace the user belongs to,
 //     one Doco at a time — `list_workspaces` enumerates them and any Doco's
 //     <handle> works with the tools regardless of which workspace it's in;
 //   - a workspace-scoped token pins the session to its single workspace.
@@ -48,7 +48,10 @@ const SERVER_INSTRUCTIONS = [
   "wants Doco for a project no workspace matches, the project needs a new",
   "Workspace: the user creates it at /new-workspace, then its Docos from the",
   "workspace page. Never stand a single Doco in for the project inside another",
-  "workspace. Three duties hold in every session; Doco policies refine how you",
+  "workspace. Never write in the first person, singular or plural: not in",
+  "replies, not in captured nodes. A doco is the project's record; write what",
+  "was decided, by whom and why, in the third person or the imperative.",
+  "Three duties hold in every session; Doco policies refine how you",
   "do them, never whether. Load context first: at the start of every session,",
   "before the first substantive reply, doco_search the project's Docos for the",
   "intents, decisions, rules and logs that bear on the work, and search again",
@@ -320,8 +323,8 @@ const WHOAMI_TOOL = {
   name: "doco_whoami",
   description: [
     "Identity + reach for the current credential: who you're acting as, the",
-    "workspace(s) this connection reaches (every one you belong to on an 'act as",
-    "me' token, or the single workspace a scoped token pins), the relevant",
+    "workspace(s) this connection reaches (every one you belong to on an 'all",
+    "workspaces' token, or the single workspace a scoped token pins), the relevant",
     "constitution, and which Docos you can touch, with your role in each. Call",
     "this FIRST to orient — it's how you find a project's Doco handle (the",
     "<handle> in /<handle>) without guessing. No arguments.",
@@ -333,7 +336,7 @@ const LIST_WORKSPACES_TOOL = {
   name: "list_workspaces",
   description: [
     "List every Doco Workspace you belong to, with your role in each. On an",
-    '"act as me" connection (all your workspaces, one Doco at a time) this is how',
+    '"all workspaces" connection (every workspace, one Doco at a time) this is how',
     "you discover what you can reach; a Doco's <handle> works with the other",
     "tools regardless of which workspace it lives in. No arguments.",
   ].join("\n"),
@@ -360,7 +363,7 @@ const AGENT_DEBUG_TOOL = {
     "replay-window analysis: for every attached file, whether the model still",
     "sees it on the next turn or it was evicted by the message/token cap or",
     "deleted by the 30-day retention purge. This is how you answer 'why did",
-    "Señor Doco say it didn't have the file I attached?'.",
+    "Señor Doco say it didn't have the attached file?'.",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -422,7 +425,7 @@ interface Ctx {
   workspaceId: string;
   workspaceHandle: string;
   principalId: string;
-  // Actor "act as me" mode (the app-wide `/mcp` with an actor token): the
+  // Actor "all workspaces" mode (the app-wide `/mcp` with an actor token): the
   // connection reaches EVERY workspace the human belongs to instead of one.
   // `workspaceId`/`workspaceHandle` are empty; tools resolve Docos globally and
   // per-Doco access is enforced live (capped at actor_role) when each tool
@@ -716,14 +719,14 @@ async function runDocoGet(
   return delegate("read from", doco, () => fetch(url, { headers: bearerHeaders(request) }));
 }
 
-// doco_whoami: identity + reach. On an "act as me" (actor) connection it
+// doco_whoami: identity + reach. On an "all workspaces" (actor) connection it
 // surfaces every workspace the human belongs to and every reachable Doco; on a
 // workspace-scoped connection it surfaces just the pinned workspace and its
 // Docos (filtering out anything outside it — belt-and-braces for cookie
 // sessions, whose membership listing is broader) plus that workspace's
 // constitution.
 // list_workspaces: every workspace the human belongs to, with their role. The
-// primary discovery tool on an "act as me" connection; harmless (and still
+// primary discovery tool on an "all workspaces" connection; harmless (and still
 // correct) on a single-workspace one.
 async function runListWorkspaces(request: Request): Promise<ToolResult> {
   const identity = await loadAgentIdentity(request);
@@ -758,7 +761,7 @@ async function runDocoWhoami(request: Request, ctx: Ctx): Promise<ToolResult> {
     const docos = grants.filter((g) => g.scope === "doco");
     const lines: string[] = [
       `Authenticated as ${identity.indicator_prefix}.`,
-      'This is an "act as me" connection: it reaches every workspace you belong to, one Doco at a time. Call list_workspaces to see them, then pass any Doco\'s <handle> to the tools.',
+      'This is an "all workspaces" connection: it reaches every workspace you belong to, one Doco at a time. Call list_workspaces to see them, then pass any Doco\'s <handle> to the tools.',
     ];
     if (workspaces.length > 0) {
       lines.push("", "Your workspaces:");
@@ -858,7 +861,7 @@ async function runDocoRequestAccess(ctx: Ctx, args: Record<string, unknown>): Pr
 // doco_agent_debug: production incident diagnostics. NOT Doco-scoped — it reads
 // app-wide Señor Doco telemetry, so it ignores `ctx` and gates purely on the
 // acting human being the host superadmin. Works on any connection (including
-// the actor "act as me" one), so the superadmin can diagnose from any session.
+// the actor "all workspaces" one), so the superadmin can diagnose from any session.
 async function runAgentDebug(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
   const identity = await loadAgentIdentity(request);
   if (!isSuperadmin(identity?.username)) {

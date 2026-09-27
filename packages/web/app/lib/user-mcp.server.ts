@@ -1,6 +1,6 @@
 // Gate for the hosted MCP endpoint at `/mcp`. The session's reach comes from
 // the token, not the URL:
-//   - an "act as me" (actor) token carries no stored grants: it acts as the
+//   - an "all workspaces" (actor) token carries no stored grants: it acts as the
 //     human across EVERY workspace they belong to, capped at actor_role and
 //     resolved live per request. Enter all-workspaces mode; tools resolve Docos
 //     globally and `list_workspaces` lets the agent discover what it can reach.
@@ -21,7 +21,7 @@ export async function gateUserMcp(request: Request): Promise<WorkspaceMcpGate> {
   const token = await getOauthTokenForRequest(request);
   if (!token) return { ok: false, kind: "unauthenticated", message: "Unauthorized" };
 
-  // An "act as me" (actor) token reaches EVERY workspace the human belongs to,
+  // An "all workspaces" (actor) token reaches EVERY workspace the human belongs to,
   // not one: it carries no stored workspace. Enter all-workspaces mode; tools
   // resolve Docos globally and the access gate enforces the live, capped role
   // per call. `list_workspaces` lets the agent discover what it can reach.

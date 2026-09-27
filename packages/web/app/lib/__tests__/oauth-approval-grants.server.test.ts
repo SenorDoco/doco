@@ -111,7 +111,7 @@ describe("readOAuthApprovalGrants", () => {
   });
 
   // An actor grant wins even when bundled with workspace/doco picks: the human
-  // chose the broad "act as me" credential, so the explicit picks are moot.
+  // chose the broad "all workspaces" credential, so the explicit picks are moot.
   it("an actor grant short-circuits any workspace/doco picks in the same payload", async () => {
     const grants = await readOAuthApprovalGrants(
       formWithGrants([

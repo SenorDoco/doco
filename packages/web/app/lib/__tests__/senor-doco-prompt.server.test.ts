@@ -5,6 +5,7 @@ import {
   SENOR_DOCO_VOICE_PROMPT,
   buildSenorDocoCorePrompt,
 } from "../senor-doco-prompt.server";
+import { firstPersonLines } from "./first-person";
 
 describe("senor-doco-prompt.server", () => {
   it("builds the shared Señor Doco contract for any surface", () => {
@@ -48,5 +49,18 @@ describe("senor-doco-prompt.server", () => {
       inScopePrefix: "the accessible",
     });
     expect(prompt).toContain("/<doco-handle>/policies/<policy-id>");
+  });
+});
+
+describe("Señor Doco voice: never the first person", () => {
+  it("states the rule, and no example or decline line breaks it", () => {
+    expect(SENOR_DOCO_VOICE_PROMPT).toMatch(/never (write|speak) in the first person/i);
+    const prompt = buildSenorDocoCorePrompt({
+      surfaceDescription: "a test surface",
+      accessDescription: "Use test access only.",
+      capabilityDescription: "answer Doco questions.",
+      inScopePrefix: "the accessible",
+    });
+    expect(firstPersonLines(prompt)).toEqual([]);
   });
 });

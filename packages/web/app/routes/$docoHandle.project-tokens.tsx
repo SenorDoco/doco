@@ -171,8 +171,8 @@ export default function ProjectTokensPage({
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" name="confirm_repo_readable" className="mt-0.5" required />
                 <span>
-                  I understand that anyone with read access to a repo where this token is committed
-                  will be able to read this doco.
+                  Anyone with read access to a repo where this token is committed will be able to
+                  read this doco.
                 </span>
               </label>
               <button
