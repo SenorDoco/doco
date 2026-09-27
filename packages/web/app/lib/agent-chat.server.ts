@@ -1691,13 +1691,13 @@ ${buildDocoCreationContractPrompt()}
 ### Discovery — "what's in this doco?"
 
 When the user asks about contents of a doco without giving you specific
-ids (e.g. "what decisions are here?", "remove all principles", "show
+ids (e.g. "what decisions are here?", "remove all principles", "show me
 the active intents", "how many actions does this have?"), DON'T guess
 from the page URL — actually GET the list endpoint and answer from the
 real data. Examples:
 
 - "remove all principles/principals" → \`GET /<handle>/api/principals.json\`, read \`principal_nodes\`, then PATCH each one's lifecycle to "retired".
-- "list intents" / "what intents are there?" → \`GET /<handle>/api/intents.json\`, read \`items\`.
+- "list intents" / "what intents do I have?" → \`GET /<handle>/api/intents.json\`, read \`items\`.
 - "find the X about Y" → \`GET /<handle>/search.json?q=Y\`, scan results.
 - "the edge between X and Y is wrong / remove it" → \`GET /<handle>/api/edges.json?from_id=<X>&to_id=<Y>\`, read \`items[].id\`, then DELETE \`/<handle>/api/edges/<id>.json\`. search.json indexes nodes, not edges — this filtered list is the only way to resolve an edge's id from its endpoints. Try both directions if unsure which way it points.
 - "how many decisions?" → \`GET /<handle>/status.json\` (counts only; cheaper than listing).
@@ -1763,7 +1763,7 @@ Then navigate to the page that visibly proves the change:
 | Added/changed an edge | /<handle>/edges/<edge-id> — show the edge detail, or /<handle>/<type>/<from-id>?dialog=skip to focus the source node |
 | Browsing edges in general | /<handle>/edges (list) or /<handle>/edges/<edge-key> (detail with two-node graph) |
 | Created a new doco / workspace | /<new-handle> |
-| User asked "show X" | the page that lists or details X |
+| User asked "show me X" | the page that lists or details X |
 
 Never paste the URL on a separate line — the footer-line's link covers it, and the navigate already moved them there. If the response also returns \`warnings[]\`, those are model-facing hints, not user-facing; do not paste them.
 
@@ -1801,7 +1801,7 @@ When sibling relations must become valid together, use \`op: "relate_many"\` in 
 
 ## Speed rules
 
-1. Tool first, words second. When the user gives a direct command ("add a decision about X", "go to Y"), START with the tool call. No preamble, no restating, no clarifying questions you can avoid.
+1. Tool first, words second. When the user gives a direct command ("add a decision about X", "take me to Y"), START with the tool call. No preamble, no restating, no clarifying questions you can avoid.
 2. One tool round-trip per user-visible step. Don't list before capturing if the user already gave you the content.
 3. Keep replies under 2 short lines unless the user asked for explanation.
 4. Don't await confirmation between capture and navigate — chain them.
@@ -1815,7 +1815,7 @@ When sibling relations must become valid together, use \`op: "relate_many"\` in 
 
 ## Your docos and workspaces — canonical
 
-The two lists below are computed server-side at the start of each turn from the same access-control checks ${principal.username} sees in the UI. They are COMPLETE and AUTHORITATIVE — every doco / workspace the user can read or write is here. When asked "how many docos are there?" or "what's the workspace?", answer from these lists directly. Never hedge with "if there are others not visible…" — there aren't. Don't probe with HTTP GETs to discover docos/workspaces; there is no listing endpoint for those.
+The two lists below are computed server-side at the start of each turn from the same access-control checks ${principal.username} sees in the UI. They are COMPLETE and AUTHORITATIVE — every doco / workspace the user can read or write is here. When asked "how many docos do I have?" or "what's my workspace?", answer from these lists directly. Never hedge with "if there are others not visible…" — there aren't. Don't probe with HTTP GETs to discover docos/workspaces; there is no listing endpoint for those.
 
 Doco labels in these lists are qualified as workspace/doco (for example, torre/bpms) to avoid ambiguity. Use the \`path=/...\` value when calling doco_api routes, because Doco's public route namespace is still the global doco handle.
 
@@ -1835,7 +1835,7 @@ ${constitutionText}
 
 ## Policies — canonical
 
-The section below lists every ACTIVE guidance + node-authoring policy for every doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /policies page reads. When asked about a doco's policies or rules, answer from this list directly. Never hedge about incomplete information or offer to fetch the live version — this IS the live version. (Inactive / archived policies are excluded by design; flag that only if the user specifically asks about non-active ones.)
+The section below lists every ACTIVE guidance + node-authoring policy for every doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /policies page reads. When asked about a doco's policies or rules, answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived policies are excluded by design; flag that only if the user specifically asks about non-active ones.)
 
 ${policySections}`;
 
@@ -2868,10 +2868,10 @@ async function* streamAssistantTurn(args: {
             break;
           }
           // max_tokens means the model was cut off mid-output. Surface a
-          // short note so the user knows to ask for a continuation.
+          // short note so the user knows to ask me to continue.
           const persistedAssistantBlocks = [...ev.blocks];
           if (ev.stopReason === "max_tokens") {
-            const note = `\n\n_(hit the per-call output cap mid-reply — send "continue" to pick up where this left off)_`;
+            const note = `\n\n_(hit the per-call output cap mid-reply — ask me to continue and I'll pick up where I left off)_`;
             yield { kind: "text_delta", text: note };
             persistedAssistantBlocks.push({ type: "text", text: note });
           }
@@ -2904,8 +2904,8 @@ async function* streamAssistantTurn(args: {
               : `hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY}`;
           const limitMessage =
             ev.reason === "time"
-              ? `This reply paused to save progress before it ran into the time limit for a single turn — the work so far is saved instead of being cut off mid-step. Send "continue" to pick up from the latest tool results.`
-              : `This job hit the per-turn work limit (${MAX_TURNS_PER_REPLY} Anthropic calls), so it paused instead of risking a tool-call loop. The work so far is saved; send "continue" to pick up from the latest tool results.`;
+              ? `I paused this reply to save my progress before it ran into the time limit for a single turn — the work so far is saved instead of being cut off mid-step. Send "continue" and I'll pick up from the latest tool results.`
+              : `I hit the per-turn work limit (${MAX_TURNS_PER_REPLY} Anthropic calls) while continuing this job, so I paused instead of risking a tool-call loop. The work so far is saved; send "continue" and I'll pick up from the latest tool results.`;
           yield { kind: "text_delta", text: limitMessage };
           const saved = await appendMessage(args.conversation.id, "assistant", [
             { type: "text", text: limitMessage },

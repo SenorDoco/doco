@@ -106,7 +106,7 @@ describe("Slack integration routes", () => {
     // tests assert plain answer text. The first-message case is covered below.
     mocks.markSlackChannelIntroducedIfFirst.mockResolvedValue(false);
     mocks.buildSlackChannelIntroLine.mockReturnValue(
-      "Señor Doco runs on Sonnet here and handles simple requests. For complex work, connect an agent through Doco's MCP <https://doco.test/tokens>",
+      "I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>",
     );
   });
 
@@ -414,7 +414,7 @@ describe("Slack integration routes", () => {
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
-      text: "Señor Doco runs on Sonnet here and handles simple requests. For complex work, connect an agent through Doco's MCP <https://doco.test/tokens>\n\ndoco has 42 nodes.",
+      text: "I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://doco.test/tokens>\n\ndoco has 42 nodes.",
     });
   });
 
@@ -785,7 +785,7 @@ describe("Slack integration routes", () => {
     mocks.buildSlackAppMentionResponse.mockResolvedValue("The last node was updated just now.");
     mocks.fetchSlackConversationContext.mockResolvedValue([
       {
-        text: "Outside Señor Doco's lane — docos only.",
+        text: "Outside my lane — I work on your docos.",
         ts: "1700000000.000000",
         userId: "U999",
         botId: "B999",
@@ -823,7 +823,7 @@ describe("Slack integration routes", () => {
       messageText: "How long ago was the last node updated?",
       recentMessages: [
         {
-          text: "Outside Señor Doco's lane — docos only.",
+          text: "Outside my lane — I work on your docos.",
           ts: "1700000000.000000",
           userId: "U999",
           botId: "B999",

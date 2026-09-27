@@ -575,9 +575,9 @@ user — surface both, let them pick.
 ### Mint flow (Doco owner only, requires explicit confirmation)
 
 1. Open \`${baseUrl}/<handle>/project-tokens\`.
-2. Check the "Anyone with read access to a repo where this token is
-   committed will be able to read this doco" box. The mint button
-   stays disabled until you do.
+2. Check the "You understand that anyone with read access to a repo
+   where this token is committed will be able to read this doco" box.
+   The mint button stays disabled until you do.
 3. Click "Mint project token". The full token body is shown
    **once** — copy it now. The page never displays the body again.
 

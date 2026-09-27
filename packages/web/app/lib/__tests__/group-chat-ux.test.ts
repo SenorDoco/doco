@@ -12,7 +12,6 @@ import {
   formatInviteDmResult,
   resolveEffectiveChatAccess,
 } from "../group-chat-ux";
-import { FIRST_PERSON } from "./first-person";
 
 const channelWriter: ChatAccessTarget = {
   level: "doco",
@@ -142,7 +141,7 @@ describe("group-chat UX helpers", () => {
         role: "writer",
         grantedByLabel: "torrenegra",
       }),
-    ).toContain("@maria was sent a direct message with the torre/bpms invite.");
+    ).toContain("I sent @maria a direct message with the torre/bpms invite.");
 
     const failure = formatInviteDmResult({
       status: "failed",
@@ -154,36 +153,5 @@ describe("group-chat UX helpers", () => {
     });
     expect(failure).toContain("No invite link was posted publicly.");
     expect(failure).toContain("Their Slack settings block bot DMs.");
-  });
-});
-
-describe("chat copy voice", () => {
-  const personalOwner: ChatAccessTarget = {
-    level: "doco",
-    workspaceHandle: "torre",
-    docoHandle: "bpms",
-    role: "owner",
-    source: "personal",
-  };
-
-  it("never speaks in the first person", () => {
-    expect(formatAmbiguousTargetPrompt([personalOwner])).not.toMatch(FIRST_PERSON);
-    const sent = formatInviteDmResult({
-      status: "sent",
-      recipientLabel: "@maria",
-      target: personalOwner,
-      role: "writer",
-      grantedByLabel: "torrenegra",
-    });
-    expect(sent).toContain("@maria was sent a direct message with the torre/bpms invite.");
-    expect(sent).not.toMatch(FIRST_PERSON);
-    const failed = formatInviteDmResult({
-      status: "failed",
-      recipientLabel: "@maria",
-      target: personalOwner,
-      role: "writer",
-      grantedByLabel: "torrenegra",
-    });
-    expect(failed).not.toMatch(FIRST_PERSON);
   });
 });

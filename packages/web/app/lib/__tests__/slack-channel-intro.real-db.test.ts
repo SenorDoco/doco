@@ -8,7 +8,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FIRST_PERSON } from "./first-person";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
@@ -69,12 +68,8 @@ describe("markSlackChannelIntroducedIfFirst (real DB)", () => {
 describe("buildSlackChannelIntroLine", () => {
   it("states the Sonnet scope and links the tokens page on the request origin", () => {
     expect(buildSlackChannelIntroLine("https://example.test")).toBe(
-      "Señor Doco runs on Sonnet here and handles simple requests. For complex work, connect an agent through Doco's MCP <https://example.test/tokens>",
+      "I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <https://example.test/tokens>",
     );
-  });
-
-  it("never speaks in the first person", () => {
-    expect(buildSlackChannelIntroLine("https://example.test")).not.toMatch(FIRST_PERSON);
   });
 
   it("falls back to the production host when no origin is given", () => {

@@ -205,8 +205,8 @@ function TurnOnMirror({
             <label className="flex items-start gap-2">
               <input type="checkbox" name="consent" required className="mt-1" />
               <span>
-                This organization authorizes Doco to store and sync a copy of this Slack
-                workspace&apos;s public channels as described above.
+                On behalf of your organization, you authorize Doco to store and sync a copy of this
+                Slack workspace&apos;s public channels as described above.
               </span>
             </label>
             <button type="submit" className={PRIMARY_BTN}>

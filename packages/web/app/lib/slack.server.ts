@@ -86,7 +86,7 @@ const SLACK_INTEGRATION_CONTEXT_CACHE_TTL_MS = 60_000;
 const SLACK_LLM_TOOL_LIMIT_PROMPT =
   "The Slack doco_api tool-turn limit has been reached. Do not request more tools. Answer the current Slack message using only the Doco API results already provided. If those results are insufficient for an exact answer, say what is known and explicitly say the exact answer needs a narrower retry.";
 const SLACK_LLM_TOOL_LIMIT_FALLBACK =
-  "Slack's internal Doco API turn limit was reached before this answer could finish. There are partial results, but not enough to answer exactly. Narrow the time range or retry.";
+  "I hit Slack's internal Doco API turn limit before I could finish. I have partial results, but not enough to answer exactly. Please ask me to narrow the time range or retry.";
 
 export interface SlackConfig {
   appId: string | null;
@@ -925,7 +925,7 @@ export async function buildSlackAppMentionResponse(args: {
   });
   const { connections, fallbackConnections, personalAccess } = context;
   if (connections.length === 0) {
-    return "Señor Doco is installed here, but has no default or personal Doco permissions yet. Open Doco's App integrations page to choose workspace defaults, or use `/doco connect`.";
+    return "I’m installed here, but I don’t have default or personal Doco permissions yet. Open Doco's App integrations page to choose workspace defaults, or use `/doco connect`.";
   }
 
   const contextConnections = connections;
@@ -960,7 +960,7 @@ export async function buildSlackAppMentionResponse(args: {
     if (hits.length > 0) {
       return formatSlackDocoAnswerResponse(hits, { overview: answerQuery.overview });
     }
-    return "No matching Doco entries were found in the available Slack permissions.";
+    return "I couldn’t find matching Doco entries in the available Slack permissions.";
   }
 
   const llmAnswer = await (args.answerGenerator ?? generateSlackDocoLlmAnswer)({
@@ -1077,10 +1077,10 @@ export function formatSlackDefaultResponse(
 ): string {
   const defaultTargets = formatSlackConnectionList(connections);
   if (isSlackGreeting(cleanText)) {
-    return `Hola. By default, questions are answered from ${defaultTargets}. Try “what docos are there?” or say what to doco.`;
+    return `Hola. By default, I can answer questions accessing ${defaultTargets}. Try “what docos do we have?” or tell me what to doco.`;
   }
 
-  return `Señor Doco is here. By default, questions are answered from ${defaultTargets}. Try “what docos are there?” for a quick check.`;
+  return `I’m here. By default, I can answer questions accessing ${defaultTargets}. Try “what docos do we have?” for a quick check.`;
 }
 
 export function formatSlackDocoAnswerResponse(
@@ -1089,11 +1089,11 @@ export function formatSlackDocoAnswerResponse(
 ): string {
   const uniqueHits = uniqueSlackDocoAnswerHits(hits).slice(0, SLACK_DOCO_ANSWER_LIMIT);
   if (uniqueHits.length === 0) {
-    return "No matching Doco entries were found in the default Slack permissions.";
+    return "I couldn’t find matching Doco entries in the default Slack permissions.";
   }
   const intro = options.overview
     ? "Here’s what the accessible Docos explain:"
-    : "Here’s what the accessible Docos hold:";
+    : "Here’s what I found in the accessible Docos:";
   return [
     intro,
     ...uniqueHits.map(
@@ -2619,7 +2619,7 @@ export function buildSlackConnectCommandResponse(request: Request, payload: Slac
     personalAuthorizationUrl
       ? {
           type: "button",
-          text: { type: "plain_text", text: "Authorize a Doco account" },
+          text: { type: "plain_text", text: "Authorize my Doco account" },
           url: personalAuthorizationUrl,
           action_id: "authorize_doco_account_for_slack",
         }
@@ -2658,7 +2658,7 @@ export function buildSlackConnectCommandResponse(request: Request, payload: Slac
  */
 export function buildSlackChannelIntroLine(origin?: string | null): string {
   const base = (origin?.trim() || "https://doco.to").replace(/\/+$/, "");
-  return `Señor Doco runs on Sonnet here and handles simple requests. For complex work, connect an agent through Doco's MCP <${base}/tokens>`;
+  return `I use Sonnet and can handle simple requests. For complex stuff, connect your agent with Doco's MCP <${base}/tokens>`;
 }
 
 /**

@@ -161,7 +161,7 @@ export function formatConnectionAuthorizationPreview(args: {
 export function formatAmbiguousTargetPrompt(targets: ChatAccessTarget[]): string {
   const effective = resolveEffectiveChatAccess(targets);
   return [
-    "This channel is connected to multiple targets.",
+    "I can do that, but this channel is connected to multiple targets.",
     "",
     "Pick a target:",
     ...effective.map(
@@ -179,14 +179,14 @@ export function formatInviteDmResult(result: InviteDmResult): string {
   const label = chatTargetLabel(result.target);
   if (result.status === "sent") {
     return [
-      `${result.recipientLabel} was sent a direct message with the ${label} invite.`,
+      `I sent ${result.recipientLabel} a direct message with the ${label} invite.`,
       "",
       `Invite role: ${result.role}`,
       `Granted by: ${result.grantedByLabel} · ${result.target.role}`,
     ].join("\n");
   }
   return [
-    `${result.recipientLabel} could not be sent a direct message.`,
+    `I couldn't send ${result.recipientLabel} a direct message.`,
     result.reason ? result.reason : "Their chat settings may block bot DMs.",
     "",
     "No invite link was posted publicly.",
