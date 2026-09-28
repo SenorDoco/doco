@@ -3,8 +3,9 @@
 // Agents call this at the START of every new task to find nodes in the
 // Doco relevant to the user's request. Hybrid ranking: vector similarity
 // with a full-text floor (ADR-052) so un-embedded nodes are still found.
-// A Slack-mirror Doco also returns matching Slack messages (`slack_messages`)
-// unless the caller filters by node type or lifecycle.
+// A Slack-mirror Doco also returns matching Slack messages (`slack_messages`),
+// a Notion-mirror Doco matching pages (`notion_pages`), unless the caller
+// filters by node type or lifecycle.
 // Resource route — no default export.
 import { withClient } from "@doco/db";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
@@ -12,6 +13,7 @@ import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { etaggedJson } from "~/lib/etag.server";
 import { buildSearchDisplay } from "~/lib/indicator-lines";
+import { searchNotionMirror } from "~/lib/notion-mirror-read.server";
 import {
   type SearchFilters,
   computeFilterFacets,
@@ -21,6 +23,7 @@ import { type SearchHit, hybridSearch } from "~/lib/search.server";
 import { searchSlackMirror } from "~/lib/slack-mirror-read.server";
 
 const SLACK_MESSAGE_LIMIT = 20;
+const NOTION_PAGE_LIMIT = 20;
 
 interface JsonSearchHit {
   id: string;
@@ -85,6 +88,7 @@ export async function loader({
         filters: filtersOut,
         hits: [],
         slack_messages: [],
+        notion_pages: [],
       });
     }
 
@@ -119,16 +123,14 @@ export async function loader({
       filters.limit,
     );
     const allHits = hits.map(toJsonSearchHit);
-    const slackMessages =
-      url.searchParams.has("node_type") || url.searchParams.has("lifecycle")
-        ? []
-        : await searchSlackMirror(
-            c,
-            ctx.meta.docoId,
-            q,
-            Math.min(filters.limit, SLACK_MESSAGE_LIMIT),
-          );
-    const count = allHits.length + slackMessages.length;
+    const withMirrors = !url.searchParams.has("node_type") && !url.searchParams.has("lifecycle");
+    const slackMessages = withMirrors
+      ? await searchSlackMirror(c, ctx.meta.docoId, q, Math.min(filters.limit, SLACK_MESSAGE_LIMIT))
+      : [];
+    const notionPages = withMirrors
+      ? await searchNotionMirror(c, ctx.meta.docoId, q, Math.min(filters.limit, NOTION_PAGE_LIMIT))
+      : [];
+    const count = allHits.length + slackMessages.length + notionPages.length;
 
     if (count === 0) {
       const duration_ms = Math.round(performance.now() - start);
@@ -146,6 +148,7 @@ export async function loader({
         filters: filtersOut,
         hits: [],
         slack_messages: [],
+        notion_pages: [],
         viewer,
         warning: semanticWarning ?? "No entities match the query or the active filters.",
       });
@@ -159,6 +162,7 @@ export async function loader({
       filters: filtersOut,
       hits: allHits,
       slack_messages: slackMessages,
+      notion_pages: notionPages,
       ...(semanticWarning ? { warning: semanticWarning } : {}),
     };
     const duration_ms = Math.round(performance.now() - start);

@@ -45,6 +45,7 @@ import { PerspectiveSearchOverlay } from "~/components/perspective-search-overla
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { GlossaryPerspective } from "~/components/perspectives/glossary-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
+import { NotionPerspective } from "~/components/perspectives/notion-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
 import { ProcessPerspective } from "~/components/perspectives/process-perspective";
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
@@ -360,6 +361,8 @@ export async function loader({
       before: params.get("slack_before"),
       query: params.get("slack_q"),
     };
+    // Notion perspective URL state: `?notion_page=<id>&notion_q=…`.
+    const notion = { pageId: params.get("notion_page"), query: params.get("notion_q") };
     const {
       graph,
       pageRanks,
@@ -369,6 +372,7 @@ export async function loader({
       glossaryData,
       pullRequestsData,
       slackData,
+      notionData,
     } = await loadDocoHomePerspectiveData(c, {
       activeKind,
       docoId: ctx.meta.docoId,
@@ -376,6 +380,7 @@ export async function loader({
       focusNodeId,
       pullRequestLifecycles,
       slack,
+      notion,
     });
 
     // Active policy count — guidance + node-authoring policies attached to this
@@ -430,6 +435,7 @@ export async function loader({
       glossaryData,
       pullRequestsData,
       slackData,
+      notionData,
       focusedNodeId: selectedNode?.id ?? null,
       focusedEdgeId: selectedEdge?.id ?? null,
       focusedEdge: selectedEdge,
@@ -574,6 +580,7 @@ export default function DocoHome({
     glossaryData,
     pullRequestsData,
     slackData,
+    notionData,
     focusedNodeId,
     focusedEdge,
     selectedNode,
@@ -1544,9 +1551,9 @@ export default function DocoHome({
                 lifecycleFilter={
                   // The Pull requests list runs its own filter — GitHub states
                   // (Open / Merged / Closed), narrowed server-side, kept in the
-                  // URL. Slack messages have no lifecycle. Every other
-                  // perspective uses the page-level set.
-                  effectivePerspectiveKind === "slack"
+                  // URL. Slack messages and Notion pages have no lifecycle.
+                  // Every other perspective uses the page-level set.
+                  effectivePerspectiveKind === "slack" || effectivePerspectiveKind === "notion"
                     ? undefined
                     : effectivePerspectiveKind === "pull-requests"
                       ? {
@@ -1597,6 +1604,8 @@ export default function DocoHome({
                   />
                 ) : effectivePerspectiveKind === "slack" && slackData ? (
                   <SlackPerspective data={slackData} handle={handle} />
+                ) : effectivePerspectiveKind === "notion" && notionData ? (
+                  <NotionPerspective data={notionData} handle={handle} />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
                   <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
                 ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
