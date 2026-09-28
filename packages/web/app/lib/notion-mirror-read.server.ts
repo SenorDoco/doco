@@ -1,7 +1,12 @@
 // Reading the Notion mirror: the Doco home's Notion perspective (the page
 // tree, the open page, search across the copy) and Notion results in the
-// Doco's search. Everything here is scoped to one Doco; callers have already
-// checked that the viewer can read it.
+// Doco's search. Search is hybrid: full-text over titles and text fused with
+// the nearest embedded chunks when the caller brings a query embedding, the
+// matching chunk serving as the snippet. Everything here is scoped to one
+// Doco; callers have already checked that the viewer can read it.
+import { type SemanticQuery, rankEmbeddings } from "@doco/db";
+import { chunkSnippet } from "./notion-chunks";
+import { fuseRankings } from "./rank-fusion";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -288,16 +293,25 @@ interface HitRow {
   plain_text: string;
 }
 
-/** Full-text matches across the copy, best match first. */
+const HIT_COLUMNS =
+  "p.page_id, p.title, p.url, p.last_edited_time, left(p.plain_text, 20000) AS plain_text";
+
+/**
+ * Pages matching the query, best first: the full-text ranking over titles
+ * and text, fused by reciprocal rank with the nearest embedded chunks when
+ * the caller brings a query embedding. A page found by its chunk shows that
+ * chunk as its snippet; one found by its words shows the text around them.
+ */
 async function matchingPages(
   c: QueryClient,
   docoId: string,
   query: string,
   limit: number,
+  semantic: SemanticQuery | null,
 ): Promise<NotionSearchHit[]> {
-  const rows = (
+  const byWords = (
     await c.query<HitRow>(
-      `SELECT p.page_id, p.title, p.url, p.last_edited_time, left(p.plain_text, 20000) AS plain_text
+      `SELECT ${HIT_COLUMNS}
          FROM notion_pages p, websearch_to_tsquery('simple', $2) q
         WHERE p.doco_id = $1 AND p.search_tsv @@ q
         ORDER BY ts_rank_cd(p.search_tsv, q) DESC, p.last_edited_time DESC NULLS LAST, p.page_id
@@ -305,20 +319,48 @@ async function matchingPages(
       [docoId, query, limit],
     )
   ).rows;
-  const paths = await ancestorPaths(
-    c,
-    docoId,
-    rows.map((row) => row.page_id),
-  );
-  return rows.map((row) => ({
-    type: "notion_page",
-    page_id: row.page_id,
-    title: row.title,
-    path: (paths.get(row.page_id) ?? []).map((ref) => ref.title || "Untitled").join(" / "),
-    url: row.url,
-    last_edited_time: iso(row.last_edited_time),
-    snippet: notionSnippet(row.plain_text, query),
-  }));
+  const byMeaning = semantic
+    ? await rankEmbeddings(c, {
+        docoIds: [docoId],
+        source: "notion",
+        modelId: semantic.modelId,
+        queryEmbedding: semantic.queryEmbedding,
+        limit,
+      })
+    : [];
+  const order = fuseRankings([
+    byMeaning.map((hit) => hit.entity_id),
+    byWords.map((row) => row.page_id),
+  ]).slice(0, limit);
+  const rows = new Map(byWords.map((row) => [row.page_id, row]));
+  const missing = order.filter((id) => !rows.has(id));
+  if (missing.length > 0) {
+    for (const row of (
+      await c.query<HitRow>(
+        `SELECT ${HIT_COLUMNS} FROM notion_pages p
+          WHERE p.doco_id = $1 AND p.page_id = ANY($2::text[])`,
+        [docoId, missing],
+      )
+    ).rows) {
+      rows.set(row.page_id, row);
+    }
+  }
+  const chunks = new Map(byMeaning.map((hit) => [hit.entity_id, hit.chunk_text]));
+  const ids = order.filter((id) => rows.has(id));
+  const paths = await ancestorPaths(c, docoId, ids);
+  return ids.map((id) => {
+    const row = rows.get(id) as HitRow;
+    const chunk = chunks.get(id);
+    return {
+      type: "notion_page",
+      page_id: row.page_id,
+      title: row.title,
+      path: (paths.get(row.page_id) ?? []).map((ref) => ref.title || "Untitled").join(" / "),
+      url: row.url,
+      last_edited_time: iso(row.last_edited_time),
+      snippet: chunk ? chunkSnippet(chunk) : notionSnippet(row.plain_text, query),
+    };
+  });
 }
 
 async function mirrorName(c: QueryClient, docoId: string): Promise<string | null> {
@@ -334,7 +376,12 @@ async function mirrorName(c: QueryClient, docoId: string): Promise<string | null
 export async function loadNotionPerspective(
   c: QueryClient,
   docoId: string,
-  opts: { pageId?: string | null; query?: string | null; limit?: number },
+  opts: {
+    pageId?: string | null;
+    query?: string | null;
+    limit?: number;
+    semantic?: SemanticQuery | null;
+  },
 ): Promise<NotionPerspectiveData> {
   const query = opts.query?.trim() ?? "";
   const workspaceName = await mirrorName(c, docoId);
@@ -350,7 +397,7 @@ export async function loadNotionPerspective(
     ).rows[0]?.n ?? 0,
   );
   if (query) {
-    const hits = await matchingPages(c, docoId, query, opts.limit ?? 50);
+    const hits = await matchingPages(c, docoId, query, opts.limit ?? 50, opts.semantic ?? null);
     const { tree, moreRoots } = await loadTree(c, docoId, []);
     return { workspaceName, pages, tree, moreRoots, page: null, query, hits };
   }
@@ -381,8 +428,9 @@ export async function searchNotionMirror(
   docoId: string,
   query: string,
   limit: number,
+  semantic: SemanticQuery | null = null,
 ): Promise<NotionSearchHit[]> {
   if (!query.trim()) return [];
   if ((await mirrorName(c, docoId)) === null) return [];
-  return matchingPages(c, docoId, query.trim(), limit);
+  return matchingPages(c, docoId, query.trim(), limit, semantic);
 }

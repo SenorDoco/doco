@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { vectorLiteral } from "@doco/db";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -256,5 +257,46 @@ describe("notionSnippet", () => {
 
   it("collapses whitespace", () => {
     expect(notionSnippet("a\n\n  b", "b")).toBe("a b");
+  });
+});
+
+describe("search with a query embedding", () => {
+  const MODEL = "test:model";
+  async function embed(pageId: string, chunk: string, axis: number[], model = MODEL) {
+    await db.query(
+      `INSERT INTO embeddings
+         (doco_id, source, entity_id, chunk_index, model_id, content_hash, chunk_text, embedding)
+       VALUES ('doco_notion', 'notion', $1, 0, $2, 'h', $3, $4::vector)`,
+      [pageId, model, chunk, vectorLiteral(axis)],
+    );
+  }
+
+  it("fuses the nearest chunks with the word matches; a chunk hit shows its chunk", async () => {
+    await embed(RM, "Roadmap\n\nQ4 plans.", [0, 1, 0]);
+    await embed(R2, "Write docs\n\nWrite the docs for the task runner.", [1, 0, 0]);
+    // Another model's vectors are not comparable: this one never ranks.
+    await embed(ONB, "Onboarding\n\nDay one.", [0, 1, 0], "other:model");
+
+    const hits = await searchNotionMirror(c, "doco_notion", "task", 10, {
+      queryEmbedding: [0, 1, 0],
+      modelId: MODEL,
+    });
+
+    expect(hits.map((hit) => [hit.title, hit.snippet])).toEqual([
+      ["Write docs", "Write the docs for the task runner."],
+      ["Ship it", expect.stringContaining("Details of the task.")],
+      ["Roadmap", "Q4 plans."],
+    ]);
+  });
+
+  it("ranks the perspective's search the same way", async () => {
+    await embed(RM, "Roadmap\n\nQ4 plans.", [0, 1, 0]);
+
+    const data = await loadNotionPerspective(c, "doco_notion", {
+      query: "task",
+      semantic: { queryEmbedding: [0, 1, 0], modelId: MODEL },
+    });
+
+    expect(data.hits.map((hit) => hit.title)).toEqual(["Ship it", "Roadmap", "Write docs"]);
   });
 });

@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
+import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
 import {
@@ -122,28 +122,12 @@ export async function loader({
     // Hybrid: semantic ranking with a full-text floor (see search.server.ts),
     // degrading to keyword search when no embedding provider is configured or
     // the query embedding fails — rather than returning nothing.
-    const provider = getDocoEmbeddingProvider();
-    let queryEmbedding: Float32Array | null = null;
-    let warning: string | null = null;
-    if (!provider) {
-      warning =
-        "Semantic ranking unavailable (no embedding provider configured); showing keyword matches.";
-    } else {
-      try {
-        const [v] = await provider.embed([q], "query");
-        if (v && v.length > 0) queryEmbedding = v;
-        else
-          warning =
-            "Semantic ranking unavailable (provider returned an empty embedding); showing keyword matches.";
-      } catch (e) {
-        warning = `Semantic ranking unavailable (${(e as Error).message}); showing keyword matches.`;
-      }
-    }
+    const { semantic, warning } = await embedQuery(q);
 
     const { hits: allHits } = await hybridSearch(
       c,
       ctx.meta.docoId,
-      { queryText: q, queryEmbedding, modelId: provider?.modelId },
+      { queryText: q, semantic },
       filters,
     );
     facets = withHitDerivedCounts(facets, allHits);

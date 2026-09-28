@@ -1,4 +1,4 @@
-import { rankEmbeddings } from "@doco/db";
+import { type SemanticQuery, rankEmbeddings } from "@doco/db";
 import { globalPageRank } from "@doco/index";
 import { NODE_TYPES } from "@doco/shared";
 import type { PoolClient } from "pg";
@@ -192,18 +192,17 @@ const VECTOR_LIMIT = 100;
 export async function rankSearchEmbeddings(
   c: PoolClient,
   docoId: string,
-  queryEmbedding: Float32Array,
+  semantic: SemanticQuery,
   filters: SearchFilters,
-  limit: number | undefined,
-  modelId: string,
+  limit?: number,
 ): Promise<{ hits: SearchHit[]; candidateIds: Set<string> | null }> {
   const candidateIds = await resolveFilteredCandidates(c, docoId, filters);
   if (candidateIds !== null && candidateIds.size === 0) return { hits: [], candidateIds };
   const ranked = await rankEmbeddings(c, {
     docoIds: [docoId],
     source: "node",
-    modelId,
-    queryEmbedding,
+    modelId: semantic.modelId,
+    queryEmbedding: semantic.queryEmbedding,
     limit: limit ?? VECTOR_LIMIT,
     entityIds: candidateIds === null ? null : [...candidateIds],
   });
@@ -349,22 +348,15 @@ export function mergeSearchHits(
 export async function hybridSearch(
   c: PoolClient,
   docoId: string,
-  query: { queryText: string; queryEmbedding: Float32Array | null; modelId?: string },
+  query: { queryText: string; semantic: SemanticQuery | null },
   filters: SearchFilters,
   limit?: number,
 ): Promise<{ hits: SearchHit[]; candidateIds: Set<string> | null; usedVector: boolean }> {
   let vectorHits: SearchHit[] = [];
   let candidateIds: Set<string> | null = null;
-  const usedVector = query.queryEmbedding !== null && Boolean(query.modelId);
-  if (query.queryEmbedding && query.modelId) {
-    const ranked = await rankSearchEmbeddings(
-      c,
-      docoId,
-      query.queryEmbedding,
-      filters,
-      limit,
-      query.modelId,
-    );
+  const usedVector = query.semantic !== null;
+  if (query.semantic) {
+    const ranked = await rankSearchEmbeddings(c, docoId, query.semantic, filters, limit);
     vectorHits = ranked.hits;
     candidateIds = ranked.candidateIds;
   }

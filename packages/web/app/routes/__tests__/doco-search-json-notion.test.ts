@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  semantic: { queryEmbedding: Float32Array.from([1, 0, 0]), modelId: "test:model" },
   hybridSearch: vi.fn(),
   searchNotionMirror: vi.fn(),
 }));
@@ -16,7 +17,9 @@ vi.mock("~/lib/doco-access.server", () => ({
   }),
 }));
 vi.mock("~/lib/agent-identity.server", () => ({ loadAgentDisplayIdentity: async () => null }));
-vi.mock("~/lib/embedding-provider.server", () => ({ getDocoEmbeddingProvider: () => undefined }));
+vi.mock("~/lib/embedding-provider.server", () => ({
+  embedQuery: async () => ({ semantic: mocks.semantic, warning: null }),
+}));
 vi.mock("~/lib/search-filters.server", () => ({
   computeFilterFacets: async () => ({ lifecycle: [], nodeType: [] }),
   parseSearchFilters: () => ({ lifecycle: null, nodeType: null, limit: 100 }),
@@ -60,7 +63,13 @@ describe("search.json on a Notion-mirror Doco", () => {
     expect(body.notion_pages).toEqual([notionHit]);
     expect(body.count).toBe(1);
     expect(body.warning ?? "").not.toMatch(/No entities match/);
-    expect(mocks.searchNotionMirror).toHaveBeenCalledWith({}, "doco_notion", "laptop", 20);
+    expect(mocks.searchNotionMirror).toHaveBeenCalledWith(
+      {},
+      "doco_notion",
+      "laptop",
+      20,
+      mocks.semantic,
+    );
   });
 
   it("leaves Notion out when the caller filters by node type or lifecycle", async () => {

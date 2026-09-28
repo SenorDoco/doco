@@ -1,7 +1,10 @@
 // Reading the Slack public-channel mirror: the Doco home's Slack perspective
 // (channels → messages → threads) and Slack results in the Doco's search.
-// Everything here is scoped to one Doco; callers have already checked that the
-// viewer can read it.
+// Search is hybrid: full-text over the messages fused with the nearest
+// embedded ones when the caller brings a query embedding. Everything here is
+// scoped to one Doco; callers have already checked that the viewer can read it.
+import { type SemanticQuery, rankEmbeddings } from "@doco/db";
+import { fuseRankings } from "./rank-fusion";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -69,6 +72,19 @@ export function renderSlackText(text: string, names: Map<string, string>): strin
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
+}
+
+/** What a message embeds as: its channel and author, then its text with
+ *  mentions rendered. Empty for a message with no text (a file alone). Pure. */
+export function slackMessageText(
+  channel: string,
+  author: string,
+  text: string,
+  names: Map<string, string>,
+): string {
+  const body = renderSlackText(text, names).trim();
+  if (!body) return "";
+  return `#${channel} — ${author || "unknown"}: ${body}`;
 }
 
 /** The message's link in Slack (a reply links within its thread). Pure. */
@@ -155,14 +171,19 @@ function toReaderMessage(row: MessageRow, ctx: MirrorContext): SlackReaderMessag
   };
 }
 
-/** Full-text matches across the mirror's channels, best match first. */
+/**
+ * Messages matching the query across the mirror's channels, best first: the
+ * full-text ranking fused by reciprocal rank with the nearest embedded
+ * messages when the caller brings a query embedding.
+ */
 async function matchingMessages(
   c: QueryClient,
   docoId: string,
   query: string,
   limit: number,
+  semantic: SemanticQuery | null,
 ): Promise<MessageRow[]> {
-  return (
+  const byWords = (
     await c.query<MessageRow>(
       `SELECT ${MESSAGE_COLUMNS}
          FROM ${MESSAGE_FROM}, websearch_to_tsquery('simple', $2) q
@@ -172,6 +193,36 @@ async function matchingMessages(
       [docoId, query, limit],
     )
   ).rows;
+  const byMeaning = semantic
+    ? await rankEmbeddings(c, {
+        docoIds: [docoId],
+        source: "slack",
+        modelId: semantic.modelId,
+        queryEmbedding: semantic.queryEmbedding,
+        limit,
+      })
+    : [];
+  const key = (row: MessageRow) => `${row.channel_id}:${row.ts}`;
+  const order = fuseRankings([byMeaning.map((hit) => hit.entity_id), byWords.map(key)]).slice(
+    0,
+    limit,
+  );
+  const rows = new Map(byWords.map((row) => [key(row), row]));
+  const missing = order.filter((id) => !rows.has(id));
+  if (missing.length > 0) {
+    for (const row of (
+      await c.query<MessageRow>(
+        `SELECT ${MESSAGE_COLUMNS}
+           FROM ${MESSAGE_FROM}
+          WHERE m.doco_id = $1 AND NOT ch.excluded
+            AND (m.channel_id || ':' || m.ts) = ANY($2::text[])`,
+        [docoId, missing],
+      )
+    ).rows) {
+      rows.set(key(row), row);
+    }
+  }
+  return order.flatMap((id) => rows.get(id) ?? []);
 }
 
 export async function loadSlackPerspective(
@@ -183,6 +234,7 @@ export async function loadSlackPerspective(
     query?: string | null;
     limit?: number;
     repliesPerThread?: number;
+    semantic?: SemanticQuery | null;
   },
 ): Promise<SlackPerspectiveData> {
   const query = opts.query?.trim() ?? "";
@@ -216,7 +268,7 @@ export async function loadSlackPerspective(
   }));
 
   if (query) {
-    const rows = await matchingMessages(c, docoId, query, limit);
+    const rows = await matchingMessages(c, docoId, query, limit, opts.semantic ?? null);
     return {
       teamDomain: ctx.teamDomain,
       channels,
@@ -293,10 +345,11 @@ export async function searchSlackMirror(
   docoId: string,
   query: string,
   limit: number,
+  semantic: SemanticQuery | null = null,
 ): Promise<SlackSearchHit[]> {
   const ctx = await loadMirrorContext(c, docoId);
   if (!ctx || !query.trim()) return [];
-  const rows = await matchingMessages(c, docoId, query, limit);
+  const rows = await matchingMessages(c, docoId, query, limit, semantic);
   return rows.map((row) => {
     const message = toReaderMessage(row, ctx);
     return {

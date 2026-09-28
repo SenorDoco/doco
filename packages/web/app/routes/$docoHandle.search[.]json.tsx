@@ -10,7 +10,7 @@
 import { withClient } from "@doco/db";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
+import { embedQuery } from "~/lib/embedding-provider.server";
 import { etaggedJson } from "~/lib/etag.server";
 import { buildSearchDisplay } from "~/lib/indicator-lines";
 import { searchNotionMirror } from "~/lib/notion-mirror-read.server";
@@ -97,38 +97,34 @@ export async function loader({
     // drafts, or rows whose best-effort embedding pass failed/lagged) are
     // still found. With no/failed provider, degrade to keyword search rather
     // than returning nothing.
-    const provider = getDocoEmbeddingProvider();
-    let queryEmbedding: Float32Array | null = null;
-    let semanticWarning: string | null = null;
-    if (!provider) {
-      semanticWarning =
-        "Semantic ranking unavailable (no embedding provider configured); showing keyword matches.";
-    } else {
-      try {
-        const [v] = await provider.embed([q], "query");
-        if (v && v.length > 0) queryEmbedding = v;
-        else
-          semanticWarning =
-            "Semantic ranking unavailable (provider returned an empty embedding); showing keyword matches.";
-      } catch (e) {
-        semanticWarning = `Semantic ranking unavailable (${(e as Error).message}); showing keyword matches.`;
-      }
-    }
+    const { semantic, warning: semanticWarning } = await embedQuery(q);
 
     const { hits } = await hybridSearch(
       c,
       ctx.meta.docoId,
-      { queryText: q, queryEmbedding, modelId: provider?.modelId },
+      { queryText: q, semantic },
       filters,
       filters.limit,
     );
     const allHits = hits.map(toJsonSearchHit);
     const withMirrors = !url.searchParams.has("node_type") && !url.searchParams.has("lifecycle");
     const slackMessages = withMirrors
-      ? await searchSlackMirror(c, ctx.meta.docoId, q, Math.min(filters.limit, SLACK_MESSAGE_LIMIT))
+      ? await searchSlackMirror(
+          c,
+          ctx.meta.docoId,
+          q,
+          Math.min(filters.limit, SLACK_MESSAGE_LIMIT),
+          semantic,
+        )
       : [];
     const notionPages = withMirrors
-      ? await searchNotionMirror(c, ctx.meta.docoId, q, Math.min(filters.limit, NOTION_PAGE_LIMIT))
+      ? await searchNotionMirror(
+          c,
+          ctx.meta.docoId,
+          q,
+          Math.min(filters.limit, NOTION_PAGE_LIMIT),
+          semantic,
+        )
       : [];
     const count = allHits.length + slackMessages.length + notionPages.length;
 
