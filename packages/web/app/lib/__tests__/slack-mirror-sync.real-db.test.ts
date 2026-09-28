@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -47,7 +48,7 @@ const msg = (ts: string, extra: Record<string, unknown> = {}) => ({
 });
 
 beforeEach(async () => {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   dbm.db = db;
   await db.query(

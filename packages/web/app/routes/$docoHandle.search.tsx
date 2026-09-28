@@ -143,7 +143,7 @@ export async function loader({
     const { hits: allHits } = await hybridSearch(
       c,
       ctx.meta.docoId,
-      { queryText: q, queryEmbedding },
+      { queryText: q, queryEmbedding, modelId: provider?.modelId },
       filters,
     );
     facets = withHitDerivedCounts(facets, allHits);

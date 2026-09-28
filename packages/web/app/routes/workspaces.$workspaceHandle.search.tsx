@@ -6,12 +6,7 @@
 // filtering yet (a follow-up to the doco-level search, which carries
 // lifecycle / node-type filters).
 
-import {
-  DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS,
-  bufferToEmbedding,
-  cosineSimilarity,
-  withClient,
-} from "@doco/db";
+import { DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS, rankEmbeddings, withClient } from "@doco/db";
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
@@ -42,26 +37,6 @@ interface Hit {
 }
 
 const TYPE_SPECS = DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS;
-
-// Only vectors from the query's own model are comparable: after a provider
-// switch, older rows hold a different model's vectors (even a different
-// dimension) until they are re-embedded.
-async function getEmbeddingsForDocos(
-  c: PoolClient,
-  docoIds: string[],
-  modelId: string,
-): Promise<{ entity_id: string; doco_id: string; embedding: Float32Array }[]> {
-  if (docoIds.length === 0) return [];
-  const r = await c.query<{ entity_id: string; doco_id: string; embedding: Buffer }>(
-    "SELECT entity_id, doco_id, embedding FROM embeddings WHERE doco_id = ANY($1::text[]) AND model_id = $2",
-    [docoIds, modelId],
-  );
-  return r.rows.map((row) => ({
-    entity_id: String(row.entity_id),
-    doco_id: String(row.doco_id),
-    embedding: bufferToEmbedding(row.embedding),
-  }));
-}
 
 async function hydrateHits(
   c: PoolClient,
@@ -181,24 +156,26 @@ export async function loader({
       };
     }
 
-    const all = await getEmbeddingsForDocos(c, docoIds, provider.modelId);
-    if (all.length === 0) {
+    // Only vectors from the query's own model are comparable: after a
+    // provider switch, older rows hold another model's vectors until the
+    // embedding sweep replaces them.
+    const top = await rankEmbeddings(c, {
+      docoIds,
+      source: "node",
+      modelId: provider.modelId,
+      queryEmbedding,
+      limit: RESULTS_LIMIT,
+    });
+    if (top.length === 0) {
       return {
         workspace,
         me,
         host,
         q,
         hits: [] as Hit[],
-        warning: "No embeddings across this workspace's Docos yet — reindex first.",
+        warning: "No embeddings across this workspace's Docos yet — they fill in within minutes.",
       };
     }
-    const scored = all.map((e) => ({
-      entity_id: e.entity_id,
-      doco_id: e.doco_id,
-      score: cosineSimilarity(queryEmbedding, e.embedding),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, RESULTS_LIMIT);
     const scoreById = new Map(top.map((t) => [t.entity_id, t.score]));
     const docoIdByEntity = new Map(top.map((t) => [t.entity_id, t.doco_id]));
     const ids = top.map((t) => t.entity_id);

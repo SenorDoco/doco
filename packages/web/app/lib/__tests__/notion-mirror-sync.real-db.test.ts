@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -169,7 +170,7 @@ beforeEach(async () => {
   vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
   vi.stubEnv("DOCO_NOTION_CLIENT_ID", "client");
   vi.stubEnv("DOCO_NOTION_CLIENT_SECRET", "secret");
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   dbm.db = db;
   await db.exec(`

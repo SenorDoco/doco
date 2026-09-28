@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -90,7 +91,7 @@ async function member(workspaceId: string, handle: string) {
 
 describe("autoAssignThreadWorkspaceIfObvious", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite();
+    dbm.db = new PGlite({ extensions: { vector } });
     dbm.docoWorkspace = {};
     await dbm.db.exec(schemaSql);
     await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
@@ -152,7 +153,7 @@ describe("autoAssignThreadWorkspaceIfObvious", () => {
 
 describe("applySetThreadWorkspace (the set_thread_workspace tool)", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite();
+    dbm.db = new PGlite({ extensions: { vector } });
     dbm.docoWorkspace = {};
     await dbm.db.exec(schemaSql);
     await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
@@ -191,7 +192,7 @@ describe("applySetThreadWorkspace (the set_thread_workspace tool)", () => {
 
 describe("loadSnapshotForPrincipal — in-thread workspace tag", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite();
+    dbm.db = new PGlite({ extensions: { vector } });
     dbm.docoWorkspace = {};
     await dbm.db.exec(schemaSql);
     await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);

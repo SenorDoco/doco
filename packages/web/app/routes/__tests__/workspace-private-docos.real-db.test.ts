@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -62,12 +63,12 @@ vi.mock("~/lib/embedding-provider.server", () => ({
   }),
 }));
 
-const { embeddingToBuffer } = await import("@doco/db");
+const { vectorLiteral } = await import("@doco/db");
 const home = await import("../workspaces.$workspaceHandle._index");
 const search = await import("../workspaces.$workspaceHandle.search");
 
 async function seed(): Promise<void> {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   dbm.db = db;
   await db.query(
@@ -100,13 +101,15 @@ async function seed(): Promise<void> {
        ('decision_public', 'doco_public', 'decision', 'active', 'Publish the roadmap'),
        ('decision_other_model', 'doco_public', 'decision', 'active', 'Embedded by another model')`,
   );
-  const vec = embeddingToBuffer(Float32Array.from([1, 0, 0]));
+  const vec = vectorLiteral([1, 0, 0]);
   await db.query(
-    `INSERT INTO embeddings (entity_id, doco_id, model_id, content_hash, embedding) VALUES
-       ('decision_private', 'doco_private', 'test:model', 'h1', $1),
-       ('decision_public', 'doco_public', 'test:model', 'h2', $1),
-       ('decision_other_model', 'doco_public', 'other:model', 'h3', $2)`,
-    [vec, embeddingToBuffer(Float32Array.from([1, 0]))],
+    `INSERT INTO embeddings
+       (doco_id, source, entity_id, chunk_index, model_id, content_hash, chunk_text, embedding)
+     VALUES
+       ('doco_private', 'node', 'decision_private', 0, 'test:model', 'h1', 'Acquire Globex quietly', $1::vector),
+       ('doco_public', 'node', 'decision_public', 0, 'test:model', 'h2', 'Publish the roadmap', $1::vector),
+       ('doco_public', 'node', 'decision_other_model', 0, 'other:model', 'h3', 'Embedded by another model', $2::vector)`,
+    [vec, vectorLiteral([1, 0])],
   );
   await db.query(
     `INSERT INTO audit_events (event_id, at, by_user, doco_id, workspace_id, entity_type, entity_id, op, after_json) VALUES

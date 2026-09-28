@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -43,7 +44,7 @@ const EDGE2 = "edge_01KTA0NHD73WR1ZB9ZFTE7WEKB";
 let db: InstanceType<typeof PGlite>;
 
 beforeAll(async () => {
-  db = new PGlite();
+  db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
 
   await db.query(`INSERT INTO workspaces (id, handle, name) VALUES ($1, 'torre', 'torre')`, [

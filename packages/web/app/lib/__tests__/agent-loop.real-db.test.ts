@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -164,7 +165,7 @@ async function persistedMessages(): Promise<Array<{ role: string; content: unkno
 
 describe("agent loop against a real database", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite();
+    dbm.db = new PGlite({ extensions: { vector } });
     await dbm.db.exec(schemaSql);
     await seed();
     runtime.stream.mockReset();

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -15,7 +16,7 @@ const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf
 
 describe("nodes schema", () => {
   it("no longer carries the never-read `modality` column", async () => {
-    const db = new PGlite();
+    const db = new PGlite({ extensions: { vector } });
     await db.exec(schemaSql);
     const r = await db.query(
       `SELECT 1 FROM information_schema.columns

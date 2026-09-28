@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -114,7 +115,7 @@ async function seedDoco(handle: string, docoId = DOCO, workspaceId = WS) {
 }
 
 beforeEach(async () => {
-  dbm.db = new PGlite();
+  dbm.db = new PGlite({ extensions: { vector } });
   dbm.canAccess = true;
   await dbm.db.exec(schemaSql);
   await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);

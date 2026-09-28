@@ -118,7 +118,7 @@ export async function loader({
     const { hits } = await hybridSearch(
       c,
       ctx.meta.docoId,
-      { queryText: q, queryEmbedding },
+      { queryText: q, queryEmbedding, modelId: provider?.modelId },
       filters,
       filters.limit,
     );

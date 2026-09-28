@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { describe, expect, it } from "vitest";
 import { readChangeCursor } from "../change-cursor.server";
 
@@ -18,7 +19,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 async function seed(): Promise<PGlite> {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'ws', 'WS')");
   await db.query(

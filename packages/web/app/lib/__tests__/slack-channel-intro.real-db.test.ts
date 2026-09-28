@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -32,7 +33,7 @@ import { buildSlackChannelIntroLine, markSlackChannelIntroducedIfFirst } from ".
 
 describe("markSlackChannelIntroducedIfFirst (real DB)", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite();
+    dbm.db = new PGlite({ extensions: { vector } });
     await dbm.db.exec(schemaSql);
   });
 

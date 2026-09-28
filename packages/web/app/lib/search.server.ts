@@ -1,4 +1,4 @@
-import { cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
+import { rankEmbeddings } from "@doco/db";
 import { globalPageRank } from "@doco/index";
 import { NODE_TYPES } from "@doco/shared";
 import type { PoolClient } from "pg";
@@ -180,27 +180,36 @@ export async function attachSearchGlobalPageRank(
   for (const hit of hits) hit.gpr = gprById.get(hit.id) ?? 0;
 }
 
+/** How many nodes the vector ranker returns when the caller sets no limit. */
+const VECTOR_LIMIT = 100;
+
+/**
+ * Semantic ranking: the nearest chunk of every candidate node to the query
+ * vector, best first, in one pgvector statement scoped to the Doco, to the
+ * active filters and to the query's model (vectors from another model are
+ * not comparable).
+ */
 export async function rankSearchEmbeddings(
   c: PoolClient,
   docoId: string,
   queryEmbedding: Float32Array,
   filters: SearchFilters,
-  limit?: number,
+  limit: number | undefined,
+  modelId: string,
 ): Promise<{ hits: SearchHit[]; candidateIds: Set<string> | null }> {
   const candidateIds = await resolveFilteredCandidates(c, docoId, filters);
-  const embeddings = (await getAllEmbeddingsForDoco(docoId)).filter(
-    (embedding) => candidateIds === null || candidateIds.has(embedding.entity_id),
-  );
-  if (embeddings.length === 0) return { hits: [], candidateIds };
-
-  const scored = embeddings.map((embedding) => ({
-    entity_id: embedding.entity_id,
-    score: cosineSimilarity(queryEmbedding, embedding.embedding),
-  }));
-  scored.sort((a, b) => b.score - a.score);
-  const selected = typeof limit === "number" ? scored.slice(0, limit) : scored;
-  const scoreById = new Map(selected.map((item) => [item.entity_id, item.score]));
-  const ids = selected.map((item) => item.entity_id);
+  if (candidateIds !== null && candidateIds.size === 0) return { hits: [], candidateIds };
+  const ranked = await rankEmbeddings(c, {
+    docoIds: [docoId],
+    source: "node",
+    modelId,
+    queryEmbedding,
+    limit: limit ?? VECTOR_LIMIT,
+    entityIds: candidateIds === null ? null : [...candidateIds],
+  });
+  if (ranked.length === 0) return { hits: [], candidateIds };
+  const scoreById = new Map(ranked.map((item) => [item.entity_id, item.score]));
+  const ids = ranked.map((item) => item.entity_id);
   const hits = await hydrateSearchHits(c, ids, docoId, scoreById);
   await attachSearchGlobalPageRank(c, docoId, hits);
   hits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
@@ -340,15 +349,22 @@ export function mergeSearchHits(
 export async function hybridSearch(
   c: PoolClient,
   docoId: string,
-  query: { queryText: string; queryEmbedding: Float32Array | null },
+  query: { queryText: string; queryEmbedding: Float32Array | null; modelId?: string },
   filters: SearchFilters,
   limit?: number,
 ): Promise<{ hits: SearchHit[]; candidateIds: Set<string> | null; usedVector: boolean }> {
   let vectorHits: SearchHit[] = [];
   let candidateIds: Set<string> | null = null;
-  const usedVector = query.queryEmbedding !== null;
-  if (query.queryEmbedding) {
-    const ranked = await rankSearchEmbeddings(c, docoId, query.queryEmbedding, filters, limit);
+  const usedVector = query.queryEmbedding !== null && Boolean(query.modelId);
+  if (query.queryEmbedding && query.modelId) {
+    const ranked = await rankSearchEmbeddings(
+      c,
+      docoId,
+      query.queryEmbedding,
+      filters,
+      limit,
+      query.modelId,
+    );
     vectorHits = ranked.hits;
     candidateIds = ranked.candidateIds;
   }
