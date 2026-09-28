@@ -63,6 +63,7 @@ import {
   type EdgeLifecycleStage,
   loadEdgeDialogDetail,
 } from "~/lib/edge-detail.server";
+import { embedQuery } from "~/lib/embedding-provider.server";
 import { fitResetKey } from "~/lib/fit-reset-key";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadHostConfig } from "~/lib/host.server";
@@ -363,6 +364,9 @@ export async function loader({
     };
     // Notion perspective URL state: `?notion_page=<id>&notion_q=…`.
     const notion = { pageId: params.get("notion_page"), query: params.get("notion_q") };
+    // A mirror perspective's search is hybrid: embed the query once here.
+    const mirrorQuery = (notion.query ?? slack.query ?? "").trim();
+    const semantic = mirrorQuery ? (await embedQuery(mirrorQuery)).semantic : null;
     const {
       graph,
       pageRanks,
@@ -381,6 +385,7 @@ export async function loader({
       pullRequestLifecycles,
       slack,
       notion,
+      semantic,
     });
 
     // Active policy count — guidance + node-authoring policies attached to this

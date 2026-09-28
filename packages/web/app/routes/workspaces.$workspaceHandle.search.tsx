@@ -16,7 +16,7 @@ import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
+import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { nodeTypePlural } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -119,42 +119,8 @@ export async function loader({
       };
     }
 
-    const provider = getDocoEmbeddingProvider();
-    if (!provider) {
-      return {
-        workspace,
-        me,
-        host,
-        q,
-        hits: [] as Hit[],
-        warning: "Vector search unavailable: no embedding provider configured (OPENAI_API_KEY).",
-      };
-    }
-
-    let queryEmbedding: Float32Array;
-    try {
-      const [v] = await provider.embed([q], "query");
-      if (!v || v.length === 0) {
-        return {
-          workspace,
-          me,
-          host,
-          q,
-          hits: [] as Hit[],
-          warning: "Vector search unavailable: provider returned empty embedding.",
-        };
-      }
-      queryEmbedding = v;
-    } catch (e) {
-      return {
-        workspace,
-        me,
-        host,
-        q,
-        hits: [] as Hit[],
-        warning: `Vector search unavailable: ${(e as Error).message}`,
-      };
-    }
+    const { semantic, warning } = await embedQuery(q);
+    if (!semantic) return { workspace, me, host, q, hits: [] as Hit[], warning };
 
     // Only vectors from the query's own model are comparable: after a
     // provider switch, older rows hold another model's vectors until the
@@ -162,8 +128,8 @@ export async function loader({
     const top = await rankEmbeddings(c, {
       docoIds,
       source: "node",
-      modelId: provider.modelId,
-      queryEmbedding,
+      modelId: semantic.modelId,
+      queryEmbedding: semantic.queryEmbedding,
       limit: RESULTS_LIMIT,
     });
     if (top.length === 0) {

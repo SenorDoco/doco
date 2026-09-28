@@ -1,3 +1,4 @@
+import type { SemanticQuery } from "@doco/db";
 import type { OverviewGraphData } from "~/components/overview-graph";
 import { loadOverviewGraph } from "./full-graph.server";
 import type { GlossaryPerspectiveData } from "./glossary-perspective.server";
@@ -67,6 +68,8 @@ export async function loadDocoHomePerspectiveData(
     slack?: { channelId?: string | null; before?: string | null; query?: string | null };
     /** The Notion perspective's URL state: the open page, search. */
     notion?: { pageId?: string | null; query?: string | null };
+    /** The embedded search query, when a mirror perspective is searching. */
+    semantic?: SemanticQuery | null;
   },
 ): Promise<DocoHomePerspectiveData> {
   const budget = args.budget ?? DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET;
@@ -162,6 +165,7 @@ export async function loadDocoHomePerspectiveData(
         slackData: await loadSlackPerspective(c, args.docoId, {
           ...args.slack,
           limit: 50,
+          semantic: args.semantic ?? null,
         }),
       };
     case "notion":
@@ -170,6 +174,7 @@ export async function loadDocoHomePerspectiveData(
         notionData: await loadNotionPerspective(c, args.docoId, {
           ...args.notion,
           limit: 50,
+          semantic: args.semantic ?? null,
         }),
       };
     default: {

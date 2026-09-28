@@ -18,6 +18,7 @@ const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf
 
 const ALL: SearchFilters = { lifecycle: null, nodeType: null, limit: 100 };
 const MODEL = "test:model";
+const APPLE = { queryEmbedding: Float32Array.from([1, 0, 0]), modelId: MODEL };
 
 async function seed(): Promise<Client> {
   const db = new PGlite({ extensions: { vector } });
@@ -48,14 +49,7 @@ async function seed(): Promise<Client> {
 
 describe("rankSearchEmbeddings", () => {
   it("ranks nodes by their nearest chunk, for the query's model only", async () => {
-    const { hits } = await rankSearchEmbeddings(
-      await seed(),
-      "doco_1",
-      Float32Array.from([1, 0, 0]),
-      ALL,
-      10,
-      MODEL,
-    );
+    const { hits } = await rankSearchEmbeddings(await seed(), "doco_1", APPLE, ALL, 10);
     expect(hits.map((h) => h.id)).toEqual(["decision_apple", "decision_banana"]);
     expect(hits[0].vector_score).toBeCloseTo(1, 5);
     expect(hits[1].vector_score).toBeCloseTo(0, 5);
@@ -65,35 +59,34 @@ describe("rankSearchEmbeddings", () => {
     const { hits } = await rankSearchEmbeddings(
       await seed(),
       "doco_1",
-      Float32Array.from([1, 0, 0]),
+      APPLE,
       { lifecycle: ["drafting"], nodeType: null, limit: 10 },
       10,
-      MODEL,
     );
     expect(hits.map((h) => h.id)).toEqual(["decision_banana"]);
   });
 });
 
 describe("hybridSearch", () => {
-  it("uses the vector ranker only when the query carries an embedding and its model", async () => {
+  it("uses the vector ranker only when the query carries an embedding", async () => {
     const c = await seed();
-    const withModel = await hybridSearch(
+    const withVector = await hybridSearch(
       c,
       "doco_1",
-      { queryText: "apple", queryEmbedding: Float32Array.from([1, 0, 0]), modelId: MODEL },
+      { queryText: "apple", semantic: APPLE },
       ALL,
       10,
     );
-    expect(withModel.usedVector).toBe(true);
-    expect(withModel.hits[0]?.id).toBe("decision_apple");
+    expect(withVector.usedVector).toBe(true);
+    expect(withVector.hits[0]?.id).toBe("decision_apple");
 
-    const withoutModel = await hybridSearch(
+    const withoutVector = await hybridSearch(
       c,
       "doco_1",
-      { queryText: "apple", queryEmbedding: Float32Array.from([1, 0, 0]) },
+      { queryText: "apple", semantic: null },
       ALL,
       10,
     );
-    expect(withoutModel.usedVector).toBe(false);
+    expect(withoutVector.usedVector).toBe(false);
   });
 });

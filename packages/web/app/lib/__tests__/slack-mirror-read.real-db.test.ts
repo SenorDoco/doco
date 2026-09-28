@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { vectorLiteral } from "@doco/db";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -159,5 +160,52 @@ describe("searchSlackMirror", () => {
 
   it("finds nothing in a Doco that doesn't mirror Slack", async () => {
     expect(await searchSlackMirror(c, "doco_plain", "neon", 10)).toEqual([]);
+  });
+});
+
+describe("search with a query embedding", () => {
+  const MODEL = "test:model";
+  async function embed(entityId: string, chunk: string, axis: number[]) {
+    await db.query(
+      `INSERT INTO embeddings
+         (doco_id, source, entity_id, chunk_index, model_id, content_hash, chunk_text, embedding)
+       VALUES ('doco_slack', 'slack', $1, 0, $2, 'h', $3, $4::vector)`,
+      [entityId, MODEL, chunk, vectorLiteral(axis)],
+    );
+  }
+
+  it("fuses the nearest messages with the word matches, never one of an excluded channel", async () => {
+    await db.query(
+      `INSERT INTO group_chat_messages (doco_id, channel_id, ts, author_id, text, posted_at)
+       VALUES ('doco_slack', 'C_HID', '1700000500.000100', 'U_ANA', 'hidden deploy talk',
+               to_timestamp(1700000500))`,
+    );
+    await embed("C_ENG:1700000400.000100", "#eng — unknown: deploy finished", [0, 1, 0]);
+    await embed("C_ENG:1700000200.000100", "#eng — Ben Ortiz: switching the pooler", [1, 0, 0]);
+    await embed("C_HID:1700000500.000100", "#excluded — Ana: hidden deploy talk", [0, 1, 0]);
+
+    const hits = await searchSlackMirror(c, "doco_slack", "pooler", 10, {
+      queryEmbedding: [0, 1, 0],
+      modelId: MODEL,
+    });
+
+    expect(hits.map((hit) => hit.text)).toEqual([
+      "switching the pooler to transaction mode",
+      "deploy finished",
+    ]);
+  });
+
+  it("ranks the perspective's search the same way", async () => {
+    await embed("C_ENG:1700000400.000100", "#eng — unknown: deploy finished", [0, 1, 0]);
+
+    const data = await loadSlackPerspective(c, "doco_slack", {
+      query: "pooler",
+      semantic: { queryEmbedding: [0, 1, 0], modelId: MODEL },
+    });
+
+    expect(data.messages.map((m) => m.text)).toEqual([
+      "switching the pooler to transaction mode",
+      "deploy finished",
+    ]);
   });
 });

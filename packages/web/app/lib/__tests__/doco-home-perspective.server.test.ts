@@ -121,6 +121,7 @@ describe("loadDocoHomePerspectiveData", () => {
       before: "1700000000.000100",
       query: null,
       limit: 50,
+      semantic: null,
     });
     expect(data.slackData).toBe(slackData);
     expect(data.graph).toBeNull();
@@ -151,6 +152,7 @@ describe("loadDocoHomePerspectiveData", () => {
       pageId: "11111111-0000-4000-8000-000000000001",
       query: null,
       limit: 50,
+      semantic: null,
     });
     expect(data.notionData).toBe(notionData);
     expect(data.graph).toBeNull();

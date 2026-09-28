@@ -59,11 +59,11 @@ describe("FTS floor finds nodes the vector index never got", () => {
     expect(hits.map((h) => h.id)).toContain("reference_draft");
   });
 
-  it("hybridSearch surfaces the un-embedded node with no provider (queryEmbedding=null)", async () => {
+  it("hybridSearch surfaces the un-embedded node with no provider (semantic=null)", async () => {
     const { hits, usedVector } = await hybridSearch(
       await seed(),
       "doco_1",
-      { queryText: "calibration draft", queryEmbedding: null },
+      { queryText: "calibration draft", semantic: null },
       ALL,
       50,
     );

@@ -9,6 +9,7 @@
 // call — that's how the admin dashboard counts what the OpenAI key
 // has burned through. The wrapper preserves the provider's contract
 // exactly; it just records.
+import type { SemanticQuery } from "@doco/db";
 import {
   type EmbeddingInputType,
   type EmbeddingProvider,
@@ -64,4 +65,39 @@ export function getDocoEmbeddingProvider(): EmbeddingProvider | undefined {
   const provider = getDefaultEmbeddingProvider();
   cached = provider instanceof NoopEmbeddingProvider ? undefined : wrapWithUsageLog(provider);
   return cached;
+}
+
+/**
+ * The query side of a semantic search: the query embedded by the active
+ * provider, with the model that produced it. `semantic` is null, with the
+ * reason in `warning`, when there is no provider or the call failed; search
+ * then degrades to full-text rather than returning nothing.
+ */
+export async function embedQuery(
+  text: string,
+): Promise<{ semantic: SemanticQuery | null; warning: string | null }> {
+  const provider = getDocoEmbeddingProvider();
+  if (!provider) {
+    return {
+      semantic: null,
+      warning:
+        "Semantic ranking unavailable (no embedding provider configured); showing keyword matches.",
+    };
+  }
+  try {
+    const [vector] = await provider.embed([text], "query");
+    if (!vector || vector.length === 0) {
+      return {
+        semantic: null,
+        warning:
+          "Semantic ranking unavailable (provider returned an empty embedding); showing keyword matches.",
+      };
+    }
+    return { semantic: { queryEmbedding: vector, modelId: provider.modelId }, warning: null };
+  } catch (e) {
+    return {
+      semantic: null,
+      warning: `Semantic ranking unavailable (${(e as Error).message}); showing keyword matches.`,
+    };
+  }
 }

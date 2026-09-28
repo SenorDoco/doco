@@ -56,10 +56,9 @@ vi.mock("~/lib/host.server", () => ({
 }));
 
 vi.mock("~/lib/embedding-provider.server", () => ({
-  getDocoEmbeddingProvider: () => ({
-    modelId: "test:model",
-    dimensions: 3,
-    embed: async () => [Float32Array.from([1, 0, 0])],
+  embedQuery: async () => ({
+    semantic: { queryEmbedding: Float32Array.from([1, 0, 0]), modelId: "test:model" },
+    warning: null,
   }),
 }));
 
