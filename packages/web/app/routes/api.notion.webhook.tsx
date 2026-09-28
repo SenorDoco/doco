@@ -9,8 +9,12 @@
 //   - an event, signed in X-Notion-Signature. It is applied to the mirror
 //     tables BEFORE the ack (lib/notion-mirror.server.ts), so a failed write
 //     answers 500 and Notion redelivers (up to 8 times over about a day).
-// Events only flag pages; the sync reads the content back from Notion.
+// Events only flag pages; the sync reads the content back from Notion, and a
+// tick is kicked right after the ack so a live edit lands in seconds rather
+// than at the next minute.
+import { waitUntil } from "@vercel/functions";
 import { verifyNotionSignature } from "~/lib/notion-api.server";
+import { runNotionMirrorTick } from "~/lib/notion-mirror-sync.server";
 import { mirrorNotionEvent } from "~/lib/notion-mirror.server";
 
 export async function action({ request }: { request: Request }) {
@@ -40,6 +44,13 @@ export async function action({ request }: { request: Request }) {
   }
   try {
     const { docoIds } = await mirrorNotionEvent(payload);
+    for (const docoId of docoIds) {
+      waitUntil(
+        runNotionMirrorTick({ docoId, deadlineMs: 20_000 }).catch((error) => {
+          console.error(`[notion webhook] sync after event failed for ${docoId}:`, error);
+        }),
+      );
+    }
     return Response.json({ ok: true, matched: docoIds.length });
   } catch (error) {
     console.error("[notion webhook] mirror write failed:", (error as Error).message);

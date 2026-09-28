@@ -1,9 +1,17 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ mirrorNotionEvent: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  mirrorNotionEvent: vi.fn(),
+  runNotionMirrorTick: vi.fn(),
+  waitUntil: vi.fn((promise: Promise<unknown>) => promise),
+}));
 
+vi.mock("@vercel/functions", () => ({ waitUntil: mocks.waitUntil }));
 vi.mock("~/lib/notion-mirror.server", () => ({ mirrorNotionEvent: mocks.mirrorNotionEvent }));
+vi.mock("~/lib/notion-mirror-sync.server", () => ({
+  runNotionMirrorTick: mocks.runNotionMirrorTick,
+}));
 
 import { action } from "../api.notion.webhook";
 
@@ -37,6 +45,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("DOCO_NOTION_WEBHOOK_SECRET", SECRET);
   mocks.mirrorNotionEvent.mockResolvedValue({ docoIds: ["doco_notion"] });
+  mocks.runNotionMirrorTick.mockResolvedValue({});
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -69,12 +78,17 @@ describe("/api/notion/webhook", () => {
     warn.mockRestore();
   });
 
-  it("applies a signed event and reports the mirrors it reached", async () => {
+  it("applies a signed event, reports the mirrors it reached, and kicks their sync", async () => {
     const res = await deliver(event, signed(event));
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, matched: 1 });
     expect(mocks.mirrorNotionEvent).toHaveBeenCalledWith(event);
+    expect(mocks.runNotionMirrorTick).toHaveBeenCalledWith({
+      docoId: "doco_notion",
+      deadlineMs: 20_000,
+    });
+    expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
   });
 
   it("answers 500 when the mirror write fails, so Notion redelivers", async () => {

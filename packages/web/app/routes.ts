@@ -162,6 +162,7 @@ export default [
   route("api/slack/mirror-sync", "routes/api.slack.mirror-sync.tsx"),
   // Notion OAuth callback: turns the mirror on after the owner approves in Notion.
   route("integrations/notion/callback", "routes/integrations.notion.callback.tsx"),
+  route("api/notion/mirror-sync", "routes/api.notion.mirror-sync.tsx"),
   // Inbound Notion webhook (the public integration's one subscription).
   route("api/notion/webhook", "routes/api.notion.webhook.tsx"),
   route("users/:username", "routes/users.$username.tsx"),
