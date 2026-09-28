@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type {
   GitHubIntegrationStatus,
   IntegrationStatus,
+  NotionIntegrationStatus,
   SlackIntegrationStatus,
 } from "~/lib/integration-status.server";
 import { IntegrationStatusCard } from "../integration-status-card";
@@ -41,7 +42,44 @@ const slack: SlackIntegrationStatus = {
   threadsPending: 130,
 };
 
+const notion: NotionIntegrationStatus = {
+  integration: "notion",
+  workspaceName: "Torre",
+  latestAt: "2026-09-27T14:57:00.000Z",
+  state: "importing",
+  needsReauth: false,
+  pagesDone: 1240,
+  pages: 5300,
+};
+
 describe("IntegrationStatusCard", () => {
+  it("shows Notion's newest page edit and how many pages are copied", () => {
+    const html = render(notion);
+    expect(html).toContain("Notion integration");
+    expect(html).toContain("Newest page edit 3m ago");
+    expect(html).toContain("Copying pages: 1,240 of 5,300 pages");
+    expect(html).toContain('href="/torre-slack/integrations/notion"');
+  });
+
+  it("says when Notion pages are still being discovered, stalled, done, or need a reconnect", () => {
+    expect(render({ ...notion, pages: 0, pagesDone: 0, latestAt: null })).toContain(
+      "Discovering the pages shared with Doco",
+    );
+    expect(render({ ...notion, latestAt: null })).toContain("No pages copied yet");
+    expect(render({ ...notion, state: "stalled" })).toContain(
+      "Page copy stalled at 1,240 of 5,300 pages",
+    );
+    expect(render({ ...notion, state: "done", pagesDone: 5300 })).toContain(
+      "All 5,300 pages copied",
+    );
+    expect(render({ ...notion, state: "done", pages: 0, pagesDone: 0 })).toContain(
+      "Nothing shared with Doco yet",
+    );
+    expect(render({ ...notion, state: "stalled", needsReauth: true })).toContain(
+      "reconnect to resume",
+    );
+  });
+
   it("shows GitHub's live updates and the old-PR import's progress", () => {
     const html = render(github);
     expect(html).toContain("GitHub integration");

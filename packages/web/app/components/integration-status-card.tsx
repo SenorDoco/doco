@@ -8,7 +8,7 @@ import { timeAgo } from "~/lib/time-ago";
 const MANAGE_BTN =
   "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
 
-const NAMES = { github: "GitHub", slack: "Slack" } as const;
+const NAMES = { github: "GitHub", slack: "Slack", notion: "Notion" } as const;
 
 function monthYear(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -34,6 +34,11 @@ function liveLine(status: IntegrationStatus, now: Date): string {
       ? `Latest PR update ${timeAgo(status.latestAt, now)}`
       : "No pull requests copied yet";
   }
+  if (status.integration === "notion") {
+    return status.latestAt
+      ? `Newest page edit ${timeAgo(status.latestAt, now)}`
+      : "No pages copied yet";
+  }
   return status.latestAt
     ? `Newest message ${timeAgo(status.latestAt, now)}`
     : "No messages copied yet";
@@ -46,6 +51,19 @@ function historyLine(status: IntegrationStatus): string {
     if (status.state === "done") return "All past PRs imported";
     if (status.state === "stalled") return `Old-PR import stalled at ${repos}`;
     return `Importing old PRs: ${repos}`;
+  }
+  if (status.integration === "notion") {
+    if (status.needsReauth) return "Notion no longer accepts the connection: reconnect to resume";
+    const pages = `${status.pagesDone.toLocaleString("en-US")} of ${status.pages.toLocaleString("en-US")} pages`;
+    if (status.state === "done") {
+      return status.pages === 0
+        ? "Nothing shared with Doco yet"
+        : `All ${status.pages.toLocaleString("en-US")} pages copied`;
+    }
+    if (status.state === "stalled") return `Page copy stalled at ${pages}`;
+    return status.pages === 0
+      ? "Discovering the pages shared with Doco"
+      : `Copying pages: ${pages}`;
   }
   const since = monthYear(status.since);
   if (status.state === "done") return `All history copied back to ${since}`;
@@ -63,7 +81,7 @@ function historyLine(status: IntegrationStatus): string {
 
 /**
  * Box atop the activity column of a Doco that copies from a source (GitHub
- * pull requests, a Slack workspace): how live the copy is, how far the import
+ * pull requests, a Slack or Notion workspace): how live the copy is, how far the import
  * of older items has got — flagged when it stopped advancing — and a link to
  * manage the integration.
  */

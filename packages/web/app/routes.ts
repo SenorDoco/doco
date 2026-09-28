@@ -160,6 +160,8 @@ export default [
   route("integrations/slack/commands", "routes/integrations.slack.commands.tsx"),
   route("integrations/slack/interactions", "routes/integrations.slack.interactions.tsx"),
   route("api/slack/mirror-sync", "routes/api.slack.mirror-sync.tsx"),
+  // Notion OAuth callback: turns the mirror on after the owner approves in Notion.
+  route("integrations/notion/callback", "routes/integrations.notion.callback.tsx"),
   // Inbound Notion webhook (the public integration's one subscription).
   route("api/notion/webhook", "routes/api.notion.webhook.tsx"),
   route("users/:username", "routes/users.$username.tsx"),
@@ -265,6 +267,7 @@ export default [
   // Standalone per-integration detail (GitHub: repos, import status, actions).
   route(":docoHandle/integrations/github", "routes/$docoHandle.integrations.github.tsx"),
   route(":docoHandle/integrations/slack", "routes/$docoHandle.integrations.slack.tsx"),
+  route(":docoHandle/integrations/notion", "routes/$docoHandle.integrations.notion.tsx"),
   route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
   route(":docoHandle/policies/new", "routes/$docoHandle.policies.new.tsx"),
   // Stable, linkable page for one policy — agents and humans cite a policy by

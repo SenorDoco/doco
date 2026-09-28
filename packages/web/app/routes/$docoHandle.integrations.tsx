@@ -39,10 +39,11 @@ export async function loader({
   const orgAccounts = ctx
     ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
     : [];
-  const slack =
-    (await withClient((c) => loadIntegrationStatuses(c, meta.docoId))).find(
-      (status) => status.integration === "slack",
-    ) ?? null;
+  // The sources this Doco mirrors (Slack, Notion): each gets a status card
+  // with a Manage link. GitHub keeps its own card below.
+  const mirrors = (await withClient((c) => loadIntegrationStatuses(c, meta.docoId))).filter(
+    (status) => status.integration !== "github",
+  );
   return {
     me,
     handle: meta.handle,
@@ -56,7 +57,7 @@ export async function loader({
       importing: ctx?.backfill?.status === "running",
       importProgress: githubImportProgress(ctx?.backfill ?? null),
     },
-    slack,
+    mirrors,
   };
 }
 
@@ -97,7 +98,7 @@ export function ImportingNote({ progress }: { progress: GitHubImportProgress | n
 }
 
 export default function DocoIntegrations() {
-  const { me, handle, ownerSlug, workspaceHandle, docoInstallUrl, github, slack } =
+  const { me, handle, ownerSlug, workspaceHandle, docoInstallUrl, github, mirrors } =
     useLoaderData<typeof loader>();
 
   // While a PR backfill is running, poll the loader so the "importing X of Y"
@@ -177,8 +178,10 @@ export default function DocoIntegrations() {
                 </CardContent>
               </Card>
             ) : null}
-            {slack ? <IntegrationStatusCard handle={handle} status={slack} /> : null}
-            {!github.connected && !slack ? (
+            {mirrors.map((status) => (
+              <IntegrationStatusCard key={status.integration} handle={handle} status={status} />
+            ))}
+            {!github.connected && mirrors.length === 0 ? (
               <Card>
                 <CardContent className="py-6 text-sm text-muted-foreground">
                   Nothing connected yet. Wire up an integration from the catalog →

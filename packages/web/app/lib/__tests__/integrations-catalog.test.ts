@@ -8,6 +8,7 @@ import {
 
 const slack = findOrThrow("slack");
 const github = findOrThrow("github");
+const notion = findOrThrow("notion");
 
 function findOrThrow(id: string) {
   const found = INTEGRATION_CATALOG.find((i) => i.id === id);
@@ -16,11 +17,21 @@ function findOrThrow(id: string) {
 }
 
 describe("integrations-catalog", () => {
-  it("exposes Slack at workspace scope and GitHub at Doco scope", () => {
+  it("exposes Slack at workspace scope and GitHub and Notion at Doco scope", () => {
     expect(slack).toBeDefined();
     expect(slack.scope).toBe("workspace");
     expect(github).toBeDefined();
     expect(github.scope).toBe("doco");
+    expect(notion.scope).toBe("doco");
+  });
+
+  it("routes Notion clicks from a Doco to that Doco's mirror page", () => {
+    expect(connectHrefFor({ integration: notion, pageScope: "doco", docoHandle: "test" })).toBe(
+      "/test/integrations/notion",
+    );
+    expect(connectHrefFor({ integration: notion, pageScope: "account" })).toBe(
+      "/integrations?integration=notion#pick-doco",
+    );
   });
 
   it("findIntegration returns the matching definition", () => {

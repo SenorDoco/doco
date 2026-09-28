@@ -53,6 +53,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
+    handle: "notion",
+    label: "Notion workspace",
+    description:
+      "A read-only copy of the Notion pages and databases you share, kept in sync, so they can be searched alongside your Doco knowledge.",
+    updatedAt: "2026-09-28",
+    owner: TEMPLATE_OWNER,
+  },
+  {
     handle: "architectural-decisions",
     label: "Architectural decisions (ADR)",
     description:
