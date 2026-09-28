@@ -1,8 +1,8 @@
 // What an integrated Doco reports about each source it copies from — GitHub
-// pull requests, a Slack workspace: how live the copy is (when the newest item
-// copied was created or last changed) and how far the import of older items
-// has got. The Doco home shows it atop the activity column; the Doco's
-// integrations page summarizes it.
+// pull requests, a Slack workspace, a Notion workspace: how live the copy is
+// (when the newest item copied was created or last changed) and how far the
+// import of older items has got. The Doco home shows it atop the activity
+// column; the Doco's integrations page summarizes it.
 import {
   IMPORT_STALL_MINUTES,
   type ImportState,
@@ -40,7 +40,23 @@ export interface SlackIntegrationStatus {
   threadsPending: number;
 }
 
-export type IntegrationStatus = GitHubIntegrationStatus | SlackIntegrationStatus;
+export interface NotionIntegrationStatus {
+  integration: "notion";
+  workspaceName: string;
+  /** When the newest copied page was last edited in Notion. */
+  latestAt: string | null;
+  state: ImportState;
+  /** Notion no longer accepts the token: an owner must reconnect. */
+  needsReauth: boolean;
+  /** Objects copied at least once, of those discovered. */
+  pagesDone: number;
+  pages: number;
+}
+
+export type IntegrationStatus =
+  | GitHubIntegrationStatus
+  | SlackIntegrationStatus
+  | NotionIntegrationStatus;
 
 const STALL_MS = IMPORT_STALL_MINUTES * 60_000;
 
@@ -54,6 +70,8 @@ export async function loadIntegrationStatuses(
   if (github) statuses.push(github);
   const slack = await loadSlackStatus(c, docoId, now);
   if (slack) statuses.push(slack);
+  const notion = await loadNotionStatus(c, docoId, now);
+  if (notion) statuses.push(notion);
   return statuses;
 }
 
@@ -155,6 +173,63 @@ async function loadSlackStatus(
     channelsDone,
     channels: channelCount,
     threadsPending,
+  };
+}
+
+async function loadNotionStatus(
+  c: QueryClient,
+  docoId: string,
+  now: Date,
+): Promise<NotionIntegrationStatus | null> {
+  const mirror = (
+    await c.query<{
+      workspace_name: string;
+      consented_at: Date | string;
+      discovered_at: Date | string | null;
+      ticked_at: Date | string | null;
+      needs_reauth_at: Date | string | null;
+    }>(
+      `SELECT workspace_name, consented_at, discovered_at, ticked_at, needs_reauth_at
+         FROM notion_mirrors WHERE doco_id = $1`,
+      [docoId],
+    )
+  ).rows[0];
+  if (!mirror) return null;
+  const counts = (
+    await c.query<{
+      pages: number;
+      done: number;
+      pending: number;
+      latest: Date | string | null;
+    }>(
+      `SELECT count(*)::int AS pages,
+              count(*) FILTER (WHERE synced_at IS NOT NULL)::int AS done,
+              count(*) FILTER (WHERE fetch_pending)::int AS pending,
+              max(last_edited_time) FILTER (WHERE synced_at IS NOT NULL) AS latest
+         FROM notion_pages WHERE doco_id = $1`,
+      [docoId],
+    )
+  ).rows[0];
+  const pending = Number(counts?.pending ?? 0);
+  const needsReauth = mirror.needs_reauth_at !== null;
+  // Every tick stamps the heartbeat; none for a while (or never, since turning
+  // it on) while pages are still waiting is a stall.
+  const lastRun = new Date(mirror.ticked_at ?? mirror.consented_at).getTime();
+  const finished = mirror.discovered_at !== null && pending === 0;
+  return {
+    integration: "notion",
+    workspaceName: mirror.workspace_name,
+    latestAt: toIso(counts?.latest),
+    state: needsReauth
+      ? "stalled"
+      : finished
+        ? "done"
+        : now.getTime() - lastRun > STALL_MS
+          ? "stalled"
+          : "importing",
+    needsReauth,
+    pagesDone: Number(counts?.done ?? 0),
+    pages: Number(counts?.pages ?? 0),
   };
 }
 

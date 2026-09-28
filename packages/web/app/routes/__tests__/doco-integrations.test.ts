@@ -60,15 +60,17 @@ describe("/:docoHandle/integrations (index)", () => {
     mocks.loadIntegrationStatuses.mockResolvedValue([]);
   });
 
-  it("surfaces the Doco's Slack mirror", async () => {
+  it("surfaces the Doco's mirrors (Slack, Notion), never GitHub's status twice", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue(null);
     const slack = { integration: "slack", teamName: "Torre", state: "importing" };
-    mocks.loadIntegrationStatuses.mockResolvedValue([slack]);
+    const notion = { integration: "notion", workspaceName: "Torre", state: "importing" };
+    const github = { integration: "github", state: "done" };
+    mocks.loadIntegrationStatuses.mockResolvedValue([github, slack, notion]);
 
     const data = await loader({ request, ...routeArgs });
 
     expect(mocks.loadIntegrationStatuses).toHaveBeenCalledWith({}, "doco_1");
-    expect(data.slack).toEqual(slack);
+    expect(data.mirrors).toEqual([slack, notion]);
   });
 
   it("surfaces repo import progress while a backfill is running", async () => {

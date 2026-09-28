@@ -1,12 +1,11 @@
-// A Doco that mirrors a Slack workspace lists it under "Connected on this
-// doco", with a Manage link to the mirror's page — the page is reachable, and
-// the Doco no longer reads as having nothing connected.
+// A Doco that mirrors a Notion workspace lists it under "Connected on this
+// doco", with a Manage link to the mirror's page.
 import type { ReactNode } from "react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { SlackIntegrationStatus } from "~/lib/integration-status.server";
+import type { NotionIntegrationStatus } from "~/lib/integration-status.server";
 
 const mocks = vi.hoisted(() => ({ loaderData: {} as Record<string, unknown> }));
 
@@ -33,24 +32,22 @@ vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
 import DocoIntegrations from "../$docoHandle.integrations";
 
-const slack: SlackIntegrationStatus = {
-  integration: "slack",
-  teamName: "Torre",
+const notion: NotionIntegrationStatus = {
+  integration: "notion",
+  workspaceName: "Acme",
   latestAt: null,
   state: "importing",
-  backTo: null,
-  since: "2020-09-27T00:00:00.000Z",
-  channelsDone: 0,
-  channels: 40,
-  threadsPending: 0,
+  needsReauth: false,
+  pagesDone: 12,
+  pages: 40,
 };
 
-function render(slackStatus: SlackIntegrationStatus | null): string {
+function render(status: NotionIntegrationStatus | null): string {
   mocks.loaderData = {
     me: { id: "user_alex", username: "alex", type: "person", isHuman: true },
-    handle: "torre-slack",
-    ownerSlug: "torre",
-    workspaceHandle: "torre",
+    handle: "acme-notion",
+    ownerSlug: "acme",
+    workspaceHandle: "acme",
     docoInstallUrl: null,
     github: {
       connected: false,
@@ -59,20 +56,23 @@ function render(slackStatus: SlackIntegrationStatus | null): string {
       importing: false,
       importProgress: null,
     },
-    mirrors: slackStatus ? [slackStatus] : [],
+    mirrors: status ? [status] : [],
   };
   return renderToStaticMarkup(createElement(MemoryRouter, null, createElement(DocoIntegrations)));
 }
 
 describe("/:docoHandle/integrations", () => {
-  it("lists a Slack mirror as connected, with a link to manage it", () => {
-    const html = render(slack);
-    expect(html).toContain("Slack integration");
-    expect(html).toContain('href="/torre-slack/integrations/slack"');
+  it("lists a Notion mirror as connected, with a link to manage it", () => {
+    const html = render(notion);
+    expect(html).toContain("Notion integration");
+    expect(html).toContain("Copying pages: 12 of 40 pages");
+    expect(html).toContain('href="/acme-notion/integrations/notion"');
     expect(html).not.toContain("Nothing connected yet");
   });
 
-  it("says nothing is connected when the Doco copies from nothing", () => {
-    expect(render(null)).toContain("Nothing connected yet");
+  it("offers Notion in the catalog at Doco scope", () => {
+    const html = render(null);
+    expect(html).toContain('href="/acme-notion/integrations/notion"');
+    expect(html).toContain("Nothing connected yet");
   });
 });

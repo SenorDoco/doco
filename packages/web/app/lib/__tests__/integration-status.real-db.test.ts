@@ -28,7 +28,14 @@ beforeEach(async () => {
     INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES
       ('doco_slack', 'torre-slack', 'workspace_1', 'workspace_1', '{}'::jsonb),
       ('doco_gh', 'torre-prs', 'workspace_1', 'workspace_1', '{}'::jsonb),
+      ('doco_notion', 'torre-notion', 'workspace_1', 'workspace_1', '{}'::jsonb),
       ('doco_plain', 'torre-doco', 'workspace_1', 'workspace_1', '{}'::jsonb);
+    INSERT INTO notion_mirrors (doco_id, workspace_id, workspace_name, bot_id, access_token, consented_at)
+      VALUES ('doco_notion', 'ws-1', 'Torre', 'bot-1', 'v1:enc', '${minutesAgo(60)}');
+    INSERT INTO notion_pages (doco_id, page_id, object, url, last_edited_time, fetch_pending, synced_at) VALUES
+      ('doco_notion', 'p1', 'page', 'https://www.notion.so/p1', '${minutesAgo(30)}', false, now()),
+      ('doco_notion', 'p2', 'page', 'https://www.notion.so/p2', '${minutesAgo(3)}', false, now()),
+      ('doco_notion', 'p3', 'page', 'https://www.notion.so/p3', '${minutesAgo(1)}', true, NULL);
     INSERT INTO group_chat_installations (id, provider, workspace_id, workspace_name, doco_workspace_id)
       VALUES ('gci_1', 'slack', 'T1', 'Torre', 'workspace_1');
     INSERT INTO group_chat_mirrors (doco_id, installation_id, team_domain, history_since, consented_at)
@@ -120,6 +127,57 @@ describe("loadIntegrationStatuses", () => {
         channelsDone: 2,
         channels: 2,
         threadsPending: 0,
+      });
+    });
+  });
+
+  describe("Notion", () => {
+    async function setNotion(fields: string) {
+      await db.query(`UPDATE notion_mirrors SET ${fields} WHERE doco_id = 'doco_notion'`);
+    }
+
+    it("reports the newest copied page's edit and how many pages are copied", async () => {
+      await setNotion(`ticked_at = '${minutesAgo(1)}'`);
+
+      expect(await loadIntegrationStatuses(c, "doco_notion", NOW)).toEqual([
+        {
+          integration: "notion",
+          workspaceName: "Torre",
+          latestAt: minutesAgo(3),
+          state: "importing",
+          needsReauth: false,
+          pagesDone: 2,
+          pages: 3,
+        },
+      ]);
+    });
+
+    it("is stalled when the sync hasn't run for a while, or never since consent", async () => {
+      await setNotion(`ticked_at = '${minutesAgo(20)}'`);
+      expect((await loadIntegrationStatuses(c, "doco_notion", NOW))[0]).toMatchObject({
+        state: "stalled",
+      });
+      await setNotion("ticked_at = NULL");
+      expect((await loadIntegrationStatuses(c, "doco_notion", NOW))[0]).toMatchObject({
+        state: "stalled",
+      });
+    });
+
+    it("is stalled, and says so, when Notion no longer accepts the token", async () => {
+      await setNotion(`ticked_at = '${minutesAgo(1)}', needs_reauth_at = now()`);
+      expect((await loadIntegrationStatuses(c, "doco_notion", NOW))[0]).toMatchObject({
+        state: "stalled",
+        needsReauth: true,
+      });
+    });
+
+    it("is done once a discovery walk finished and nothing is waiting", async () => {
+      await setNotion(`ticked_at = '${minutesAgo(30)}', discovered_at = now()`);
+      await db.query("UPDATE notion_pages SET fetch_pending = false, synced_at = now()");
+      expect((await loadIntegrationStatuses(c, "doco_notion", NOW))[0]).toMatchObject({
+        state: "done",
+        pagesDone: 3,
+        pages: 3,
       });
     });
   });

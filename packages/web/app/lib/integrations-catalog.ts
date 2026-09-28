@@ -28,6 +28,13 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
     description: "Connect repositories so their pull requests are tracked as References on a doco.",
     scope: "doco",
   },
+  {
+    id: "notion",
+    name: "Notion",
+    description:
+      "Mirror the Notion pages and databases you share with Doco into one doco, kept in sync, so they can be searched alongside its knowledge.",
+    scope: "doco",
+  },
 ];
 
 export function findIntegration(id: string): IntegrationDefinition | undefined {
@@ -83,6 +90,7 @@ export function connectHrefFor(opts: {
   if (integration.scope === "doco") {
     if (pageScope === "doco" && docoHandle) {
       if (integration.id === "github") return `/${docoHandle}/integrations/github`;
+      if (integration.id === "notion") return `/${docoHandle}/integrations/notion`;
       return `/${docoHandle}/integrations`;
     }
     // Cross-scope from account/workspace → pick a Doco.
