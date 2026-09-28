@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { describe, expect, it } from "vitest";
 import type { SearchFilters } from "../search-filters.server";
 import { type SearchHit, hybridSearch, mergeSearchHits, rankSearchFts } from "../search.server";
@@ -25,7 +26,7 @@ const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf
 const ALL: SearchFilters = { lifecycle: null, nodeType: null, limit: 100 };
 
 async function seed(): Promise<Client> {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS')");
   await db.query(

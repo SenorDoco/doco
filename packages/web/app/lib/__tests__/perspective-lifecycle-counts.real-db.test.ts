@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { initialVisibleLifecycles } from "../../components/lifecycle-filter";
 import { loadOverviewGraph } from "../full-graph.server";
@@ -45,7 +46,7 @@ async function clearGraph(): Promise<void> {
 const DEFAULT_VISIBLE = initialVisibleLifecycles(["drafting", "queued", "active", "retired"]);
 
 beforeAll(async () => {
-  dbm.db = new PGlite();
+  dbm.db = new PGlite({ extensions: { vector } });
   await dbm.db.exec(schemaSql);
   const workspaceId = "workspace_01LIFECYCLECOUNTS00000001";
   await dbm.db.query("INSERT INTO workspaces (id, handle, name) VALUES ($1,'lc','LC')", [

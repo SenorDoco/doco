@@ -19,6 +19,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/embeddings/sweep",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/admin/purge-deleted-docos",
       "schedule": "0 3 * * *"
     }

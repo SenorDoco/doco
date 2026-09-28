@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -48,7 +49,7 @@ async function seedConversation(id: string, texts: string[]): Promise<void> {
 
 describe("searchConversationsByMessageText (real DB)", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite();
+    dbm.db = new PGlite({ extensions: { vector } });
     await dbm.db.exec(schemaSql);
     await dbm.db.query(`INSERT INTO users (id, data) VALUES ($1, '{}'::jsonb)`, [USER]);
   });

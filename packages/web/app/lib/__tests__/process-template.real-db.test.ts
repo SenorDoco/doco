@@ -37,6 +37,7 @@ import {
   isDeterministicPredicate,
 } from "@doco/shared";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -114,7 +115,7 @@ async function loadSeededPolicies(id: string): Promise<LoadedPolicy[]> {
 // (never mutates) the seeded `policies`, so a single shared PGlite is safe
 // and keeps the schema load off the per-test path.
 beforeAll(async () => {
-  dbm.db = new PGlite();
+  dbm.db = new PGlite({ extensions: { vector } });
   await dbm.db.exec(schemaSql);
   await seedWorkspaceAndUser();
   const created = await createDocoInWorkspace({

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   loadSlackPerspective,
@@ -21,7 +22,7 @@ let db: PGlite;
 let c: Client;
 
 beforeEach(async () => {
-  db = new PGlite();
+  db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   c = db as unknown as Client;
   await db.exec(`

@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,7 +41,7 @@ async function storedToken(team: string): Promise<string | null> {
 
 beforeEach(async () => {
   process.env.DOCO_ENCRYPTION_KEY = randomBytes(32).toString("base64");
-  dbm.db = new PGlite();
+  dbm.db = new PGlite({ extensions: { vector } });
   await dbm.db.exec(schemaSql);
 });
 afterEach(() => {

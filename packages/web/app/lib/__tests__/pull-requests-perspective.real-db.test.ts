@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../github-connection.server", () => ({
@@ -35,7 +36,7 @@ const PR_NODES: Array<{ id: string; lifecycle: string; prose: string }> = [
 ];
 
 async function seed(): Promise<Client> {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'ws', 'WS')");
   await db.query(

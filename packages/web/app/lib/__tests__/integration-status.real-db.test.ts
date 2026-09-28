@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it } from "vitest";
 import { loadIntegrationStatuses } from "../integration-status.server";
 
@@ -20,7 +21,7 @@ const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOStri
 const iso = (ts: number) => new Date(ts * 1000).toISOString();
 
 beforeEach(async () => {
-  db = new PGlite();
+  db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
   c = db as unknown as Client;
   await db.exec(`

@@ -17,6 +17,7 @@ import {
   evaluatePolicies,
 } from "@doco/shared";
 import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { layoutOrgTree } from "../org-tree-layout";
 import { type OrgTreeNode, loadOrgTreeData } from "../org-tree-perspective.server";
@@ -65,7 +66,7 @@ async function loadSeededPolicies(id: string): Promise<LoadedPolicy[]> {
 }
 
 beforeAll(async () => {
-  dbm.db = new PGlite();
+  dbm.db = new PGlite({ extensions: { vector } });
   await dbm.db.exec(schemaSql);
   await dbm.db.query("INSERT INTO users (id, github_login, data) VALUES ($1,'oc-scen','{}')", [
     USER_ID,
