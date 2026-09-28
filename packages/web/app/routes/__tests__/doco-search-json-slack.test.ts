@@ -21,6 +21,7 @@ vi.mock("~/lib/search-filters.server", () => ({
   computeFilterFacets: async () => ({ lifecycle: [], nodeType: [] }),
   parseSearchFilters: () => ({ lifecycle: null, nodeType: null, limit: 100 }),
 }));
+vi.mock("~/lib/notion-mirror-read.server", () => ({ searchNotionMirror: async () => [] }));
 vi.mock("~/lib/search.server", () => ({ hybridSearch: mocks.hybridSearch }));
 vi.mock("~/lib/slack-mirror-read.server", () => ({ searchSlackMirror: mocks.searchSlackMirror }));
 
