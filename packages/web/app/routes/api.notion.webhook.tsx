@@ -3,9 +3,11 @@
 //
 // Two kinds of delivery:
 //   - the subscription handshake: a body with only `verification_token`, sent
-//     once when the subscription is created. That token is the secret every
-//     later delivery is signed with; it is logged so the operator can set
-//     DOCO_NOTION_WEBHOOK_SECRET (and paste it back into Notion's settings);
+//     when the subscription is created (or its token is resent). That token
+//     is the secret every later delivery is signed with, the handshake itself
+//     included, so it is recognized by its shape, not by its signature. It is
+//     logged so the operator can confirm it in Notion's Webhooks tab (Notion
+//     rejects a token it did not issue) and then set DOCO_NOTION_WEBHOOK_SECRET;
 //   - an event, signed in X-Notion-Signature. It is applied to the mirror
 //     tables BEFORE the ack (lib/notion-mirror.server.ts), so a failed write
 //     answers 500 and Notion redelivers (up to 8 times over about a day).
@@ -28,13 +30,13 @@ export async function action({ request }: { request: Request }) {
   } catch {
     return Response.json({ error: "invalid_json_body" }, { status: 400 });
   }
-  const signature = request.headers.get("x-notion-signature");
-  if (!signature && typeof payload.verification_token === "string") {
+  if (typeof payload.verification_token === "string" && typeof payload.type !== "string") {
     console.info(
-      `[notion webhook] subscription handshake: set DOCO_NOTION_WEBHOOK_SECRET to ${payload.verification_token}`,
+      `[notion webhook] subscription handshake: verify this token in Notion's Webhooks tab, then set DOCO_NOTION_WEBHOOK_SECRET to ${payload.verification_token}`,
     );
     return Response.json({ ok: true, handshake: true });
   }
+  const signature = request.headers.get("x-notion-signature");
   const secret = process.env.DOCO_NOTION_WEBHOOK_SECRET ?? "";
   if (!verifyNotionSignature({ rawBody, signature, secret })) {
     console.warn(

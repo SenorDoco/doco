@@ -59,21 +59,28 @@ describe("/api/notion/webhook", () => {
     expect(res.status).toBe(405);
   });
 
-  it("answers the subscription handshake, which carries no signature", async () => {
+  it("answers the subscription handshake, signed with its own token or not at all", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    const res = await deliver({ verification_token: "secret_new" });
+    const handshake = { verification_token: "secret_new" };
+    for (const headers of [{}, signed(handshake, "secret_new")]) {
+      const res = await deliver(handshake, headers);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, handshake: true });
+    }
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, handshake: true });
+    expect(info).toHaveBeenCalledTimes(2);
+    expect(info).toHaveBeenCalledWith(expect.stringContaining("subscription handshake"));
     expect(info).toHaveBeenCalledWith(expect.stringContaining("secret_new"));
     expect(mocks.mirrorNotionEvent).not.toHaveBeenCalled();
     info.mockRestore();
   });
 
-  it("rejects an unsigned or badly signed delivery", async () => {
+  it("rejects an unsigned or badly signed delivery, a verification_token field notwithstanding", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect((await deliver(event)).status).toBe(401);
     expect((await deliver(event, signed(event, "other"))).status).toBe(401);
+    const disguised = { ...event, verification_token: "secret_attacker" };
+    expect((await deliver(disguised, signed(disguised, "other"))).status).toBe(401);
     expect(mocks.mirrorNotionEvent).not.toHaveBeenCalled();
     warn.mockRestore();
   });
