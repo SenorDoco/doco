@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
       importing: false,
       importProgress: null,
     },
+    mirrors: [],
   },
 }));
 
