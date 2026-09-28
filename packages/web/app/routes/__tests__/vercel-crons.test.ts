@@ -17,6 +17,7 @@ describe("Vercel cron jobs", () => {
       "/admin/agent-health-cron",
       "/admin/purge-deleted-docos",
       "/api/github/backfill-sweep",
+      "/api/notion/mirror-sync",
       "/api/slack/mirror-sync",
     ]);
   });
