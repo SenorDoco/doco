@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { firstPersonLines } from "~/lib/__tests__/first-person";
+import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { loader } from "../protocol.agent-oauth-recipe";
 
 describe("/protocol/agent-oauth-recipe", () => {
+  // The template list used to live on /llms.txt, which is gone; the recipe
+  // that shows the Doco create call lists the handles itself.
+  it("lists every creatable template next to the Doco create call", async () => {
+    const response = loader({
+      request: new Request("https://doco.test/protocol/agent-oauth-recipe"),
+    });
+    const body = await response.text();
+    expect(body).not.toContain("llms.txt");
+    for (const template of DOCO_TEMPLATES) {
+      expect(body).toContain(`- ${template.handle} — ${template.label}`);
+    }
+  });
+
   it("points hosted MCP setup to the Tokens/MCP 'Add MCP' tab instead of /connect", async () => {
     const response = loader({
       request: new Request("https://doco.test/protocol/agent-oauth-recipe"),

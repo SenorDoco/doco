@@ -1,11 +1,11 @@
-// /robots.txt — standard crawler directives, plus a pointer to /llms.txt
-// for AI agents that probe robots.txt first when they don't know the
-// llms.txt convention. See routes/llms[.]txt.tsx for the why.
+// /robots.txt — standard crawler directives, plus a pointer to the home
+// page for AI agents that probe robots.txt first: the agent instructions
+// live there.
 export async function loader() {
   const body = `User-agent: *
 Allow: /
 
-# AI agents: see /llms.txt for onboarding instructions.
+# AI agents: the instructions to use Doco are on the home page, /.
 `;
   return new Response(body, {
     headers: {

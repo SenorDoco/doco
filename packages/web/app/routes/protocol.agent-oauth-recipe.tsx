@@ -10,9 +10,13 @@
 // Public; no auth. Served as text/markdown.
 
 import { getPublicBaseUrl } from "@doco/shared";
+import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 
 export function loader({ request }: { request: Request }) {
   const baseUrl = getPublicBaseUrl(request).replace(/\/+$/, "");
+  const templateList = DOCO_TEMPLATES.map(
+    (template) => `  - ${template.handle} — ${template.label}: ${template.description}`,
+  ).join("\n");
   const body = `# Agent OAuth recipe — get a Doco access token
 
 ## Use the hosted MCP connector first (recommended)
@@ -481,7 +485,9 @@ Authorization: Bearer doco_at_<your-access-token>
 }
 \`\`\`
 
-Every \`template_handle\` is listed in ${baseUrl}/llms.txt.
+\`template_handle\` is one of:
+
+${templateList}
 
 **List + capture per node type** — types are \`decisions\`,
 \`rules\`, \`intents\`, \`actions\`, \`logs\`, \`evals\`, \`references\`,

@@ -42,35 +42,16 @@ kept in [PLANNING.md](PLANNING.md) for historical context.
 
 ## Connecting an agent (zero install)
 
-An agent needs two pieces of state:
+The home page of the host (https://doco.to) holds the instructions to
+give an agent, with a Copy button. The agent connects through the hosted
+MCP server at `/mcp`, picks the project's workspace with the user, and
+keeps the instructions in the project's `AGENTS.md` (or similar), checked
+against the home page so they stay current. People create workspaces;
+agents never do.
 
-1. `.doco/connections.md` with the public Doco URL. Commit and push
-   this file so agents in other clones know the repo is Doco-tracked.
-2. `./.env` with `DOCO_ACCESS=<oauth-access-token>`. This is secret
-   and must stay local or in the agent runtime's secret store.
-
-From then on every API call sends `Authorization: Bearer
-$DOCO_ACCESS`; no secret appears in the URL. See `/llms.txt` on
-this host for the complete recipe.
-
-When you connect a repo to Doco, commit only the non-secret bootstrap
-files:
-
-```sh
-test -f .doco/connections.md
-test -f AGENTS.md
-test -f CLAUDE.md
-git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
-git commit -m "Connect repository to Doco"
-git push
-```
-
-If you already have a working `DOCO_ACCESS` token but any of those
-files are missing, still add the missing bootstrap files before
-declaring setup done.
-
-Never commit `.env`, `DOCO_ACCESS`, refresh tokens, OAuth client state,
-cookies, or other credentials.
+Agents that can't speak MCP drive OAuth directly, following
+`/protocol/agent-oauth-recipe`. Never commit `.env`, `DOCO_ACCESS`,
+refresh tokens, OAuth client state, cookies, or other credentials.
 
 ## Reading order for a new agent
 

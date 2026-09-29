@@ -2,6 +2,8 @@
 //
 // Two evenly-split columns:
 //   - Header: "Good <verb>, <username>"
+//   - "Get started" card above both columns until the three onboarding steps
+//     (create a workspace, connect an agent, connect sources) are done
 //   - Left column: nested workspace/Doco access list and newly available
 //     templates
 //   - Right column: Activity heatmap + Latest activity feed (10 items)
@@ -14,6 +16,7 @@ import { AccessListCard, type AccessListItem } from "~/components/access-list-ca
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { OnboardingCard } from "~/components/onboarding-card";
 import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -32,6 +35,7 @@ import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { pickGreetingVerb } from "~/lib/greeting";
 import { listAllDocos, listMyWorkspaces, loadHostConfig } from "~/lib/host.server";
 import { EMPTY_LIFECYCLE_COUNTS, lifecycleColor, sumLifecycleCounts } from "~/lib/node-colors";
+import { loadOnboardingProgress } from "~/lib/onboarding.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -134,7 +138,8 @@ export async function loader({ request }: { request: Request }) {
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
   const sinceIso = since.toISOString();
 
-  const { byDay, feed } = await withClient(async (c) => {
+  const { byDay, feed, onboarding } = await withClient(async (c) => {
+    const onboarding = await loadOnboardingProgress(c, me.id);
     const heatRows = await c.query<{ day: string; n: string }>(
       `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
        FROM audit_events
@@ -210,7 +215,7 @@ export async function loader({ request }: { request: Request }) {
         };
       });
     }
-    return { byDay, feed };
+    return { byDay, feed, onboarding };
   });
 
   // Newly-available templates, most recent first. Drops "generic" —
@@ -227,6 +232,7 @@ export async function loader({ request }: { request: Request }) {
     byDay,
     feed,
     templates,
+    onboarding,
   };
 }
 
@@ -240,7 +246,7 @@ export default function Dashboard({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, greetingVerb, accessGroups, byDay, feed, templates } = loaderData;
+  const { me, greetingVerb, accessGroups, byDay, feed, templates, onboarding } = loaderData;
   return (
     <div>
       <SiteHeader me={me} />
@@ -249,6 +255,8 @@ export default function Dashboard({
           breadcrumb={hostBreadcrumb({ pageLabel: "Dashboard" })}
           title={`Good ${greetingVerb}, ${me.username}`}
         />
+
+        <OnboardingCard progress={onboarding} />
 
         <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-6">
           <section className="space-y-4">

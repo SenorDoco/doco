@@ -1,22 +1,23 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The route module imports server-only helpers (host.server pulls in
-// @doco/db) at the top level. Stub them so importing the component for a
-// static render doesn't drag in Postgres/session machinery.
-vi.mock("~/lib/host.server", () => ({
-  loadHostConfig: async () => ({ id: "host_test", name: "torrenegra", visibility: "public" }),
-}));
+// The route module imports the session helper, which pulls in @doco/db at the
+// top level. Stub it so the static render doesn't drag in Postgres.
+const getCurrentPrincipal = vi.fn();
 vi.mock("~/lib/session.server", () => ({
-  getCurrentPrincipal: async () => null,
+  getCurrentPrincipal: (request: Request) => getCurrentPrincipal(request),
 }));
 
-import Home from "../_index";
+import { agentInstructions } from "~/lib/agent-instructions";
+import Home, { loader } from "../_index";
 
-function render(): string {
-  return renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Home)));
+async function render(): Promise<string> {
+  const loaderData = await loader({ request: new Request("https://doco.test/") });
+  return renderToStaticMarkup(
+    createElement(MemoryRouter, null, createElement(Home, { loaderData })),
+  );
 }
 
 beforeAll(() => {
@@ -30,31 +31,43 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Home (anonymous landing)", () => {
-  it("offers the create-workspace CTA and drops the removed join-wizard link", () => {
-    const html = render();
-    expect(html).toContain('href="/new-workspace"');
-    expect(html).toContain("Create a new workspace");
-    // The "Join a workspace" wizard is gone — joining is invite- or MCP-based.
-    expect(html).not.toContain('href="/onboarding/join"');
-    expect(html).not.toContain("Join a workspace");
+beforeEach(() => {
+  getCurrentPrincipal.mockReset();
+  getCurrentPrincipal.mockResolvedValue(null);
+});
+
+describe("Home", () => {
+  it("says what Doco is and hands over the agent instructions with a Copy button", async () => {
+    const html = await render();
+    expect(html).toContain(">Doco</h1>");
+    expect(html).toContain("Shared memory for AI and teams");
+    expect(html).toContain("To use Doco with your agent(s), give them these instructions:");
+    expect(html).toContain(">Copy</button>");
+    // The instructions render verbatim (HTML-escaped) so an agent reading the
+    // page compares them with its AGENTS.md copy.
+    const escaped = renderToStaticMarkup(
+      createElement("pre", null, agentInstructions("https://doco.test")),
+    );
+    expect(html).toContain(escaped.slice("<pre>".length, -"</pre>".length));
   });
 
-  it("uses the shared-memory line as the hero headline", () => {
-    const html = render();
-    // Promoted from the kicker to the <h1>, in normal case (no uppercase).
-    expect(html).toContain(">Shared memory for AI and teams</h1>");
+  it("is the same simple page for a signed-in person, with a way to the dashboard", async () => {
+    getCurrentPrincipal.mockResolvedValue({ id: "user_1", username: "ana" });
+    const html = await render();
+    expect(html).toContain("Shared memory for AI and teams");
+    expect(html).toContain('href="/dashboard"');
+    expect(html).not.toContain('href="/sign-in"');
   });
 
-  it("showcases unique functionality: a typed knowledge graph", () => {
-    const html = render();
-    // Typed nodes — decisions and rules are the canonical examples.
-    expect(html).toContain("Decisions");
-    expect(html).toContain("Rules");
+  it("offers sign-in to a signed-out visitor", async () => {
+    const html = await render();
+    expect(html).toContain('href="/sign-in"');
   });
 
-  it("keeps the agent-native angle discoverable via /llms.txt", () => {
-    const html = render();
-    expect(html).toContain("/llms.txt");
+  it("drops the marketing sections and /llms.txt", async () => {
+    const html = await render();
+    expect(html).not.toContain("/llms.txt");
+    expect(html).not.toContain("Create a new workspace");
+    expect(html).not.toContain("Not another wiki");
   });
 });

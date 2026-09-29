@@ -12,7 +12,7 @@ export function loader({ request }: { request: Request }) {
       authorization_servers: [issuer],
       scopes_supported: ["doco"],
       bearer_methods_supported: ["header"],
-      resource_documentation: `${issuer}/llms.txt`,
+      resource_documentation: `${issuer}/`,
     },
     {
       headers: {
