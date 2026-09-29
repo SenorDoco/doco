@@ -228,6 +228,11 @@ export async function runNotionMirrorTick(args: {
       if (mirror.children_scanned_at === null) await scanChildren(session.docoId, now);
       await drainPhase(session, now, result);
       await usersPhase(session, mirror, now);
+      if (result.listed + result.fetched + result.failed > 0 || result.discovery !== "none") {
+        console.info(
+          `[notion mirror] ${args.docoId}: discovery ${result.discovery}, listed ${result.listed}, fetched ${result.fetched}, failed ${result.failed}, ${session.requests} requests`,
+        );
+      }
     } catch (error) {
       if (error instanceof BudgetSpent) {
         // Fine: the cursors are on the rows; the next tick carries on.
@@ -425,6 +430,8 @@ async function queueChildren(
  *  queued them at fetch time. Database work only; the drain fetches them. */
 async function scanChildren(docoId: string, now: Date): Promise<void> {
   let after = "";
+  let scanned = 0;
+  let queued = 0;
   for (;;) {
     const batch = await withClient((c) =>
       c.query<{ page_id: string; markdown: string }>(
@@ -436,11 +443,16 @@ async function scanChildren(docoId: string, now: Date): Promise<void> {
     );
     if (batch.rows.length === 0) break;
     await withClient(async (c) => {
-      for (const row of batch.rows) await queueChildren(c, docoId, row.page_id, row.markdown);
+      for (const row of batch.rows)
+        queued += await queueChildren(c, docoId, row.page_id, row.markdown);
     });
+    scanned += batch.rows.length;
     after = batch.rows[batch.rows.length - 1].page_id;
   }
   await setMirror(docoId, { children_scanned_at: now });
+  console.info(
+    `[notion mirror] ${docoId}: scanned ${scanned} copied pages, queued ${queued} children`,
+  );
 }
 
 /** Page the search, most recently edited first, until results predate
@@ -664,6 +676,9 @@ async function drainPhase(
           if (error.code === "rate_limited") throw error;
           if (error.status === 404) {
             // Unshared, or gone: the copy goes too.
+            console.info(
+              `[notion mirror] ${session.docoId}: dropped ${row.object} ${row.page_id} (${row.fetch_reason ?? "pending"}): Notion returned 404`,
+            );
             await deleteNotionPage(session.docoId, row.page_id);
             continue;
           }
