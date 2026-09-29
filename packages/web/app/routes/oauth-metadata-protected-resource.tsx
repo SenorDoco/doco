@@ -20,7 +20,7 @@ export function loader({ request }: { request: Request }) {
     scopes_supported: ["doco"],
     // Bearer tokens are presented in the Authorization header only.
     bearer_methods_supported: ["header"],
-    resource_documentation: `${issuer}/llms.txt`,
+    resource_documentation: `${issuer}/`,
   };
   return Response.json(body, {
     headers: {

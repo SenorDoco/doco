@@ -36,7 +36,9 @@ vi.mock("~/lib/session.server", () => ({
 
 import Dashboard from "../dashboard";
 
-function renderDashboard(): string {
+const ALL_DONE = { workspace: true, agent: true, sources: true };
+
+function renderDashboard(onboarding = ALL_DONE): string {
   return renderToStaticMarkup(
     createElement(
       MemoryRouter,
@@ -50,6 +52,7 @@ function renderDashboard(): string {
           byDay: {},
           feed: [],
           templates: [],
+          onboarding,
         } as never,
       }),
     ),
@@ -66,5 +69,17 @@ describe("Dashboard", () => {
     expect(markup).not.toContain('href="/new-workspace"');
     expect(markup).not.toContain("+ Doco");
     expect(markup).not.toContain("+ Workspace");
+  });
+
+  it("walks a new person through the three onboarding steps", () => {
+    const markup = renderDashboard({ workspace: false, agent: false, sources: false });
+    expect(markup).toContain("Get started");
+    expect(markup).toContain("Create a workspace");
+    expect(markup).toContain("Connect your agent");
+    expect(markup).toContain("Connect sources of knowledge");
+  });
+
+  it("drops the onboarding card once every step is done", () => {
+    expect(renderDashboard()).not.toContain("Get started");
   });
 });

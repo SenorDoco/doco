@@ -29,7 +29,7 @@ export function loader({ request }: { request: Request }) {
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: ["doco"],
-    service_documentation: `${issuer}/llms.txt`,
+    service_documentation: `${issuer}/`,
   };
   return Response.json(body, {
     headers: {

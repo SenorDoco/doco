@@ -65,7 +65,7 @@ export function loader({
     "",
     "Related routes:",
     "",
-    `    ${baseUrl}/llms.txt`,
+    `    ${baseUrl}/`,
     `    ${baseUrl}/protocol/agent-oauth-recipe`,
     `    ${baseUrl}/.well-known/oauth-authorization-server`,
   ].join("\n");

@@ -50,15 +50,9 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  */
 export default [
   index("routes/_index.tsx"),
-  // Agent-discovery entry points at the host root (decision pending):
-  // an agent told "let's start using Doco" who lands on doco.to with no
-  // prior context probes /llms.txt and /robots.txt before guessing other
-  // paths. Both point at /llms.txt as the canonical agent entry.
-  route("llms.txt", "routes/llms[.]txt.tsx"),
   route("robots.txt", "routes/robots[.]txt.tsx"),
-  // Common probes agents try when told to "follow the wizard". Each
-  // bounces to /llms.txt instead of 404-ing so the agent finds the
-  // real recipe instead of giving up and asking the human.
+  // Common probes agents try when told to "set up Doco". Each bounces to
+  // the home page, which holds the agent instructions, instead of 404-ing.
   route("docs", "routes/agent-probes[.]ts.tsx", { id: "probe-docs" }),
   route("setup", "routes/agent-probes[.]ts.tsx", { id: "probe-setup" }),
   route("new", "routes/agent-probes[.]ts.tsx", { id: "probe-new" }),
