@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { OAuthAccessApprovalForm } from "../oauth-access-approval-form";
 
 describe("OAuthAccessApprovalForm", () => {
-  it("offers a single-workspace token picker — no full-access or all-workspaces card", () => {
+  it("offers the token picker: all workspaces, several workspaces, or specific docos", () => {
     const markup = renderToStaticMarkup(
       createElement(OAuthAccessApprovalForm, {
         docos: [
@@ -37,11 +37,12 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).toContain("Specific docos");
     expect(markup).toContain('name="grants"');
     // The broad option for a token is the "All your workspaces" (actor) scope —
-    // a user-level credential, one workspace per session — NOT the old
+    // a user-level credential that follows live membership — NOT the old
     // all-workspaces *snapshot* (the account scope, still withheld for tokens).
     expect(markup).toContain('data-testid="grant-scope-actor"');
-    expect(markup).toContain("All your workspaces — one at a time");
-    // A token is capped at one workspace: the broad snapshot grants are gone.
+    expect(markup).toContain("All your workspaces");
+    expect(markup).not.toContain("one at a time");
+    // No wildcard full-access grant.
     expect(markup).not.toContain("Full access");
     expect(markup).not.toContain("All your workspaces and docos");
     expect(markup).not.toContain("identity");
@@ -107,7 +108,7 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).not.toContain("All your workspaces and docos");
     // A bound connector can't mint an all-workspaces actor token.
     expect(markup).not.toContain('data-testid="grant-scope-actor"');
-    expect(markup).not.toContain("All your workspaces — one at a time");
+    expect(markup).not.toContain("All your workspaces");
     // The two narrowing options remain (Docos / types within that workspace).
     expect(markup).toContain('data-testid="grant-scope-doco"');
     expect(markup).toContain('data-testid="grant-scope-types"');

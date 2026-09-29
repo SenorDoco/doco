@@ -11,8 +11,9 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).toMatch(/People create Workspaces/);
     expect(CANONICAL_INSTRUCTIONS).toMatch(/you never do/);
     expect(CANONICAL_INSTRUCTIONS).toContain("**all of the user's Workspaces**");
-    expect(CANONICAL_INSTRUCTIONS).toContain("**one Workspace**");
-    expect(CANONICAL_INSTRUCTIONS).toContain("**a subset of docos**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**specific Workspaces**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**specific docos**");
+    expect(CANONICAL_INSTRUCTIONS).not.toContain("**one Workspace**");
     expect(AGENT_REFERENCE).toContain(
       "- Create / delete a workspace, and grant agents access to it.",
     );

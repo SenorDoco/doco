@@ -456,7 +456,7 @@ export async function listVisibleDocoIdsForRequest(
   const accessible = await listAccessibleDocoIdsForPrincipal(principalId);
   const token = await getOauthTokenForRequest(request);
   // An actor token acts as the human: it enumerates everything they can reach,
-  // across all their workspaces (no single-workspace narrowing). A regular
+  // across all their workspaces (no narrowing). A regular
   // token is narrowed to its granted workspace boundary below.
   if (!token || token.grant_type === "actor" || accessible.length === 0) return accessible;
   const ownerByDocoId = await loadDocoOwnerIds([...accessible, ...(token.granted_doco_ids ?? [])]);

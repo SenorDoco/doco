@@ -362,9 +362,9 @@ new Workspace, never a lone doco inside another project's workspace.
 People create Workspaces (at /new-workspace); you never do, and the API
 has no call for it. Access is granted to you at one of three levels:
 **all of the user's Workspaces** (an "all workspaces" token, which also reaches
-Workspaces they create later), **one Workspace** (covers every doco in
-it, now and in the future — the common case when an owner invites an
-agent), or **a subset of docos** inside a Workspace. When a project has
+Workspaces they create later), **specific Workspaces** (each covers every
+doco in it, now and in the future — the common case when an owner invites
+an agent), or **specific docos**. When a project has
 no Workspace yet, ask the user to create it and grant you access, then
 find it. \`GET /api/v1/whoami.json\` returns your reach — the Workspaces
 you can reach and the docos inside them, each with your role — so you

@@ -1,60 +1,32 @@
-// Gate for the hosted MCP endpoint at `/mcp`. The session's reach comes from
-// the token, not the URL:
-//   - an "all workspaces" (actor) token carries no stored grants: it acts as the
-//     human across EVERY workspace they belong to, capped at actor_role and
-//     resolved live per request. Enter all-workspaces mode; tools resolve Docos
-//     globally and `list_workspaces` lets the agent discover what it can reach.
-//   - a workspace-scoped token pins the session to its lone
-//     `granted_workspace_ids[0]`, and every tool is confined to that workspace.
+// Gate for the hosted MCP endpoint at `/mcp`. It establishes WHO is calling;
+// the session's reach is whatever the token grants. Every tool call replays the
+// bearer to the per-Doco routes, which enforce the token's grant (any set of
+// workspaces and Docos, or the actor "all workspaces" mode, capped at its role)
+// on top of the human's own live access. So every kind of token takes the same
+// path here.
+//
+// The gate returns a discriminated result rather than throwing, so the route
+// can shape the right transport response (401 + WWW-Authenticate).
 
-import { getWorkspaceById } from "@doco/db";
 import { getOauthTokenForRequest } from "./doco-access.server";
 import { getCurrentPrincipalAsync } from "./session.server";
-import { type WorkspaceMcpGate, principalReachesWorkspace } from "./workspace-mcp.server";
 
-export async function gateUserMcp(request: Request): Promise<WorkspaceMcpGate> {
+export interface McpContext {
+  principalId: string;
+}
+
+export type McpGate =
+  | { ok: true; ctx: McpContext }
+  | { ok: false; kind: "unauthenticated"; message: string };
+
+export async function gateUserMcp(request: Request): Promise<McpGate> {
   const principal = await getCurrentPrincipalAsync(request);
   if (!principal) return { ok: false, kind: "unauthenticated", message: "Unauthorized" };
 
-  // The user-level endpoint is bearer-only: identity comes from the access
-  // token. (A cookie session can't pin a session here.)
+  // The endpoint is bearer-only: identity comes from the access token, never a
+  // cookie session.
   const token = await getOauthTokenForRequest(request);
   if (!token) return { ok: false, kind: "unauthenticated", message: "Unauthorized" };
 
-  // An "all workspaces" (actor) token reaches EVERY workspace the human belongs to,
-  // not one: it carries no stored workspace. Enter all-workspaces mode; tools
-  // resolve Docos globally and the access gate enforces the live, capped role
-  // per call. `list_workspaces` lets the agent discover what it can reach.
-  if (token.grant_type === "actor") {
-    return {
-      ok: true,
-      ctx: { workspaceId: "", workspaceHandle: "", principalId: principal.id, allWorkspaces: true },
-    };
-  }
-
-  const workspaceId = (token.granted_workspace_ids ?? [])[0];
-  if (!workspaceId) {
-    return {
-      ok: false,
-      kind: "forbidden",
-      message:
-        "This token isn't scoped to a workspace. Re-authenticate requesting exactly one workspace (the RFC 8707 `resource`), then retry.",
-    };
-  }
-
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
-    return { ok: false, kind: "not_found", message: `Workspace "${workspaceId}" not found.` };
-  }
-
-  // Defense in depth: the human behind the token must still reach this
-  // workspace right now (membership can be revoked after a token is minted).
-  if (!(await principalReachesWorkspace(principal.id, workspaceId))) {
-    return { ok: false, kind: "forbidden", message: "You don't have access to this workspace." };
-  }
-
-  return {
-    ok: true,
-    ctx: { workspaceId, workspaceHandle: workspace.handle, principalId: principal.id },
-  };
+  return { ok: true, ctx: { principalId: principal.id } };
 }

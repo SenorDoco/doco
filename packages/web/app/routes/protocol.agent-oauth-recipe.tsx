@@ -28,7 +28,7 @@ It speaks MCP over Streamable HTTP. An unauthenticated request returns
 \`${baseUrl}/.well-known/oauth-protected-resource/mcp\`
 (RFC 9728); a connector client follows that to discover the OAuth server
 (RFC 8414) and run the flow for you. Call \`list_workspaces\` / \`doco_whoami\`
-to see your reach (a workspace-scoped token instead pins one workspace).
+to see your reach: all workspaces, specific workspaces, or specific Docos.
 The connector is read + write — \`doco_whoami\`, \`list_workspaces\`,
 \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\`, \`doco_policy\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the

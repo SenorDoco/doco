@@ -209,10 +209,10 @@ describe("/tokens page action", () => {
   it("labels an actor token by its breadth + ceiling (so it never reads as scopeless)", () => {
     // The existing-tokens row shows this for grant_type === 'actor' instead of
     // the empty-grants "No active scopes" — the broadest token must read broad.
-    expect(actorScopeLabel("reader")).toBe("All your workspaces — one at a time · reader");
-    expect(actorScopeLabel("writer")).toBe("All your workspaces — one at a time · writer");
+    expect(actorScopeLabel("reader")).toBe("All your workspaces · reader");
+    expect(actorScopeLabel("writer")).toBe("All your workspaces · writer");
     // owner ceiling = full live role = no suffix.
-    expect(actorScopeLabel(null)).toBe("All your workspaces — one at a time");
+    expect(actorScopeLabel(null)).toBe("All your workspaces");
   });
 
   it("shows ONE /mcp connector URL describing the multi-workspace reach (no picker)", () => {

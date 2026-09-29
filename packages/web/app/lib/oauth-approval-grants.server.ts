@@ -63,9 +63,9 @@ export interface OAuthApprovalGrantSets {
   granted_workspace_write_types: Record<string, string[]>;
   /**
    * 'actor' = the human approved an "all your workspaces" credential whose
-   * breadth is their LIVE workspace membership, down-scoped to one workspace
-   * per access token at refresh time. It carries NO explicit grants. 'regular'
-   * (default) copies the granted_* sets through to the token verbatim.
+   * breadth is their LIVE workspace membership, resolved on every request. It
+   * carries NO explicit grants. 'regular' (default) copies the granted_* sets
+   * through to the token verbatim.
    */
   grant_type: "regular" | "actor";
   /**
@@ -103,9 +103,8 @@ export async function readOAuthApprovalGrants(
         actor_role: actor.role === "owner" ? null : actor.role,
       };
     }
-    // Otherwise the minted token is capped at a single workspace by
-    // assertSingleWorkspaceGrant at issuance — there is no full-access
-    // ("identity") grant anymore.
+    // Otherwise the token carries the explicit workspace/Doco picks — any
+    // number of them. There is no full-access ("identity") grant.
     return serializeApprovalGrants(parsed, principalId);
   }
   return serializeLegacyApprovalFields(form, principalId);

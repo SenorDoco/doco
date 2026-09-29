@@ -90,8 +90,8 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     if (!rawGrants) return { error: "Pick at least one workspace or doco to scope this key to." };
 
     // "All your workspaces" composes a single actor grant. Mint a user-level
-    // token with NO explicit grants — its breadth is resolved (and pinned to
-    // one workspace) at refresh time — carrying the grant's role as the ceiling.
+    // token with NO explicit grants — its breadth is the user's live membership
+    // — carrying the grant's role as the ceiling.
     const actor = readActorGrant(rawGrants);
     if (actor) {
       try {
@@ -575,7 +575,6 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
             <GrantPicker
               catalog={catalog}
               grants={grants}
-              forToken
               offerActor
               onChange={(next) => {
                 setGrants(next);
@@ -633,8 +632,8 @@ function MintedReveal({ minted }: { minted: MintedApiKey }) {
       Scope:{" "}
       {minted.scope_grants.length === 0 ? (
         // A regular mint always carries ≥1 grant, so an empty scope is an
-        // actor token: it reaches all your workspaces, one per session.
-        <em>all your workspaces — one at a time</em>
+        // actor token: it reaches all your workspaces.
+        <em>all your workspaces</em>
       ) : (
         minted.scope_grants.map((g) => (
           <span key={`${g.level}:${g.target_id}`} className="mr-2">
@@ -718,7 +717,7 @@ function KeyRow({ apiKey, catalog }: { apiKey: ApiKeyRow; catalog: GrantCatalog 
           <div className="mt-2 flex flex-wrap gap-1.5">
             {apiKey.grant_type === "actor" ? (
               // An actor token has no explicit grants — its breadth is your live
-              // membership, one workspace per session, capped at actor_role.
+              // membership, capped at actor_role.
               <span className="text-muted-foreground">{actorScopeLabel(apiKey.actor_role)}</span>
             ) : apiKey.scope_grants.length === 0 ? (
               <span className="text-muted-foreground">No active scopes</span>
@@ -827,7 +826,6 @@ function TokenAddAccessForm({
         <GrantPicker
           catalog={catalog}
           grants={grants}
-          forToken
           offerActor
           onChange={(next) => {
             setGrants(next);
@@ -872,7 +870,7 @@ function grantsToPayload(
 
 /** Scope summary for an actor ("All your workspaces") token, with its ceiling. */
 export function actorScopeLabel(actorRole: DocoRole | null): string {
-  return `All your workspaces — one at a time${actorRole ? ` · ${actorRole}` : ""}`;
+  return `All your workspaces${actorRole ? ` · ${actorRole}` : ""}`;
 }
 
 function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {

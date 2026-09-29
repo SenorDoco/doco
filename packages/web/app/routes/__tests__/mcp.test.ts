@@ -7,7 +7,6 @@ import { firstPersonLines } from "~/lib/__tests__/first-person";
 // JSON-RPC dispatch + tool wiring without a DB.
 const mocks = vi.hoisted(() => ({
   gateUserMcp: vi.fn(),
-  resolveDocoInWorkspace: vi.fn(),
   searchLoader: vi.fn(),
   captureAction: vi.fn(),
   edgesAction: vi.fn(),
@@ -26,9 +25,6 @@ vi.mock("~/lib/user-mcp.server", () => ({ gateUserMcp: mocks.gateUserMcp }));
 vi.mock("@doco/db", () => ({
   getWorkspaceConstitutionsByIds: mocks.getWorkspaceConstitutionsByIds,
   getDocoByIdOrHandle: mocks.getDocoByIdOrHandle,
-}));
-vi.mock("~/lib/workspace-mcp.server", () => ({
-  resolveDocoInWorkspace: mocks.resolveDocoInWorkspace,
 }));
 vi.mock("~/lib/access-requests.server", () => ({ requestDocoAccess: mocks.requestDocoAccess }));
 vi.mock("~/lib/agent-identity.server", () => ({ loadAgentIdentity: mocks.loadAgentIdentity }));
@@ -61,13 +57,10 @@ type Json = any;
 describe("POST /mcp (hosted remote MCP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: a workspace-scoped session pinned to one workspace.
-    mocks.gateUserMcp.mockResolvedValue({
-      ok: true,
-      ctx: { workspaceId: WORKSPACE, workspaceHandle: "acme", principalId: "user_alice" },
-    });
-    mocks.resolveDocoInWorkspace.mockImplementation(async (handleOrId: string) => ({
-      ok: true,
+    // Every token takes the same path: the gate names the caller, and each tool
+    // call replays the bearer so the per-Doco routes enforce the grant.
+    mocks.gateUserMcp.mockResolvedValue({ ok: true, ctx: { principalId: "user_alice" } });
+    mocks.getDocoByIdOrHandle.mockImplementation(async (handleOrId: string) => ({
       handle: handleOrId,
     }));
     mocks.getWorkspaceConstitutionsByIds.mockResolvedValue([]);
@@ -90,18 +83,6 @@ describe("POST /mcp (hosted remote MCP)", () => {
       'Bearer resource_metadata="https://doco.to/.well-known/oauth-protected-resource/mcp"',
     );
     expect(mocks.gateUserMcp).toHaveBeenCalledTimes(1);
-  });
-
-  it("403s a forbidden token", async () => {
-    mocks.gateUserMcp.mockResolvedValue({
-      ok: false,
-      kind: "forbidden",
-      message: "You don't have access to this workspace.",
-    });
-    const res = await call({ jsonrpc: "2.0", id: 1, method: "initialize" }, BEARER);
-    expect(res.status).toBe(403);
-    const body: Json = await res.json();
-    expect(body.error.message).toContain("don't have access");
   });
 
   it("initialize describes the multi-workspace 'all workspaces' reach, not a single-workspace binding", async () => {
@@ -227,41 +208,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.structuredContent).toEqual(report);
   });
 
-  it("doco_whoami reports the pinned workspace and only its docos", async () => {
-    mocks.loadAgentIdentity.mockResolvedValue({
-      user_id: "user_alice",
-      username: "alice",
-      type: "person",
-      credential: null,
-      indicator_prefix: "[🔮 Doco @alice]",
-      grants: [
-        { scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" },
-        { scope: "doco", id: "doco_1", label: "acme/proj1", role: "writer" },
-        // A doco in a different workspace must NOT surface on a pinned session.
-        { scope: "doco", id: "doco_2", label: "other/proj2", role: "reader" },
-      ],
-    });
-    const res = await call(
-      {
-        jsonrpc: "2.0",
-        id: 30,
-        method: "tools/call",
-        params: { name: "doco_whoami", arguments: {} },
-      },
-      BEARER,
-    );
-    const body: Json = await res.json();
-    const text: string = body.result.content[0].text;
-    expect(text).toContain("bound to workspace acme");
-    expect(text).toContain("acme/proj1: writer");
-    expect(text).not.toContain("other/proj2");
-  });
-
-  it("doco_whoami on an 'all workspaces' connection surfaces every workspace + doco", async () => {
-    mocks.gateUserMcp.mockResolvedValue({
-      ok: true,
-      ctx: { workspaceId: "", workspaceHandle: "", principalId: "user_alice", allWorkspaces: true },
-    });
+  it("doco_whoami lists every workspace and Doco the token grants, across workspaces", async () => {
     mocks.loadAgentIdentity.mockResolvedValue({
       user_id: "user_alice",
       username: "alice",
@@ -271,30 +218,35 @@ describe("POST /mcp (hosted remote MCP)", () => {
       grants: [
         { scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" },
         { scope: "workspace", id: "workspace_beta", label: "beta", role: "writer" },
-        { scope: "doco", id: "doco_2", label: "beta/proj2", role: "reader" },
+        { scope: "doco", id: "doco_1", label: "acme/proj1", role: "owner" },
+        { scope: "doco", id: "doco_3", label: "gamma/proj3", role: "reader" },
       ],
     });
     const res = await call(
-      { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "doco_whoami" } },
+      { jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "doco_whoami" } },
       BEARER,
     );
     const body: Json = await res.json();
     const text: string = body.result.content[0].text;
-    expect(text).toContain("all workspaces");
     expect(text).toContain("acme");
     expect(text).toContain("beta");
-    expect(text).toContain("beta/proj2: reader");
-    expect(body.result.structuredContent.all_workspaces).toBe(true);
+    expect(text).toContain("acme/proj1: owner");
+    expect(text).toContain("gamma/proj3: reader");
+    expect(text).not.toContain("bound to workspace");
+    expect(body.result.structuredContent.grants).toHaveLength(4);
   });
 
-  it("doco_whoami surfaces the workspace constitution (scoped to the pinned workspace)", async () => {
+  it("doco_whoami surfaces the constitution of every reachable workspace", async () => {
     mocks.loadAgentIdentity.mockResolvedValue({
       user_id: "user_alice",
       username: "alice",
       type: "person",
       credential: null,
       indicator_prefix: "[🔮 Doco @alice]",
-      grants: [{ scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" }],
+      grants: [
+        { scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" },
+        { scope: "workspace", id: "workspace_beta", label: "beta", role: "writer" },
+      ],
     });
     mocks.getWorkspaceConstitutionsByIds.mockResolvedValue([
       {
@@ -308,13 +260,22 @@ describe("POST /mcp (hosted remote MCP)", () => {
       BEARER,
     );
     const body: Json = await res.json();
-    expect(mocks.getWorkspaceConstitutionsByIds).toHaveBeenCalledWith([WORKSPACE]);
-    expect(body.result.content[0].text).toContain("Workspace constitution");
+    expect(mocks.getWorkspaceConstitutionsByIds).toHaveBeenCalledWith([
+      WORKSPACE,
+      "workspace_beta",
+    ]);
+    expect(body.result.content[0].text).toContain("Workspace constitution for acme");
     expect(body.result.content[0].text).toContain("Ship behind flags. Write the decision down.");
-    expect(body.result.structuredContent.workspace_constitution).toContain("Ship behind flags");
+    expect(body.result.structuredContent.workspace_constitutions).toEqual([
+      {
+        workspace_id: WORKSPACE,
+        workspace_handle: "acme",
+        constitution: "Ship behind flags. Write the decision down.",
+      },
+    ]);
   });
 
-  it("doco_whoami omits the constitution section when the workspace has none", async () => {
+  it("doco_whoami omits the constitution section when no workspace has one", async () => {
     mocks.loadAgentIdentity.mockResolvedValue({
       user_id: "user_alice",
       username: "alice",
@@ -330,7 +291,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     );
     const body: Json = await res.json();
     expect(body.result.content[0].text).not.toContain("Workspace constitution");
-    expect(body.result.structuredContent.workspace_constitution).toBeNull();
+    expect(body.result.structuredContent.workspace_constitutions).toEqual([]);
   });
 
   it("doco_search delegates to the search loader, replaying the bearer", async () => {
@@ -345,7 +306,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
       BEARER,
     );
     const body: Json = await res.json();
-    expect(mocks.resolveDocoInWorkspace).toHaveBeenCalledWith("proj1", WORKSPACE);
+    expect(mocks.getDocoByIdOrHandle).toHaveBeenCalledWith("proj1");
     const callArg: Json = mocks.searchLoader.mock.calls[0][0];
     expect(callArg.params).toEqual({ docoHandle: "proj1" });
     expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
@@ -394,23 +355,20 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(capture.description).toContain("footer_lines");
   });
 
-  it("confines tools to the session workspace — a doco in another workspace is refused", async () => {
-    mocks.resolveDocoInWorkspace.mockResolvedValue({
-      ok: false,
-      message: 'Doco "elsewhere" is not in this workspace.',
-    });
+  it("refuses an unknown Doco before delegating", async () => {
+    mocks.getDocoByIdOrHandle.mockResolvedValue(null);
     const res = await call(
       {
         jsonrpc: "2.0",
         id: 5,
         method: "tools/call",
-        params: { name: "doco_search", arguments: { query: "x", doco: "elsewhere" } },
+        params: { name: "doco_search", arguments: { query: "x", doco: "nowhere" } },
       },
       BEARER,
     );
     const body: Json = await res.json();
     expect(body.result.isError).toBe(true);
-    expect(body.result.content[0].text).toContain("not in this workspace");
+    expect(body.result.content[0].text).toContain('Doco "nowhere" not found');
     expect(mocks.searchLoader).not.toHaveBeenCalled();
   });
 
@@ -502,7 +460,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.structuredContent.superseded).toBe("policy_1");
   });
 
-  it("doco_request_access constrains to a doco in this workspace", async () => {
+  it("doco_request_access resolves the Doco and files the request", async () => {
     mocks.requestDocoAccess.mockResolvedValue({
       ok: true,
       alreadyHad: false,
@@ -519,7 +477,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
       BEARER,
     );
     const body: Json = await res.json();
-    expect(mocks.resolveDocoInWorkspace).toHaveBeenCalledWith("proj1", WORKSPACE);
+    expect(mocks.getDocoByIdOrHandle).toHaveBeenCalledWith("proj1");
     expect(mocks.requestDocoAccess).toHaveBeenCalledWith({
       docoHandleOrId: "proj1",
       requesterId: "user_alice",

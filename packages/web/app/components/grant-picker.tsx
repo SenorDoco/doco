@@ -13,7 +13,6 @@ import {
   applyDocoTypeLevel,
   applyTargetRole,
   availableScopes,
-  coerceSingleWorkspace,
   describeExistingGrant,
   findExistingGrant,
   findGrant,
@@ -46,7 +45,6 @@ export function GrantPicker({
   grants,
   onChange,
   existing,
-  forToken = false,
   offerActor = false,
   boundWorkspace,
 }: {
@@ -56,13 +54,8 @@ export function GrantPicker({
   /** Grants the grantee/token already holds (widen-existing flow). */
   existing?: ExistingGrant[];
   /**
-   * Minting a TOKEN rather than granting a person: clamps the selection to a
-   * single workspace, mirroring the server-side one-workspace token cap.
-   */
-  forToken?: boolean;
-  /**
-   * Offer the actor ("all workspaces") scope — a user-level credential, one
-   * workspace per session. The consent screens set this; the /tokens page
+   * Offer the actor ("all workspaces") scope — a user-level credential that
+   * follows live membership. The consent screens set this; the /tokens page
    * surfaces actor through its own top-level toggle instead, so it leaves this
    * off. Suppressed for a bound (per-workspace) connector either way.
    */
@@ -79,15 +72,11 @@ export function GrantPicker({
   const scopes = useMemo(
     () =>
       availableScopes(catalog, {
-        forToken,
         offerActor,
         boundWorkspaceLabel: boundWorkspace?.label,
       }),
-    [catalog, forToken, offerActor, boundWorkspace],
+    [catalog, offerActor, boundWorkspace],
   );
-  // A token selection may never span more than one workspace.
-  const emit = (next: ComposedGrant[]) =>
-    onChange(forToken ? coerceSingleWorkspace(grants, next, catalog) : next);
   const [scope, setScope] = useState<GrantScope | null>(null);
 
   if (scopes.length === 0) {
@@ -132,7 +121,7 @@ export function GrantPicker({
               // composes the act-as-me grant directly. Any other scope starts
               // from a clean slate.
               if (boundWorkspace && s.scope === "workspace") {
-                emit(applyTargetRole([], "workspace", boundWorkspace.id, "writer"));
+                onChange(applyTargetRole([], "workspace", boundWorkspace.id, "writer"));
               } else if (s.scope === "actor") {
                 onChange([actorGrant()]);
               } else {
@@ -167,7 +156,7 @@ export function GrantPicker({
                     value={targetRoleValue(grants, "workspace", boundWorkspace.id)}
                     includeNoAccess={false}
                     onChange={(v) =>
-                      emit(applyTargetRole(grants, "workspace", boundWorkspace.id, v))
+                      onChange(applyTargetRole(grants, "workspace", boundWorkspace.id, v))
                     }
                   />
                 </div>
@@ -190,7 +179,7 @@ export function GrantPicker({
       </fieldset>
 
       {scope === "actor" ? (
-        <ActorStep grants={grants} onChange={emit} />
+        <ActorStep grants={grants} onChange={onChange} />
       ) : scope === "workspace" ? (
         // Bound mode grants the whole workspace via the inline dropdown above —
         // no multi-workspace list step.
@@ -198,14 +187,14 @@ export function GrantPicker({
           <WorkspaceMultiStep
             catalog={catalog}
             grants={grants}
-            onChange={emit}
+            onChange={onChange}
             existing={existing}
           />
         )
       ) : scope === "doco" ? (
-        <DocoMultiStep catalog={catalog} grants={grants} onChange={emit} existing={existing} />
+        <DocoMultiStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
       ) : scope === "types" ? (
-        <TypesStep catalog={catalog} grants={grants} onChange={emit} existing={existing} />
+        <TypesStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
       ) : null}
     </div>
   );
@@ -410,9 +399,9 @@ function ActorStep({
         />
       </div>
       <p className="text-muted-foreground">
-        Works in <strong>one workspace per session</strong>, never two at once, at this level —
-        capped by your own role in each (pick owner but you're a writer somewhere and it stays a
-        writer there). New workspaces you join are reachable automatically. Revoke any time.
+        Reaches every workspace you belong to at this level, capped by your own role in each (pick
+        owner but you're a writer somewhere and it stays a writer there). New workspaces you join
+        are reachable automatically. Revoke any time.
       </p>
     </div>
   );

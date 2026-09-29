@@ -38,8 +38,9 @@ describe("/llms.txt", () => {
   it("names the three access levels a user can grant", async () => {
     const body = await llmsTxt();
     expect(body).toContain("all of their Workspaces");
-    expect(body).toContain("one Workspace");
-    expect(body).toContain("a subset of Docos");
+    expect(body).toContain("specific Workspaces");
+    expect(body).toContain("specific Docos");
+    expect(body).not.toContain("pins the session to its single workspace");
   });
 
   // /llms.txt used to be auth and endpoints only. An agent landing here

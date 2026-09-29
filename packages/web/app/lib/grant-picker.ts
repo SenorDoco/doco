@@ -43,14 +43,14 @@ export interface GrantCatalog {
  * The scope levels the grant wizard can offer, in breadth order. The
  * first wizard question picks one of these; the flow then adapts:
  *   - actor:   mint a user-level "all workspaces" TOKEN (no explicit grants; its
- *              breadth is the user's live membership, one workspace per session).
- *   - workspace:     grant on one workspace (and its Docos).
+ *              breadth is the user's live membership).
+ *   - workspace:     grant on one or more workspaces (and their Docos).
  *   - doco:    grant role on one Doco.
  *   - types:   grant write on specific node/edge types within one Doco.
  *
- * `actor` is offered ONLY when minting a credential (`forToken`); a token can't
- * snapshot every workspace (single-workspace rule), so it defers its breadth to
- * refresh time instead. Granting another PERSON always names concrete targets —
+ * `actor` is offered ONLY when minting a credential (`offerActor`): its breadth
+ * follows the user's live membership instead of a snapshot of workspaces.
+ * Granting another PERSON always names concrete targets —
  * a specific workspace or doco — never "all your workspaces" (that breadth is a
  * token-only authorization). There is no "identity" (full-access) scope anymore.
  */
@@ -288,8 +288,8 @@ export interface ScopeChoice {
 /**
  * Which scope choices the wizard should offer, given what the granting user
  * can reach. One opt-in breadth choice sits at the top, for TOKENS only:
- *   - the consent screens → the `actor` scope (user-level "all workspaces", one
- *     workspace per session), offered when the host opts in (`offerActor`),
+ *   - the consent screens → the `actor` scope (user-level "all workspaces"),
+ *     offered when the host opts in (`offerActor`),
  *     the user has ≥1 workspace to act in, and the connector isn't pinned to a
  *     single workspace (`boundWorkspaceLabel`). The /tokens page surfaces actor
  *     through its own top-level toggle instead, so it leaves `offerActor` off.
@@ -300,7 +300,7 @@ export interface ScopeChoice {
  */
 export function availableScopes(
   catalog: GrantCatalog,
-  opts: { forToken?: boolean; offerActor?: boolean; boundWorkspaceLabel?: string } = {},
+  opts: { offerActor?: boolean; boundWorkspaceLabel?: string } = {},
 ): ScopeChoice[] {
   const hasWorkspace = catalog.targets.some((t) => t.level === "workspace");
   const hasDoco = catalog.targets.some((t) => t.level === "doco");
@@ -308,9 +308,9 @@ export function availableScopes(
   if (opts.offerActor && hasWorkspace && !opts.boundWorkspaceLabel) {
     out.push({
       scope: "actor",
-      title: "All your workspaces — one at a time",
+      title: "All your workspaces",
       blurb:
-        "A user-level connection that reaches every workspace you belong to, but each session works in just one. Pick the access level it gets — capped by your own role in each workspace. Best for coding assistants like Claude Code or Codex.",
+        "Reaches every workspace you belong to, including ones you join later. Pick the access level it gets, capped by your own role in each workspace.",
     });
   }
   if (hasWorkspace) {
@@ -488,48 +488,4 @@ export function applyDocoTypeLevel(
 /** Count of grants selected, for the submit button / summary. */
 export function selectionCount(list: ComposedGrant[]): number {
   return list.length;
-}
-
-/**
- * The real workspace a composed grant belongs to, or null when it doesn't
- * count toward the one-workspace token cap. A workspace grant is its own id; a
- * Doco grant inherits its catalog target's workspace. Personal Docos (the
- * "__other__" bucket) and any non-`workspace_` bucket return null — they're
- * not a workspace, mirroring the server-side invariant.
- */
-export function workspaceOfComposedGrant(g: ComposedGrant, catalog: GrantCatalog): string | null {
-  if (g.level === "workspace") return g.targetId.startsWith("workspace_") ? g.targetId : null;
-  if (g.level === "doco") {
-    const t = catalog.targets.find((x) => x.level === "doco" && x.id === g.targetId);
-    const w = t?.workspaceId;
-    return w?.startsWith("workspace_") ? w : null;
-  }
-  return null;
-}
-
-/**
- * Enforce the single-workspace token cap on a selection change. If the next
- * selection touches more than one workspace, keep only the grants in the
- * workspace of the most-recently-added entry (Doco grants in other workspaces
- * are dropped); personal/no-workspace grants always survive. This makes the
- * token picker honest about the rule the server enforces at mint time.
- */
-export function coerceSingleWorkspace(
-  prev: ComposedGrant[],
-  next: ComposedGrant[],
-  catalog: GrantCatalog,
-): ComposedGrant[] {
-  const workspaces = new Set(
-    next.map((g) => workspaceOfComposedGrant(g, catalog)).filter((w): w is string => w !== null),
-  );
-  if (workspaces.size <= 1) return next;
-  const prevKeys = new Set(prev.map((g) => grantKey(g.level, g.targetId)));
-  const added = next.filter((g) => !prevKeys.has(grantKey(g.level, g.targetId)));
-  const keep =
-    (added.length > 0 ? workspaceOfComposedGrant(added[added.length - 1], catalog) : null) ??
-    workspaceOfComposedGrant(next[0], catalog);
-  return next.filter((g) => {
-    const w = workspaceOfComposedGrant(g, catalog);
-    return w === null || w === keep;
-  });
 }
