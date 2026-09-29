@@ -94,6 +94,36 @@ export function notionPlainText(markdown: string): string {
 const TAG_URL_RE =
   /<(?:page|database|mention-page|mention-data-source|synced_block)\b[^>]*\burl="([^"]+)"/gi;
 const LINK_RE = /\]\((https?:\/\/[^)\s]+)\)/gi;
+const CHILD_TAG_RE =
+  /<(page|child-page|database|child-database)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1\s*>)/gi;
+
+export interface NotionChildRef {
+  /** The page id, or for a database the database id (its data sources are
+   *  looked up from it). */
+  id: string;
+  kind: "page" | "database";
+  /** The title as the parent's Markdown shows it; the copy takes Notion's. */
+  title: string;
+}
+
+/** The child pages and databases a page's Markdown holds, in order, deduped:
+ *  what the copy must contain for the page to read whole. Mentions and links
+ *  point elsewhere and are not children. Pure. */
+export function notionChildRefs(markdown: string): NotionChildRef[] {
+  const refs = new Map<string, NotionChildRef>();
+  for (const match of markdown.matchAll(CHILD_TAG_RE)) {
+    const url = /\burl="([^"]*)"/i.exec(match[2])?.[1] ?? "";
+    const id = notionIdFromUrl(url);
+    if (!id || refs.has(id)) continue;
+    const title = (match[3] ?? "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/[*~`]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    refs.set(id, { id, kind: /database/i.test(match[1]) ? "database" : "page", title });
+  }
+  return [...refs.values()];
+}
 
 /** The Notion objects a page's Markdown points at: child pages and databases,
  *  page and data source mentions, synced block sources, and plain notion.so

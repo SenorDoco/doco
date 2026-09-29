@@ -51,6 +51,9 @@ export interface NotionIntegrationStatus {
   /** Objects copied at least once, of those discovered. */
   pagesDone: number;
   pages: number;
+  /** Notion capped the page listing: the count grows as the pages found
+   *  through the pages that name them are copied. */
+  listingCapped: boolean;
 }
 
 export type IntegrationStatus =
@@ -188,8 +191,10 @@ async function loadNotionStatus(
       discovered_at: Date | string | null;
       ticked_at: Date | string | null;
       needs_reauth_at: Date | string | null;
+      listing_capped_at: Date | string | null;
     }>(
-      `SELECT workspace_name, consented_at, discovered_at, ticked_at, needs_reauth_at
+      `SELECT workspace_name, consented_at, discovered_at, ticked_at, needs_reauth_at,
+              listing_capped_at
          FROM notion_mirrors WHERE doco_id = $1`,
       [docoId],
     )
@@ -230,6 +235,7 @@ async function loadNotionStatus(
     needsReauth,
     pagesDone: Number(counts?.done ?? 0),
     pages: Number(counts?.pages ?? 0),
+    listingCapped: mirror.listing_capped_at !== null,
   };
 }
 

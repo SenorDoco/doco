@@ -181,8 +181,12 @@ describe("loadNotionPerspective", () => {
       truncated: false,
     });
     expect(data.page?.markdown).toContain("# Welcome");
-    expect(data.page?.links).toEqual([{ pageId: ONB, title: "Onboarding", icon: null }]);
-    expect(data.page?.backlinks).toEqual([{ pageId: ONB, title: "Onboarding", icon: null }]);
+    expect(data.page?.links).toEqual([
+      { pageId: ONB, title: "Onboarding", icon: null, copied: true },
+    ]);
+    expect(data.page?.backlinks).toEqual([
+      { pageId: ONB, title: "Onboarding", icon: null, copied: true },
+    ]);
     expect(data.tree[0].children?.map((node) => node.title)).toEqual(["Onboarding", "Tasks"]);
     expect(data.tree[0].children?.[1].children).toBeNull();
   });
@@ -206,9 +210,37 @@ describe("loadNotionPerspective", () => {
         url: url(ONB),
         last_edited_time: "2026-09-27T10:00:00.000Z",
         snippet: "Day one: Laptop Badge See Handbook.",
+        copied: true,
       },
     ]);
     expect(data.tree.map((node) => node.children)).toEqual([null, null]);
+  });
+
+  it("knows a queued page by its title and place, but not its content, until it is copied", async () => {
+    const QUEUED = "44444444-0000-4000-8000-000000000001";
+    await db.query(
+      `INSERT INTO notion_pages
+         (doco_id, page_id, object, parent_id, parent_type, title, url, fetch_pending, fetch_reason)
+       VALUES ('doco_notion', $1, 'page', $2, 'page', 'Manifesto', $3, true, 'child')`,
+      [QUEUED, HB, url(QUEUED)],
+    );
+
+    const data = await loadNotionPerspective(c, "doco_notion", { pageId: QUEUED });
+
+    expect(data.page).toMatchObject({
+      pageId: QUEUED,
+      title: "Manifesto",
+      copied: false,
+      markdown: "",
+    });
+    expect(data.page?.path).toEqual([{ pageId: HB, title: "Handbook", icon: "📘", copied: true }]);
+    expect(data.tree[0].children?.map((node) => [node.title, node.copied])).toEqual([
+      ["Manifesto", false],
+      ["Onboarding", true],
+      ["Tasks", true],
+    ]);
+    const hits = await searchNotionMirror(c, "doco_notion", "manifesto", 10);
+    expect(hits.map((hit) => [hit.title, hit.copied])).toEqual([["Manifesto", false]]);
   });
 
   it("is empty for a Doco that doesn't mirror Notion", async () => {

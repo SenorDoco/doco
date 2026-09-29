@@ -15,6 +15,7 @@ function page(overrides: Partial<NotionReaderPage>): NotionReaderPage {
     object: "page",
     title: "Handbook",
     icon: "📘",
+    copied: true,
     url: notionUrl(HB),
     path: [],
     lastEditedAt: "2026-09-20T10:00:00.000Z",
@@ -35,6 +36,7 @@ const base: NotionPerspectiveData = {
       pageId: HB,
       title: "Handbook",
       icon: "📘",
+      copied: true,
       object: "page",
       hasChildren: true,
       more: 0,
@@ -43,6 +45,7 @@ const base: NotionPerspectiveData = {
           pageId: ONB,
           title: "Onboarding",
           icon: null,
+          copied: true,
           object: "page",
           hasChildren: false,
           children: null,
@@ -92,8 +95,8 @@ describe("NotionPerspective", () => {
           "",
           '<callout icon="💡">Ask around.</callout>',
         ].join("\n"),
-        links: [{ pageId: ONB, title: "Onboarding", icon: null }],
-        backlinks: [{ pageId: ONB, title: "Onboarding", icon: null }],
+        links: [{ pageId: ONB, title: "Onboarding", icon: null, copied: true }],
+        backlinks: [{ pageId: ONB, title: "Onboarding", icon: null, copied: true }],
         truncated: true,
       }),
     });
@@ -112,6 +115,62 @@ describe("NotionPerspective", () => {
     expect(html).toContain("by Ana Ruiz");
   });
 
+  it("marks a queued child page, and a page the copy lacks, next to their links", () => {
+    const GONE = "11111111-0000-4000-8000-000000000009";
+    const html = render({
+      ...base,
+      page: page({
+        markdown: [
+          `<page url="${notionUrl(ONB)}">Onboarding</page>`,
+          `<page url="${notionUrl(GONE)}">Elsewhere</page>`,
+          `See <mention-page url="${notionUrl(GONE)}">elsewhere</mention-page>.`,
+        ].join("\n"),
+        links: [{ pageId: ONB, title: "Onboarding", icon: null, copied: false }],
+      }),
+    });
+
+    expect(html).toContain(`href="/?perspective=notion&amp;notion_page=${ONB}"`);
+    expect(html).toContain("not copied yet</span>");
+    expect(html).toContain(`href="${notionUrl(GONE)}"`);
+    expect(html).toContain("not copied yet · opens in Notion");
+    expect(html).toContain('title="Not in the copy yet: opens in Notion"');
+  });
+
+  it("explains a page that is not copied yet instead of showing an empty copy", () => {
+    const html = render({
+      ...base,
+      tree: [{ ...base.tree[0], copied: false }],
+      page: page({ copied: false, markdown: "" }),
+    });
+
+    expect(html).toContain("This page is not in the copy yet");
+    expect(html).toContain(`href="${notionUrl(HB)}"`);
+    expect(html).toContain('title="Not copied yet"');
+  });
+
+  it("says when a search hit is not copied yet", () => {
+    const html = render({
+      ...base,
+      page: null,
+      query: "laptop",
+      hits: [
+        {
+          type: "notion_page",
+          page_id: ONB,
+          title: "Onboarding",
+          path: "",
+          url: notionUrl(ONB),
+          last_edited_time: null,
+          snippet: "",
+          copied: false,
+        },
+      ],
+    });
+
+    expect(html).toContain("Not copied yet");
+    expect(html).toContain("read it in Notion");
+  });
+
   it("shows search hits with their path and snippet", () => {
     const html = render({
       ...base,
@@ -126,6 +185,7 @@ describe("NotionPerspective", () => {
           url: notionUrl(ONB),
           last_edited_time: null,
           snippet: "Day one: Laptop Badge",
+          copied: true,
         },
       ],
     });

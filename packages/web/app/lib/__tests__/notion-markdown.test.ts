@@ -3,6 +3,7 @@ import {
   flattenNotionProperties,
   normalizeNotionId,
   normalizeNotionMarkdown,
+  notionChildRefs,
   notionIconToString,
   notionIdFromUrl,
   notionLinkedIds,
@@ -172,5 +173,29 @@ describe("properties", () => {
       }),
     ).toBe("https://file.notion.so/f/icon.png");
     expect(notionIconToString(null)).toBeNull();
+  });
+});
+
+describe("notionChildRefs", () => {
+  const childUrl = (id: string) => `https://www.notion.so/${id.replace(/-/g, "")}`;
+  const A = "00000000-0000-0000-0000-00000000000a";
+  const B = "00000000-0000-0000-0000-00000000000b";
+  const D = "00000000-0000-0000-0000-00000000000d";
+
+  it("lists the child pages and databases once each, titled as the parent shows them", () => {
+    const md = [
+      `Intro with <mention-page url="${childUrl(ID)}">a mention</mention-page> and [a link](${childUrl(ID)}).`,
+      `<page url="${childUrl(A)}" color="default">**Manifesto**</page>`,
+      `<database url="${childUrl(D)}" inline="true" icon="📋">Tasks</database>`,
+      `<page url="${childUrl(A)}">Manifesto again</page>`,
+      `<child-page url="${childUrl(B)}"/>`,
+      '<page url="https://example.com/not-notion">Elsewhere</page>',
+    ].join("\n");
+
+    expect(notionChildRefs(md)).toEqual([
+      { id: A, kind: "page", title: "Manifesto" },
+      { id: D, kind: "database", title: "Tasks" },
+      { id: B, kind: "page", title: "" },
+    ]);
   });
 });

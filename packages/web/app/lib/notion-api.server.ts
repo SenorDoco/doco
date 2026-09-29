@@ -221,6 +221,13 @@ export function getNotionPage(token: string, pageId: string, fetchImpl?: typeof 
   return callNotion<Json>(token, "GET", `/pages/${pageId}`, undefined, fetchImpl);
 }
 
+/** A database: the container of one or more data sources (`data_sources`,
+ *  each with an id and a name), which is what a page's `<database>` tag
+ *  points at. */
+export function getNotionDatabase(token: string, databaseId: string, fetchImpl?: typeof fetch) {
+  return callNotion<Json>(token, "GET", `/databases/${databaseId}`, undefined, fetchImpl);
+}
+
 export interface NotionPageMarkdown extends Json {
   markdown?: string;
   truncated?: boolean;

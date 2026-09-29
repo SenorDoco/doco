@@ -55,15 +55,18 @@ function historyLine(status: IntegrationStatus): string {
   if (status.integration === "notion") {
     if (status.needsReauth) return "Notion no longer accepts the connection: reconnect to resume";
     const pages = `${status.pagesDone.toLocaleString("en-US")} of ${status.pages.toLocaleString("en-US")} pages`;
+    // A capped listing is not the whole workspace: the rest arrives through
+    // the pages that name it, so the counts keep growing.
+    const capped = status.listingCapped ? " (listing capped by Notion)" : "";
     if (status.state === "done") {
       return status.pages === 0
         ? "Nothing shared with Doco yet"
-        : `All ${status.pages.toLocaleString("en-US")} pages copied`;
+        : `All ${status.pages.toLocaleString("en-US")} pages copied${capped}`;
     }
-    if (status.state === "stalled") return `Page copy stalled at ${pages}`;
+    if (status.state === "stalled") return `Page copy stalled at ${pages}${capped}`;
     return status.pages === 0
       ? "Discovering the pages shared with Doco"
-      : `Copying pages: ${pages}`;
+      : `Copying pages: ${pages}${capped}`;
   }
   const since = monthYear(status.since);
   if (status.state === "done") return `All history copied back to ${since}`;

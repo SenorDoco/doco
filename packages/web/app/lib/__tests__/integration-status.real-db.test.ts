@@ -149,6 +149,7 @@ describe("loadIntegrationStatuses", () => {
           needsReauth: false,
           pagesDone: 2,
           pages: 3,
+          listingCapped: false,
         },
       ]);
     });
