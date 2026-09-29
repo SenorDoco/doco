@@ -497,7 +497,7 @@ describe("listAccessibleDocoIdsInWorkspace (Slack team→workspace binding)", ()
 });
 
 describe('legacy defer-scope ("*") token grants nothing now', () => {
-  // The "*" full-access token was removed (single-workspace rule). Issuance
+  // The "*" full-access token was removed. Issuance
   // rejects it and the migration revokes any survivor, but defensively a "*"
   // is now treated as a literal id that matches no Doco — never a wildcard.
   it("does not grant an arbitrary Doco via the scope gate", () => {

@@ -199,53 +199,25 @@ export function mergeGrantSets(base: GrantSets, incoming: GrantSets): GrantSets 
 }
 
 // ---------------------------------------------------------------------------
-// Single-workspace token invariant.
+// Token scope invariant.
 // ---------------------------------------------------------------------------
 
 /**
- * Security invariant (workspace-bound tokens): a token may grant access to AT
- * MOST ONE workspace, and the legacy defer-scope "*" ("Full access — follows
- * your permissions") token is no longer allowed at all. This is what stops a
- * token from becoming a master key to everything a human can reach.
- *
- * A token's "touched workspaces" = `granted_workspace_ids` unioned with the
- * owning workspace of every granted Doco. Personal (user-owned) Docos have no
- * workspace and don't count toward the limit. Throws
- * `OauthError("invalid_scope", …)` when the grant carries the "*" wildcard or
- * would span more than one workspace.
- *
- * Enforced at every mint chokepoint (authorization code, direct token
- * issuance, device approval, and personal-API-key widening) so no path —
- * OAuth, device flow, or the /tokens page — can mint a broader credential.
+ * A token's scope is explicit: any set of workspaces and Docos, or the actor
+ * ("all workspaces") mode, which carries no stored grants. The legacy "*"
+ * full-access grant is never allowed.
  */
-export async function assertSingleWorkspaceGrant(grants: {
+export function assertScopedGrant(grants: {
   granted_doco_ids?: string[];
   granted_workspace_ids?: string[];
-}): Promise<void> {
+}): void {
   const docoIds = grants.granted_doco_ids ?? [];
   const workspaceIds = grants.granted_workspace_ids ?? [];
   if (docoIds.includes("*") || workspaceIds.includes("*")) {
     throw new OauthError(
       "invalid_scope",
-      "Full-access tokens are no longer allowed — scope the token to a single workspace.",
+      "Full-access tokens are not allowed. Scope the token to workspaces or Docos.",
     );
-  }
-  const touched = new Set(workspaceIds.filter((id) => id.startsWith("workspace_")));
-  const realDocoIds = [...new Set(docoIds.filter(Boolean))];
-  if (realDocoIds.length > 0 && touched.size <= 1) {
-    await withClient(async (c) => {
-      const r = await c.query<{ owner_id: string }>(
-        "SELECT owner_id FROM docos WHERE id = ANY($1::text[]) AND deleted_at IS NULL",
-        [realDocoIds],
-      );
-      for (const row of r.rows) {
-        const owner = String(row.owner_id);
-        if (owner.startsWith("workspace_")) touched.add(owner);
-      }
-    });
-  }
-  if (touched.size > 1) {
-    throw new OauthError("invalid_scope", "A token can be scoped to at most one workspace.");
   }
 }
 
@@ -396,7 +368,7 @@ export interface IssueAuthCodeInput {
 export async function issueAuthorizationCode(
   input: IssueAuthCodeInput,
 ): Promise<{ code: string; expires_at: Date }> {
-  await assertSingleWorkspaceGrant({
+  assertScopedGrant({
     granted_doco_ids: input.granted_doco_ids,
     granted_workspace_ids: input.granted_workspace_ids ?? [],
   });
@@ -595,8 +567,8 @@ export interface IssueTokensInput {
   scope: string | null;
   /**
    * 'actor' mints a user-level refresh whose breadth is the user's LIVE
-   * workspace membership (resolved + down-scoped to one workspace per access
-   * token at refresh time). Carries no explicit grants. Defaults to 'regular'.
+   * workspace membership, resolved live on every request. Carries no explicit
+   * grants. Defaults to 'regular'.
    */
   grant_type?: "regular" | "actor";
   /**
@@ -615,7 +587,7 @@ export interface IssuedTokens {
 }
 
 export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens> {
-  await assertSingleWorkspaceGrant({
+  assertScopedGrant({
     granted_doco_ids: input.granted_doco_ids,
     granted_workspace_ids: input.granted_workspace_ids ?? [],
   });
@@ -801,9 +773,8 @@ export async function refreshTokens(args: {
     const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
 
-    // Defense in depth: an access token must never span more than one workspace
-    // (an actor token spans none — it has no stored grants at all).
-    await assertSingleWorkspaceGrant({
+    // Defense in depth: never mint a wildcard access token.
+    assertScopedGrant({
       granted_doco_ids: row.granted_doco_ids,
       granted_workspace_ids: row.granted_workspace_ids ?? [],
     });
@@ -1059,7 +1030,7 @@ export async function approveDeviceAuthorization(args: {
   /** Role ceiling for an actor token (reader|writer|owner). null = owner = full live role. */
   actor_role?: DocoRole | null;
 }): Promise<void> {
-  await assertSingleWorkspaceGrant({
+  assertScopedGrant({
     granted_doco_ids: args.granted_doco_ids,
     granted_workspace_ids: args.granted_workspace_ids ?? [],
   });

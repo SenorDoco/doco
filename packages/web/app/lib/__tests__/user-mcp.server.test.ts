@@ -3,55 +3,54 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCurrentPrincipalAsync: vi.fn(),
   getOauthTokenForRequest: vi.fn(),
-  getWorkspaceById: vi.fn(),
-  principalReachesWorkspace: vi.fn(),
 }));
 
-vi.mock("@doco/db", () => ({ getWorkspaceById: mocks.getWorkspaceById }));
 vi.mock("../doco-access.server", () => ({
   getOauthTokenForRequest: mocks.getOauthTokenForRequest,
 }));
 vi.mock("../session.server", () => ({ getCurrentPrincipalAsync: mocks.getCurrentPrincipalAsync }));
-vi.mock("../workspace-mcp.server", () => ({
-  principalReachesWorkspace: mocks.principalReachesWorkspace,
-}));
 
 import { gateUserMcp } from "../user-mcp.server";
 
 const req = new Request("https://doco.to/mcp", { method: "POST" });
 
+// The session's reach is whatever the token grants; every tool call replays the
+// bearer, so the per-Doco routes enforce it. The gate only establishes who is
+// calling, for every kind of token alike.
 describe("gateUserMcp", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_alice" });
     mocks.getOauthTokenForRequest.mockResolvedValue({ granted_workspace_ids: ["workspace_acme"] });
-    mocks.getWorkspaceById.mockResolvedValue({ id: "workspace_acme", handle: "acme" });
-    mocks.principalReachesWorkspace.mockResolvedValue(true);
   });
 
-  it("pins the session to the token's lone granted workspace", async () => {
-    const gate = await gateUserMcp(req);
-    expect(gate).toEqual({
-      ok: true,
-      ctx: { workspaceId: "workspace_acme", workspaceHandle: "acme", principalId: "user_alice" },
+  it("opens a session for a token scoped to one workspace", async () => {
+    expect(await gateUserMcp(req)).toEqual({ ok: true, ctx: { principalId: "user_alice" } });
+  });
+
+  it("opens a session for a token scoped to several workspaces", async () => {
+    mocks.getOauthTokenForRequest.mockResolvedValue({
+      granted_doco_ids: [],
+      granted_workspace_ids: ["workspace_acme", "workspace_beta"],
     });
+    expect(await gateUserMcp(req)).toEqual({ ok: true, ctx: { principalId: "user_alice" } });
   });
 
-  it("enters all-workspaces mode for an actor token (reaches every workspace)", async () => {
+  it("opens a session for a token scoped to specific Docos only", async () => {
+    mocks.getOauthTokenForRequest.mockResolvedValue({
+      granted_doco_ids: ["doco_1"],
+      granted_workspace_ids: [],
+    });
+    expect(await gateUserMcp(req)).toEqual({ ok: true, ctx: { principalId: "user_alice" } });
+  });
+
+  it("opens a session for an actor ('all workspaces') token", async () => {
     mocks.getOauthTokenForRequest.mockResolvedValue({
       grant_type: "actor",
       actor_role: null,
       granted_workspace_ids: [],
     });
-    expect(await gateUserMcp(req)).toEqual({
-      ok: true,
-      ctx: {
-        workspaceId: "",
-        workspaceHandle: "",
-        principalId: "user_alice",
-        allWorkspaces: true,
-      },
-    });
+    expect(await gateUserMcp(req)).toEqual({ ok: true, ctx: { principalId: "user_alice" } });
   });
 
   it("is unauthenticated without a principal", async () => {
@@ -59,18 +58,8 @@ describe("gateUserMcp", () => {
     expect(await gateUserMcp(req)).toMatchObject({ ok: false, kind: "unauthenticated" });
   });
 
-  it("is unauthenticated without a bearer token (cookie alone can't pin a workspace)", async () => {
+  it("is unauthenticated without a bearer token (a cookie alone is not enough)", async () => {
     mocks.getOauthTokenForRequest.mockResolvedValue(null);
     expect(await gateUserMcp(req)).toMatchObject({ ok: false, kind: "unauthenticated" });
-  });
-
-  it("forbids a token with no workspace scope", async () => {
-    mocks.getOauthTokenForRequest.mockResolvedValue({ granted_workspace_ids: [] });
-    expect(await gateUserMcp(req)).toMatchObject({ ok: false, kind: "forbidden" });
-  });
-
-  it("forbids when the human no longer reaches the token's workspace", async () => {
-    mocks.principalReachesWorkspace.mockResolvedValue(false);
-    expect(await gateUserMcp(req)).toMatchObject({ ok: false, kind: "forbidden" });
   });
 });

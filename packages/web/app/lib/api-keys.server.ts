@@ -22,7 +22,7 @@ import { type DocoRole, getWorkspaceRole, listWorkspacesForUser, withClient } fr
 import { WRITE_ALL, normalizeWriteTypes } from "@doco/shared";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
-import { assertSingleWorkspaceGrant, issueTokens, registerClient } from "~/lib/oauth-server.server";
+import { assertScopedGrant, issueTokens, registerClient } from "~/lib/oauth-server.server";
 import type { CurrentPrincipal } from "~/lib/session.server";
 import { ALL_ROLES, rankOf } from "~/lib/user-invite";
 
@@ -588,10 +588,9 @@ export async function addGrantsToApiKey(input: {
       incoming.granted_workspace_write_types,
     );
 
-    // The merged result — not just the incoming delta — must still fit inside a
-    // single workspace. Widening a token toward a second workspace is rejected
-    // here before any row is written.
-    await assertSingleWorkspaceGrant({
+    // The merged result must still be an explicit scope (no "*" wildcard).
+    // Widening a token to more workspaces or Docos is allowed.
+    assertScopedGrant({
       granted_doco_ids: mergedDoco.ids,
       granted_workspace_ids: mergedWorkspace.ids,
     });
@@ -644,7 +643,7 @@ export async function addGrantsToApiKey(input: {
  * at `actorRole` (null = owner = full live role). Unlike addGrantsToApiKey this
  * is a REPLACEMENT, not a widening: the refresh token's explicit grants are
  * dropped and grant_type flips to 'actor', so its breadth becomes the user's
- * live membership (one workspace per session, capped at the ceiling) resolved at
+ * live membership (capped at the ceiling) resolved at
  * refresh time. The refresh token itself stays (non-rotating — DOCO_REFRESH is
  * unchanged); the live scoped access tokens are revoked so the next refresh
  * re-mints an actor-scoped one.
@@ -684,7 +683,7 @@ export async function convertApiKeyToActor(input: {
           AND expires_at > now()`,
       [input.client_id, input.me.id, input.actorRole],
     );
-    // Cut off the old single-workspace access tokens immediately; the client's
+    // Cut off the old scoped access tokens immediately; the client's
     // next refresh (with a `resource`) re-mints under the actor breadth.
     await c.query(
       `UPDATE oauth_access_tokens

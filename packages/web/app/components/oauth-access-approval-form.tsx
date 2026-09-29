@@ -49,10 +49,10 @@ export function OAuthAccessApprovalForm({
 }) {
   const catalog = useMemo(() => approvalCatalog(docos, workspaces), [docos, workspaces]);
   const [tokenName, setTokenName] = useState("");
-  // No default grant: the approver picks the scope. When bound to a workspace
-  // the picker leads with "The entire <name> workspace" (with its access-level
-  // dropdown) and can still narrow to specific Docos / types within it. A token
-  // is capped at a single workspace either way.
+  // No default grant: the approver picks the scope: all workspaces, any set of
+  // workspaces, or specific Docos. When bound to a workspace the picker leads
+  // with "The entire <name> workspace" (with its access-level dropdown) and can
+  // still narrow to specific Docos / types within it.
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
   const grantsPayload = useMemo(() => JSON.stringify(grants.map(grantPayload)), [grants]);
   const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
@@ -144,7 +144,6 @@ export function OAuthAccessApprovalForm({
             setGrants(next);
             if (next.length > 0) clearError("grants");
           }}
-          forToken
           offerActor
           boundWorkspace={boundWorkspace}
         />

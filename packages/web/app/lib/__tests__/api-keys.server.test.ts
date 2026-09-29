@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   listAccessibleDocoIdsForPrincipal: vi.fn(),
   issueTokens: vi.fn(),
   registerClient: vi.fn(),
-  assertSingleWorkspaceGrant: vi.fn(),
+  assertScopedGrant: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
@@ -36,7 +36,7 @@ vi.mock("~/lib/doco-labels", () => ({
 vi.mock("~/lib/oauth-server.server", () => ({
   issueTokens: mocks.issueTokens,
   registerClient: mocks.registerClient,
-  assertSingleWorkspaceGrant: mocks.assertSingleWorkspaceGrant,
+  assertScopedGrant: mocks.assertScopedGrant,
 }));
 
 import {
@@ -179,7 +179,7 @@ describe("mintApiKey — actor token", () => {
       }),
     );
     // No per-target grant machinery runs for an actor token.
-    expect(mocks.assertSingleWorkspaceGrant).not.toHaveBeenCalled();
+    expect(mocks.assertScopedGrant).not.toHaveBeenCalled();
     expect(mocks.listWorkspacesForUser).not.toHaveBeenCalled();
     expect(minted.scope_grants).toEqual([]);
     expect(minted.refresh_token).toBe("doco_rt_y");
@@ -202,7 +202,7 @@ describe("addGrantsToApiKey", () => {
     vi.clearAllMocks();
     mocks.getDocoLevelRole.mockResolvedValue("owner");
     mocks.getWorkspaceRole.mockResolvedValue("owner");
-    mocks.assertSingleWorkspaceGrant.mockResolvedValue(undefined);
+    mocks.assertScopedGrant.mockReturnValue(undefined);
   });
 
   it("preserves untouched grants while replacing the target being modified", async () => {
@@ -275,7 +275,7 @@ describe("addGrantsToApiKey", () => {
     });
   });
 
-  it("enforces the single-workspace invariant on the merged scope before updating", async () => {
+  it("widens a token to a second workspace, checking the merged scope", async () => {
     const queries = vi.fn(async (sql: string) => {
       if (sql.includes("SELECT owner_id FROM docos")) {
         return { rows: [{ owner_id: "workspace_torre" }] };
@@ -299,29 +299,23 @@ describe("addGrantsToApiKey", () => {
       return { rows: [], rowCount: 1 };
     });
     mocks.withClient.mockImplementation(async (callback) => callback({ query: queries }));
-    // The invariant gate rejects the merged (cross-workspace) scope.
-    mocks.assertSingleWorkspaceGrant.mockRejectedValue(
-      new Error("A token can be scoped to at most one workspace."),
-    );
 
-    await expect(
-      addGrantsToApiKey({
-        me: { id: "user_owner", username: "owner" } as never,
-        client_id: "doco_client_existing",
-        grants: [{ level: "workspace", target_id: "workspace_other", role: "reader" }],
-      }),
-    ).rejects.toThrow(/at most one workspace/i);
+    await addGrantsToApiKey({
+      me: { id: "user_owner", username: "owner" } as never,
+      client_id: "doco_client_existing",
+      grants: [{ level: "workspace", target_id: "workspace_other", role: "reader" }],
+    });
 
     // The merged scope (both workspaces) is what's checked …
-    expect(mocks.assertSingleWorkspaceGrant).toHaveBeenCalledWith(
+    expect(mocks.assertScopedGrant).toHaveBeenCalledWith(
       expect.objectContaining({
         granted_workspace_ids: expect.arrayContaining(["workspace_torre", "workspace_other"]),
       }),
     );
-    // … and nothing is persisted when the gate rejects.
+    // … and it is persisted.
     const updated = queries.mock.calls.some(
       ([sql]) => typeof sql === "string" && sql.includes("UPDATE oauth_"),
     );
-    expect(updated).toBe(false);
+    expect(updated).toBe(true);
   });
 });

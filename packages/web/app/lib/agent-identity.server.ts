@@ -75,9 +75,9 @@ export async function loadAgentIdentity(request: Request): Promise<AgentIdentity
   const options = await loadScopeOptions(display.user_id);
 
   let grants: IdentityGrant[];
-  // A REGULAR token is explicit-scope (bound to one workspace, with optional
-  // per-Doco narrowing), so a bearer request shows exactly the granted targets,
-  // capped to the token's role. An ACTOR token carries no stored grants — it
+  // A REGULAR token is explicit-scope (any set of workspaces and Docos), so a
+  // bearer request shows exactly the granted targets, capped to the token's
+  // role. An ACTOR token carries no stored grants — it
   // acts as the human across their FULL membership, capped at actor_role — so
   // it takes the cookie-session path below (with the ceiling applied), letting
   // whoami / list_workspaces surface every workspace it can actually reach.

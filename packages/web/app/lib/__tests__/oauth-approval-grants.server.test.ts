@@ -75,9 +75,9 @@ describe("readOAuthApprovalGrants", () => {
     });
   });
 
-  // An actor grant is the user's whole LIVE workspace membership — resolved at
-  // refresh time, down-scoped to one workspace per access token. It carries NO
-  // explicit grants, so it short-circuits the per-target ownership checks.
+  // An actor grant is the user's whole LIVE workspace membership, resolved at
+  // request time. It carries NO explicit grants, so it short-circuits the
+  // per-target ownership checks.
   it("treats an actor grant as the user's live membership: empty grants + grant_type 'actor' + role ceiling", async () => {
     const grants = await readOAuthApprovalGrants(
       formWithGrants([{ level: "actor", targetId: "", role: "writer" }]),

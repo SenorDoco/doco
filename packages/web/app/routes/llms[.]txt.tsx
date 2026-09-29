@@ -81,9 +81,9 @@ So when a user says "use Doco for <project>":
 
      - **all of their Workspaces** — an "all workspaces" token, which reaches
        every Workspace they belong to, including ones they create later;
-     - **one Workspace** — a workspace-scoped grant covering every Doco
+     - **specific Workspaces** — workspace grants, each covering every Doco
        in it, now and in the future;
-     - **a subset of Docos** inside a Workspace — per-Doco grants.
+     - **specific Docos** — per-Doco grants.
 
    With an "all workspaces" token the new Workspace is reachable as soon as
    the user creates it. With a narrower grant, ask the user to approve
@@ -123,10 +123,10 @@ Doco hosts ONE remote MCP server, at:
 
     ${baseUrl}/mcp
 
-Connect once — an "all workspaces" token reaches every workspace you belong to,
-one Doco at a time (call \`list_workspaces\` to enumerate them and pass any
-reachable Doco's <handle> to the tools). A workspace-scoped token instead
-pins the session to its single workspace.
+Connect once. The connection reaches whatever the user picks while
+connecting: every workspace they belong to, specific workspaces, or
+specific Docos. Call \`list_workspaces\` / \`doco_whoami\` to see the reach,
+and pass any reachable Doco's <handle> to the tools.
 
 It speaks MCP over Streamable HTTP (JSON-RPC 2.0), gated by the same
 OAuth 2.1 server described below. An unauthenticated request gets a 401
