@@ -216,6 +216,26 @@ describe("loadNotionPerspective", () => {
     expect(data.tree.map((node) => node.children)).toEqual([null, null]);
   });
 
+  it("resolves the pages a page's text names from the text itself, in Notion's own URL form", async () => {
+    const NOTES = "55555555-0000-4000-8000-000000000001";
+    // No notion_links row for this page: copied before links were recorded.
+    await seedPage({
+      id: NOTES,
+      parent: null,
+      parentType: "workspace",
+      title: "Notes",
+      markdown: `See <page url="https://app.notion.com/p/Onboarding-${ONB.replace(/-/g, "")}">Onboarding</page>.`,
+      plain: "See Onboarding.",
+      edited: "2026-09-23T10:00:00Z",
+    });
+
+    const data = await loadNotionPerspective(c, "doco_notion", { pageId: NOTES });
+
+    expect(data.page?.links).toEqual([
+      { pageId: ONB, title: "Onboarding", icon: null, copied: true },
+    ]);
+  });
+
   it("knows a queued page by its title and place, but not its content, until it is copied", async () => {
     const QUEUED = "44444444-0000-4000-8000-000000000001";
     await db.query(
