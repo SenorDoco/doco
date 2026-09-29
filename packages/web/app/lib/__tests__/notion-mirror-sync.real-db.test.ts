@@ -20,7 +20,11 @@ vi.mock("@doco/db", () => ({
 }));
 
 import { getNotionTokens } from "../notion-mirror-setup.server";
-import { listActiveNotionMirrors, runNotionMirrorTick } from "../notion-mirror-sync.server";
+import {
+  CONTENT_SCAN,
+  listActiveNotionMirrors,
+  runNotionMirrorTick,
+} from "../notion-mirror-sync.server";
 import { encryptSecret } from "../secret-box.server";
 
 type Json = Record<string, unknown>;
@@ -686,15 +690,18 @@ describe("children", () => {
     expect(m.rows[0]).toEqual({ listing_capped_at: at(0), discovered_at: at(0) });
   });
 
-  it("scans the pages copied before it queued children at fetch time, once", async () => {
+  it("reads the copied pages again once per scan version: links recorded, children queued", async () => {
+    // Copied before the sync read links and children this way: Notion's own
+    // app.notion.com URL, no recorded link, no queued child.
     await dbm.db.query(
       `INSERT INTO notion_pages
          (doco_id, page_id, object, url, title, markdown, fetch_pending, seen_at, synced_at)
        VALUES ('doco_notion', $1, 'page', 'https://www.notion.so/one', 'One', $3, false, $2, $2)`,
-      [P1, at(-86_400), `<page url="https://www.notion.so/${bare(P2)}">Two</page>`],
+      [P1, at(-86_400), `<page url="https://app.notion.com/p/Two-${bare(P2)}">Two</page>`],
     );
     await dbm.db.query(
-      "UPDATE notion_mirrors SET discovered_at = $1, reconciled_at = $1 WHERE doco_id = 'doco_notion'",
+      `UPDATE notion_mirrors SET discovered_at = $1, reconciled_at = $1, content_scan = 'older'
+        WHERE doco_id = 'doco_notion'`,
       [at(-60)],
     );
     const notion = fakeNotion({
@@ -712,12 +719,16 @@ describe("children", () => {
       markdown: "Two.",
       fetch_pending: false,
     });
-    const scanned = await dbm.db.query<{ children_scanned_at: Date | null }>(
-      "SELECT children_scanned_at FROM notion_mirrors",
+    const links = await dbm.db.query<{ from_page_id: string; to_page_id: string }>(
+      "SELECT from_page_id, to_page_id FROM notion_links",
     );
-    expect(scanned.rows[0].children_scanned_at).toEqual(at(0));
+    expect(links.rows).toEqual([{ from_page_id: P1, to_page_id: P2 }]);
+    const scanned = await dbm.db.query<{ content_scan: string | null }>(
+      "SELECT content_scan FROM notion_mirrors",
+    );
+    expect(scanned.rows[0].content_scan).toBe(CONTENT_SCAN);
 
-    // Scanned once: a child dropped later is not queued again by the scan.
+    // Read once per version: a child dropped later is not queued again by the scan.
     await dbm.db.query("DELETE FROM notion_pages WHERE page_id = $1", [P2]);
     await tick(60, notion.fetchImpl);
     expect((await rows()).map((r) => r.page_id)).toEqual([P1]);

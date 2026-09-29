@@ -34,7 +34,7 @@ export function notionIdFromUrl(url: string): string | null {
   let target: string;
   try {
     const parsed = new URL(url);
-    if (!/(^|\.)notion\.(so|site)$/.test(parsed.hostname)) return null;
+    if (!/(^|\.)notion\.(so|site|com)$/.test(parsed.hostname)) return null;
     target = parsed.searchParams.get("p") ?? parsed.pathname;
   } catch {
     return null;

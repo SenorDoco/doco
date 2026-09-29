@@ -39,6 +39,7 @@ import {
   searchNotion,
 } from "./notion-api.server";
 import {
+  type NotionChildRef,
   flattenNotionProperties,
   normalizeNotionId,
   normalizeNotionMarkdown,
@@ -123,8 +124,8 @@ interface MirrorRow {
   reconciled_at: Date | string | null;
   /** Set while the last walk's listing was capped by Notion (see discoveryWalk). */
   listing_capped_at: Date | string | null;
-  /** Set once the copied pages were scanned for children (see scanChildren). */
-  children_scanned_at: Date | string | null;
+  /** The CONTENT_SCAN version last run over the copied pages (see scanContent). */
+  content_scan: string | null;
   users_cursor: string | null;
   users_synced_at: Date | string | null;
 }
@@ -225,7 +226,7 @@ export async function runNotionMirrorTick(args: {
     );
     try {
       await listPhase(session, mirror, now, result);
-      if (mirror.children_scanned_at === null) await scanChildren(session.docoId, now);
+      if (mirror.content_scan !== CONTENT_SCAN) await scanContent(session.docoId);
       await drainPhase(session, now, result);
       await usersPhase(session, mirror, now);
       if (result.listed + result.fetched + result.failed > 0 || result.discovery !== "none") {
@@ -258,7 +259,7 @@ async function claimMirror(docoId: string, now: Date, leaseMs: number): Promise<
       `UPDATE notion_mirrors SET ticking_until = $2
         WHERE doco_id = $1 AND (ticking_until IS NULL OR ticking_until < $3)
         RETURNING needs_reauth_at, next_at, discovery_cursor, discovery_started_at, discovered_at,
-                  reconciled_at, listing_capped_at, children_scanned_at, users_cursor,
+                  reconciled_at, listing_capped_at, content_scan, users_cursor,
                   users_synced_at`,
       [docoId, new Date(now.getTime() + leaseMs), now],
     ),
@@ -335,7 +336,7 @@ async function discoveryWalk(
   // Notion caps how many results one search walk may page through, and says
   // so on the page where it stops. A capped listing is not the whole
   // workspace: the pages it left out are found through the pages that name
-  // them (queueChildren), and none of them may be taken for gone.
+  // them (recordContent), and none of them may be taken for gone.
   let capped =
     inProgressSince !== null &&
     (ms(mirror.listing_capped_at) ?? Number.NEGATIVE_INFINITY) >= startedAt.getTime();
@@ -389,46 +390,85 @@ function listingCapped(page: NotionList): boolean {
   return status?.type === "incomplete" || status?.reason === "query_result_limit_reached";
 }
 
+/** Bump when what the sync reads out of a page's Markdown changes (the links
+ *  it records, the children it queues): every mirror then reads its copied
+ *  pages again, once. */
+export const CONTENT_SCAN = "2026-09-29 notion.com urls";
+
+interface PageContent {
+  pageId: string;
+  markdown: string;
+}
+
 /**
- * Queue the child pages and databases a page's Markdown names that the copy
- * lacks: a page reads whole only with its children, and the listing may have
- * missed them (a capped walk, or Notion's index lagging). The parent is
- * known, so they take their place in the tree at once, titled as the parent
- * shows them until their own fetch. A database is queued under its own id and
- * resolved into its data sources by the drain (resolveChildDatabase).
+ * What a batch of pages' Markdown says, written down: the pages each links
+ * to (its recorded links replaced), and the child pages and databases it
+ * names that the copy lacks, queued under it. A page reads whole only with
+ * its children, and the listing may have missed them (a capped walk, or
+ * Notion's index lagging); the parent is known, so they take their place in
+ * the tree at once, titled as the parent shows them until their own fetch.
+ * A database is queued under its own id and resolved into its data sources
+ * by the drain (resolveChildDatabase). Returns how many were queued.
  */
-async function queueChildren(
+async function recordContent(
   c: QueryClient,
   docoId: string,
-  parentId: string,
-  markdown: string,
+  pages: PageContent[],
 ): Promise<number> {
-  const refs = notionChildRefs(markdown).filter((ref) => ref.id !== parentId);
-  if (refs.length === 0) return 0;
+  if (pages.length === 0) return 0;
+  const links: { from: string; to: string }[] = [];
+  const children = new Map<string, { parent: string; ref: NotionChildRef }>();
+  for (const page of pages) {
+    for (const to of notionLinkedIds(page.markdown)) {
+      if (to !== page.pageId) links.push({ from: page.pageId, to });
+    }
+    for (const ref of notionChildRefs(page.markdown)) {
+      if (ref.id !== page.pageId && !children.has(ref.id)) {
+        children.set(ref.id, { parent: page.pageId, ref });
+      }
+    }
+  }
+  await c.query("DELETE FROM notion_links WHERE doco_id = $1 AND from_page_id = ANY($2::text[])", [
+    docoId,
+    pages.map((page) => page.pageId),
+  ]);
+  if (links.length > 0) {
+    await c.query(
+      `INSERT INTO notion_links (doco_id, from_page_id, to_page_id)
+       SELECT $1, l.from_page_id, l.to_page_id
+         FROM unnest($2::text[], $3::text[]) AS l(from_page_id, to_page_id)
+       ON CONFLICT DO NOTHING`,
+      [docoId, links.map((link) => link.from), links.map((link) => link.to)],
+    );
+  }
+  if (children.size === 0) return 0;
+  const queue = [...children.values()];
   const rows = await c.query<{ page_id: string }>(
     `INSERT INTO notion_pages
        (doco_id, page_id, object, parent_id, parent_type, title, url, fetch_pending, fetch_reason)
-     SELECT $1, r.page_id, r.object, $2, 'page', r.title, r.url, true, r.reason
-       FROM unnest($3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
-         AS r(page_id, object, title, url, reason)
+     SELECT $1, r.page_id, r.object, r.parent_id, 'page', r.title, r.url, true, r.reason
+       FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
+         AS r(page_id, object, parent_id, title, url, reason)
      ON CONFLICT (doco_id, page_id) DO NOTHING
      RETURNING page_id`,
     [
       docoId,
-      parentId,
-      refs.map((ref) => ref.id),
-      refs.map((ref) => (ref.kind === "page" ? "page" : "data_source")),
-      refs.map((ref) => ref.title),
-      refs.map((ref) => `https://www.notion.so/${ref.id.replace(/-/g, "")}`),
-      refs.map((ref) => (ref.kind === "page" ? "child" : "child-database")),
+      queue.map(({ ref }) => ref.id),
+      queue.map(({ ref }) => (ref.kind === "page" ? "page" : "data_source")),
+      queue.map(({ parent }) => parent),
+      queue.map(({ ref }) => ref.title),
+      queue.map(({ ref }) => `https://www.notion.so/${ref.id.replace(/-/g, "")}`),
+      queue.map(({ ref }) => (ref.kind === "page" ? "child" : "child-database")),
     ],
   );
   return rows.rows.length;
 }
 
-/** Once per mirror: queue the children named by pages copied before the sync
- *  queued them at fetch time. Database work only; the drain fetches them. */
-async function scanChildren(docoId: string, now: Date): Promise<void> {
+/** Once per CONTENT_SCAN version: read every copied page's Markdown again
+ *  (recordContent), for the pages copied before the sync read it this way.
+ *  Database work only, a batch of pages per statement; the drain fetches
+ *  what gets queued. */
+async function scanContent(docoId: string): Promise<void> {
   let after = "";
   let scanned = 0;
   let queued = 0;
@@ -442,16 +482,14 @@ async function scanChildren(docoId: string, now: Date): Promise<void> {
       ),
     );
     if (batch.rows.length === 0) break;
-    await withClient(async (c) => {
-      for (const row of batch.rows)
-        queued += await queueChildren(c, docoId, row.page_id, row.markdown);
-    });
+    const pages = batch.rows.map((row) => ({ pageId: row.page_id, markdown: row.markdown }));
+    queued += await withClient((c) => recordContent(c, docoId, pages));
     scanned += batch.rows.length;
     after = batch.rows[batch.rows.length - 1].page_id;
   }
-  await setMirror(docoId, { children_scanned_at: now });
+  await setMirror(docoId, { content_scan: CONTENT_SCAN });
   console.info(
-    `[notion mirror] ${docoId}: scanned ${scanned} copied pages, queued ${queued} children`,
+    `[notion mirror] ${docoId}: read ${scanned} copied pages again (${CONTENT_SCAN}), queued ${queued} children`,
   );
 }
 
@@ -767,20 +805,7 @@ async function fetchPage(
       ],
     );
     if (hash !== row.content_hash) {
-      const targets = notionLinkedIds(stored).filter((id) => id !== row.page_id);
-      await c.query("DELETE FROM notion_links WHERE doco_id = $1 AND from_page_id = $2", [
-        session.docoId,
-        row.page_id,
-      ]);
-      if (targets.length > 0) {
-        await c.query(
-          `INSERT INTO notion_links (doco_id, from_page_id, to_page_id)
-           SELECT $1, $2, t FROM unnest($3::text[]) AS t
-           ON CONFLICT DO NOTHING`,
-          [session.docoId, row.page_id, targets],
-        );
-      }
-      await queueChildren(c, session.docoId, row.page_id, stored);
+      await recordContent(c, session.docoId, [{ pageId: row.page_id, markdown: stored }]);
     }
   });
 }

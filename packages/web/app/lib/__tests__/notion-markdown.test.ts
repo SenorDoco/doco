@@ -199,3 +199,12 @@ describe("notionChildRefs", () => {
     ]);
   });
 });
+
+describe("notionIdFromUrl on Notion's own hosts", () => {
+  it("reads the id from app.notion.com, www.notion.com and notion.so URLs alike", () => {
+    expect(notionIdFromUrl(`https://app.notion.com/p/Avocado-${HEX}`)).toBe(ID);
+    expect(notionIdFromUrl(`https://www.notion.com/${HEX}?pvs=4`)).toBe(ID);
+    expect(notionIdFromUrl(`https://www.notion.so/Avocado-${HEX}`)).toBe(ID);
+    expect(notionIdFromUrl(`https://example.com/p/Avocado-${HEX}`)).toBeNull();
+  });
+});

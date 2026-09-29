@@ -6,6 +6,7 @@
 // Doco; callers have already checked that the viewer can read it.
 import { type SemanticQuery, rankEmbeddings } from "@doco/db";
 import { chunkSnippet } from "./notion-chunks";
+import { notionLinkedIds } from "./notion-markdown";
 import { fuseRankings } from "./rank-fusion";
 
 type QueryClient = {
@@ -40,7 +41,9 @@ export interface NotionReaderPage extends NotionPageRef {
   lastEditedBy: string | null;
   markdown: string;
   truncated: boolean;
-  /** Mirrored pages this page links to. */
+  /** The mirrored pages this page's text names: its children, mentions and
+   *  links, read from the text itself so they resolve however the links
+   *  were recorded. */
   links: NotionPageRef[];
   /** Mirrored pages that link here. */
   backlinks: NotionPageRef[];
@@ -274,13 +277,19 @@ async function loadPage(
         pageId,
       ])
     ).rows.map((r) => ({ pageId: r.page_id, title: r.title, icon: r.icon, copied: r.copied }));
-  const links = await refs(
-    `SELECT t.page_id, t.title, t.icon, t.synced_at IS NOT NULL AS copied
-       FROM notion_links l
-       JOIN notion_pages t ON t.doco_id = l.doco_id AND t.page_id = l.to_page_id
-      WHERE l.doco_id = $1 AND l.from_page_id = $2
-      ORDER BY t.title, t.page_id`,
-  );
+  const linkedIds = notionLinkedIds(row.markdown).filter((id) => id !== pageId);
+  const links =
+    linkedIds.length === 0
+      ? []
+      : (
+          await c.query<{ page_id: string; title: string; icon: string | null; copied: boolean }>(
+            `SELECT page_id, title, icon, synced_at IS NOT NULL AS copied
+               FROM notion_pages
+              WHERE doco_id = $1 AND page_id = ANY($2::text[])
+              ORDER BY title, page_id`,
+            [docoId, linkedIds],
+          )
+        ).rows.map((r) => ({ pageId: r.page_id, title: r.title, icon: r.icon, copied: r.copied }));
   const backlinks = await refs(
     `SELECT f.page_id, f.title, f.icon, f.synced_at IS NOT NULL AS copied
        FROM notion_links l
