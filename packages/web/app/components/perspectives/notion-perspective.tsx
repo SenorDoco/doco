@@ -10,7 +10,7 @@
 
 import { ChevronDown, ChevronRight, Database, ExternalLink, FileText, Search } from "lucide-react";
 import { Form, Link } from "react-router";
-import { NotionMarkdown } from "~/components/notion-markdown";
+import { type NotionLink, NotionMarkdown } from "~/components/notion-markdown";
 import { cn } from "~/lib/cn";
 import { notionIdFromUrl } from "~/lib/notion-markdown";
 import type {
@@ -121,11 +121,13 @@ function Tree({
         <li key={node.pageId}>
           <Link
             to={pageHref(node.pageId)}
+            title={node.copied ? undefined : "Not copied yet"}
             className={cn(
               "flex items-center gap-1 rounded px-1.5 py-1 hover:bg-input",
               node.pageId === openId
                 ? "bg-input font-semibold text-foreground"
                 : "text-muted-foreground",
+              !node.copied && "italic",
             )}
           >
             {node.hasChildren ? (
@@ -153,10 +155,16 @@ function Tree({
 }
 
 function PageView({ page }: { page: NotionReaderPage }) {
-  const mirrored = new Set(page.links.map((ref) => ref.pageId));
-  const hrefFor = (href: string) => {
+  // A link to a page the copy knows stays in the reader, copied or not (a
+  // queued page explains itself); one to a page the copy lacks goes to
+  // Notion, and says so.
+  const copiedById = new Map(page.links.map((ref) => [ref.pageId, ref.copied]));
+  const linkFor = (href: string): NotionLink => {
     const id = notionIdFromUrl(href);
-    return id && mirrored.has(id) ? pageHref(id) : href;
+    if (!id) return { href, copy: null };
+    const copied = copiedById.get(id);
+    if (copied === undefined) return { href, copy: "none" };
+    return { href: pageHref(id), copy: copied ? "copied" : "queued" };
   };
   return (
     <article className="space-y-3 px-2">
@@ -198,12 +206,27 @@ function PageView({ page }: { page: NotionReaderPage }) {
           </a>
         </p>
       </header>
+      {page.copied ? null : (
+        <p className="rounded-md border border-border bg-input/50 p-2 text-xs text-muted-foreground">
+          This page is not in the copy yet. Doco is copying pages in the background; meanwhile, read
+          it{" "}
+          <a
+            href={page.url}
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-primary hover:underline"
+          >
+            in Notion
+          </a>
+          .
+        </p>
+      )}
       {page.truncated ? (
         <p className="rounded-md border border-border bg-input/50 p-2 text-xs text-muted-foreground">
           Notion returned only part of this page, so the copy ends early.
         </p>
       ) : null}
-      <NotionMarkdown markdown={page.markdown} hrefFor={hrefFor} />
+      {page.copied ? <NotionMarkdown markdown={page.markdown} linkFor={linkFor} /> : null}
       <RefList label="Links to" refs={page.links} />
       <RefList label="Linked from" refs={page.backlinks} />
     </article>
@@ -220,7 +243,11 @@ function RefList({ label, refs }: { label: string; refs: NotionPageRef[] }) {
           <li key={ref.pageId}>
             <Link
               to={pageHref(ref.pageId)}
-              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs hover:bg-input"
+              title={ref.copied ? undefined : "Not copied yet"}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs hover:bg-input",
+                !ref.copied && "italic text-muted-foreground",
+              )}
             >
               {ref.icon && !/^https?:\/\//i.test(ref.icon) ? (
                 <span aria-hidden>{ref.icon}</span>
@@ -249,7 +276,16 @@ function Hits({ hits }: { hits: NotionSearchHit[] }) {
             {hit.title || "Untitled"}
           </Link>
           {hit.path ? <span className="ml-2 text-xs text-muted-foreground">{hit.path}</span> : null}
-          <p className="mt-1 text-sm text-muted-foreground">{hit.snippet}</p>
+          {hit.copied ? (
+            <p className="mt-1 text-sm text-muted-foreground">{hit.snippet}</p>
+          ) : (
+            <p className="mt-1 text-sm italic text-muted-foreground">
+              Not copied yet ·{" "}
+              <a href={hit.url} target="_blank" rel="noreferrer" className="hover:underline">
+                read it in Notion
+              </a>
+            </p>
+          )}
         </li>
       ))}
     </ul>

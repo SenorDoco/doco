@@ -30,6 +30,7 @@ import {
   NotionApiError,
   type NotionList,
   getNotionDataSource,
+  getNotionDatabase,
   getNotionPage,
   getNotionPageMarkdown,
   listNotionUsers,
@@ -41,6 +42,7 @@ import {
   flattenNotionProperties,
   normalizeNotionId,
   normalizeNotionMarkdown,
+  notionChildRefs,
   notionIconToString,
   notionLinkedIds,
   notionPageUrl,
@@ -119,9 +121,15 @@ interface MirrorRow {
   discovery_started_at: Date | string | null;
   discovered_at: Date | string | null;
   reconciled_at: Date | string | null;
+  /** Set while the last walk's listing was capped by Notion (see discoveryWalk). */
+  listing_capped_at: Date | string | null;
+  /** Set once the copied pages were scanned for children (see scanChildren). */
+  children_scanned_at: Date | string | null;
   users_cursor: string | null;
   users_synced_at: Date | string | null;
 }
+
+type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
 
 /** One tick's Notion access: the budget, the deadline, and the token pair
  *  with a one-time refresh on 401. */
@@ -217,6 +225,7 @@ export async function runNotionMirrorTick(args: {
     );
     try {
       await listPhase(session, mirror, now, result);
+      if (mirror.children_scanned_at === null) await scanChildren(session.docoId, now);
       await drainPhase(session, now, result);
       await usersPhase(session, mirror, now);
     } catch (error) {
@@ -244,7 +253,8 @@ async function claimMirror(docoId: string, now: Date, leaseMs: number): Promise<
       `UPDATE notion_mirrors SET ticking_until = $2
         WHERE doco_id = $1 AND (ticking_until IS NULL OR ticking_until < $3)
         RETURNING needs_reauth_at, next_at, discovery_cursor, discovery_started_at, discovered_at,
-                  reconciled_at, users_cursor, users_synced_at`,
+                  reconciled_at, listing_capped_at, children_scanned_at, users_cursor,
+                  users_synced_at`,
       [docoId, new Date(now.getTime() + leaseMs), now],
     ),
   );
@@ -317,6 +327,13 @@ async function discoveryWalk(
   if (inProgressSince === null) {
     await setMirror(session.docoId, { discovery_started_at: now, discovery_cursor: null });
   }
+  // Notion caps how many results one search walk may page through, and says
+  // so on the page where it stops. A capped listing is not the whole
+  // workspace: the pages it left out are found through the pages that name
+  // them (queueChildren), and none of them may be taken for gone.
+  let capped =
+    inProgressSince !== null &&
+    (ms(mirror.listing_capped_at) ?? Number.NEGATIVE_INFINITY) >= startedAt.getTime();
   result.discovery = "walking";
   const phase = { left: DISCOVERY_REQUESTS_PER_TICK };
   for (;;) {
@@ -328,6 +345,10 @@ async function discoveryWalk(
       throw error;
     }
     result.listed += await upsertListing(session.docoId, page.results, now, "discover");
+    if (!capped && listingCapped(page)) {
+      capped = true;
+      await setMirror(session.docoId, { listing_capped_at: now });
+    }
     if (page.has_more && page.next_cursor) {
       cursor = page.next_cursor;
       await setMirror(session.docoId, { discovery_cursor: cursor });
@@ -335,23 +356,91 @@ async function discoveryWalk(
     }
     // The walk is complete. Rows Notion neither listed nor mentioned since it
     // started get re-fetched: the drain deletes the ones Notion no longer
-    // serves and refreshes the rest.
-    await withClient((c) =>
-      c.query(
-        `UPDATE notion_pages
-            SET fetch_pending = true, fetch_reason = 'verify', fetch_attempts = 0, fetch_error = NULL
-          WHERE doco_id = $1 AND NOT fetch_pending AND (seen_at IS NULL OR seen_at < $2)`,
-        [session.docoId, startedAt],
-      ),
-    );
+    // serves and refreshes the rest. Not after a capped walk: an unlisted
+    // page is then just one the listing had no room for.
+    if (!capped) {
+      await withClient((c) =>
+        c.query(
+          `UPDATE notion_pages
+              SET fetch_pending = true, fetch_reason = 'verify', fetch_attempts = 0, fetch_error = NULL
+            WHERE doco_id = $1 AND NOT fetch_pending AND (seen_at IS NULL OR seen_at < $2)`,
+          [session.docoId, startedAt],
+        ),
+      );
+    }
     await setMirror(session.docoId, {
       discovered_at: now,
       discovery_cursor: null,
       reconciled_at: now,
+      ...(capped ? {} : { listing_capped_at: null }),
     });
     result.discovery = "finished";
     return;
   }
+}
+
+function listingCapped(page: NotionList): boolean {
+  const status = page.request_status;
+  return status?.type === "incomplete" || status?.reason === "query_result_limit_reached";
+}
+
+/**
+ * Queue the child pages and databases a page's Markdown names that the copy
+ * lacks: a page reads whole only with its children, and the listing may have
+ * missed them (a capped walk, or Notion's index lagging). The parent is
+ * known, so they take their place in the tree at once, titled as the parent
+ * shows them until their own fetch. A database is queued under its own id and
+ * resolved into its data sources by the drain (resolveChildDatabase).
+ */
+async function queueChildren(
+  c: QueryClient,
+  docoId: string,
+  parentId: string,
+  markdown: string,
+): Promise<number> {
+  const refs = notionChildRefs(markdown).filter((ref) => ref.id !== parentId);
+  if (refs.length === 0) return 0;
+  const rows = await c.query<{ page_id: string }>(
+    `INSERT INTO notion_pages
+       (doco_id, page_id, object, parent_id, parent_type, title, url, fetch_pending, fetch_reason)
+     SELECT $1, r.page_id, r.object, $2, 'page', r.title, r.url, true, r.reason
+       FROM unnest($3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
+         AS r(page_id, object, title, url, reason)
+     ON CONFLICT (doco_id, page_id) DO NOTHING
+     RETURNING page_id`,
+    [
+      docoId,
+      parentId,
+      refs.map((ref) => ref.id),
+      refs.map((ref) => (ref.kind === "page" ? "page" : "data_source")),
+      refs.map((ref) => ref.title),
+      refs.map((ref) => `https://www.notion.so/${ref.id.replace(/-/g, "")}`),
+      refs.map((ref) => (ref.kind === "page" ? "child" : "child-database")),
+    ],
+  );
+  return rows.rows.length;
+}
+
+/** Once per mirror: queue the children named by pages copied before the sync
+ *  queued them at fetch time. Database work only; the drain fetches them. */
+async function scanChildren(docoId: string, now: Date): Promise<void> {
+  let after = "";
+  for (;;) {
+    const batch = await withClient((c) =>
+      c.query<{ page_id: string; markdown: string }>(
+        `SELECT page_id, markdown FROM notion_pages
+          WHERE doco_id = $1 AND object = 'page' AND synced_at IS NOT NULL AND page_id > $2
+          ORDER BY page_id LIMIT 200`,
+        [docoId, after],
+      ),
+    );
+    if (batch.rows.length === 0) break;
+    await withClient(async (c) => {
+      for (const row of batch.rows) await queueChildren(c, docoId, row.page_id, row.markdown);
+    });
+    after = batch.rows[batch.rows.length - 1].page_id;
+  }
+  await setMirror(docoId, { children_scanned_at: now });
 }
 
 /** Page the search, most recently edited first, until results predate
@@ -560,8 +649,13 @@ async function drainPhase(
     if (rows.rows.length === 0) return;
     for (const row of rows.rows) {
       try {
-        if (row.object === "data_source") await fetchDataSource(session, phase, row, now);
-        else await fetchPage(session, phase, row, now);
+        if (row.fetch_reason === "child-database") {
+          await resolveChildDatabase(session, phase, row, now);
+        } else if (row.object === "data_source") {
+          await fetchDataSource(session, phase, row, now);
+        } else {
+          await fetchPage(session, phase, row, now);
+        }
         result.fetched++;
       } catch (error) {
         if (error instanceof BudgetSpent) return;
@@ -671,7 +765,57 @@ async function fetchPage(
           [session.docoId, row.page_id, targets],
         );
       }
+      await queueChildren(c, session.docoId, row.page_id, stored);
     }
+  });
+}
+
+/** A `<database>` child names the database, not the data sources it holds:
+ *  look them up, queue each under the page (as a listing would place them),
+ *  and drop the database's own stub. */
+async function resolveChildDatabase(
+  session: Session,
+  phase: { left: number },
+  row: PendingRow,
+  now: Date,
+): Promise<void> {
+  const database = await session.call(phase, (token) =>
+    getNotionDatabase(token, row.page_id, session.fetchImpl),
+  );
+  const live = database.in_trash !== true && database.archived !== true;
+  const sources = (Array.isArray(database.data_sources) ? database.data_sources : [])
+    .map((source) => {
+      const id = normalizeNotionId(str(asJson(source).id));
+      return id ? { id, name: str(asJson(source).name) } : null;
+    })
+    .filter((source): source is { id: string; name: string } => source !== null);
+  await withClient(async (c) => {
+    if (live && sources.length > 0) {
+      await c.query(
+        `INSERT INTO notion_pages
+           (doco_id, page_id, object, parent_id, parent_type, title, icon, url, seen_at,
+            fetch_pending, fetch_reason)
+         SELECT $1, r.page_id, 'data_source', p.parent_id, p.parent_type, r.title, $5, r.url, $6,
+                true, 'child'
+           FROM unnest($2::text[], $3::text[], $4::text[]) AS r(page_id, title, url),
+                notion_pages p
+          WHERE p.doco_id = $1 AND p.page_id = $7
+         ON CONFLICT (doco_id, page_id) DO NOTHING`,
+        [
+          session.docoId,
+          sources.map((source) => source.id),
+          sources.map((source) => source.name),
+          sources.map((source) => `https://www.notion.so/${source.id.replace(/-/g, "")}`),
+          notionIconToString(database.icon),
+          now,
+          row.page_id,
+        ],
+      );
+    }
+    await c.query("DELETE FROM notion_pages WHERE doco_id = $1 AND page_id = $2", [
+      session.docoId,
+      row.page_id,
+    ]);
   });
 }
 
@@ -785,7 +929,8 @@ async function recordFetchFailure(docoId: string, row: PendingRow, error: unknow
     c.query(
       `UPDATE notion_pages
           SET fetch_attempts = $3, fetch_error = $4, fetch_pending = $5,
-              fetch_reason = CASE WHEN $5 THEN 'retry' ELSE fetch_reason END
+              fetch_reason = CASE WHEN $5 AND fetch_reason <> 'child-database' THEN 'retry'
+                                  ELSE fetch_reason END
         WHERE doco_id = $1 AND page_id = $2`,
       [docoId, row.page_id, attempts, message, !parked],
     ),

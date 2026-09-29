@@ -1,8 +1,8 @@
 // A mirrored Notion page's enhanced Markdown, rendered as React elements
 // from the tree lib/notion-markdown-blocks.ts parses — so a page's text is
-// only ever text. `hrefFor` maps a Notion URL to the reader's own link when
+// only ever text. `linkFor` maps a Notion URL to the reader's own link when
 // the target is mirrored; links elsewhere open in a new tab.
-import { Database, FileText, Paperclip } from "lucide-react";
+import { Database, ExternalLink, FileText, Paperclip } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router";
 import {
@@ -22,13 +22,13 @@ const LINK_CLASS = "font-medium text-primary underline-offset-2 hover:underline"
 
 export function NotionMarkdown({
   markdown,
-  hrefFor,
+  linkFor,
 }: {
   markdown: string;
-  hrefFor?: (href: string) => string;
+  linkFor?: (href: string) => NotionLink;
 }) {
   const blocks = useMemo(() => parseNotionMarkdown(markdown), [markdown]);
-  const resolve = hrefFor ?? ((href: string) => href);
+  const resolve: Resolve = linkFor ?? ((href: string) => ({ href, copy: null }));
   return (
     <div className="space-y-3 text-sm leading-relaxed text-foreground">
       {blocks.map((block, i) => (
@@ -38,7 +38,21 @@ export function NotionMarkdown({
   );
 }
 
-type Resolve = (href: string) => string;
+/** Whether the Notion page behind a link is in the copy ("copied"), queued
+ *  for it ("queued") or not in it at all ("none"); null for a link that is
+ *  not a Notion page. */
+export type NotionCopyState = "copied" | "queued" | "none";
+
+/** Where a link in the copy goes: a mirrored page's reader link, or the
+ *  original URL, with the copy's state of the page behind it. */
+export interface NotionLink {
+  href: string;
+  copy: NotionCopyState | null;
+}
+
+type Resolve = (href: string) => NotionLink;
+
+const NOT_COPIED_TITLE = "Not in the copy yet: opens in Notion";
 
 function Anchor({
   href,
@@ -49,7 +63,7 @@ function Anchor({
   resolve: Resolve;
   children: ReactNode;
 }) {
-  const target = resolve(href);
+  const { href: target, copy } = resolve(href);
   if (!SAFE_HREF_RE.test(target)) return <span>{children}</span>;
   if (target.startsWith("?") || target.startsWith("/")) {
     return (
@@ -59,9 +73,28 @@ function Anchor({
     );
   }
   return (
-    <a href={target} target="_blank" rel="noreferrer" className={LINK_CLASS}>
+    <a
+      href={target}
+      target="_blank"
+      rel="noreferrer"
+      className={LINK_CLASS}
+      title={copy === "none" ? NOT_COPIED_TITLE : undefined}
+    >
       {children}
+      {copy === "none" ? (
+        <ExternalLink aria-hidden className="ml-0.5 inline h-3 w-3 align-text-bottom" />
+      ) : null}
     </a>
+  );
+}
+
+/** What a child page's line says about its copy, next to its link. */
+function CopyNote({ copy }: { copy: NotionCopyState | null }) {
+  if (copy !== "queued" && copy !== "none") return null;
+  return (
+    <span className="ml-2 text-xs italic text-muted-foreground">
+      {copy === "queued" ? "not copied yet" : "not copied yet · opens in Notion"}
+    </span>
   );
 }
 
@@ -199,6 +232,7 @@ function Block({ block, resolve }: { block: NotionBlock; resolve: Resolve }) {
             <Icon aria-hidden className="mr-1 inline h-3.5 w-3.5 align-text-bottom" />
             {block.title || "Untitled"}
           </Anchor>
+          <CopyNote copy={resolve(block.href).copy} />
         </p>
       );
     }

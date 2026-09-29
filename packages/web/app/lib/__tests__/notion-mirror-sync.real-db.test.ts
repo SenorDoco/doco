@@ -575,3 +575,151 @@ describe("listActiveNotionMirrors", () => {
     expect(await listActiveNotionMirrors()).toEqual([]);
   });
 });
+
+describe("children", () => {
+  const DB = "cccccccc-0000-0000-0000-000000000001";
+  const bare = (id: string) => id.replace(/-/g, "");
+
+  it("queues the child pages a copied page names that the listing missed, and copies them", async () => {
+    const notion = fakeNotion({
+      "POST /search": () => list([page(P1)]),
+      "GET /pages/:id": (_call, params) =>
+        page(params.id, { parent: { type: "page_id", page_id: P1 } }),
+      "GET /pages/:id/markdown": markdownFor({
+        [P1]: `Start.\n<page url="https://www.notion.so/Two-${bare(P2)}">Two</page>`,
+        [P2]: "Two's body.",
+      }),
+      "GET /users": noUsers,
+    });
+
+    const result = await tick(0, notion.fetchImpl);
+
+    expect(result).toMatchObject({ listed: 1, fetched: 2 });
+    const [one, two] = await rows();
+    expect(one).toMatchObject({ page_id: P1, fetch_pending: false });
+    expect(two).toMatchObject({
+      page_id: P2,
+      parent_id: P1,
+      title: "Page 2",
+      markdown: "Two's body.",
+      fetch_pending: false,
+      fetch_reason: null,
+    });
+    expect(notion.calls.map((c) => c.path)).toContain(`/pages/${P2}`);
+  });
+
+  it("resolves a child database into its data sources under the page, and copies their rows", async () => {
+    const dataSource = {
+      object: "data_source",
+      id: DS,
+      title: [{ plain_text: "Tasks" }],
+      description: [],
+      parent: { type: "database_id", database_id: DB },
+      database_parent: { type: "page_id", page_id: P1 },
+      properties: { Name: { type: "title", title: {} } },
+      last_edited_time: iso(-60),
+      in_trash: false,
+    };
+    const taskRow = page(ROW, {
+      parent: { type: "data_source_id", data_source_id: DS },
+      properties: { Name: { type: "title", title: [{ plain_text: "Ship it" }] } },
+    });
+    let databaseCalls = 0;
+    const notion = fakeNotion({
+      "POST /search": () => list([page(P1)]),
+      "GET /pages/:id/markdown": markdownFor({
+        [P1]: `<database url="https://www.notion.so/${bare(DB)}" inline="true">Tasks</database>`,
+        [ROW]: "Details of the task.",
+      }),
+      // The first lookup fails: the retry is a database lookup again, not a
+      // data-source fetch of the database's id.
+      "GET /databases/:id": () =>
+        ++databaseCalls === 1
+          ? new Response("", { status: 500 })
+          : {
+              object: "database",
+              id: DB,
+              icon: { type: "emoji", emoji: "📋" },
+              in_trash: false,
+              data_sources: [{ id: DS, name: "Tasks" }],
+            },
+      "GET /data_sources/:id": () => dataSource,
+      "POST /data_sources/:id/query": () => list([taskRow]),
+      "GET /users": noUsers,
+    });
+
+    await tick(0, notion.fetchImpl);
+
+    const all = await rows();
+    expect(all.map((r) => [r.page_id, r.object, r.parent_id, r.title, r.fetch_pending])).toEqual([
+      [P1, "page", null, "Page 1", false],
+      [DS, "data_source", P1, "Tasks", false],
+      [ROW, "page", DS, "Ship it", false],
+    ]);
+    expect(notion.calls.filter((c) => c.path === `/databases/${DB}`)).toHaveLength(2);
+    expect(notion.calls.map((c) => c.path)).not.toContain(`/data_sources/${DB}`);
+  });
+
+  it("takes a capped listing for what it is: pages it left out are kept, not re-verified", async () => {
+    await dbm.db.query(
+      `INSERT INTO notion_pages (doco_id, page_id, object, url, title, fetch_pending, seen_at, synced_at)
+       VALUES ('doco_notion', $1, 'page', 'https://www.notion.so/old', 'Unlisted', false, $2, $2)`,
+      [OLD, at(-86_400)],
+    );
+    const notion = fakeNotion({
+      "POST /search": () => ({
+        ...list([page(P1)]),
+        request_status: { type: "incomplete", reason: "query_result_limit_reached" },
+      }),
+      "GET /pages/:id/markdown": markdownFor({}),
+      "GET /users": noUsers,
+    });
+
+    await tick(0, notion.fetchImpl);
+
+    const unlisted = (await rows()).find((r) => r.page_id === OLD);
+    expect(unlisted).toMatchObject({ title: "Unlisted", fetch_pending: false });
+    expect(notion.calls.map((c) => c.path)).not.toContain(`/pages/${OLD}`);
+    const m = await dbm.db.query<{ listing_capped_at: Date | null; discovered_at: Date | null }>(
+      "SELECT listing_capped_at, discovered_at FROM notion_mirrors",
+    );
+    expect(m.rows[0]).toEqual({ listing_capped_at: at(0), discovered_at: at(0) });
+  });
+
+  it("scans the pages copied before it queued children at fetch time, once", async () => {
+    await dbm.db.query(
+      `INSERT INTO notion_pages
+         (doco_id, page_id, object, url, title, markdown, fetch_pending, seen_at, synced_at)
+       VALUES ('doco_notion', $1, 'page', 'https://www.notion.so/one', 'One', $3, false, $2, $2)`,
+      [P1, at(-86_400), `<page url="https://www.notion.so/${bare(P2)}">Two</page>`],
+    );
+    await dbm.db.query(
+      "UPDATE notion_mirrors SET discovered_at = $1, reconciled_at = $1 WHERE doco_id = 'doco_notion'",
+      [at(-60)],
+    );
+    const notion = fakeNotion({
+      "GET /pages/:id": (_call, params) =>
+        page(params.id, { parent: { type: "page_id", page_id: P1 } }),
+      "GET /pages/:id/markdown": markdownFor({ [P2]: "Two." }),
+      "GET /users": noUsers,
+    });
+
+    await tick(0, notion.fetchImpl);
+
+    expect((await rows()).find((r) => r.page_id === P2)).toMatchObject({
+      parent_id: P1,
+      title: "Page 2",
+      markdown: "Two.",
+      fetch_pending: false,
+    });
+    const scanned = await dbm.db.query<{ children_scanned_at: Date | null }>(
+      "SELECT children_scanned_at FROM notion_mirrors",
+    );
+    expect(scanned.rows[0].children_scanned_at).toEqual(at(0));
+
+    // Scanned once: a child dropped later is not queued again by the scan.
+    await dbm.db.query("DELETE FROM notion_pages WHERE page_id = $1", [P2]);
+    await tick(60, notion.fetchImpl);
+    expect((await rows()).map((r) => r.page_id)).toEqual([P1]);
+  });
+});

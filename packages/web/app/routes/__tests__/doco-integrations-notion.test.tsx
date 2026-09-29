@@ -40,6 +40,7 @@ const notion: NotionIntegrationStatus = {
   needsReauth: false,
   pagesDone: 12,
   pages: 40,
+  listingCapped: false,
 };
 
 function render(status: NotionIntegrationStatus | null): string {

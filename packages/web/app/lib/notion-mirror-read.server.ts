@@ -16,6 +16,10 @@ export interface NotionPageRef {
   pageId: string;
   title: string;
   icon: string | null;
+  /** The page's content is in the copy. False while it is still queued for
+   *  its fetch: the copy knows it (its title, its place in the tree) but
+   *  cannot show it yet. */
+  copied: boolean;
 }
 
 export interface NotionTreeNode extends NotionPageRef {
@@ -51,6 +55,8 @@ export interface NotionSearchHit {
   url: string;
   last_edited_time: string | null;
   snippet: string;
+  /** False for a page the copy lists but has not fetched yet. */
+  copied: boolean;
 }
 
 export interface NotionPerspectiveData {
@@ -107,6 +113,7 @@ interface TreeRow {
   title: string;
   icon: string | null;
   object: "page" | "data_source";
+  copied: boolean;
   has_children: boolean;
   total: number | string;
 }
@@ -123,8 +130,9 @@ async function loadTree(
 ): Promise<{ tree: NotionTreeNode[]; moreRoots: number }> {
   const roots = (
     await c.query<TreeRow>(
-      `SELECT page_id, parent_id, title, icon, object, has_children, total FROM (
-         SELECT p.page_id, p.parent_id, p.title, p.icon, p.object, ${HAS_CHILDREN},
+      `SELECT page_id, parent_id, title, icon, object, copied, has_children, total FROM (
+         SELECT p.page_id, p.parent_id, p.title, p.icon, p.object,
+                p.synced_at IS NOT NULL AS copied, ${HAS_CHILDREN},
                 row_number() OVER (ORDER BY p.title, p.page_id) AS rn,
                 count(*) OVER () AS total
            FROM notion_pages p
@@ -142,8 +150,9 @@ async function loadTree(
       ? []
       : (
           await c.query<TreeRow>(
-            `SELECT page_id, parent_id, title, icon, object, has_children, total FROM (
-               SELECT p.page_id, p.parent_id, p.title, p.icon, p.object, ${HAS_CHILDREN},
+            `SELECT page_id, parent_id, title, icon, object, copied, has_children, total FROM (
+               SELECT p.page_id, p.parent_id, p.title, p.icon, p.object,
+                      p.synced_at IS NOT NULL AS copied, ${HAS_CHILDREN},
                       row_number() OVER (
                         PARTITION BY p.parent_id
                         ORDER BY CASE WHEN parent.object = 'data_source'
@@ -173,6 +182,7 @@ async function loadTree(
       pageId: row.page_id,
       title: row.title,
       icon: row.icon,
+      copied: row.copied,
       object: row.object,
       hasChildren: row.has_children,
       children: listed ? listed.map(node) : null,
@@ -192,7 +202,13 @@ async function ancestorPaths(
   const paths = new Map<string, NotionPageRef[]>();
   if (pageIds.length === 0) return paths;
   const rows = (
-    await c.query<{ start_id: string; page_id: string; title: string; icon: string | null }>(
+    await c.query<{
+      start_id: string;
+      page_id: string;
+      title: string;
+      icon: string | null;
+      copied: boolean;
+    }>(
       `WITH RECURSIVE up AS (
          SELECT p.page_id AS start_id, p.parent_id AS ancestor_id, 1 AS depth
            FROM notion_pages p
@@ -203,7 +219,7 @@ async function ancestorPaths(
            JOIN notion_pages a ON a.doco_id = $1 AND a.page_id = up.ancestor_id
           WHERE a.parent_id IS NOT NULL AND up.depth < 32
        )
-       SELECT up.start_id, a.page_id, a.title, a.icon
+       SELECT up.start_id, a.page_id, a.title, a.icon, a.synced_at IS NOT NULL AS copied
          FROM up
          JOIN notion_pages a ON a.doco_id = $1 AND a.page_id = up.ancestor_id
         ORDER BY up.start_id, up.depth DESC`,
@@ -212,7 +228,7 @@ async function ancestorPaths(
   ).rows;
   for (const row of rows) {
     const path = paths.get(row.start_id) ?? [];
-    path.push({ pageId: row.page_id, title: row.title, icon: row.icon });
+    path.push({ pageId: row.page_id, title: row.title, icon: row.icon, copied: row.copied });
     paths.set(row.start_id, path);
   }
   return paths;
@@ -226,6 +242,7 @@ interface PageRow {
   url: string;
   markdown: string;
   truncated: boolean;
+  copied: boolean;
   last_edited_time: Date | string | null;
   editor: string | null;
 }
@@ -241,7 +258,7 @@ async function loadPage(
   const row = (
     await c.query<PageRow>(
       `SELECT p.page_id, p.object, p.title, p.icon, p.url, p.markdown, p.truncated,
-              p.last_edited_time, u.name AS editor
+              p.synced_at IS NOT NULL AS copied, p.last_edited_time, u.name AS editor
          FROM notion_pages p
          LEFT JOIN notion_users u ON u.doco_id = p.doco_id AND u.user_id = p.last_edited_by
         WHERE p.doco_id = $1 AND p.page_id = $2`,
@@ -252,17 +269,20 @@ async function loadPage(
   const paths = await ancestorPaths(c, docoId, [pageId]);
   const refs = async (sql: string) =>
     (
-      await c.query<{ page_id: string; title: string; icon: string | null }>(sql, [docoId, pageId])
-    ).rows.map((r) => ({ pageId: r.page_id, title: r.title, icon: r.icon }));
+      await c.query<{ page_id: string; title: string; icon: string | null; copied: boolean }>(sql, [
+        docoId,
+        pageId,
+      ])
+    ).rows.map((r) => ({ pageId: r.page_id, title: r.title, icon: r.icon, copied: r.copied }));
   const links = await refs(
-    `SELECT t.page_id, t.title, t.icon
+    `SELECT t.page_id, t.title, t.icon, t.synced_at IS NOT NULL AS copied
        FROM notion_links l
        JOIN notion_pages t ON t.doco_id = l.doco_id AND t.page_id = l.to_page_id
       WHERE l.doco_id = $1 AND l.from_page_id = $2
       ORDER BY t.title, t.page_id`,
   );
   const backlinks = await refs(
-    `SELECT f.page_id, f.title, f.icon
+    `SELECT f.page_id, f.title, f.icon, f.synced_at IS NOT NULL AS copied
        FROM notion_links l
        JOIN notion_pages f ON f.doco_id = l.doco_id AND f.page_id = l.from_page_id
       WHERE l.doco_id = $1 AND l.to_page_id = $2
@@ -274,6 +294,7 @@ async function loadPage(
     object: row.object,
     title: row.title,
     icon: row.icon,
+    copied: row.copied,
     url: row.url,
     path: paths.get(pageId) ?? [],
     lastEditedAt: iso(row.last_edited_time),
@@ -291,10 +312,11 @@ interface HitRow {
   url: string;
   last_edited_time: Date | string | null;
   plain_text: string;
+  copied: boolean;
 }
 
-const HIT_COLUMNS =
-  "p.page_id, p.title, p.url, p.last_edited_time, left(p.plain_text, 20000) AS plain_text";
+const HIT_COLUMNS = `p.page_id, p.title, p.url, p.last_edited_time,
+  left(p.plain_text, 20000) AS plain_text, p.synced_at IS NOT NULL AS copied`;
 
 /**
  * Pages matching the query, best first: the full-text ranking over titles
@@ -359,6 +381,7 @@ async function matchingPages(
       url: row.url,
       last_edited_time: iso(row.last_edited_time),
       snippet: chunk ? chunkSnippet(chunk) : notionSnippet(row.plain_text, query),
+      copied: row.copied,
     };
   });
 }

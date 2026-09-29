@@ -50,6 +50,7 @@ const notion: NotionIntegrationStatus = {
   needsReauth: false,
   pagesDone: 1240,
   pages: 5300,
+  listingCapped: false,
 };
 
 describe("IntegrationStatusCard", () => {
@@ -77,6 +78,12 @@ describe("IntegrationStatusCard", () => {
     );
     expect(render({ ...notion, state: "stalled", needsReauth: true })).toContain(
       "reconnect to resume",
+    );
+    expect(render({ ...notion, listingCapped: true })).toContain(
+      "Copying pages: 1,240 of 5,300 pages (listing capped by Notion)",
+    );
+    expect(render({ ...notion, state: "done", pagesDone: 5300, listingCapped: true })).toContain(
+      "All 5,300 pages copied (listing capped by Notion)",
     );
   });
 
