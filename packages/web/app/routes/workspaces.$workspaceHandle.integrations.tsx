@@ -14,7 +14,7 @@
 // (one team binds to one workspace), so this is its management home — the same
 // way GitHub is managed on the Doco it's connected to. The account page only
 // links here.
-import { getWorkspaceRole, withClient } from "@doco/db";
+import { getWorkspaceRole } from "@doco/db";
 import { ArrowRight } from "lucide-react";
 import { redirect } from "react-router";
 import { workspaceBreadcrumb } from "~/components/breadcrumb";
@@ -81,13 +81,11 @@ export async function loader({
     // Removal is owner-only (the inverse of install); members can still open
     // Set defaults. Mirrors the server-side gate on the /integrations action.
     canManageSlack: role === "owner",
-    docoPicker: await withClient((c) =>
-      loadDocoPicker(c, {
-        integrationId: url.searchParams.get("integration"),
-        userId: me.id,
-        workspaceId: workspace.id,
-      }),
-    ),
+    docoPicker: await loadDocoPicker({
+      integrationId: url.searchParams.get("integration"),
+      userId: me.id,
+      workspaceId: workspace.id,
+    }),
   };
 }
 

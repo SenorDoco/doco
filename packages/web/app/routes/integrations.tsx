@@ -11,7 +11,7 @@
 //   Right — full catalog of available integrations. "Set up..." on a
 //           Doco-level one (GitHub, Notion) reopens this page with a Doco
 //           picker on top.
-import { getWorkspaceRole, withClient } from "@doco/db";
+import { getWorkspaceRole } from "@doco/db";
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
@@ -55,9 +55,10 @@ export async function loader({ request }: { request: Request }): Promise<Integra
   }
 
   const rollup = await loadAccountIntegrationsRollup({ userId: me.id });
-  const docoPicker = await withClient((c) =>
-    loadDocoPicker(c, { integrationId: url.searchParams.get("integration"), userId: me.id }),
-  );
+  const docoPicker = await loadDocoPicker({
+    integrationId: url.searchParams.get("integration"),
+    userId: me.id,
+  });
 
   return {
     me,

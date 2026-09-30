@@ -126,14 +126,17 @@ export interface DocoPicker {
  * reaches, narrowed to one workspace on that workspace's page. Null when the
  * page wasn't opened to set up a Doco-level integration.
  */
-export async function loadDocoPicker(
-  c: Parameters<typeof loadWorkspaceSummaries>[0],
-  opts: { integrationId: string | null; userId: string; workspaceId?: string },
-): Promise<DocoPicker | null> {
+export async function loadDocoPicker(opts: {
+  integrationId: string | null;
+  userId: string;
+  workspaceId?: string;
+}): Promise<DocoPicker | null> {
   const integration = findIntegration(opts.integrationId ?? "");
   if (integration?.scope !== "doco") return null;
-  const workspaces = await loadWorkspaceSummaries(c, opts.userId, {
-    ...(opts.workspaceId ? { workspaceId: opts.workspaceId } : {}),
-  });
+  const workspaces = await withClient((c) =>
+    loadWorkspaceSummaries(c, opts.userId, {
+      ...(opts.workspaceId ? { workspaceId: opts.workspaceId } : {}),
+    }),
+  );
   return { integrationId: integration.id, workspaces };
 }

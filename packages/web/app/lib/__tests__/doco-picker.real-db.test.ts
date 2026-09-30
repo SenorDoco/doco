@@ -8,7 +8,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
+const state = vi.hoisted(() => ({ db: null as unknown }));
+vi.mock("@doco/db", () => ({
+  withClient: (fn: (c: unknown) => unknown) => fn(state.db),
+}));
 vi.mock("~/lib/slack.server", () => ({ listSlackInstallations: vi.fn() }));
 
 import { loadDocoPicker } from "../integrations-summary.server";
@@ -16,13 +19,10 @@ import { loadDocoPicker } from "../integrations-summary.server";
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
-type Client = Parameters<typeof loadDocoPicker>[0];
-let c: Client;
-
 beforeEach(async () => {
   const db = new PGlite({ extensions: { vector } });
   await db.exec(schemaSql);
-  c = db as unknown as Client;
+  state.db = db;
   await db.exec(`
     INSERT INTO users (id, github_login, data) VALUES ('user_ana', 'ana', '{}');
     INSERT INTO workspaces (id, handle, name) VALUES
@@ -48,7 +48,7 @@ function docosByWorkspace(picker: Awaited<ReturnType<typeof loadDocoPicker>>) {
 describe("loadDocoPicker", () => {
   it("lists every Doco the person reaches, by workspace, for GitHub and Notion", async () => {
     for (const integrationId of ["github", "notion"]) {
-      const picker = await loadDocoPicker(c, { integrationId, userId: "user_ana" });
+      const picker = await loadDocoPicker({ integrationId, userId: "user_ana" });
       expect(picker?.integrationId).toBe(integrationId);
       expect(docosByWorkspace(picker)).toEqual([
         ["acme", ["acme-bugs"]],
@@ -58,7 +58,7 @@ describe("loadDocoPicker", () => {
   });
 
   it("narrows to one workspace on that workspace's page", async () => {
-    const picker = await loadDocoPicker(c, {
+    const picker = await loadDocoPicker({
       integrationId: "github",
       userId: "user_ana",
       workspaceId: "workspace_torre",
@@ -68,7 +68,7 @@ describe("loadDocoPicker", () => {
 
   it("is null unless the page was opened to set up a Doco-level integration", async () => {
     for (const integrationId of [null, "slack", "nope"]) {
-      expect(await loadDocoPicker(c, { integrationId, userId: "user_ana" })).toBeNull();
+      expect(await loadDocoPicker({ integrationId, userId: "user_ana" })).toBeNull();
     }
   });
 });
