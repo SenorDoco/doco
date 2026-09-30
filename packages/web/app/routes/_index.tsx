@@ -5,6 +5,7 @@ import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 import { agentInstructions } from "~/lib/agent-instructions";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { TAGLINE } from "~/lib/tagline";
 
 /**
  * Host home — the same page whether or not the visitor is signed in: what
@@ -24,11 +25,10 @@ export async function loader({ request }: { request: Request }) {
 
 export function meta() {
   return [
-    { title: "Doco · Shared memory for AI and teams" },
+    { title: `Doco · ${TAGLINE}` },
     {
       name: "description",
-      content:
-        "Shared memory for AI and teams. The instructions to give an agent are on this page.",
+      content: `${TAGLINE}. The instructions to give an agent are on this page.`,
     },
   ];
 }
@@ -71,9 +71,7 @@ export default function Home({
           <div className="flex flex-col items-center gap-3 text-center">
             <h1 className="sr-only">Doco</h1>
             <DocoMark height={72} />
-            <p className="text-2xl font-bold leading-tight md:text-4xl">
-              Shared memory for AI and teams
-            </p>
+            <p className="text-2xl font-bold leading-tight md:text-4xl">{TAGLINE}</p>
           </div>
 
           <AgentInstructionsBlock

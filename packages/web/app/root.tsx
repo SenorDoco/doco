@@ -24,6 +24,7 @@ import { countPendingAccessRequestsForOwner } from "~/lib/access-requests.server
 import { countPendingFeedback } from "~/lib/feedback-reports.server";
 import { createMainScrollRestorer } from "~/lib/main-scroll-restoration";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
+import { TAGLINE } from "~/lib/tagline";
 import "./app.css";
 
 // Root loader — fetch the current Principal once so the persistent
@@ -84,7 +85,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         */}
         <meta
           name="ai-instructions"
-          content="This site is Doco, shared memory for AI and teams. If you were told 'let's start using Doco' or similar, follow the agent instructions on the home page, /."
+          content={`This site is Doco: ${TAGLINE}. If you were told 'let's start using Doco' or similar, follow the agent instructions on the home page, /.`}
         />
         <Meta />
         <Links />
