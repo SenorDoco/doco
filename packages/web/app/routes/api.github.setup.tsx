@@ -6,9 +6,11 @@
 //   - `state` must be one we signed (see buildInstallUrl) for the signed-in user;
 //   - `code` is exchanged for the installing GitHub user's token, and the
 //     installation must be one that user can access — otherwise any writer
-//     could attach another organization's installation id and import its PRs.
-// Then we record the installation as available to this Doco and return to the
-// GitHub integration page, where the user picks exactly which repos to connect.
+//     could attach another organization's installation id and import its items.
+// Then we record the installation as available to each Doco the state names
+// and return to the page the install started from (`state.next`: the GitHub
+// setup page or a Doco's GitHub page), where the user picks exactly which
+// repos to connect.
 import { getDocoByIdOrHandle, roleAtLeast } from "@doco/db";
 import { redirect } from "react-router";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
@@ -30,42 +32,45 @@ export async function loader({ request }: { request: Request }) {
   if (!Number.isInteger(installationId) || installationId <= 0 || !state) {
     return redirect("/workspaces?github=setup_error");
   }
-
-  const doco = await getDocoByIdOrHandle(state.docoId);
-  if (!doco) return redirect("/workspaces?github=setup_error");
-
-  // Land on the GitHub integration's detail page — that's where the import
-  // progress banner and connection details live now (the /integrations index
-  // only lists what's connected).
-  const panel = `/${doco.handle}/integrations/github`;
+  const back = (outcome: string) =>
+    redirect(`${state.next}${state.next.includes("?") ? "&" : "?"}github=${outcome}`);
 
   const me = await getCurrentPrincipalAsync(request);
-  if (!me) return redirect(`${panel}?github=signin_required`);
-  if (me.id !== state.userId) return redirect(`${panel}?github=forbidden`);
-  const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
-  if (!roleAtLeast(role, "writer")) return redirect(`${panel}?github=forbidden`);
+  if (!me) return back("signin_required");
+  if (me.id !== state.userId) return back("forbidden");
+  const docoIds: string[] = [];
+  for (const docoId of state.docoIds) {
+    const doco = await getDocoByIdOrHandle(docoId);
+    if (!doco) return back("setup_error");
+    const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
+    if (!roleAtLeast(role, "writer")) return back("forbidden");
+    docoIds.push(doco.id);
+  }
 
   const code = url.searchParams.get("code");
-  if (!code) return redirect(`${panel}?github=authorization_required`);
+  if (!code) return back("authorization_required");
 
   try {
     const userToken = await exchangeInstallationCode(code);
     if (!(await listUserInstallationIds(userToken)).has(installationId)) {
-      return redirect(`${panel}?github=installation_not_yours`);
+      return back("installation_not_yours");
     }
     const { account, repository_selection } = await getInstallationAccount(installationId);
-    await recordInstallationAuthorization(doco.id, {
-      installation_id: installationId,
-      account,
-      ...(repository_selection ? { repository_selection } : {}),
-      connected_at: new Date().toISOString(),
-    });
-    return redirect(`${panel}?github=connected`);
+    const connectedAt = new Date().toISOString();
+    for (const docoId of docoIds) {
+      await recordInstallationAuthorization(docoId, {
+        installation_id: installationId,
+        account,
+        ...(repository_selection ? { repository_selection } : {}),
+        connected_at: connectedAt,
+      });
+    }
+    return back("connected");
   } catch (err) {
     // Most likely a bad DOCO_GITHUB_APP_* credential (e.g. an unparseable
     // private key or client secret). Don't 500 the user — log and bounce back
     // with a message.
     console.error("[github setup] installation connect failed:", err);
-    return redirect(`${panel}?github=setup_failed`);
+    return back("setup_failed");
   }
 }

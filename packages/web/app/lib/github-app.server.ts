@@ -16,6 +16,7 @@
 // install flow verifies who installed; the App must have "Request user
 // authorization (OAuth) during installation" enabled).
 import { createSign } from "node:crypto";
+import type { GitHubIssue } from "./github-issue-import.server";
 import type { GitHubPullRequest, GitHubPullRequestFile } from "./github-pr-import.server";
 
 const GITHUB_API = "https://api.github.com";
@@ -333,40 +334,68 @@ export async function listUserInstallationIds(
   return ids;
 }
 
-export interface RepoPullRequestsPage {
-  prs: GitHubPullRequest[];
+/** One window of a repo listing that GitHub pages. */
+export interface RepoPage<T> {
+  items: T[];
   /** True when there are additional pages beyond the fetched window. */
   hasMore: boolean;
 }
 
+export interface RepoPageOpts {
+  fetchImpl?: typeof fetch;
+  perPage?: number;
+  maxPages?: number;
+  startPage?: number;
+}
+
 /**
- * List pull requests for a repo (state=all), starting at `startPage` and
- * fetching up to `maxPages` pages. Returns `{ prs, hasMore }` so callers can
- * implement cursor-based pagination without hitting serverless timeouts.
+ * Fetch up to `maxPages` pages of a repo listing (`path` carries its own
+ * query), starting at `startPage`. Returns `{ items, hasMore }` so callers can
+ * paginate across calls without hitting serverless timeouts.
  */
-export async function listRepoPullRequests(
+async function listRepoPages<T>(
   token: string,
-  owner: string,
-  repo: string,
-  opts?: { fetchImpl?: typeof fetch; perPage?: number; maxPages?: number; startPage?: number },
-): Promise<RepoPullRequestsPage> {
+  path: string,
+  opts?: RepoPageOpts,
+): Promise<RepoPage<T>> {
   const per = opts?.perPage ?? 100;
   const maxPages = opts?.maxPages ?? 50;
   const startPage = opts?.startPage ?? 1;
-  const prs: GitHubPullRequest[] = [];
+  const items: T[] = [];
   let hasMore = false;
   for (let page = startPage; page < startPage + maxPages; page++) {
-    const { data, linkHeader } = await githubGet<GitHubPullRequest[]>(
+    const { data, linkHeader } = await githubGet<T[]>(
       token,
-      `/repos/${owner}/${repo}/pulls?state=all&per_page=${per}&page=${page}`,
+      `${path}&per_page=${per}&page=${page}`,
       opts?.fetchImpl,
     );
     if (!Array.isArray(data) || data.length === 0) break;
-    prs.push(...data);
+    items.push(...data);
     if (!linkHeader || !linkHeader.includes('rel="next"')) break;
     if (page === startPage + maxPages - 1) hasMore = true;
   }
-  return { prs, hasMore };
+  return { items, hasMore };
+}
+
+/** List a repo's pull requests (open and closed), one window of pages. */
+export function listRepoPullRequests(
+  token: string,
+  owner: string,
+  repo: string,
+  opts?: RepoPageOpts,
+): Promise<RepoPage<GitHubPullRequest>> {
+  return listRepoPages(token, `/repos/${owner}/${repo}/pulls?state=all`, opts);
+}
+
+/** List a repo's issues (open and closed; GitHub includes its pull requests
+ *  too, flagged by `pull_request`), one window of pages. */
+export function listRepoIssues(
+  token: string,
+  owner: string,
+  repo: string,
+  opts?: RepoPageOpts,
+): Promise<RepoPage<GitHubIssue>> {
+  return listRepoPages(token, `/repos/${owner}/${repo}/issues?state=all`, opts);
 }
 
 /**

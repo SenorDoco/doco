@@ -9,6 +9,22 @@ import {
   listInstallationRepos,
   mintInstallationToken,
 } from "./github-app.server";
+import { GITHUB_IMPORTS, githubImportFor } from "./github-imports";
+
+/**
+ * SQL for what the Doco aliased `alias` brings from GitHub — the template of
+ * its GITHUB_IMPORTS choice (see github-imports.ts): its own template when that
+ * is a choice, pull requests for any other Doco. Repo events route on it, and
+ * one repo (or org subscription) belongs to one Doco per thing brought.
+ */
+export function githubImportSql(alias: string): string {
+  const fallback = githubImportFor(null).template;
+  const others = GITHUB_IMPORTS.filter((i) => i.template !== fallback)
+    .map((i) => `'${i.template}'`)
+    .join(", ");
+  const template = `${alias}.data->>'template_handle'`;
+  return `(CASE WHEN ${template} IN (${others}) THEN ${template} ELSE '${fallback}' END)`;
+}
 
 export interface GitHubConnection {
   /** "owner/name". */
@@ -83,10 +99,19 @@ export function normalizeConnections(raw: unknown): GitHubConnection[] {
 
 /** What the install flow's `state` carries through GitHub and back. */
 export interface InstallState {
-  docoId: string;
   /** The Doco user who started the install; the callback must be them. */
   userId: string;
+  /** The Docos the installation's repositories become selectable on. */
+  docoIds: string[];
+  /** Where the callback sends the user back to: a path on this site. */
+  next: string;
   issuedAt: number;
+}
+
+/** A path on this site: one slash, never `//host` or `/\host`, which a
+ *  browser would follow off-site. Pure. */
+function isLocalPath(path: unknown): path is string {
+  return typeof path === "string" && /^\/(?![/\\])/.test(path);
 }
 
 const INSTALL_STATE_TTL_MS = 60 * 60 * 1000;
@@ -101,7 +126,7 @@ function installStateSignature(payload: string, key: string): string {
   return createHmac("sha256", key).update(payload).digest("base64url");
 }
 
-/** Sign `state` so the setup callback can trust the Doco + user it names.
+/** Sign `state` so the setup callback can trust the Docos + user it names.
  *  Null when the key isn't configured. Pure (given env). */
 export function signInstallState(state: InstallState): string | null {
   const key = installStateKey();
@@ -121,22 +146,24 @@ export function verifyInstallState(raw: string, now = Date.now()): InstallState 
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
   try {
     const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as InstallState;
-    if (typeof state.docoId !== "string" || typeof state.userId !== "string") return null;
+    if (typeof state.userId !== "string" || !isLocalPath(state.next)) return null;
+    const docoIds = Array.isArray(state.docoIds) ? state.docoIds : [];
+    if (docoIds.length === 0 || docoIds.some((id) => typeof id !== "string")) return null;
     if (!Number.isFinite(state.issuedAt) || now - state.issuedAt > INSTALL_STATE_TTL_MS) {
       return null;
     }
-    return { docoId: state.docoId, userId: state.userId, issuedAt: state.issuedAt };
+    return { userId: state.userId, docoIds, next: state.next, issuedAt: state.issuedAt };
   } catch {
     return null;
   }
 }
 
 /** GitHub App install URL for the click-through flow, with a signed `state`
- *  binding the Doco and the installing user; null if the app slug
- *  (DOCO_GITHUB_APP_SLUG) or client secret isn't configured. */
-export function buildInstallUrl(docoId: string, userId: string): string | null {
+ *  binding the Docos, the installing user and the page to return to; null if
+ *  the app slug (DOCO_GITHUB_APP_SLUG) or client secret isn't configured. */
+export function buildInstallUrl(target: Omit<InstallState, "issuedAt">): string | null {
   const slug = process.env.DOCO_GITHUB_APP_SLUG;
-  const state = signInstallState({ docoId, userId, issuedAt: Date.now() });
+  const state = signInstallState({ ...target, issuedAt: Date.now() });
   if (!slug || !state) return null;
   return `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(state)}`;
 }
@@ -169,26 +196,31 @@ async function writeConnections(docoId: string, conns: GitHubConnection[]): Prom
 }
 
 /**
- * Enforce one-repo-one-Doco: remove `repo` from every Doco's connections
- * EXCEPT `keepDocoId`. Idempotent; the indexed `@>` predicate touches only the
- * Docos that actually hold the repo.
+ * Enforce one repo, one Doco per thing brought: remove `repo` from the
+ * connections of every OTHER Doco that brings what `keepDocoId` brings, so a
+ * repo's pull requests land in one Doco and its bugs in one Bug tracker.
+ * Idempotent; the indexed `@>` predicate touches only the Docos that actually
+ * hold the repo.
  */
 export async function detachRepoFromOtherDocos(repo: string, keepDocoId: string): Promise<void> {
   await withClient(async (c) => {
     await c.query(
-      `UPDATE docos
+      `UPDATE docos d
           SET data = jsonb_set(
-                data,
+                d.data,
                 '{github_integration,connections}',
                 COALESCE((
                   SELECT jsonb_agg(elem)
-                    FROM jsonb_array_elements(data->'github_integration'->'connections') AS elem
+                    FROM jsonb_array_elements(d.data->'github_integration'->'connections') AS elem
                    WHERE elem->>'repo' <> $1
                 ), '[]'::jsonb)
               ),
               updated_at = now()
-        WHERE id <> $2
-          AND data->'github_integration'->'connections'
+         FROM docos keep
+        WHERE keep.id = $2
+          AND d.id <> $2
+          AND ${githubImportSql("d")} = ${githubImportSql("keep")}
+          AND d.data->'github_integration'->'connections'
                 @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
       [repo, keepDocoId],
     );
@@ -220,6 +252,64 @@ export async function addConnection(
   const next = [...(await list(docoId)).filter((c) => c.repo !== conn.repo), conn];
   await write(docoId, next);
   return next;
+}
+
+/**
+ * The repositories a user asked to connect, when the installation they chose
+ * offers every one: normalized ("owner/name"), de-duplicated, in the order
+ * asked. A posted repo list is never trusted beyond what the installation
+ * shows. Pure.
+ */
+export function pickRepositories(
+  choice: Pick<GitHubInstallationChoice, "repositories">,
+  requested: string[],
+): { repos: string[] } | { error: string } {
+  const offered = new Set(choice.repositories);
+  const repos: string[] = [];
+  for (const input of requested.map((r) => r.trim()).filter(Boolean)) {
+    const parsed = parseRepoSlug(input);
+    if (!parsed) return { error: `Invalid repo: ${input}` };
+    const repo = `${parsed.owner}/${parsed.name}`;
+    if (!offered.has(repo)) {
+      return { error: `${repo} is not available from the selected GitHub connection.` };
+    }
+    if (!repos.includes(repo)) repos.push(repo);
+  }
+  return repos.length > 0 ? { repos } : { error: "Pick at least one repository." };
+}
+
+/**
+ * Connect `repos` (all under one installation) to a Doco and queue their
+ * import from the start. The caller kicks the backfill worker
+ * (`kickBackfillRun`) to run it.
+ */
+export async function connectRepositories(
+  docoId: string,
+  installationId: number,
+  repos: string[],
+): Promise<void> {
+  const connectedAt = new Date().toISOString();
+  for (const repo of repos) {
+    await addConnection(docoId, {
+      repo,
+      installation_id: installationId,
+      connected_at: connectedAt,
+    });
+  }
+  await setBackfillState(docoId, {
+    status: "running",
+    started_at: connectedAt,
+    repos: repos.length,
+    installation_id: installationId,
+    queue: repos,
+    repo_index: 0,
+    page: 1,
+    imported: 0,
+    updated: 0,
+    unchanged: 0,
+    failed: 0,
+    cursor_at: connectedAt,
+  });
 }
 
 /** Remove a connection by repo. Returns the remaining list. */
@@ -518,6 +608,9 @@ export async function setBackfillState(docoId: string, state: GitHubBackfillStat
 export interface DocoConnectionsContext {
   handle: string;
   workspaceHandle: string;
+  /** The template the Doco was created from, which decides what it brings
+   *  from GitHub (github-imports). */
+  template: string | null;
   connections: GitHubConnection[];
   /** Org/owner installation subscriptions (org-wide auto-sync). */
   installations: GitHubInstallationSub[];
@@ -704,14 +797,20 @@ export async function listGitHubInstallationChoicesForDocos(
   return choices;
 }
 
-/** Doco handle + org handle + all connections + installations + backfill
- *  marker, in one query (for the Integrations UI and per-repo backfill). */
+/** Doco handle + org handle + template + all connections + installations +
+ *  backfill marker, in one query (for the Integrations UI and per-repo backfill). */
 export async function getDocoConnectionsContext(
   docoId: string,
 ): Promise<DocoConnectionsContext | null> {
   return withClient(async (c) => {
-    const r = await c.query<{ handle: string; workspace_handle: string; gh: unknown }>(
-      `SELECT d.handle, o.handle AS workspace_handle, d.data->'github_integration' AS gh
+    const r = await c.query<{
+      handle: string;
+      workspace_handle: string;
+      template: string | null;
+      gh: unknown;
+    }>(
+      `SELECT d.handle, o.handle AS workspace_handle, d.data->>'template_handle' AS template,
+              d.data->'github_integration' AS gh
          FROM docos d
          JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.id = $1`,
@@ -722,6 +821,7 @@ export async function getDocoConnectionsContext(
       ? {
           handle: row.handle,
           workspaceHandle: row.workspace_handle,
+          template: row.template,
           connections: normalizeConnections(row.gh),
           installations: normalizeInstallations(row.gh),
           backfill: normalizeBackfillState(row.gh),
@@ -882,9 +982,10 @@ async function writeInstallations(docoId: string, subs: GitHubInstallationSub[])
 }
 
 /**
- * Enforce one-installation-one-Doco: drop the installation from every OTHER
- * Doco's installations[]. Idempotent; the indexed `@>` predicate touches only
- * the Docos that actually hold the installation.
+ * Enforce one installation, one Doco per thing brought: drop the installation
+ * from the installations[] of every OTHER Doco that brings what `keepDocoId`
+ * brings. Idempotent; the indexed `@>` predicate touches only the Docos that
+ * actually hold the installation.
  */
 export async function detachInstallationFromOtherDocos(
   installationId: number,
@@ -892,19 +993,22 @@ export async function detachInstallationFromOtherDocos(
 ): Promise<void> {
   await withClient(async (c) => {
     await c.query(
-      `UPDATE docos
+      `UPDATE docos d
           SET data = jsonb_set(
-                data,
+                d.data,
                 '{github_integration,installations}',
                 COALESCE((
                   SELECT jsonb_agg(elem)
-                    FROM jsonb_array_elements(data->'github_integration'->'installations') AS elem
+                    FROM jsonb_array_elements(d.data->'github_integration'->'installations') AS elem
                    WHERE (elem->>'installation_id')::int <> $1
                 ), '[]'::jsonb)
               ),
               updated_at = now()
-        WHERE id <> $2
-          AND data->'github_integration'->'installations'
+         FROM docos keep
+        WHERE keep.id = $2
+          AND d.id <> $2
+          AND ${githubImportSql("d")} = ${githubImportSql("keep")}
+          AND d.data->'github_integration'->'installations'
                 @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))`,
       [installationId, keepDocoId],
     );

@@ -6,6 +6,7 @@ vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 import {
   parseInstallationEvent,
   parseInstallationRepositoriesEvent,
+  parseIssuesEvent,
   parsePullRequestEvent,
   parsePullRequestReviewEvent,
   verifyGitHubSignature,
@@ -69,6 +70,49 @@ describe("parsePullRequestEvent", () => {
       parsePullRequestEvent({ action: "created", repository: { full_name: "a/b" } }),
     ).toBeNull();
     expect(parsePullRequestEvent(null)).toBeNull();
+  });
+});
+
+describe("parseIssuesEvent", () => {
+  const payload = {
+    action: "closed",
+    repository: { full_name: "acme/store" },
+    installation: { id: 99 },
+    issue: {
+      number: 7,
+      title: "Login fails",
+      html_url: "https://github.com/acme/store/issues/7",
+      state: "closed",
+      state_reason: "completed",
+      labels: [{ name: "bug", color: "d73a4a" }, "not-an-object", { color: "x" }],
+      type: { name: "Bug" },
+      user: { login: "octocat" },
+    },
+  };
+  it("extracts the issue, repo, installation, and action", () => {
+    expect(parseIssuesEvent(payload)).toEqual({
+      action: "closed",
+      repoFullName: "acme/store",
+      installationId: 99,
+      issue: {
+        number: 7,
+        title: "Login fails",
+        html_url: "https://github.com/acme/store/issues/7",
+        state: "closed",
+        state_reason: "completed",
+        labels: [{ name: "bug" }],
+        type: { name: "Bug" },
+        user: { login: "octocat" },
+      },
+    });
+  });
+  it("keeps the pull-request marker so a PR is never taken for a bug", () => {
+    const pr = { ...payload, issue: { ...payload.issue, pull_request: { url: "x" } } };
+    expect(parseIssuesEvent(pr)?.issue.pull_request).toBeTruthy();
+  });
+  it("returns null for a malformed payload", () => {
+    expect(parseIssuesEvent({ action: "opened", repository: { full_name: "a/b" } })).toBeNull();
+    expect(parseIssuesEvent(null)).toBeNull();
   });
 });
 

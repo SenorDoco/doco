@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getDocoConnectionsContext: vi.fn(),
   listGitHubInstallationChoicesForDocos: vi.fn(),
   buildInstallUrl: vi.fn(),
-  addConnection: vi.fn(),
+  connectRepositories: vi.fn(),
   removeConnection: vi.fn(),
   reconcileInstallationConnections: vi.fn(),
   setBackfillState: vi.fn(),
@@ -40,11 +40,13 @@ vi.mock("~/lib/doco-access.server", () => ({
 }));
 
 vi.mock("~/lib/github-backfill.server", () => ({
-  backfillRepoPullRequests: mocks.backfillRepoPullRequests,
+  repoBackfillFor: () => mocks.backfillRepoPullRequests,
 }));
 
-vi.mock("~/lib/github-connection.server", () => ({
-  addConnection: mocks.addConnection,
+vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
+  pickRepositories: (await importOriginal<typeof import("~/lib/github-connection.server")>())
+    .pickRepositories,
+  connectRepositories: mocks.connectRepositories,
   buildInstallUrl: mocks.buildInstallUrl,
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
   githubOrgAccounts: ({
@@ -82,9 +84,9 @@ vi.mock("../api.github.backfill-run", () => ({
   kickBackfillRun: mocks.kickBackfillRun,
 }));
 
+import { buildInstallationPickerChoices } from "~/components/github-repo-picker";
 import {
   action,
-  buildInstallationPickerChoices,
   connectedOrgRepositories,
   loader,
   resyncButton,
@@ -133,7 +135,7 @@ describe("/:docoHandle/integrations/github", () => {
     mocks.buildInstallUrl.mockReturnValue(
       "https://github.com/apps/doco-pr-sync/installations/new?state=doco_1",
     );
-    mocks.addConnection.mockResolvedValue([]);
+    mocks.connectRepositories.mockResolvedValue(undefined);
     mocks.setBackfillState.mockResolvedValue(undefined);
     mocks.subscribeInstallation.mockResolvedValue([]);
     mocks.kickBackfillRun.mockResolvedValue(undefined);
@@ -149,6 +151,32 @@ describe("/:docoHandle/integrations/github", () => {
     expect(response.headers.get("Location")).toBe(
       "https://github.com/apps/doco-pr-sync/installations/new?state=doco_1",
     );
+  });
+
+  it("says what the Doco brings from GitHub, by its template", async () => {
+    mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
+      { installation_id: 42, account: "acme", repositories: [], connected_repositories: [] },
+    ]);
+    mocks.getDocoConnectionsContext.mockResolvedValue({
+      handle: "meta-bugs",
+      workspaceHandle: "meta",
+      template: "bugs",
+      connections: [],
+      installations: [],
+      backfill: null,
+    });
+
+    const data = await loader({
+      request: new Request("https://doco.test/meta-bugs/integrations/github"),
+      ...routeArgs,
+    });
+
+    expect(data.brings).toMatchObject({ id: "bugs", items: "bugs" });
+    expect(mocks.buildInstallUrl).toHaveBeenCalledWith({
+      userId: "user_1",
+      docoIds: ["doco_1"],
+      next: "/meta-pull-requests/integrations/github",
+    });
   });
 
   it("keeps writers in Doco when reusable GitHub org/repo choices exist", async () => {
@@ -203,24 +231,7 @@ describe("/:docoHandle/integrations/github", () => {
     expect(location).toContain("/meta-pull-requests/integrations/github");
     expect(location).toContain("github=importing");
     expect(location).toContain("count=2");
-    expect(mocks.addConnection).toHaveBeenCalledTimes(2);
-    expect(mocks.addConnection).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({ repo: "acme/web", installation_id: 42 }),
-    );
-    expect(mocks.addConnection).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({ repo: "acme/api", installation_id: 42 }),
-    );
-    expect(mocks.setBackfillState).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({
-        status: "running",
-        queue: ["acme/web", "acme/api"],
-        repos: 2,
-        installation_id: 42,
-      }),
-    );
+    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_1", 42, ["acme/web", "acme/api"]);
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
   });
 
@@ -256,7 +267,7 @@ describe("/:docoHandle/integrations/github", () => {
         connected_at: expect.any(String),
       }),
     );
-    expect(mocks.addConnection).not.toHaveBeenCalled();
+    expect(mocks.connectRepositories).not.toHaveBeenCalled();
     expect(mocks.setBackfillState).not.toHaveBeenCalled();
     expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
@@ -416,7 +427,7 @@ describe("/:docoHandle/integrations/github", () => {
     });
 
     expect(result).toMatchObject({ error: "Unknown action: connect" });
-    expect(mocks.addConnection).not.toHaveBeenCalled();
+    expect(mocks.connectRepositories).not.toHaveBeenCalled();
   });
 
   it("turns a failed per-repo Re-import into a friendly message, not a 500", async () => {
@@ -443,15 +454,18 @@ describe("/:docoHandle/integrations/github", () => {
 // out (the original bug). It stays clickable; only its label changes.
 describe("resyncButton", () => {
   it("is enabled while importing, framed as a restart", () => {
-    expect(resyncButton({ status: "running" })).toEqual({
+    expect(resyncButton({ status: "running" }, { items: "bugs" })).toEqual({
       label: "Restart import",
       disabled: false,
     });
   });
   it("is enabled when idle or finished", () => {
-    expect(resyncButton(null)).toEqual({ label: "Re-import all PRs", disabled: false });
-    expect(resyncButton({ status: "done" })).toEqual({
-      label: "Re-import all PRs",
+    expect(resyncButton(null, { items: "pull requests" })).toEqual({
+      label: "Re-import all pull requests",
+      disabled: false,
+    });
+    expect(resyncButton({ status: "done" }, { items: "bugs" })).toEqual({
+      label: "Re-import all bugs",
       disabled: false,
     });
   });

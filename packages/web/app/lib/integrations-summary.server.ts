@@ -124,7 +124,8 @@ export interface DocoPicker {
  * The picker a workspace or the account page shows after a Doco-level
  * integration's "Set up..." click (`?integration=<id>`): every Doco the person
  * reaches, narrowed to one workspace on that workspace's page. Null when the
- * page wasn't opened to set up a Doco-level integration.
+ * page wasn't opened to set up a Doco-level integration, or the integration
+ * has its own setup page instead (GitHub).
  */
 export async function loadDocoPicker(opts: {
   integrationId: string | null;
@@ -132,7 +133,7 @@ export async function loadDocoPicker(opts: {
   workspaceId?: string;
 }): Promise<DocoPicker | null> {
   const integration = findIntegration(opts.integrationId ?? "");
-  if (integration?.scope !== "doco") return null;
+  if (integration?.scope !== "doco" || integration.setupPath) return null;
   const workspaces = await withClient((c) =>
     loadWorkspaceSummaries(c, opts.userId, {
       ...(opts.workspaceId ? { workspaceId: opts.workspaceId } : {}),

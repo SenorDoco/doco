@@ -1,10 +1,10 @@
-// Resumable backfill driver. The setup callback can't import an org's whole PR
-// history in one shot — tens of thousands of PRs blow past Vercel's function
+// Resumable backfill driver. The setup callback can't import an org's whole
+// history (its pull requests, or its bug issues for a Bug tracker) in one shot — tens of thousands of PRs blow past Vercel's function
 // timeout (this is the ~5000-PR wall hit in practice). So the import is driven
 // as a chain of time-budgeted SLICES: each slice walks the saved cursor
 // (queue of repos × GitHub page) for up to `budgetMs`, persists progress, and
 // the worker route re-triggers itself until the queue is exhausted. Every
-// upsert is idempotent (keyed on the PR URL), so a crashed slice simply
+// upsert is idempotent (keyed on the item URL), so a crashed slice simply
 // re-runs from the last persisted cursor.
 //
 // Resilience: a single repo failing (a rate limit, a gone/forbidden repo, a
@@ -16,7 +16,7 @@
 // Before this, an unhandled throw skipped the cursor save entirely, so the
 // chain died, the count froze, and the sweep just re-threw forever.
 import { classifyGitHubError } from "./github-app.server";
-import { backfillRepoPullRequests } from "./github-backfill.server";
+import { type RepoBackfill, repoBackfillFor } from "./github-backfill.server";
 import {
   type BackfillError,
   type GitHubBackfillState,
@@ -38,11 +38,13 @@ export interface BackfillSliceCtx {
   docoDir: string;
   ownerSlug: string;
   docoSlug: string;
+  /** The Doco's template: what it brings from GitHub (github-imports). */
+  template: string | null;
   installationId: number;
 }
 
 export interface BackfillSliceDeps {
-  backfillRepo: typeof backfillRepoPullRequests;
+  backfillRepo: RepoBackfill;
   save: (docoId: string, state: GitHubBackfillState) => Promise<void>;
   now: () => number;
   classifyError: typeof classifyGitHubError;
@@ -83,7 +85,7 @@ function markerFrom(
 }
 
 /**
- * Process one time-budgeted slice of a Doco's PR backfill from its saved
+ * Process one time-budgeted slice of a Doco's backfill from its saved
  * cursor, persisting the advanced cursor + running tallies. Returns whether the
  * whole backfill is complete and whether it paused on a rate limit (so the
  * worker can hold off re-kicking until the window clears). Pure orchestration
@@ -95,7 +97,7 @@ export async function runBackfillSlice(
   deps?: Partial<BackfillSliceDeps>,
   budgetMs = 200_000,
 ): Promise<{ done: boolean; rateLimited: boolean }> {
-  const backfillRepo = deps?.backfillRepo ?? backfillRepoPullRequests;
+  const backfillRepo = deps?.backfillRepo ?? repoBackfillFor(ctx.template);
   const save = deps?.save ?? setBackfillState;
   const now = deps?.now ?? Date.now;
   const classify = deps?.classifyError ?? classifyGitHubError;

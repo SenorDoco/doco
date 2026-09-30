@@ -7,6 +7,7 @@ import {
   getInstallationAccount,
   githubAppConfigured,
   listInstallationRepos,
+  listRepoIssues,
   listRepoPullRequests,
   listUserInstallationIds,
   mintInstallationToken,
@@ -121,7 +122,7 @@ describe("listRepoPullRequests", () => {
     const result = await listRepoPullRequests("ghs_x", "acme", "store", {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    expect(result.prs.map((p) => p.number)).toEqual([1, 2]);
+    expect(result.items.map((p) => p.number)).toEqual([1, 2]);
     expect(result.hasMore).toBe(false);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
@@ -136,7 +137,7 @@ describe("listRepoPullRequests", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       maxPages: 1,
     });
-    expect(result.prs).toHaveLength(1);
+    expect(result.items).toHaveLength(1);
     expect(result.hasMore).toBe(true);
   });
 
@@ -152,6 +153,27 @@ describe("listRepoPullRequests", () => {
     });
     const [url] = fetchImpl.mock.calls[0] as unknown as [string];
     expect(url).toContain("page=3");
+  });
+});
+
+describe("listRepoIssues", () => {
+  it("pages every issue, open and closed, from startPage, and says when more remain", async () => {
+    const page2 = new Response(
+      JSON.stringify([{ number: 7, title: "a", html_url: "u7", state: "open", labels: [] }]),
+      { status: 200, headers: { Link: '<https://api.github.com/x?page=3>; rel="next"' } },
+    );
+    const fetchImpl = vi.fn().mockResolvedValueOnce(page2);
+    const result = await listRepoIssues("ghs_x", "acme", "store", {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      startPage: 2,
+      maxPages: 1,
+    });
+    expect(result.items.map((i) => i.number)).toEqual([7]);
+    expect(result.hasMore).toBe(true);
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string];
+    expect(url).toBe(
+      "https://api.github.com/repos/acme/store/issues?state=all&per_page=100&page=2",
+    );
   });
 });
 

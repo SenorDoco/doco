@@ -2,7 +2,9 @@
 //
 // The catalog drives the right-pane "available integrations" list. When a
 // Doco-level integration is set up from a workspace or the account page, its
-// button opens a picker that asks which Doco to set it up on.
+// button opens its own setup page when it has one (GitHub asks what to bring
+// and fills a Doco per choice), or else a picker that asks which Doco to set
+// it up on.
 
 export type IntegrationScope = "account" | "workspace" | "doco";
 
@@ -11,6 +13,9 @@ export interface IntegrationDefinition {
   name: string;
   description: string;
   scope: IntegrationScope;
+  /** The integration's own setup page, which picks its Docos itself; without
+   *  one, a Doco-level integration is set up from a Doco picker. */
+  setupPath?: string;
 }
 
 export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
@@ -24,8 +29,10 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
   {
     id: "github",
     name: "GitHub",
-    description: "Connect repositories so their pull requests are tracked as References on a doco.",
+    description:
+      "Bring pull requests and bugs from GitHub repositories into a workspace, each into its own doco.",
     scope: "doco",
+    setupPath: "/integrations/github",
   },
   {
     id: "notion",
@@ -44,8 +51,8 @@ export function findIntegration(id: string): IntegrationDefinition | undefined {
  * Where an integration's "Connect" / "Set up..." button goes. Slack runs its
  * own install flow, which picks the workspace itself. A Doco-level integration
  * goes to the Doco's own setup page; from a workspace or the account page,
- * which have no one Doco to set it up on, it opens that page's Doco picker
- * (`?integration=<id>`).
+ * which have no one Doco to set it up on, it opens its own setup page (for
+ * that workspace), or else that page's Doco picker (`?integration=<id>`).
  */
 export function connectHrefFor(opts: {
   integration: IntegrationDefinition;
@@ -55,6 +62,11 @@ export function connectHrefFor(opts: {
   const { integration, workspaceHandle, docoHandle } = opts;
   if (integration.id === "slack") return "/integrations/slack/install";
   if (docoHandle) return `/${docoHandle}/integrations/${integration.id}`;
+  if (integration.setupPath) {
+    return workspaceHandle
+      ? `${integration.setupPath}?${new URLSearchParams({ workspace: workspaceHandle })}`
+      : integration.setupPath;
+  }
   const query = new URLSearchParams({ integration: integration.id }).toString();
   if (workspaceHandle) return `/workspaces/${workspaceHandle}/integrations?${query}`;
   return `/integrations?${query}`;

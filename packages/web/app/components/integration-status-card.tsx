@@ -31,8 +31,8 @@ function Spinner() {
 function liveLine(status: IntegrationStatus, now: Date): string {
   if (status.integration === "github") {
     return status.latestAt
-      ? `Latest PR update ${timeAgo(status.latestAt, now)}`
-      : "No pull requests copied yet";
+      ? `Latest ${status.item} update ${timeAgo(status.latestAt, now)}`
+      : `No ${status.items} copied yet`;
   }
   if (status.integration === "notion") {
     return status.latestAt
@@ -48,9 +48,9 @@ function liveLine(status: IntegrationStatus, now: Date): string {
 function historyLine(status: IntegrationStatus): string {
   if (status.integration === "github") {
     const repos = `${status.reposDone} of ${status.repos} repos`;
-    if (status.state === "done") return "All past PRs imported";
-    if (status.state === "stalled") return `Old-PR import stalled at ${repos}`;
-    return `Importing old PRs: ${repos}`;
+    if (status.state === "done") return `All past ${status.items} imported`;
+    if (status.state === "stalled") return `Import of past ${status.items} stalled at ${repos}`;
+    return `Importing past ${status.items}: ${repos}`;
   }
   if (status.integration === "notion") {
     if (status.needsReauth) return "Notion no longer accepts the connection: reconnect to resume";
@@ -84,7 +84,7 @@ function historyLine(status: IntegrationStatus): string {
 
 /**
  * Box atop the activity column of a Doco that copies from a source (GitHub
- * pull requests, a Slack or Notion workspace): how live the copy is, how far the import
+ * pull requests or bugs, a Slack or Notion workspace): how live the copy is, how far the import
  * of older items has got — flagged when it stopped advancing — and a link to
  * manage the integration.
  */

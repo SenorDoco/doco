@@ -16,9 +16,10 @@ vi.mock("~/lib/doco-access.server", () => ({
   getDocoLevelRole: () => undefined,
   listAccessibleDocoIdsForPrincipal: () => [],
 }));
-vi.mock("~/lib/github-backfill.server", () => ({ backfillRepoPullRequests: () => undefined }));
+vi.mock("~/lib/github-backfill.server", () => ({ repoBackfillFor: () => undefined }));
 vi.mock("~/lib/github-connection.server", () => ({
-  addConnection: () => undefined,
+  connectRepositories: () => undefined,
+  pickRepositories: () => ({ repos: [] }),
   buildInstallUrl: () => "",
   getDocoConnectionsContext: () => undefined,
   githubOrgAccounts: () => [],
@@ -60,6 +61,14 @@ const baseLoaderData = {
   me: { id: "user_1", username: "alice" },
   handle: "torre-prs",
   ownerSlug: "torre",
+  brings: {
+    id: "pull-requests",
+    template: "github-pull-requests",
+    label: "Pull requests",
+    description: "Every pull request.",
+    item: "pull request",
+    items: "pull requests",
+  },
   canManage: true,
   docoInstallUrl: "https://github.com/apps/doco/installations/new",
   connections: [] as Array<{ repo: string; installation_id: number }>,

@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  syncBugIssue,
   upsertPullRequestReference,
   hasBusinessProcessCodeReferences,
   mintInstallationToken,
@@ -33,14 +34,16 @@ const {
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
-    { docoId: "doco_1", handle: "store", workspaceHandle: "acme" },
+    { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: "bugs" },
   ]),
   findDocoTargetsForGitHubRepo: vi.fn(async () => [
-    { docoId: "doco_1", handle: "store", workspaceHandle: "acme" },
+    { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: null },
   ]),
+  syncBugIssue: vi.fn(async () => ({ status: "created", id: "eval_x" })),
 }));
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
+vi.mock("~/lib/github-issue-import.server", () => ({ syncBugIssue }));
 vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/repos/${h}` }));
 vi.mock("~/lib/github-app.server", () => ({ mintInstallationToken, listPullRequestFiles }));
 vi.mock("~/lib/github-pr-import.server", () => ({
@@ -137,8 +140,11 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       "doco_1",
       expect.objectContaining({ repo: "acme/new", installation_id: 42 }),
     );
-    // …and its pre-existing PRs are backfilled.
+    // …and its pre-existing items are backfilled, as what the Doco brings.
     expect(backfillInstallationRepos).toHaveBeenCalledTimes(1);
+    expect(backfillInstallationRepos).toHaveBeenCalledWith(
+      expect.objectContaining({ docoId: "doco_1", template: "bugs", repos: ["acme/new"] }),
+    );
     expect(detachReposEverywhere).not.toHaveBeenCalled();
   });
 
@@ -156,7 +162,11 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       },
     });
     expect(await res.json()).toMatchObject({ ok: true, repo: "acme/store" });
-    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store");
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(
+      99,
+      "acme/store",
+      "github-pull-requests",
+    );
     expect(upsertPullRequestReference).toHaveBeenCalledWith(
       expect.objectContaining({ number: 5 }),
       expect.objectContaining({ approved: true, docoId: "doco_1" }),
@@ -183,7 +193,11 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       },
     });
     expect(await res.json()).toMatchObject({ ok: true, repo: "acme/store" });
-    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store");
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(
+      99,
+      "acme/store",
+      "github-pull-requests",
+    );
     expect(mintInstallationToken).toHaveBeenCalledWith(99);
     expect(listPullRequestFiles).toHaveBeenCalledWith("ghs_test", "acme", "store", 5);
     expect(upsertPullRequestReference).toHaveBeenCalledWith(
@@ -215,5 +229,44 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     });
     expect(await res.json()).toMatchObject({ ignored: true });
     expect(upsertPullRequestReference).not.toHaveBeenCalled();
+  });
+
+  it("issues → files the issue in the Bug trackers that bring bugs from the repo", async () => {
+    const issue = {
+      number: 7,
+      title: "Login fails",
+      html_url: "https://github.com/acme/store/issues/7",
+      state: "open",
+      labels: [{ name: "bug" }],
+    };
+    const res = await send("issues", {
+      action: "labeled",
+      repository: { full_name: "acme/store" },
+      installation: { id: 99 },
+      issue,
+    });
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      repo: "acme/store",
+      results: [{ doco: "store", status: "created" }],
+    });
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store", "bugs");
+    expect(syncBugIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ number: 7 }),
+      expect.objectContaining({ docoId: "doco_1", docoSlug: "store", deleted: false }),
+    );
+  });
+
+  it("issues deleted → retires the bug the issue filed", async () => {
+    await send("issues", {
+      action: "deleted",
+      repository: { full_name: "acme/store" },
+      installation: { id: 99 },
+      issue: { number: 7, title: "x", html_url: "https://github.com/acme/store/issues/7" },
+    });
+    expect(syncBugIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ number: 7 }),
+      expect.objectContaining({ deleted: true }),
+    );
   });
 });

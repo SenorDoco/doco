@@ -112,6 +112,7 @@ export async function action({ request }: { request: Request }) {
       docoDir: docoPath(ctx.handle),
       ownerSlug: ctx.workspaceHandle,
       docoSlug: ctx.handle,
+      template: ctx.template,
       installationId,
     }));
   } catch (err) {

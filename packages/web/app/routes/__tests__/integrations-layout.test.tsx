@@ -340,21 +340,21 @@ describe("integrations: Set up... on a Doco-level integration picks the doco", (
     );
   }
 
-  it("sends GitHub and Notion's Set up... to the page's doco picker", () => {
+  it("sends Notion's Set up... to the page's doco picker, and GitHub's to its own setup", () => {
     const markup = renderWorkspacePage(null);
-    expect(markup).toContain('href="/workspaces/acme/integrations?integration=github"');
     expect(markup).toContain('href="/workspaces/acme/integrations?integration=notion"');
-    expect(renderAccountPage(null)).toContain('href="/integrations?integration=github"');
+    expect(markup).toContain('href="/integrations/github?workspace=acme"');
+    expect(renderAccountPage(null)).toContain('href="/integrations/github"');
   });
 
   it("lists every doco in the workspace, each linking to its own setup page", () => {
     const markup = renderWorkspacePage({
-      integrationId: "github",
+      integrationId: "notion",
       workspaces: [workspace("acme", ["acme-bugs", "acme-ideas"])],
     });
-    expect(markup).toContain("Pick a doco to set up GitHub");
-    expect(markup).toContain('href="/acme-bugs/integrations/github"');
-    expect(markup).toContain('href="/acme-ideas/integrations/github"');
+    expect(markup).toContain("Pick a doco to set up Notion");
+    expect(markup).toContain('href="/acme-bugs/integrations/notion"');
+    expect(markup).toContain('href="/acme-ideas/integrations/notion"');
   });
 
   it("lists the docos of every workspace on the account page", () => {
@@ -368,8 +368,8 @@ describe("integrations: Set up... on a Doco-level integration picks the doco", (
   });
 
   it("says so when there is no doco to set it up on", () => {
-    const markup = renderWorkspacePage({ integrationId: "github", workspaces: [] });
-    expect(markup).toContain("Pick a doco to set up GitHub");
-    expect(markup).toContain("No docos to set up GitHub on yet.");
+    const markup = renderWorkspacePage({ integrationId: "notion", workspaces: [] });
+    expect(markup).toContain("Pick a doco to set up Notion");
+    expect(markup).toContain("No docos to set up Notion on yet.");
   });
 });

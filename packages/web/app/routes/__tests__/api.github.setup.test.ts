@@ -63,8 +63,12 @@ vi.mock("../api.github.backfill-run", () => ({
 import { signInstallState } from "~/lib/github-connection.server";
 import { loader } from "../api.github.setup";
 
-function signedState(userId = "user_1", issuedAt = Date.now()): string {
-  return signInstallState({ docoId: "doco_1", userId, issuedAt }) ?? "";
+function signedState(
+  userId = "user_1",
+  docoIds = ["doco_1"],
+  next = "/prs/integrations/github",
+): string {
+  return signInstallState({ userId, docoIds, next, issuedAt: Date.now() }) ?? "";
 }
 
 function setupRequest(
@@ -79,11 +83,11 @@ describe("api.github.setup loader", () => {
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
     mocks.exchangeInstallationCode.mockResolvedValue("ghu_user");
     mocks.listUserInstallationIds.mockResolvedValue(new Set([42]));
-    mocks.getDocoByIdOrHandle.mockResolvedValue({
-      id: "doco_1",
-      handle: "prs",
+    mocks.getDocoByIdOrHandle.mockImplementation(async (id: string) => ({
+      id,
+      handle: id === "doco_1" ? "prs" : "bugs",
       owner_id: "workspace_1",
-    });
+    }));
     mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_1" });
     mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.getDocoConnectionsContext.mockResolvedValue({
@@ -160,6 +164,41 @@ describe("api.github.setup loader", () => {
     });
 
     expect(response.headers.get("Location")).toBe("/prs/integrations/github?github=forbidden");
+    expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("makes the installation selectable on every Doco the setup brings things into", async () => {
+    const state = signedState(
+      "user_1",
+      ["doco_1", "doco_2"],
+      "/integrations/github?workspace=acme",
+    );
+    const response = await loader({
+      request: setupRequest(`installation_id=42&code=gh-code&state=${encodeURIComponent(state)}`),
+    });
+
+    expect(response.headers.get("Location")).toBe(
+      "/integrations/github?workspace=acme&github=connected",
+    );
+    expect(mocks.recordInstallationAuthorization).toHaveBeenCalledTimes(2);
+    for (const docoId of ["doco_1", "doco_2"]) {
+      expect(mocks.recordInstallationAuthorization).toHaveBeenCalledWith(
+        docoId,
+        expect.objectContaining({ installation_id: 42, account: "acme" }),
+      );
+    }
+  });
+
+  it("records nothing when the user can't write to one of the Docos", async () => {
+    mocks.getDocoLevelRole.mockImplementation(async (meta: { docoId: string }) =>
+      meta.docoId === "doco_2" ? "reader" : "writer",
+    );
+    const state = signedState("user_1", ["doco_1", "doco_2"], "/integrations/github");
+    const response = await loader({
+      request: setupRequest(`installation_id=42&code=gh-code&state=${encodeURIComponent(state)}`),
+    });
+
+    expect(response.headers.get("Location")).toBe("/integrations/github?github=forbidden");
     expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
   });
 

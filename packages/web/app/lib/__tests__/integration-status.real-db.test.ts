@@ -190,7 +190,8 @@ describe("loadIntegrationStatuses", () => {
         INSERT INTO nodes (id, doco_id, node_type, locator, updated_at) VALUES
           ('reference_1', 'doco_gh', 'reference', 'https://github.com/acme/store/pull/1', '${minutesAgo(90)}'),
           ('reference_2', 'doco_gh', 'reference', 'https://github.com/acme/store/pull/2', '${minutesAgo(5)}'),
-          ('reference_3', 'doco_gh', 'reference', 'https://example.com/spec', '${minutesAgo(1)}');
+          ('reference_3', 'doco_gh', 'reference', 'https://example.com/spec', '${minutesAgo(1)}'),
+          ('eval_1', 'doco_gh', 'eval', 'packages/web/app/x.test.ts:12', '${minutesAgo(1)}');
       `);
     });
 
@@ -203,12 +204,28 @@ describe("loadIntegrationStatuses", () => {
       expect(await loadIntegrationStatuses(c, "doco_gh", NOW)).toEqual([
         {
           integration: "github",
+          item: "pull request",
+          items: "pull requests",
           latestAt: minutesAgo(5),
           state: "importing",
           reposDone: 1,
           repos: 4,
         },
       ]);
+    });
+
+    it("speaks of the bugs a Bug tracker brings, dated by the latest issue change", async () => {
+      await setGitHub({ connections: [{ repo: "acme/store", installation_id: 7 }] });
+      await db.exec(`
+        UPDATE docos SET data = data || '{"template_handle": "bugs"}' WHERE id = 'doco_gh';
+        INSERT INTO nodes (id, doco_id, node_type, locator, updated_at) VALUES
+          ('eval_2', 'doco_gh', 'eval', 'https://github.com/acme/store/issues/9', '${minutesAgo(2)}');
+      `);
+      expect((await loadIntegrationStatuses(c, "doco_gh", NOW))[0]).toMatchObject({
+        item: "bug",
+        items: "bugs",
+        latestAt: minutesAgo(2),
+      });
     });
 
     it("is stalled when the import stopped advancing", async () => {

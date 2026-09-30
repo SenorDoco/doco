@@ -30,6 +30,7 @@ const ctx = {
   docoDir: "/tmp/d",
   ownerSlug: "o",
   docoSlug: "d",
+  template: null,
   installationId: 42,
 };
 

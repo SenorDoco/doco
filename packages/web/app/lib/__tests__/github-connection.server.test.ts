@@ -488,27 +488,25 @@ describe("buildInstallUrl", () => {
   afterEach(() => {
     process.env = { ...saved };
   });
-  it("builds the install URL with a signed state binding the Doco and the installer", () => {
+  const target = { userId: "user_1", docoIds: ["doco_1", "doco_2"], next: "/integrations/github" };
+  it("builds the install URL with a signed state binding the Docos, the installer and the way back", () => {
     process.env.DOCO_GITHUB_APP_SLUG = "doco-pr-sync";
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    const url = new URL(buildInstallUrl("doco_1", "user_1") ?? "");
+    const url = new URL(buildInstallUrl(target) ?? "");
     expect(`${url.origin}${url.pathname}`).toBe(
       "https://github.com/apps/doco-pr-sync/installations/new",
     );
-    expect(verifyInstallState(url.searchParams.get("state") ?? "")).toMatchObject({
-      docoId: "doco_1",
-      userId: "user_1",
-    });
+    expect(verifyInstallState(url.searchParams.get("state") ?? "")).toMatchObject(target);
   });
   it("returns null when the slug isn't configured", () => {
     process.env.DOCO_GITHUB_APP_SLUG = "";
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    expect(buildInstallUrl("doco_1", "user_1")).toBeNull();
+    expect(buildInstallUrl(target)).toBeNull();
   });
   it("returns null when the App's client secret (the state key) isn't configured", () => {
     process.env.DOCO_GITHUB_APP_SLUG = "doco-pr-sync";
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "";
-    expect(buildInstallUrl("doco_1", "user_1")).toBeNull();
+    expect(buildInstallUrl(target)).toBeNull();
   });
 });
 
@@ -518,15 +516,17 @@ describe("verifyInstallState", () => {
     process.env = { ...saved };
   });
   const now = Date.UTC(2026, 8, 26, 12);
+  const state = {
+    userId: "user_1",
+    docoIds: ["doco_1"],
+    next: "/prs/integrations/github",
+    issuedAt: now,
+  };
 
   it("round-trips a fresh state", () => {
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    const state = signInstallState({ docoId: "doco_1", userId: "user_1", issuedAt: now }) ?? "";
-    expect(verifyInstallState(state, now + 60_000)).toEqual({
-      docoId: "doco_1",
-      userId: "user_1",
-      issuedAt: now,
-    });
+    const signed = signInstallState(state) ?? "";
+    expect(verifyInstallState(signed, now + 60_000)).toEqual(state);
   });
   it("rejects a bare Doco id (the old unsigned state)", () => {
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
@@ -534,15 +534,26 @@ describe("verifyInstallState", () => {
   });
   it("rejects a state whose payload was edited", () => {
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    const state = signInstallState({ docoId: "doco_1", userId: "user_1", issuedAt: now }) ?? "";
-    const [, sig] = state.split(".");
-    const forged = `${Buffer.from(JSON.stringify({ docoId: "doco_2", userId: "user_1", issuedAt: now })).toString("base64url")}.${sig}`;
+    const signed = signInstallState(state) ?? "";
+    const [, sig] = signed.split(".");
+    const forged = `${Buffer.from(JSON.stringify({ ...state, docoIds: ["doco_2"] })).toString("base64url")}.${sig}`;
     expect(verifyInstallState(forged, now)).toBeNull();
   });
   it("rejects a state older than an hour", () => {
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    const state = signInstallState({ docoId: "doco_1", userId: "user_1", issuedAt: now }) ?? "";
-    expect(verifyInstallState(state, now + 61 * 60_000)).toBeNull();
+    const signed = signInstallState(state) ?? "";
+    expect(verifyInstallState(signed, now + 61 * 60_000)).toBeNull();
+  });
+  it("rejects a state that names no Doco or would send the user off the site", () => {
+    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
+    for (const bad of [
+      { ...state, docoIds: [] },
+      { ...state, next: "https://evil.example/" },
+      { ...state, next: "//evil.example/" },
+      { ...state, next: "/\\evil.example/" },
+    ]) {
+      expect(verifyInstallState(signInstallState(bad) ?? "", now), JSON.stringify(bad)).toBeNull();
+    }
   });
 });
 
