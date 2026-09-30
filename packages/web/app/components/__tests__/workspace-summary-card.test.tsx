@@ -1,3 +1,4 @@
+import { Window } from "happy-dom";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -70,6 +71,21 @@ describe("WorkspaceSummaryCard", () => {
     expect(html).not.toContain("New Doco or source");
     expect(html).not.toContain("Invite person");
     expect(html).toContain("Invite agent");
+  });
+
+  // A card with few Docos used to fit the buttons beside the title while a
+  // card with many wrapped them below, so cards didn't line up. The buttons
+  // always get their own row: title, buttons, last activity.
+  it("puts the buttons on their own row, below the title", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render(TORRE);
+    const lastActivity = doc.querySelector("time")?.parentElement;
+    const rows = Array.from(lastActivity?.parentElement?.children ?? []);
+    const rowOf = (selector: string) => rows.findIndex((row) => row.querySelector(selector));
+    expect(rows).toHaveLength(3);
+    expect(rowOf('ul[aria-label="Docos"]')).toBe(0);
+    expect(rowOf('a[href="/workspaces/torre/agent"]')).toBe(1);
+    expect(rows[2]).toBe(lastActivity);
   });
 
   it("leaves the name out on the workspace's own page", () => {

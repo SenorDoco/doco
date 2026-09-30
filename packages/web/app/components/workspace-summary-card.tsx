@@ -24,55 +24,53 @@ export function WorkspaceSummaryCard({
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-            {showName ? (
-              <Link
-                to={`/workspaces/${workspace.handle}`}
-                className="text-sm font-semibold text-foreground hover:text-primary"
-              >
-                {workspace.handle}
-              </Link>
-            ) : null}
-            <ul className="flex flex-wrap items-center gap-1.5" aria-label="Docos">
-              {workspace.docos.map((doco) => (
-                <li key={doco.id}>
-                  <Link
-                    to={`/${doco.handle}`}
-                    title={doco.handle}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:border-primary hover:text-foreground"
-                  >
-                    <DocoTypeIcon template={doco.template} />
-                    <span className="sr-only">{doco.handle}</span>
-                  </Link>
-                </li>
-              ))}
-              {workspace.docos.length === 0 ? (
-                <li className="text-xs italic text-muted-foreground">No Docos yet</li>
-              ) : null}
-            </ul>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {member ? (
-              <>
-                <Link
-                  to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
-                  className={`${BUTTON} bg-primary text-primary-foreground`}
-                >
-                  New Doco or source
-                </Link>
-                <Link
-                  to={`/users?scope=${encodeURIComponent(`workspace:${workspace.id}`)}`}
-                  className={BUTTON}
-                >
-                  Invite person
-                </Link>
-              </>
-            ) : null}
-            <Link to={`/workspaces/${workspace.handle}/agent`} className={BUTTON}>
-              Invite agent
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {showName ? (
+            <Link
+              to={`/workspaces/${workspace.handle}`}
+              className="text-sm font-semibold text-foreground hover:text-primary"
+            >
+              {workspace.handle}
             </Link>
-          </div>
+          ) : null}
+          <ul className="flex flex-wrap items-center gap-1.5" aria-label="Docos">
+            {workspace.docos.map((doco) => (
+              <li key={doco.id}>
+                <Link
+                  to={`/${doco.handle}`}
+                  title={doco.handle}
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:border-primary hover:text-foreground"
+                >
+                  <DocoTypeIcon template={doco.template} />
+                  <span className="sr-only">{doco.handle}</span>
+                </Link>
+              </li>
+            ))}
+            {workspace.docos.length === 0 ? (
+              <li className="text-xs italic text-muted-foreground">No Docos yet</li>
+            ) : null}
+          </ul>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {member ? (
+            <>
+              <Link
+                to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
+                className={`${BUTTON} bg-primary text-primary-foreground`}
+              >
+                New Doco or source
+              </Link>
+              <Link
+                to={`/users?scope=${encodeURIComponent(`workspace:${workspace.id}`)}`}
+                className={BUTTON}
+              >
+                Invite person
+              </Link>
+            </>
+          ) : null}
+          <Link to={`/workspaces/${workspace.handle}/agent`} className={BUTTON}>
+            Invite agent
+          </Link>
         </div>
         <LastActivityLine at={workspace.lastActivityAt} />
       </CardContent>
