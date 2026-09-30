@@ -57,6 +57,11 @@ as one line right after this block:
 
     Doco workspace: ${host}/workspaces/<workspace-handle>
 
+When the work needs a Doco the workspace lacks (decisions, bugs, ideas,
+...), create it with \`doco_create\` in the workspace on the
+\`Doco workspace:\` line, picking the template that fits. Never
+ask the user to create a Doco on the website.
+
 ### 3. Keep these instructions current
 
 Fetch ${host} and compare the instructions it shows with this block, from

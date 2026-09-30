@@ -404,23 +404,18 @@ user belongs to, including Workspaces they create after the token was
 minted, so a brand-new project is reachable the moment the user creates
 its Workspace.
 
-Concretely: if a user asks you to work on a project that has no
-Doco yet, and \`oauth_grant.granted_workspace_ids\` already contains the
-workspace they'd create it under, the right move is:
+Concretely: if a user asks you to work on a project whose workspace
+lacks the Doco the work needs, and your token holds that workspace as
+owner (\`oauth_grant.granted_workspace_ids\`, or an "all workspaces"
+token), create the Doco yourself: \`doco_create\` over MCP, or
+\`POST /api/v1/docos.json\` (see "Start a project" below). The
+existing token reaches the new Doco as soon as it exists — no
+re-authorization needed.
 
-> "Create the Doco at ${baseUrl} (the form starts the name with
-> \`<workspace-handle>-\`, but any available handle works). The existing
-> token has workspace-level access, so the new Doco will be reachable as
-> soon as it exists — no re-authorization needed."
-
-The *wrong* move is to tell the user to grant your token again via
-the consent UI, or to re-run your install's OAuth helper script.
-Both are no-ops here and waste the user's time.
-
-(Creating the Doco itself is a human-only action — see "Things only
-people can do" in the canonical instructions. The agent's job is to
-recognize that the existing grant suffices and avoid the spurious
-re-auth ask.)
+The *wrong* moves are to send the user to the website to create it,
+to tell the user to grant your token again via the consent UI, or to
+re-run your install's OAuth helper script. All of them waste the
+user's time.
 
 ### Be precise about your role — don't downgrade yourself in prose
 

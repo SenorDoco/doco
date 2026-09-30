@@ -19,6 +19,14 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     );
   });
 
+  // Agents create a Workspace's docos themselves (doco_create over MCP, or the
+  // docos API). Only deleting a doco stays with people.
+  it("has agents create docos inside a Workspace, and keeps only deleting one human-only", () => {
+    expect(CANONICAL_INSTRUCTIONS).toContain("`doco_create`");
+    expect(AGENT_REFERENCE).not.toContain("- Create / delete a doco.");
+    expect(AGENT_REFERENCE).toContain("- Delete a doco.");
+  });
+
   // Alexander, 2026-09-26: conversations are worth recording, and decisions
   // must be documented. That is baseline protocol, not something each doco
   // opts into — so the old "the universal protocol does not mandate captures"
@@ -62,7 +70,7 @@ describe("CANONICAL_INSTRUCTIONS", () => {
 
   it("AGENT_REFERENCE uses the document-unit noun lowercase too", () => {
     expect(AGENT_REFERENCE).not.toMatch(/\bDocos\b/);
-    expect(AGENT_REFERENCE).toContain("delete a doco");
+    expect(AGENT_REFERENCE).toContain("Delete a doco");
   });
 
   it("frames Doco as the whole-lifecycle graph, not just the 'why'", () => {

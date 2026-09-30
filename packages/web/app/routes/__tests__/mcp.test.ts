@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   changesetsAction: vi.fn(),
   policiesAction: vi.fn(),
   policyIdAction: vi.fn(),
+  createDocoAction: vi.fn(),
+  resolveWorkspaceByHandle: vi.fn(),
   requestDocoAccess: vi.fn(),
   loadAgentIdentity: vi.fn(),
   getWorkspaceConstitutionsByIds: vi.fn(),
@@ -35,6 +37,10 @@ vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction })
 vi.mock("../$docoHandle.api.changesets[.]json", () => ({ action: mocks.changesetsAction }));
 vi.mock("../$docoHandle.api.policies[.]json", () => ({ action: mocks.policiesAction }));
 vi.mock("../$docoHandle.api.policies.$id[.]json", () => ({ action: mocks.policyIdAction }));
+vi.mock("../api.v1.docos[.]json", () => ({ action: mocks.createDocoAction }));
+vi.mock("~/lib/workspace-helpers.server", () => ({
+  resolveWorkspaceByHandle: mocks.resolveWorkspaceByHandle,
+}));
 
 import { action, loader } from "../mcp";
 
@@ -110,6 +116,97 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(instructions).toContain("/new-workspace");
   });
 
+  it("initialize has agents create a workspace's Docos themselves, never send the user to do it", async () => {
+    const res = await call({ jsonrpc: "2.0", id: 8, method: "initialize" }, BEARER);
+    const body = (await res.json()) as Json;
+    const instructions: string = body.result.instructions;
+    expect(instructions).toContain("doco_create");
+    expect(instructions).not.toMatch(/Docos from the\s+workspace page/);
+  });
+
+  it("doco_create resolves a workspace handle and POSTs to the create route, replaying the bearer", async () => {
+    mocks.resolveWorkspaceByHandle.mockResolvedValue({ id: "workspace_acme", handle: "acme" });
+    mocks.createDocoAction.mockResolvedValue(
+      Response.json(
+        {
+          id: "doco_1",
+          handle: "acme-bugs",
+          workspace_id: "workspace_acme",
+          qualified_handle: "acme/acme-bugs",
+        },
+        { status: 201 },
+      ),
+    );
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 30,
+        method: "tools/call",
+        params: {
+          name: "doco_create",
+          arguments: {
+            workspace: "acme",
+            name: "acme-bugs",
+            template: "bugs",
+            goal: "Track bugs.",
+          },
+        },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent.handle).toBe("acme-bugs");
+    const req: Request = mocks.createDocoAction.mock.calls[0][0].request;
+    expect(req.url).toBe("https://doco.to/api/v1/docos.json");
+    expect(req.headers.get("authorization")).toBe("Bearer doco_at_test");
+    expect(await req.json()).toEqual({
+      workspace_id: "workspace_acme",
+      name: "acme-bugs",
+      template_handle: "bugs",
+      goal: "Track bugs.",
+    });
+  });
+
+  it("doco_create takes a workspace id as is, and passes the route's refusal through", async () => {
+    mocks.createDocoAction.mockResolvedValue(
+      Response.json(
+        { error: "This connection holds 'writer' on this workspace." },
+        { status: 403 },
+      ),
+    );
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 31,
+        method: "tools/call",
+        params: { name: "doco_create", arguments: { workspace: "workspace_acme", name: "x" } },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    expect(mocks.resolveWorkspaceByHandle).not.toHaveBeenCalled();
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("holds 'writer' on this workspace");
+  });
+
+  it("doco_create refuses an unknown workspace before calling the route", async () => {
+    mocks.resolveWorkspaceByHandle.mockResolvedValue(null);
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 32,
+        method: "tools/call",
+        params: { name: "doco_create", arguments: { workspace: "nowhere", name: "x" } },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain('Workspace "nowhere" not found');
+    expect(mocks.createDocoAction).not.toHaveBeenCalled();
+  });
+
   it("initialize states the baseline duties: load context, document decisions, record the conversation", async () => {
     const res = await call({ jsonrpc: "2.0", id: 9, method: "initialize" }, BEARER);
     const body = (await res.json()) as Json;
@@ -145,6 +242,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
       "doco_relate",
       "doco_changeset",
       "doco_policy",
+      "doco_create",
       "doco_request_access",
       "doco_agent_debug",
     ]);
