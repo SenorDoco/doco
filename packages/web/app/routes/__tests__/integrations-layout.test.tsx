@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
     handle: "runbook",
     ownerSlug: "acme",
     workspaceHandle: "acme",
-    docoInstallUrl: "https://github.com/apps/doco/installations/new",
     github: {
       connected: false,
       orgAccounts: [],
@@ -55,7 +54,6 @@ vi.mock("~/lib/doco-access.server", () => ({
 }));
 
 vi.mock("~/lib/github-connection.server", () => ({
-  buildInstallUrl: vi.fn(),
   getDocoConnectionsContext: vi.fn(),
   githubImportProgress: vi.fn(),
   githubOrgAccounts: vi.fn(),
@@ -67,6 +65,7 @@ vi.mock("~/lib/integration-status.server", () => ({
 
 vi.mock("~/lib/integrations-summary.server", () => ({
   loadAccountIntegrationsRollup: vi.fn(),
+  loadDocoPicker: vi.fn(),
   loadWorkspaceIntegrationsRollup: vi.fn(),
 }));
 
@@ -118,7 +117,7 @@ describe("integrations page layout", () => {
           notice: null,
           slackConfirmation: null,
           rollup: { slack: [], workspaces: [], docos: [] },
-          pickingIntegrationId: null,
+          docoPicker: null,
         },
       }),
       createElement(WorkspaceIntegrations, {
@@ -129,7 +128,7 @@ describe("integrations page layout", () => {
           rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
           slack: [],
           canManageSlack: false,
-          pickingIntegrationId: null,
+          docoPicker: null,
         },
       }),
       createElement(DocoIntegrations, { key: "doco" }),
@@ -151,7 +150,7 @@ describe("integrations page layout", () => {
             notice: null,
             slackConfirmation: null,
             rollup: { slack: [], workspaces: [], docos: [] },
-            pickingIntegrationId: null,
+            docoPicker: null,
           },
         }),
         title: accountIntegrationsMeta()[0]?.title,
@@ -164,7 +163,7 @@ describe("integrations page layout", () => {
             rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
             slack: [],
             canManageSlack: false,
-            pickingIntegrationId: null,
+            docoPicker: null,
           },
         }),
         title: workspaceIntegrationsMeta({ params: { workspaceHandle: "acme" } })[0]?.title,
@@ -219,7 +218,7 @@ describe("integrations: Slack folded into the per-workspace rollup", () => {
             workspaces: [{ workspaceId: "workspace_acme", handle: "acme", installCount: 0 }],
             docos: [doco],
           },
-          pickingIntegrationId: null,
+          docoPicker: null,
         },
       }),
     );
@@ -234,7 +233,7 @@ describe("integrations: Slack folded into the per-workspace rollup", () => {
           rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [doco] },
           slack: [{ teamId: "T1", teamName: "Torre.ai", installedAt: "2026-06-03T00:00:00.000Z" }],
           canManageSlack: opts.canManageSlack ?? true,
-          pickingIntegrationId: null,
+          docoPicker: null,
         },
       }),
     );
@@ -293,5 +292,84 @@ describe("integrations: Slack folded into the per-workspace rollup", () => {
     const member = renderWorkspacePage({ canManageSlack: false });
     expect(member).toContain("Set defaults");
     expect(member).not.toContain("Remove");
+  });
+});
+
+describe("integrations: Set up... on a Doco-level integration picks the doco", () => {
+  const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
+
+  function workspace(handle: string, docos: string[]) {
+    return {
+      id: `workspace_${handle}`,
+      handle,
+      name: handle,
+      role: "owner" as const,
+      docos: docos.map((d) => ({ id: `doco_${d}`, handle: d, template: null })),
+      lastActivityAt: null,
+    };
+  }
+
+  type Picker = { integrationId: string; workspaces: ReturnType<typeof workspace>[] } | null;
+
+  function renderWorkspacePage(docoPicker: Picker): string {
+    return renderRoute(
+      createElement(WorkspaceIntegrations, {
+        loaderData: {
+          me,
+          workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
+          rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
+          slack: [],
+          canManageSlack: true,
+          docoPicker,
+        },
+      }),
+    );
+  }
+
+  function renderAccountPage(docoPicker: Picker): string {
+    return renderRoute(
+      createElement(IntegrationsPage, {
+        loaderData: {
+          me,
+          notice: null,
+          slackConfirmation: null,
+          rollup: { slack: [], workspaces: [], docos: [] },
+          docoPicker,
+        },
+      }),
+    );
+  }
+
+  it("sends GitHub and Notion's Set up... to the page's doco picker", () => {
+    const markup = renderWorkspacePage(null);
+    expect(markup).toContain('href="/workspaces/acme/integrations?integration=github"');
+    expect(markup).toContain('href="/workspaces/acme/integrations?integration=notion"');
+    expect(renderAccountPage(null)).toContain('href="/integrations?integration=github"');
+  });
+
+  it("lists every doco in the workspace, each linking to its own setup page", () => {
+    const markup = renderWorkspacePage({
+      integrationId: "github",
+      workspaces: [workspace("acme", ["acme-bugs", "acme-ideas"])],
+    });
+    expect(markup).toContain("Pick a doco to set up GitHub");
+    expect(markup).toContain('href="/acme-bugs/integrations/github"');
+    expect(markup).toContain('href="/acme-ideas/integrations/github"');
+  });
+
+  it("lists the docos of every workspace on the account page", () => {
+    const markup = renderAccountPage({
+      integrationId: "notion",
+      workspaces: [workspace("acme", ["acme-bugs"]), workspace("torre", ["torre-ideas"])],
+    });
+    expect(markup).toContain("Pick a doco to set up Notion");
+    expect(markup).toContain('href="/acme-bugs/integrations/notion"');
+    expect(markup).toContain('href="/torre-ideas/integrations/notion"');
+  });
+
+  it("says so when there is no doco to set it up on", () => {
+    const markup = renderWorkspacePage({ integrationId: "github", workspaces: [] });
+    expect(markup).toContain("Pick a doco to set up GitHub");
+    expect(markup).toContain("No docos to set up GitHub on yet.");
   });
 });

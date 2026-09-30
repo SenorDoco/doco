@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   listSlackInstallations: vi.fn(),
   removeSlackInstallation: vi.fn(),
   loadAccountIntegrationsRollup: vi.fn(),
+  loadDocoPicker: vi.fn(),
   getWorkspaceRole: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ vi.mock("~/lib/slack.server", () => ({
 
 vi.mock("~/lib/integrations-summary.server", () => ({
   loadAccountIntegrationsRollup: mocks.loadAccountIntegrationsRollup,
+  loadDocoPicker: mocks.loadDocoPicker,
 }));
 
 vi.mock("@doco/db", () => ({
@@ -58,6 +60,7 @@ describe("/integrations", () => {
       workspaces: [],
       docos: [],
     });
+    mocks.loadDocoPicker.mockResolvedValue(null);
   });
 
   it("redirects anonymous users to sign in", async () => {
@@ -139,6 +142,22 @@ describe("/integrations", () => {
     });
 
     expect(data.notice).toBe("Slack workspace removed: Doco.");
+  });
+
+  it("loads the doco picker for the integration a Set up... click names", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
+    const picker = { integrationId: "github", workspaces: [] };
+    mocks.loadDocoPicker.mockResolvedValue(picker);
+
+    const data = await loader({
+      request: new Request("https://doco.test/integrations?integration=github"),
+    });
+
+    expect(mocks.loadDocoPicker).toHaveBeenCalledWith({
+      integrationId: "github",
+      userId: "user_alice",
+    });
+    expect(data.docoPicker).toBe(picker);
   });
 });
 

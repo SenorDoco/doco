@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   resolveWorkspaceByHandle: vi.fn(),
   getWorkspaceRole: vi.fn(),
   loadWorkspaceIntegrationsRollup: vi.fn(),
+  loadDocoPicker: vi.fn(),
   listSlackInstallations: vi.fn(),
 }));
 
@@ -25,6 +26,7 @@ vi.mock("@doco/db", () => ({
 }));
 
 vi.mock("~/lib/integrations-summary.server", () => ({
+  loadDocoPicker: mocks.loadDocoPicker,
   loadWorkspaceIntegrationsRollup: mocks.loadWorkspaceIntegrationsRollup,
 }));
 
@@ -34,6 +36,7 @@ describe("/workspaces/:workspaceHandle/integrations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listSlackInstallations.mockResolvedValue([]);
+    mocks.loadDocoPicker.mockResolvedValue(null);
     mocks.loadWorkspaceIntegrationsRollup.mockResolvedValue({
       workspaceId: "workspace_acme",
       workspaceHandle: "acme",
@@ -182,5 +185,29 @@ describe("/workspaces/:workspaceHandle/integrations", () => {
 
     expect(data.slack).toHaveLength(1);
     expect(data.canManageSlack).toBe(false);
+  });
+
+  it("loads a picker of this workspace's docos for the integration a Set up... click names", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
+    mocks.resolveWorkspaceByHandle.mockResolvedValue({
+      id: "workspace_acme",
+      handle: "acme",
+      constitution: "",
+    });
+    mocks.getWorkspaceRole.mockResolvedValue("writer");
+    const picker = { integrationId: "notion", workspaces: [] };
+    mocks.loadDocoPicker.mockResolvedValue(picker);
+
+    const data = await loader({
+      request: new Request("https://doco.test/workspaces/acme/integrations?integration=notion"),
+      params: { workspaceHandle: "acme" },
+    });
+
+    expect(mocks.loadDocoPicker).toHaveBeenCalledWith({
+      integrationId: "notion",
+      userId: "user_alice",
+      workspaceId: "workspace_acme",
+    });
+    expect(data.docoPicker).toBe(picker);
   });
 });

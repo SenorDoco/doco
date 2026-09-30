@@ -8,9 +8,9 @@
 //           teams not bound to any workspace fall into a small "not linked"
 //           list with a Remove control, since they have no workspace to manage
 //           them from.
-//   Right — full catalog of available integrations. Cross-scope clicks
-//           land on the relevant picker so the user can pick an workspace or
-//           Doco to install into.
+//   Right — full catalog of available integrations. "Set up..." on a
+//           Doco-level one (GitHub, Notion) reopens this page with a Doco
+//           picker on top.
 import { getWorkspaceRole } from "@doco/db";
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Link, redirect } from "react-router";
@@ -20,15 +20,17 @@ import {
   AvailableIntegrations,
   ConnectionList,
   ConnectionRow,
+  DocoPickerCard,
   RemoveSlackButton,
-  ScopePickerBanner,
 } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import {
   type AccountIntegrationsRollup,
+  type DocoPicker,
   loadAccountIntegrationsRollup,
+  loadDocoPicker,
 } from "~/lib/integrations-summary.server";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import { listSlackInstallations, removeSlackInstallation } from "~/lib/slack.server";
@@ -38,7 +40,7 @@ interface IntegrationsPageData {
   notice: string | null;
   slackConfirmation: SlackConfirmation | null;
   rollup: AccountIntegrationsRollup;
-  pickingIntegrationId: string | null;
+  docoPicker: DocoPicker | null;
 }
 
 interface SlackConfirmation {
@@ -53,13 +55,17 @@ export async function loader({ request }: { request: Request }): Promise<Integra
   }
 
   const rollup = await loadAccountIntegrationsRollup({ userId: me.id });
+  const docoPicker = await loadDocoPicker({
+    integrationId: url.searchParams.get("integration"),
+    userId: me.id,
+  });
 
   return {
     me,
     slackConfirmation: readSlackConfirmation(url),
     notice: readNotice(url),
     rollup,
-    pickingIntegrationId: url.searchParams.get("integration"),
+    docoPicker,
   };
 }
 
@@ -112,7 +118,7 @@ export function meta() {
 }
 
 export default function IntegrationsPage({ loaderData }: { loaderData: IntegrationsPageData }) {
-  const { me, notice, slackConfirmation, rollup, pickingIntegrationId } = loaderData;
+  const { me, notice, slackConfirmation, rollup, docoPicker } = loaderData;
 
   // Slack teams bound to no workspace have nowhere to nest in the per-workspace
   // rollup, so they get a small "not linked" list of their own (Remove only).
@@ -167,7 +173,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
           </div>
         ) : null}
 
-        <ScopePickerBanner integrationId={pickingIntegrationId} pageScope="account" />
+        <DocoPickerCard picker={docoPicker} />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="space-y-3">
@@ -175,7 +181,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               Connected on your account
             </h2>
 
-            <Card id="pick-workspace">
+            <Card>
               <CardHeader>
                 <CardTitle className="text-base">App integrations across your workspaces</CardTitle>
                 <CardDescription>
@@ -184,7 +190,6 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <span id="pick-doco" />
                 {rollup.workspaces.length > 0 ? (
                   <ConnectionList>
                     {rollup.workspaces.map((o) => {
