@@ -66,12 +66,24 @@ describe("agentInstructions", () => {
     expect(text).toMatch(/ask the user to copy the latest\s+instructions/);
   });
 
-  it("carries the four baseline duties and the full protocol link", () => {
+  it("carries the four baseline duties", () => {
     expect(text).toContain("**Load context first.**");
     expect(text).toContain("**Record the conversation.**");
     expect(text).toContain("**Document every decision.**");
     expectBaselineDuties(text);
-    expect(text).toContain("https://doco.test/protocol/canonical-instructions");
+  });
+
+  // Alexander, 2026-09-30: one template for every place Doco instructs an
+  // agent. It stands alone, with no second protocol document behind it.
+  it("stands alone: no link to another protocol document", () => {
+    expect(text).not.toMatch(/protocol/i);
+  });
+
+  // What the hosted MCP server used to add on its own now lives here, since
+  // the server hands agents this same block.
+  it("orients with doco_whoami and leaves sign-in to the MCP client", () => {
+    expect(text).toMatch(/`doco_whoami` shows who the agent acts as/);
+    expect(text).toMatch(/never drive OAuth by hand/);
   });
 
   // Alexander, 2026-09-30: agents keep their own voice in replies; the

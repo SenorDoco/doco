@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildAgentBootstrapBody } from "../agent-bootstrap-body";
+import { agentInstructions } from "../agent-instructions";
 
 const base = {
   origin: "https://doco.to",
@@ -34,9 +35,12 @@ describe("buildAgentBootstrapBody", () => {
     expect(tokenPath).toEqual(oauthPath);
   });
 
-  it("derives the canonical-instructions URL from the origin and embeds the prose", () => {
+  // One agent-instructions template everywhere: the bootstrap carries the
+  // home page block and points at the home page, not a second protocol.
+  it("carries the home page instructions and points at the home page", () => {
     const body = buildAgentBootstrapBody(base);
-    expect(body.canonical_instructions_url).toBe("https://doco.to/protocol/canonical-instructions");
-    expect(typeof body.canonical_instructions).toBe("string");
+    expect(body.agent_instructions_url).toBe("https://doco.to/");
+    expect(body.agent_instructions).toBe(agentInstructions("https://doco.to"));
+    expect(body).not.toHaveProperty("canonical_instructions");
   });
 });

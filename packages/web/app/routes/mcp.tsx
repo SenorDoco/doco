@@ -14,9 +14,11 @@
 // discover the OAuth server (RFC 8414) and run the flow.
 
 import { getDocoByIdOrHandle, getWorkspaceConstitutionsByIds } from "@doco/db";
+import { getPublicBaseUrl } from "@doco/shared";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { gatherAgentDebug } from "~/lib/agent-debug.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
+import { agentInstructions } from "~/lib/agent-instructions";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { isSuperadmin } from "~/lib/session.server";
 import { type McpContext, gateUserMcp } from "~/lib/user-mcp.server";
@@ -32,63 +34,6 @@ import { action as createDocoAction } from "./api.v1.docos[.]json";
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
 const SERVER_VERSION = "1.0.0-workspace";
-
-// Self-sufficient instructions: in a connector context there is no repo
-// AGENTS.md, so the essentials ride here. Full protocol is linked.
-const SERVER_INSTRUCTIONS = [
-  "This is Doco's hosted MCP server — institutional memory (decisions, rules,",
-  "intents, actions, history) for the projects you work on. It connects once and",
-  "acts as you, with whatever reach the user authorized — one workspace,",
-  "several, or specific Docos. Use all of it: work across every workspace and",
-  "Doco the grant covers, as the task needs; never cap yourself at one. Call",
-  "doco_whoami FIRST to see who you're acting as, your reach, and the",
-  "constitution(s) your captures must honor; list_workspaces enumerates the",
-  "workspaces you can reach, and any reachable Doco's <handle> works with the",
-  "tools regardless of workspace. One project = one Workspace; its Docos are",
-  "the kinds of knowledge inside it (decisions, ideas, bugs, ...). If the user",
-  "wants Doco for a project no workspace matches, the project needs a new",
-  "Workspace: the user creates it at /new-workspace (agents never create",
-  "workspaces). Inside the project's workspace, create the Docos the work needs",
-  "with doco_create; don't send the user to the website for them. Never stand a",
-  "single Doco in for the project inside another workspace. When the user asks to use Doco, follow the agent instructions on",
-  "the Doco home page (/): confirm the project's workspace with the user and",
-  "keep those instructions current in the project's AGENTS.md or similar.",
-  "A doco is the project's record; write what was decided, by whom and why,",
-  "in the third person or the imperative.",
-  "Four duties hold in every session; Doco policies refine how you",
-  "do them, never whether. Load context first: at the start of every session,",
-  "before the first substantive reply, doco_search the project's Docos for the",
-  "intents, decisions, rules and logs that bear on the work, and search again",
-  "before each substantive question — there is almost always prior art you'd",
-  "otherwise miss. Record the conversation: before the session ends,",
-  "doco_capture a Log of the chat in the workspace's Agents chats Doco: who",
-  "took part, what was asked, what was worked on, what came of it and what was",
-  "left open, with the ids of the nodes it produced. Document every decision:",
-  "when a choice is made in the conversation, doco_capture it as a Decision as",
-  "it forms (question, choice, alternatives and why they lost) in the Doco for",
-  "its kind of decision: Product decisions for what to build and why, Design",
-  "decisions for UX, interaction and visual choices, Architectural decisions",
-  "for system structure, technology and data. Update the process: when a",
-  "decision is about a business process, add it to the workspace's Processes",
-  "Doco as well, changing the steps, gateways or rules of the process it",
-  "affects to match, citing the decision's id. Use",
-  "doco_changeset to create and wire many nodes in one atomic batch (the",
-  "efficient way to import a process or backfill history). Use",
-  "doco_policy to write or modify a Doco's authoring policies (owner only). Use",
-  "doco_get to read the authoring contract, policies, status, or a node by id. If a",
-  "write is denied, your token has read but not write on that Doco — call",
-  "doco_request_access to ask an owner for writer; once they approve your",
-  "same token works on the next call (a grant change, no re-auth).",
-  "To investigate a production incident (a stuck/failed Señor Doco turn, a",
-  "missing attachment, a capture error), the host superadmin can call",
-  "doco_agent_debug — it reads the deployed app's diagnostics (and analyzes",
-  "why an attached file did or didn't reach the model); it denies everyone else.",
-  "Remote MCP auth is the client connector's job: do not hand-drive OAuth.",
-  "Do not ask the user to paste localhost callback URLs back into chat.",
-  "If the callback listener fails, restart the client MCP auth flow; use",
-  "the direct device-flow recipe only outside remote MCP. Full",
-  "protocol at /protocol/canonical-instructions.",
-].join("\n");
 
 const SEARCH_TOOL = {
   name: "doco_search",
@@ -895,7 +840,9 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        instructions: SERVER_INSTRUCTIONS,
+        // The one agent-instructions template, the same block the home page
+        // shows: in a connector context there may be no AGENTS.md copy yet.
+        instructions: agentInstructions(getPublicBaseUrl(request)),
       });
     case "ping":
       return rpcResult(message.id, {});

@@ -12,11 +12,13 @@
 import type { DocoRole } from "@doco/db";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
+import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { GrantPicker } from "~/components/grant-picker";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
+import { agentInstructions } from "~/lib/agent-instructions";
 import {
   type ApiKeyGrantInput,
   type ApiKeyRow,
@@ -413,30 +415,6 @@ function CopyableCode({ value, testid }: { value: string; testid?: string }) {
   );
 }
 
-// The Step-2 block a user pastes to their coding agent. It installs the Doco
-// memory directive into AGENTS.md (so every future agent inherits it) and tells
-// the agent to honor it this same session. Plain markdown — it lands verbatim
-// in AGENTS.md.
-export const AGENT_MEMORY_PROMPT = `This repository is connected to Doco, an MCP server holding this project's institutional memory (decisions, rules, intent, history). Make it durable and start using it now:
-
-1. Add the "Doco" section below to AGENTS.md (create it if missing). Make sure the other agent-instruction files this project uses carry it too — CLAUDE.md can be the one-line shim @./AGENTS.md; same for .cursor/rules or GEMINI.md if present. Commit these files. Never commit tokens or secrets.
-2. Then follow it for the rest of this session, starting with your next answer — don't wait for a restart.
-
-If you can't write files here, follow the rule for this session and say exactly what to add.
-
----
-## Doco — institutional memory (consult before answering "how / why")
-
-This project is connected to Doco over MCP. Doco is the source of truth for **why** the project is the way it is (decisions, rules, intent); the codebase is the source of truth for **what** it currently does. Use both, in that order, for "how/why."
-
-**Search Doco first.** Before answering any question about how or why this project works — architecture, a decision, a rule, process, terminology — or before making a change such a decision could govern, call doco_search (orient with doco_whoami / list_workspaces) and ground your answer in what it returns. Consult Doco *before* reading source for these questions, not after. Cite the node ids you used. If Doco returns nothing relevant, say so and fall back to the codebase.
-
-**Know your default scope — ask, don't assume.** Your credential may reach several workspaces and docos; don't choose for the user. Ask which workspaces and docos this project should work in by default, and record the answer in this section so the next agent inherits it. If a default is already recorded here, honor it (and re-confirm only if the task clearly needs more).
-
-**Delegation carries the rule.** If you hand research to a subagent, tell it to search Doco the same way. The rule binds whoever actually does the work, not just the orchestrator.
-
-**Capture as you go.** When a decision or rule gets made this session, record it in Doco (doco_capture) so the next agent inherits it instead of re-deriving it.`;
-
 export function ManualMcpPanel({ host }: { host: string }) {
   const baseUrl = host.replace(/\/+$/, "");
   // ONE hosted MCP endpoint at /mcp. Connect once; the token's grant is the
@@ -455,13 +433,12 @@ export function ManualMcpPanel({ host }: { host: string }) {
         </div>
       </div>
 
-      {/* Step 2 — make the agent remember Doco across sessions and agents */}
-      <div className="space-y-2 border-t border-border pt-3">
-        <h2 className="text-base font-semibold">2. Tell your agent to use Doco</h2>
-        <p className="text-xs text-muted-foreground">
-          Paste this to your coding agent — it records Doco in the repo and starts using it now.
-        </p>
-        <CopyableCode value={AGENT_MEMORY_PROMPT} testid="agent-memory-prompt" />
+      {/* Step 2 — the one agent-instructions template, as on the home page */}
+      <div className="border-t border-border pt-3">
+        <AgentInstructionsBlock
+          title="2. Give your agent these instructions"
+          instructions={agentInstructions(baseUrl)}
+        />
       </div>
     </section>
   );

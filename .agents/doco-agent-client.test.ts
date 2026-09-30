@@ -93,7 +93,7 @@ describe("doco-agent-client", () => {
       if (req.method === "GET" && req.url === "/api/v1/agent-bootstrap.json") {
         seenAuth.push(String(req.headers.authorization || ""));
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ canonical_instructions: "ok" }));
+        res.end(JSON.stringify({ agent_instructions: "ok" }));
         return;
       }
       res.writeHead(404, { "Content-Type": "application/json" });
