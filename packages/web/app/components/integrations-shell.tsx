@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
+import { BRAND_ICONS } from "~/components/brand-icons";
 import { Card, CardContent } from "~/components/card";
 import { cn } from "~/lib/cn";
 import {
@@ -242,11 +243,12 @@ function AvailableIntegrationRow({
   const external = href.startsWith("http");
   const scopeLabel = scopeLabelFor(integration.scope);
   const sameScope = integration.scope === pageScope;
+  const BrandIcon = BRAND_ICONS[integration.id] ?? Plug;
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 p-4">
       <div className="min-w-0 space-y-1">
         <div className="flex items-center gap-2">
-          <Plug className="h-4 w-4 text-primary" aria-hidden="true" />
+          <BrandIcon className="h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           <span className="text-sm font-semibold text-foreground">{integration.name}</span>
           <span
             className={cn(
@@ -299,6 +301,7 @@ export function ScopePickerBanner({
   if (integration.scope === pageScope) return null;
 
   const targetWord = integration.scope === "doco" ? "doco" : "workspace";
+  const BrandIcon = BRAND_ICONS[integration.id] ?? Plug;
   const anchorHref =
     integration.scope === "doco"
       ? pageScope === "workspace" && workspaceHandle
@@ -308,7 +311,7 @@ export function ScopePickerBanner({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 p-4 text-sm">
       <div className="flex items-center gap-3">
-        <Plug className="h-5 w-5 text-primary" aria-hidden="true" />
+        <BrandIcon className="h-5 w-5 shrink-0 text-foreground" aria-hidden="true" />
         <div>
           <p className="font-semibold text-foreground">
             Pick a {targetWord} to set up {integration.name}

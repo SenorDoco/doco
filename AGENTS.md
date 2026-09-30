@@ -177,12 +177,12 @@ session and exercise the change there.
 #    `packages/web/app/routes/auth.dev-signin.tsx`. Any other name
 #    returns 403.
 COOKIE=$(curl -sS -i -X POST \
-  -d "username=doco-test-harness&next=/dashboard" \
+  -d "username=doco-test-harness&next=/workspaces" \
   https://doco.to/auth/dev-signin \
   | awk -F'[ =;]' '/^set-cookie: doco_session=/ {print "doco_session=" $3}')
 
 # 2. Use the cookie on any subsequent request.
-curl -sS -b "$COOKIE" https://doco.to/dashboard | head
+curl -sS -b "$COOKIE" https://doco.to/workspaces | head
 ```
 
 The test user starts with **no Doco grants** — same shape

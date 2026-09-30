@@ -63,12 +63,12 @@ export async function loader({ request }: { request: Request }) {
   // Combine cookies in one Set-Cookie response (Remix supports an array via
   // Headers.append). Clear the OAuth-state cookie + return cookie and set
   // the session cookie. Honor `?return=` cookie if a sane same-origin path
-  // is captured; default to /dashboard.
+  // is captured; default to /workspaces.
   const headers = oauthCleanupHeaders();
   headers.append("Set-Cookie", clearSignupInviteCookie());
   headers.append("Set-Cookie", setSessionCookie(userId));
   const returnPath = readOAuthReturnCookie(cookieHeader);
-  headers.set("Location", returnPath ?? "/dashboard");
+  headers.set("Location", returnPath ?? "/workspaces");
   return new Response(null, { status: 302, headers });
 }
 

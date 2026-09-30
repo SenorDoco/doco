@@ -21,8 +21,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *
  * Hosted-multi-tenant route table:
  *
- *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
- *   /dashboard                     signed-in host dashboard (docos / users / workspaces)
+ *   /                              host home: the agent instructions, the same for everyone
+ *   /workspaces                    signed-in home: Get started + one card per workspace (/dashboard redirects here)
  *   /feedback                      owner-only bug/idea report review page (clears the header flags)
  *   /mentor/feedback               legacy redirect → /feedback
  *   /users/<username>              signed-in user's tiny profile placeholder

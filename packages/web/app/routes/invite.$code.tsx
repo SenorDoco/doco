@@ -92,7 +92,7 @@ async function inviteContinueTarget(invite: Invite): Promise<{ to: string; label
   const grant = primaryGrant(invite);
   if (!grant) return null;
   if (invite.grants.length > 1) {
-    return { to: "/dashboard", label: `${invite.grants.length} access grants` };
+    return { to: "/workspaces", label: `${invite.grants.length} access grants` };
   }
   if (grant.level === "workspace") {
     const workspace = await getWorkspaceById(grant.target_id);

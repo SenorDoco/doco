@@ -113,7 +113,7 @@ export async function action({
     }
     // The dashboard listing reads the remaining docos rows. Redirect home
     // with a flash-shaped query param the dashboard can surface.
-    return redirect(`/dashboard?deleted=${encodeURIComponent(handle)}`);
+    return redirect(`/workspaces?deleted=${encodeURIComponent(handle)}`);
   }
 
   // ── Default perspective ───────────────────────────────────────────

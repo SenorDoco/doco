@@ -28,11 +28,11 @@ export async function loader({ request }: { request: Request }) {
   const installationId = Number(url.searchParams.get("installation_id"));
   const state = verifyInstallState(url.searchParams.get("state") ?? "");
   if (!Number.isInteger(installationId) || installationId <= 0 || !state) {
-    return redirect("/dashboard?github=setup_error");
+    return redirect("/workspaces?github=setup_error");
   }
 
   const doco = await getDocoByIdOrHandle(state.docoId);
-  if (!doco) return redirect("/dashboard?github=setup_error");
+  if (!doco) return redirect("/workspaces?github=setup_error");
 
   // Land on the GitHub integration's detail page — that's where the import
   // progress banner and connection details live now (the /integrations index

@@ -148,7 +148,7 @@ export default function NewWorkspace({
                   </button>
                 ) : null}
                 <Link
-                  to="/dashboard"
+                  to="/workspaces"
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   Cancel

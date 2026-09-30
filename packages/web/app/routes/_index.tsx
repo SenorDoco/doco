@@ -54,7 +54,7 @@ export default function Home({
             <VersionPill />
           </div>
           <Link
-            to={signedIn ? "/dashboard" : "/sign-in"}
+            to={signedIn ? "/workspaces" : "/sign-in"}
             className="neu-button shrink-0 whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
           >
             {signedIn ? "Dashboard" : "Sign in"}

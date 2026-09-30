@@ -123,7 +123,7 @@ export async function action({ request }: { request: Request }) {
   const target =
     typeof next === "string" && next.startsWith("/") && !next.startsWith("//")
       ? next
-      : "/dashboard";
+      : "/workspaces";
   return redirect(target, {
     headers: { "Set-Cookie": setSessionCookie(userId) },
   });
@@ -155,7 +155,7 @@ export default function DevSignin({
         </label>
         <label>
           Redirect to (optional, must start with /):
-          <input name="next" type="text" defaultValue="/dashboard" />
+          <input name="next" type="text" defaultValue="/workspaces" />
         </label>
         <button type="submit">Sign in</button>
       </Form>

@@ -28,7 +28,7 @@ const TEST_USER = {
 };
 
 function request(username = "doco-test-harness"): Request {
-  const body = new URLSearchParams({ username, next: "/dashboard" });
+  const body = new URLSearchParams({ username, next: "/workspaces" });
   return new Request("https://doco.test/auth/dev-signin", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },

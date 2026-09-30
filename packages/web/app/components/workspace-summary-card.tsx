@@ -1,0 +1,128 @@
+// One workspace at a glance: the icons of its Docos, the three things to do
+// next (add a Doco or a source of knowledge, invite a person, invite an
+// agent) and the latest thing that happened in it. The Workspaces page lists
+// one per workspace; each workspace's own page shows its card on top.
+
+import { entityUrl } from "@doco/shared";
+import { Link } from "react-router";
+import { Card, CardContent } from "~/components/card";
+import { DocoTypeIcon } from "~/components/doco-type-icon";
+import {
+  auditSummaryFallback,
+  capNodeType,
+  iconFromAuditOp,
+  verbFromAuditOp,
+} from "~/lib/activity-feed";
+import { timeAgo } from "~/lib/time-ago";
+import type { WorkspaceLastActivity, WorkspaceSummary } from "~/lib/workspace-summaries.server";
+
+const BUTTON =
+  "neu-button whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-semibold hover:opacity-90";
+
+export function WorkspaceSummaryCard({
+  workspace,
+  showName = true,
+}: {
+  workspace: WorkspaceSummary;
+  /** The workspace's own page already names it in the header. */
+  showName?: boolean;
+}) {
+  const member = workspace.role !== null;
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            {showName ? (
+              <Link
+                to={`/workspaces/${workspace.handle}`}
+                className="text-sm font-semibold text-foreground hover:text-primary"
+              >
+                {workspace.handle}
+              </Link>
+            ) : null}
+            <ul className="flex flex-wrap items-center gap-1.5" aria-label="Docos">
+              {workspace.docos.map((doco) => (
+                <li key={doco.id}>
+                  <Link
+                    to={`/${doco.handle}`}
+                    title={doco.handle}
+                    className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:border-primary hover:text-foreground"
+                  >
+                    <DocoTypeIcon template={doco.template} />
+                    <span className="sr-only">{doco.handle}</span>
+                  </Link>
+                </li>
+              ))}
+              {workspace.docos.length === 0 ? (
+                <li className="text-xs italic text-muted-foreground">No Docos yet</li>
+              ) : null}
+            </ul>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {member ? (
+              <>
+                <Link
+                  to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
+                  className={`${BUTTON} bg-primary text-primary-foreground`}
+                >
+                  New Doco or source
+                </Link>
+                <Link
+                  to={`/users?scope=${encodeURIComponent(`workspace:${workspace.id}`)}`}
+                  className={BUTTON}
+                >
+                  Invite person
+                </Link>
+              </>
+            ) : null}
+            <Link to="/#instructions" className={BUTTON}>
+              Invite agent
+            </Link>
+          </div>
+        </div>
+        <LastActivityLine activity={workspace.lastActivity} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function LastActivityLine({ activity }: { activity: WorkspaceLastActivity | null }) {
+  if (!activity) {
+    return <p className="text-xs text-muted-foreground">No activity yet.</p>;
+  }
+  const summary = activity.summary ?? auditSummaryFallback(activity.entityType, activity.entityId);
+  return (
+    <p className="flex items-baseline gap-3 font-mono text-xs leading-relaxed">
+      <span className="min-w-0 flex-1 truncate">
+        <span>{iconFromAuditOp(activity.op)} </span>
+        <span className="font-semibold">
+          {capNodeType(activity.entityType)} {verbFromAuditOp(activity.op)}
+        </span>
+        <span className="text-muted-foreground">: </span>
+        <Link
+          to={entityUrl({
+            docoHandle: activity.docoHandle,
+            nodeType: activity.entityType,
+            id: activity.entityId,
+          })}
+          className="hover:underline"
+        >
+          {summary}
+        </Link>
+        <span className="text-muted-foreground"> — {activity.docoHandle}</span>
+        {activity.byUsername ? (
+          <span className="text-muted-foreground"> · {activity.byUsername}</span>
+        ) : null}
+      </span>
+      <time
+        dateTime={activity.at}
+        title={activity.at}
+        suppressHydrationWarning
+        className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground"
+      >
+        {timeAgo(activity.at)}
+      </time>
+    </p>
+  );
+}

@@ -324,7 +324,7 @@ export default function NewDocoStep1({
       <SingleColumnPageMain className="py-6 space-y-4">
         <PageHeader
           breadcrumb={hostBreadcrumb({
-            section: { label: "Docos", to: "/dashboard" },
+            section: { label: "Docos", to: "/workspaces" },
             pageLabel: "New doco",
           })}
           title="New doco"
@@ -505,7 +505,7 @@ export default function NewDocoStep1({
                   </button>
                 ) : null}
                 <Link
-                  to="/dashboard"
+                  to="/workspaces"
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   Cancel

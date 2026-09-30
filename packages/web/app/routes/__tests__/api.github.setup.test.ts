@@ -148,7 +148,7 @@ describe("api.github.setup loader", () => {
       request: setupRequest("installation_id=42&code=gh-code&state=doco_1"),
     });
 
-    expect(response.headers.get("Location")).toBe("/dashboard?github=setup_error");
+    expect(response.headers.get("Location")).toBe("/workspaces?github=setup_error");
     expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
   });
 
