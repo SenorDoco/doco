@@ -6,19 +6,18 @@ import { expect } from "vitest";
 // Processes Doco as well. Every agent surface states the four duties in that
 // order, and tests hold each one to this check.
 export function expectBaselineDuties(text: string): void {
-  const flat = text.replace(/\s+/g, " ");
-  expect(flat).toMatch(/Four duties hold/);
-  const load = flat.indexOf("Load context first");
-  const record = flat.indexOf("Record the conversation");
-  const decide = flat.indexOf("Document every decision");
-  const process = flat.indexOf("Update the process");
+  expect(text).toContain("Four duties hold");
+  const load = text.indexOf("Load context first");
+  const record = text.indexOf("Record the conversation");
+  const decide = text.indexOf("Document every decision");
+  const process = text.indexOf("Update the process");
   expect(load, "Load context first").toBeGreaterThanOrEqual(0);
   expect(record, "Record the conversation comes second").toBeGreaterThan(load);
   expect(decide, "Document every decision comes third").toBeGreaterThan(record);
   expect(process, "Update the process comes fourth").toBeGreaterThan(decide);
-  expect(flat.slice(record, decide)).toContain("Agents chats Doco");
+  expect(text.slice(record, decide)).toContain("Agents chats Doco");
   for (const doco of ["Product decisions", "Design decisions", "Architectural decisions"]) {
-    expect(flat.slice(decide, process), doco).toContain(doco);
+    expect(text.slice(decide, process), doco).toContain(doco);
   }
-  expect(flat.slice(process)).toContain("Processes Doco");
+  expect(text.slice(process)).toContain("Processes Doco");
 }
