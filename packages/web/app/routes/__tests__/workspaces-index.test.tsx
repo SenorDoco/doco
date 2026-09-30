@@ -16,7 +16,7 @@ const TORRE = {
   name: "Torre",
   role: "owner" as const,
   docos: [{ id: "doco_bugs", handle: "torre-bugs", template: "bugs" }],
-  lastActivity: null,
+  lastActivityAt: null,
 };
 
 function render(onboarding = ALL_DONE, workspaces = [TORRE]): string {

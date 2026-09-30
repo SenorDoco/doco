@@ -234,24 +234,13 @@ export async function loader({
       });
     }
 
-    const latest = items[0];
     const summary: WorkspaceSummary = {
       id: workspace.id,
       handle: workspace.handle,
       name: workspace.name,
       role: myRole,
       docos: docoRows.map((r) => ({ id: r.id, handle: r.handle, template: r.template })),
-      lastActivity: latest
-        ? {
-            at: latest.at,
-            byUsername: latest.byUsername,
-            op: latest.op,
-            entityType: latest.entity_type,
-            entityId: latest.entity_id,
-            docoHandle: latest.handle,
-            summary: latest.summary,
-          }
-        : null,
+      lastActivityAt: items[0]?.at ?? null,
     };
 
     return {

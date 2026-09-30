@@ -1,6 +1,6 @@
 // One row per workspace a person reaches, for the Workspaces page and the top
 // of each workspace's page: its Docos (with the template each came from, for
-// the type icon), the person's role, and the latest thing that happened in it.
+// the type icon), the person's role, and when it last saw activity.
 //
 // A person reaches a workspace by membership (every live Doco in it) or by a
 // Doco invite (just the Docos they were invited to; role is null).
@@ -18,17 +18,6 @@ export interface WorkspaceSummaryDoco {
   template: string | null;
 }
 
-export interface WorkspaceLastActivity {
-  at: string;
-  byUsername: string | null;
-  op: string;
-  entityType: string;
-  entityId: string;
-  docoHandle: string;
-  /** First line of the node's prose, when the entity is a node. */
-  summary: string | null;
-}
-
 export interface WorkspaceSummary {
   id: string;
   handle: string;
@@ -36,7 +25,8 @@ export interface WorkspaceSummary {
   /** The person's membership role; null when they reach only some of its Docos. */
   role: WorkspaceRole | null;
   docos: WorkspaceSummaryDoco[];
-  lastActivity: WorkspaceLastActivity | null;
+  /** When the latest change landed in any of its Docos; null when none has. */
+  lastActivityAt: string | null;
 }
 
 export async function loadWorkspaceSummaries(
@@ -75,50 +65,18 @@ export async function loadWorkspaceSummaries(
         AND (wu.user_id IS NOT NULL OR w.id = ANY($2::text[]))`,
     [userId, docoRows.rows.map((d) => d.workspace_id), workspaceFilter],
   );
-  const activityRows = await c.query<{
-    workspace_id: string;
-    at: Date | string;
-    by_username: string | null;
-    op: string;
-    entity_type: string;
-    entity_id: string;
-    doco_handle: string;
-    summary: string | null;
-  }>(
-    // The latest event per Doco rides the (doco_id, at) index; the latest of
-    // those per workspace wins. Policy edits aren't project activity.
-    `SELECT DISTINCT ON (d.workspace_id)
-            d.workspace_id, e.at, e.op, e.entity_type, e.entity_id,
-            d.handle AS doco_handle,
-            COALESCE(u.github_login, u.email, u.id) AS by_username,
-            NULLIF(split_part(n.prose, E'\\n', 1), '') AS summary
-       FROM docos d
-       CROSS JOIN LATERAL (
-         SELECT a.at, a.op, a.entity_type, a.entity_id, a.by_user
-           FROM audit_events a
-          WHERE a.doco_id = d.id AND a.entity_type <> 'policy'
-          ORDER BY a.at DESC
-          LIMIT 1
-       ) e
-       LEFT JOIN users u ON u.id = e.by_user
-       LEFT JOIN nodes n ON n.id = e.entity_id
-      WHERE d.id = ANY($1::text[])
-      ORDER BY d.workspace_id, e.at DESC`,
+  const activityRows = await c.query<{ workspace_id: string; at: Date | string }>(
+    // Policy edits aren't project activity.
+    `SELECT d.workspace_id, MAX(a.at) AS at
+       FROM audit_events a
+       JOIN docos d ON d.id = a.doco_id
+      WHERE a.doco_id = ANY($1::text[]) AND a.entity_type <> 'policy'
+      GROUP BY d.workspace_id`,
     [docoRows.rows.map((d) => d.id)],
   );
-
-  const activityByWorkspace = new Map<string, WorkspaceLastActivity>();
-  for (const r of activityRows.rows) {
-    activityByWorkspace.set(r.workspace_id, {
-      at: new Date(r.at).toISOString(),
-      byUsername: r.by_username,
-      op: r.op,
-      entityType: r.entity_type,
-      entityId: r.entity_id,
-      docoHandle: r.doco_handle,
-      summary: r.summary,
-    });
-  }
+  const lastActivityAt = new Map(
+    activityRows.rows.map((r) => [r.workspace_id, new Date(r.at).toISOString()]),
+  );
 
   return workspaceRows.rows
     .map(
@@ -130,12 +88,12 @@ export async function loadWorkspaceSummaries(
         docos: docoRows.rows
           .filter((d) => d.workspace_id === w.id)
           .map((d) => ({ id: d.id, handle: d.handle, template: d.template })),
-        lastActivity: activityByWorkspace.get(w.id) ?? null,
+        lastActivityAt: lastActivityAt.get(w.id) ?? null,
       }),
     )
     .sort((a, b) => {
-      const at = a.lastActivity?.at ?? "";
-      const bt = b.lastActivity?.at ?? "";
+      const at = a.lastActivityAt ?? "";
+      const bt = b.lastActivityAt ?? "";
       if (at !== bt) return bt.localeCompare(at);
       return a.handle.localeCompare(b.handle);
     });
