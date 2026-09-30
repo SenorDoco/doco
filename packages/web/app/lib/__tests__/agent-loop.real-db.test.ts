@@ -132,7 +132,7 @@ function ctx(now?: () => number): ChatStreamContext {
     origin: "https://doco.local",
     cookieHeader: "",
     principal: { id: USER, username: "loop-tester", type: "person", isHuman: true },
-    currentPath: "/dashboard",
+    currentPath: "/workspaces",
     attachmentIds: [],
     graphReferences: [],
     conversationId: CONV,

@@ -1,5 +1,5 @@
 // Per-Doco aggregate stats (Nodes, per-lifecycle counts, Edges, Last
-// updated) shown on the dashboard and owner-profile docos tables.
+// updated) shown in each workspace page's Doco list.
 //
 // `nodes` counts domain nodes: decisions, intents, rules,
 // actions, evals, ideas, reference_entities, logs, states, and the

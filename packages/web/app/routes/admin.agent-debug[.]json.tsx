@@ -4,8 +4,8 @@
 // Where /admin/agent-health.json aggregates ("X% error rate over the
 // last hour"), this endpoint returns the actual rows behind those
 // numbers so a human or another agent can read off "this turn
-// failed at this phase with this error." Same auth gate as the
-// dashboard.
+// failed at this phase with this error." Same auth gate as
+// /admin/agent-usage.
 //
 // The data is gathered by `~/lib/agent-debug.server` (`gatherAgentDebug`),
 // which is ALSO what the `doco_agent_debug` MCP tool calls — so the browser

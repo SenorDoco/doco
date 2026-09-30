@@ -23,7 +23,7 @@ function tableBlock(table: string): string {
   return match?.[1] ?? "";
 }
 
-describe("dashboard doco stats", () => {
+describe("doco stats", () => {
   // Post-collapse: stats read the unified `nodes` table (filtered by
   // node_type) rather than the per-type tables. Validate the single
   // table the queries hit is available and shaped as expected.

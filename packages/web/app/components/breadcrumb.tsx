@@ -115,7 +115,7 @@ export function workspaceBreadcrumb({
  * Build the breadcrumb trail for a top-level (host-scoped) page.
  * Trail: `Home › [section?] › [pageLabel]`.
  *
- * `Home` links to `/` (the host landing / signed-in dashboard).
+ * `Home` links to `/`, the host home.
  * Use `section` for sub-pages of a top-level section (e.g. `New doco`
  * lives under `Docos`).
  */

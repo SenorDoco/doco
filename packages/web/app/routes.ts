@@ -68,7 +68,7 @@ export default [
   // each route file — the route table doesn't gate, it just lists.
   route("admin/agent-usage", "routes/admin.agent-usage.tsx"),
   // Health snapshot as JSON (200 ok/warning, 503 critical) for
-  // uptime checkers + curl. Same auth gate as the dashboard.
+  // uptime checkers + curl. Same auth gate as /admin/agent-usage.
   route("admin/agent-health.json", "routes/admin.agent-health[.]json.tsx"),
   // Vercel-Cron-hit endpoint that POSTs an alert payload to
   // DOCO_HEALTH_WEBHOOK_URL whenever the snapshot is non-OK.

@@ -8,7 +8,7 @@ import { AccessListCard, type AccessListItem } from "../access-list-card";
 const WORKSPACE_ISO = "2026-01-02T03:04:05.000Z";
 const DOCO_ISO = "2026-02-03T04:05:06.000Z";
 
-// Mirrors the dashboard's "Your workspaces and docos" shape: workspaces are
+// An access list nests Docos under workspaces: workspaces are
 // group rows (they carry a `children` array, even when empty); docos are leaf
 // rows (no `children`).
 const items: AccessListItem[] = [
