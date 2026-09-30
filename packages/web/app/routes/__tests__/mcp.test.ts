@@ -120,11 +120,11 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(instructions).not.toMatch(/does not mandate captures/i);
   });
 
-  it("initialize states the never-first-person rule, and every tool description obeys it", async () => {
+  it("initialize leaves the agent's voice alone, and every tool description avoids the first person", async () => {
     const res = await call({ jsonrpc: "2.0", id: 9, method: "initialize" }, BEARER);
     const body = (await res.json()) as Json;
     const instructions: string = body.result.instructions;
-    expect(instructions).toMatch(/never (write|speak) in the first person/i);
+    expect(instructions).not.toMatch(/first person/i);
     expect(firstPersonLines(instructions)).toEqual([]);
     const tools = await call({ jsonrpc: "2.0", id: 10, method: "tools/list" }, BEARER);
     const list = (await tools.json()) as Json;

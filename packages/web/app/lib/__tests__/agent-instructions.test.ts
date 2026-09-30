@@ -61,8 +61,10 @@ describe("agentInstructions", () => {
     expect(text).toContain("https://doco.test/protocol/canonical-instructions");
   });
 
-  it("states the never-first-person rule and obeys it", () => {
-    expect(text).toMatch(/never write in the first person/i);
+  // Alexander, 2026-09-30: agents keep their own voice in replies; the
+  // instructions no longer tell them to avoid the first person.
+  it("leaves the agent's voice alone and obeys the rule itself", () => {
+    expect(text).not.toMatch(/first person/i);
     expect(firstPersonLines(text)).toEqual([]);
   });
 });
