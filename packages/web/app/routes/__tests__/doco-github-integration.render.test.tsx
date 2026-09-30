@@ -55,6 +55,7 @@ vi.mock("~/components/card", () => ({
   CardTitle: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
+import { connectLabel } from "~/components/github-repo-picker";
 import DocoGitHubIntegration from "../$docoHandle.integrations.github";
 
 const baseLoaderData = {
@@ -76,6 +77,23 @@ const baseLoaderData = {
   installationChoices: [] as unknown[],
   backfill: null,
 };
+
+const torrenegra = {
+  installation_id: 7,
+  account: "torrenegra",
+  repositories: ["torrenegra/doco"],
+  connected_repositories: [],
+  source_doco_handles: ["torre-prs"],
+};
+const torreLabs = { ...torrenegra, installation_id: 8, account: "torre-labs" };
+torreLabs.repositories = ["torre-labs/heda", "torre-labs/vader"];
+
+/** The repositories offered as checkboxes, in order. */
+function repoCheckboxes(html: string): string[] {
+  return [...html.matchAll(/<input type="checkbox"[^>]*name="repo" value="([^"]+)"/g)].map(
+    (m) => m[1] ?? "",
+  );
+}
 
 function classListOf(html: string, predicate: (cls: string) => boolean): string[] | undefined {
   for (const m of html.matchAll(/<(?:ul|div) class="([^"]*)"/g)) {
@@ -103,23 +121,12 @@ describe("GitHub integration · border styling tokens", () => {
     expect(tokens).toContain("divide-border");
   });
 
-  it("gives the installation org-group box the exact border-border token so it gets the etched edge", () => {
-    fixture.loaderData = {
-      ...baseLoaderData,
-      installationChoices: [
-        {
-          installation_id: 7,
-          account: "torrenegra",
-          repositories: ["torrenegra/doco"],
-          connected_repositories: [],
-          source_doco_handles: ["torre-prs"],
-        },
-      ],
-    };
+  it("gives each repository to pick the exact border-border token so it gets the etched edge", () => {
+    fixture.loaderData = { ...baseLoaderData, installationChoices: [torrenegra] };
 
     const html = renderToStaticMarkup(<DocoGitHubIntegration />);
-    const tokens = classListOf(html, (cls) => cls.includes("rounded-md") && cls.includes("p-3"));
-    expect(tokens, "installation org-group box should render").toBeDefined();
+    const tokens = html.match(/<label class="([^"]*)"/)?.[1]?.split(/\s+/);
+    expect(tokens, "repository checkbox should render").toBeDefined();
 
     // app.css applies the neumorphic etched highlight via a whitespace-token
     // selector: `[class~="border"][class~="border-border"]`. An opacity modifier
@@ -128,5 +135,54 @@ describe("GitHub integration · border styling tokens", () => {
     // exact `border-border` token.
     expect(tokens).toContain("border");
     expect(tokens).toContain("border-border");
+  });
+});
+
+// Right after a GitHub Doco is created, New Doco lands here: the page is the
+// step that connects it, not a settings page with an empty list on top.
+describe("GitHub integration · connecting a new Doco", () => {
+  it("asks for the repositories, all in one list with one button, and lets the user skip", () => {
+    fixture.loaderData = { ...baseLoaderData, installationChoices: [torreLabs, torrenegra] };
+
+    const html = renderToStaticMarkup(<DocoGitHubIntegration />);
+
+    expect(html).toContain("Pick repositories");
+    expect(html).toContain("Nothing comes in until you connect at least one.");
+    expect(html).not.toContain("Connected repositories");
+    // Every organization's repositories share one form and one button.
+    expect(html.match(/<form/g)).toHaveLength(1);
+    expect(html.match(/<button/g)).toHaveLength(1);
+    expect(repoCheckboxes(html)).toEqual([
+      "torre-labs/heda",
+      "torre-labs/vader",
+      "torrenegra/doco",
+    ]);
+    expect(html).toMatch(/<button type="submit"[^>]*disabled="">Connect repositories<\/button>/);
+    expect(html).toContain('href="/torre-prs">Skip for now</a>');
+    expect(html).toContain("Don&#x27;t see a repository?");
+  });
+
+  it("lists what is connected and offers only the rest once a repository is in", () => {
+    fixture.loaderData = {
+      ...baseLoaderData,
+      connections: [{ repo: "torre-labs/heda", installation_id: 8 }],
+      installationChoices: [torreLabs, torrenegra],
+    };
+
+    const html = renderToStaticMarkup(<DocoGitHubIntegration />);
+
+    expect(html).toContain("Connected repositories");
+    expect(html).toContain("Add repositories");
+    expect(html).not.toContain("Skip for now");
+    expect(repoCheckboxes(html)).toEqual(["torre-labs/vader", "torrenegra/doco"]);
+  });
+});
+
+describe("connectLabel", () => {
+  it("says what the button connects", () => {
+    expect(connectLabel(0, [])).toBe("Connect repositories");
+    expect(connectLabel(1, [])).toBe("Connect 1 repository");
+    expect(connectLabel(3, [])).toBe("Connect 3 repositories");
+    expect(connectLabel(2, ["acme"])).toBe("Connect 2 repositories and every repository in acme");
   });
 });

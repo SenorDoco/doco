@@ -1625,7 +1625,11 @@ export default function DocoHome({
                 ) : effectivePerspectiveKind === "notion" && notionData ? (
                   <NotionPerspective data={notionData} handle={handle} />
                 ) : effectivePerspectiveKind === "code" && codeData ? (
-                  <CodePerspective data={codeData} handle={handle} />
+                  <CodePerspective
+                    data={codeData}
+                    handle={handle}
+                    source={integrations.find((status) => status.integration === "github")}
+                  />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
                   <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
                 ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (

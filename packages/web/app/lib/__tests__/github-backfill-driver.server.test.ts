@@ -31,7 +31,7 @@ const ctx = {
   ownerSlug: "o",
   docoSlug: "d",
   template: null,
-  installationId: 42,
+  installationByRepo: { "acme/a": 42, "acme/b": 42 },
 };
 
 // backfillRepo result helper.
@@ -59,7 +59,6 @@ const lastSaved = (save: ReturnType<typeof vi.fn>): GitHubBackfillState =>
 const baseState = (over: Partial<GitHubBackfillState> = {}): GitHubBackfillState => ({
   status: "running",
   started_at: "2026-01-01T00:00:00.000Z",
-  installation_id: 42,
   queue: ["acme/a", "acme/b"],
   repo_index: 0,
   page: 1,
@@ -67,6 +66,33 @@ const baseState = (over: Partial<GitHubBackfillState> = {}): GitHubBackfillState
 });
 
 describe("runBackfillSlice", () => {
+  it("imports each repository through its own GitHub installation", async () => {
+    const backfillRepo = vi.fn().mockResolvedValue(page());
+    await runBackfillSlice(
+      baseState({ queue: ["acme/a", "zeta/b"] }),
+      { ...ctx, installationByRepo: { "acme/a": 42, "zeta/b": 7 } },
+      { backfillRepo: backfillRepo as never, save: vi.fn(async () => {}), now: () => 0 },
+    );
+    expect(backfillRepo.mock.calls.map(([o]) => [o.repo, o.installationId])).toEqual([
+      ["a", 42],
+      ["b", 7],
+    ]);
+  });
+
+  it("skips a repository that was disconnected after the import started", async () => {
+    const backfillRepo = vi.fn().mockResolvedValue(page({ created: 1 }));
+    const save = vi.fn(async () => {});
+    const res = await runBackfillSlice(baseState({ queue: ["acme/gone", "acme/b"] }), ctx, {
+      backfillRepo: backfillRepo as never,
+      save,
+      now: () => 0,
+    });
+    expect(res.done).toBe(true);
+    expect(backfillRepo).toHaveBeenCalledTimes(1);
+    expect(backfillRepo).toHaveBeenCalledWith(expect.objectContaining({ repo: "b" }));
+    expect(lastSaved(save).imported).toBe(1);
+  });
+
   it("walks the whole queue and marks done when it fits the budget", async () => {
     const backfillRepo = vi
       .fn()

@@ -40,7 +40,9 @@ export interface BackfillSliceCtx {
   docoSlug: string;
   /** The Doco's template: what it brings from GitHub (github-imports). */
   template: string | null;
-  installationId: number;
+  /** The GitHub installation each connected repository imports through. A
+   *  queued repository missing here was disconnected, so it is skipped. */
+  installationByRepo: Record<string, number>;
 }
 
 export interface BackfillSliceDeps {
@@ -64,7 +66,6 @@ function markerFrom(
     ...(base.started_at ? { started_at: base.started_at } : {}),
     ...(done ? { finished_at: new Date().toISOString() } : {}),
     repos: queue.length,
-    installation_id: base.installation_id,
     queue,
     repo_index: repoIndex,
     page,
@@ -125,7 +126,8 @@ export async function runBackfillSlice(
   const start = now();
   while (repoIndex < queue.length && now() - start < budgetMs) {
     const [owner, repo] = queue[repoIndex].split("/");
-    if (!owner || !repo) {
+    const installationId = ctx.installationByRepo[queue[repoIndex]];
+    if (!owner || !repo || !installationId) {
       repoIndex++;
       page = 1;
       attempts = 0;
@@ -139,7 +141,7 @@ export async function runBackfillSlice(
         docoSlug: ctx.docoSlug,
         owner,
         repo,
-        installationId: ctx.installationId,
+        installationId,
         startPage: page,
       });
       counts.created += r.created;

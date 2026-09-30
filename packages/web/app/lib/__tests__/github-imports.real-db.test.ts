@@ -20,8 +20,9 @@ import {
   getDocoConnectionsContext,
   listConnections,
   listInstallations,
-  pickRepositories,
+  pickConnections,
   removeConnection,
+  setBackfillState,
   subscribeInstallation,
   unsubscribeInstallationEverywhere,
 } from "../github-connection.server";
@@ -115,38 +116,105 @@ describe("routing repo events", () => {
 });
 
 describe("connecting repositories", () => {
-  const choice = {
+  const acme = {
     installation_id: 9,
     account: "acme",
     repositories: ["acme/app", "acme/api"],
     connected_repositories: [],
     source_doco_handles: [],
   };
+  const zeta = { ...acme, installation_id: 7, account: "zeta", repositories: ["zeta/web"] };
+  const empty = {
+    ...acme,
+    installation_id: 5,
+    account: "empty",
+    repository_selection: "all" as const,
+    repositories: [],
+  };
 
-  it("picks only repositories the installation offers", () => {
+  it("picks repositories from every organization at once, each through its own installation", () => {
     expect(
-      pickRepositories(choice, [" acme/app ", "https://github.com/acme/api", "acme/app"]),
+      pickConnections([acme, zeta], {
+        repos: [" acme/app ", "https://github.com/zeta/web", "acme/app"],
+        installations: [],
+      }),
     ).toEqual({
-      repos: ["acme/app", "acme/api"],
+      connections: [
+        { repo: "acme/app", installation_id: 9 },
+        { repo: "zeta/web", installation_id: 7 },
+      ],
+      installations: [],
     });
-    expect(pickRepositories(choice, [])).toEqual({ error: "Pick at least one repository." });
-    expect(pickRepositories(choice, ["acme/other"])).toEqual({
-      error: "acme/other is not available from the selected GitHub connection.",
+  });
+
+  it("picks an organization GitHub lists no repositories for, as a whole", () => {
+    expect(pickConnections([acme, empty], { repos: [], installations: ["5"] })).toEqual({
+      connections: [],
+      installations: [empty],
+    });
+    // Only an all-repositories installation can be connected as a whole.
+    expect(pickConnections([acme], { repos: [], installations: ["9"] })).toEqual({
+      error: "Pick the repositories to connect from acme.",
+    });
+  });
+
+  it("never connects what the user's installations don't offer", () => {
+    expect(pickConnections([acme], { repos: [], installations: [] })).toEqual({
+      error: "Pick at least one repository.",
+    });
+    expect(pickConnections([acme], { repos: ["acme/other"], installations: [] })).toEqual({
+      error: "acme/other is not available from your GitHub connections.",
+    });
+    expect(pickConnections([acme], { repos: [], installations: ["404"] })).toEqual({
+      error: "That GitHub connection is not available to your account.",
     });
   });
 
   it("connects each repository and queues its import", async () => {
-    await connectRepositories("doco_bugs", 9, ["acme/app", "acme/api"]);
+    await connectRepositories("doco_bugs", [
+      { repo: "acme/app", installation_id: 9 },
+      { repo: "zeta/web", installation_id: 7 },
+    ]);
     const ctx = await getDocoConnectionsContext("doco_bugs");
     expect(ctx?.template).toBe("github-bugs");
-    expect(ctx?.connections.map((c) => c.repo)).toEqual(["acme/app", "acme/api"]);
+    expect(ctx?.connections.map((c) => [c.repo, c.installation_id])).toEqual([
+      ["acme/app", 9],
+      ["zeta/web", 7],
+    ]);
     expect(ctx?.backfill).toMatchObject({
+      status: "running",
+      queue: ["acme/app", "zeta/web"],
+      repos: 2,
+      repo_index: 0,
+      page: 1,
+    });
+  });
+
+  it("adds new repositories to the end of an import already under way", async () => {
+    await connectRepositories("doco_code", [{ repo: "acme/app", installation_id: 9 }]);
+    const running = (await getDocoConnectionsContext("doco_code"))?.backfill;
+    await setBackfillState("doco_code", { ...running, status: "running", page: 4, imported: 120 });
+    await connectRepositories("doco_code", [{ repo: "acme/api", installation_id: 9 }]);
+    expect((await getDocoConnectionsContext("doco_code"))?.backfill).toMatchObject({
       status: "running",
       queue: ["acme/app", "acme/api"],
       repos: 2,
-      installation_id: 9,
       repo_index: 0,
-      page: 1,
+      page: 4,
+      imported: 120,
+    });
+  });
+
+  it("starts a fresh import once the previous one finished", async () => {
+    await connectRepositories("doco_code", [{ repo: "acme/app", installation_id: 9 }]);
+    await setBackfillState("doco_code", { status: "done", imported: 50, queue: ["acme/app"] });
+    await connectRepositories("doco_code", [{ repo: "acme/api", installation_id: 9 }]);
+    expect((await getDocoConnectionsContext("doco_code"))?.backfill).toMatchObject({
+      status: "running",
+      queue: ["acme/api"],
+      repos: 1,
+      repo_index: 0,
+      imported: 0,
     });
   });
 });

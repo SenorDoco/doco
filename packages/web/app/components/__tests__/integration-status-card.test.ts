@@ -140,4 +140,19 @@ describe("IntegrationStatusCard", () => {
   it("says when nothing has been copied yet", () => {
     expect(render({ ...slack, latestAt: null })).toContain("No messages copied yet");
   });
+
+  it("says a Doco's source isn't connected, and leads to connecting it", () => {
+    const html = render({ integration: "github", state: "unconnected" });
+    expect(html).toContain("GitHub integration");
+    expect(html).toContain("Not connected");
+    expect(html).toContain("Nothing comes into this doco until it is.");
+    expect(html).not.toContain("Live");
+    expect(html.match(/<a [^>]*>Pick repositories<\/a>/)?.[0]).toContain(
+      'href="/torre-slack/integrations/github"',
+    );
+    expect(render({ integration: "slack", state: "unconnected" })).toContain(">Connect Slack</a>");
+    expect(render({ integration: "notion", state: "unconnected" })).toContain(
+      ">Connect Notion</a>",
+    );
+  });
 });

@@ -73,6 +73,45 @@ describe("loadIntegrationStatuses", () => {
     expect(await loadIntegrationStatuses(c, "doco_plain", NOW)).toEqual([]);
   });
 
+  // A Doco made to fill from a source stays empty until someone connects it:
+  // its home says so instead of looking like an import that never starts.
+  describe("a Doco whose source isn't connected yet", () => {
+    beforeEach(async () => {
+      await db.exec(`
+        INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES
+          ('doco_code', 'torre-codebase', 'workspace_1', 'workspace_1', '{"template_handle": "codebase"}'),
+          ('doco_bugs', 'torre-github-bugs', 'workspace_1', 'workspace_1', '{"template_handle": "github-bugs"}'),
+          ('doco_chat', 'torre-chat', 'workspace_1', 'workspace_1', '{"template_handle": "slack"}'),
+          ('doco_wiki', 'torre-wiki', 'workspace_1', 'workspace_1', '{"template_handle": "notion"}');
+      `);
+    });
+
+    it("reports the source its template fills from as not connected", async () => {
+      for (const [id, integration] of [
+        ["doco_code", "github"],
+        ["doco_bugs", "github"],
+        ["doco_chat", "slack"],
+        ["doco_wiki", "notion"],
+      ]) {
+        expect(await loadIntegrationStatuses(c, id, NOW), id).toEqual([
+          { integration, state: "unconnected" },
+        ]);
+      }
+    });
+
+    it("reports the import instead once a repository is connected", async () => {
+      await db.exec(`
+        UPDATE docos SET data = data || '{"github_integration": {"connections":
+          [{"repo": "acme/store", "installation_id": 7}],
+          "backfill": {"status": "running", "repos": 1, "repo_index": 0, "cursor_at": "${minutesAgo(1)}"}}}'
+        WHERE id = 'doco_code';
+      `);
+      expect(await loadIntegrationStatuses(c, "doco_code", NOW)).toEqual([
+        expect.objectContaining({ integration: "github", state: "importing", repos: 1 }),
+      ]);
+    });
+  });
+
   describe("Slack", () => {
     it("reports the newest message and how far back every channel is copied", async () => {
       await setSlackHeartbeat(0);

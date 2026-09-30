@@ -13,6 +13,7 @@ import {
   friendlyHandleValidationError,
   handleValidityMessage,
 } from "~/lib/handle-format";
+import { sourceIntegrationFor } from "~/lib/integrations-catalog";
 import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 import {
   addWorkspaceByHandle,
@@ -32,25 +33,19 @@ import {
  *
  * Captures the template, workspace, Doco handle, and privacy settings in one
  * form. Submitting creates the Doco immediately, then redirects to the
- * post-create concepts page.
+ * post-create concepts page, or, for a Doco that fills from an integration,
+ * to connecting it.
  *
  * Flow map:
- *   /new-doco         Create the Doco
- *   /:handle/welcome  Key Doco concepts (Continue -> Doco home)
+ *   /new-doco                         Create the Doco
+ *   /:handle/welcome                  Key Doco concepts (Continue -> Doco home)
+ *   /:handle/integrations/<source>    Connect the source it fills from
  *
  * There's no separate "Bootstrap and collaborate" step — invite and
  * API-key affordances are reachable from the Doco home page directly.
  */
 
 const DEFAULT_TEMPLATE_HANDLE = "generic";
-/** A Doco that fills from a source continues into connecting that source. */
-const SOURCE_SETUP: Record<string, string> = {
-  "github-pull-requests": "github",
-  "github-bugs": "github",
-  codebase: "github",
-  slack: "slack",
-  notion: "notion",
-};
 
 /**
  * Sentinel <option> value for "+ Create a new workspace". Kept
@@ -230,7 +225,7 @@ export async function action({ request }: { request: Request }) {
       autoSuffix: accept,
       goal: state.goal,
     });
-    const source = SOURCE_SETUP[state.templateHandle];
+    const source = sourceIntegrationFor(state.templateHandle);
     if (source) throw redirect(`/${rec.handle}/integrations/${source}`);
     throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {

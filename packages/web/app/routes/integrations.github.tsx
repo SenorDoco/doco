@@ -12,7 +12,6 @@
 //   3. started → …&github=importing : the import runs in the background
 import { roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
-import { ArrowUpRight, Github, Plus } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useSearchParams } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
@@ -22,8 +21,8 @@ import {
   ActionNotice,
   GitHubImportStarted,
   GitHubSetupNotice,
-  InstallationChoiceForm,
   PRIMARY_BTN,
+  RepositoryPicker,
   addableInstallationChoices,
   buildInstallationPickerChoices,
 } from "~/components/github-repo-picker";
@@ -35,7 +34,7 @@ import {
   connectRepositories,
   getDocoConnectionsContext,
   listGitHubInstallationChoicesForDocos,
-  pickRepositories,
+  pickConnections,
   subscribeInstallation,
 } from "~/lib/github-connection.server";
 import { GITHUB_IMPORTS, type GitHubImport } from "~/lib/github-imports";
@@ -127,7 +126,7 @@ export async function loader({ request }: { request: Request }) {
   };
 }
 
-type ActionResult = { error: string } | { ok: true; message: string };
+type ActionResult = { error: string };
 
 export async function action({ request }: { request: Request }): Promise<ActionResult> {
   const me = await signedIn(request);
@@ -166,47 +165,30 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     throw redirect(next);
   }
 
-  const targets = bring.map((choice) => ({ choice, doco: existing[choice.id] }));
-  if (targets.some((t) => !t.doco)) return { error: "Choose what to bring from GitHub again." };
-  const installationId = Number(form.get("installation_id"));
-  const installation = (await installationChoicesFor(me.id)).find(
-    (c) => c.installation_id === installationId,
-  );
-  if (!installation) return { error: "That GitHub connection is not available to your account." };
-
-  if (intent === "connect-existing-repos") {
-    const picked = pickRepositories(
-      installation,
-      form.getAll("repo").map((repo) => String(repo)),
-    );
-    if ("error" in picked) return picked;
-    const origin = new URL(request.url).origin;
-    for (const { doco } of targets) {
-      await connectRepositories(doco.id, installationId, picked.repos);
-      waitUntil(kickBackfillRun(origin, doco.id));
-    }
-    throw redirect(`${next}&github=importing&count=${picked.repos.length}`);
-  }
-
-  if (intent === "connect-installation") {
-    if (installation.repository_selection !== "all") {
-      return { error: "Choose at least one repository from this GitHub connection." };
-    }
-    const connectedAt = new Date().toISOString();
-    for (const { doco } of targets) {
+  if (intent !== "connect") return { error: `Unknown action: ${intent}` };
+  const docos = bring.map((choice) => existing[choice.id]);
+  if (docos.some((doco) => !doco)) return { error: "Choose what to bring from GitHub again." };
+  const picked = pickConnections(await installationChoicesFor(me.id), {
+    repos: form.getAll("repo").map(String),
+    installations: form.getAll("installation").map(String),
+  });
+  if ("error" in picked) return picked;
+  const connectedAt = new Date().toISOString();
+  const origin = new URL(request.url).origin;
+  for (const doco of docos) {
+    for (const choice of picked.installations) {
       await subscribeInstallation(doco.id, {
-        installation_id: installationId,
-        account: installation.account,
+        installation_id: choice.installation_id,
+        account: choice.account,
         connected_at: connectedAt,
       });
     }
-    return {
-      ok: true,
-      message: `Connected ${installation.account}. New ${new Intl.ListFormat("en", { type: "conjunction" }).format(bring.map((i) => i.items))} will sync automatically.`,
-    };
+    if (picked.connections.length > 0) {
+      await connectRepositories(doco.id, picked.connections);
+      waitUntil(kickBackfillRun(origin, doco.id));
+    }
   }
-
-  return { error: `Unknown action: ${intent}` };
+  throw redirect(`${next}&github=importing&count=${picked.connections.length}`);
 }
 
 export function meta() {
@@ -400,44 +382,11 @@ function ReposStep({
       </Card>
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Github className="h-4 w-4 text-primary" aria-hidden="true" />
-                Pick repositories
-              </CardTitle>
-              <CardDescription>
-                Repositories you&apos;ve granted Doco access to. Pick the ones to bring from.
-              </CardDescription>
-            </div>
-            {installUrl ? (
-              <a
-                href={installUrl}
-                className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
-              >
-                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                Add organizations or repositories in GitHub
-                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
-            ) : null}
-          </div>
+          <CardTitle className="text-base">Pick repositories</CardTitle>
+          <CardDescription>Each doco above brings its part from them.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {choices.length > 0 ? (
-            choices.map((choice) => (
-              <InstallationChoiceForm
-                key={choice.installation_id}
-                choice={choice}
-                fields={fields}
-              />
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {installUrl
-                ? "No repositories to add yet. Grant Doco access to an organization or repositories in GitHub."
-                : "No repositories are available to add."}
-            </p>
-          )}
+        <CardContent>
+          <RepositoryPicker choices={choices} installUrl={installUrl} fields={fields} />
         </CardContent>
       </Card>
     </>

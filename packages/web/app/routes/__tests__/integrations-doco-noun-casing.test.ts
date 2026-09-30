@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 // (the per-doco GitHub page and the per-workspace rollup) and still need it.
 //
 // The *product/agent* name stays capitalized — "Doco can see <repo>",
-// "granted Doco access to" — so we assert those survive untouched, to keep the
+// "Give Doco access to it in GitHub" — so we assert those survive untouched, to keep the
 // sweep from over-lowercasing the brand. (Sentence/heading-initial "Docos in
 // this workspace" also stays, like any first word.)
 // The per-doco GitHub page renders copy from the shared GitHub repo picker too.
@@ -25,13 +25,13 @@ describe("integrations pages — doco noun is lowercase, brand is not", () => {
     // Demonstrative/quantified noun usages render lowercase.
     expect(src).toContain("connect this doco.");
     expect(src).toContain("this doco brings {brings.items} from.");
-    expect(src).toContain("track on this doco.");
+    expect(src).toContain("A writer on this doco can connect them.");
 
     // No capital-D noun phrase survives in the rendered copy.
     expect(src).not.toContain("this Doco");
 
     // The product/agent name stays capitalized — these are not the noun.
-    expect(src).toContain("granted Doco access to");
+    expect(src).toContain("Give Doco access to it in GitHub");
     expect(src).toContain("Every repository Doco can see");
   });
 

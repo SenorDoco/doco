@@ -1,7 +1,8 @@
 // What an integrated Doco reports about each source it copies from — GitHub
 // pull requests, bugs or code, a Slack workspace, a Notion workspace: how live the copy is
 // (when the newest item copied was created or last changed) and how far the
-// import of older items has got. The Doco home shows it atop the activity
+// import of older items has got, or, for a Doco made to fill from a source,
+// that nobody has connected it yet. The Doco home shows it atop the activity
 // column; the Doco's integrations page summarizes it.
 import {
   IMPORT_STALL_MINUTES,
@@ -9,6 +10,7 @@ import {
   githubImportState,
 } from "./github-connection.server";
 import { githubImportFor } from "./github-imports";
+import { type SourceIntegration, sourceIntegrationFor } from "./integrations-catalog";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -60,10 +62,19 @@ export interface NotionIntegrationStatus {
   listingCapped: boolean;
 }
 
-export type IntegrationStatus =
+/** A Doco made to fill from a source nobody has connected yet: it stays empty
+ *  until someone does. */
+export interface UnconnectedIntegrationStatus {
+  integration: SourceIntegration;
+  state: "unconnected";
+}
+
+export type ConnectedIntegrationStatus =
   | GitHubIntegrationStatus
   | SlackIntegrationStatus
   | NotionIntegrationStatus;
+
+export type IntegrationStatus = ConnectedIntegrationStatus | UnconnectedIntegrationStatus;
 
 const STALL_MS = IMPORT_STALL_MINUTES * 60_000;
 
@@ -79,6 +90,16 @@ export async function loadIntegrationStatuses(
   if (slack) statuses.push(slack);
   const notion = await loadNotionStatus(c, docoId, now);
   if (notion) statuses.push(notion);
+  const template = (
+    await c.query<{ template: string | null }>(
+      "SELECT data->>'template_handle' AS template FROM docos WHERE id = $1",
+      [docoId],
+    )
+  ).rows[0]?.template;
+  const source = sourceIntegrationFor(template);
+  if (source && !statuses.some((s) => s.integration === source)) {
+    statuses.unshift({ integration: source, state: "unconnected" });
+  }
   return statuses;
 }
 

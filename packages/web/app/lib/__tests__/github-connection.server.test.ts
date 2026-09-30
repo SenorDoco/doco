@@ -82,7 +82,6 @@ describe("resumeCursorFromConnections", () => {
       repo_index: 0,
       page: 1,
       repos: 2,
-      installation_id: 42,
     });
     expect(typeof cur.cursor_at).toBe("string");
     expect(typeof cur.started_at).toBe("string");
@@ -95,7 +94,6 @@ describe("resumeCursorFromConnections", () => {
       updated: 7,
       unchanged: 12,
       failed: 1,
-      installation_id: 99,
     });
     expect(cur).toMatchObject({
       started_at: "2026-01-01T00:00:00.000Z",
@@ -103,7 +101,6 @@ describe("resumeCursorFromConnections", () => {
       updated: 7,
       unchanged: 12,
       failed: 1,
-      installation_id: 99,
       repo_index: 0,
       page: 1,
     });

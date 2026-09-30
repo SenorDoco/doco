@@ -44,8 +44,8 @@ vi.mock("~/lib/github-backfill.server", () => ({
 }));
 
 vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
-  pickRepositories: (await importOriginal<typeof import("~/lib/github-connection.server")>())
-    .pickRepositories,
+  pickConnections: (await importOriginal<typeof import("~/lib/github-connection.server")>())
+    .pickConnections,
   connectRepositories: mocks.connectRepositories,
   buildInstallUrl: mocks.buildInstallUrl,
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
@@ -204,7 +204,7 @@ describe("/:docoHandle/integrations/github", () => {
     ]);
   });
 
-  it("connects selected repos from a reusable installation and starts the import", async () => {
+  it("connects the picked repos, across organizations, and returns to the importing Doco", async () => {
     mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
       {
         installation_id: 42,
@@ -213,25 +213,27 @@ describe("/:docoHandle/integrations/github", () => {
         connected_repositories: [],
         source_doco_handles: ["existing-prs"],
       },
+      {
+        installation_id: 7,
+        account: "zeta",
+        repositories: ["zeta/app"],
+        connected_repositories: [],
+        source_doco_handles: [],
+      },
     ]);
 
     const response = (await action({
-      request: postForm({
-        intent: "connect-existing-repos",
-        installation_id: "42",
-        repo: ["acme/web", "acme/api"],
-      }),
+      request: postForm({ intent: "connect", repo: ["acme/web", "zeta/app"] }),
       ...routeArgs,
     }).catch((error: Response) => error)) as Response;
 
-    // Connecting repos now hands the user a standalone "import started" screen
-    // (PRG redirect) instead of returning an inline banner message.
+    // The Doco itself shows the import filling it: no separate screen to click through.
     expect(response.status).toBe(302);
-    const location = response.headers.get("Location") ?? "";
-    expect(location).toContain("/meta-pull-requests/integrations/github");
-    expect(location).toContain("github=importing");
-    expect(location).toContain("count=2");
-    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_1", 42, ["acme/web", "acme/api"]);
+    expect(response.headers.get("Location")).toBe("/meta-pull-requests");
+    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_1", [
+      { repo: "acme/web", installation_id: 42 },
+      { repo: "zeta/app", installation_id: 7 },
+    ]);
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
   });
 
@@ -247,18 +249,12 @@ describe("/:docoHandle/integrations/github", () => {
       },
     ]);
 
-    const result = await action({
-      request: postForm({
-        intent: "connect-installation",
-        installation_id: "42",
-      }),
+    const response = (await action({
+      request: postForm({ intent: "connect", installation: "42" }),
       ...routeArgs,
-    });
+    }).catch((error: Response) => error)) as Response;
 
-    expect(result).toMatchObject({
-      ok: true,
-      message: "Connected Doco-to. New pull request activity will sync automatically.",
-    });
+    expect(response.headers.get("Location")).toBe("/meta-pull-requests");
     expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
       "doco_1",
       expect.objectContaining({
@@ -268,7 +264,6 @@ describe("/:docoHandle/integrations/github", () => {
       }),
     );
     expect(mocks.connectRepositories).not.toHaveBeenCalled();
-    expect(mocks.setBackfillState).not.toHaveBeenCalled();
     expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
 
@@ -426,7 +421,9 @@ describe("/:docoHandle/integrations/github", () => {
       ...routeArgs,
     });
 
-    expect(result).toMatchObject({ error: "Unknown action: connect" });
+    expect(result).toMatchObject({
+      error: "acme/web is not available from your GitHub connections.",
+    });
     expect(mocks.connectRepositories).not.toHaveBeenCalled();
   });
 

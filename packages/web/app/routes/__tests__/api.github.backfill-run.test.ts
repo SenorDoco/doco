@@ -14,7 +14,6 @@ const { getDocoConnectionsContext, runBackfillSlice, resumeCursorFromConnections
       queue: conns.map((c) => c.repo),
       repo_index: 0,
       page: 1,
-      installation_id: 7,
     })),
   }),
 );
@@ -119,7 +118,7 @@ describe("api.github.backfill-run action", () => {
       workspaceHandle: "o",
       template: "github-bugs",
       connections: [{ repo: "acme/a", installation_id: 42 }],
-      backfill: { status: "running", queue: ["acme/a"], installation_id: 42, page: 1 },
+      backfill: { status: "running", queue: ["acme/a"], page: 1 },
     });
     runBackfillSlice.mockResolvedValue({ done: true });
 
@@ -137,7 +136,8 @@ describe("api.github.backfill-run action", () => {
         docoSlug: "d",
         // The slice walks what the Doco brings: bugs, for a GitHub bugs Doco.
         template: "github-bugs",
-        installationId: 42,
+        // Each queued repository imports through the installation its connection names.
+        installationByRepo: { "acme/a": 42 },
       }),
     );
     expect(waitUntil).not.toHaveBeenCalled();
@@ -148,7 +148,7 @@ describe("api.github.backfill-run action", () => {
       handle: "d",
       workspaceHandle: "o",
       connections: [],
-      backfill: { status: "running", queue: ["acme/a", "acme/b"], installation_id: 7, page: 1 },
+      backfill: { status: "running", queue: ["acme/a", "acme/b"], page: 1 },
     });
     runBackfillSlice.mockResolvedValue({ done: false });
 
@@ -183,7 +183,7 @@ describe("api.github.backfill-run action", () => {
       handle: "d",
       workspaceHandle: "o",
       connections: [],
-      backfill: { status: "running", queue: ["acme/a", "acme/b"], installation_id: 7, page: 1 },
+      backfill: { status: "running", queue: ["acme/a", "acme/b"], page: 1 },
     });
     runBackfillSlice.mockResolvedValue({ done: false, rateLimited: true });
 
@@ -204,7 +204,6 @@ describe("api.github.backfill-run action", () => {
       backfill: {
         status: "running",
         queue: ["acme/a"],
-        installation_id: 7,
         page: 1,
         retry_after: future,
       },
@@ -224,7 +223,7 @@ describe("api.github.backfill-run action", () => {
       handle: "d",
       workspaceHandle: "o",
       connections: [],
-      backfill: { status: "running", queue: ["acme/a"], installation_id: 7, page: 1 },
+      backfill: { status: "running", queue: ["acme/a"], page: 1 },
     });
     runBackfillSlice.mockRejectedValue(new Error("unexpected blowup"));
 

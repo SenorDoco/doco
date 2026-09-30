@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import type { CodePerspectiveData } from "~/lib/codebase-read.server";
+import type { GitHubIntegrationStatus, IntegrationStatus } from "~/lib/integration-status.server";
 import { CodePerspective } from "../code-perspective";
 
 const base: CodePerspectiveData = {
@@ -29,20 +30,48 @@ const base: CodePerspectiveData = {
   hits: [],
 };
 
-function render(data: CodePerspectiveData): string {
+function render(data: CodePerspectiveData, source?: IntegrationStatus): string {
   const Stub = createRoutesStub([
     {
       path: "/",
-      Component: () => createElement(CodePerspective, { data, handle: "acme-codebase" }),
+      Component: () => createElement(CodePerspective, { data, handle: "acme-codebase", source }),
     },
   ]);
   return renderToStaticMarkup(createElement(Stub));
 }
 
+const noCode = { ...base, repos: [], repo: null, entries: [], file: null };
+const importing: GitHubIntegrationStatus = {
+  integration: "github",
+  item: "file",
+  items: "files",
+  latestAt: null,
+  state: "importing",
+  reposDone: 0,
+  repos: 2,
+};
+
 describe("CodePerspective", () => {
-  it("points a Doco that copies no code at picking the repositories", () => {
-    const html = render({ ...base, repos: [], repo: null, entries: [], file: null });
-    expect(html).toContain('href="/acme-codebase/integrations/github"');
+  it("says no code comes in until repositories are picked, and leads there", () => {
+    const html = render(noCode, { integration: "github", state: "unconnected" });
+    expect(html).toContain("No repositories are connected, so no code is coming in yet.");
+    expect(html).toMatch(/href="\/acme-codebase\/integrations\/github"[^>]*>Pick repositories/);
+  });
+
+  it("shows the copy under way while the first files are on their way", () => {
+    const html = render(noCode, importing);
+    expect(html).toContain("Copying the code of 2 repositories from GitHub.");
+    expect(html).toContain("Files appear here as they are copied.");
+    expect(html).not.toContain("Pick repositories");
+  });
+
+  it("says when a finished or stalled copy brought no files", () => {
+    expect(render(noCode, { ...importing, state: "done" })).toContain(
+      "No files came from the connected repositories.",
+    );
+    expect(render(noCode, { ...importing, state: "stalled" })).toContain(
+      "Copying the code stalled.",
+    );
   });
 
   it("lists the folder as links that keep the Code perspective open", () => {
