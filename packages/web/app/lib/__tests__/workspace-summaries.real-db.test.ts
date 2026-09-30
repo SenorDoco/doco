@@ -61,19 +61,11 @@ describe("loadWorkspaceSummaries", () => {
     });
   });
 
-  it("names the latest thing that happened in each workspace", async () => {
+  it("says when each workspace last saw activity", async () => {
     const [torre, acme, other] = await loadWorkspaceSummaries(c, "user_ana");
-    expect(torre.lastActivity).toEqual({
-      at: "2026-09-20T00:00:00.000Z",
-      byUsername: "bo",
-      op: "entity.create",
-      entityType: "decision",
-      entityId: "decision_1",
-      docoHandle: "torre-decisions",
-      summary: "Use Postgres",
-    });
-    expect(acme.lastActivity).toMatchObject({ entityType: "bug", summary: null });
-    expect(other.lastActivity).toBeNull();
+    expect(torre.lastActivityAt).toBe("2026-09-20T00:00:00.000Z");
+    expect(acme.lastActivityAt).toBe("2026-09-10T00:00:00.000Z");
+    expect(other.lastActivityAt).toBeNull();
   });
 
   // A Doco invite reaches that one Doco, not its whole workspace.
