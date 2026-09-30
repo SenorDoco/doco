@@ -228,6 +228,22 @@ describe("loadIntegrationStatuses", () => {
       });
     });
 
+    it("speaks of the files a codebase Doco copies, dated by the latest file copied", async () => {
+      await setGitHub({ connections: [{ repo: "acme/store", installation_id: 7 }] });
+      await db.exec(`
+        UPDATE docos SET data = data || '{"template_handle": "codebase"}', visibility = 'private'
+         WHERE id = 'doco_gh';
+        INSERT INTO code_files (doco_id, repo, path, sha, size, synced_at) VALUES
+          ('doco_gh', 'acme/store', 'a.ts', 's1', 1, '${minutesAgo(3)}'),
+          ('doco_gh', 'acme/store', 'b.ts', 's2', 1, '${minutesAgo(30)}');
+      `);
+      expect((await loadIntegrationStatuses(c, "doco_gh", NOW))[0]).toMatchObject({
+        item: "file",
+        items: "files",
+        latestAt: minutesAgo(3),
+      });
+    });
+
     it("is stalled when the import stopped advancing", async () => {
       await setGitHub({
         connections: [{ repo: "acme/store", installation_id: 7 }],

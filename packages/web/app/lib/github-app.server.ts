@@ -398,6 +398,121 @@ export function listRepoIssues(
   return listRepoPages(token, `/repos/${owner}/${repo}/issues?state=all`, opts);
 }
 
+/** One file on a repository's default branch, as its git tree lists it. */
+export interface RepoFile {
+  path: string;
+  /** The git blob sha: the same sha means the same content. */
+  sha: string;
+  size: number;
+}
+
+export interface RepoTree {
+  branch: string;
+  files: RepoFile[];
+  /** GitHub cut the listing short (over 100,000 entries or 7 MB). */
+  truncated: boolean;
+}
+
+/**
+ * Every file on a repository's default branch, from one recursive tree
+ * listing. Submodules and folders are left out; an empty repository (GitHub
+ * answers 409) has no files.
+ */
+export async function getRepoTree(
+  token: string,
+  owner: string,
+  repo: string,
+  fetchImpl?: typeof fetch,
+): Promise<RepoTree> {
+  const { data: meta } = await githubGet<{ default_branch: string }>(
+    token,
+    `/repos/${owner}/${repo}`,
+    fetchImpl,
+  );
+  const branch = meta.default_branch;
+  try {
+    const { data } = await githubGet<{
+      tree: Array<{ path: string; type: string; sha: string; size?: number }>;
+      truncated: boolean;
+    }>(
+      token,
+      `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+      fetchImpl,
+    );
+    return {
+      branch,
+      files: data.tree
+        .filter((e) => e.type === "blob")
+        .map((e) => ({ path: e.path, sha: e.sha, size: e.size ?? 0 })),
+      truncated: Boolean(data.truncated),
+    };
+  } catch (err) {
+    if (err instanceof GitHubApiError && err.status === 409) {
+      return { branch, files: [], truncated: false };
+    }
+    throw err;
+  }
+}
+
+const BLOB_SHA_RE = /^[0-9a-f]{40}$/;
+
+/**
+ * The text of each blob, by sha, read in one GraphQL request (a REST call per
+ * file would spend the installation's rate limit on a large repository).
+ * Null for a binary blob; a blob GitHub didn't return has no entry. The shas
+ * are the only thing interpolated into the query, so each must be a plain
+ * blob sha.
+ */
+export async function getBlobTexts(
+  token: string,
+  owner: string,
+  repo: string,
+  shas: string[],
+  fetchImpl?: typeof fetch,
+): Promise<Map<string, string | null>> {
+  for (const sha of shas) {
+    if (!BLOB_SHA_RE.test(sha)) throw new Error(`Invalid blob sha: ${sha}`);
+  }
+  const texts = new Map<string, string | null>();
+  if (shas.length === 0) return texts;
+  const fields = shas
+    .map((sha, i) => `b${i}: object(oid: "${sha}") { ... on Blob { text isBinary } }`)
+    .join(" ");
+  const res = await (fetchImpl ?? fetch)(`${GITHUB_API}/graphql`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields} } }`,
+      variables: { owner, name: repo },
+    }),
+  });
+  if (!res.ok) throw await githubErrorFromResponse("GitHub GraphQL blobs", res);
+  const body = (await res.json()) as {
+    data?: { repository?: Record<string, { text?: string | null; isBinary?: boolean } | null> };
+    errors?: Array<{ type?: string; message?: string }>;
+  };
+  const repository = body.data?.repository;
+  if (!repository) {
+    const rateLimited = (body.errors ?? []).some((e) => e.type === "RATE_LIMITED");
+    throw new GitHubApiError({
+      message: `GitHub GraphQL blobs failed: ${body.errors?.[0]?.message ?? "no data"}`,
+      status: 200,
+      rateLimited,
+      permanent: false,
+      retryAfterMs: rateLimited ? retryAfterMsFromHeaders(res.headers, Date.now()) : null,
+    });
+  }
+  shas.forEach((sha, i) => {
+    const blob = repository[`b${i}`];
+    if (!blob) return;
+    texts.set(sha, !blob.isBinary && typeof blob.text === "string" ? blob.text : null);
+  });
+  return texts;
+}
+
 /**
  * List changed files for one pull request. GitHub includes a unified `patch`
  * for text files; binary/large files may omit it, and those simply don't

@@ -13,6 +13,8 @@ const {
   unsubscribeInstallationEverywhere,
   findDocoByInstallation,
   findDocoTargetsForGitHubRepo,
+  syncRepoCodebase,
+  waitUntil,
 } = vi.hoisted(() => ({
   upsertPullRequestReference: vi.fn(async () => ({ status: "updated", id: "reference_x" })),
   hasBusinessProcessCodeReferences: vi.fn(async () => false),
@@ -40,10 +42,14 @@ const {
     { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: null },
   ]),
   syncBugIssue: vi.fn(async () => ({ status: "created", id: "eval_x" })),
+  syncRepoCodebase: vi.fn(async () => ({ done: true })),
+  waitUntil: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 vi.mock("~/lib/github-issue-import.server", () => ({ syncBugIssue }));
+vi.mock("~/lib/codebase-sync.server", () => ({ syncRepoCodebase }));
+vi.mock("@vercel/functions", () => ({ waitUntil }));
 vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/repos/${h}` }));
 vi.mock("~/lib/github-app.server", () => ({ mintInstallationToken, listPullRequestFiles }));
 vi.mock("~/lib/github-pr-import.server", () => ({
@@ -268,5 +274,36 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       expect.objectContaining({ number: 7 }),
       expect.objectContaining({ deleted: true }),
     );
+  });
+
+  it("push to the default branch → brings the new code into the codebase Docos", async () => {
+    const res = await send("push", {
+      ref: "refs/heads/main",
+      repository: { full_name: "acme/store", default_branch: "main" },
+      installation: { id: 99 },
+    });
+    expect(await res.json()).toMatchObject({ ok: true, repo: "acme/store", syncing: ["store"] });
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store", "codebase");
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    await waitUntil.mock.calls[0]?.[0];
+    expect(syncRepoCodebase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        docoId: "doco_1",
+        owner: "acme",
+        repo: "store",
+        installationId: 99,
+      }),
+    );
+  });
+
+  it("push to another branch → ignored", async () => {
+    const res = await send("push", {
+      ref: "refs/heads/feature",
+      repository: { full_name: "acme/store", default_branch: "main" },
+      installation: { id: 99 },
+    });
+    expect(await res.json()).toMatchObject({ ignored: true });
+    expect(findDocoTargetsForGitHubRepo).not.toHaveBeenCalled();
+    expect(syncRepoCodebase).not.toHaveBeenCalled();
   });
 });

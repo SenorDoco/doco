@@ -4,11 +4,13 @@
 // Doco relevant to the user's request. Hybrid ranking: vector similarity
 // with a full-text floor (ADR-052) so un-embedded nodes are still found.
 // A Slack-mirror Doco also returns matching Slack messages (`slack_messages`),
-// a Notion-mirror Doco matching pages (`notion_pages`), unless the caller
-// filters by node type or lifecycle.
+// a Notion-mirror Doco matching pages (`notion_pages`), a codebase Doco
+// matching files (`code_files`), unless the caller filters by node type or
+// lifecycle.
 // Resource route — no default export.
 import { withClient } from "@doco/db";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
+import { searchCodebase } from "~/lib/codebase-read.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { embedQuery } from "~/lib/embedding-provider.server";
 import { etaggedJson } from "~/lib/etag.server";
@@ -24,6 +26,7 @@ import { searchSlackMirror } from "~/lib/slack-mirror-read.server";
 
 const SLACK_MESSAGE_LIMIT = 20;
 const NOTION_PAGE_LIMIT = 20;
+const CODE_FILE_LIMIT = 20;
 
 interface JsonSearchHit {
   id: string;
@@ -89,6 +92,7 @@ export async function loader({
         hits: [],
         slack_messages: [],
         notion_pages: [],
+        code_files: [],
       });
     }
 
@@ -126,7 +130,10 @@ export async function loader({
           semantic,
         )
       : [];
-    const count = allHits.length + slackMessages.length + notionPages.length;
+    const codeFiles = withMirrors
+      ? await searchCodebase(c, ctx.meta.docoId, q, Math.min(filters.limit, CODE_FILE_LIMIT))
+      : [];
+    const count = allHits.length + slackMessages.length + notionPages.length + codeFiles.length;
 
     if (count === 0) {
       const duration_ms = Math.round(performance.now() - start);
@@ -145,6 +152,7 @@ export async function loader({
         hits: [],
         slack_messages: [],
         notion_pages: [],
+        code_files: [],
         viewer,
         warning: semanticWarning ?? "No entities match the query or the active filters.",
       });
@@ -159,6 +167,7 @@ export async function loader({
       hits: allHits,
       slack_messages: slackMessages,
       notion_pages: notionPages,
+      code_files: codeFiles,
       ...(semanticWarning ? { warning: semanticWarning } : {}),
     };
     const duration_ms = Math.round(performance.now() - start);

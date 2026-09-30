@@ -178,6 +178,34 @@ export function parseIssuesEvent(payload: unknown): ParsedIssuesEvent | null {
   };
 }
 
+export interface ParsedPushEvent {
+  repoFullName: string;
+  installationId: number;
+}
+
+/**
+ * Parse a `push` webhook, keeping only a push to the repository's default
+ * branch: the branch a codebase Doco copies. A push that deletes the branch,
+ * or one to any other branch or tag, is null. Pure; defensive about the
+ * untrusted shape.
+ */
+export function parsePushEvent(payload: unknown): ParsedPushEvent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as {
+    ref?: unknown;
+    deleted?: unknown;
+    repository?: { full_name?: unknown; default_branch?: unknown };
+    installation?: { id?: unknown };
+  };
+  const repoFullName = p.repository?.full_name;
+  const branch = p.repository?.default_branch;
+  const installationId = p.installation?.id;
+  if (typeof repoFullName !== "string" || typeof branch !== "string") return null;
+  if (typeof installationId !== "number") return null;
+  if (p.ref !== `refs/heads/${branch}` || p.deleted === true) return null;
+  return { repoFullName, installationId };
+}
+
 export interface ParsedInstallationEvent {
   /** "created" | "deleted" | "suspend" | "unsuspend" | "new_permissions_accepted". */
   action: string;

@@ -9,6 +9,7 @@ import {
   parseIssuesEvent,
   parsePullRequestEvent,
   parsePullRequestReviewEvent,
+  parsePushEvent,
   verifyGitHubSignature,
 } from "../github-webhook.server";
 
@@ -174,6 +175,28 @@ describe("parsePullRequestReviewEvent", () => {
   it("returns null without a usable PR", () => {
     expect(parsePullRequestReviewEvent({ action: "submitted", repository: {} })).toBeNull();
     expect(parsePullRequestReviewEvent(null)).toBeNull();
+  });
+});
+
+describe("parsePushEvent", () => {
+  const push = {
+    ref: "refs/heads/main",
+    deleted: false,
+    repository: { full_name: "acme/store", default_branch: "main" },
+    installation: { id: 99 },
+  };
+  it("extracts the repo and installation of a push to the default branch", () => {
+    expect(parsePushEvent(push)).toEqual({ repoFullName: "acme/store", installationId: 99 });
+  });
+  it("ignores other branches, tags and a deleted branch", () => {
+    expect(parsePushEvent({ ...push, ref: "refs/heads/feature" })).toBeNull();
+    expect(parsePushEvent({ ...push, ref: "refs/tags/main" })).toBeNull();
+    expect(parsePushEvent({ ...push, deleted: true })).toBeNull();
+  });
+  it("tolerates junk", () => {
+    expect(parsePushEvent(null)).toBeNull();
+    expect(parsePushEvent({ ref: "refs/heads/main", repository: {} })).toBeNull();
+    expect(parsePushEvent({ ...push, installation: undefined })).toBeNull();
   });
 });
 

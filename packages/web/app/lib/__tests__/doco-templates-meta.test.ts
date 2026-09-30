@@ -14,6 +14,7 @@ const SURVIVING_HANDLES = [
   "generic",
   "process",
   "github-pull-requests",
+  "codebase",
   "slack",
   "notion",
   "architectural-decisions",

@@ -26,6 +26,7 @@ vi.mock("~/lib/search-filters.server", () => ({
 }));
 vi.mock("~/lib/search.server", () => ({ hybridSearch: mocks.hybridSearch }));
 vi.mock("~/lib/slack-mirror-read.server", () => ({ searchSlackMirror: async () => [] }));
+vi.mock("~/lib/codebase-read.server", () => ({ searchCodebase: async () => [] }));
 vi.mock("~/lib/notion-mirror-read.server", () => ({
   searchNotionMirror: mocks.searchNotionMirror,
 }));

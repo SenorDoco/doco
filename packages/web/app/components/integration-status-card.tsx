@@ -48,9 +48,9 @@ function liveLine(status: IntegrationStatus, now: Date): string {
 function historyLine(status: IntegrationStatus): string {
   if (status.integration === "github") {
     const repos = `${status.reposDone} of ${status.repos} repos`;
-    if (status.state === "done") return `All past ${status.items} imported`;
-    if (status.state === "stalled") return `Import of past ${status.items} stalled at ${repos}`;
-    return `Importing past ${status.items}: ${repos}`;
+    if (status.state === "done") return `All ${status.items} imported`;
+    if (status.state === "stalled") return `Import of ${status.items} stalled at ${repos}`;
+    return `Importing ${status.items}: ${repos}`;
   }
   if (status.integration === "notion") {
     if (status.needsReauth) return "Notion no longer accepts the connection: reconnect to resume";

@@ -4,7 +4,9 @@ import {
   GitHubApiError,
   buildAppJwt,
   exchangeInstallationCode,
+  getBlobTexts,
   getInstallationAccount,
+  getRepoTree,
   githubAppConfigured,
   listInstallationRepos,
   listRepoIssues,
@@ -384,5 +386,94 @@ describe("GitHub API error classification (surfaced through listRepoPullRequests
     expect(err).toBeInstanceOf(GitHubApiError);
     expect(err.rateLimited).toBe(false);
     expect(err.permanent).toBe(false);
+  });
+});
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const SHA_A = "a".repeat(40);
+const SHA_B = "b".repeat(40);
+
+describe("getRepoTree", () => {
+  it("lists every file on the default branch", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({ default_branch: "trunk" }))
+      .mockResolvedValueOnce(
+        json({
+          truncated: false,
+          tree: [
+            { path: "src", type: "tree", sha: "t1" },
+            { path: "src/a.ts", type: "blob", sha: SHA_A, size: 12 },
+            { path: "vendor/lib", type: "commit", sha: "c1" },
+          ],
+        }),
+      );
+    const tree = await getRepoTree("ghs_x", "acme", "app", fetchImpl as unknown as typeof fetch);
+    expect(tree).toEqual({
+      branch: "trunk",
+      files: [{ path: "src/a.ts", sha: SHA_A, size: 12 }],
+      truncated: false,
+    });
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
+      "https://api.github.com/repos/acme/app/git/trees/trunk?recursive=1",
+    );
+  });
+
+  it("reads an empty repository as no files", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({ default_branch: "main" }))
+      .mockResolvedValueOnce(json({ message: "Git Repository is empty." }, 409));
+    const tree = await getRepoTree("ghs_x", "acme", "app", fetchImpl as unknown as typeof fetch);
+    expect(tree).toEqual({ branch: "main", files: [], truncated: false });
+  });
+});
+
+describe("getBlobTexts", () => {
+  it("reads many blobs per GraphQL request, telling text from binary", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      json({
+        data: {
+          repository: {
+            b0: { text: "export const a = 1;", isBinary: false },
+            b1: { text: null, isBinary: true },
+          },
+        },
+      }),
+    );
+    const texts = await getBlobTexts(
+      "ghs_x",
+      "acme",
+      "app",
+      [SHA_A, SHA_B],
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(texts).toEqual(
+      new Map([
+        [SHA_A, "export const a = 1;"],
+        [SHA_B, null],
+      ]),
+    );
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe("https://api.github.com/graphql");
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.variables).toEqual({ owner: "acme", name: "app" });
+    expect(body.query).toContain(`b0: object(oid: "${SHA_A}")`);
+  });
+
+  it("never puts anything but a blob sha into the query", async () => {
+    await expect(
+      getBlobTexts("ghs_x", "acme", "app", ['") { x } #'], vi.fn() as unknown as typeof fetch),
+    ).rejects.toThrow("Invalid blob sha");
+  });
+
+  it("raises a rate limit GitHub reports inside a 200", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({ errors: [{ type: "RATE_LIMITED", message: "slow down" }] }));
+    await expect(
+      getBlobTexts("ghs_x", "acme", "app", [SHA_A], fetchImpl as unknown as typeof fetch),
+    ).rejects.toMatchObject({ rateLimited: true });
   });
 });

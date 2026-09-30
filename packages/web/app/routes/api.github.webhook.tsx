@@ -5,10 +5,14 @@
 //   - pull_request           → upsert the PR as a Reference in the pull requests Docos.
 //   - pull_request_review     → an approving review lifts an open PR to active.
 //   - issues                 → file, update or retire the bug in the Bug trackers.
+//   - push (default branch)  → bring the changed files into the codebase Docos.
 //   - installation_repositories (added)   → backfill the new repos' existing items.
 //   - installation_repositories (removed) → detach those repos' connections.
 //   - installation (deleted)  → uninstall: detach the installation everywhere.
-// Idempotent on the item URL / installation id, so re-deliveries are safe.
+// Idempotent on the item URL / installation id / file sha, so re-deliveries
+// are safe.
+import { waitUntil } from "@vercel/functions";
+import { syncRepoCodebase } from "~/lib/codebase-sync.server";
 import { docoPath } from "~/lib/db.server";
 import { listPullRequestFiles, mintInstallationToken } from "~/lib/github-app.server";
 import { backfillInstallationRepos } from "~/lib/github-backfill.server";
@@ -32,8 +36,13 @@ import {
   parseIssuesEvent,
   parsePullRequestEvent,
   parsePullRequestReviewEvent,
+  parsePushEvent,
   verifyGitHubSignature,
 } from "~/lib/github-webhook.server";
+
+// A push to a large repository can take a while to copy: give the walk the
+// full function budget (syncRepoCodebase stops itself at 200s).
+export const config = { maxDuration: 300 };
 
 // PR actions worth syncing; others (assigned, review_requested, …) are no-ops.
 const SYNC_ACTIONS = new Set([
@@ -248,6 +257,49 @@ export async function action({ request }: { request: Request }) {
       results.push({ doco: conn.handle, status: res.status });
     }
     return Response.json({ ok: true, event, repo: evt.repoFullName, results });
+  }
+
+  // A push to the default branch → bring its changes into every codebase Doco
+  // copying the repo, after answering GitHub (it waits 10s for a response).
+  if (event === "push") {
+    const evt = parsePushEvent(payload);
+    if (!evt) return Response.json({ ok: true, ignored: true });
+    const docos = await findDocoTargetsForGitHubRepo(
+      evt.installationId,
+      evt.repoFullName,
+      "codebase",
+    );
+    console.info(
+      `[github webhook] push ${evt.repoFullName} (installation ${evt.installationId}) → ${docos.length} codebase doco(s)`,
+    );
+    const [owner, repo] = evt.repoFullName.split("/");
+    waitUntil(
+      (async () => {
+        for (const conn of docos) {
+          try {
+            await syncRepoCodebase({
+              docoDir: docoPath(conn.handle),
+              docoId: conn.docoId,
+              ownerSlug: conn.workspaceHandle,
+              docoSlug: conn.handle,
+              owner,
+              repo,
+              installationId: evt.installationId,
+            });
+          } catch (error) {
+            console.error(
+              `[github webhook] codebase sync failed for ${evt.repoFullName} in ${conn.handle}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      })(),
+    );
+    return Response.json({
+      ok: true,
+      event,
+      repo: evt.repoFullName,
+      syncing: docos.map((d) => d.handle),
+    });
   }
 
   if (event !== "pull_request") {

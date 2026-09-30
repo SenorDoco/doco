@@ -42,9 +42,13 @@ import {
  */
 
 const DEFAULT_TEMPLATE_HANDLE = "generic";
-const GITHUB_PR_TEMPLATE_HANDLE = "github-pull-requests";
-const SLACK_TEMPLATE_HANDLE = "slack";
-const NOTION_TEMPLATE_HANDLE = "notion";
+/** A Doco that fills from a source continues into connecting that source. */
+const SOURCE_SETUP: Record<string, string> = {
+  "github-pull-requests": "github",
+  codebase: "github",
+  slack: "slack",
+  notion: "notion",
+};
 
 /**
  * Sentinel <option> value for "+ Create a new workspace". Kept
@@ -224,15 +228,8 @@ export async function action({ request }: { request: Request }) {
       autoSuffix: accept,
       goal: state.goal,
     });
-    if (state.templateHandle === GITHUB_PR_TEMPLATE_HANDLE) {
-      throw redirect(`/${rec.handle}/integrations/github`);
-    }
-    if (state.templateHandle === SLACK_TEMPLATE_HANDLE) {
-      throw redirect(`/${rec.handle}/integrations/slack`);
-    }
-    if (state.templateHandle === NOTION_TEMPLATE_HANDLE) {
-      throw redirect(`/${rec.handle}/integrations/notion`);
-    }
+    const source = SOURCE_SETUP[state.templateHandle];
+    if (source) throw redirect(`/${rec.handle}/integrations/${source}`);
     throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {
     if (e instanceof Response) throw e;

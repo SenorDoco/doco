@@ -1,5 +1,5 @@
 // What an integrated Doco reports about each source it copies from — GitHub
-// pull requests or bugs, a Slack workspace, a Notion workspace: how live the copy is
+// pull requests, bugs or code, a Slack workspace, a Notion workspace: how live the copy is
 // (when the newest item copied was created or last changed) and how far the
 // import of older items has got. The Doco home shows it atop the activity
 // column; the Doco's integrations page summarizes it.
@@ -96,12 +96,15 @@ async function loadGitHubStatus(
   ).rows[0];
   const imported = githubImportState(doco?.gh ?? null, now.getTime());
   if (!imported) return null;
-  // A pull request's Reference or a bug issue's Eval: whatever came from GitHub.
+  // A pull request's Reference, a bug issue's Eval or a copied code file:
+  // whatever came from GitHub.
   const latest = (
     await c.query<{ at: Date | string | null }>(
-      `SELECT max(updated_at) AS at FROM nodes
-        WHERE doco_id = $1 AND node_type IN ('reference', 'eval')
-          AND locator ~ '^https://github\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'`,
+      `SELECT greatest(
+                (SELECT max(updated_at) FROM nodes
+                  WHERE doco_id = $1 AND node_type IN ('reference', 'eval')
+                    AND locator ~ '^https://github\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'),
+                (SELECT max(synced_at) FROM code_files WHERE doco_id = $1)) AS at`,
       [docoId],
     )
   ).rows[0]?.at;

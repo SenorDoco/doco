@@ -19,7 +19,8 @@ export type PerspectiveKind =
   | "glossary"
   | "pull-requests"
   | "slack"
-  | "notion";
+  | "notion"
+  | "code";
 
 export interface Perspective {
   id: string;
