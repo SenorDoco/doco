@@ -3,8 +3,9 @@
 // to <org>" + a Manage button); the per-integration detail (covered repos,
 // import progress, re-import / disconnect) lives here so the
 // Integrations page stays a clean index. What the Doco brings from its repos
-// (pull requests, or bugs for a Bug tracker) follows its template
-// (github-imports); the GitHub setup page picks it for a workspace.
+// (pull requests, bugs for a Bug tracker, or code for a codebase Doco)
+// follows its template (github-imports); the GitHub setup page picks it for a
+// workspace.
 //
 // Writer-gated mutations (the connection model is a managed list).
 import { roleAtLeast } from "@doco/db";

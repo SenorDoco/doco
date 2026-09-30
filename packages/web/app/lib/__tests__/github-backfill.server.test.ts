@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // @doco/db; mock it so the import resolves without a real DB.
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
+import { backfillRepoCodebase } from "../codebase-sync.server";
 import {
   backfillInstallationRepos,
   backfillRepoBugs,
@@ -209,8 +210,9 @@ describe("backfillRepoBugs", () => {
 });
 
 describe("repoBackfillFor", () => {
-  it("walks bugs for a Bug tracker and pull requests for any other Doco", () => {
+  it("walks bugs for a Bug tracker, files for a codebase and pull requests for any other Doco", () => {
     expect(repoBackfillFor("bugs")).toBe(backfillRepoBugs);
+    expect(repoBackfillFor("codebase")).toBe(backfillRepoCodebase);
     expect(repoBackfillFor("github-pull-requests")).toBe(backfillRepoPullRequests);
     expect(repoBackfillFor(null)).toBe(backfillRepoPullRequests);
   });

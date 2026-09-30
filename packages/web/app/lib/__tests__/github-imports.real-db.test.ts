@@ -16,11 +16,14 @@ vi.mock("@doco/db", () => ({
 import {
   addConnection,
   connectRepositories,
+  detachReposEverywhere,
   getDocoConnectionsContext,
   listConnections,
   listInstallations,
   pickRepositories,
+  removeConnection,
   subscribeInstallation,
+  unsubscribeInstallationEverywhere,
 } from "../github-connection.server";
 import { findDocoByInstallation, findDocoTargetsForGitHubRepo } from "../github-webhook.server";
 
@@ -43,7 +46,11 @@ beforeEach(async () => {
         '{"template_handle": "github-pull-requests"}'),
       ('doco_legacy', 'acme-legacy', 'workspace_acme', 'workspace_acme', '{}'),
       ('doco_bugs', 'acme-bugs', 'workspace_acme', 'workspace_acme',
-        '{"template_handle": "bugs"}');
+        '{"template_handle": "bugs"}'),
+      ('doco_code', 'acme-codebase', 'workspace_acme', 'workspace_acme',
+        '{"template_handle": "codebase"}'),
+      ('doco_code2', 'acme-codebase-2', 'workspace_acme', 'workspace_acme',
+        '{"template_handle": "codebase"}');
   `);
 });
 
@@ -139,5 +146,52 @@ describe("connecting repositories", () => {
       repo_index: 0,
       page: 1,
     });
+  });
+});
+
+describe("the copied code follows the connections", () => {
+  const copyFile = (docoId: string, repo: string) =>
+    state.db.query(
+      `INSERT INTO code_files (doco_id, repo, path, sha, size) VALUES ($1, $2, 'a.ts', 'x', 1)`,
+      [docoId, repo],
+    );
+  const copiedRepos = async (docoId: string) =>
+    (
+      await state.db.query<{ repo: string }>(
+        "SELECT repo FROM code_files WHERE doco_id = $1 ORDER BY repo",
+        [docoId],
+      )
+    ).rows.map((r) => r.repo);
+
+  it("drops a repository's files when it is disconnected", async () => {
+    await addConnection("doco_code", conn);
+    await addConnection("doco_code", { repo: "acme/api", installation_id: 9 });
+    await copyFile("doco_code", REPO);
+    await copyFile("doco_code", "acme/api");
+    await removeConnection("doco_code", REPO);
+    expect(await copiedRepos("doco_code")).toEqual(["acme/api"]);
+  });
+
+  it("drops them from the codebase Doco a repository moves away from", async () => {
+    await addConnection("doco_code", conn);
+    await copyFile("doco_code", REPO);
+    await addConnection("doco_code2", conn);
+    expect(await copiedRepos("doco_code")).toEqual([]);
+  });
+
+  it("drops them when access to the repository is revoked", async () => {
+    await addConnection("doco_code", conn);
+    await copyFile("doco_code", REPO);
+    await detachReposEverywhere([REPO]);
+    expect(await copiedRepos("doco_code")).toEqual([]);
+  });
+
+  it("keeps the files of an organization the Doco subscribes to, until it is uninstalled", async () => {
+    await subscribeInstallation("doco_code", { installation_id: 9, account: "Acme" });
+    await copyFile("doco_code", REPO);
+    await removeConnection("doco_code", "acme/other");
+    expect(await copiedRepos("doco_code")).toEqual([REPO]);
+    await unsubscribeInstallationEverywhere(9);
+    expect(await copiedRepos("doco_code")).toEqual([]);
   });
 });

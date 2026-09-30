@@ -93,19 +93,19 @@ describe("IntegrationStatusCard", () => {
     const html = render(github);
     expect(html).toContain("GitHub integration");
     expect(html).toContain("Latest pull request update 5m ago");
-    expect(html).toContain("Importing past pull requests: 1 of 4 repos");
+    expect(html).toContain("Importing pull requests: 1 of 4 repos");
     expect(html.match(/<a [^>]*>Manage<\/a>/)?.[0]).toContain(
       'href="/torre-slack/integrations/github"',
     );
   });
 
   it("says when every past item is imported", () => {
-    expect(render({ ...github, state: "done" })).toContain("All past pull requests imported");
+    expect(render({ ...github, state: "done" })).toContain("All pull requests imported");
   });
 
   it("flags a stalled import", () => {
     expect(render({ ...github, state: "stalled" })).toContain(
-      "Import of past pull requests stalled at 1 of 4 repos",
+      "Import of pull requests stalled at 1 of 4 repos",
     );
   });
 

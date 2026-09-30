@@ -28,6 +28,12 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
       "Track a GitHub repository's pull requests as References — new PRs sync automatically, and merged PRs settle as active.",
   },
   {
+    handle: "codebase",
+    label: "GitHub codebase",
+    description:
+      "A copy of your GitHub repositories' code, kept in sync on every push, so it can be browsed and searched alongside your Doco knowledge.",
+  },
+  {
     handle: "slack",
     label: "Slack workspace",
     description:

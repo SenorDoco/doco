@@ -1,6 +1,7 @@
 // What a Doco brings from GitHub. The GitHub setup asks which of these to
 // bring, and each fills its own Doco of the matching template: pull requests
-// into a GitHub pull requests Doco, bugs into the Bug tracker. A Doco's
+// into a GitHub pull requests Doco, bugs into the Bug tracker, the codebase
+// into a codebase Doco. A Doco's
 // template decides what it brings; any other Doco connected to GitHub keeps
 // bringing pull requests, which is what every GitHub connection brought before
 // there was a choice.
@@ -36,6 +37,15 @@ export const GITHUB_IMPORTS: readonly GitHubImport[] = [
       "Issues labeled bug (or of the Bug issue type), filed as bugs in the Bug tracker and closed when the issue closes.",
     item: "bug",
     items: "bugs",
+  },
+  {
+    id: "codebase",
+    template: "codebase",
+    label: "Codebase",
+    description:
+      "Every file on each repository's default branch, kept in sync on every push and searchable by people and agents.",
+    item: "file",
+    items: "files",
   },
 ];
 

@@ -1,5 +1,7 @@
+import { backfillRepoCodebase } from "./codebase-sync.server";
 // Backfill: import a connected repo's existing items into the Doco — its pull
-// requests as References, or, for a Bug tracker, its bug issues as bugs. Mints
+// requests as References, for a Bug tracker its bug issues as bugs, or for a
+// codebase Doco its files (codebase-sync). Mints
 // an installation token, pages the repo's listing (github-app), and syncs each
 // item. Idempotent — safe to re-run, and safe to overlap with live webhook
 // deliveries, because every sync is keyed on the item's URL.
@@ -183,10 +185,12 @@ export type RepoBackfill = (opts: BackfillOpts) => Promise<BackfillResult>;
 const REPO_BACKFILLS: Record<string, RepoBackfill> = {
   "github-pull-requests": backfillRepoPullRequests,
   bugs: backfillRepoBugs,
+  codebase: backfillRepoCodebase,
 };
 
 /** The repo walker for what a Doco created from `template` brings from GitHub
- *  (github-imports): bugs for a Bug tracker, pull requests for any other Doco. */
+ *  (github-imports): bugs for a Bug tracker, files for a codebase Doco, pull
+ *  requests for any other Doco. */
 export function repoBackfillFor(template: string | null): RepoBackfill {
   return REPO_BACKFILLS[githubImportFor(template).template] ?? backfillRepoPullRequests;
 }
