@@ -5,6 +5,7 @@ import {
   agentInstructions,
   agentInstructionsForWorkspace,
 } from "../agent-instructions";
+import { expectBaselineDuties } from "./baseline-duties";
 import { firstPersonLines } from "./first-person";
 
 const text = agentInstructions("https://doco.test");
@@ -67,8 +68,10 @@ describe("agentInstructions", () => {
 
   it("carries the three baseline duties and the full protocol link", () => {
     expect(text).toContain("**Load context first.**");
-    expect(text).toContain("**Document every decision.**");
     expect(text).toContain("**Record the conversation.**");
+    expect(text).toContain("**Document every decision.**");
+    expectBaselineDuties(text);
+    expect(text).toContain("`doco_create`");
     expect(text).toContain("https://doco.test/protocol/canonical-instructions");
   });
 

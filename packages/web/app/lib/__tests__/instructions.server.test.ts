@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_REFERENCE, CANONICAL_INSTRUCTIONS } from "../instructions.server";
+import { expectBaselineDuties } from "./baseline-duties";
 import { firstPersonLines } from "./first-person";
 
 describe("CANONICAL_INSTRUCTIONS", () => {
@@ -35,8 +36,12 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     expect(CANONICAL_INSTRUCTIONS).not.toMatch(/does not mandate captures/i);
     expect(CANONICAL_INSTRUCTIONS).toContain("## Baseline duties");
     expect(CANONICAL_INSTRUCTIONS).toContain("**Load context first.**");
-    expect(CANONICAL_INSTRUCTIONS).toContain("**Document every decision.**");
     expect(CANONICAL_INSTRUCTIONS).toContain("**Record the conversation.**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**Document every decision.**");
+    expectBaselineDuties(CANONICAL_INSTRUCTIONS);
+    // Every chat gets its Log: the old "a session that changed nothing needs
+    // no Log" exemption is gone.
+    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/needs no Log/);
     // Policies refine HOW, they never switch the duties off.
     expect(CANONICAL_INSTRUCTIONS).toMatch(/policies refine how/i);
     expect(CANONICAL_INSTRUCTIONS).toMatch(/never switch (them|these duties) off/i);

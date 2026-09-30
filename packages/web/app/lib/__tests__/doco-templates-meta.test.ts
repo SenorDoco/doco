@@ -27,6 +27,7 @@ const SURVIVING_HANDLES = [
   "faq",
   "bugs",
   "ideas",
+  "agents-chats",
 ] as const;
 
 const REMOVED_HANDLES = ["glossaries", "data-decisions"] as const;
