@@ -40,7 +40,7 @@ describe("Home", () => {
   it("says what Doco is and hands over the agent instructions with a Copy button", async () => {
     const html = await render();
     expect(html).toContain(">Doco</h1>");
-    expect(html).toContain("Shared memory for AI and teams");
+    expect(html).toContain("Shared knowledge and context for AI and teams");
     expect(html).toContain("To use Doco with your agent(s), give them these instructions:");
     expect(html).toContain(">Copy</button>");
     // The instructions render verbatim (HTML-escaped) so an agent reading the
@@ -54,7 +54,7 @@ describe("Home", () => {
   it("is the same simple page for a signed-in person, with a way to the dashboard", async () => {
     getCurrentPrincipal.mockResolvedValue({ id: "user_1", username: "ana" });
     const html = await render();
-    expect(html).toContain("Shared memory for AI and teams");
+    expect(html).toContain("Shared knowledge and context for AI and teams");
     expect(html).toContain('href="/workspaces"');
     expect(html).not.toContain('href="/sign-in"');
   });
