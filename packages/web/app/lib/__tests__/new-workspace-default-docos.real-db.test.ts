@@ -69,14 +69,14 @@ describe("addWorkspaceByHandle seeds the default Docos", () => {
     const docos = await docosOf(ws.id);
 
     expect(docos.map((d) => d.template_handle)).toEqual([
-      "product-decisions",
-      "bugs",
-      "process",
-      "architectural-decisions",
-      "design-decisions",
-      "product-roadmap",
-      "ideas",
       "glossary",
+      "ideas",
+      "product-roadmap",
+      "product-decisions",
+      "design-decisions",
+      "architectural-decisions",
+      "process",
+      "bugs",
     ]);
     expect(docos.map((d) => d.handle)).toEqual(
       DEFAULT_WORKSPACE_DOCO_TEMPLATES.map((t) => `acme-${t}`),

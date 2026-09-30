@@ -225,14 +225,14 @@ export async function findAvailableDocoHandle(requestedHandle: string): Promise<
  * the seeded Doco's handle is `<workspace-handle>-<template name>`.
  */
 export const DEFAULT_WORKSPACE_DOCO_TEMPLATES = [
-  "product-decisions",
-  "bugs",
-  "process",
-  "architectural-decisions",
-  "design-decisions",
-  "product-roadmap",
-  "ideas",
   "glossary",
+  "ideas",
+  "product-roadmap",
+  "product-decisions",
+  "design-decisions",
+  "architectural-decisions",
+  "process",
+  "bugs",
 ] as const;
 
 /**
