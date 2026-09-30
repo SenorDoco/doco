@@ -48,7 +48,7 @@ vi.mock("../api.github.backfill-run", () => ({ kickBackfillRun: mocks.kickBackfi
 import { GITHUB_IMPORTS } from "~/lib/github-imports";
 import { action, loader } from "../integrations.github";
 
-const [pullRequests, bugs] = GITHUB_IMPORTS;
+const [pullRequests, bugs, codebase] = GITHUB_IMPORTS;
 const acme = { id: "workspace_acme", handle: "acme" };
 const choice = {
   installation_id: 42,
@@ -109,6 +109,8 @@ describe("/integrations/github loader", () => {
     expect(data).toMatchObject({
       step: "choose",
       workspaceHandle: "acme",
+      // Everything GitHub can bring starts picked: one setup fills every Doco.
+      bring: ["pull-requests", "bugs", "codebase"],
       workspaces: [
         { handle: "acme", docos: { bugs: { handle: "acme-bugs" } } },
         { handle: "zeta", docos: {} },
@@ -157,6 +159,31 @@ describe("/integrations/github action", () => {
     });
     expect(res.headers.get("Location")).toBe(
       "/integrations/github?workspace=acme&bring=pull-requests&bring=bugs",
+    );
+  });
+
+  it("brings all three at once, creating each Doco the workspace lacks", async () => {
+    mocks.ensureImportDocos.mockResolvedValue([
+      { import: pullRequests, doco: { id: "doco_prs", handle: "acme-pull-requests" } },
+      { import: bugs, doco: { id: "doco_bugs", handle: "acme-bugs" } },
+      { import: codebase, doco: { id: "doco_code", handle: "acme-codebase" } },
+    ]);
+    const res = await thrown(
+      action({
+        request: post({
+          intent: "choose",
+          workspace: "acme",
+          bring: ["pull-requests", "bugs", "codebase"],
+        }),
+      }),
+    );
+    expect(mocks.ensureImportDocos).toHaveBeenCalledWith({
+      workspace: acme,
+      imports: [pullRequests, bugs, codebase],
+      userId: "user_1",
+    });
+    expect(res.headers.get("Location")).toBe(
+      "/integrations/github?workspace=acme&bring=pull-requests&bring=bugs&bring=codebase",
     );
   });
 

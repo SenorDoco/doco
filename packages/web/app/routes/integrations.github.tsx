@@ -1,8 +1,8 @@
 // /integrations/github — setting up GitHub for a workspace. It asks which
 // workspace and what to bring from GitHub (github-imports: pull requests,
-// bugs), brings each choice into the workspace's Doco for it (creating the
-// ones it lacks, github-setup), then has the person pick the repositories to
-// bring them from. Every chosen Doco gets the same repositories, and each
+// bugs, codebase; all picked to start), brings each choice into the
+// workspace's Doco for it (creating the ones it lacks, github-setup), then
+// has the person pick the repositories to bring them from. Every chosen Doco gets the same repositories, and each
 // imports what it brings.
 //
 // Steps, all on this URL:
@@ -93,7 +93,8 @@ export async function loader({ request }: { request: Request }) {
       step: "choose" as const,
       me,
       workspaceHandle: workspace?.handle ?? (workspaces.length === 1 ? workspaces[0].handle : null),
-      bring: bring.map((i) => i.id),
+      // Everything starts picked, so one setup brings it all into its Docos.
+      bring: (bring.length > 0 ? bring : GITHUB_IMPORTS).map((i) => i.id),
       workspaces: workspaces.map((w) => ({ ...w, docos: docosByWorkspace[w.id] ?? {} })),
     };
   }
@@ -201,7 +202,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     }
     return {
       ok: true,
-      message: `Connected ${installation.account}. New ${bring.map((i) => i.items).join(" and ")} will sync automatically.`,
+      message: `Connected ${installation.account}. New ${new Intl.ListFormat("en", { type: "conjunction" }).format(bring.map((i) => i.items))} will sync automatically.`,
     };
   }
 
