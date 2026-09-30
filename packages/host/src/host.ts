@@ -219,7 +219,47 @@ export async function findAvailableDocoHandle(requestedHandle: string): Promise<
   });
 }
 
+/**
+ * The Docos every new workspace starts with, in the order they are
+ * created. Each entry is a template name from `DEFAULT_DOCO_TEMPLATES`;
+ * the seeded Doco's handle is `<workspace-handle>-<template name>`.
+ */
+export const DEFAULT_WORKSPACE_DOCO_TEMPLATES = [
+  "product-decisions",
+  "bugs",
+  "process",
+  "architectural-decisions",
+  "design-decisions",
+  "product-roadmap",
+  "ideas",
+  "glossary",
+] as const;
+
+/**
+ * Create a workspace owned by `ownerUserId` and seed it with the
+ * `DEFAULT_WORKSPACE_DOCO_TEMPLATES` Docos. Personal workspaces
+ * (`ensurePersonalWorkspace`) are not seeded: they are not a project's
+ * workspace.
+ */
 export async function addWorkspaceByHandle(opts: {
+  handle: string;
+  ownerUserId: string;
+  autoSuffix?: boolean;
+}): Promise<{ id: EntityId<"workspace">; handle: string }> {
+  const workspace = await insertWorkspace(opts);
+  for (const templateHandle of DEFAULT_WORKSPACE_DOCO_TEMPLATES) {
+    await createDocoInWorkspace({
+      workspaceId: workspace.id,
+      requestedHandle: `${workspace.handle}-${templateHandle}`,
+      createdByUserId: opts.ownerUserId,
+      templateHandle,
+      autoSuffix: true,
+    });
+  }
+  return workspace;
+}
+
+async function insertWorkspace(opts: {
   handle: string;
   ownerUserId: string;
   autoSuffix?: boolean;
