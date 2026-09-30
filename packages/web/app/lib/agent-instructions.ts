@@ -7,6 +7,10 @@
 // workspace's Connect your agent page, the Tokens page, the hosted MCP
 // server's instructions and the agent bootstrap all hand over this block;
 // everything else that talks to agents points here.
+//
+// The duties lead and hold without a repo copy, because an agent may meet
+// this block only through the connector. Claude Code keeps just the first
+// 4096 characters of an MCP server's instructions, so the block stays under.
 
 export const INSTRUCTIONS_BEGIN = "<!-- doco:begin -->";
 export const INSTRUCTIONS_END = "<!-- doco:end -->";
@@ -18,70 +22,14 @@ export function agentInstructions(baseUrl: string): string {
 
 This project keeps its shared memory in Doco (${host}): the intents,
 decisions, rules and history behind the work, shared by the team and its
-agents. When the user asks to use Doco, follow steps 1 to 3. The duties
-under "Every session" hold in every session.
-
-### 1. Check the Doco connection
-
-Look for Doco's MCP tools (\`doco_whoami\`, \`list_workspaces\`). If they
-are missing, ask the user to connect Doco's MCP server and try again once
-it is connected:
-
-- claude.ai, Claude Desktop, ChatGPT, Cursor: add a custom connector with
-  the URL ${host}/mcp
-- Claude Code: run \`claude mcp add --transport http doco ${host}/mcp\`,
-  then \`/mcp\` to sign in
-- Any other MCP client: add ${host}/mcp as a remote (Streamable HTTP) server
-
-While connecting, the user picks what the agent can reach: all of their
-workspaces, specific workspaces, or specific Docos. Signing in is the MCP
-client's job: never drive OAuth by hand or ask the user to paste a
-callback URL into the chat.
-
-Once connected, \`doco_whoami\` shows who the agent acts as, what it can
-reach, and the workspace constitutions its captures must honor.
-
-### 2. Pick the project's workspace
-
-One project = one workspace. Call \`list_workspaces\`.
-
-- No workspaces besides the user's personal one (named after the user,
-  never a project's): tell the user to create one at
-  ${host}/new-workspace, or to accept the invite a teammate sent, and to
-  try again once it exists. Agents never create workspaces.
-- A workspace is already connected to this project (the
-  \`Doco workspace:\` line right after this block): tell the user this
-  project is connected to that workspace and ask whether to keep it or
-  change it. To change it, ask which of the listed workspaces to use, or
-  share ${host}/new-workspace to create a new one.
-- No workspace connected yet: ask the user which of the listed workspaces
-  to use for this project, or share ${host}/new-workspace to create a new
-  one.
-
-A new workspace is reachable at once through an "all workspaces"
-connection; otherwise the user reconnects and picks it. Record the choice
-as one line right after this block:
-
-    Doco workspace: ${host}/workspaces/<workspace-handle>
-
-When the work needs a Doco the workspace lacks (decisions, bugs, ideas,
-...), create it with \`doco_create\` in the workspace on the
-\`Doco workspace:\` line, picking the template that fits. Never
-ask the user to create a Doco on the website.
-
-### 3. Keep these instructions current
-
-Fetch ${host} and compare the instructions it shows with this block, from
-the \`doco:begin\` marker to the \`doco:end\` marker. If they match, go on.
-If they differ, or the project's AGENTS.md (or CLAUDE.md, or similar) lacks
-this block, ask the user whether to update it with the latest instructions
-from ${host}. If ${host} can't be fetched, ask the user to copy the latest
-instructions from the ${host} home page and paste them.
+agents. Follow steps 1 to 3 below when the user asks to use Doco, or when a
+duty needs a connection or a workspace that is missing.
 
 ### Every session
 
-Four duties hold in every session. Each Doco's policies refine how to do
-them, never whether.
+Four duties hold in every session, even when the project's AGENTS.md or
+CLAUDE.md lacks this block. Each Doco's policies refine how to do them,
+never whether.
 
 1. **Load context first.** Before the first substantive reply,
    \`doco_search\` the workspace's Docos for the intents, decisions, rules
@@ -104,6 +52,56 @@ them, never whether.
 
 A doco is the project's record; write what was decided, by whom and why,
 in the third person or the imperative.
+
+### 1. Check the Doco connection
+
+Look for Doco's MCP tools (\`doco_whoami\`, \`list_workspaces\`). If they
+are missing, ask the user to connect Doco's MCP server and try again once
+it is connected:
+
+- claude.ai, Claude Desktop, ChatGPT, Cursor: add a custom connector with
+  the URL ${host}/mcp
+- Claude Code: run \`claude mcp add --transport http doco ${host}/mcp\`,
+  then \`/mcp\` to sign in
+- Any other MCP client: add ${host}/mcp as a remote (Streamable HTTP) server
+
+Signing in is the MCP client's job: never drive OAuth by hand or have the
+user paste a callback URL. Once connected,
+\`doco_whoami\` shows who the agent acts as, what it can reach, and the
+workspace constitutions its captures must honor.
+
+### 2. Pick the project's workspace
+
+One project = one workspace. Call \`list_workspaces\`.
+
+- No workspaces besides the user's personal one (named after the user,
+  never a project's): tell the user to create one at
+  ${host}/new-workspace, or to accept the invite a teammate sent, and to
+  try again once it exists. Agents never create workspaces.
+- A workspace is already connected (the \`Doco workspace:\` line right
+  after this block): ask whether to keep it or change it.
+- None connected yet, or changing it: ask the user which of the listed workspaces
+  to use, or share ${host}/new-workspace to create one.
+
+A new workspace is reachable at once through an "all workspaces"
+connection; otherwise the user reconnects and picks it. Record the choice
+as one line right after this block:
+
+    Doco workspace: ${host}/workspaces/<workspace-handle>
+
+When the work needs a Doco the workspace lacks, create it with
+\`doco_create\` in the workspace on the \`Doco workspace:\` line, picking
+the template that fits. Never ask the user to create a Doco on the website.
+
+### 3. Keep these instructions current
+
+Fetch ${host} and compare the instructions it shows with this block, from
+the \`doco:begin\` marker to the \`doco:end\` marker. If they differ, or
+the file the project's agents load lacks this block (CLAUDE.md for Claude
+Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads
+AGENTS.md too), ask the user whether to update it with the latest instructions
+from ${host}. If it can't be fetched, ask the user to copy the latest
+instructions from the home page and paste them.
 ${INSTRUCTIONS_END}
 `;
 }

@@ -73,6 +73,37 @@ describe("agentInstructions", () => {
     expectBaselineDuties(text);
   });
 
+  // Alexander, 2026-09-30: an agent with the Doco connector skipped every duty
+  // because the repo's CLAUDE.md lacked this block (it sat in AGENTS.md on an
+  // unmerged PR) and the connector's copy read as setup to run only when asked.
+  // The duties lead, hold without a repo copy, and only setup waits for the user.
+  it("leads with the duties, which hold even without a copy in the repo", () => {
+    expect(position("### Every session")).toBeLessThan(
+      position("### 1. Check the Doco connection"),
+    );
+    const flat = text.replace(/\s+/g, " ");
+    expect(flat).toContain(
+      "Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.md lacks this block.",
+    );
+    expect(flat).toContain(
+      "Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.",
+    );
+  });
+
+  // Claude Code keeps only the first 4096 characters of an MCP server's
+  // instructions, and the hosted server sends this block whole.
+  it("fits whole in the instructions an MCP client keeps", () => {
+    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(4096);
+  });
+
+  // Claude Code loads CLAUDE.md, not AGENTS.md: a block kept only in AGENTS.md
+  // never reaches it unless CLAUDE.md imports that file.
+  it("checks the block is in the file the project's agents actually load", () => {
+    const flat = text.replace(/\s+/g, " ");
+    expect(flat).toContain("CLAUDE.md for Claude Code, AGENTS.md for most others");
+    expect(flat).toContain("`@AGENTS.md`");
+  });
+
   // Alexander, 2026-09-30: one template for every place Doco instructs an
   // agent. It stands alone, with no second protocol document behind it.
   it("stands alone: no link to another protocol document", () => {
