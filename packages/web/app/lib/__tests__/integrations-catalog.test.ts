@@ -49,14 +49,14 @@ describe("integrations-catalog", () => {
       expect(href).toBe("/test/integrations/github");
     });
 
-    it("routes GitHub clicks from the account page to its doco picker", () => {
+    it("routes GitHub clicks from the account page to the GitHub setup", () => {
       const href = connectHrefFor({ integration: github });
-      expect(href).toBe("/integrations?integration=github");
+      expect(href).toBe("/integrations/github");
     });
 
-    it("routes GitHub clicks from a workspace page to that workspace's doco picker", () => {
+    it("routes GitHub clicks from a workspace page to the GitHub setup for that workspace", () => {
       const href = connectHrefFor({ integration: github, workspaceHandle: "acme" });
-      expect(href).toBe("/workspaces/acme/integrations?integration=github");
+      expect(href).toBe("/integrations/github?workspace=acme");
     });
   });
 });

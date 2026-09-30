@@ -4,6 +4,8 @@
 // already in the codebase (HMAC over the raw body, constant-time compare).
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { withClient } from "@doco/db";
+import { githubImportSql } from "./github-connection.server";
+import type { GitHubIssue } from "./github-issue-import.server";
 import type { GitHubPullRequest } from "./github-pr-import.server";
 
 /**
@@ -123,6 +125,59 @@ export function parsePullRequestReviewEvent(payload: unknown): ParsedPullRequest
   };
 }
 
+export interface ParsedIssuesEvent {
+  /** "opened" | "edited" | "closed" | "reopened" | "labeled" | "unlabeled" | "deleted" | …. */
+  action: string;
+  repoFullName: string;
+  installationId: number | null;
+  issue: GitHubIssue;
+}
+
+/**
+ * Parse an `issues` webhook — GitHub sends it when an issue is opened, edited,
+ * closed, reopened, labeled, typed, deleted, …. Pure; defensive about the
+ * untrusted shape: labels keep only their names, and the `pull_request` marker
+ * survives so a pull request is never taken for a bug.
+ */
+export function parseIssuesEvent(payload: unknown): ParsedIssuesEvent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as {
+    action?: unknown;
+    repository?: { full_name?: unknown };
+    installation?: { id?: unknown };
+    issue?: Record<string, unknown> | null;
+  };
+  const repoFullName = p.repository?.full_name;
+  const raw = p.issue;
+  if (typeof repoFullName !== "string" || !raw) return null;
+  if (typeof raw.number !== "number" || typeof raw.html_url !== "string") return null;
+  const labels = (Array.isArray(raw.labels) ? raw.labels : [])
+    .map((l) =>
+      l && typeof l === "object" && typeof (l as { name?: unknown }).name === "string"
+        ? { name: (l as { name: string }).name }
+        : null,
+    )
+    .filter((l): l is { name: string } => l !== null);
+  const type = raw.type as { name?: unknown } | null | undefined;
+  const user = raw.user as { login?: unknown } | null | undefined;
+  return {
+    action: typeof p.action === "string" ? p.action : "",
+    repoFullName,
+    installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
+    issue: {
+      number: raw.number,
+      title: typeof raw.title === "string" ? raw.title : "",
+      html_url: raw.html_url,
+      state: raw.state === "closed" ? "closed" : "open",
+      state_reason: typeof raw.state_reason === "string" ? raw.state_reason : null,
+      labels,
+      ...(type && typeof type.name === "string" ? { type: { name: type.name } } : {}),
+      ...(user && typeof user.login === "string" ? { user: { login: user.login } } : {}),
+      ...(raw.pull_request ? { pull_request: raw.pull_request } : {}),
+    },
+  };
+}
+
 export interface ParsedInstallationEvent {
   /** "created" | "deleted" | "suspend" | "unsuspend" | "new_permissions_accepted". */
   action: string;
@@ -196,6 +251,19 @@ export interface DocoRepoConnection {
   docoId: string;
   handle: string;
   workspaceHandle: string;
+  /** The template the Doco was created from, which decides what it brings. */
+  template: string | null;
+}
+
+type DocoRow = { id: string; handle: string; workspace_handle: string; template: string | null };
+
+function toConnection(row: DocoRow): DocoRepoConnection {
+  return {
+    docoId: row.id,
+    handle: row.handle,
+    workspaceHandle: row.workspace_handle,
+    template: row.template,
+  };
 }
 
 /** Docos subscribed to every repository under a GitHub App installation. */
@@ -203,8 +271,9 @@ export async function findDocoByInstallation(
   installationId: number,
 ): Promise<DocoRepoConnection[]> {
   return withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; workspace_handle: string }>(
-      `SELECT d.id, d.handle, o.handle AS workspace_handle
+    const r = await c.query<DocoRow>(
+      `SELECT d.id, d.handle, o.handle AS workspace_handle,
+              d.data->>'template_handle' AS template
          FROM docos d
          JOIN workspaces o ON o.id = d.workspace_id
         WHERE d.data->'github_integration'->'installations'
@@ -213,23 +282,24 @@ export async function findDocoByInstallation(
         `,
       [installationId],
     );
-    return r.rows.map((row) => ({
-      docoId: row.id,
-      handle: row.handle,
-      workspaceHandle: row.workspace_handle,
-    }));
+    return r.rows.map(toConnection);
   });
 }
 
-/** Docos that should receive a repo event: either an org-wide subscription or
- * an explicit selected repository connection for that installation. */
+/**
+ * Docos that should receive a repo event about one kind of item — those that
+ * bring `importTemplate` (github-imports) and either subscribe to the whole
+ * installation or selected the repository.
+ */
 export async function findDocoTargetsForGitHubRepo(
   installationId: number,
   repoFullName: string,
+  importTemplate: string,
 ): Promise<DocoRepoConnection[]> {
   return withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; workspace_handle: string }>(
-      `SELECT d.id, d.handle, o.handle AS workspace_handle
+    const r = await c.query<DocoRow>(
+      `SELECT d.id, d.handle, o.handle AS workspace_handle,
+              d.data->>'template_handle' AS template
          FROM docos d
          JOIN workspaces o ON o.id = d.workspace_id
         WHERE (d.data->'github_integration'->'installations'
@@ -238,13 +308,10 @@ export async function findDocoTargetsForGitHubRepo(
                 @> jsonb_build_array(
                      jsonb_build_object('installation_id', $1::int, 'repo', $2::text)
                    ))
+          AND ${githubImportSql("d")} = $3
           AND d.deleted_at IS NULL`,
-      [installationId, repoFullName],
+      [installationId, repoFullName, importTemplate],
     );
-    return r.rows.map((row) => ({
-      docoId: row.id,
-      handle: row.handle,
-      workspaceHandle: row.workspace_handle,
-    }));
+    return r.rows.map(toConnection);
   });
 }

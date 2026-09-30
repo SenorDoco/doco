@@ -22,7 +22,10 @@ vi.mock("~/lib/doco-access.server", () => ({
   getDocoLevelRole: mocks.getDocoLevelRole,
 }));
 vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/tmp/docos/${h}` }));
-vi.mock("~/lib/github-backfill.server", () => ({ backfillRepoPullRequests: mocks.backfill }));
+// The walker for what the Doco brings, by its template (bugs → bugs).
+vi.mock("~/lib/github-backfill.server", () => ({
+  repoBackfillFor: (template: string | null) => (template === "bugs" ? mocks.backfill : undefined),
+}));
 vi.mock("~/lib/github-connection.server", () => ({
   // Pure slug parser re-implemented inline so the factory stays hoist-safe;
   // the canonical impl is unit-tested in github-connection.server.test.ts.
@@ -86,6 +89,7 @@ describe("github connection route", () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "store-doco",
       workspaceHandle: "acme-org",
+      template: "bugs",
       connections: [{ repo: "acme/store", installation_id: 42 }],
     });
     mocks.backfill.mockResolvedValue({ total: 5, imported: 5, failed: 0 });

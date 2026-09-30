@@ -6,7 +6,7 @@
 import { roleAtLeast } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { backfillRepoPullRequests } from "~/lib/github-backfill.server";
+import { repoBackfillFor } from "~/lib/github-backfill.server";
 import {
   getDocoConnectionsContext,
   listConnections,
@@ -79,7 +79,7 @@ export async function action({
       return Response.json({ error: "That repo isn't connected to this doco." }, { status: 400 });
     }
     const startPage = Number(body.page ?? 1);
-    const result = await backfillRepoPullRequests({
+    const result = await repoBackfillFor(ctx.template)({
       docoDir: docoPath(ctx.handle),
       docoId: meta.docoId,
       ownerSlug: ctx.workspaceHandle,

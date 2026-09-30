@@ -1,5 +1,5 @@
 // What an integrated Doco reports about each source it copies from — GitHub
-// pull requests, a Slack workspace, a Notion workspace: how live the copy is
+// pull requests or bugs, a Slack workspace, a Notion workspace: how live the copy is
 // (when the newest item copied was created or last changed) and how far the
 // import of older items has got. The Doco home shows it atop the activity
 // column; the Doco's integrations page summarizes it.
@@ -8,6 +8,7 @@ import {
   type ImportState,
   githubImportState,
 } from "./github-connection.server";
+import { githubImportFor } from "./github-imports";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -17,7 +18,10 @@ export type { ImportState };
 
 export interface GitHubIntegrationStatus {
   integration: "github";
-  /** When the most recently changed PR Reference was written. */
+  /** What the Doco brings from GitHub, one and several (github-imports). */
+  item: string;
+  items: string;
+  /** When the most recently changed item copied from GitHub was written. */
   latestAt: string | null;
   state: ImportState;
   reposDone: number;
@@ -83,23 +87,26 @@ async function loadGitHubStatus(
   docoId: string,
   now: Date,
 ): Promise<GitHubIntegrationStatus | null> {
-  const raw = (
-    await c.query<{ gh: unknown }>(
-      "SELECT data->'github_integration' AS gh FROM docos WHERE id = $1",
+  const doco = (
+    await c.query<{ gh: unknown; template: string | null }>(
+      `SELECT data->'github_integration' AS gh, data->>'template_handle' AS template
+         FROM docos WHERE id = $1`,
       [docoId],
     )
-  ).rows[0]?.gh;
-  const imported = githubImportState(raw ?? null, now.getTime());
+  ).rows[0];
+  const imported = githubImportState(doco?.gh ?? null, now.getTime());
   if (!imported) return null;
+  // A pull request's Reference or a bug issue's Eval: whatever came from GitHub.
   const latest = (
     await c.query<{ at: Date | string | null }>(
       `SELECT max(updated_at) AS at FROM nodes
-        WHERE doco_id = $1 AND node_type = 'reference'
-          AND locator LIKE 'https://github.com/%/pull/%'`,
+        WHERE doco_id = $1 AND node_type IN ('reference', 'eval')
+          AND locator ~ '^https://github\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'`,
       [docoId],
     )
   ).rows[0]?.at;
-  return { integration: "github", latestAt: toIso(latest), ...imported };
+  const { item, items } = githubImportFor(doco?.template);
+  return { integration: "github", item, items, latestAt: toIso(latest), ...imported };
 }
 
 async function loadSlackStatus(

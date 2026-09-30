@@ -23,6 +23,7 @@ import {
   githubImportProgress,
   githubOrgAccounts,
 } from "~/lib/github-connection.server";
+import { githubImportFor } from "~/lib/github-imports";
 import { loadIntegrationStatuses } from "~/lib/integration-status.server";
 
 export async function loader({
@@ -48,6 +49,7 @@ export async function loader({
     ownerSlug,
     workspaceHandle: ctx?.workspaceHandle ?? "",
     github: {
+      brings: githubImportFor(ctx?.template).description,
       connected: (ctx?.connections.length ?? 0) > 0 || orgAccounts.length > 0,
       orgAccounts,
       repoCount: ctx?.connections.length ?? 0,
@@ -66,7 +68,7 @@ const MANAGE_BTN =
   "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
 
 /**
- * Animated "importing X of Y…" note shown on the GitHub card while a PR
+ * Animated "importing X of Y…" note shown on the GitHub card while a
  * backfill runs: the running repo count plus a spinner. Falls back to a plain
  * "importing…" with just the spinner when the repo total isn't known yet.
  */
@@ -98,7 +100,7 @@ export default function DocoIntegrations() {
   const { me, handle, ownerSlug, workspaceHandle, github, mirrors } =
     useLoaderData<typeof loader>();
 
-  // While a PR backfill is running, poll the loader so the "importing X of Y"
+  // While a GitHub backfill is running, poll the loader so the "importing X of Y"
   // count climbs on its own — this is import progress the user is actively
   // watching, so auto-revalidating is the right call (unlike the Doco home,
   // which surfaces a manual "Refresh" rather than streaming). The ref keeps a
@@ -166,9 +168,7 @@ export default function DocoIntegrations() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    Pull requests tracked as References.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{github.brings}</p>
                   <Link to={`/${handle}/integrations/github`} className={MANAGE_BTN}>
                     Manage
                   </Link>

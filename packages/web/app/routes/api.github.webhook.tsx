@@ -1,12 +1,14 @@
 // Inbound GitHub App webhook. Verifies x-hub-signature-256 against
-// DOCO_GITHUB_WEBHOOK_SECRET, then routes repo events to Docos that selected
-// that repository or intentionally subscribed to the whole installation. Events handled:
-//   - pull_request           → upsert the PR as a Reference in the subscribed Doco.
+// DOCO_GITHUB_WEBHOOK_SECRET, then routes repo events to the Docos that bring
+// that kind of item from the repository (github-imports), whether they selected
+// the repo or subscribed to the whole installation. Events handled:
+//   - pull_request           → upsert the PR as a Reference in the pull requests Docos.
 //   - pull_request_review     → an approving review lifts an open PR to active.
-//   - installation_repositories (added)   → backfill the new repos' existing PRs.
+//   - issues                 → file, update or retire the bug in the Bug trackers.
+//   - installation_repositories (added)   → backfill the new repos' existing items.
 //   - installation_repositories (removed) → detach those repos' connections.
 //   - installation (deleted)  → uninstall: detach the installation everywhere.
-// Idempotent on the PR URL / installation id, so re-deliveries are safe.
+// Idempotent on the item URL / installation id, so re-deliveries are safe.
 import { docoPath } from "~/lib/db.server";
 import { listPullRequestFiles, mintInstallationToken } from "~/lib/github-app.server";
 import { backfillInstallationRepos } from "~/lib/github-backfill.server";
@@ -15,9 +17,10 @@ import {
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
 } from "~/lib/github-connection.server";
+import { syncBugIssue } from "~/lib/github-issue-import.server";
 import {
   type GitHubPullRequestFile,
-  type PullRequestSyncStatus,
+  type GitHubSyncStatus,
   hasBusinessProcessCodeReferences,
   upsertPullRequestReference,
 } from "~/lib/github-pr-import.server";
@@ -26,6 +29,7 @@ import {
   findDocoTargetsForGitHubRepo,
   parseInstallationEvent,
   parseInstallationRepositoriesEvent,
+  parseIssuesEvent,
   parsePullRequestEvent,
   parsePullRequestReviewEvent,
   verifyGitHubSignature,
@@ -122,8 +126,9 @@ export async function action({ request }: { request: Request }) {
       );
       return Response.json({ ok: true, event, removed: evt.removedRepos.length });
     }
-    // Added → backfill the new repos' pre-existing PRs (brand-new PRs arrive
-    // via pull_request under the same installation id).
+    // Added → backfill the new repos' pre-existing items, as each subscribed
+    // Doco brings them (brand-new ones arrive as webhooks under the same
+    // installation id).
     if (evt.action !== "added" || evt.addedRepos.length === 0) {
       return Response.json({ ok: true, ignored: true });
     }
@@ -148,6 +153,7 @@ export async function action({ request }: { request: Request }) {
         docoId: conn.docoId,
         ownerSlug: conn.workspaceHandle,
         docoSlug: conn.handle,
+        template: conn.template,
         repos: evt.addedRepos,
         installationId: evt.installationId,
       });
@@ -175,11 +181,15 @@ export async function action({ request }: { request: Request }) {
     ) {
       return Response.json({ ok: true, ignored: true });
     }
-    const docos = await findDocoTargetsForGitHubRepo(evt.installationId, evt.repoFullName);
+    const docos = await findDocoTargetsForGitHubRepo(
+      evt.installationId,
+      evt.repoFullName,
+      "github-pull-requests",
+    );
     console.info(
       `[github webhook] review approved ${evt.repoFullName}#${evt.pr.number} (installation ${evt.installationId}) → ${docos.length} subscribed doco(s)`,
     );
-    const results: Array<{ doco: string; status: PullRequestSyncStatus }> = [];
+    const results: Array<{ doco: string; status: GitHubSyncStatus }> = [];
     const changedFilesCache: ChangedFilesCache = {};
     for (const conn of docos) {
       let changedFiles: GitHubPullRequestFile[] | undefined;
@@ -209,6 +219,37 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ ok: true, event, repo: evt.repoFullName, results });
   }
 
+  // An issue opened, edited, closed, reopened, (un)labeled, typed or deleted →
+  // re-sync it into every Bug tracker bringing bugs from the repo. Whether it
+  // is a bug is decided there, so a label added or removed files or retires it.
+  if (event === "issues") {
+    const evt = parseIssuesEvent(payload);
+    if (!evt || evt.installationId == null) {
+      return Response.json({ ok: true, ignored: true });
+    }
+    const docos = await findDocoTargetsForGitHubRepo(evt.installationId, evt.repoFullName, "bugs");
+    console.info(
+      `[github webhook] issue ${evt.action} ${evt.repoFullName}#${evt.issue.number} (installation ${evt.installationId}) → ${docos.length} bug tracker(s)`,
+    );
+    const results: Array<{ doco: string; status: GitHubSyncStatus }> = [];
+    for (const conn of docos) {
+      const res = await syncBugIssue(evt.issue, {
+        docoDir: docoPath(conn.handle),
+        docoId: conn.docoId,
+        ownerSlug: conn.workspaceHandle,
+        docoSlug: conn.handle,
+        deleted: evt.action === "deleted",
+      });
+      if (res.status === "error") {
+        console.error(
+          `[github webhook] bug sync failed for ${evt.issue.html_url} in ${conn.handle}: ${res.error}`,
+        );
+      }
+      results.push({ doco: conn.handle, status: res.status });
+    }
+    return Response.json({ ok: true, event, repo: evt.repoFullName, results });
+  }
+
   if (event !== "pull_request") {
     return Response.json({ ok: true, ignored: "unhandled event" });
   }
@@ -219,11 +260,15 @@ export async function action({ request }: { request: Request }) {
   if (parsed.installationId == null) {
     return Response.json({ ok: true, ignored: "no installation id" });
   }
-  const docos = await findDocoTargetsForGitHubRepo(parsed.installationId, parsed.repoFullName);
+  const docos = await findDocoTargetsForGitHubRepo(
+    parsed.installationId,
+    parsed.repoFullName,
+    "github-pull-requests",
+  );
   console.info(
     `[github webhook] ${parsed.action} ${parsed.repoFullName}#${parsed.pr.number} (installation ${parsed.installationId}) → ${docos.length} subscribed doco(s)`,
   );
-  const results: Array<{ doco: string; status: PullRequestSyncStatus }> = [];
+  const results: Array<{ doco: string; status: GitHubSyncStatus }> = [];
   const changedFilesCache: ChangedFilesCache = {};
   for (const conn of docos) {
     let changedFiles: GitHubPullRequestFile[] | undefined;

@@ -681,3 +681,42 @@ describe("bug template — end-to-end via runAuthoringPolicies", () => {
     ).toBe(true);
   });
 });
+
+// ─── Suite F: bugs imported from GitHub issues ────────────────────────────────
+
+describe("bug template — bugs imported from GitHub (github-issue-import.server)", () => {
+  // The import files each bug issue as the Eval it builds here: the issue title
+  // as prose, the issue URL as locator, and nothing a GitHub issue can't say.
+  it("admits an open GitHub bug as a drafting report", async () => {
+    judge.run.mockResolvedValue({ ok: true });
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: "eval_bugimport-open",
+        node_type: "eval",
+        doco_id: docoId,
+        prose: "Login fails with a 500 after a password reset",
+        locator: "https://github.com/acme/app/issues/7",
+        lifecycle: "drafting",
+      },
+    });
+    expect(result.blocking).toBeNull();
+  });
+
+  it("admits a closed GitHub bug as retired with its resolution, without the judge", async () => {
+    const result = await runAuthoringPolicies({
+      docoId,
+      candidate: {
+        id: "eval_bugimport-closed",
+        node_type: "eval",
+        doco_id: docoId,
+        prose: "Login fails with a 500 after a password reset",
+        locator: "https://github.com/acme/app/issues/7",
+        resolution: "fixed",
+        lifecycle: "retired",
+      },
+    });
+    expect(result.blocking).toBeNull();
+    expect(judge.run).not.toHaveBeenCalled();
+  });
+});

@@ -32,6 +32,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   (agent self-service: install the hosted MCP connector at /mcp; OAuth dance kicks off automatically)
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
+ *   /integrations/github           GitHub setup: workspace + what to bring (pull requests, bugs) + repos
  *   /workspaces/<workspace-handle>/agent       the agent instructions, connected to this workspace
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
  *   /<doco-handle>                 per-Doco recent + search input
@@ -150,6 +151,7 @@ export default [
   route("workspaces/:workspaceHandle/search", "routes/workspaces.$workspaceHandle.search.tsx"),
   route("users", "routes/users.tsx"),
   route("integrations", "routes/integrations.tsx"),
+  route("integrations/github", "routes/integrations.github.tsx"),
   route("integrations/slack/install", "routes/integrations.slack.install.tsx"),
   route("integrations/slack/callback", "routes/integrations.slack.callback.tsx"),
   route("integrations/slack/link", "routes/integrations.slack.link.tsx"),

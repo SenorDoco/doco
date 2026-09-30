@@ -146,15 +146,15 @@ describe("/integrations", () => {
 
   it("loads the doco picker for the integration a Set up... click names", async () => {
     mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_alice", username: "alice" });
-    const picker = { integrationId: "github", workspaces: [] };
+    const picker = { integrationId: "notion", workspaces: [] };
     mocks.loadDocoPicker.mockResolvedValue(picker);
 
     const data = await loader({
-      request: new Request("https://doco.test/integrations?integration=github"),
+      request: new Request("https://doco.test/integrations?integration=notion"),
     });
 
     expect(mocks.loadDocoPicker).toHaveBeenCalledWith({
-      integrationId: "github",
+      integrationId: "notion",
       userId: "user_alice",
     });
     expect(data.docoPicker).toBe(picker);

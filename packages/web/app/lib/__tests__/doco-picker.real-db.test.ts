@@ -46,28 +46,26 @@ function docosByWorkspace(picker: Awaited<ReturnType<typeof loadDocoPicker>>) {
 }
 
 describe("loadDocoPicker", () => {
-  it("lists every Doco the person reaches, by workspace, for GitHub and Notion", async () => {
-    for (const integrationId of ["github", "notion"]) {
-      const picker = await loadDocoPicker({ integrationId, userId: "user_ana" });
-      expect(picker?.integrationId).toBe(integrationId);
-      expect(docosByWorkspace(picker)).toEqual([
-        ["acme", ["acme-bugs"]],
-        ["torre", ["torre-decisions", "torre-ideas"]],
-      ]);
-    }
+  it("lists every Doco the person reaches, by workspace, for Notion", async () => {
+    const picker = await loadDocoPicker({ integrationId: "notion", userId: "user_ana" });
+    expect(picker?.integrationId).toBe("notion");
+    expect(docosByWorkspace(picker)).toEqual([
+      ["acme", ["acme-bugs"]],
+      ["torre", ["torre-decisions", "torre-ideas"]],
+    ]);
   });
 
   it("narrows to one workspace on that workspace's page", async () => {
     const picker = await loadDocoPicker({
-      integrationId: "github",
+      integrationId: "notion",
       userId: "user_ana",
       workspaceId: "workspace_torre",
     });
     expect(docosByWorkspace(picker)).toEqual([["torre", ["torre-decisions", "torre-ideas"]]]);
   });
 
-  it("is null unless the page was opened to set up a Doco-level integration", async () => {
-    for (const integrationId of [null, "slack", "nope"]) {
+  it("is null unless the page was opened to set up a Doco-level integration without its own setup page", async () => {
+    for (const integrationId of [null, "slack", "github", "nope"]) {
       expect(await loadDocoPicker({ integrationId, userId: "user_ana" })).toBeNull();
     }
   });

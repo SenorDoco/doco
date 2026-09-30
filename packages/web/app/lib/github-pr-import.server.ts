@@ -125,22 +125,23 @@ export function pullRequestToReferenceDraft(
 }
 
 /**
- * Find an existing, in-scope Reference in this Doco whose `locator` equals the
- * PR URL — the dedupe key for idempotent import. Returns the oldest match's id
- * (or null). Keyed on the promoted `locator` column, kept an indexed lookup by
- * the partial index `nodes_ref_locator_idx`.
+ * Find an existing node of `nodeType` in this Doco whose `locator` equals the
+ * GitHub URL it was imported from (a PR's Reference, a bug's Eval) — the dedupe
+ * key for idempotent import. Returns the oldest match's id (or null). Keyed on
+ * the promoted `locator` column, kept an indexed lookup by `nodes_locator_idx`.
  */
-export async function findReferenceIdByLocator(
+export async function findNodeIdByLocator(
   docoId: string,
+  nodeType: "reference" | "eval",
   locator: string,
 ): Promise<string | null> {
   return withClient(async (c) => {
     const r = await c.query<{ id: string }>(
       `SELECT id FROM nodes
-        WHERE doco_id = $1 AND node_type = 'reference' AND locator = $2
+        WHERE doco_id = $1 AND node_type = $2 AND locator = $3
         ORDER BY created_at ASC
         LIMIT 1`,
-      [docoId, locator],
+      [docoId, nodeType, locator],
     );
     return r.rows[0]?.id ?? null;
   });
@@ -176,16 +177,16 @@ export async function resolveAuthorUserIdByLogin(login: string): Promise<string 
 }
 
 /**
- * Outcome of a single PR → Reference sync.
- *   created   — a new Reference was captured.
- *   updated   — an existing Reference changed (lifecycle/prose moved).
- *   unchanged — the Reference already matched; nothing to do (NOT a failure —
+ * Outcome of syncing one GitHub item (a PR, a bug issue) into its node.
+ *   created   — a new node was captured.
+ *   updated   — an existing node changed (lifecycle/prose moved).
+ *   unchanged — the node already matched; nothing to do (NOT a failure —
  *               this is the common case on a repeat backfill or webhook re-delivery).
  *   error     — the write failed; `error` carries the reason.
  */
-export type PullRequestSyncStatus = "created" | "updated" | "unchanged" | "error";
-export interface PullRequestSyncResult {
-  status: PullRequestSyncStatus;
+export type GitHubSyncStatus = "created" | "updated" | "unchanged" | "error";
+export interface GitHubSyncResult {
+  status: GitHubSyncStatus;
   id?: string;
   error?: string;
 }
@@ -502,9 +503,9 @@ async function linkPullRequestContext(opts: {
 export async function upsertPullRequestReference(
   pr: GitHubPullRequest,
   opts: UpsertPullRequestOpts,
-): Promise<PullRequestSyncResult> {
+): Promise<GitHubSyncResult> {
   const draft = pullRequestToReferenceDraft(pr, { approved: opts.approved });
-  const existingId = await findReferenceIdByLocator(opts.docoId, draft.locator);
+  const existingId = await findNodeIdByLocator(opts.docoId, "reference", draft.locator);
 
   if (existingId) {
     const res = await updateEntity({

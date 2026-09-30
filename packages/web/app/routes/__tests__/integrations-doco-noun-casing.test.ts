@@ -10,8 +10,11 @@ import { describe, expect, it } from "vitest";
 // "granted Doco access to" — so we assert those survive untouched, to keep the
 // sweep from over-lowercasing the brand. (Sentence/heading-initial "Docos in
 // this workspace" also stays, like any first word.)
+// The per-doco GitHub page renders copy from the shared GitHub repo picker too.
 const githubSource = () =>
-  readFileSync(new URL("../$docoHandle.integrations.github.tsx", import.meta.url), "utf8");
+  ["../$docoHandle.integrations.github.tsx", "../../components/github-repo-picker.tsx"]
+    .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+    .join("\n");
 const workspaceRollupSource = () =>
   readFileSync(new URL("../workspaces.$workspaceHandle.integrations.tsx", import.meta.url), "utf8");
 
@@ -21,8 +24,7 @@ describe("integrations pages — doco noun is lowercase, brand is not", () => {
 
     // Demonstrative/quantified noun usages render lowercase.
     expect(src).toContain("connect this doco.");
-    expect(src).toContain("track on this doco below.");
-    expect(src).toContain("this doco tracks pull requests from.");
+    expect(src).toContain("this doco brings {brings.items} from.");
     expect(src).toContain("track on this doco.");
 
     // No capital-D noun phrase survives in the rendered copy.

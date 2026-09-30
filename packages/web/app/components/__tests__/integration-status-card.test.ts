@@ -24,6 +24,8 @@ function render(status: IntegrationStatus): string {
 
 const github: GitHubIntegrationStatus = {
   integration: "github",
+  item: "pull request",
+  items: "pull requests",
   latestAt: "2026-09-27T14:55:00.000Z",
   state: "importing",
   reposDone: 1,
@@ -87,24 +89,30 @@ describe("IntegrationStatusCard", () => {
     );
   });
 
-  it("shows GitHub's live updates and the old-PR import's progress", () => {
+  it("shows GitHub's live updates and the old items' import progress", () => {
     const html = render(github);
     expect(html).toContain("GitHub integration");
-    expect(html).toContain("Latest PR update 5m ago");
-    expect(html).toContain("Importing old PRs: 1 of 4 repos");
+    expect(html).toContain("Latest pull request update 5m ago");
+    expect(html).toContain("Importing past pull requests: 1 of 4 repos");
     expect(html.match(/<a [^>]*>Manage<\/a>/)?.[0]).toContain(
       'href="/torre-slack/integrations/github"',
     );
   });
 
-  it("says when every old PR is imported", () => {
-    expect(render({ ...github, state: "done" })).toContain("All past PRs imported");
+  it("says when every past item is imported", () => {
+    expect(render({ ...github, state: "done" })).toContain("All past pull requests imported");
   });
 
   it("flags a stalled import", () => {
     expect(render({ ...github, state: "stalled" })).toContain(
-      "Old-PR import stalled at 1 of 4 repos",
+      "Import of past pull requests stalled at 1 of 4 repos",
     );
+  });
+
+  it("speaks of bugs for a Bug tracker", () => {
+    const bugs = { ...github, item: "bug", items: "bugs" };
+    expect(render(bugs)).toContain("Latest bug update 5m ago");
+    expect(render({ ...bugs, latestAt: null })).toContain("No bugs copied yet");
   });
 
   it("shows Slack's newest message and how far back the history copy has got", () => {
