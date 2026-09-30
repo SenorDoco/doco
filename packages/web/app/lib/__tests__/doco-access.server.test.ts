@@ -21,7 +21,6 @@ vi.mock("@doco/db", () => {
     getWorkspaceGrant: mocks.getWorkspaceGrant,
     getWorkspaceRole: vi.fn(),
     getPrincipalById: mocks.getPrincipalById,
-    isWorkspaceUser: vi.fn(),
     listDocoIdsForUser: mocks.listDocoIdsForUser,
     maxRole: (...roles: ("owner" | "writer" | "reader" | null | undefined)[]) =>
       roles.reduce<"owner" | "writer" | "reader" | null>(

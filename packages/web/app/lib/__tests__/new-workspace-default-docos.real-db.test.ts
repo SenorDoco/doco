@@ -64,7 +64,7 @@ beforeAll(async () => {
 });
 
 describe("addWorkspaceByHandle seeds the default Docos", () => {
-  it("creates the eight default Docos, in order, from their templates", async () => {
+  it("creates the nine default Docos, in order, from their templates", async () => {
     const ws = await addWorkspaceByHandle({ handle: "acme", ownerUserId: USER_ID });
     const docos = await docosOf(ws.id);
 
@@ -77,6 +77,7 @@ describe("addWorkspaceByHandle seeds the default Docos", () => {
       "architectural-decisions",
       "process",
       "bugs",
+      "agents-chats",
     ]);
     expect(docos.map((d) => d.handle)).toEqual(
       DEFAULT_WORKSPACE_DOCO_TEMPLATES.map((t) => `acme-${t}`),

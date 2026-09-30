@@ -14,7 +14,7 @@
 //   • Slice 2 (edges): create a flows_to edge with label/condition/kind and
 //     read them back from the typed columns; assert no `props` bag (skipped on
 //     templates whose allowlist forbids action/state).
-//   • Slice 3 (workspaces/host): workspace + dashboard pages render.
+//   • Slice 3 (workspaces/host): workspace pages render.
 //
 // Template-aware throughout: an authoring-policy allowlist rejection (HTTP 400
 // "not in allowlist") is the policy WORKING, so the harness adapts to each
@@ -91,7 +91,7 @@ async function signIn() {
     method: "POST",
     redirect: "manual",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ username: USERNAME, next: "/dashboard" }),
+    body: new URLSearchParams({ username: USERNAME, next: "/workspaces" }),
   });
   const setCookie = res.headers.get("set-cookie") ?? "";
   const m = setCookie.match(/doco_session=([^;]+)/);
@@ -111,7 +111,6 @@ async function signIn() {
 const STATIC_PAGES = [
   "/",
   "/llms.txt",
-  "/dashboard",
   "/workspaces",
   "/new-doco",
   "/new-workspace",

@@ -2,7 +2,6 @@
 
 import {
   type DocoRole,
-  isWorkspaceUser as dbIsWorkspaceMember,
   getDocoByIdOrHandle,
   getDocoUserGrant,
   getDocoUserRole,
@@ -443,8 +442,8 @@ export function filterDocosToWorkspaceBoundary(
 /**
  * The Docos a REQUEST may enumerate in `/api/v1/docos.json` and similar
  * listings. Cookie / anonymous requests (no bearer) get the full
- * principal set unchanged — the dashboard and OAuth approve screen want
- * everything the human can reach. A bearer-token request is narrowed to
+ * principal set unchanged — the OAuth approve screen wants everything
+ * the human can reach. A bearer-token request is narrowed to
  * the token's workspace boundary (see `filterDocosToWorkspaceBoundary`) so
  * a token scoped to one Doco never leaks the names of Docos in another
  * workspace.
@@ -530,45 +529,6 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
     return null;
   }
   return ownerId;
-}
-
-/**
- * "Is this Doco mine?" — predicate for the signed-in user's personal
- * dashboard. Stricter than `canAccessDoco`: ignores `public` visibility
- * and the host-bootstrap exemption. True iff the principal has a
- * personal stake in the Doco: they own it, or they're a member of the
- * owning workspace. Invite-redeemed users are handled separately via
- * `listInvitedDocoIdsForPrincipal` — that path needs the Doco id, not
- * the owner id, so callers union the two sets.
- */
-export async function isMyDoco(
-  meta: { ownerId: string },
-  principalId: string | null,
-): Promise<boolean> {
-  if (!principalId) return false;
-  if (meta.ownerId === principalId) return true;
-
-  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
-  if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) return true;
-
-  if (meta.ownerId.startsWith("workspace_")) {
-    if (await dbIsWorkspaceMember(meta.ownerId, principalId)) return true;
-  }
-  return false;
-}
-
-/**
- * Doco ids the principal has an explicit doco_users grant on (any role).
- * Source of truth for "I have a relationship with this doco" — the
- * dashboard's "shared with me" listing.
- *
- * Post-decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, this reads from `doco_users`
- * directly. Invite redemptions write the doco_users row themselves;
- * OAuth tokens are only authentication, not membership storage.
- */
-export async function listInvitedDocoIdsForPrincipal(principalId: string): Promise<Set<string>> {
-  const ids = await listDocoIdsForUser(principalId);
-  return new Set(ids);
 }
 
 /**

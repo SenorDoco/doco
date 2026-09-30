@@ -1,4 +1,4 @@
-// The dashboard walks a person through three steps: create a workspace,
+// /workspaces walks a person through three steps: create a workspace,
 // connect an agent, connect sources of knowledge. Each step reads as done from
 // what the database already holds. PGlite runs the real schema.
 import { readFileSync } from "node:fs";

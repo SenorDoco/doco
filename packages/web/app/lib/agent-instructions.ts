@@ -73,20 +73,27 @@ instructions from the ${host} home page and paste them.
 
 ### Every session
 
-Three duties hold in every session. Each Doco's policies refine how to do
+Four duties hold in every session. Each Doco's policies refine how to do
 them, never whether.
 
 1. **Load context first.** Before the first substantive reply,
    \`doco_search\` the workspace's Docos for the intents, decisions, rules
    and logs that bear on the work. Search again before each substantive
    question.
-2. **Document every decision.** When a choice is made, \`doco_capture\` it
+2. **Record the conversation.** Before the session ends, \`doco_capture\`
+   a Log of the chat in the workspace's Agents chats Doco: who took part,
+   what was asked, what was worked on, what came of it and what was left
+   open, with the ids of the nodes it produced.
+3. **Document every decision.** When a choice is made, \`doco_capture\` it
    as a Decision as it forms (the question, the choice, the alternatives
-   and why they lost) and \`doco_relate\` it to the Intent it serves.
-3. **Record the conversation.** Before the session ends, capture a Log of
-   what was worked on and what came of it, linked to the Decisions and
-   Actions it produced, plus the Intents, Ideas and References that
-   surfaced.
+   and why they lost) in the Doco for its kind of decision: Product
+   decisions for what to build and why, Design decisions for UX,
+   interaction and visual choices, Architectural decisions for system
+   structure, technology and data.
+4. **Update the process.** When a decision is about a business process,
+   add it to the workspace's Processes Doco as well: change the steps,
+   gateways or rules of the process it affects to match, citing the
+   decision's id.
 
 A doco is the project's record; write what was decided, by whom and why,
 in the third person or the imperative.

@@ -66,7 +66,7 @@ describe("viewOnExpand", () => {
     // A null origin means the collapsed state was inherited from
     // localStorage on a fresh load (a previous page/session), so expanding
     // shows the list rather than dropping into a possibly-stale thread.
-    expect(viewOnExpand({ collapseOriginPath: null, currentPath: "/dashboard" })).toBe("list");
+    expect(viewOnExpand({ collapseOriginPath: null, currentPath: "/workspaces" })).toBe("list");
   });
 
   it("resets to the thread list when the collapse happened on a different page", () => {
@@ -75,7 +75,7 @@ describe("viewOnExpand", () => {
     expect(
       viewOnExpand({
         collapseOriginPath: "/acme/decision/decision_01",
-        currentPath: "/dashboard",
+        currentPath: "/workspaces",
       }),
     ).toBe("list");
   });

@@ -5,6 +5,7 @@ import {
   SENOR_DOCO_VOICE_PROMPT,
   buildSenorDocoCorePrompt,
 } from "../senor-doco-prompt.server";
+import { expectBaselineDuties } from "./baseline-duties";
 
 describe("senor-doco-prompt.server", () => {
   it("builds the shared Señor Doco contract for any surface", () => {
@@ -28,8 +29,10 @@ describe("senor-doco-prompt.server", () => {
 
   it("makes documenting decisions and recording conversations the default, not a proposal", () => {
     const p = SENOR_DOCO_DOCUMENTATION_CONTRACT_PROMPT;
-    expect(p).toContain("**Document every decision.**");
     expect(p).toContain("**Record the conversation.**");
+    expect(p).toContain("**Document every decision.**");
+    expectBaselineDuties(p);
+    expect(p).not.toMatch(/needs no Log/);
     expect(p).toMatch(/at the start of (a|every) conversation/i);
     // The old hedge that ambient observations only get proposed is gone.
     expect(p).not.toContain("should be proposed/drafting unless the user clearly authorizes");

@@ -51,11 +51,12 @@ describe("Home", () => {
     expect(html).toContain(escaped.slice("<pre>".length, -"</pre>".length));
   });
 
-  it("is the same simple page for a signed-in person, with a way to the dashboard", async () => {
+  it("is the same simple page for a signed-in person, under the app shell's header alone", async () => {
     getCurrentPrincipal.mockResolvedValue({ id: "user_1", username: "ana" });
     const html = await render();
     expect(html).toContain("Shared knowledge and context for AI and teams");
-    expect(html).toContain('href="/workspaces"');
+    expect(html).not.toContain("<header");
+    expect(html).not.toContain("Dashboard");
     expect(html).not.toContain('href="/sign-in"');
   });
 

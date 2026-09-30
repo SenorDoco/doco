@@ -224,7 +224,7 @@ export interface AgentDebugReport {
 }
 
 /**
- * Gather the full incident report. Same row dumps the dashboard always had,
+ * Gather the full incident report: the raw rows behind the health signals,
  * plus optional conversation tail + replay analysis and message-text search.
  * Callers gate access (superadmin) before invoking; this only reads.
  */

@@ -105,6 +105,12 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     description:
       "Capture and track product ideas — each separates the problem from the proposed solution, accumulates demand and evidence on one canonical record, is evaluated against explicit criteria, and ends with an honest disposition: promoted, parked, or rejected with the reason.",
   },
+  {
+    handle: "agents-chats",
+    label: "Agents chats",
+    description:
+      "Record every chat an agent has with a user — who took part, what was asked, what was worked on, what came of it, and what was left open — one Log per chat, pointing to the decisions and work it produced.",
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
