@@ -28,7 +28,7 @@ export function WorkspaceSummaryCard({
           {showName ? (
             <Link
               to={`/workspaces/${workspace.handle}`}
-              className="text-sm font-semibold text-foreground hover:text-primary"
+              className="text-lg font-semibold text-primary hover:underline"
             >
               {workspace.handle}
             </Link>
@@ -56,7 +56,7 @@ export function WorkspaceSummaryCard({
             <>
               <Link
                 to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
-                className={`${BUTTON} bg-primary text-primary-foreground`}
+                className={BUTTON}
               >
                 New Doco or source
               </Link>

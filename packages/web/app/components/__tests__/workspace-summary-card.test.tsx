@@ -51,6 +51,25 @@ describe("WorkspaceSummaryCard", () => {
     expect(html).toContain('href="/workspaces/torre/agent"');
   });
 
+  // No button outshouts the others; the purple goes to the name instead.
+  it("draws the three buttons alike", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render(TORRE);
+    const classes = ["/new-doco", "/users", "/workspaces/torre/agent"].map(
+      (href) => doc.querySelector(`a[href^="${href}"]`)?.className,
+    );
+    expect(new Set(classes).size).toBe(1);
+    expect(classes[0]).not.toContain("bg-primary");
+  });
+
+  it("makes the name big and purple so it reads as a link", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render(TORRE);
+    const name = doc.querySelector('a[href="/workspaces/torre"]')?.className.split(" ");
+    expect(name).toContain("text-primary");
+    expect(name).toContain("text-lg");
+  });
+
   // Just when, not what: the card stays one glance long.
   it("says when the last activity was, without its details", () => {
     const html = render(TORRE);
