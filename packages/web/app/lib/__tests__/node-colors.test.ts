@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_LIFECYCLE_COUNTS,
   LIFECYCLE_COLOR,
   LIFECYCLE_DESCRIPTION,
   lifecycleColor,
   lifecycleCountParts,
   lifecycleDescription,
-  sumLifecycleCounts,
 } from "../node-colors";
 
 describe("LIFECYCLE_COLOR", () => {
@@ -60,21 +58,6 @@ describe("lifecycleCountParts", () => {
     const parts = lifecycleCountParts({ drafting: 0, queued: 0, active: 0, retired: 0 });
     expect(parts.map((p) => p.lifecycle)).toEqual(["drafting", "queued", "active", "retired"]);
     expect(parts.map((p) => p.count)).toEqual([0, 0, 0, 0]);
-  });
-});
-
-describe("sumLifecycleCounts", () => {
-  it("sums each lifecycle stage independently across entries", () => {
-    expect(
-      sumLifecycleCounts([
-        { drafting: 1, queued: 4, active: 2, retired: 3 },
-        { drafting: 10, queued: 40, active: 20, retired: 30 },
-      ]),
-    ).toEqual({ drafting: 11, queued: 44, active: 22, retired: 33 });
-  });
-
-  it("returns an all-zero total for an empty list", () => {
-    expect(sumLifecycleCounts([])).toEqual(EMPTY_LIFECYCLE_COUNTS);
   });
 });
 

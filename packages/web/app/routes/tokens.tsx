@@ -474,8 +474,8 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
 
   const [label, setLabel] = useState("");
 
-  // Same drill-down grant picker the collaborators page uses
-  // (decision_per_type_write_grants): workspace → docos → read/write + per-type.
+  // Same drill-down grant picker the collaborators page uses:
+  // workspace → docos → read / write / own.
   const catalog = useMemo(() => scopeOptionsToCatalog(scopeOptions), [scopeOptions]);
   const noScopes = catalog.targets.length === 0;
   const [grants, setGrants] = useState<ComposedGrant[]>([]);

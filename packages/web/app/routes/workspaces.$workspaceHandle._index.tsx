@@ -234,24 +234,13 @@ export async function loader({
       });
     }
 
-    const latest = items[0];
     const summary: WorkspaceSummary = {
       id: workspace.id,
       handle: workspace.handle,
       name: workspace.name,
       role: myRole,
       docos: docoRows.map((r) => ({ id: r.id, handle: r.handle, template: r.template })),
-      lastActivity: latest
-        ? {
-            at: latest.at,
-            byUsername: latest.byUsername,
-            op: latest.op,
-            entityType: latest.entity_type,
-            entityId: latest.entity_id,
-            docoHandle: latest.handle,
-            summary: latest.summary,
-          }
-        : null,
+      lastActivityAt: items[0]?.at ?? null,
     };
 
     return {
@@ -469,9 +458,8 @@ export default function WorkspaceHome({
   );
 }
 
-// Cross-Doco feed line: same shape as the dashboard's DashboardFeedLine.
-// Each event carries its own Doco context (handle + cross-Doco entity URL)
-// because an workspace's feed spans every Doco it owns.
+// Cross-Doco feed line. Each event carries its own Doco context (handle +
+// cross-Doco entity URL) because an workspace's feed spans every Doco it owns.
 function WorkspaceFeedLine({ event }: { event: FeedItem }) {
   const url = entityUrl({
     docoHandle: event.handle,

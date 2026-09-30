@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_REFERENCE, CANONICAL_INSTRUCTIONS } from "../instructions.server";
+import { expectBaselineDuties } from "./baseline-duties";
 import { firstPersonLines } from "./first-person";
 
 describe("CANONICAL_INSTRUCTIONS", () => {
@@ -19,16 +20,28 @@ describe("CANONICAL_INSTRUCTIONS", () => {
     );
   });
 
+  // Agents create a Workspace's docos themselves (doco_create over MCP, or the
+  // docos API). Only deleting a doco stays with people.
+  it("has agents create docos inside a Workspace, and keeps only deleting one human-only", () => {
+    expect(CANONICAL_INSTRUCTIONS).toContain("`doco_create`");
+    expect(AGENT_REFERENCE).not.toContain("- Create / delete a doco.");
+    expect(AGENT_REFERENCE).toContain("- Delete a doco.");
+  });
+
   // Alexander, 2026-09-26: conversations are worth recording, and decisions
   // must be documented. That is baseline protocol, not something each doco
   // opts into — so the old "the universal protocol does not mandate captures"
-  // stance is gone, and the three baseline duties are named up front.
+  // stance is gone, and the baseline duties are named up front.
   it("makes loading context, recording conversations and documenting decisions baseline", () => {
     expect(CANONICAL_INSTRUCTIONS).not.toMatch(/does not mandate captures/i);
     expect(CANONICAL_INSTRUCTIONS).toContain("## Baseline duties");
     expect(CANONICAL_INSTRUCTIONS).toContain("**Load context first.**");
-    expect(CANONICAL_INSTRUCTIONS).toContain("**Document every decision.**");
     expect(CANONICAL_INSTRUCTIONS).toContain("**Record the conversation.**");
+    expect(CANONICAL_INSTRUCTIONS).toContain("**Document every decision.**");
+    expectBaselineDuties(CANONICAL_INSTRUCTIONS);
+    // Every chat gets its Log: the old "a session that changed nothing needs
+    // no Log" exemption is gone.
+    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/needs no Log/);
     // Policies refine HOW, they never switch the duties off.
     expect(CANONICAL_INSTRUCTIONS).toMatch(/policies refine how/i);
     expect(CANONICAL_INSTRUCTIONS).toMatch(/never switch (them|these duties) off/i);
@@ -62,7 +75,7 @@ describe("CANONICAL_INSTRUCTIONS", () => {
 
   it("AGENT_REFERENCE uses the document-unit noun lowercase too", () => {
     expect(AGENT_REFERENCE).not.toMatch(/\bDocos\b/);
-    expect(AGENT_REFERENCE).toContain("delete a doco");
+    expect(AGENT_REFERENCE).toContain("Delete a doco");
   });
 
   it("frames Doco as the whole-lifecycle graph, not just the 'why'", () => {

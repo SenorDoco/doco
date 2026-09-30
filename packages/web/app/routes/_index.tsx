@@ -41,26 +41,30 @@ export default function Home({
   const { signedIn, instructions } = loaderData;
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="neu-header border-b border-border bg-card">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-3">
-          <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+      {/* Signed in, the app shell's header already carries the mark and the
+          nav; this header is only for signed-out visitors. */}
+      {signedIn ? null : (
+        <header className="neu-header border-b border-border bg-card">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-3">
+            <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+              <Link
+                to="/"
+                className="inline-flex items-center hover:opacity-80"
+                aria-label="Doco home"
+              >
+                <DocoMark height={28} />
+              </Link>
+              <VersionPill />
+            </div>
             <Link
-              to="/"
-              className="inline-flex items-center hover:opacity-80"
-              aria-label="Doco home"
+              to="/sign-in"
+              className="neu-button shrink-0 whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
             >
-              <DocoMark height={28} />
+              Sign in
             </Link>
-            <VersionPill />
           </div>
-          <Link
-            to={signedIn ? "/workspaces" : "/sign-in"}
-            className="neu-button shrink-0 whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
-          >
-            {signedIn ? "Dashboard" : "Sign in"}
-          </Link>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="flex-1 px-6 py-12 md:py-16">
         <div className="mx-auto flex max-w-3xl flex-col gap-8">

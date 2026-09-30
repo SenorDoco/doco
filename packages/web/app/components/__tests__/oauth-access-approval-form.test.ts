@@ -35,6 +35,7 @@ describe("OAuthAccessApprovalForm", () => {
     expect(markup).toContain("What do you want to grant access to?");
     expect(markup).toContain("Specific workspace(s)");
     expect(markup).toContain("Specific docos");
+    expect(markup).not.toContain("Specific node or edge types");
     expect(markup).toContain('name="grants"');
     // The broad option for a token is the "All your workspaces" (actor) scope —
     // a user-level credential that follows live membership — NOT the old
@@ -109,9 +110,9 @@ describe("OAuthAccessApprovalForm", () => {
     // A bound connector can't mint an all-workspaces actor token.
     expect(markup).not.toContain('data-testid="grant-scope-actor"');
     expect(markup).not.toContain("All your workspaces");
-    // The two narrowing options remain (Docos / types within that workspace).
+    // Specific Docos within that workspace remains the one narrowing option.
     expect(markup).toContain('data-testid="grant-scope-doco"');
-    expect(markup).toContain('data-testid="grant-scope-types"');
+    expect(markup).not.toContain('data-testid="grant-scope-types"');
     // The options stack vertically; nothing is selected by default; the old
     // narrow link is gone.
     expect(markup).not.toContain("sm:grid-cols-2");

@@ -5,12 +5,12 @@ import { readCreatedDocoChatIdSearchParams, withCreatedDocoId } from "../post-cr
 describe("post-create Doco route helpers", () => {
   it("carries the created Doco id without a companion chat id", () => {
     const url = withCreatedDocoId(
-      "/fresh-doco/welcome?from=dashboard",
+      "/fresh-doco/welcome?from=workspaces",
       "doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
     );
 
     expect(url).toBe(
-      "/fresh-doco/welcome?from=dashboard&created_doco_id=doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
+      "/fresh-doco/welcome?from=workspaces&created_doco_id=doco_01KSJZ35Y5H6HA7WF75JWMY7J4",
     );
   });
 

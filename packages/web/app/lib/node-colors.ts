@@ -105,19 +105,6 @@ export function lifecycleCountParts(
   }));
 }
 
-/** Sum a list of per-stage counts (e.g. an workspace row = Σ of its docos). */
-export function sumLifecycleCounts(list: readonly LifecycleCounts[]): LifecycleCounts {
-  return list.reduce<LifecycleCounts>(
-    (acc, c) => ({
-      drafting: acc.drafting + c.drafting,
-      queued: acc.queued + c.queued,
-      active: acc.active + c.active,
-      retired: acc.retired + c.retired,
-    }),
-    { drafting: 0, queued: 0, active: 0, retired: 0 },
-  );
-}
-
 /**
  * Picks a readable foreground color (dark or white) for text placed
  * on a lifecycle-colored background. Uses WCAG relative luminance:

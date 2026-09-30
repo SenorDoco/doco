@@ -14,15 +14,7 @@ const TORRE: WorkspaceSummary = {
     { id: "doco_dec", handle: "torre-decisions", template: "architectural-decisions" },
     { id: "doco_slack", handle: "torre-slack", template: "slack" },
   ],
-  lastActivity: {
-    at: "2026-09-20T00:00:00.000Z",
-    byUsername: "bo",
-    op: "entity.create",
-    entityType: "decision",
-    entityId: "decision_1",
-    docoHandle: "torre-decisions",
-    summary: "Use Postgres",
-  },
+  lastActivityAt: "2026-09-20T00:00:00.000Z",
 };
 
 function render(workspace: WorkspaceSummary, showName?: boolean): string {
@@ -58,16 +50,17 @@ describe("WorkspaceSummaryCard", () => {
     expect(html).toContain('href="/workspaces/torre/agent"');
   });
 
-  it("names the latest thing that happened", () => {
+  // Just when, not what: the card stays one glance long.
+  it("says when the last activity was, without its details", () => {
     const html = render(TORRE);
-    expect(html).toContain("Decision added");
-    expect(html).toContain("Use Postgres");
-    expect(html).toContain("torre-decisions");
-    expect(html).toContain("bo");
+    expect(html).toContain("Last activity:");
+    expect(html).toContain('dateTime="2026-09-20T00:00:00.000Z"');
+    expect(html).not.toContain("Use Postgres");
+    expect(html).not.toContain("Decision added");
   });
 
   it("says so when nothing has happened yet", () => {
-    expect(render({ ...TORRE, lastActivity: null })).toContain("No activity yet.");
+    expect(render({ ...TORRE, lastActivityAt: null })).toContain("No activity yet.");
   });
 
   // Reaching only an invited Doco doesn't make a person a member who can add

@@ -5,6 +5,7 @@ import {
   agentInstructions,
   agentInstructionsForWorkspace,
 } from "../agent-instructions";
+import { expectBaselineDuties } from "./baseline-duties";
 import { firstPersonLines } from "./first-person";
 
 const text = agentInstructions("https://doco.test");
@@ -50,6 +51,12 @@ describe("agentInstructions", () => {
     expect(text).toContain("Doco workspace: https://doco.test/workspaces/<workspace-handle>");
   });
 
+  it("has the agent create the workspace's missing Docos itself, not send the user to the site", () => {
+    expect(text).toContain("`doco_create`");
+    expect(text).toMatch(/in the workspace on the\s+`Doco workspace:` line/);
+    expect(text).toMatch(/Never\s+ask the user to create a Doco/);
+  });
+
   it("then checks the AGENTS.md copy against the home page and asks before updating it", () => {
     const pick = position("### 2. Pick the project's workspace");
     const current = position("### 3. Keep these instructions current");
@@ -59,10 +66,11 @@ describe("agentInstructions", () => {
     expect(text).toMatch(/ask the user to copy the latest\s+instructions/);
   });
 
-  it("carries the three baseline duties and the full protocol link", () => {
+  it("carries the four baseline duties and the full protocol link", () => {
     expect(text).toContain("**Load context first.**");
-    expect(text).toContain("**Document every decision.**");
     expect(text).toContain("**Record the conversation.**");
+    expect(text).toContain("**Document every decision.**");
+    expectBaselineDuties(text);
     expect(text).toContain("https://doco.test/protocol/canonical-instructions");
   });
 
