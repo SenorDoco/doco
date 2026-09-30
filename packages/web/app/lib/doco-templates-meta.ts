@@ -28,6 +28,12 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
       "Track a GitHub repository's pull requests as References — new PRs sync automatically, and merged PRs settle as active.",
   },
   {
+    handle: "github-bugs",
+    label: "GitHub bugs",
+    description:
+      "Track a GitHub repository's bugs — issues labeled bug, or of the Bug issue type, sync automatically, and closed issues retire.",
+  },
+  {
     handle: "codebase",
     label: "GitHub codebase",
     description:

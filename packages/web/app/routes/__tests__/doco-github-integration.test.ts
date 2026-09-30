@@ -158,20 +158,20 @@ describe("/:docoHandle/integrations/github", () => {
       { installation_id: 42, account: "acme", repositories: [], connected_repositories: [] },
     ]);
     mocks.getDocoConnectionsContext.mockResolvedValue({
-      handle: "meta-bugs",
+      handle: "meta-github-bugs",
       workspaceHandle: "meta",
-      template: "bugs",
+      template: "github-bugs",
       connections: [],
       installations: [],
       backfill: null,
     });
 
     const data = await loader({
-      request: new Request("https://doco.test/meta-bugs/integrations/github"),
+      request: new Request("https://doco.test/meta-github-bugs/integrations/github"),
       ...routeArgs,
     });
 
-    expect(data.brings).toMatchObject({ id: "bugs", items: "bugs" });
+    expect(data.brings).toMatchObject({ id: "github-bugs", items: "bugs" });
     expect(mocks.buildInstallUrl).toHaveBeenCalledWith({
       userId: "user_1",
       docoIds: ["doco_1"],

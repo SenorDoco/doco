@@ -45,6 +45,7 @@ const DEFAULT_TEMPLATE_HANDLE = "generic";
 /** A Doco that fills from a source continues into connecting that source. */
 const SOURCE_SETUP: Record<string, string> = {
   "github-pull-requests": "github",
+  "github-bugs": "github",
   codebase: "github",
   slack: "slack",
   notion: "notion",

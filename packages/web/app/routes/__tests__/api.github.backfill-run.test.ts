@@ -117,7 +117,7 @@ describe("api.github.backfill-run action", () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
       workspaceHandle: "o",
-      template: "bugs",
+      template: "github-bugs",
       connections: [{ repo: "acme/a", installation_id: 42 }],
       backfill: { status: "running", queue: ["acme/a"], installation_id: 42, page: 1 },
     });
@@ -135,8 +135,8 @@ describe("api.github.backfill-run action", () => {
         docoDir: "/repos/d",
         ownerSlug: "o",
         docoSlug: "d",
-        // The slice walks what the Doco brings: bugs, for a Bug tracker.
-        template: "bugs",
+        // The slice walks what the Doco brings: bugs, for a GitHub bugs Doco.
+        template: "github-bugs",
         installationId: 42,
       }),
     );

@@ -77,11 +77,11 @@ beforeEach(() => {
   mocks.getCurrentPrincipal.mockResolvedValue({ id: "user_1", username: "ana" });
   mocks.listMyWorkspaces.mockResolvedValue([acme, { id: "workspace_zeta", handle: "zeta" }]);
   mocks.listImportDocos.mockResolvedValue({
-    workspace_acme: { bugs: { id: "doco_bugs", handle: "acme-bugs" } },
+    workspace_acme: { "github-bugs": { id: "doco_bugs", handle: "acme-github-bugs" } },
   });
   mocks.ensureImportDocos.mockResolvedValue([
     { import: pullRequests, doco: { id: "doco_prs", handle: "acme-pull-requests" } },
-    { import: bugs, doco: { id: "doco_bugs", handle: "acme-bugs" } },
+    { import: bugs, doco: { id: "doco_bugs", handle: "acme-github-bugs" } },
   ]);
   mocks.getDocoLevelRole.mockResolvedValue("owner");
   mocks.listAccessibleDocoIdsForPrincipal.mockResolvedValue(["doco_bugs"]);
@@ -110,9 +110,9 @@ describe("/integrations/github loader", () => {
       step: "choose",
       workspaceHandle: "acme",
       // Everything GitHub can bring starts picked: one setup fills every Doco.
-      bring: ["pull-requests", "bugs", "codebase"],
+      bring: ["pull-requests", "github-bugs", "codebase"],
       workspaces: [
-        { handle: "acme", docos: { bugs: { handle: "acme-bugs" } } },
+        { handle: "acme", docos: { "github-bugs": { handle: "acme-github-bugs" } } },
         { handle: "zeta", docos: {} },
       ],
     });
@@ -121,7 +121,7 @@ describe("/integrations/github loader", () => {
   it("offers the repositories once every chosen Doco exists", async () => {
     mocks.listImportDocos.mockResolvedValue({
       workspace_acme: {
-        bugs: { id: "doco_bugs", handle: "acme-bugs" },
+        "github-bugs": { id: "doco_bugs", handle: "acme-github-bugs" },
         "pull-requests": { id: "doco_prs", handle: "acme-pull-requests" },
       },
     });
@@ -130,17 +130,19 @@ describe("/integrations/github loader", () => {
       connections: [{ repo: "acme/web", installation_id: 42 }],
       installations: [],
     });
-    const data = await loader({ request: get("?workspace=acme&bring=bugs&bring=pull-requests") });
+    const data = await loader({
+      request: get("?workspace=acme&bring=github-bugs&bring=pull-requests"),
+    });
     if (data.step !== "repos") throw new Error(`expected the repos step, got ${data.step}`);
     expect(data.targets.map((t) => [t.import.id, t.doco.handle])).toEqual([
       ["pull-requests", "acme-pull-requests"],
-      ["bugs", "acme-bugs"],
+      ["github-bugs", "acme-github-bugs"],
     ]);
     expect(data.choices.map((c) => c.selectableRepositories)).toEqual([["acme/api"]]);
     expect(mocks.buildInstallUrl).toHaveBeenCalledWith({
       userId: "user_1",
       docoIds: ["doco_prs", "doco_bugs"],
-      next: "/integrations/github?workspace=acme&bring=pull-requests&bring=bugs",
+      next: "/integrations/github?workspace=acme&bring=pull-requests&bring=github-bugs",
     });
   });
 });
@@ -149,7 +151,11 @@ describe("/integrations/github action", () => {
   it("brings each choice into its Doco, then asks for repositories", async () => {
     const res = await thrown(
       action({
-        request: post({ intent: "choose", workspace: "acme", bring: ["bugs", "pull-requests"] }),
+        request: post({
+          intent: "choose",
+          workspace: "acme",
+          bring: ["github-bugs", "pull-requests"],
+        }),
       }),
     );
     expect(mocks.ensureImportDocos).toHaveBeenCalledWith({
@@ -158,14 +164,14 @@ describe("/integrations/github action", () => {
       userId: "user_1",
     });
     expect(res.headers.get("Location")).toBe(
-      "/integrations/github?workspace=acme&bring=pull-requests&bring=bugs",
+      "/integrations/github?workspace=acme&bring=pull-requests&bring=github-bugs",
     );
   });
 
   it("brings all three at once, creating each Doco the workspace lacks", async () => {
     mocks.ensureImportDocos.mockResolvedValue([
       { import: pullRequests, doco: { id: "doco_prs", handle: "acme-pull-requests" } },
-      { import: bugs, doco: { id: "doco_bugs", handle: "acme-bugs" } },
+      { import: bugs, doco: { id: "doco_bugs", handle: "acme-github-bugs" } },
       { import: codebase, doco: { id: "doco_code", handle: "acme-codebase" } },
     ]);
     const res = await thrown(
@@ -173,7 +179,7 @@ describe("/integrations/github action", () => {
         request: post({
           intent: "choose",
           workspace: "acme",
-          bring: ["pull-requests", "bugs", "codebase"],
+          bring: ["pull-requests", "github-bugs", "codebase"],
         }),
       }),
     );
@@ -183,7 +189,7 @@ describe("/integrations/github action", () => {
       userId: "user_1",
     });
     expect(res.headers.get("Location")).toBe(
-      "/integrations/github?workspace=acme&bring=pull-requests&bring=bugs&bring=codebase",
+      "/integrations/github?workspace=acme&bring=pull-requests&bring=github-bugs&bring=codebase",
     );
   });
 
@@ -191,7 +197,11 @@ describe("/integrations/github action", () => {
     mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([]);
     const res = await thrown(
       action({
-        request: post({ intent: "choose", workspace: "acme", bring: ["pull-requests", "bugs"] }),
+        request: post({
+          intent: "choose",
+          workspace: "acme",
+          bring: ["pull-requests", "github-bugs"],
+        }),
       }),
     );
     expect(res.headers.get("Location")).toBe(
@@ -200,7 +210,7 @@ describe("/integrations/github action", () => {
     expect(mocks.buildInstallUrl).toHaveBeenCalledWith({
       userId: "user_1",
       docoIds: ["doco_prs", "doco_bugs"],
-      next: "/integrations/github?workspace=acme&bring=pull-requests&bring=bugs",
+      next: "/integrations/github?workspace=acme&bring=pull-requests&bring=github-bugs",
     });
   });
 
@@ -208,7 +218,7 @@ describe("/integrations/github action", () => {
     expect(await action({ request: post({ intent: "choose", workspace: "acme" }) })).toEqual({
       error: "Pick at least one thing to bring from GitHub.",
     });
-    expect(await action({ request: post({ intent: "choose", bring: "bugs" }) })).toEqual({
+    expect(await action({ request: post({ intent: "choose", bring: "github-bugs" }) })).toEqual({
       error: "Pick a workspace.",
     });
     expect(mocks.ensureImportDocos).not.toHaveBeenCalled();
@@ -217,15 +227,17 @@ describe("/integrations/github action", () => {
   it("creates nothing when the user can't write to a Doco a choice would fill", async () => {
     mocks.getDocoLevelRole.mockResolvedValue("reader");
     expect(
-      await action({ request: post({ intent: "choose", workspace: "acme", bring: "bugs" }) }),
-    ).toEqual({ error: "Bringing bugs into acme-bugs needs write access to it." });
+      await action({
+        request: post({ intent: "choose", workspace: "acme", bring: "github-bugs" }),
+      }),
+    ).toEqual({ error: "Bringing bugs into acme-github-bugs needs write access to it." });
     expect(mocks.ensureImportDocos).not.toHaveBeenCalled();
   });
 
   it("connects the picked repositories to every chosen Doco and starts each import", async () => {
     mocks.listImportDocos.mockResolvedValue({
       workspace_acme: {
-        bugs: { id: "doco_bugs", handle: "acme-bugs" },
+        "github-bugs": { id: "doco_bugs", handle: "acme-github-bugs" },
         "pull-requests": { id: "doco_prs", handle: "acme-pull-requests" },
       },
     });
@@ -234,7 +246,7 @@ describe("/integrations/github action", () => {
         request: post({
           intent: "connect-existing-repos",
           workspace: "acme",
-          bring: ["pull-requests", "bugs"],
+          bring: ["pull-requests", "github-bugs"],
           installation_id: "42",
           repo: ["acme/web", "acme/api"],
         }),
@@ -251,20 +263,20 @@ describe("/integrations/github action", () => {
     expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", "doco_prs");
     expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", "doco_bugs");
     expect(res.headers.get("Location")).toBe(
-      "/integrations/github?workspace=acme&bring=pull-requests&bring=bugs&github=importing&count=2",
+      "/integrations/github?workspace=acme&bring=pull-requests&bring=github-bugs&github=importing&count=2",
     );
   });
 
   it("never connects a repository the installation doesn't offer", async () => {
     mocks.listImportDocos.mockResolvedValue({
-      workspace_acme: { bugs: { id: "doco_bugs", handle: "acme-bugs" } },
+      workspace_acme: { "github-bugs": { id: "doco_bugs", handle: "acme-github-bugs" } },
     });
     expect(
       await action({
         request: post({
           intent: "connect-existing-repos",
           workspace: "acme",
-          bring: "bugs",
+          bring: "github-bugs",
           installation_id: "42",
           repo: "evil/repo",
         }),

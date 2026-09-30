@@ -45,8 +45,8 @@ beforeEach(async () => {
       ('doco_prs2', 'acme-prs-2', 'workspace_acme', 'workspace_acme',
         '{"template_handle": "github-pull-requests"}'),
       ('doco_legacy', 'acme-legacy', 'workspace_acme', 'workspace_acme', '{}'),
-      ('doco_bugs', 'acme-bugs', 'workspace_acme', 'workspace_acme',
-        '{"template_handle": "bugs"}'),
+      ('doco_bugs', 'acme-github-bugs', 'workspace_acme', 'workspace_acme',
+        '{"template_handle": "github-bugs"}'),
       ('doco_code', 'acme-codebase', 'workspace_acme', 'workspace_acme',
         '{"template_handle": "codebase"}'),
       ('doco_code2', 'acme-codebase-2', 'workspace_acme', 'workspace_acme',
@@ -57,7 +57,7 @@ beforeEach(async () => {
 const handles = (docos: Array<{ handle: string }>) => docos.map((d) => d.handle).sort();
 
 describe("one repo per thing brought", () => {
-  it("lets a repo feed a pull requests Doco and a Bug tracker at once", async () => {
+  it("lets a repo feed a pull requests Doco and a GitHub bugs Doco at once", async () => {
     await addConnection("doco_prs", conn);
     await addConnection("doco_bugs", conn);
     expect(await listConnections("doco_prs")).toEqual([conn]);
@@ -97,7 +97,9 @@ describe("routing repo events", () => {
     expect(handles(await findDocoTargetsForGitHubRepo(9, REPO, "github-pull-requests"))).toEqual([
       "acme-pull-requests",
     ]);
-    expect(handles(await findDocoTargetsForGitHubRepo(9, REPO, "bugs"))).toEqual(["acme-bugs"]);
+    expect(handles(await findDocoTargetsForGitHubRepo(9, REPO, "github-bugs"))).toEqual([
+      "acme-github-bugs",
+    ]);
   });
 
   it("names what each org-subscribed Doco brings", async () => {
@@ -106,7 +108,7 @@ describe("routing repo events", () => {
     await subscribeInstallation("doco_bugs", sub);
     const docos = await findDocoByInstallation(9);
     expect(docos.map((d) => [d.handle, d.template]).sort()).toEqual([
-      ["acme-bugs", "bugs"],
+      ["acme-github-bugs", "github-bugs"],
       ["acme-pull-requests", "github-pull-requests"],
     ]);
   });
@@ -136,7 +138,7 @@ describe("connecting repositories", () => {
   it("connects each repository and queues its import", async () => {
     await connectRepositories("doco_bugs", 9, ["acme/app", "acme/api"]);
     const ctx = await getDocoConnectionsContext("doco_bugs");
-    expect(ctx?.template).toBe("bugs");
+    expect(ctx?.template).toBe("github-bugs");
     expect(ctx?.connections.map((c) => c.repo)).toEqual(["acme/app", "acme/api"]);
     expect(ctx?.backfill).toMatchObject({
       status: "running",

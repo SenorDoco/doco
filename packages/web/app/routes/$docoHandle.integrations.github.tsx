@@ -3,7 +3,7 @@
 // to <org>" + a Manage button); the per-integration detail (covered repos,
 // import progress, re-import / disconnect) lives here so the
 // Integrations page stays a clean index. What the Doco brings from its repos
-// (pull requests, bugs for a Bug tracker, or code for a codebase Doco)
+// (pull requests, bugs for a GitHub bugs Doco, or code for a codebase Doco)
 // follows its template (github-imports); the GitHub setup page picks it for a
 // workspace.
 //

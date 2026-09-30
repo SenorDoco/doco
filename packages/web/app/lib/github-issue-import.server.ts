@@ -1,12 +1,11 @@
-// GitHub bug issue → Doco bug import. A Bug tracker Doco connected to GitHub
-// files each bug issue as a bug: an Eval (the bug template's shape for a bug)
+// GitHub bug issue → Doco bug import. A GitHub bugs Doco connected to GitHub
+// files each bug issue as a bug: an Eval (the Bug tracker's shape for a bug)
 // whose prose is the issue title and whose `locator` is the issue URL, the
 // idempotency key. Re-syncing the same issue updates that Eval rather than
 // duplicating it.
 //
 // The Eval's lifecycle follows the issue: an open issue is a reported bug still
-// to triage (`drafting`, which the template's completeness gates spare), and a
-// closed one is retired with the `resolution` GitHub's close reason maps to.
+// to triage (`drafting`), and a closed one is retired with the `resolution` GitHub's close reason maps to.
 // An issue that stops being a bug (its bug label removed) or is deleted retires
 // the bug it had filed. Like a pull request's Reference, the Eval holds only
 // the title; the issue body stays on GitHub, a click away through the locator.
@@ -90,7 +89,7 @@ export interface SyncBugIssueOpts {
 }
 
 /**
- * Idempotently sync one GitHub issue into the Bug tracker: create the bug for a
+ * Idempotently sync one GitHub issue into its GitHub bugs Doco: create the bug for a
  * new bug issue, update the one it filed before, or retire it once the issue is
  * no longer a bug. An issue that isn't a bug and never filed one is a no-op
  * (`unchanged`).
