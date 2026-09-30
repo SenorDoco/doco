@@ -12,7 +12,7 @@ import { getCurrentPrincipal } from "~/lib/session.server";
  * Principal requires a valid invite code before the OAuth round-trip.
  */
 export async function loader({ request }: { request: Request }) {
-  if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
+  if (await getCurrentPrincipal(request)) throw redirect("/workspaces");
   const error = new URL(request.url).searchParams.get("error");
   return {
     error: error === "invite_required" ? "Enter an invite code before creating an account." : null,
@@ -20,7 +20,7 @@ export async function loader({ request }: { request: Request }) {
 }
 
 export async function action({ request }: { request: Request }) {
-  if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
+  if (await getCurrentPrincipal(request)) throw redirect("/workspaces");
   const form = await request.formData();
   const inviteCode = String(form.get("invite_code") ?? "");
   if (!isValidSignupInviteCode(inviteCode)) {

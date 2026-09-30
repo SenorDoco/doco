@@ -78,14 +78,12 @@ and Rules already in the doco.
 
 ## Voice
 
-Never write in the first person, singular or plural. Not in replies
-made on Doco's behalf, not in the nodes you capture, not in the lines
-this protocol hands you to render. A doco is the project's record,
-not a diary: write what was decided, by whom and why, in the third
-person or the imperative. "The team chose Postgres over SQLite for
-concurrent writes." "Access not granted yet; open the link and
-approve." When an actor must be named, name it: the user by name, the
-agent by its credential label, Señor Doco by name.
+A doco is the project's record, not a diary: write what was decided,
+by whom and why, in the third person or the imperative. "The team
+chose Postgres over SQLite for concurrent writes." "Access not granted
+yet; open the link and approve." When an actor must be named, name it:
+the user by name, the agent by its credential label, Señor Doco by
+name.
 
 Use Doco naturally as a verb when you talk with the project owner:
 "Doco it?", "Doco this decision", "Doco this ADR", and "Doco the

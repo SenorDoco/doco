@@ -9,7 +9,7 @@ import { findPrincipalById, getSessionPrincipalId } from "~/lib/session.server";
 /**
  * /sign-in (ADR-095) — GitHub OAuth is the only path. Anyone with a
  * cookie session that resolves to a real Principal is redirected straight
- * to `/dashboard` (or `?next=`).
+ * to `/workspaces` (or `?next=`).
  *
  * Accepts `?next=<relative-path>` for deep-link return-after-sign-in
  * (e.g. private-Doco entity URLs that redirect anonymous visitors here).
@@ -25,7 +25,7 @@ function safeNext(input: string | null | undefined): string | null {
 export async function loader({ request }: { request: Request }) {
   const next = safeNext(new URL(request.url).searchParams.get("next"));
   const id = getSessionPrincipalId(request);
-  if (id && (await findPrincipalById(id))) throw redirect(next ?? "/dashboard");
+  if (id && (await findPrincipalById(id))) throw redirect(next ?? "/workspaces");
   return { next };
 }
 

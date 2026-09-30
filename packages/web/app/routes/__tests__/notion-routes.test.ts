@@ -84,13 +84,13 @@ describe("/integrations/notion/callback", () => {
 
   it("rejects a state it did not sign", async () => {
     mocks.verifyNotionState.mockReturnValue(null);
-    expect(await callback("code=c1&state=forged")).toBe("/dashboard?notion=invalid_state");
+    expect(await callback("code=c1&state=forged")).toBe("/workspaces?notion=invalid_state");
     expect(mocks.exchangeNotionCode).not.toHaveBeenCalled();
   });
 
   it("rejects a Doco that moved or vanished since consent", async () => {
     mocks.getDocoById.mockResolvedValue({ id: "doco_notion", workspace_id: "workspace_2" });
-    expect(await callback("code=c1&state=signed")).toBe("/dashboard?notion=doco_not_found");
+    expect(await callback("code=c1&state=signed")).toBe("/workspaces?notion=doco_not_found");
   });
 
   it("reports a cancelled authorization", async () => {

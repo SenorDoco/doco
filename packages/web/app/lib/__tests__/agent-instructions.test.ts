@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { INSTRUCTIONS_BEGIN, INSTRUCTIONS_END, agentInstructions } from "../agent-instructions";
+import {
+  INSTRUCTIONS_BEGIN,
+  INSTRUCTIONS_END,
+  agentInstructions,
+  agentInstructionsForWorkspace,
+} from "../agent-instructions";
 import { firstPersonLines } from "./first-person";
 
 const text = agentInstructions("https://doco.test");
@@ -61,8 +66,21 @@ describe("agentInstructions", () => {
     expect(text).toContain("https://doco.test/protocol/canonical-instructions");
   });
 
-  it("states the never-first-person rule and obeys it", () => {
-    expect(text).toMatch(/never write in the first person/i);
+  // Alexander, 2026-09-30: agents keep their own voice in replies; the
+  // instructions no longer tell them to avoid the first person.
+  it("leaves the agent's voice alone and obeys the rule itself", () => {
+    expect(text).not.toMatch(/first person/i);
     expect(firstPersonLines(text)).toEqual([]);
+  });
+});
+
+describe("agentInstructionsForWorkspace", () => {
+  // Right after creating a workspace, the person copies instructions that
+  // already connect the project to it: the same block as the home page, then
+  // the line step 2 reads.
+  it("is the home page block followed by the workspace line", () => {
+    expect(agentInstructionsForWorkspace("https://doco.test/", "acme")).toBe(
+      `${text}Doco workspace: https://doco.test/workspaces/acme\n`,
+    );
   });
 });

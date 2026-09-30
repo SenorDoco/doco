@@ -1,4 +1,7 @@
-// /workspaces/:workspaceHandle — per-Workspace home. A wide two-column layout
+// /workspaces/:workspaceHandle — per-Workspace home. On top, the same summary
+// card the Workspaces page shows for it (Doco icons, New Doco or source /
+// Invite person / Invite agent, latest activity), then the detailed list of
+// its Docos. Below those, a wide two-column layout
 // at `lg` (1024px) and up; below that — the same width at which the nav
 // collapses to a hamburger — it renders as a single column so the constitution
 // keeps a readable measure instead of being crushed beside the 420px sidebar.
@@ -8,7 +11,6 @@
 //   - Latest activity feed (20 events, with per-row Doco context)
 // Right column (compact sidebar):
 //   - Search box (submits to /workspaces/:workspaceHandle/search)
-//   - Docos in this workspace (with a +Doco button)
 //   - Activity heatmap (52w)
 //   - Top contributors across the workspace's Docos
 
@@ -22,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
+import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import {
   activityRowLifecycle,
   auditSummaryFallback,
@@ -37,6 +40,7 @@ import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
+import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
@@ -230,8 +234,29 @@ export async function loader({
       });
     }
 
+    const latest = items[0];
+    const summary: WorkspaceSummary = {
+      id: workspace.id,
+      handle: workspace.handle,
+      name: workspace.name,
+      role: myRole,
+      docos: docoRows.map((r) => ({ id: r.id, handle: r.handle, template: r.template })),
+      lastActivity: latest
+        ? {
+            at: latest.at,
+            byUsername: latest.byUsername,
+            op: latest.op,
+            entityType: latest.entity_type,
+            entityId: latest.entity_id,
+            docoHandle: latest.handle,
+            summary: latest.summary,
+          }
+        : null,
+    };
+
     return {
       workspace,
+      summary,
       me,
       canInviteUsers,
       canEditConstitution: canInviteUsers,
@@ -282,6 +307,7 @@ export default function WorkspaceHome({
 }) {
   const {
     workspace,
+    summary,
     me,
     canInviteUsers,
     canEditConstitution,
@@ -322,6 +348,19 @@ export default function WorkspaceHome({
           <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
         </PageHeader>
 
+        <WorkspaceSummaryCard workspace={summary} showName={false} />
+
+        <DocoListCard
+          title="Docos in this workspace"
+          docos={docoItems}
+          showOwner={false}
+          empty={
+            <p className="text-xs italic text-muted-foreground">
+              This workspace doesn't own any Docos yet.
+            </p>
+          }
+        />
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
           {/* Left column — the constitution gets the full available width, with
               the latest activity feed beneath it. Below `lg` this column
@@ -356,8 +395,8 @@ export default function WorkspaceHome({
             </Card>
           </section>
 
-          {/* Right column — search, the workspace's Docos, then the activity
-              matrix and top contributors. */}
+          {/* Right column — search, then the activity matrix and top
+              contributors. */}
           <aside className="min-w-0 space-y-4">
             <Form
               method="get"
@@ -377,25 +416,6 @@ export default function WorkspaceHome({
                 Search
               </button>
             </Form>
-
-            <DocoListCard
-              title="Docos in this workspace"
-              headerAction={
-                <Link
-                  to={`/new-doco?workspace_id=${encodeURIComponent(workspace.id)}`}
-                  className="neu-button rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  + Doco
-                </Link>
-              }
-              docos={docoItems}
-              showOwner={false}
-              empty={
-                <p className="text-xs italic text-muted-foreground">
-                  This workspace doesn't own any Docos yet.
-                </p>
-              }
-            />
 
             <Card>
               <CardHeader className="px-4 py-3">

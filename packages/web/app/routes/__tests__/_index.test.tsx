@@ -55,7 +55,7 @@ describe("Home", () => {
     getCurrentPrincipal.mockResolvedValue({ id: "user_1", username: "ana" });
     const html = await render();
     expect(html).toContain("Shared memory for AI and teams");
-    expect(html).toContain('href="/dashboard"');
+    expect(html).toContain('href="/workspaces"');
     expect(html).not.toContain('href="/sign-in"');
   });
 

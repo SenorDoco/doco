@@ -1,6 +1,6 @@
 import { getPublicBaseUrl } from "@doco/shared";
-import { useState } from "react";
 import { Link } from "react-router";
+import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 import { agentInstructions } from "~/lib/agent-instructions";
@@ -54,7 +54,7 @@ export default function Home({
             <VersionPill />
           </div>
           <Link
-            to={signedIn ? "/dashboard" : "/sign-in"}
+            to={signedIn ? "/workspaces" : "/sign-in"}
             className="neu-button shrink-0 whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
           >
             {signedIn ? "Dashboard" : "Sign in"}
@@ -72,39 +72,12 @@ export default function Home({
             </p>
           </div>
 
-          <section className="flex min-w-0 flex-col gap-3">
-            <div className="flex items-center justify-between gap-4">
-              <h2 className="text-sm font-semibold">
-                To use Doco with your agent(s), give them these instructions:
-              </h2>
-              <CopyButton text={instructions} />
-            </div>
-            <pre
-              id="instructions"
-              className="neu-surface min-w-0 whitespace-pre-wrap rounded-lg [overflow-wrap:anywhere] border border-border bg-card p-5 text-left font-mono text-xs leading-relaxed"
-            >
-              {instructions}
-            </pre>
-          </section>
+          <AgentInstructionsBlock
+            title="To use Doco with your agent(s), give them these instructions:"
+            instructions={instructions}
+          />
         </div>
       </main>
     </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={async () => {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-      className="neu-button shrink-0 rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-    >
-      {copied ? "Copied!" : "Copy"}
-    </button>
   );
 }

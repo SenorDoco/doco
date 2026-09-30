@@ -127,11 +127,11 @@ describe("CANONICAL_INSTRUCTIONS", () => {
 
 describe("voice: never the first person", () => {
   // Design decision (Alexander, 2026-09-27): Doco never uses the first
-  // person. The protocol states the rule for every agent, and the example
-  // lines it hands agents to say obey it.
-  it("states the rule and obeys it in every example line", () => {
+  // person, so the example lines the protocol hands agents obey it. Since
+  // 2026-09-30 the protocol no longer tells agents to avoid it themselves.
+  it("obeys the rule in every example line without imposing it on agents", () => {
     expect(CANONICAL_INSTRUCTIONS).toContain("## Voice");
-    expect(CANONICAL_INSTRUCTIONS).toMatch(/never (write|speak) in the first person/i);
+    expect(CANONICAL_INSTRUCTIONS).not.toMatch(/first person/i);
     expect(firstPersonLines(CANONICAL_INSTRUCTIONS)).toEqual([]);
     expect(firstPersonLines(AGENT_REFERENCE)).toEqual([]);
   });

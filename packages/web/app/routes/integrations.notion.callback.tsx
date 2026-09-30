@@ -19,10 +19,10 @@ export async function loader({ request }: { request: Request }) {
     url.searchParams.get("state") ?? "",
     getNotionConfig().clientSecret,
   );
-  if (!state) throw redirect("/dashboard?notion=invalid_state");
+  if (!state) throw redirect("/workspaces?notion=invalid_state");
   const doco = await getDocoById(state.docoId);
   if (!doco || doco.workspace_id !== state.workspaceId) {
-    throw redirect("/dashboard?notion=doco_not_found");
+    throw redirect("/workspaces?notion=doco_not_found");
   }
   const panel = `/${doco.handle}/integrations/notion`;
   if (url.searchParams.get("error")) throw redirect(`${panel}?notion=denied`);

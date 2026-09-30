@@ -83,11 +83,20 @@ them, never whether.
    Actions it produced, plus the Intents, Ideas and References that
    surfaced.
 
-Never write in the first person, singular or plural: not in replies, not
-in captured nodes. A doco is the project's record; write what was decided,
-by whom and why, in the third person or the imperative.
+A doco is the project's record; write what was decided, by whom and why,
+in the third person or the imperative.
 
 Full protocol: ${host}/protocol/canonical-instructions
 ${INSTRUCTIONS_END}
 `;
+}
+
+/**
+ * The same block, followed by the line that connects the project to one
+ * workspace. Offered right after a workspace is created, and from each
+ * workspace's Invite agent button.
+ */
+export function agentInstructionsForWorkspace(baseUrl: string, workspaceHandle: string): string {
+  const host = baseUrl.replace(/\/+$/, "");
+  return `${agentInstructions(host)}Doco workspace: ${host}/workspaces/${workspaceHandle}\n`;
 }

@@ -303,9 +303,8 @@ describe("doco-mcp-server", () => {
     expect(result.instructions).toContain("same local repository");
     expect(result.instructions).toContain("retry doco_search before");
     expect(result.instructions).toContain("DOCO_REFRESH");
-    // Doco never speaks in the first person; the rule rides in the
-    // instructions and the instructions obey it.
-    expect(result.instructions).toMatch(/never (write|speak) in the first person/i);
+    // Doco's own lines avoid the first person; agents keep their own voice.
+    expect(result.instructions).not.toMatch(/first person/i);
     expect(firstPersonLines(result.instructions)).toEqual([]);
     expect(result.instructions).toContain("asking the user to approve again");
     // Baseline duties every connected agent carries, not per-Doco opt-ins.

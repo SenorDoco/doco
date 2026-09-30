@@ -639,6 +639,8 @@ export interface ReadableWorkspaceDoco {
   id: string;
   handle: string;
   visibility: "public" | "private";
+  /** The template the Doco was created from, for its type icon. */
+  template: string | null;
 }
 
 /**
@@ -657,7 +659,7 @@ export async function listReadableDocosInWorkspace(
     : [];
   return withClient(async (c) => {
     const r = await c.query<ReadableWorkspaceDoco>(
-      `SELECT id, handle, visibility FROM docos
+      `SELECT id, handle, visibility, data->>'template_handle' AS template FROM docos
         WHERE workspace_id = $1 AND deleted_at IS NULL
           AND (visibility = 'public' OR id = ANY($2::text[]))
         ORDER BY handle`,
@@ -667,6 +669,7 @@ export async function listReadableDocosInWorkspace(
       id: String(row.id),
       handle: String(row.handle),
       visibility: row.visibility,
+      template: row.template,
     }));
   });
 }
