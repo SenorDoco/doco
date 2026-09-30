@@ -73,7 +73,7 @@ instructions from the ${host} home page and paste them.
 
 ### Every session
 
-Three duties hold in every session. Each Doco's policies refine how to do
+Four duties hold in every session. Each Doco's policies refine how to do
 them, never whether.
 
 1. **Load context first.** Before the first substantive reply,
@@ -90,6 +90,10 @@ them, never whether.
    decisions for what to build and why, Design decisions for UX,
    interaction and visual choices, Architectural decisions for system
    structure, technology and data.
+4. **Update the process.** When a decision is about a business process,
+   add it to the workspace's Processes Doco as well: change the steps,
+   gateways or rules of the process it affects to match, citing the
+   decision's id.
 
 A doco is the project's record; write what was decided, by whom and why,
 in the third person or the imperative.

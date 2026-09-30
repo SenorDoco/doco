@@ -40,7 +40,7 @@ across the project's whole lifetime.
 
 ## Baseline duties
 
-Three duties hold on every project, in every runtime, whichever way
+Four duties hold on every project, in every runtime, whichever way
 you connected. Each doco sets its own policies for *how* to write
 (which fields, which edges, which lifecycle): policies refine how you
 do these duties, and they never switch them off.
@@ -76,6 +76,13 @@ do these duties, and they never switch them off.
    structure, technology and data. If a decision turns into
    standing guidance, add the Rule. If it reverses an earlier
    Decision, supersede that one instead of leaving two.
+
+4. **Update the process.** When a decision is about a business
+   process, add it to the workspace's Processes Doco as well: change
+   the steps, gateways or rules of the process it affects so the
+   process matches the decision, citing the decision's id. A process
+   that no longer matches what was decided misleads everyone who
+   follows it.
 
 Search before you write so you patch or supersede an existing node
 rather than adding a near-duplicate, and avoid contradicting Decisions

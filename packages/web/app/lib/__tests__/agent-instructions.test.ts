@@ -66,7 +66,7 @@ describe("agentInstructions", () => {
     expect(text).toMatch(/ask the user to copy the latest\s+instructions/);
   });
 
-  it("carries the three baseline duties and the full protocol link", () => {
+  it("carries the four baseline duties and the full protocol link", () => {
     expect(text).toContain("**Load context first.**");
     expect(text).toContain("**Record the conversation.**");
     expect(text).toContain("**Document every decision.**");

@@ -31,7 +31,7 @@ describe("CANONICAL_INSTRUCTIONS", () => {
   // Alexander, 2026-09-26: conversations are worth recording, and decisions
   // must be documented. That is baseline protocol, not something each doco
   // opts into — so the old "the universal protocol does not mandate captures"
-  // stance is gone, and the three baseline duties are named up front.
+  // stance is gone, and the baseline duties are named up front.
   it("makes loading context, recording conversations and documenting decisions baseline", () => {
     expect(CANONICAL_INSTRUCTIONS).not.toMatch(/does not mandate captures/i);
     expect(CANONICAL_INSTRUCTIONS).toContain("## Baseline duties");

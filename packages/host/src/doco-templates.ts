@@ -2316,7 +2316,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     policies: [
       {
         policy:
-          "Only Logs belong here: one per chat. What a chat produced goes in the Doco that holds that kind of knowledge — a Decision in the Product decisions, Design decisions or Architectural decisions Doco, an idea in Ideas, a bug in the Bug tracker — and the chat's Log points to it.",
+          "Only Logs belong here: one per chat. What a chat produced goes in the Doco that holds that kind of knowledge — a Decision in the Product decisions, Design decisions or Architectural decisions Doco (and, when it is about a business process, in Processes too), an idea in Ideas, a bug in the Bug tracker — and the chat's Log points to it.",
         predicate: { kind: "requires_node_type", node_types: ["log"] },
       },
       {
