@@ -71,7 +71,7 @@ export default function Home({
           <div className="flex flex-col items-center gap-3 text-center">
             <h1 className="sr-only">Doco</h1>
             <DocoMark height={72} />
-            <p className="text-2xl font-bold leading-tight md:text-4xl">{TAGLINE}</p>
+            <p className="text-2xl font-bold leading-tight md:text-3xl">{TAGLINE}</p>
           </div>
 
           <AgentInstructionsBlock
