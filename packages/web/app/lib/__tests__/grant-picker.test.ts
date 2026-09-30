@@ -4,32 +4,23 @@ import {
   type ExistingGrant,
   type GrantCatalog,
   actorGrant,
-  applyDocoTypeLevel,
   applyTargetRole,
   availableScopes,
   catalogFromOptions,
   describeExistingGrant,
   describeWriteScope,
-  effectiveTypeLevel,
   findGrant,
   grantKey,
   grantableRoles,
-  inheritedTypeLevel,
   rank,
   removeGrant,
   resolveWriteTypes,
-  scopeShowsPerTypeControls,
   selectionCount,
-  setTypeLevel,
   targetRoleOptions,
   targetRoleValue,
   targetsByWorkspace,
-  typeDropdownValue,
   upsertGrant,
-  writableTypeGroups,
 } from "../grant-picker";
-
-const ALL = ["decision", "intent", "action"] as const;
 
 const catalog: GrantCatalog = {
   workspaces: [
@@ -188,28 +179,23 @@ describe("describeWriteScope", () => {
   });
 });
 
-describe("writableTypeGroups", () => {
-  it("exposes both node and edge lists", () => {
-    const g = writableTypeGroups();
-    expect(g.nodes).toContain("decision");
-    expect(g.edges).toContain("flows_to");
-  });
-});
-
 describe("availableScopes", () => {
   it("never offers an account scope when granting a person — only concrete targets", () => {
     // "All your workspaces" is a token-only authorization now; a person is
     // granted specific workspaces/docos, never a whole-account delegation.
     const scopes = availableScopes(catalog).map((s) => s.scope);
     expect(scopes).not.toContain("account");
-    expect(scopes).toEqual(["workspace", "doco", "types"]);
+    expect(scopes).toEqual(["workspace", "doco"]);
   });
   it("uses plural scope labels for broad targets", () => {
     expect(availableScopes(catalog).map((s) => s.title)).toEqual([
       "Specific workspace(s)",
       "Specific docos",
-      "Specific node or edge types",
     ]);
+  });
+  it("never offers a per-node-or-edge-type scope", () => {
+    const titles = availableScopes(catalog, { offerActor: true }).map((s) => s.title);
+    expect(titles).not.toContain("Specific node or edge types");
   });
   it("offers the same concrete scopes when the user owns no workspace", () => {
     const noOwner: GrantCatalog = {
@@ -231,7 +217,7 @@ describe("availableScopes", () => {
         },
       ],
     };
-    expect(availableScopes(noOwner).map((s) => s.scope)).toEqual(["workspace", "doco", "types"]);
+    expect(availableScopes(noOwner).map((s) => s.scope)).toEqual(["workspace", "doco"]);
   });
   it("offers nothing when there are no targets", () => {
     expect(availableScopes({ workspaces: [], targets: [] })).toEqual([]);
@@ -239,12 +225,11 @@ describe("availableScopes", () => {
   it("leads the token consent with the actor scope when the host opts in", () => {
     // The actor ("all workspaces") credential is the breadth option: it reaches
     // every workspace the user belongs to, now and later. It leads, then
-    // workspace/doco/types.
+    // workspace/doco.
     expect(availableScopes(catalog, { offerActor: true }).map((s) => s.scope)).toEqual([
       "actor",
       "workspace",
       "doco",
-      "types",
     ]);
   });
   it("never offers the actor scope unless the host opts in (e.g. the /tokens radio)", () => {
@@ -310,77 +295,6 @@ describe("describeExistingGrant", () => {
     };
     expect(describeExistingGrant(workspace)).toBe("Workspace: acme — writes 1 type");
     expect(describeExistingGrant(doco)).toBe("Doco: acme/api — owns — writes everything");
-  });
-});
-
-describe("per-type access levels", () => {
-  describe("inheritedTypeLevel", () => {
-    it("writer/owner/wildcard inherit write; reader inherits read", () => {
-      expect(inheritedTypeLevel("writer", [])).toBe("write");
-      expect(inheritedTypeLevel("owner", [])).toBe("write");
-      expect(inheritedTypeLevel("reader", ["*"])).toBe("write");
-      expect(inheritedTypeLevel("reader", [])).toBe("read");
-      expect(inheritedTypeLevel("reader", ["decision"])).toBe("read");
-    });
-  });
-
-  describe("effectiveTypeLevel", () => {
-    it("a named type writes; others fall to inherited", () => {
-      expect(effectiveTypeLevel("reader", ["decision"], "decision")).toBe("write");
-      expect(effectiveTypeLevel("reader", ["decision"], "intent")).toBe("read");
-    });
-    it("writer writes everything regardless of set", () => {
-      expect(effectiveTypeLevel("writer", [], "intent")).toBe("write");
-    });
-  });
-
-  describe("typeDropdownValue", () => {
-    it("shows 'default' when a type matches its inherited level", () => {
-      // reader base → inherited read; an un-named type reads → default.
-      expect(typeDropdownValue("reader", ["decision"], "intent")).toBe("default");
-      // the named write override differs from inherited read → explicit write.
-      expect(typeDropdownValue("reader", ["decision"], "decision")).toBe("write");
-    });
-    it("a reader-base type forced to read under a writer base shows explicit read", () => {
-      // writer base → inherited write; a type NOT in the (sparse) set still
-      // inherits write because writer writes everything, so it reads default.
-      expect(typeDropdownValue("writer", [], "decision")).toBe("default");
-    });
-  });
-
-  describe("setTypeLevel", () => {
-    it("override one type to write from a reader baseline", () => {
-      const next = setTypeLevel("reader", [], "decision", "write", ALL);
-      expect(next).toEqual(["decision"]);
-    });
-    it("override back to default drops the explicit entry", () => {
-      const next = setTypeLevel("reader", ["decision"], "decision", "default", ALL);
-      expect(next).toEqual([]);
-    });
-    it("setting every type to write collapses to the wildcard", () => {
-      let wt: string[] = [];
-      for (const t of ALL) wt = setTypeLevel("reader", wt, t, "write", ALL);
-      expect(wt).toEqual(["*"]);
-    });
-    it("editing one type preserves the others", () => {
-      const start = setTypeLevel("reader", [], "decision", "write", ALL); // ["decision"]
-      const next = setTypeLevel("reader", start, "intent", "write", ALL);
-      expect(new Set(next)).toEqual(new Set(["decision", "intent"]));
-    });
-    it("from a writer baseline, setting one type to read narrows to the rest", () => {
-      // writer inherits write on all; read on 'action' → write set = the other two.
-      const next = setTypeLevel("writer", ["*"], "action", "read", ALL);
-      expect(new Set(next)).toEqual(new Set(["decision", "intent"]));
-    });
-  });
-});
-
-describe("scopeShowsPerTypeControls", () => {
-  it("ONLY the types scope shows per-type controls", () => {
-    expect(scopeShowsPerTypeControls("types")).toBe(true);
-    expect(scopeShowsPerTypeControls("actor")).toBe(false);
-    expect(scopeShowsPerTypeControls("workspace")).toBe(false);
-    expect(scopeShowsPerTypeControls("doco")).toBe(false);
   });
 });
 
@@ -450,25 +364,6 @@ describe("multi-grant selection", () => {
 
     const changed = applyTargetRole([], "doco", "d1", "reader");
     expect(targetRoleValue(changed, "doco", "d1", existing)).toBe("reader");
-  });
-
-  it("applyDocoTypeLevel builds a per-type doco grant and drops it when empty", () => {
-    const ALLT = ["decision", "intent"] as const;
-    let list: ComposedGrant[] = [];
-    list = applyDocoTypeLevel(list, "d1", "decision", "write", ALLT);
-    expect(findGrant(list, "doco", "d1")).toEqual({
-      level: "doco",
-      targetId: "d1",
-      role: "reader",
-      writeTypes: ["decision"],
-    });
-    // add the other type → wildcard collapse
-    list = applyDocoTypeLevel(list, "d1", "intent", "write", ALLT);
-    expect(findGrant(list, "doco", "d1")?.writeTypes).toEqual(["*"]);
-    // back both to read → grant removed (nothing to grant)
-    list = applyDocoTypeLevel(list, "d1", "decision", "read", ALLT);
-    list = applyDocoTypeLevel(list, "d1", "intent", "read", ALLT);
-    expect(findGrant(list, "doco", "d1")).toBeUndefined();
   });
 
   it("selectionCount counts grants", () => {
