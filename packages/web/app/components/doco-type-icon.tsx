@@ -7,6 +7,7 @@ import {
   BookA,
   BotMessageSquare,
   Bug,
+  CircleDot,
   CircleHelp,
   FileText,
   FlaskConical,
@@ -31,6 +32,8 @@ export const DOCO_TYPE_ICONS: Record<string, IconComponent> = {
   generic: FileText,
   process: Workflow,
   "github-pull-requests": GitHubIcon,
+  // GitHub's own mark for an issue.
+  "github-bugs": CircleDot,
   codebase: FolderCode,
   slack: SlackIcon,
   notion: NotionIcon,

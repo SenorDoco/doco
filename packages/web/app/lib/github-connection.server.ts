@@ -198,7 +198,7 @@ async function writeConnections(docoId: string, conns: GitHubConnection[]): Prom
 /**
  * Enforce one repo, one Doco per thing brought: remove `repo` from the
  * connections of every OTHER Doco that brings what `keepDocoId` brings, so a
- * repo's pull requests land in one Doco and its bugs in one Bug tracker.
+ * repo's pull requests land in one Doco and its bugs in one GitHub bugs Doco.
  * Idempotent; the indexed `@>` predicate touches only the Docos that actually
  * hold the repo.
  */

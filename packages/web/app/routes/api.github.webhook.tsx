@@ -4,7 +4,7 @@
 // the repo or subscribed to the whole installation. Events handled:
 //   - pull_request           → upsert the PR as a Reference in the pull requests Docos.
 //   - pull_request_review     → an approving review lifts an open PR to active.
-//   - issues                 → file, update or retire the bug in the Bug trackers.
+//   - issues                 → file, update or retire the bug in the GitHub bugs Docos.
 //   - push (default branch)  → bring the changed files into the codebase Docos.
 //   - installation_repositories (added)   → backfill the new repos' existing items.
 //   - installation_repositories (removed) → detach those repos' connections.
@@ -229,16 +229,20 @@ export async function action({ request }: { request: Request }) {
   }
 
   // An issue opened, edited, closed, reopened, (un)labeled, typed or deleted →
-  // re-sync it into every Bug tracker bringing bugs from the repo. Whether it
+  // re-sync it into every GitHub bugs Doco bringing bugs from the repo. Whether it
   // is a bug is decided there, so a label added or removed files or retires it.
   if (event === "issues") {
     const evt = parseIssuesEvent(payload);
     if (!evt || evt.installationId == null) {
       return Response.json({ ok: true, ignored: true });
     }
-    const docos = await findDocoTargetsForGitHubRepo(evt.installationId, evt.repoFullName, "bugs");
+    const docos = await findDocoTargetsForGitHubRepo(
+      evt.installationId,
+      evt.repoFullName,
+      "github-bugs",
+    );
     console.info(
-      `[github webhook] issue ${evt.action} ${evt.repoFullName}#${evt.issue.number} (installation ${evt.installationId}) → ${docos.length} bug tracker(s)`,
+      `[github webhook] issue ${evt.action} ${evt.repoFullName}#${evt.issue.number} (installation ${evt.installationId}) → ${docos.length} GitHub bugs Doco(s)`,
     );
     const results: Array<{ doco: string; status: GitHubSyncStatus }> = [];
     for (const conn of docos) {

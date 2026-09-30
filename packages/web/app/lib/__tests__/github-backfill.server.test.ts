@@ -210,8 +210,8 @@ describe("backfillRepoBugs", () => {
 });
 
 describe("repoBackfillFor", () => {
-  it("walks bugs for a Bug tracker, files for a codebase and pull requests for any other Doco", () => {
-    expect(repoBackfillFor("bugs")).toBe(backfillRepoBugs);
+  it("walks bugs for a GitHub bugs Doco, files for a codebase and pull requests for any other Doco", () => {
+    expect(repoBackfillFor("github-bugs")).toBe(backfillRepoBugs);
     expect(repoBackfillFor("codebase")).toBe(backfillRepoCodebase);
     expect(repoBackfillFor("github-pull-requests")).toBe(backfillRepoPullRequests);
     expect(repoBackfillFor(null)).toBe(backfillRepoPullRequests);

@@ -109,7 +109,7 @@ describe("IntegrationStatusCard", () => {
     );
   });
 
-  it("speaks of bugs for a Bug tracker", () => {
+  it("speaks of bugs for a GitHub bugs Doco", () => {
     const bugs = { ...github, item: "bug", items: "bugs" };
     expect(render(bugs)).toContain("Latest bug update 5m ago");
     expect(render({ ...bugs, latestAt: null })).toContain("No bugs copied yet");

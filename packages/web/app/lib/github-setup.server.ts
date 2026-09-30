@@ -1,8 +1,7 @@
 // The GitHub setup asks a person which workspace and what to bring from GitHub
 // (github-imports), then brings each choice into that workspace's Doco for it:
 // the oldest live Doco made from the choice's template, or a new one,
-// `<workspace>-<choice id>`, when the workspace has none. Bugs therefore land
-// in the Bug tracker every new workspace already has.
+// `<workspace>-<choice id>`, when the workspace has none.
 import { withClient } from "@doco/db";
 import { GITHUB_IMPORTS, type GitHubImport } from "./github-imports";
 import { createDocoInWorkspace } from "./redeem.server";

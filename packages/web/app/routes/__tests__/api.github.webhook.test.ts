@@ -36,7 +36,7 @@ const {
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
-    { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: "bugs" },
+    { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: "github-bugs" },
   ]),
   findDocoTargetsForGitHubRepo: vi.fn(async () => [
     { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: null },
@@ -149,7 +149,7 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     // …and its pre-existing items are backfilled, as what the Doco brings.
     expect(backfillInstallationRepos).toHaveBeenCalledTimes(1);
     expect(backfillInstallationRepos).toHaveBeenCalledWith(
-      expect.objectContaining({ docoId: "doco_1", template: "bugs", repos: ["acme/new"] }),
+      expect.objectContaining({ docoId: "doco_1", template: "github-bugs", repos: ["acme/new"] }),
     );
     expect(detachReposEverywhere).not.toHaveBeenCalled();
   });
@@ -237,7 +237,7 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     expect(upsertPullRequestReference).not.toHaveBeenCalled();
   });
 
-  it("issues → files the issue in the Bug trackers that bring bugs from the repo", async () => {
+  it("issues → files the issue in the GitHub bugs Docos that bring bugs from the repo", async () => {
     const issue = {
       number: 7,
       title: "Login fails",
@@ -256,7 +256,7 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       repo: "acme/store",
       results: [{ doco: "store", status: "created" }],
     });
-    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store", "bugs");
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store", "github-bugs");
     expect(syncBugIssue).toHaveBeenCalledWith(
       expect.objectContaining({ number: 7 }),
       expect.objectContaining({ docoId: "doco_1", docoSlug: "store", deleted: false }),

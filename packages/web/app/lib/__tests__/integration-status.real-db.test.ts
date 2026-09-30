@@ -214,10 +214,10 @@ describe("loadIntegrationStatuses", () => {
       ]);
     });
 
-    it("speaks of the bugs a Bug tracker brings, dated by the latest issue change", async () => {
+    it("speaks of the bugs a GitHub bugs Doco brings, dated by the latest issue change", async () => {
       await setGitHub({ connections: [{ repo: "acme/store", installation_id: 7 }] });
       await db.exec(`
-        UPDATE docos SET data = data || '{"template_handle": "bugs"}' WHERE id = 'doco_gh';
+        UPDATE docos SET data = data || '{"template_handle": "github-bugs"}' WHERE id = 'doco_gh';
         INSERT INTO nodes (id, doco_id, node_type, locator, updated_at) VALUES
           ('eval_2', 'doco_gh', 'eval', 'https://github.com/acme/store/issues/9', '${minutesAgo(2)}');
       `);
