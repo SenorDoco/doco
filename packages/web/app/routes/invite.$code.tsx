@@ -8,8 +8,9 @@
 // "Accept" only after they are signed in:
 //
 //   - If signed in: the invite is redeemed, the human Principal is
-//     joined to the doco or Workspace. The success card is intentionally minimal —
-//     just a "Continue" button to /<handle>/.
+//     joined to the doco or Workspace. The success card shows the same
+//     Get started steps a workspace creator sees (connect your agent,
+//     connect sources) and a "Continue" button to the target.
 //   - If not signed in: ask whether the visitor is human or agent. Humans
 //     sign in and come back here to accept; agents get the plain-text
 //     instructions for redeeming the same invite.
@@ -26,9 +27,11 @@ import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
+import { OnboardingCard } from "~/components/onboarding-card";
 import { VersionPill } from "~/components/version-pill";
 import { rootDir } from "~/lib/db.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
+import { type OnboardingProgress, loadOnboardingProgress } from "~/lib/onboarding.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 type LoaderError =
@@ -131,6 +134,7 @@ type ActionResult =
       ok: true;
       continue_to: string;
       target_label: string;
+      onboarding: OnboardingProgress;
     };
 
 export async function action({
@@ -191,6 +195,7 @@ export async function action({
     ok: true,
     continue_to: continueTo,
     target_label: targetLabel,
+    onboarding: await withClient((c) => loadOnboardingProgress(c, principal.id)),
   };
 }
 
@@ -211,6 +216,9 @@ export default function InviteLanding({
         <Card>
           <CardHeader>
             <CardTitle>You're in</CardTitle>
+            <CardDescription>
+              You joined <em>{actionData.target_label}</em>.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Link
@@ -221,6 +229,7 @@ export default function InviteLanding({
             </Link>
           </CardContent>
         </Card>
+        <OnboardingCard progress={actionData.onboarding} />
       </Shell>
     );
   }

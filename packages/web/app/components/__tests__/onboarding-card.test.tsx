@@ -17,7 +17,9 @@ const NOTHING_DONE = { workspace: false, agent: false, sources: false };
 describe("OnboardingCard", () => {
   it("walks a new person through the three steps, in order", () => {
     const html = render(NOTHING_DONE);
-    const workspace = html.indexOf("Create a workspace");
+    // Invited people join a workspace instead of creating one; the step
+    // covers both, so the two flows share the same card.
+    const workspace = html.indexOf("Create or join a workspace");
     const agent = html.indexOf("Connect your agent");
     const sources = html.indexOf("Connect sources of knowledge");
     expect(workspace).toBeGreaterThan(-1);
