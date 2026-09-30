@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
+import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -346,6 +347,10 @@ export default function NewDocoStep1({
                         checked={templateHandle === template.handle}
                         onChange={(e) => handleTemplateChange(e.currentTarget.value)}
                         className="mt-0.5"
+                      />
+                      <DocoTypeIcon
+                        template={template.handle}
+                        className="mt-0.5 text-muted-foreground"
                       />
                       <span className="block">
                         <span className="block text-sm font-semibold">{template.label}</span>
