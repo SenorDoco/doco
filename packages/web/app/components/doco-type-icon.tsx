@@ -5,6 +5,7 @@
 
 import {
   BookA,
+  BotMessageSquare,
   Bug,
   CircleHelp,
   FileText,
@@ -42,6 +43,7 @@ export const DOCO_TYPE_ICONS: Record<string, IconComponent> = {
   faq: CircleHelp,
   bugs: Bug,
   ideas: Lightbulb,
+  "agents-chats": BotMessageSquare,
 };
 
 export function DocoTypeIcon({

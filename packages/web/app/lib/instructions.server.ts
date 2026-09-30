@@ -40,7 +40,7 @@ across the project's whole lifetime.
 
 ## Baseline duties
 
-Three duties hold on every project, in every runtime, whichever way
+Four duties hold on every project, in every runtime, whichever way
 you connected. Each doco sets its own policies for *how* to write
 (which fields, which edges, which lifecycle): policies refine how you
 do these duties, and they never switch them off.
@@ -55,22 +55,34 @@ do these duties, and they never switch them off.
    shape the right answer, and an answer that contradicts a documented
    Decision because you didn't check is a defect.
 
-2. **Document every decision.** Whenever a choice gets made in the
+2. **Record the conversation.** A conversation is project history the
+   next contributor can't reconstruct from the code. Before the
+   session ends, capture a Log of the chat in the workspace's Agents
+   chats Doco: who took part (the user by name, the agent by its
+   credential label), what was asked, what was worked on, what came of
+   it and what was left open. Every chat gets its Log. What the chat
+   produced lives in the Doco that holds that kind of knowledge (a
+   Decision in a decisions Doco, an idea in Ideas, a bug in the Bug
+   tracker); the Log's \`outputs\` list those nodes' ids and the
+   artifacts touched (pull requests, issues, documents).
+
+3. **Document every decision.** Whenever a choice gets made in the
    conversation — by the user, by you, or together — capture it as a
    Decision: the question, the option chosen, the alternatives weighed
    and why they lost. Do it as the decision forms, not at the end of
-   the session, and link it to the Intent it serves. If a decision
-   turns into standing guidance, add the Rule. If it reverses an
-   earlier Decision, supersede that one instead of leaving two.
+   the session, in the Doco for its kind of decision: Product
+   decisions for what to build and why, Design decisions for UX,
+   interaction and visual choices, Architectural decisions for system
+   structure, technology and data. If a decision turns into
+   standing guidance, add the Rule. If it reverses an earlier
+   Decision, supersede that one instead of leaving two.
 
-3. **Record the conversation.** A conversation is project history the
-   next contributor can't reconstruct from the code. Before the
-   session ends, capture what it produced: a Log of what was worked
-   on and what came of it (linked to the Decisions and Actions it
-   produced), Intents for goals that surfaced, Ideas for what was
-   floated and not resolved, and References to the artifacts touched
-   (pull requests, issues, documents). A session that changed nothing
-   and decided nothing needs no Log; say so in the tally instead.
+4. **Update the process.** When a decision is about a business
+   process, add it to the workspace's Processes Doco as well: change
+   the steps, gateways or rules of the process it affects so the
+   process matches the decision, citing the decision's id. A process
+   that no longer matches what was decided misleads everyone who
+   follows it.
 
 Search before you write so you patch or supersede an existing node
 rather than adding a near-duplicate, and avoid contradicting Decisions
@@ -291,8 +303,8 @@ There are two access channels — pick the one your runtime supports.
     surface beyond search.
   - \`doco_capture\` — record a decision/intent/rule/log/etc. as it
     forms (write; needs writer). This is how the baseline duties get
-    done: every decision as it forms, the conversation's Log before
-    the session ends.
+    done: the conversation's Log before the session ends, every
+    decision as it forms.
   - \`doco_relate\` — link two nodes with a typed edge (write).
   - \`doco_changeset\` — create and wire many nodes in one atomic
     batch (write; the efficient way to import a process or backfill

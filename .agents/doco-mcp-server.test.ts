@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { expectBaselineDuties } from "../packages/web/app/lib/__tests__/baseline-duties";
 import { FIRST_PERSON, firstPersonLines } from "../packages/web/app/lib/__tests__/first-person";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -308,9 +309,7 @@ describe("doco-mcp-server", () => {
     expect(firstPersonLines(result.instructions)).toEqual([]);
     expect(result.instructions).toContain("asking the user to approve again");
     // Baseline duties every connected agent carries, not per-Doco opt-ins.
-    expect(result.instructions).toContain("Load context first");
-    expect(result.instructions).toContain("Document every decision");
-    expect(result.instructions).toContain("Record the conversation");
+    expectBaselineDuties(result.instructions);
     expect(result.instructions).not.toMatch(/does not mandate captures/i);
   });
 

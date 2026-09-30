@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectBaselineDuties } from "~/lib/__tests__/baseline-duties";
 import { firstPersonLines } from "~/lib/__tests__/first-person";
 
 // The hosted MCP endpoint at /mcp. Identity + reach come from the token via the
@@ -211,9 +212,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     const res = await call({ jsonrpc: "2.0", id: 9, method: "initialize" }, BEARER);
     const body = (await res.json()) as Json;
     const instructions: string = body.result.instructions;
-    expect(instructions).toContain("Load context first");
-    expect(instructions).toContain("Document every decision");
-    expect(instructions).toContain("Record the conversation");
+    expectBaselineDuties(instructions);
     expect(instructions).not.toMatch(/does not mandate captures/i);
   });
 
