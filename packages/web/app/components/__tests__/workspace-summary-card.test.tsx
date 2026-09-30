@@ -1,3 +1,4 @@
+import { Window } from "happy-dom";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -50,6 +51,25 @@ describe("WorkspaceSummaryCard", () => {
     expect(html).toContain('href="/workspaces/torre/agent"');
   });
 
+  // No button outshouts the others; the purple goes to the name instead.
+  it("draws the three buttons alike", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render(TORRE);
+    const classes = ["/new-doco", "/users", "/workspaces/torre/agent"].map(
+      (href) => doc.querySelector(`a[href^="${href}"]`)?.className,
+    );
+    expect(new Set(classes).size).toBe(1);
+    expect(classes[0]).not.toContain("bg-primary");
+  });
+
+  it("makes the name big and purple so it reads as a link", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render(TORRE);
+    const name = doc.querySelector('a[href="/workspaces/torre"]')?.className.split(" ");
+    expect(name).toContain("text-primary");
+    expect(name).toContain("text-lg");
+  });
+
   // Just when, not what: the card stays one glance long.
   it("says when the last activity was, without its details", () => {
     const html = render(TORRE);
@@ -70,6 +90,21 @@ describe("WorkspaceSummaryCard", () => {
     expect(html).not.toContain("New Doco or source");
     expect(html).not.toContain("Invite person");
     expect(html).toContain("Invite agent");
+  });
+
+  // A card with few Docos used to fit the buttons beside the title while a
+  // card with many wrapped them below, so cards didn't line up. The buttons
+  // always get their own row: title, buttons, last activity.
+  it("puts the buttons on their own row, below the title", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render(TORRE);
+    const lastActivity = doc.querySelector("time")?.parentElement;
+    const rows = Array.from(lastActivity?.parentElement?.children ?? []);
+    const rowOf = (selector: string) => rows.findIndex((row) => row.querySelector(selector));
+    expect(rows).toHaveLength(3);
+    expect(rowOf('ul[aria-label="Docos"]')).toBe(0);
+    expect(rowOf('a[href="/workspaces/torre/agent"]')).toBe(1);
+    expect(rows[2]).toBe(lastActivity);
   });
 
   it("leaves the name out on the workspace's own page", () => {
