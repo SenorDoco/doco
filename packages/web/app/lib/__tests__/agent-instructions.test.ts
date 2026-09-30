@@ -37,24 +37,24 @@ describe("agentInstructions", () => {
     expect(pick).toBeGreaterThan(connect);
     expect(text).toContain("`list_workspaces`");
     // No workspaces: a link to create one, and try again.
-    expect(text).toMatch(/create one at\s+https:\/\/doco\.test\/new-workspace/);
+    expect(text).toContain("create one at https://doco.test/new-workspace");
     // A personal workspace exists for everyone and never stands in for a project.
-    expect(text).toMatch(/besides the user's personal one/);
+    expect(text).toContain("besides the user's personal one");
     // An invited teammate joins instead of creating.
-    expect(text).toMatch(/accept the invite a teammate sent/);
+    expect(text).toContain("accept the invite a teammate sent");
     expect(text).toContain("try again once it exists");
     expect(text).toContain("Agents never create workspaces.");
     // Already connected: keep it or change it.
-    expect(text).toMatch(/ask whether to keep it or\s+change it/);
+    expect(text).toContain("ask whether to keep it or change it");
     // Not connected: which workspace, or a link to create a new one.
-    expect(text).toMatch(/ask the user which of the listed workspaces\s+to use/);
+    expect(text).toContain("ask the user which of the listed workspaces to use");
     expect(text).toContain("Doco workspace: https://doco.test/workspaces/<workspace-handle>");
   });
 
   it("has the agent create the workspace's missing Docos itself, not send the user to the site", () => {
     expect(text).toContain("`doco_create`");
-    expect(text).toMatch(/in the workspace on the\s+`Doco workspace:` line/);
-    expect(text).toMatch(/Never\s+ask the user to create a Doco/);
+    expect(text).toContain("in the workspace on the `Doco workspace:` line");
+    expect(text).toContain("Never ask the user to create a Doco");
   });
 
   it("then checks the AGENTS.md copy against the home page and asks before updating it", () => {
@@ -62,8 +62,8 @@ describe("agentInstructions", () => {
     const current = position("### 3. Keep these instructions current");
     expect(current).toBeGreaterThan(pick);
     expect(text).toContain("Fetch https://doco.test and compare");
-    expect(text).toMatch(/ask the user whether to update it with the latest instructions/);
-    expect(text).toMatch(/ask the user to copy the latest\s+instructions/);
+    expect(text).toContain("ask the user whether to update it with the latest instructions");
+    expect(text).toContain("ask the user to copy the latest instructions");
   });
 
   it("carries the four baseline duties", () => {
@@ -81,13 +81,23 @@ describe("agentInstructions", () => {
     expect(position("### Every session")).toBeLessThan(
       position("### 1. Check the Doco connection"),
     );
-    const flat = text.replace(/\s+/g, " ");
-    expect(flat).toContain(
+    expect(text).toContain(
       "Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.md lacks this block.",
     );
-    expect(flat).toContain(
+    expect(text).toContain(
       "Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.",
     );
+  });
+
+  // Alexander, 2026-09-30: the page's box wraps the block to its own width, so
+  // a line break inside a paragraph or list item left the text in a narrow
+  // column of a wide box. Lines break only between blocks.
+  it("keeps each paragraph and list item on one line", () => {
+    const lines = text.split("\n");
+    const continued = lines.filter(
+      (line, i) => i > 0 && line !== "" && lines[i - 1] !== "" && !/^(#|- |\d+\. |<!--)/.test(line),
+    );
+    expect(continued).toEqual([]);
   });
 
   // Claude Code keeps only the first 4096 characters of an MCP server's
@@ -99,9 +109,8 @@ describe("agentInstructions", () => {
   // Claude Code loads CLAUDE.md, not AGENTS.md: a block kept only in AGENTS.md
   // never reaches it unless CLAUDE.md imports that file.
   it("checks the block is in the file the project's agents actually load", () => {
-    const flat = text.replace(/\s+/g, " ");
-    expect(flat).toContain("CLAUDE.md for Claude Code, AGENTS.md for most others");
-    expect(flat).toContain("`@AGENTS.md`");
+    expect(text).toContain("CLAUDE.md for Claude Code, AGENTS.md for most others");
+    expect(text).toContain("`@AGENTS.md`");
   });
 
   // Alexander, 2026-09-30: one template for every place Doco instructs an
