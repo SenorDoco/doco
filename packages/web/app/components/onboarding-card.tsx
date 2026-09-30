@@ -1,5 +1,7 @@
-// The dashboard's "Get started" card: the three steps that take a person from
-// signing in to a working shared memory. Each step reads as done from the
+// The "Get started" card: the three steps that take a person from signing in
+// to a working shared memory. The dashboard shows it, and so does the invite
+// page once an invite is accepted, so people who join and people who create a
+// workspace follow the same steps. Each step reads as done from the
 // database (lib/onboarding.server.ts); the card disappears once all three are.
 
 import { CheckCircle2 } from "lucide-react";
@@ -16,8 +18,8 @@ const STEPS: ReadonlyArray<{
 }> = [
   {
     key: "workspace",
-    title: "Create a workspace",
-    body: "A workspace holds one project's shared memory: its members, its constitution and its Docos.",
+    title: "Create or join a workspace",
+    body: "A workspace holds one project's shared memory: its members, its constitution and its Docos. Join one from an invite, or create one.",
     href: "/new-workspace",
     action: "Create a workspace",
   },

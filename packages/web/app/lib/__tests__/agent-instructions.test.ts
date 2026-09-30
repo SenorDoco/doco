@@ -31,7 +31,11 @@ describe("agentInstructions", () => {
     expect(pick).toBeGreaterThan(connect);
     expect(text).toContain("`list_workspaces`");
     // No workspaces: a link to create one, and try again.
-    expect(text).toContain("create one at https://doco.test/new-workspace");
+    expect(text).toMatch(/create one at\s+https:\/\/doco\.test\/new-workspace/);
+    // A personal workspace exists for everyone and never stands in for a project.
+    expect(text).toMatch(/besides the user's personal one/);
+    // An invited teammate joins instead of creating.
+    expect(text).toMatch(/accept the invite a teammate sent/);
     expect(text).toContain("try again once it exists");
     expect(text).toContain("Agents never create workspaces.");
     // Already connected: keep it or change it.

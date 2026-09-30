@@ -38,8 +38,10 @@ workspaces, specific workspaces, or specific Docos.
 
 One project = one workspace. Call \`list_workspaces\`.
 
-- No workspaces: tell the user to create one at ${host}/new-workspace and
-  to try again once it exists. Agents never create workspaces.
+- No workspaces besides the user's personal one (named after the user,
+  never a project's): tell the user to create one at
+  ${host}/new-workspace, or to accept the invite a teammate sent, and to
+  try again once it exists. Agents never create workspaces.
 - A workspace is already connected to this project (the
   \`Doco workspace:\` line right after this block): tell the user this
   project is connected to that workspace and ask whether to keep it or

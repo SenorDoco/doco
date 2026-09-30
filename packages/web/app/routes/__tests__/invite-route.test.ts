@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   upsertDocoUser: vi.fn(),
   upsertWorkspaceUser: vi.fn(),
   withClient: vi.fn(),
+  loadOnboardingProgress: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
@@ -37,7 +38,14 @@ vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: mocks.getCurrentPrincipal,
 }));
 
-import { action, loader } from "../invite.$code";
+vi.mock("~/lib/onboarding.server", () => ({
+  loadOnboardingProgress: mocks.loadOnboardingProgress,
+}));
+
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
+import InviteLanding, { action, loader } from "../invite.$code";
 
 const WORKSPACE_INVITE = {
   kind: "invite",
@@ -87,6 +95,11 @@ describe("/invite/:code", () => {
       rows: [{ id: "workspace_torre", handle: "torre" }],
     });
     mocks.withClient.mockImplementation((callback) => callback({ query: mocks.query }));
+    mocks.loadOnboardingProgress.mockResolvedValue({
+      workspace: true,
+      agent: false,
+      sources: false,
+    });
   });
 
   it("loads workspace-only invites without a doco anchor", async () => {
@@ -155,5 +168,39 @@ describe("/invite/:code", () => {
       role: "writer",
       write_types: ["*"],
     });
+  });
+
+  // A person who accepts an invite continues with the same steps as a person
+  // who creates a workspace: the joined workspace finishes step one, and the
+  // next step is connecting their agent.
+  it("walks the new member on to connecting their agent after they accept", async () => {
+    // VersionPill reads these vite-injected build-time globals during render.
+    vi.stubGlobal("__DOCO_VERSION__", "0.0.0-test");
+    vi.stubGlobal("__DOCO_RELEASE_AT__", "2026-01-01T00:00:00.000Z");
+    const result = await action({
+      request: request("POST"),
+      params: { code: "invite_code" },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      onboarding: { workspace: true, agent: false, sources: false },
+    });
+    expect(mocks.loadOnboardingProgress).toHaveBeenCalledWith(expect.anything(), "user_alice");
+
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(InviteLanding, {
+          loaderData: { error: "consumed" },
+          actionData: result as never,
+        }),
+      ),
+    );
+    expect(html).toContain("You&#x27;re in");
+    expect(html).toContain("Connect your agent");
+    expect(html).toContain('href="/#instructions"');
+    expect(html).toContain('href="/workspaces/torre"');
+    vi.unstubAllGlobals();
   });
 });

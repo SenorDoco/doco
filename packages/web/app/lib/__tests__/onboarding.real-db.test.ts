@@ -60,6 +60,27 @@ describe("loadOnboardingProgress", () => {
     expect(await loadOnboardingProgress(c, "user_bo")).toMatchObject({ workspace: false });
   });
 
+  // Every person gets a personal workspace named after them at sign-up. It is
+  // not a project's workspace, so it does not finish the first step.
+  it("does not count the personal workspace every person gets at sign-up", async () => {
+    await db.exec(`
+      INSERT INTO workspaces (id, handle, name) VALUES ('workspace_ana', 'ana', 'ana');
+      INSERT INTO workspace_users (workspace_id, user_id, role) VALUES ('workspace_ana', 'user_ana', 'owner');
+    `);
+    expect(await loadOnboardingProgress(c, "user_ana")).toMatchObject({ workspace: false });
+  });
+
+  // Someone invited straight to a Doco has joined a project too.
+  it("marks the workspace step done once the person is invited to a Doco", async () => {
+    await db.exec(`
+      INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'torre', 'Torre');
+      INSERT INTO docos (id, handle, owner_id, workspace_id, data)
+        VALUES ('doco_1', 'torre-decisions', 'workspace_1', 'workspace_1', '{}'::jsonb);
+      INSERT INTO doco_users (doco_id, user_id, role) VALUES ('doco_1', 'user_bo', 'reader');
+    `);
+    expect(await loadOnboardingProgress(c, "user_bo")).toMatchObject({ workspace: true });
+  });
+
   it("marks the agent step done once the person has connected an agent", async () => {
     await connectAgent("user_ana");
     expect(await loadOnboardingProgress(c, "user_ana")).toMatchObject({ agent: true });
