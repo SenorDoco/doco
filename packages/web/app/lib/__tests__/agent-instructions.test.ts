@@ -71,7 +71,6 @@ describe("agentInstructions", () => {
     expect(text).toContain("**Record the conversation.**");
     expect(text).toContain("**Document every decision.**");
     expectBaselineDuties(text);
-    expect(text).toContain("`doco_create`");
     expect(text).toContain("https://doco.test/protocol/canonical-instructions");
   });
 

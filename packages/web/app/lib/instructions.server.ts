@@ -77,9 +77,6 @@ do these duties, and they never switch them off.
    standing guidance, add the Rule. If it reverses an earlier
    Decision, supersede that one instead of leaving two.
 
-If the workspace has no Doco of the kind a duty needs, create it from
-its template with \`doco_create\`.
-
 Search before you write so you patch or supersede an existing node
 rather than adding a near-duplicate, and avoid contradicting Decisions
 and Rules already in the doco.

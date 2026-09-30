@@ -91,9 +91,6 @@ them, never whether.
    interaction and visual choices, Architectural decisions for system
    structure, technology and data.
 
-If the workspace has no Doco of the kind a duty needs, create it from its
-template with \`doco_create\`.
-
 A doco is the project's record; write what was decided, by whom and why,
 in the third person or the imperative.
 
