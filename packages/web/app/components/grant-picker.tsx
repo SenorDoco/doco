@@ -8,34 +8,26 @@ import {
   type GrantScope,
   type GrantTarget,
   type TargetRoleChoice,
-  type TypeLevel,
   actorGrant,
-  applyDocoTypeLevel,
   applyTargetRole,
   availableScopes,
   describeExistingGrant,
   findExistingGrant,
-  findGrant,
-  inheritedTypeLevel,
   targetRoleOptions,
   targetRoleValue,
   targetsByWorkspace,
-  typeDropdownValue,
-  writableTypeGroups,
 } from "~/lib/grant-picker";
 
 // Shared GRANT WIZARD (collaborators + API-tokens).
 //
 //   Step 1 — pick the scope (raised buttons; the chosen one sits pressed):
-//            specific workspaces / specific docos / specific node or edge
-//            types (and, for tokens only, the "all workspaces" actor scope).
+//            specific workspaces / specific docos (and, for tokens only, the
+//            "all workspaces" actor scope).
 //   Then, per scope:
 //     workspace     — every workspace listed, each with its own ACCESS dropdown
 //               on the right; grant several at once.
 //     doco    — first choose ONE workspace (pressed/removable); then its
 //               docos, each with an ACCESS dropdown; grant several.
-//     types   — choose an workspace, then a doco, then every node type and
-//               edge type listed, each with its own level dropdown.
 //
 // The picker accumulates a LIST of grants and reports it via onChange; the
 // host page renders the submit button.
@@ -63,8 +55,8 @@ export function GrantPicker({
   /**
    * When the connector authorized against a workspace-scoped resource, the
    * first scope option becomes "The entire <name> workspace" with its
-   * access-level dropdown inline in the row; "Specific docos" / "types" still
-   * narrow within it. The catalog is expected to already be scoped to that one
+   * access-level dropdown inline in the row; "Specific docos" still narrows
+   * within it. The catalog is expected to already be scoped to that one
    * workspace.
    */
   boundWorkspace?: { id: string; label: string; maxRole: DocoRole };
@@ -193,8 +185,6 @@ export function GrantPicker({
         )
       ) : scope === "doco" ? (
         <DocoMultiStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
-      ) : scope === "types" ? (
-        <TypesStep catalog={catalog} grants={grants} onChange={onChange} existing={existing} />
       ) : null}
     </div>
   );
@@ -287,82 +277,32 @@ export function GrantWorkspaceChoiceList({
   onSelect: (workspaceId: string) => void;
   onClear: () => void;
 }) {
-  return (
-    <GrantChoiceList
-      items={workspaces}
-      itemKind="workspace"
-      selectedItemId={selectedWorkspaceId}
-      testIdPrefix={testIdPrefix}
-      onSelect={onSelect}
-      onClear={onClear}
-    />
-  );
-}
-
-export function GrantDocoChoiceList({
-  docos,
-  selectedDocoId,
-  testIdPrefix,
-  onSelect,
-  onClear,
-}: {
-  docos: { id: string; label: string }[];
-  selectedDocoId: string | null;
-  testIdPrefix: string;
-  onSelect: (docoId: string) => void;
-  onClear: () => void;
-}) {
-  return (
-    <GrantChoiceList
-      items={docos}
-      itemKind="doco"
-      selectedItemId={selectedDocoId}
-      testIdPrefix={testIdPrefix}
-      onSelect={onSelect}
-      onClear={onClear}
-    />
-  );
-}
-
-function GrantChoiceList({
-  items,
-  itemKind,
-  selectedItemId,
-  testIdPrefix,
-  onSelect,
-  onClear,
-}: {
-  items: { id: string; label: string }[];
-  itemKind: "workspace" | "doco";
-  selectedItemId: string | null;
-  testIdPrefix: string;
-  onSelect: (id: string) => void;
-  onClear: () => void;
-}) {
-  const selectedItem = selectedItemId ? items.find((item) => item.id === selectedItemId) : null;
-  const visibleItems = selectedItem ? [selectedItem] : items;
+  const selectedWorkspace = selectedWorkspaceId
+    ? workspaces.find((workspace) => workspace.id === selectedWorkspaceId)
+    : null;
+  const visibleWorkspaces = selectedWorkspace ? [selectedWorkspace] : workspaces;
 
   return (
     <ul className="flex flex-wrap gap-2">
-      {visibleItems.map((item) => {
-        const selected = item.id === selectedItemId;
+      {visibleWorkspaces.map((workspace) => {
+        const selected = workspace.id === selectedWorkspaceId;
         return (
-          <li key={item.id}>
+          <li key={workspace.id}>
             <button
               type="button"
-              data-testid={`${testIdPrefix}-${item.id}`}
+              data-testid={`${testIdPrefix}-${workspace.id}`}
               aria-pressed={selected}
-              aria-label={selected ? `Remove ${item.label} ${itemKind} selection` : undefined}
+              aria-label={selected ? `Remove ${workspace.label} workspace selection` : undefined}
               onClick={() => {
                 if (selected) {
                   onClear();
                 } else {
-                  onSelect(item.id);
+                  onSelect(workspace.id);
                 }
               }}
               className={`neu-button${selected ? " neu-pressed" : ""} inline-flex w-fit max-w-full min-w-36 items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-left text-sm`}
             >
-              <span className="min-w-0 truncate">{item.label}</span>
+              <span className="min-w-0 truncate">{workspace.label}</span>
               {selected ? <X aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}
             </button>
           </li>
@@ -499,171 +439,5 @@ function DocoMultiStep({
         </div>
       ) : null}
     </div>
-  );
-}
-
-// Types: workspace → doco → per-type level dropdowns for that doco.
-function TypesStep({
-  catalog,
-  grants,
-  existing,
-  onChange,
-}: {
-  catalog: GrantCatalog;
-  grants: ComposedGrant[];
-  existing?: ExistingGrant[];
-  onChange: (grants: ComposedGrant[]) => void;
-}) {
-  const groups = useMemo(() => targetsByWorkspace(catalog), [catalog]);
-  const workspacesWithDocos = groups.filter((g) => g.docos.length > 0);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [docoId, setDocoId] = useState<string | null>(null);
-  const active = workspacesWithDocos.find((g) => g.workspace.id === workspaceId) ?? null;
-  const doco = active?.docos.find((d) => d.id === docoId) ?? null;
-
-  return (
-    <div className="space-y-4" data-testid="grant-types-step">
-      <div className="space-y-2" data-testid="grant-types-workspace-step">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Which workspace is the doco in?
-        </div>
-        <GrantWorkspaceChoiceList
-          workspaces={workspacesWithDocos.map((g) => g.workspace)}
-          selectedWorkspaceId={active?.workspace.id ?? null}
-          testIdPrefix="grant-types-workspace"
-          onSelect={(nextWorkspaceId) => {
-            setWorkspaceId(nextWorkspaceId);
-            setDocoId(null);
-          }}
-          onClear={() => {
-            setWorkspaceId(null);
-            setDocoId(null);
-          }}
-        />
-      </div>
-
-      {active ? (
-        <div className="space-y-2" data-testid="grant-types-doco-step">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Which doco in {active.workspace.label}?
-          </div>
-          <GrantDocoChoiceList
-            docos={active.docos.map((d) => ({ id: d.id, label: d.label }))}
-            selectedDocoId={doco?.id ?? null}
-            testIdPrefix="grant-types-doco"
-            onSelect={setDocoId}
-            onClear={() => setDocoId(null)}
-          />
-        </div>
-      ) : null}
-
-      {doco ? (
-        <div className="space-y-2" data-testid="grant-types-type-step">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Which node or edge types in {doco.label}?
-          </div>
-          <DocoTypeGrid doco={doco} grants={grants} existing={existing} onChange={onChange} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// The node-type / edge-type list for one doco, each row with a level dropdown.
-function DocoTypeGrid({
-  doco,
-  grants,
-  existing,
-  onChange,
-}: {
-  doco: GrantTarget;
-  grants: ComposedGrant[];
-  existing?: ExistingGrant[];
-  onChange: (grants: ComposedGrant[]) => void;
-}) {
-  const { nodes, edges } = writableTypeGroups();
-  const allTypes = [...nodes, ...edges];
-  const current = findGrant(grants, "doco", doco.id);
-  const existingGrant = findExistingGrant(existing, "doco", doco.id);
-  const role = current?.role ?? existingGrant?.role ?? "reader";
-  const writeTypes = current?.writeTypes ?? existingGrant?.writeTypes ?? [];
-  const inherited = inheritedTypeLevel(role, writeTypes);
-  const change = (t: string, next: TypeLevel) =>
-    onChange(
-      applyDocoTypeLevel(grants, doco.id, t, next, allTypes, {
-        role,
-        writeTypes,
-      }),
-    );
-
-  return (
-    <div
-      className="space-y-3 rounded-md border border-border px-3 py-3"
-      data-testid="grant-types-grid"
-    >
-      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-        <TypeColumn
-          title="Node types"
-          types={nodes}
-          docoId={doco.id}
-          role={role}
-          writeTypes={writeTypes}
-          inherited={inherited}
-          onChange={change}
-        />
-        <TypeColumn
-          title="Edge types"
-          types={edges}
-          docoId={doco.id}
-          role={role}
-          writeTypes={writeTypes}
-          inherited={inherited}
-          onChange={change}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Reads everything; each type defaults to read — set any to “Can write”.
-      </p>
-    </div>
-  );
-}
-
-function TypeColumn({
-  title,
-  types,
-  docoId,
-  role,
-  writeTypes,
-  inherited,
-  onChange,
-}: {
-  title: string;
-  types: readonly string[];
-  docoId: string;
-  role: DocoRole;
-  writeTypes: string[];
-  inherited: "read" | "write";
-  onChange: (t: string, next: TypeLevel) => void;
-}) {
-  const defaultLabel = `Default — ${inherited === "write" ? "can write" : "read only"}`;
-  return (
-    <fieldset className="col-span-1 space-y-1">
-      <legend className="text-xs uppercase tracking-wide text-muted-foreground">{title}</legend>
-      {types.map((t) => (
-        <label key={t} className="flex items-center justify-between gap-2 text-sm">
-          <span className="font-mono">{t}</span>
-          <select
-            data-testid={`grant-type-${docoId}-${t}`}
-            value={typeDropdownValue(role, writeTypes, t)}
-            onChange={(e) => onChange(t, e.currentTarget.value as TypeLevel)}
-            className="rounded-md px-2 py-0.5 text-xs"
-          >
-            <option value="default">{defaultLabel}</option>
-            <option value="read">Read only</option>
-            <option value="write">Can write</option>
-          </select>
-        </label>
-      ))}
-    </fieldset>
   );
 }

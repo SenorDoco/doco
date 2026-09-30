@@ -1,20 +1,11 @@
-// Shared grant model for the collaborators and API-tokens pages
-// (decision_per_type_write_grants). Both pages grant access the same way:
-// pick an workspace, drill into one of its Docos (or the workspace itself),
-// then choose read / write and — for write — which node and edge
-// TYPES. This module is the framework-free core: the data shapes and the
-// pure selection/normalization logic, unit-tested independently of React.
+// Shared grant model for the collaborators and API-tokens pages. Both pages
+// grant access the same way: pick workspaces, or drill into a workspace's
+// Docos, then choose read / write / own for each. This module is the
+// framework-free core: the data shapes and the pure selection/normalization
+// logic, unit-tested independently of React.
 
 import type { DocoRole } from "@doco/db";
-import {
-  EDGE_TYPES,
-  type EdgeType,
-  NODE_TYPES,
-  type NodeType,
-  WRITE_ALL,
-  type WritableType,
-  normalizeWriteTypes,
-} from "@doco/shared";
+import { WRITE_ALL, normalizeWriteTypes } from "@doco/shared";
 
 export type { DocoRole };
 
@@ -45,8 +36,7 @@ export interface GrantCatalog {
  *   - actor:   mint a user-level "all workspaces" TOKEN (no explicit grants; its
  *              breadth is the user's live membership).
  *   - workspace:     grant on one or more workspaces (and their Docos).
- *   - doco:    grant role on one Doco.
- *   - types:   grant write on specific node/edge types within one Doco.
+ *   - doco:    grant role on one or more Docos.
  *
  * `actor` is offered ONLY when minting a credential (`offerActor`): its breadth
  * follows the user's live membership instead of a snapshot of workspaces.
@@ -54,7 +44,7 @@ export interface GrantCatalog {
  * a specific workspace or doco — never "all your workspaces" (that breadth is a
  * token-only authorization). There is no "identity" (full-access) scope anymore.
  */
-export type GrantScope = "actor" | "workspace" | "doco" | "types";
+export type GrantScope = "actor" | "workspace" | "doco";
 
 /**
  * A grant the user is composing or has saved. `writeTypes` is meaningful
@@ -64,9 +54,8 @@ export type GrantScope = "actor" | "workspace" | "doco" | "types";
  *
  * `level` is the persistence level: "actor" mints a user-level token (no
  * explicit grants — the server reads only the level); "workspace" writes
- * workspace_users; "doco" writes doco_users. The wizard's "types" scope
- * persists as a doco-level grant with a non-wildcard write set. `targetId` is
- * empty for actor-level grants (the grantor IS the scope).
+ * workspace_users; "doco" writes doco_users. `targetId` is empty for
+ * actor-level grants (the grantor IS the scope).
  */
 export interface ComposedGrant {
   level: "actor" | "workspace" | "doco";
@@ -171,14 +160,6 @@ export function rank(role: DocoRole): number {
   return role === "owner" ? 2 : role === "writer" ? 1 : 0;
 }
 
-/** All write-gateable types split for display (nodes vs edges). */
-export function writableTypeGroups(): {
-  nodes: readonly NodeType[];
-  edges: readonly EdgeType[];
-} {
-  return { nodes: NODE_TYPES, edges: EDGE_TYPES };
-}
-
 /**
  * Resolve the effective write_types a composed grant should persist.
  *
@@ -203,81 +184,6 @@ export function describeWriteScope(role: DocoRole, writeTypes: string[]): string
   return `writes ${norm.length} type${norm.length === 1 ? "" : "s"}`;
 }
 
-// ── Per-type access levels ──────────────────────────────────────────────────
-//
-// Each node/edge type carries an access LEVEL, not a checkbox. The level is
-// "read" or "write"; "default" means "inherit the grant's base role". The
-// inherited level is what the base ACCESS role gives a type when it isn't
-// overridden: a writer (or a wildcard write set) writes everything; a reader
-// reads everything. Owners administer and aren't per-type-narrowed.
-
-/** A per-type access level the dropdown can hold. */
-export type TypeLevel = "default" | "read" | "write";
-
-/**
- * The level a type INHERITS from the grant's base role + wildcard, used as
- * the "default" the dropdown shows. Writer or a wildcard write set ⇒ write;
- * otherwise read.
- */
-export function inheritedTypeLevel(role: DocoRole, writeTypes: string[]): "read" | "write" {
-  if (role === "owner" || role === "writer") return "write";
-  if (writeTypes.includes(WRITE_ALL)) return "write";
-  return "read";
-}
-
-/**
- * The CURRENT effective level for a single type, given the grant's base role
- * and explicit write set. A type named in write_types writes; the wildcard
- * writes everything; otherwise it falls to the inherited level.
- */
-export function effectiveTypeLevel(
-  role: DocoRole,
-  writeTypes: string[],
-  type: string,
-): "read" | "write" {
-  if (role === "owner" || role === "writer") return "write";
-  if (writeTypes.includes(WRITE_ALL)) return "write";
-  if (writeTypes.includes(type)) return "write";
-  return "read";
-}
-
-/**
- * Compute the dropdown selection for a type: "default" when its effective
- * level equals the inherited level (no override), else the explicit level.
- */
-export function typeDropdownValue(role: DocoRole, writeTypes: string[], type: string): TypeLevel {
-  const eff = effectiveTypeLevel(role, writeTypes, type);
-  const inh = inheritedTypeLevel(role, writeTypes);
-  return eff === inh ? "default" : eff;
-}
-
-/**
- * Apply a per-type level change, returning the next explicit write set.
- * Selecting "default" drops any override; "write"/"read" set the type's
- * level explicitly. Starts from the currently-effective per-type levels so
- * a change to one type doesn't disturb the others (it expands a wildcard or
- * the inherited baseline into an explicit set when needed).
- */
-export function setTypeLevel(
-  role: DocoRole,
-  writeTypes: string[],
-  type: string,
-  next: TypeLevel,
-  allTypes: readonly string[],
-): string[] {
-  // Materialize the current effective level for every type, so we can edit
-  // one without losing the rest, then re-collapse.
-  const desired = new Map<string, "read" | "write">();
-  for (const t of allTypes) desired.set(t, effectiveTypeLevel(role, writeTypes, t));
-  const inh = inheritedTypeLevel(role, writeTypes);
-  desired.set(type, next === "default" ? inh : next);
-
-  // Re-collapse: the write set is every type whose desired level is "write".
-  const writes = allTypes.filter((t) => desired.get(t) === "write");
-  if (writes.length === allTypes.length) return [WRITE_ALL];
-  return writes;
-}
-
 /** Display metadata for each wizard scope choice. */
 export interface ScopeChoice {
   scope: GrantScope;
@@ -295,8 +201,8 @@ export interface ScopeChoice {
  *     through its own top-level toggle instead, so it leaves `offerActor` off.
  * Granting another PERSON is always a concrete target — a specific workspace or
  * doco — so there is no "all your workspaces" choice here; that breadth is a
- * token-only authorization (`actor`). workspace and doco/types require at least
- * one grantable target of that kind.
+ * token-only authorization (`actor`). workspace and doco require at least one
+ * grantable target of that kind.
  */
 export function availableScopes(
   catalog: GrantCatalog,
@@ -337,22 +243,8 @@ export function availableScopes(
       title: "Specific docos",
       blurb: "Read, write, or own selected docos.",
     });
-    out.push({
-      scope: "types",
-      title: "Specific node or edge types",
-      blurb: "Write access to only certain node and edge types within one doco.",
-    });
   }
   return out;
-}
-
-/**
- * Whether a scope choice surfaces the per-node/edge-type write grid. Only the
- * dedicated "types" scope does; account / workspace / doco are role-only (read /
- * write / own), with the per-type grid reachable solely through "types".
- */
-export function scopeShowsPerTypeControls(scope: GrantScope): boolean {
-  return scope === "types";
 }
 
 /** A grant the grantee/token already holds, for the "current access" panel. */
@@ -373,9 +265,9 @@ export function describeExistingGrant(g: ExistingGrant): string {
 // ── Multi-grant selection ───────────────────────────────────────────────────
 //
 // The wizard accumulates a LIST of grants: a person/token can be granted
-// several workspaces at once, several docos, or a per-type doco grant — all in one
-// pass. These pure helpers maintain that list keyed by (level, targetId) so a
-// thin component just renders rows and calls them.
+// several workspaces at once, or several docos — all in one pass. These pure
+// helpers maintain that list keyed by (level, targetId) so a thin component
+// just renders rows and calls them.
 
 /** Stable key for a grant within the selection list. */
 export function grantKey(level: ComposedGrant["level"], targetId: string): string {
@@ -455,33 +347,6 @@ export function applyTargetRole(
     targetId,
     role: choice,
     writeTypes: choice === "writer" ? ["*"] : [],
-  });
-}
-
-/**
- * Apply a per-TYPE level change to the doco grant for `docoId` (the "types"
- * scope). The grant is reader-based with an explicit write set; setting a
- * type to "write" adds it, "read"/"default" removes it. When the resulting
- * write set is empty the doco grant is dropped entirely (nothing to grant).
- */
-export function applyDocoTypeLevel(
-  list: ComposedGrant[],
-  docoId: string,
-  type: string,
-  next: TypeLevel,
-  allTypes: readonly string[],
-  fallback?: { role: DocoRole; writeTypes: string[] },
-): ComposedGrant[] {
-  const current = findGrant(list, "doco", docoId);
-  const role = current?.role ?? fallback?.role ?? "reader";
-  const base = current?.writeTypes ?? fallback?.writeTypes ?? [];
-  const nextTypes = setTypeLevel(role, base, type, next, allTypes);
-  if (nextTypes.length === 0) return removeGrant(list, "doco", docoId);
-  return upsertGrant(list, {
-    level: "doco",
-    targetId: docoId,
-    role: "reader",
-    writeTypes: nextTypes,
   });
 }
 
