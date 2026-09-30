@@ -50,6 +50,12 @@ describe("agentInstructions", () => {
     expect(text).toContain("Doco workspace: https://doco.test/workspaces/<workspace-handle>");
   });
 
+  it("has the agent create the workspace's missing Docos itself, not send the user to the site", () => {
+    expect(text).toContain("`doco_create`");
+    expect(text).toMatch(/in the workspace on the\s+`Doco workspace:` line/);
+    expect(text).toMatch(/Never\s+ask the user to create a Doco/);
+  });
+
   it("then checks the AGENTS.md copy against the home page and asks before updating it", () => {
     const pick = position("### 2. Pick the project's workspace");
     const current = position("### 3. Keep these instructions current");

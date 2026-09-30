@@ -328,7 +328,9 @@ several, or specific docos, exactly as the user granted. That grant is
 your scope and the user chose it deliberately, so work across whatever
 workspaces and docos the task needs — never cap yourself at one. Each
 tool call names a doco by its \`<handle>\`, in any workspace you reach.
-Honor each workspace's constitution and policies as you go.
+Honor each workspace's constitution and policies as you go. When the
+work needs a doco the project's workspace lacks, create it with
+\`doco_create\` instead of sending the user to the website.
 
 **Direct HTTP** (any runtime, or when MCP isn't available). You
 drive OAuth directly. Two recipes, full step-by-step at:
@@ -358,7 +360,9 @@ One project = one Workspace; each doco in it holds one kind of that
 project's knowledge (decisions, ideas, bugs, …), so a new project gets a
 new Workspace, never a lone doco inside another project's workspace.
 People create Workspaces (at /new-workspace); you never do, and the API
-has no call for it. Access is granted to you at one of three levels:
+has no call for it. Inside a Workspace you create the docos the project
+needs yourself (\`doco_create\` over MCP, or \`POST /api/v1/docos.json\`),
+which takes owner on that Workspace from both the user and your grant. Access is granted to you at one of three levels:
 **all of the user's Workspaces** (an "all workspaces" token, which also reaches
 Workspaces they create later), **specific Workspaces** (each covers every
 doco in it, now and in the future — the common case when an owner invites
@@ -579,7 +583,7 @@ entity type that governs how nodes are authored:
 
 - Sign in to the host (via whichever providers it offers).
 - Create / delete a workspace, and grant agents access to it.
-- Create / delete a doco.
+- Delete a doco.
 - Approve OAuth device-flow grants at /device.
 - Mint human collaboration invites.
 `;

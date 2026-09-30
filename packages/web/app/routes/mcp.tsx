@@ -17,14 +17,17 @@ import { getDocoByIdOrHandle, getWorkspaceConstitutionsByIds } from "@doco/db";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { gatherAgentDebug } from "~/lib/agent-debug.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
+import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { isSuperadmin } from "~/lib/session.server";
 import { type McpContext, gateUserMcp } from "~/lib/user-mcp.server";
+import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 import { action as captureAction } from "./$docoHandle.api.$type[.]json";
 import { action as changesetsAction } from "./$docoHandle.api.changesets[.]json";
 import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
 import { action as policyIdAction } from "./$docoHandle.api.policies.$id[.]json";
 import { action as policiesAction } from "./$docoHandle.api.policies[.]json";
 import { loader as searchLoader } from "./$docoHandle.search[.]json";
+import { action as createDocoAction } from "./api.v1.docos[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
@@ -44,9 +47,10 @@ const SERVER_INSTRUCTIONS = [
   "tools regardless of workspace. One project = one Workspace; its Docos are",
   "the kinds of knowledge inside it (decisions, ideas, bugs, ...). If the user",
   "wants Doco for a project no workspace matches, the project needs a new",
-  "Workspace: the user creates it at /new-workspace, then its Docos from the",
-  "workspace page. Never stand a single Doco in for the project inside another",
-  "workspace. When the user asks to use Doco, follow the agent instructions on",
+  "Workspace: the user creates it at /new-workspace (agents never create",
+  "workspaces). Inside the project's workspace, create the Docos the work needs",
+  "with doco_create; don't send the user to the website for them. Never stand a",
+  "single Doco in for the project inside another workspace. When the user asks to use Doco, follow the agent instructions on",
   "the Doco home page (/): confirm the project's workspace with the user and",
   "keep those instructions current in the project's AGENTS.md or similar.",
   "A doco is the project's record; write what was decided, by whom and why,",
@@ -319,6 +323,48 @@ const POLICY_TOOL = {
   },
 };
 
+const CREATE_TOOL = {
+  name: "doco_create",
+  description: [
+    "Create a Doco in a workspace this connection reaches. A workspace is one",
+    "project; each Doco in it holds one kind of that project's knowledge",
+    "(decisions, bugs, ideas, ...), shaped by its template. Needs owner on the",
+    "workspace, both the user's own role and the connection's; a connection",
+    "limited to specific Docos can't create new ones. The new Doco is",
+    "reachable through this same connection at once. Workspaces are created by",
+    "people at /new-workspace, never by agents.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      workspace: {
+        type: "string",
+        description: "The workspace's handle or id (from list_workspaces).",
+      },
+      name: {
+        type: "string",
+        description:
+          "Requested Doco handle, e.g. 'acme-bugs'. Handles are global; a taken one gets a suffix.",
+      },
+      template: {
+        type: "string",
+        enum: DOCO_TEMPLATES.map((t) => t.handle),
+        description: "Template for the Doco's kind of knowledge. Default: generic (empty).",
+      },
+      goal: {
+        type: "string",
+        description: "One sentence on what the Doco is for. Default: the template's description.",
+      },
+      privacy: {
+        type: "string",
+        enum: ["private", "public"],
+        description: "Default private.",
+      },
+    },
+    required: ["workspace", "name"],
+  },
+};
+
 const WHOAMI_TOOL = {
   name: "doco_whoami",
   description: [
@@ -403,6 +449,7 @@ const TOOLS = [
   RELATE_TOOL,
   CHANGESET_TOOL,
   POLICY_TOOL,
+  CREATE_TOOL,
   REQUEST_ACCESS_TOOL,
   AGENT_DEBUG_TOOL,
 ];
@@ -650,6 +697,36 @@ async function runDocoPolicy(request: Request, args: Record<string, unknown>): P
   );
 }
 
+// doco_create delegates to POST /api/v1/docos.json with the bearer replayed, so
+// the route's gates (the user owns the workspace, and the connection holds it
+// at owner) decide. Its refusal text reaches the agent as is.
+async function runDocoCreate(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
+  const rawWorkspace = String(args.workspace ?? "").trim();
+  if (!rawWorkspace) return toolError("doco_create requires a `workspace` handle or id.");
+  const workspaceId = rawWorkspace.startsWith("workspace_")
+    ? rawWorkspace
+    : (await resolveWorkspaceByHandle(rawWorkspace))?.id;
+  if (!workspaceId) {
+    return toolError(`Workspace "${rawWorkspace}" not found. Call list_workspaces for handles.`);
+  }
+  const payload: Record<string, unknown> = { workspace_id: workspaceId, name: args.name };
+  if (typeof args.template === "string") payload.template_handle = args.template;
+  if (typeof args.goal === "string") payload.goal = args.goal;
+  if (typeof args.privacy === "string") payload.privacy = args.privacy;
+  const origin = new URL(request.url).origin;
+  const req = new Request(`${origin}/api/v1/docos.json`, {
+    method: "POST",
+    headers: bearerHeaders(request, { "content-type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const res = await createDocoAction({ request: req });
+  const data = (await safeJson(res)) as Record<string, unknown>;
+  if (!res.ok) {
+    return toolError(`doco_create failed (status ${res.status}). ${String(data.error ?? "")}`);
+  }
+  return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
+}
+
 // doco_get is the generic read surface: it GETs any document under the Doco's
 // HTTP API (or the root /status.json) with the caller's bearer replayed.
 async function runDocoGet(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
@@ -841,6 +918,8 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
           return rpcResult(message.id, await runDocoChangeset(request, args));
         case "doco_policy":
           return rpcResult(message.id, await runDocoPolicy(request, args));
+        case "doco_create":
+          return rpcResult(message.id, await runDocoCreate(request, args));
         case "doco_request_access":
           return rpcResult(message.id, await runDocoRequestAccess(ctx, args));
         case "doco_agent_debug":

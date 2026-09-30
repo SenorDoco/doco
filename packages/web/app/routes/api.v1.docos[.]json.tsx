@@ -25,13 +25,20 @@
 // Back-compat: `requested_suffix` and `visibility` are still accepted
 // as aliases for `name` and `privacy`.
 //
-// Behavior: caller must hold owner on the target workspace. The requested
+// Behavior: caller must hold owner on the target workspace. An agent's
+// connection (an OAuth bearer, e.g. the MCP's doco_create) must also grant the
+// whole workspace at owner: an "all workspaces" connection or one that names
+// this workspace does; one limited to specific Docos never does. The requested
 // handle is silently auto-suffixed on collision. Returns 201 with
 // `{ id, handle, workspace_id, workspace_handle, qualified_handle, template_handle,
 //    visibility, goal }`.
 
-import { getWorkspaceRole, roleAtLeast, withClient } from "@doco/db";
-import { isSenorDocoRequest, listVisibleDocoIdsForRequest } from "~/lib/doco-access.server";
+import { type DocoRole, getWorkspaceRole, roleAtLeast, withClient } from "@doco/db";
+import {
+  getOauthTokenForRequest,
+  isSenorDocoRequest,
+  listVisibleDocoIdsForRequest,
+} from "~/lib/doco-access.server";
 import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { createDocoInWorkspace } from "~/lib/redeem.server";
@@ -158,6 +165,8 @@ export async function action({ request }: { request: Request }) {
       { status: 403 },
     );
   }
+  const connectionDenial = await connectionCreateDenial(request, workspaceId);
+  if (connectionDenial) return Response.json({ error: connectionDenial }, { status: 403 });
 
   try {
     const rec = await createDocoInWorkspace({
@@ -207,4 +216,30 @@ function readTemplateHandle(body: {
   }
 
   return { value: templateHandle || templateAlias || DEFAULT_TEMPLATE_HANDLE };
+}
+
+// Why an agent's connection may not create a Doco in this workspace, or null
+// when it may (or the request is a signed-in person, with no connection).
+// Creating is owner-tier, so the connection must hold the whole workspace at
+// owner: an "all workspaces" connection at its role ceiling (null = owner), or
+// a connection that names the workspace at the role stored for it.
+async function connectionCreateDenial(
+  request: Request,
+  workspaceId: string,
+): Promise<string | null> {
+  const token = await getOauthTokenForRequest(request);
+  if (!token) return null;
+  const role: DocoRole | null =
+    token.grant_type === "actor"
+      ? (token.actor_role ?? "owner")
+      : token.granted_workspace_ids.includes(workspaceId)
+        ? ((token.granted_workspace_roles[workspaceId] as DocoRole | undefined) ?? "reader")
+        : null;
+  if (!role) {
+    return "This connection doesn't cover this whole workspace, so it can't create Docos in it. Ask the user to reconnect Doco and pick this workspace (or all workspaces) as owner.";
+  }
+  if (!roleAtLeast(role, "owner")) {
+    return `This connection holds '${role}' on this workspace; creating a Doco needs owner. Ask the user to reconnect Doco with owner access to it.`;
+  }
+  return null;
 }
