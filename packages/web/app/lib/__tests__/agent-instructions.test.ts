@@ -31,6 +31,18 @@ describe("agentInstructions", () => {
     expect(position("ask the user to connect Doco's MCP server")).toBeGreaterThan(check);
   });
 
+  // Alexander, 2026-09-30: the duties only work well when Doco's tools run
+  // without an approval each time, so the connection check covers that too.
+  it("checks Doco's tools are always allowed, and asks the user to set that up if not", () => {
+    const step1 = text.slice(
+      position("### 1. Check the Doco connection"),
+      position("### 2. Pick the project's workspace"),
+    );
+    expect(step1).toContain("Doco's tools must be set to always allow");
+    expect(step1).toContain("a `mcp__doco` allow rule");
+    expect(step1).toContain("if they aren't, or you can't tell, ask the user to set that up");
+  });
+
   it("then picks the project's workspace with the user, never creating one", () => {
     const connect = position("### 1. Check the Doco connection");
     const pick = position("### 2. Pick the project's workspace");
