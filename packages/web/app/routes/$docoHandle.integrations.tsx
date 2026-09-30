@@ -19,7 +19,6 @@ import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
   type GitHubImportProgress,
-  buildInstallUrl,
   getDocoConnectionsContext,
   githubImportProgress,
   githubOrgAccounts,
@@ -35,7 +34,6 @@ export async function loader({
 }) {
   const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const ctx = await getDocoConnectionsContext(meta.docoId);
-  const docoInstallUrl = me ? buildInstallUrl(meta.docoId, me.id) : null;
   const orgAccounts = ctx
     ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
     : [];
@@ -49,7 +47,6 @@ export async function loader({
     handle: meta.handle,
     ownerSlug,
     workspaceHandle: ctx?.workspaceHandle ?? "",
-    docoInstallUrl,
     github: {
       connected: (ctx?.connections.length ?? 0) > 0 || orgAccounts.length > 0,
       orgAccounts,
@@ -98,7 +95,7 @@ export function ImportingNote({ progress }: { progress: GitHubImportProgress | n
 }
 
 export default function DocoIntegrations() {
-  const { me, handle, ownerSlug, workspaceHandle, docoInstallUrl, github, mirrors } =
+  const { me, handle, ownerSlug, workspaceHandle, github, mirrors } =
     useLoaderData<typeof loader>();
 
   // While a PR backfill is running, poll the loader so the "importing X of Y"
@@ -192,12 +189,7 @@ export default function DocoIntegrations() {
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
-            <AvailableIntegrations
-              pageScope="doco"
-              workspaceHandle={workspaceHandle}
-              docoHandle={handle}
-              docoInstallUrl={docoInstallUrl}
-            />
+            <AvailableIntegrations pageScope="doco" docoHandle={handle} />
           </section>
         </div>
       </SingleColumnPageMain>

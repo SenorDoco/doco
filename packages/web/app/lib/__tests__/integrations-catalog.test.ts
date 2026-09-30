@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  INTEGRATION_CATALOG,
-  connectHrefFor,
-  findIntegration,
-  needsScopePrompt,
-} from "../integrations-catalog";
+import { INTEGRATION_CATALOG, connectHrefFor, findIntegration } from "../integrations-catalog";
 
 const slack = findOrThrow("slack");
 const github = findOrThrow("github");
@@ -26,12 +21,10 @@ describe("integrations-catalog", () => {
   });
 
   it("routes Notion clicks from a Doco to that Doco's mirror page", () => {
-    expect(connectHrefFor({ integration: notion, pageScope: "doco", docoHandle: "test" })).toBe(
+    expect(connectHrefFor({ integration: notion, docoHandle: "test" })).toBe(
       "/test/integrations/notion",
     );
-    expect(connectHrefFor({ integration: notion, pageScope: "account" })).toBe(
-      "/integrations?integration=notion#pick-doco",
-    );
+    expect(connectHrefFor({ integration: notion })).toBe("/integrations?integration=notion");
   });
 
   it("findIntegration returns the matching definition", () => {
@@ -40,58 +33,30 @@ describe("integrations-catalog", () => {
     expect(findIntegration("nope")).toBeUndefined();
   });
 
-  describe("needsScopePrompt", () => {
-    it("is false when the integration matches the page scope", () => {
-      expect(needsScopePrompt({ integration: slack, pageScope: "account" })).toBe(false);
-      expect(needsScopePrompt({ integration: github, pageScope: "doco" })).toBe(false);
-    });
-
-    it("is false for Slack on any page (it runs its own install flow)", () => {
-      expect(needsScopePrompt({ integration: slack, pageScope: "workspace" })).toBe(false);
-      expect(needsScopePrompt({ integration: slack, pageScope: "doco" })).toBe(false);
-    });
-
-    it("is true when an workspace/Doco integration is clicked from a higher scope", () => {
-      expect(needsScopePrompt({ integration: github, pageScope: "account" })).toBe(true);
-      expect(needsScopePrompt({ integration: github, pageScope: "workspace" })).toBe(true);
-    });
-  });
-
   describe("connectHrefFor", () => {
     it("links Slack directly to its install URL from any page", () => {
-      expect(connectHrefFor({ integration: slack, pageScope: "account" })).toBe(
+      expect(connectHrefFor({ integration: slack })).toBe("/integrations/slack/install");
+      expect(connectHrefFor({ integration: slack, workspaceHandle: "acme" })).toBe(
         "/integrations/slack/install",
       );
-      expect(
-        connectHrefFor({ integration: slack, pageScope: "workspace", workspaceHandle: "acme" }),
-      ).toBe("/integrations/slack/install");
-      expect(connectHrefFor({ integration: slack, pageScope: "doco", docoHandle: "test" })).toBe(
+      expect(connectHrefFor({ integration: slack, docoHandle: "test" })).toBe(
         "/integrations/slack/install",
       );
     });
 
     it("routes GitHub clicks from a Doco through the Doco-specific connection flow", () => {
-      const href = connectHrefFor({
-        integration: github,
-        pageScope: "doco",
-        docoHandle: "test",
-        docoInstallUrl: "https://github.com/apps/doco/installations/new?state=docoid",
-      });
+      const href = connectHrefFor({ integration: github, docoHandle: "test" });
       expect(href).toBe("/test/integrations/github");
     });
 
-    it("routes GitHub clicks from the account page to a pick-doco prompt", () => {
-      const href = connectHrefFor({ integration: github, pageScope: "account" });
-      expect(href).toBe("/integrations?integration=github#pick-doco");
+    it("routes GitHub clicks from the account page to its doco picker", () => {
+      const href = connectHrefFor({ integration: github });
+      expect(href).toBe("/integrations?integration=github");
     });
 
-    it("routes GitHub clicks from an workspace page to that workspace's pick-doco prompt", () => {
-      const href = connectHrefFor({
-        integration: github,
-        pageScope: "workspace",
-        workspaceHandle: "acme",
-      });
-      expect(href).toBe("/workspaces/acme/integrations?integration=github#pick-doco");
+    it("routes GitHub clicks from a workspace page to that workspace's doco picker", () => {
+      const href = connectHrefFor({ integration: github, workspaceHandle: "acme" });
+      expect(href).toBe("/workspaces/acme/integrations?integration=github");
     });
   });
 });

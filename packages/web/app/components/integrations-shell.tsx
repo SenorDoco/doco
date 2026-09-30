@@ -3,13 +3,12 @@
 //     above the panes; which ones appear depends on the current page scope.
 //   - `AvailableIntegrations` renders the right-pane catalog of every
 //     integration we offer, with a "Connect" / "Set up..." action that
-//     either runs the install directly or jumps to the picker for the
-//     correct workspace/Doco.
-//   - `ScopePickerBanner` shows the "pick a target" prompt that appears at
-//     the top of a scope page when the user clicked through from a higher
-//     scope (e.g. picked GitHub on the account page → shown a Doco prompt).
+//     either runs the install directly or opens the page's Doco picker.
+//   - `DocoPickerCard` is that picker: shown at the top of the account or a
+//     workspace page after a Doco-level integration's "Set up..." click, it
+//     lists the Docos to set it up on, each linking to its setup page.
 import {
-  ArrowDown,
+  ArrowRight,
   ArrowUpRight,
   Building2,
   type LucideIcon,
@@ -20,7 +19,8 @@ import {
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 import { BRAND_ICONS } from "~/components/brand-icons";
-import { Card, CardContent } from "~/components/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { cn } from "~/lib/cn";
 import {
   INTEGRATION_CATALOG,
@@ -29,6 +29,7 @@ import {
   connectHrefFor,
   findIntegration,
 } from "~/lib/integrations-catalog";
+import type { DocoPicker } from "~/lib/integrations-summary.server";
 
 // One source of truth for the small pill action that ends every integrations
 // row. Secondary (outline) backs the "Manage" / "Set defaults" actions on the
@@ -193,12 +194,10 @@ export function AvailableIntegrations({
   pageScope,
   workspaceHandle,
   docoHandle,
-  docoInstallUrl,
 }: {
   pageScope: IntegrationScope;
   workspaceHandle?: string;
   docoHandle?: string;
-  docoInstallUrl?: string | null;
 }) {
   return (
     <Card>
@@ -211,7 +210,6 @@ export function AvailableIntegrations({
               pageScope={pageScope}
               workspaceHandle={workspaceHandle}
               docoHandle={docoHandle}
-              docoInstallUrl={docoInstallUrl}
             />
           ))}
         </ul>
@@ -225,22 +223,17 @@ function AvailableIntegrationRow({
   pageScope,
   workspaceHandle,
   docoHandle,
-  docoInstallUrl,
 }: {
   integration: IntegrationDefinition;
   pageScope: IntegrationScope;
   workspaceHandle?: string;
   docoHandle?: string;
-  docoInstallUrl?: string | null;
 }) {
   const href = connectHrefFor({
     integration,
-    pageScope,
     ...(workspaceHandle ? { workspaceHandle } : {}),
     ...(docoHandle ? { docoHandle } : {}),
-    ...(docoInstallUrl !== undefined ? { docoInstallUrl } : {}),
   });
-  const external = href.startsWith("http");
   const scopeLabel = scopeLabelFor(integration.scope);
   const sameScope = integration.scope === pageScope;
   const BrandIcon = BRAND_ICONS[integration.id] ?? Plug;
@@ -261,11 +254,7 @@ function AvailableIntegrationRow({
         </div>
         <p className="text-xs text-muted-foreground">{integration.description}</p>
       </div>
-      <a
-        href={href}
-        {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
-        className={CONNECTION_ACTION_PRIMARY}
-      >
+      <a href={href} className={CONNECTION_ACTION_PRIMARY}>
         {sameScope ? "Connect" : "Set up..."}
         <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
       </a>
@@ -280,55 +269,58 @@ function scopeLabelFor(scope: IntegrationScope): string {
 }
 
 /**
- * Shown at the top of the account or workspace integrations page when the URL
- * carries an `?integration=<id>` hint — meaning the user got here from a
- * higher-scope "Connect" click and still needs to point at the workspace/Doco
- * to install into. The accompanying rollup card below is highlighted by
- * scrolling to the `#pick-doco` or `#pick-workspace` anchor.
+ * The Doco picker at the top of the account or a workspace integrations page,
+ * shown when the page was opened from a Doco-level integration's "Set up..."
+ * button: every Doco the person reaches there, each linking to that Doco's
+ * setup page for the integration. Rows name their workspace when the picker
+ * spans more than one.
  */
-export function ScopePickerBanner({
-  integrationId,
-  pageScope,
-  workspaceHandle,
-}: {
-  integrationId: string | null;
-  pageScope: IntegrationScope;
-  workspaceHandle?: string;
-}) {
-  if (!integrationId) return null;
-  const integration = findIntegration(integrationId);
-  if (!integration) return null;
-  if (integration.scope === pageScope) return null;
-
-  const targetWord = integration.scope === "doco" ? "doco" : "workspace";
+export function DocoPickerCard({ picker }: { picker: DocoPicker | null }) {
+  const integration = picker ? findIntegration(picker.integrationId) : undefined;
+  if (!picker || !integration) return null;
   const BrandIcon = BRAND_ICONS[integration.id] ?? Plug;
-  const anchorHref =
-    integration.scope === "doco"
-      ? pageScope === "workspace" && workspaceHandle
-        ? `/workspaces/${workspaceHandle}/integrations#pick-doco`
-        : "/integrations#pick-doco"
-      : "/integrations#pick-workspace";
+  const docos = picker.workspaces.flatMap((w) =>
+    w.docos.map((doco) => ({ ...doco, workspaceHandle: w.handle })),
+  );
+  const nameWorkspace = picker.workspaces.length > 1;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 p-4 text-sm">
-      <div className="flex items-center gap-3">
-        <BrandIcon className="h-5 w-5 shrink-0 text-foreground" aria-hidden="true" />
-        <div>
-          <p className="font-semibold text-foreground">
-            Pick a {targetWord} to set up {integration.name}
+    <Card className="border-primary/40">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BrandIcon className="h-5 w-5 shrink-0 text-foreground" aria-hidden="true" />
+          Pick a doco to set up {integration.name}
+        </CardTitle>
+        <CardDescription>
+          {integration.name} is set up on one doco at a time. Choose which one.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {docos.length > 0 ? (
+          <ConnectionList>
+            {docos.map((doco) => (
+              <ConnectionRow
+                key={doco.id}
+                title={
+                  <span className="inline-flex items-center gap-2">
+                    <DocoTypeIcon template={doco.template} className="text-muted-foreground" />
+                    {doco.handle}
+                  </span>
+                }
+                detail={nameWorkspace ? doco.workspaceHandle : undefined}
+                action={{
+                  label: "Set up",
+                  href: connectHrefFor({ integration, docoHandle: doco.handle }),
+                  icon: ArrowRight,
+                }}
+              />
+            ))}
+          </ConnectionList>
+        ) : (
+          <p className="px-5 pb-4 text-sm text-muted-foreground">
+            No docos to set up {integration.name} on yet.
           </p>
-          <p className="text-xs text-muted-foreground">
-            {integration.name} is configured at the {targetWord} level — choose which {targetWord}{" "}
-            from the list below to continue.
-          </p>
-        </div>
-      </div>
-      <a
-        href={anchorHref}
-        className="neu-button inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-      >
-        Jump to {targetWord} list
-        <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-      </a>
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

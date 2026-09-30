@@ -3,8 +3,9 @@
 // Two panes:
 //   Left  — integrations configured at the workspace level, plus a per-Doco
 //           rollup for every Doco the workspace owns that has any connections.
-//   Right — full catalog of available integrations; cross-scope clicks
-//           land on the picker for the right target.
+//   Right — full catalog of available integrations. "Set up..." on a
+//           Doco-level one (GitHub, Notion) reopens this page with a picker of
+//           the workspace's Docos on top.
 //
 // Above both panes: a scope-nav link back up to the account-wide page.
 //
@@ -13,7 +14,7 @@
 // (one team binds to one workspace), so this is its management home — the same
 // way GitHub is managed on the Doco it's connected to. The account page only
 // links here.
-import { getWorkspaceRole } from "@doco/db";
+import { getWorkspaceRole, withClient } from "@doco/db";
 import { ArrowRight } from "lucide-react";
 import { redirect } from "react-router";
 import { workspaceBreadcrumb } from "~/components/breadcrumb";
@@ -22,14 +23,14 @@ import {
   AvailableIntegrations,
   ConnectionList,
   ConnectionRow,
+  DocoPickerCard,
   RemoveSlackButton,
   ScopeNavLinks,
-  ScopePickerBanner,
 } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
+import { loadDocoPicker, loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { listSlackInstallations } from "~/lib/slack.server";
 import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
@@ -80,7 +81,13 @@ export async function loader({
     // Removal is owner-only (the inverse of install); members can still open
     // Set defaults. Mirrors the server-side gate on the /integrations action.
     canManageSlack: role === "owner",
-    pickingIntegrationId: url.searchParams.get("integration"),
+    docoPicker: await withClient((c) =>
+      loadDocoPicker(c, {
+        integrationId: url.searchParams.get("integration"),
+        userId: me.id,
+        workspaceId: workspace.id,
+      }),
+    ),
   };
 }
 
@@ -93,7 +100,7 @@ export default function WorkspaceIntegrations({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, workspace, rollup, slack, canManageSlack, pickingIntegrationId } = loaderData;
+  const { me, workspace, rollup, slack, canManageSlack, docoPicker } = loaderData;
   return (
     <div>
       <SiteHeader me={me} />
@@ -114,11 +121,7 @@ export default function WorkspaceIntegrations({
           </div>
         </PageHeader>
 
-        <ScopePickerBanner
-          integrationId={pickingIntegrationId}
-          pageScope="workspace"
-          workspaceHandle={workspace.handle}
-        />
+        <DocoPickerCard picker={docoPicker} />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="space-y-3">
@@ -165,7 +168,7 @@ export default function WorkspaceIntegrations({
               )}
             </Card>
 
-            <Card id="pick-doco">
+            <Card>
               <CardHeader>
                 <CardTitle className="text-base">Docos in this workspace</CardTitle>
                 <CardDescription>

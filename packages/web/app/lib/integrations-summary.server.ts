@@ -12,7 +12,9 @@
 // are aggregated by the higher-scope pages but rendered per-target.
 
 import { withClient } from "@doco/db";
+import { findIntegration } from "~/lib/integrations-catalog";
 import { type SlackInstallationSummary, listSlackInstallations } from "~/lib/slack.server";
+import { type WorkspaceSummary, loadWorkspaceSummaries } from "~/lib/workspace-summaries.server";
 
 export interface DocoIntegrationSummary {
   docoId: string;
@@ -110,4 +112,28 @@ export async function loadWorkspaceIntegrationsRollup(opts: {
 }): Promise<WorkspaceIntegrationsRollup> {
   const docos = await listDocoIntegrationsForWorkspaces([opts.workspaceId]);
   return { workspaceId: opts.workspaceId, workspaceHandle: opts.workspaceHandle, docos };
+}
+
+/** The Docos a Doco-level integration can be set up on, by workspace. */
+export interface DocoPicker {
+  integrationId: string;
+  workspaces: WorkspaceSummary[];
+}
+
+/**
+ * The picker a workspace or the account page shows after a Doco-level
+ * integration's "Set up..." click (`?integration=<id>`): every Doco the person
+ * reaches, narrowed to one workspace on that workspace's page. Null when the
+ * page wasn't opened to set up a Doco-level integration.
+ */
+export async function loadDocoPicker(
+  c: Parameters<typeof loadWorkspaceSummaries>[0],
+  opts: { integrationId: string | null; userId: string; workspaceId?: string },
+): Promise<DocoPicker | null> {
+  const integration = findIntegration(opts.integrationId ?? "");
+  if (integration?.scope !== "doco") return null;
+  const workspaces = await loadWorkspaceSummaries(c, opts.userId, {
+    ...(opts.workspaceId ? { workspaceId: opts.workspaceId } : {}),
+  });
+  return { integrationId: integration.id, workspaces };
 }

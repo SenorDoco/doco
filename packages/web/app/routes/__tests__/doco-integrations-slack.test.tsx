@@ -22,7 +22,6 @@ vi.mock("react-router", async () => {
 vi.mock("@doco/db", () => ({ withClient: vi.fn(), getWorkspaceRole: vi.fn() }));
 vi.mock("~/lib/doco-access.server", () => ({ loadDocoRouteForRead: vi.fn() }));
 vi.mock("~/lib/github-connection.server", () => ({
-  buildInstallUrl: vi.fn(),
   getDocoConnectionsContext: vi.fn(),
   githubImportProgress: vi.fn(),
   githubOrgAccounts: vi.fn(),
@@ -51,7 +50,6 @@ function render(slackStatus: SlackIntegrationStatus | null): string {
     handle: "torre-slack",
     ownerSlug: "torre",
     workspaceHandle: "torre",
-    docoInstallUrl: null,
     github: {
       connected: false,
       orgAccounts: [],
