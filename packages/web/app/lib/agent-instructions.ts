@@ -3,8 +3,10 @@
 // AGENTS.md (or CLAUDE.md, or its client's project instructions), between the
 // two markers, and compares that copy with the home page to stay current.
 //
-// This is Doco's single agent entry point: the connection check, picking the
-// project's workspace, the baseline duties and the voice rule all live here.
+// This is the one agent-instructions template in Doco. The home page, each
+// workspace's Connect your agent page, the Tokens page, the hosted MCP
+// server's instructions and the agent bootstrap all hand over this block;
+// everything else that talks to agents points here.
 
 export const INSTRUCTIONS_BEGIN = "<!-- doco:begin -->";
 export const INSTRUCTIONS_END = "<!-- doco:end -->";
@@ -32,7 +34,12 @@ it is connected:
 - Any other MCP client: add ${host}/mcp as a remote (Streamable HTTP) server
 
 While connecting, the user picks what the agent can reach: all of their
-workspaces, specific workspaces, or specific Docos.
+workspaces, specific workspaces, or specific Docos. Signing in is the MCP
+client's job: never drive OAuth by hand or ask the user to paste a
+callback URL into the chat.
+
+Once connected, \`doco_whoami\` shows who the agent acts as, what it can
+reach, and the workspace constitutions its captures must honor.
 
 ### 2. Pick the project's workspace
 
@@ -97,8 +104,6 @@ them, never whether.
 
 A doco is the project's record; write what was decided, by whom and why,
 in the third person or the imperative.
-
-Full protocol: ${host}/protocol/canonical-instructions
 ${INSTRUCTIONS_END}
 `;
 }

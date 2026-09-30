@@ -7,10 +7,10 @@
 // a database.
 
 import type { DocoPolicySet, WorkspaceConstitution } from "./agent-bootstrap.server";
-import { CANONICAL_INSTRUCTIONS } from "./instructions.server";
+import { agentInstructions } from "./agent-instructions";
 
 export function buildAgentBootstrapBody<P, G, T>(input: {
-  /** Request origin, e.g. `https://doco.to` — used to build the instructions URL. */
+  /** Request origin, e.g. `https://doco.to` — the host the agent instructions name. */
   origin: string;
   principal: P;
   oauthGrant: G;
@@ -21,11 +21,8 @@ export function buildAgentBootstrapBody<P, G, T>(input: {
   return {
     workspace_constitutions: input.workspaceConstitutions,
     principal: input.principal,
-    canonical_instructions_url: new URL(
-      "/protocol/canonical-instructions",
-      input.origin,
-    ).toString(),
-    canonical_instructions: CANONICAL_INSTRUCTIONS,
+    agent_instructions_url: new URL("/", input.origin).toString(),
+    agent_instructions: agentInstructions(input.origin),
     oauth_grant: input.oauthGrant,
     project_token_grant: input.projectTokenGrant,
     doco_policies: input.docoPolicies,

@@ -136,8 +136,7 @@ test -f CLAUDE.md
 \`\`\`
 
 If any are missing, add them: create \`.doco/connections.md\` with the
-public Doco URL, create \`AGENTS.md\` with the Doco connection/OAuth
-instructions, and create \`CLAUDE.md\` as a one-line shim:
+public Doco URL, create \`AGENTS.md\` with the instructions from the Doco home page (${baseUrl}/), and create \`CLAUDE.md\` as a one-line shim:
 
 \`\`\`
 @./AGENTS.md
@@ -376,10 +375,9 @@ You get back:
 
 - \`principal\` — your authenticated identity (\`id\` + \`username\`).
   Confirms the token works and tells you who you're acting as.
-- \`canonical_instructions\` — the Doco protocol you're now expected
-  to follow.
-- \`canonical_instructions_url\` — link to the same instructions in
-  case you want to refetch them later.
+- \`agent_instructions\` — the instructions you're now expected to
+  follow, the same block the Doco home page shows.
+- \`agent_instructions_url\` — the home page, to refetch them later.
 - \`oauth_grant\` — your token's grant set verbatim:
   \`granted_doco_ids\`, \`granted_workspace_ids\`, \`granted_doco_roles\`,
   \`granted_workspace_roles\`, \`scope\`, \`expires_at\`. Null for cookie
@@ -569,8 +567,8 @@ reads the Doco without OAuth.
 
 After completing OAuth once, mention it as one of two options for
 avoiding the auth dance on every fresh container / new clone (the
-other is setting \`DOCO_ACCESS\` as a runtime environment variable;
-see the canonical instructions). Don't make the choice for the
+other is setting \`DOCO_ACCESS\` as a runtime environment variable).
+Don't make the choice for the
 user — surface both, let them pick.
 
 ### Mint flow (Doco owner only, requires explicit confirmation)
@@ -625,7 +623,7 @@ Authorization: Bearer doco_pt_<token>
 
 The token is fixed at **reader** role on exactly one Doco. Writes
 (POST/PATCH/DELETE) fail with HTTP 403 \`insufficient_scope\`. The
-canonical bootstrap (\`GET /api/v1/agent-bootstrap.json\`) returns
+bootstrap (\`GET /api/v1/agent-bootstrap.json\`) returns
 the Doco's policies with \`principal: null\` and a
 \`project_token_grant: { doco_id, role: "reader" }\` marker so
 agents know which path they're on.
@@ -680,7 +678,7 @@ Idempotent. Use this when you no longer need the tokens (user said
 
 ## Discovery doc
 
-The canonical machine-readable advertisement of these endpoints
+The machine-readable advertisement of these endpoints
 lives at \`${baseUrl}/.well-known/oauth-authorization-server\` per RFC
 8414. Fetch it if you want to pick the endpoints up dynamically
 instead of hard-coding them.

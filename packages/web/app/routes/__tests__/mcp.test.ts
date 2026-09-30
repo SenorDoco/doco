@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { expectBaselineDuties } from "~/lib/__tests__/baseline-duties";
 import { firstPersonLines } from "~/lib/__tests__/first-person";
+import { agentInstructions } from "~/lib/agent-instructions";
 
 // The hosted MCP endpoint at /mcp. Identity + reach come from the token via the
 // user-level gate (gateUserMcp); the tool surface + Doco confinement are shared.
@@ -92,37 +92,13 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(mocks.gateUserMcp).toHaveBeenCalledTimes(1);
   });
 
-  it("initialize describes the multi-workspace 'all workspaces' reach, not a single-workspace binding", async () => {
+  // Alexander, 2026-09-30: one agent-instructions template everywhere. The
+  // server hands a connecting agent the same block the home page shows.
+  it("initialize hands the agent the home page instructions, verbatim", async () => {
     const res = await call({ jsonrpc: "2.0", id: 7, method: "initialize" }, BEARER);
     const body = (await res.json()) as Json;
-    const instructions: string = body.result.instructions;
-    // The connection can reach every workspace you belong to — the old
-    // "bound to a single workspace, token reaches no other" claim was false.
-    expect(instructions).not.toContain("bound to a single Doco Workspace");
-    expect(instructions).not.toContain("reaches\nno other");
-    // It points the agent at the discovery tools for that reach.
-    expect(instructions).toContain("doco_whoami");
-    expect(instructions).toContain("list_workspaces");
     expect(body.result.serverInfo.name).toBe("doco");
-    // The grant is the scope: use all of it, no one-at-a-time cap.
-    expect(instructions).not.toMatch(/one Doco at a time/i);
-    expect(instructions).toContain("Use all of it");
-  });
-
-  it("initialize maps a project to a Workspace, so a new project gets a new Workspace", async () => {
-    const res = await call({ jsonrpc: "2.0", id: 8, method: "initialize" }, BEARER);
-    const body = (await res.json()) as Json;
-    const instructions: string = body.result.instructions;
-    expect(instructions).toContain("One project = one Workspace");
-    expect(instructions).toContain("/new-workspace");
-  });
-
-  it("initialize has agents create a workspace's Docos themselves, never send the user to do it", async () => {
-    const res = await call({ jsonrpc: "2.0", id: 8, method: "initialize" }, BEARER);
-    const body = (await res.json()) as Json;
-    const instructions: string = body.result.instructions;
-    expect(instructions).toContain("doco_create");
-    expect(instructions).not.toMatch(/Docos from the\s+workspace page/);
+    expect(body.result.instructions).toBe(agentInstructions("https://doco.to"));
   });
 
   it("doco_create resolves a workspace handle and POSTs to the create route, replaying the bearer", async () => {
@@ -206,14 +182,6 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.isError).toBe(true);
     expect(body.result.content[0].text).toContain('Workspace "nowhere" not found');
     expect(mocks.createDocoAction).not.toHaveBeenCalled();
-  });
-
-  it("initialize states the baseline duties: load context, document decisions, record the conversation", async () => {
-    const res = await call({ jsonrpc: "2.0", id: 9, method: "initialize" }, BEARER);
-    const body = (await res.json()) as Json;
-    const instructions: string = body.result.instructions;
-    expectBaselineDuties(instructions);
-    expect(instructions).not.toMatch(/does not mandate captures/i);
   });
 
   it("initialize leaves the agent's voice alone, and every tool description avoids the first person", async () => {

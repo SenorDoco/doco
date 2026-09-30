@@ -238,12 +238,13 @@ describe("/tokens page action", () => {
     expect(markup).not.toContain("claude.ai · Claude Desktop · Claude mobile · Cursor");
     expect(markup).not.toContain("ChatGPT & other clients");
     expect(markup).not.toContain("mcp-provider-");
-    // Step 2: the paste-to-agent block that makes the agent remember Doco
-    // (records the directive in AGENTS.md and applies it this session).
-    expect(markup).toContain("2. Tell your agent to use Doco");
-    expect(markup).toContain("Search Doco first");
-    expect(markup).toContain("Know your default scope");
-    expect(markup).toContain('data-testid="agent-memory-prompt"');
+    // Step 2: the same instructions the home page gives, from the one
+    // template, not a page-specific prompt.
+    expect(markup).toContain("2. Give your agent these instructions");
+    expect(markup).toContain("### 1. Check the Doco connection");
+    expect(markup).toContain('id="instructions"');
+    expect(markup).not.toContain("Search Doco first");
+    expect(markup).not.toContain("Know your default scope");
     // The standalone read/write + OAuth capabilities line was dropped.
     expect(markup).not.toContain("Read and write on one OAuth 2.1 token");
   });

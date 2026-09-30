@@ -63,6 +63,11 @@ export default [
   route("install", "routes/agent-probes[.]ts.tsx", { id: "probe-install" }),
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
+  // The old agent protocol's address: AGENTS.md copies of the old
+  // instructions still link here. The home page holds the only template now.
+  route("protocol/canonical-instructions", "routes/agent-probes[.]ts.tsx", {
+    id: "probe-canonical-instructions",
+  }),
   route("dashboard", "routes/dashboard.tsx"),
   // Admin / staff-only dashboards. Auth check is in the loader of
   // each route file — the route table doesn't gate, it just lists.
@@ -121,9 +126,6 @@ export default [
   // human approves at /device.
   route("oauth/device_authorization", "routes/oauth.device-authorization.tsx"),
   route("device", "routes/device.tsx"),
-  // Public agent-protocol prose. Replaces the MCP `resources/read`
-  // delivery path during the period the MCP layer is removed.
-  route("protocol/canonical-instructions", "routes/protocol.canonical-instructions.tsx"),
   // Step-by-step OAuth recipe for agents that aren't going through an
   // MCP runtime. Covers localhost-loopback (Recipe A) + Device Flow
   // (Recipe B). Public; served as text/markdown.

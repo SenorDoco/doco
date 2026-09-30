@@ -95,8 +95,8 @@ EXAMPLE
     }'
 
 WHEN TO CALL THIS
-  See the "Before you declare a task done — capture checklist" in the
-  canonical instructions. Don't write the YAML by hand — that's what
+  When a choice is made (the "Document every decision" duty in the
+  agent instructions). Don't write the YAML by hand — that's what
   this endpoint exists to skip.
 
 UPDATE AN EXISTING DECISION
@@ -113,7 +113,7 @@ ${renderCapturePatchFields("decision")}
 
 RELATED
   GET ${baseUrl}/${handle}/status.json   freshness + counts (footer)
-  GET ${baseUrl}/api/v1/agent-bootstrap.json    canonical instructions
+  GET ${baseUrl}/api/v1/agent-bootstrap.json    agent instructions + policies
 `,
 
   ideas: (baseUrl, handle) => `# Doco — Capture an Idea (single call)
@@ -186,9 +186,8 @@ EXAMPLE
 
 WHEN TO CALL THIS
   Before writing a Decision whose motivating Intent doesn't already
-  exist on this Doco. The capture checklist (see canonical_instructions)
-  treats "no matching Intent" as a missing capture, not a license to
-  skip the connection.
+  exist on this Doco. A Decision with no matching Intent is a
+  missing capture, not a license to skip the connection.
 
 RELATED
   POST ${baseUrl}/${handle}/api/decisions.json   capture a Decision

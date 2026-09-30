@@ -20,6 +20,10 @@ export function loader({
   const body = [
     "DOCO INVITE URL — for agents",
     "",
+    "To use Doco, follow the instructions on the Doco home page:",
+    "",
+    `    ${baseUrl}/`,
+    "",
     "You landed here because someone shared a Doco invite URL with you:",
     "",
     `    ${baseUrl}/invite/${code}`,
