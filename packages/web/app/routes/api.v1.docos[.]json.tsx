@@ -5,7 +5,7 @@
 //   { docos: [{ id, handle, workspace_id, workspace_handle, qualified_handle }] }
 // Empty array when the caller has access to nothing. Sorted by
 // `workspace_handle/handle` for stable client rendering. For a cookie
-// session the set matches the dashboard "what can I see?" view:
+// session the set is everything the person can reach:
 // direct ownership ∪ workspace membership ∪ explicit `doco_users` grant.
 // An OAuth bearer is additionally narrowed to the token's workspace
 // boundary (see `listVisibleDocoIdsForRequest`) so a token scoped to

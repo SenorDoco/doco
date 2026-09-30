@@ -135,7 +135,7 @@ describe("autoAssignThreadWorkspaceIfObvious", () => {
     await member(WS_B, "beta");
     const conv = await createConversation(USER);
 
-    await autoAssignThreadWorkspaceIfObvious(conv, USER, "/dashboard");
+    await autoAssignThreadWorkspaceIfObvious(conv, USER, "/workspaces");
 
     expect(conv.workspace_id).toBeNull();
   });

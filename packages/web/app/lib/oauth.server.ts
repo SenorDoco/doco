@@ -60,7 +60,7 @@ export function startOAuth(config: OAuthConfig): { url: string; setCookie: strin
   // still-logged-in user straight back in. Without this, signing out of
   // Doco feels broken: the cookie is cleared, but the next "Continue with
   // GitHub" silently re-authorizes the live GitHub session with no prompt,
-  // so the user lands back on the dashboard "right away." prompt=select_account
+  // so the user lands back on their workspaces "right away." prompt=select_account
   // forces a deliberate step. (allow_signup defaults to true, so it's omitted.)
   authorizeUrl.searchParams.set("prompt", "select_account");
 

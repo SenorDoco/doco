@@ -4,7 +4,7 @@
 // route lets an uptime checker (UptimeRobot, BetterStack, Vercel
 // Cron, curl in a loop) hit one URL and parse a status field.
 //
-// Auth: gated to the `torrenegra` user, like the dashboard.
+// Auth: gated to the `torrenegra` user, like /admin/agent-usage.
 // Re-using the same gate so the health surface doesn't leak details
 // about the deployment to anonymous probes — that's a deliberate
 // trade-off; if you want a public 200/503 ping, route through Vercel

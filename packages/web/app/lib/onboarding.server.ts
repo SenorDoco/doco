@@ -1,4 +1,4 @@
-// A person's progress through the three onboarding steps the dashboard shows:
+// A person's progress through the three onboarding steps /workspaces shows:
 // create a workspace, connect an agent, connect sources of knowledge. Each
 // step reads as done from what the database already holds, so there is no
 // onboarding state of its own to keep in sync.

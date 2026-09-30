@@ -111,8 +111,7 @@ export async function action({
     } catch (e) {
       return { error: `Failed to delete: ${(e as Error).message}` };
     }
-    // The dashboard listing reads the remaining docos rows. Redirect home
-    // with a flash-shaped query param the dashboard can surface.
+    // Land on the Workspaces page, which lists the remaining Docos.
     return redirect(`/workspaces?deleted=${encodeURIComponent(handle)}`);
   }
 

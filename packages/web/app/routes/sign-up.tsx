@@ -26,7 +26,7 @@ export async function action({ request }: { request: Request }) {
   if (!isValidSignupInviteCode(inviteCode)) {
     return { error: "That invite code is not valid." };
   }
-  return redirect("/auth/github?return=%2Fdashboard", {
+  return redirect("/auth/github", {
     headers: { "Set-Cookie": setSignupInviteCookie() },
   });
 }
