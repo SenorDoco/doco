@@ -23,7 +23,8 @@ import { getCurrentPrincipal } from "~/lib/session.server";
  *
  * The Workspace has one user-facing property: `handle`. The user
  * types the handle they want. On submit, if it's free, the workspace lands
- * at `/workspaces/<handle>`. If it's taken, the form re-renders with the
+ * and the person goes on to connect an agent to it at
+ * `/workspaces/<handle>/agent`. If it's taken, the form re-renders with the
  * next available suggestion (e.g. `acme-2`) and a one-click "Use
  * suggested" button (sets `accept_suggested=1` on the form submit).
  */
@@ -52,7 +53,7 @@ export async function action({ request }: { request: Request }) {
       ownerUserId: me.id,
       autoSuffix: accept,
     });
-    throw redirect(`/workspaces/${handle}`);
+    throw redirect(`/workspaces/${handle}/agent`);
   } catch (e) {
     if (e instanceof Response) throw e;
     const message = (e as Error).message;

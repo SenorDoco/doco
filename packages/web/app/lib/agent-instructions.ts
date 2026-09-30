@@ -90,3 +90,13 @@ Full protocol: ${host}/protocol/canonical-instructions
 ${INSTRUCTIONS_END}
 `;
 }
+
+/**
+ * The same block, followed by the line that connects the project to one
+ * workspace. Offered right after a workspace is created, and from each
+ * workspace's Invite agent button.
+ */
+export function agentInstructionsForWorkspace(baseUrl: string, workspaceHandle: string): string {
+  const host = baseUrl.replace(/\/+$/, "");
+  return `${agentInstructions(host)}Doco workspace: ${host}/workspaces/${workspaceHandle}\n`;
+}

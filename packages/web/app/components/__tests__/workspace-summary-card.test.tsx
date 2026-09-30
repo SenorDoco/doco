@@ -55,7 +55,7 @@ describe("WorkspaceSummaryCard", () => {
     expect(html).toContain(">Invite person</a>");
     expect(html).toContain('href="/users?scope=workspace%3Aworkspace_torre"');
     expect(html).toContain(">Invite agent</a>");
-    expect(html).toContain('href="/#instructions"');
+    expect(html).toContain('href="/workspaces/torre/agent"');
   });
 
   it("names the latest thing that happened", () => {

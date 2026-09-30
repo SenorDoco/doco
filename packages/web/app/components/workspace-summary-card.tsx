@@ -76,7 +76,7 @@ export function WorkspaceSummaryCard({
                 </Link>
               </>
             ) : null}
-            <Link to="/#instructions" className={BUTTON}>
+            <Link to={`/workspaces/${workspace.handle}/agent`} className={BUTTON}>
               Invite agent
             </Link>
           </div>

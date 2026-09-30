@@ -32,6 +32,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   (agent self-service: install the hosted MCP connector at /mcp; OAuth dance kicks off automatically)
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
+ *   /workspaces/<workspace-handle>/agent       the agent instructions, connected to this workspace
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
  *   /<doco-handle>                 per-Doco recent + search input
  *   /<doco-handle>/<type>          per-Doco entity list (short form; ADR-120)
@@ -136,6 +137,7 @@ export default [
   // Per-Workspace home — mirrors the Doco home page but aggregates across
   // every Doco the workspace owns (docos list, node-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
+  route("workspaces/:workspaceHandle/agent", "routes/workspaces.$workspaceHandle.agent.tsx"),
   route("workspaces/:workspaceHandle/settings", "routes/workspaces.$workspaceHandle.settings.tsx"),
   route(
     "workspaces/:workspaceHandle/integrations",
